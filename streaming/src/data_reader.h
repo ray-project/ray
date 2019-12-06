@@ -26,10 +26,9 @@ struct DataBundle {
   StreamingMessageBundleMetaPtr meta;
 };
 
-/// There is implementation of merger policy in StreamingReaderMsgPtrComparator.
+/// This is implementation of merger policy in StreamingReaderMsgPtrComparator.
 struct StreamingReaderMsgPtrComparator {
   StreamingReaderMsgPtrComparator() = default;
-  ;
   bool operator()(const std::shared_ptr<DataBundle> &a,
                   const std::shared_ptr<DataBundle> &b);
 };
@@ -72,14 +71,13 @@ class DataReader {
   explicit DataReader(std::shared_ptr<RuntimeContext> &runtime_context);
   virtual ~DataReader();
 
-  ///  Init Streaming reader. For exception status throwing, we do not init
-  ///  in constructor. Actually, There are only reigster somethings in this
-  ///  function.
-  ///  \param store_path
+  /// During initialization, only the channel parameters and necessary member properties
+  /// are assigned. All channels will be connected in the first reading operation.
   ///  \param input_ids
-  ///  \param queue_seq_ids
-  ///  \param raylet_client
-  ///
+  ///  \param actor_ids
+  ///  \param channel_seq_ids
+  ///  \param msg_ids
+  ///  \param timer_interval
   void Init(const std::vector<ObjectID> &input_ids, const std::vector<ActorID> &actor_ids,
             const std::vector<uint64_t> &channel_seq_ids,
             const std::vector<uint64_t> &msg_ids, int64_t timer_interval);
@@ -87,31 +85,32 @@ class DataReader {
   void Init(const std::vector<ObjectID> &input_ids, const std::vector<ActorID> &actor_ids,
             int64_t timer_interval);
 
-  ///  Get latest message from input queues
+  /// Get latest message from input queues.
   ///  \param timeout_ms
   ///  \param message, return the latest message
   StreamingStatus GetBundle(uint32_t timeout_ms, std::shared_ptr<DataBundle> &message);
 
-  ///  Get offset information about channels for checkpoint.
+  /// Get offset information about channels for checkpoint.
   ///  \param offset_map (return value)
   void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
 
   void Stop();
 
-  ///  Notify input queues to clear data its seq id is equal or less than offset.
-  ///  It's used when checkpoint is done.
+  /// Notify input queues to clear data whose seq id is equal or less than offset.
+  /// It's used when checkpoint is done.
   ///  \param channel_info
   ///  \param offset
   ///
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
 
  private:
-  /// One item from every channel will be popped out, then collecting
-  /// them to a merged queue. High prioprity items will be fetched one by one.
-  ///  When item pop from one channel where must produce new item for placeholder
-  ///  in merged queue.
+  /// Create channels and connect to all upstream.
   StreamingStatus InitChannel();
 
+  /// One item from every channel will be popped out, then collecting
+  /// them to a merged queue. High prioprity items will be fetched one by one.
+  /// When item pop from one channel where must produce new item for placeholder
+  /// in merged queue.
   StreamingStatus InitChannelMerger();
 
   StreamingStatus StashNextMessage(std::shared_ptr<DataBundle> &message);

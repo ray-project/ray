@@ -18,9 +18,9 @@ namespace streaming {
 /// DataWriter is designed for data transporting between upstream and downstream.
 /// After the user sends the data, it does not immediately send the data to
 /// downstream, but caches it in the corresponding memory ring buffer. There is
-/// a spearate transfer thread(setup in WriterLoopForward function) to collect
+/// a spearate transfer thread (setup in WriterLoopForward function) to collect
 /// the messages from all the ringbuffers, and write them to the corresponding
-/// transmission channels, which is backed StreamingQueue. Actually, the
+/// transmission channels, which is backed by StreamingQueue. Actually, the
 /// advantage is that the user thread will not be affected by the transmission
 /// speed during the data transfer. And also the transfer thread can automatically
 /// batch the catched data from memory buffer into a data bundle to reduce
@@ -28,7 +28,6 @@ namespace streaming {
 /// it will also send an empty bundle, so downstream can know that and process
 /// accordingly. It will sleep for a short interval to save cpu if all ring
 /// buffers have no data in that moment.
-
 class DataWriter {
  private:
   std::shared_ptr<std::thread> loop_thread_;
@@ -45,30 +44,28 @@ class DataWriter {
  private:
   bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
 
-  ///  \\param channel_info
-  ///  \\param buffer_remain
-  ///
-  ///  Two conditions in this function:
-  ///  1. Send the transient buffer to channel if there is already some data in.
-  ///  2. Collecting data from ring buffer, then put them into a bundle and
-  ///     serializing it to bytes object in transient buffer. Finally do 1.
+  /// This function handles two scenarios. When there is data in the transient
+  /// buffer, the existing data is written into the channel first, otherwise a
+  /// certain amount of message is first collected from the buffer and serialized
+  /// into the transient buffer, and finally written to the channel.
+  /// \\param channel_info
+  /// \\param buffer_remain
   StreamingStatus WriteBufferToChannel(ProducerChannelInfo &channel_info,
                                        uint64_t &buffer_remain);
 
-  ///  Start the loop forward thread for collecting messages from all channels.
-  ///  Invoking stack:
-  ///  WriterLoopForward
-  ///    -- WriteChannelProcess
-  ///       -- WriteBufferToChannel
-  ///         -- CollectFromRingBuffer
-  ///         -- WriteTransientBufferToChannel
-  ///    -- WriteEmptyMessage(if WriteChannelProcess return empty state)
+  /// Start the loop forward thread for collecting messages from all channels.
+  /// Invoking stack:
+  /// WriterLoopForward
+  ///   -- WriteChannelProcess
+  ///      -- WriteBufferToChannel
+  ///        -- CollectFromRingBuffer
+  ///        -- WriteTransientBufferToChannel
+  ///   -- WriteEmptyMessage(if WriteChannelProcess return empty state)
   void WriterLoopForward();
 
-  ///  Push empty message when no valid message or bundle was produced each time
-  ///  interval.
-  ///  \param q_id, queue id
-  ///  \param meta_ptr, it's resend empty bundle if meta pointer is non-null.
+  /// Push empty message when no valid message or bundle was produced each time
+  /// interval.
+  /// \param channel_info
   StreamingStatus WriteEmptyMessage(ProducerChannelInfo &channel_info);
 
   /// Flush all data from transient buffer to channel for transporting.

@@ -17,10 +17,10 @@
 namespace ray {
 namespace streaming {
 
-/// Since limitation of streaming-queue, we mayn't sent queue item
-/// successful once, so streaming transient buffer is token for
-/// transient memory util messages are accpeted by streaming-queue.
-
+/// Because the data cannot be successfully written to the channel every time, in
+/// order not to serialize the message repeatedly, we designed a temporary buffer
+/// area so that when the downstream is backpressured or the channel is blocked
+/// due to memory limitations, it can be cached first and waited for the next use.
 class StreamingTransientBuffer {
  private:
   std::shared_ptr<uint8_t> transient_buffer_;

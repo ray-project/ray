@@ -24,31 +24,6 @@ class StreamingMessageBundle;
 typedef std::shared_ptr<StreamingMessageBundle> StreamingMessageBundlePtr;
 typedef std::shared_ptr<StreamingMessageBundleMeta> StreamingMessageBundleMetaPtr;
 
-///  Message bundle protocol:
-///  MagicNum = 0xcafebaba
-///  Timestamp 64bits timestamp (milliseconds from 1970)
-///  LastMessageId( the last id of bundle) (0,INF]
-///  MessageListSize(bundle len of message)
-///  BundleType(a. bundle = 3 , b. barrier =2, c. empty = 1)
-///  RawBundleSize（binary length of data)
-///  RawData ( binary data)
-///
-///   +--------------------+
-///   | MagicNum=U32       |
-///   +--------------------+
-///   | BundleTs=U64       |
-///   +--------------------+
-///   | LastMessageId=U64  |
-///   +--------------------+
-///   | MessageListSize=U32|
-///   +--------------------+
-///   | BundleType=U32     |
-///   +--------------------+
-///   | RawBundleSize=U32  |
-///   +--------------------+
-///   | RawData=var(N*Msg) |
-///   +--------------------+
-
 constexpr uint32_t kMessageBundleMetaHeaderSize = sizeof(uint32_t) + sizeof(uint32_t) +
                                                   sizeof(uint64_t) + sizeof(uint64_t) +
                                                   sizeof(StreamingMessageBundleType);
@@ -106,6 +81,33 @@ class StreamingMessageBundleMeta {
   }
 };
 
+/// StreamingMessageBundle inherits from metadata class (StreamingMessageBundleMeta) with
+/// the following protocol:
+/// MagicNum = 0xcafebaba
+/// Timestamp 64bits timestamp (milliseconds from 1970)
+/// LastMessageId( the last id of bundle) (0,INF]
+/// MessageListSize(bundle len of message)
+/// BundleType(a. bundle = 3 , b. barrier =2, c. empty = 1)
+/// RawBundleSize（binary length of data)
+/// RawData ( binary data)
+///
+///  +--------------------+
+///  | MagicNum=U32       |
+///  +--------------------+
+///  | BundleTs=U64       |
+///  +--------------------+
+///  | LastMessageId=U64  |
+///  +--------------------+
+///  | MessageListSize=U32|
+///  +--------------------+
+///  | BundleType=U32     |
+///  +--------------------+
+///  | RawBundleSize=U32  |
+///  +--------------------+
+///  | RawData=var(N*Msg) |
+///  +--------------------+
+/// It should be noted that StreamingMessageBundle and StreamingMessageBundleMeta share
+/// almost same protocol but the last two fields (RawBundleSize and RawData).
 class StreamingMessageBundle : public StreamingMessageBundleMeta {
  private:
   uint32_t raw_bundle_size_;

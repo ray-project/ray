@@ -205,8 +205,10 @@ StreamingStatus DataReader::GetBundle(const uint32_t timeout_ms,
                        last_fetched_queue_item_->seq_id);
   }
 
-  // Get latest message util it meets two conditions :
-  // 1. over timeout and 2. non-empty message has been fetched
+  /// DataBundle will be returned to the upper layer in the following cases:
+  /// a batch of data is returned when the real data is read, or an empty message
+  /// is returned to the upper layer when the given timeout period is reached to
+  /// avoid blocking for too long.
   auto start_time = current_time_ms();
   bool is_valid_break = false;
   uint32_t empty_bundle_cnt = 0;

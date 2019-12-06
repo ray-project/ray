@@ -99,7 +99,7 @@ void DataWriter::Run() {
   loop_thread_ = std::make_shared<std::thread>(&DataWriter::WriterLoopForward, this);
 }
 
-/// Sink every memory ring buffer's size is limited, when the writing buffer is
+/// Since every memory ring buffer's size is limited, when the writing buffer is
 /// full, the user thread will be blocked, which will cause backpressure
 /// naturally.
 uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *data,
