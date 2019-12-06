@@ -18,7 +18,8 @@ py_test(
     name = "test_actor_failures",
     size = "medium",
     srcs = ["test_actor_failures.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) enable this once we support actor reconstruction again
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
