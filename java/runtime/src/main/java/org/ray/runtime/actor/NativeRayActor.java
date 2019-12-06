@@ -8,30 +8,28 @@ import java.io.ObjectOutput;
 import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
-import org.ray.api.RayPyActor;
 import org.ray.api.id.ActorId;
-import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
-import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
+import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.generated.Common.Language;
 
 /**
- * RayActor implementation for cluster mode. This is a wrapper class for C++ ActorHandle.
+ * RayActor abstract language-independent implementation for cluster mode. This is a wrapper class
+ * for C++ ActorHandle.
  */
-public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
+public abstract class NativeRayActor implements RayActor, Externalizable {
 
   /**
    * Address of core worker.
    */
-  private long nativeCoreWorkerPointer;  
+  long nativeCoreWorkerPointer;
   /**
    * ID of the actor.
    */
-  private byte[] actorId;
+  byte[] actorId;
 
-  public NativeRayActor(long nativeCoreWorkerPointer, byte[] actorId) {
+  NativeRayActor(long nativeCoreWorkerPointer, byte[] actorId) {
     Preconditions.checkState(nativeCoreWorkerPointer != 0);
     Preconditions.checkState(!ActorId.fromBytes(actorId).isNil());
     this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
@@ -41,7 +39,21 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
   /**
    * Required by FST
    */
-  public NativeRayActor() {
+  NativeRayActor() {
+  }
+
+  public static NativeRayActor create(long nativeCoreWorkerPointer, byte[] actorId) {
+    Preconditions.checkState(nativeCoreWorkerPointer != 0);
+    Language language = Language.forNumber(nativeGetLanguage(nativeCoreWorkerPointer, actorId));
+    Preconditions.checkNotNull(language);
+    switch (language) {
+      case JAVA:
+        return new NativeRayJavaActor(nativeCoreWorkerPointer, actorId);
+      case PYTHON:
+        return new NativeRayPyActor(nativeCoreWorkerPointer, actorId);
+      default:
+        throw new IllegalStateException("Unknown actor handle language: " + language);
+    }
   }
 
   @Override
@@ -55,20 +67,6 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
 
   public boolean isDirectCallActor() {
     return nativeIsDirectCallActor(nativeCoreWorkerPointer, actorId);
-  }
-
-  @Override
-  public String getModuleName() {
-    Preconditions.checkState(getLanguage() == Language.PYTHON);
-    return nativeGetActorCreationTaskFunctionDescriptor(
-      nativeCoreWorkerPointer, actorId).get(0);
-  }
-
-  @Override
-  public String getClassName() {
-    Preconditions.checkState(getLanguage() == Language.PYTHON);
-    return nativeGetActorCreationTaskFunctionDescriptor(
-      nativeCoreWorkerPointer, actorId).get(1);
   }
 
   @Override
@@ -98,7 +96,7 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
 
   private static native boolean nativeIsDirectCallActor(long nativeCoreWorkerPointer, byte[] actorId);
 
-  private static native List<String> nativeGetActorCreationTaskFunctionDescriptor(
+  static native List<String> nativeGetActorCreationTaskFunctionDescriptor(
     long nativeCoreWorkerPointer, byte[] actorId);
 
   private static native byte[] nativeSerialize(long nativeCoreWorkerPointer, byte[] actorId);
