@@ -59,7 +59,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
-    ray.worker.global_worker.put_object(1, x_id)
+    ray.worker.global_worker.put_object(1, x_id.with_plasma_transport_type())
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -102,7 +102,7 @@ ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
-    ray.worker.global_worker.put_object(1, x_id)
+    ray.worker.global_worker.put_object(1, x_id.with_plasma_transport_type())
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -142,7 +142,7 @@ def test_dying_worker_wait(ray_start_2_cpus):
     time.sleep(0.1)
 
     # Create the object.
-    ray.worker.global_worker.put_object(1, x_id)
+    ray.worker.global_worker.put_object(1, x_id.with_plasma_transport_type())
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -185,7 +185,7 @@ ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # wait can return.
-    ray.worker.global_worker.put_object(1, x_id)
+    ray.worker.global_worker.put_object(1, x_id.with_plasma_transport_type())
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -386,11 +386,13 @@ def test_actor_creation_node_failure(ray_start_cluster):
             # Submit some tasks on the actors. About half of the actors will
             # fail.
             children_out = [child.ping.remote() for child in children]
+            print("do wait")
             # Wait a while for all the tasks to complete. This should trigger
             # reconstruction for any actor creation tasks that were forwarded
             # to nodes that then failed.
             ready, _ = ray.wait(
                 children_out, num_returns=len(children_out), timeout=5 * 60.0)
+            print("do wait ok")
             assert len(ready) == len(children_out)
 
             # Replace any actors that died.

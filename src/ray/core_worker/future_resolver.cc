@@ -16,7 +16,6 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
   request.set_owner_id(owner_id.Binary());
-  RAY_LOG(ERROR) << "GetResolve " << object_id.Hex();
   RAY_CHECK_OK(it->second->GetObjectStatus(
       request,
       [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {

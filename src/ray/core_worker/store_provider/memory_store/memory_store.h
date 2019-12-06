@@ -143,10 +143,6 @@ class CoreWorkerMemoryStore {
   absl::flat_hash_map<ObjectID,
                       std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
       object_async_get_requests_ GUARDED_BY(mu_);
-
-  /// A buffer of recently deleted objects for debugging. This is periodically cleared
-  /// to avoid using too much space.
-  absl::flat_hash_set<ObjectID> recently_deleted_;
 };
 
 }  // namespace ray
