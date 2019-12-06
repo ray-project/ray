@@ -36,7 +36,7 @@ class JobInfoAccessor {
 
   /// Subscribe to finished jobs.
   ///
-  /// \param subscribe Callback that will be called each time when a job finished.
+  /// \param subscribe Callback that will be called each time when a job finishes.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeToFinishedJobs(
