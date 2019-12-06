@@ -372,7 +372,7 @@ Alpha Zero (contrib/AZ)
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/contrib/az/examples/train_cartpole.py>`__
 
-**AZ-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../rllib/contrib/az/core/alpha_zero_trainer.py
    :language: python
