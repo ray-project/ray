@@ -57,7 +57,7 @@ class HyperBandScheduler(FIFOScheduler):
     Note that Tune's stopping criteria will be applied in conjunction with
     HyperBand's early stopping mechanisms.
 
-    See also: https://homes.cs.washington.edu/~jamieson/hyperband.htmlhyperband.html
+    See also: https://homes.cs.washington.edu/~jamieson/hyperband.html
 
     Args:
         time_attr (str): The training result attr to use for comparing time.
