@@ -52,12 +52,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   return Status::OK();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id, const rpc::Address &address) {
+void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
+                                                      const rpc::Address &address) {
   absl::MutexLock lock(&mu_);
   // Create a new connection to the actor.
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc::WorkerAddress addr = {address.ip_address(),
-                               address.port()};
+    rpc::WorkerAddress addr = {address.ip_address(), address.port()};
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
   }
@@ -66,7 +66,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id, c
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id, bool dead) {
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
+                                                         bool dead) {
   absl::MutexLock lock(&mu_);
   // Remove rpc client if it's dead or being reconstructed.
   auto erased = rpc_clients_.erase(actor_id);
@@ -92,7 +93,6 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // replies. They will be treated as failed once the connection dies.
   }
 }
-
 
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
@@ -135,8 +135,8 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 }
 
 void CoreWorkerDirectTaskReceiver::Init(RayletClient &raylet_client,
-                               rpc::ClientFactoryFn client_factory,
-                               rpc::Address rpc_address) {
+                                        rpc::ClientFactoryFn client_factory,
+                                        rpc::Address rpc_address) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
@@ -275,8 +275,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       if (task_spec.IsActorCreationTask()) {
         rpc::WorkerAddress addr = {task_spec.GetMessage().caller_address().ip_address(),
-          task_spec.GetMessage().caller_address().port()};
-        auto client = std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+                                   task_spec.GetMessage().caller_address().port()};
+        auto client =
+            std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
 
         rpc::NotifyActorCreatedRequest request;
         request.set_actor_creation_task_id(task_spec.TaskId().Binary());

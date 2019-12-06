@@ -168,12 +168,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     return call->GetStatus();
   }
 
-  ray::Status NotifyActorCreated(const NotifyActorCreatedRequest &request) override{
-    auto call = client_call_manager_.CreateCall<CoreWorkerService,
-                                                NotifyActorCreatedRequest,
-                                                NotifyActorCreatedReply>(
-        *stub_, &CoreWorkerService::Stub::PrepareAsyncNotifyActorCreated,
-        request, nullptr);
+  ray::Status NotifyActorCreated(const NotifyActorCreatedRequest &request) override {
+    auto call =
+        client_call_manager_.CreateCall<CoreWorkerService, NotifyActorCreatedRequest,
+                                        NotifyActorCreatedReply>(
+            *stub_, &CoreWorkerService::Stub::PrepareAsyncNotifyActorCreated, request,
+            nullptr);
     return call->GetStatus();
   }
 

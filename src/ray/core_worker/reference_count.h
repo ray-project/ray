@@ -62,7 +62,7 @@ class ReferenceCounter {
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
   void AddOwnershipInfo(const ObjectID &object_id, const TaskID &owner_id,
-                         const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+                        const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
   bool GetOwner(const ObjectID &object_id, TaskID *owner_id,
                 rpc::Address *owner_address) const LOCKS_EXCLUDED(mutex_);

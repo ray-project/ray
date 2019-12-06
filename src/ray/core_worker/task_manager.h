@@ -31,8 +31,9 @@ class TaskManager : public TaskFinisherInterface {
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               RetryTaskCallback retry_task_callback,
               ActorDiedCallback actor_died_callback)
-      : in_memory_store_(in_memory_store), retry_task_callback_(retry_task_callback),
-  actor_died_callback_(actor_died_callback) {}
+      : in_memory_store_(in_memory_store),
+        retry_task_callback_(retry_task_callback),
+        actor_died_callback_(actor_died_callback) {}
 
   /// Add a task that is pending execution.
   ///

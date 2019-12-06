@@ -391,8 +391,8 @@ class CoreWorker {
                              rpc::SendReplyCallback send_reply_callback);
 
   void HandleNotifyActorCreated(const rpc::NotifyActorCreatedRequest &request,
-                                       rpc::NotifyActorCreatedReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback);
+                                rpc::NotifyActorCreatedReply *reply,
+                                rpc::SendReplyCallback send_reply_callback);
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -527,7 +527,9 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
-  std::unique_ptr<gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>> direct_actor_table_subscriber_;
+  std::unique_ptr<
+      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>
+      direct_actor_table_subscriber_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through

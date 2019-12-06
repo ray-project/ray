@@ -2,9 +2,8 @@
 
 namespace ray {
 
-void ReferenceCounter::AddOwnershipInfo(const ObjectID &object_id,
-                                         const TaskID &owner_id,
-                                         const rpc::Address &owner_address) {
+void ReferenceCounter::AddOwnershipInfo(const ObjectID &object_id, const TaskID &owner_id,
+                                        const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);

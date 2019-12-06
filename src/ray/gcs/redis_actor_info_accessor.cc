@@ -8,10 +8,8 @@ namespace ray {
 namespace gcs {
 
 std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
-    const TaskSpecification &task_spec,
-    const rpc::Address &address,
-    gcs::ActorTableData::ActorState state,
-    uint64_t remaining_reconstructions) {
+    const TaskSpecification &task_spec, const rpc::Address &address,
+    gcs::ActorTableData::ActorState state, uint64_t remaining_reconstructions) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_info_ptr = std::make_shared<ray::gcs::ActorTableData>();
@@ -28,7 +26,8 @@ std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
   actor_info_ptr->set_remaining_reconstructions(remaining_reconstructions);
   actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
   actor_info_ptr->mutable_address()->CopyFrom(address);
-  actor_info_ptr->mutable_owner_address()->CopyFrom(task_spec.GetMessage().caller_address());
+  actor_info_ptr->mutable_owner_address()->CopyFrom(
+      task_spec.GetMessage().caller_address());
   actor_info_ptr->set_state(state);
   return actor_info_ptr;
 }

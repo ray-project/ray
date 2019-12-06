@@ -2319,7 +2319,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   worker.ResetTaskResourceIds();
 
   const auto &spec = task.GetTaskSpecification();
-  if ((spec.IsActorCreationTask() || spec.IsActorTask()) && !spec.IsDirectCall())  {
+  if ((spec.IsActorCreationTask() || spec.IsActorTask()) && !spec.IsDirectCall()) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
     FinishAssignedActorTask(worker, task);

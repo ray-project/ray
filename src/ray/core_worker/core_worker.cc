@@ -97,9 +97,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  direct_actor_table_subscriber_ = std::unique_ptr<gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>(new gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>(gcs_client_->direct_actor_table()));
+  direct_actor_table_subscriber_ = std::unique_ptr<
+      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>(
+      new gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>(
+          gcs_client_->direct_actor_table()));
 
-  actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->direct_actor_table()));
+  actor_manager_ =
+      std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->direct_actor_table()));
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
@@ -168,12 +172,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(
-      new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
-        RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-      },
-      [this](const TaskSpecification &actor_creation_task_spec) {
-        actor_manager_->PublishTerminatedActor(actor_creation_task_spec);
-      }));
+      new TaskManager(memory_store_,
+                      [this](const TaskSpecification &spec) {
+                        RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+                      },
+                      [this](const TaskSpecification &actor_creation_task_spec) {
+                        actor_manager_->PublishTerminatedActor(actor_creation_task_spec);
+                      }));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
@@ -267,7 +272,8 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   // Clear all actor handles at the end of each non-actor task.
   if (actor_id_.IsNil() && task_id.IsNil()) {
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncUnsubscribe(gcs_client_->client_table().GetLocalClientId(), handle.first, nullptr));
+      RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncUnsubscribe(
+          gcs_client_->client_table().GetLocalClientId(), handle.first, nullptr));
     }
     actor_handles_.clear();
   }
@@ -648,8 +654,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources,
-                      actor_creation_options.is_direct_call ? TaskTransportType::DIRECT :
-                      TaskTransportType::RAYLET, &return_ids);
+                      actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
+                                                            : TaskTransportType::RAYLET,
+                      &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
@@ -778,10 +785,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                     << ", port: " << actor_data.address().port();
     };
 
-
     RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
-        gcs_client_->client_table().GetLocalClientId(), 
-        actor_id, actor_notification_callback, nullptr));
+        gcs_client_->client_table().GetLocalClientId(), actor_id,
+        actor_notification_callback, nullptr));
   }
   return inserted;
 }
@@ -1004,10 +1010,10 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   reply->set_status(rpc::GetObjectStatusReply::CREATED);
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // The task is pending. Send the reply once the task finishes.
-    memory_store_->GetAsync(
-        object_id, [send_reply_callback](std::shared_ptr<RayObject> obj) {
-          send_reply_callback(Status::OK(), nullptr, nullptr);
-        });
+    memory_store_->GetAsync(object_id,
+                            [send_reply_callback](std::shared_ptr<RayObject> obj) {
+                              send_reply_callback(Status::OK(), nullptr, nullptr);
+                            });
     // TODO(ekl) this is a race condition.
     RAY_CHECK(task_manager_->IsTaskPending(object_id.TaskId()));
   } else {
@@ -1017,8 +1023,8 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
 }
 
 void CoreWorker::HandleNotifyActorCreated(const rpc::NotifyActorCreatedRequest &request,
-                                       rpc::NotifyActorCreatedReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
+                                          rpc::NotifyActorCreatedReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Publishing actor creation";
   TaskID actor_creation_task_id = TaskID::FromBinary(request.actor_creation_task_id());
   RAY_CHECK(task_manager_->IsTaskPending(actor_creation_task_id));
