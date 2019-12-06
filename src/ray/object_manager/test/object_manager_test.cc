@@ -38,7 +38,7 @@ class MockServer {
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
-    auto object_manager_port = config_.object_manager_port;
+    auto object_manager_port = object_manager_.GetServerPort();
     GcsNodeInfo node_info = gcs_client_->client_table().GetLocalClient();
     node_info.set_node_manager_address("127.0.0.1");
     node_info.set_node_manager_port(object_manager_port);
@@ -88,7 +88,7 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_1 = StartStore(UniqueID::FromRandom().Hex());
     store_id_2 = StartStore(UniqueID::FromRandom().Hex());
 
-    uint pull_timeout_ms = 1;
+    unsigned int pull_timeout_ms = 1;
     push_timeout_ms = 1000;
 
     // start first server
@@ -102,7 +102,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.pull_timeout_ms = pull_timeout_ms;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
-    om_config_1.object_manager_port = 12345;
+    om_config_1.object_manager_port = 0;
     om_config_1.rpc_service_threads_number = 3;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
@@ -115,7 +115,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.pull_timeout_ms = pull_timeout_ms;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
-    om_config_2.object_manager_port = 23456;
+    om_config_2.object_manager_port = 0;
     om_config_2.rpc_service_threads_number = 3;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
@@ -175,7 +175,7 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string store_id_1;
   std::string store_id_2;
 
-  uint push_timeout_ms;
+  unsigned int push_timeout_ms;
 
   uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 };
@@ -227,7 +227,7 @@ class TestObjectManager : public TestObjectManagerBase {
         });
     RAY_CHECK_OK(status);
 
-    uint data_size = 1000000;
+    size_t data_size = 1000000;
 
     // dummy_id is not local. The push function will timeout.
     ObjectID dummy_id = ObjectID::FromRandom();
@@ -251,8 +251,8 @@ class TestObjectManager : public TestObjectManagerBase {
   }
 
   void NotificationTestCompleteIfSatisfied() {
-    uint num_expected_objects1 = 1;
-    uint num_expected_objects2 = 2;
+    size_t num_expected_objects1 = 1;
+    size_t num_expected_objects2 = 2;
     if (v1.size() == num_expected_objects1 && v2.size() == num_expected_objects2) {
       SubscribeObjectThenWait();
     }
@@ -371,9 +371,9 @@ class TestObjectManager : public TestObjectManagerBase {
           RAY_LOG(DEBUG) << "remaining " << remaining.size();
 
           // Ensure object order is preserved for all invocations.
-          uint j = 0;
-          uint k = 0;
-          for (uint i = 0; i < object_ids.size(); ++i) {
+          size_t j = 0;
+          size_t k = 0;
+          for (size_t i = 0; i < object_ids.size(); ++i) {
             ObjectID oid = object_ids[i];
             // Make sure the object is in either the found vector or the remaining vector.
             if (j < found.size() && found[j] == oid) {
@@ -434,14 +434,14 @@ class TestObjectManager : public TestObjectManagerBase {
                    << "Server client ids:"
                    << "\n";
     GcsNodeInfo data;
-    gcs_client_1->client_table().GetClient(client_id_1, data);
+    ASSERT_TRUE(gcs_client_1->client_table().GetClient(client_id_1, &data));
     RAY_LOG(DEBUG) << (ClientID::FromBinary(data.node_id()).IsNil());
     RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::FromBinary(data.node_id());
     RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address();
     RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port();
     ASSERT_EQ(client_id_1, ClientID::FromBinary(data.node_id()));
     GcsNodeInfo data2;
-    gcs_client_1->client_table().GetClient(client_id_2, data2);
+    ASSERT_TRUE(gcs_client_1->client_table().GetClient(client_id_2, &data2));
     RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::FromBinary(data2.node_id());
     RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address();
     RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port();

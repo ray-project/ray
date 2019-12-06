@@ -40,7 +40,7 @@ search_space = {
 }
 
 # Uncomment this to enable distributed execution
-# `ray.init(redis_address=...)`
+# `ray.init(address=...)`
 
 analysis = tune.run(train_mnist, config=search_space)
 # __eval_func_end__

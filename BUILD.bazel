@@ -1,13 +1,25 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
-load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
+load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
+load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("@//bazel:ray.bzl", "flatbuffer_py_library")
-load("@//bazel:cython_library.bzl", "pyx_library")
 
-COPTS = ["-DRAY_USE_GLOG"]
+# TODO(mehrdadn): (How to) support dynamic linking?
+PROPAGATED_WINDOWS_DEFINES = ["RAY_STATIC"]
+
+COPTS = ["-DRAY_USE_GLOG"] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-DWIN32_LEAN_AND_MEAN=",  # Block the inclusion of WinSock.h, which is obsolete and causes errors
+        "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
+        "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
+    ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
+    "//conditions:default": [
+    ],
+})
 
 # === Begin of protobuf definitions ===
 
@@ -22,7 +34,7 @@ cc_proto_library(
     deps = [":common_proto"],
 )
 
-python_proto_compile(
+python_grpc_compile(
     name = "common_py_proto",
     deps = [":common_proto"],
 )
@@ -39,7 +51,7 @@ cc_proto_library(
     deps = [":gcs_proto"],
 )
 
-python_proto_compile(
+python_grpc_compile(
     name = "gcs_py_proto",
     deps = [":gcs_proto"],
 )
@@ -55,6 +67,11 @@ cc_proto_library(
     deps = [":node_manager_proto"],
 )
 
+python_grpc_compile(
+    name = "node_manager_py_proto",
+    deps = [":node_manager_proto"],
+)
+
 proto_library(
     name = "object_manager_proto",
     srcs = ["src/ray/protobuf/object_manager.proto"],
@@ -66,36 +83,24 @@ cc_proto_library(
 )
 
 proto_library(
-    name = "worker_proto",
-    srcs = ["src/ray/protobuf/worker.proto"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "worker_cc_proto",
-    deps = ["worker_proto"],
-)
-
-proto_library(
     name = "core_worker_proto",
     srcs = ["src/ray/protobuf/core_worker.proto"],
     deps = [":common_proto"],
 )
 
 cc_proto_library(
-    name = "core_worker_cc_proto",
+    name = "worker_cc_proto",
     deps = ["core_worker_proto"],
 )
 
 proto_library(
-    name = "direct_actor_proto",
-    srcs = ["src/ray/protobuf/direct_actor.proto"],
-    deps = [":common_proto"],
+    name = "serialization_proto",
+    srcs = ["src/ray/protobuf/serialization.proto"],
 )
 
 cc_proto_library(
-    name = "direct_actor_cc_proto",
-    deps = ["direct_actor_proto"],
+    name = "serialization_cc_proto",
+    deps = ["serialization_proto"],
 )
 
 # === End of protobuf definitions ===
@@ -171,17 +176,9 @@ cc_library(
 # Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
-    srcs = [":worker_proto"],
+    srcs = [":core_worker_proto"],
     grpc_only = True,
     deps = [":worker_cc_proto"],
-)
-
-# direct actor gRPC lib.
-cc_grpc_library(
-    name = "direct_actor_cc_grpc",
-    srcs = [":direct_actor_proto"],
-    grpc_only = True,
-    deps = [":direct_actor_cc_proto"],
 )
 
 # worker server and client.
@@ -192,11 +189,11 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        "direct_actor_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
         ":worker_cc_grpc",
         "@boost//:asio",
+        "@boost//:thread",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -219,6 +216,9 @@ cc_library(
         ],
     ),
     copts = COPTS,
+    includes = [
+        "@boost//:asio",
+    ],
     deps = [
         ":common_cc_proto",
         ":gcs_cc_proto",
@@ -226,17 +226,10 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest",
         "@plasma//:plasma_client",
-    ],
-)
-
-cc_test(
-    name = "common_test",
-    srcs = glob(["src/ray/common/**/*_test.cc"]),
-    copts = COPTS,
-    deps = [
-        ":ray_common",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -285,7 +278,13 @@ cc_library(
     includes = [
         "src",
     ],
-    linkopts = ["-pthread"],
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     deps = [
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -317,7 +316,17 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
-    linkopts = ["-pthread"],
+    defines = select({
+        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     deps = [
         ":common_cc_proto",
         ":gcs",
@@ -331,6 +340,7 @@ cc_library(
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -349,6 +359,7 @@ cc_library(
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
             "src/ray/core_worker/transport/*.cc",
+            "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
             "src/ray/core_worker/*_test.cc",
@@ -363,7 +374,9 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        ":core_worker_cc_proto",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        ":worker_cc_proto",
         ":ray_common",
         ":ray_util",
         # TODO(hchen): After `raylet_client` is migrated to gRPC, `core_worker_lib`
@@ -371,6 +384,7 @@ cc_library(
         ":raylet_lib",
         ":worker_rpc",
         ":gcs",
+        "@boost//:fiber",
     ],
 )
 
@@ -404,6 +418,8 @@ cc_library(
     deps = [
         ":core_worker_lib",
         ":gcs",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -413,6 +429,66 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":core_worker_test_lib",
+    ],
+)
+
+cc_test(
+    name = "direct_actor_transport_test",
+    srcs = ["src/ray/core_worker/test/direct_actor_transport_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "direct_task_transport_test",
+    srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "reference_count_test",
+    srcs = ["src/ray/core_worker/reference_count_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "scheduling_queue_test",
+    srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "task_manager_test",
+    srcs = ["src/ray/core_worker/test/task_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "scheduling_test",
+    srcs = ["src/ray/common/scheduling/scheduling_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -472,6 +548,16 @@ cc_test(
 )
 
 cc_test(
+    name = "sample_test",
+    srcs = ["src/ray/util/sample_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "task_dependency_manager_test",
     srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
     copts = COPTS,
@@ -504,6 +590,7 @@ cc_test(
 cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
+    copts = COPTS,
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
@@ -575,6 +662,7 @@ cc_library(
     deps = [
         ":sha256",
         "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
     ],
 )
@@ -587,32 +675,8 @@ cc_library(
     hdrs = [
         "src/ray/thirdparty/sha256.h",
     ],
+    copts = COPTS,
     includes = ["src/ray/thirdparty"],
-)
-
-cc_library(
-    name = "hiredis",
-    srcs = glob(
-        [
-            "src/ray/thirdparty/ae/ae.c",
-            "src/ray/thirdparty/hiredis/*.c",
-        ],
-        exclude = [
-            "src/ray/thirdparty/hiredis/test.c",
-        ],
-    ),
-    hdrs = glob([
-        "src/ray/thirdparty/ae/*.h",
-        "src/ray/thirdparty/hiredis/*.h",
-        "src/ray/thirdparty/hiredis/adapters/*.h",
-        "src/ray/thirdparty/hiredis/dict.c",
-        "src/ray/thirdparty/ae/ae_kqueue.c",
-        "src/ray/thirdparty/ae/ae_epoll.c",
-    ]),
-    includes = [
-        "src/ray/thirdparty/ae",
-        "src/ray/thirdparty/hiredis",
-    ],
 )
 
 cc_library(
@@ -627,17 +691,18 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/gcs/*.h",
+        "src/ray/gcs/test/*.h",
     ]),
     copts = COPTS,
     deps = [
         ":gcs_cc_proto",
-        ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
         "@boost//:asio",
+        "@redis//:hiredis",
     ],
 )
 
@@ -645,7 +710,7 @@ cc_library(
 cc_binary(
     name = "redis_gcs_client_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/redis_gcs_client_test.cc"],
+    srcs = ["src/ray/gcs/test/redis_gcs_client_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -654,9 +719,9 @@ cc_binary(
 )
 
 cc_binary(
-    name = "actor_state_accessor_test",
+    name = "redis_actor_info_accessor_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
+    srcs = ["src/ray/gcs/test/redis_actor_info_accessor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -667,7 +732,18 @@ cc_binary(
 cc_binary(
     name = "subscription_executor_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/subscription_executor_test.cc"],
+    srcs = ["src/ray/gcs/test/subscription_executor_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "redis_job_info_accessor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/test/redis_job_info_accessor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -678,7 +754,7 @@ cc_binary(
 cc_binary(
     name = "asio_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/asio_test.cc"],
+    srcs = ["src/ray/gcs/test/asio_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -722,7 +798,12 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib"],
+    copts = COPTS,
+    deps = [
+        "//:core_worker_lib",
+        "//:raylet_lib",
+        "//:serialization_cc_proto",
+    ],
 )
 
 cc_binary(
@@ -783,13 +864,13 @@ filegroup(
         "python/ray/core/generated/ray/__init__.py",
         "python/ray/core/generated/ray/protocol/__init__.py",
         "python/ray/dashboard/dashboard.py",
-        "python/ray/dashboard/index.html",
-        "python/ray/dashboard/res/main.css",
-        "python/ray/dashboard/res/main.js",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
         "python/ray/projects/*.py",
         "python/ray/projects/schema.json",
+        "python/ray/projects/templates/cluster_template.yaml",
+        "python/ray/projects/templates/project_template.yaml",
+        "python/ray/projects/templates/requirements.txt",
         "python/ray/workers/default_worker.py",
     ]),
 )
@@ -802,7 +883,7 @@ genrule(
     ],
     cmd = """
         set -x &&
-        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . &&
+        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
         make &&
         mv ./src/redis-server $(location redis-server) &&
         chmod +x $(location redis-server) &&
@@ -834,7 +915,19 @@ filegroup(
     srcs = [
         "common_py_proto",
         "gcs_py_proto",
+        "node_manager_py_proto",
     ],
+)
+
+# This is a dummy test dependency that causes the python tests to be
+# re-run if any of these files changes.
+py_library(
+    name = "ray_lib",
+    srcs = glob(
+        ["python/ray/**/*.py"],
+        exclude = ["python/ray/tests/*.py"],
+    ),
+    visibility = ["__subpackages__"],
 )
 
 genrule(
@@ -854,23 +947,26 @@ genrule(
     cmd = """
         set -x &&
         WORK_DIR=$$(pwd) &&
-        cp -f $(location python/ray/_raylet.so) $$WORK_DIR/python/ray &&
-        mkdir -p $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
-        cp -f $(location //:redis-server) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
-        cp -f $(location //:redis-cli) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
-        mkdir -p $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
-        cp -f $(locations //:libray_redis_module.so) $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
-        cp -f $(location //:raylet_monitor) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
-        cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
-        cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
-        mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
+        cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
+        cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
+        cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
+        cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
+        cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
+        cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
+        cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&
         for f in $(locations //:all_py_proto); do
-            cp -f $$f $$WORK_DIR/python/ray/core/generated/;
+            cp -f "$$f" "$$WORK_DIR/python/ray/core/generated/";
         done &&
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
-        sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/gcs_pb2.py &&
-        echo $$WORK_DIR > $@
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/gcs_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py" &&
+        echo "$$WORK_DIR" > $@
     """,
     local = 1,
 )

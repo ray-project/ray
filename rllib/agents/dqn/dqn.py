@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import logging
 
-from ray import tune
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
@@ -174,8 +173,7 @@ def check_config_and_setup_param_noise(config):
             if start_callback:
                 start_callback(info)
 
-        config["callbacks"]["on_episode_start"] = tune.function(
-            on_episode_start)
+        config["callbacks"]["on_episode_start"] = on_episode_start
         if config["callbacks"]["on_episode_end"]:
             end_callback = config["callbacks"]["on_episode_end"]
         else:
@@ -186,12 +184,13 @@ def check_config_and_setup_param_noise(config):
             # between noisy policy and original policy
             policies = info["policy"]
             episode = info["episode"]
-            episode.custom_metrics["policy_distance"] = policies[
-                DEFAULT_POLICY_ID].model.pi_distance
+            model = policies[DEFAULT_POLICY_ID].model
+            if hasattr(model, "pi_distance"):
+                episode.custom_metrics["policy_distance"] = model.pi_distance
             if end_callback:
                 end_callback(info)
 
-        config["callbacks"]["on_episode_end"] = tune.function(on_episode_end)
+        config["callbacks"]["on_episode_end"] = on_episode_end
 
 
 def get_initial_state(config):

@@ -16,11 +16,17 @@ constexpr int kObjectIdIndexSize = 32;
 static_assert(kObjectIdIndexSize % CHAR_BIT == 0,
               "ObjectID prefix not a multiple of bytes");
 
+/// Raylet exit code on plasma store socket error.
+constexpr int kRayletStoreErrorExitCode = 100;
+
 /// Prefix for the object table keys in redis.
 constexpr char kObjectTablePrefix[] = "ObjectTable";
 /// Prefix for the task table keys in redis.
 constexpr char kTaskTablePrefix[] = "TaskTable";
 
-constexpr char kWorkerDynamicOptionPlaceholderPrefix[] = "RAY_WORKER_OPTION_";
+constexpr char kWorkerDynamicOptionPlaceholderPrefix[] =
+    "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_";
+
+constexpr char kWorkerNumWorkersPlaceholder[] = "RAY_WORKER_NUM_WORKERS_PLACEHOLDER";
 
 #endif  // RAY_CONSTANTS_H_

@@ -1,32 +1,46 @@
-Tune: Scalable Hyperparameter Search
-====================================
+Tune: A Scalable Hyperparameter Tuning Library
+==============================================
+
+.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
 
 .. image:: images/tune.png
     :scale: 30%
     :align: center
 
-Tune is a scalable framework for hyperparameter search and model training with a focus on deep learning and deep reinforcement learning.
+Tune is a Python library for hyperparameter tuning at any scale. Core features:
 
-  * Scale to running on a large distributed cluster without changing your code.
-  * Launch a multi-node Tune experiment in less than 10 lines of code.
-  * Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+  * Launch a multi-node `distributed hyperparameter sweep <tune-distributed.html>`_ in less than 10 lines of code.
+  * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras. See `examples here <tune-examples.html>`_.
+  * Natively `integrates with optimization libraries <tune-searchalg.html>`_ such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_, `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_, and `Facebook Ax <http://ax.dev>`_.
+  * Choose among `scalable algorithms <tune-schedulers.html>`_ such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
   * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
-  * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
 
 .. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
 .. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
 .. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
 
+For more information, check out:
+
+  * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune.
+  * `User Guide <tune-usage.html>`__: A comprehensive overview on how to use Tune's features.
+  * `Tutorial Notebooks <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__: Our tutorial notebooks of using Tune with Keras or PyTorch.
+
+**Try out a tutorial notebook on Colab**:
+
+.. raw:: html
+
+    <a href="https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_1_basics.ipynb" target="_parent">
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Tune Tutorial"/>
+    </a>
+
 Quick Start
 -----------
 
-.. note::
+To run this example, you will need to install the following:
 
-    To run this example, you will need to install the following:
+.. code-block:: bash
 
-    .. code-block:: bash
-
-        $ pip install ray torch torchvision filelock
+    $ pip install ray[tune] torch torchvision filelock
 
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.
@@ -44,6 +58,14 @@ If TensorBoard is installed, automatically visualize all trial results:
 
 
 .. image:: images/tune-start-tb.png
+    :scale: 30%
+    :align: center
+
+If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard HParams output:
+
+.. image:: images/tune-hparams-coord.png
+    :scale: 20%
+    :align: center
 
 Distributed Quick Start
 -----------------------
@@ -57,9 +79,9 @@ Distributed Quick Start
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-redis-address")
+    parser.add_argument("--ray-address")
     args = parser.parse_args()
-    ray.init(redis_address=args.ray_redis_address)
+    ray.init(address=args.ray_address)
 
 Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
 
@@ -74,7 +96,7 @@ Alternatively, download it here: :download:`tune-local-default.yaml <../../pytho
 
 .. code-block:: bash
 
-    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
 
 This will start Ray on all of your machines and run a distributed hyperparameter search across them.
 
@@ -84,7 +106,7 @@ To summarize, here are the full set of commands:
 
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch.py
     wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-local-default.yaml
-    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-redis-address=localhost:6379" --start
+    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
 
 
 Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including:
@@ -93,18 +115,27 @@ Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentat
  2. Using AWS and GCP
  3. Spot instance usage/pre-emptible instances, and more.
 
-Getting Started
+Talks and Blogs
 ---------------
 
-  * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune.
-  * `User Guide <tune-usage.html>`__: A comprehensive overview on how to use Tune's features.
-  * `Tutorial Notebook <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__: Our tutorial notebooks of using Tune with Keras or PyTorch.
+Below are some blog posts and talks about Tune:
 
-Contribute to Tune
-------------------
+ - [blog] `Tune: a Python library for fast hyperparameter tuning at any scale <https://towardsdatascience.com/fast-hyperparameter-tuning-at-scale-d428223b081c>`_
+ - [blog] `Cutting edge hyperparameter tuning with Ray Tune <https://medium.com/riselab/cutting-edge-hyperparameter-tuning-with-ray-tune-be6c0447afdf>`_
+ - [blog] `Simple hyperparameter and architecture search in tensorflow with Ray Tune <http://louiskirsch.com/ai/ray-tune>`_
+ - [slides] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
+ - [Talk] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
 
-Take a look at our `Contributor Guide <tune-contrib.html>`__ for guidelines on contributing.
+Open Source Projects using Tune
+-------------------------------
 
+Here are some of the popular open source repositories and research projects that leverage Tune. Feel free to submit a pull-request adding (or requesting a removal!) of a listed project.
+
+ - `Softlearning <https://github.com/rail-berkeley/softlearning>`_: Softlearning is a reinforcement learning framework for training maximum entropy policies in continuous domains. Includes the official implementation of the Soft Actor-Critic algorithm.
+ - `Flambe <https://github.com/asappresearch/flambe>`_: An ML framework to accelerate research and its path to production. See `flambe.ai <flambe.ai>`_.
+ - `Population Based Augmentation <https://github.com/arcelien/pba>`_: Population Based Augmentation (PBA) is a algorithm that quickly and efficiently learns data augmentation functions for neural network training. PBA matches state-of-the-art results on CIFAR with one thousand times less compute.
+ - `Fast AutoAugment by Kakao <https://github.com/kakaobrain/fast-autoaugment>`_: Fast AutoAugment (Accepted at NeurIPS 2019) learns augmentation policies using a more efficient search strategy based on density matching.
+ - `Allentune <https://github.com/allenai/allentune>`_: Hyperparameter Search for AllenNLP from AllenAI.
 
 Citing Tune
 -----------
@@ -120,7 +151,3 @@ If Tune helps you in your academic research, you are encouraged to cite `our pap
         journal={arXiv preprint arXiv:1807.05118},
         year={2018}
     }
-
-
-.. _HyperOpt with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py
-.. _Nevergrad with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py

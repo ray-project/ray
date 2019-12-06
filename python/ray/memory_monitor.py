@@ -43,7 +43,8 @@ class RayOutOfMemoryError(Exception):
         proc_stats = []
         for pid in pids:
             proc = psutil.Process(pid)
-            proc_stats.append(get_rss(proc.memory_info()), pid, proc.cmdline())
+            proc_stats.append((get_rss(proc.memory_info()), pid,
+                               proc.cmdline()))
         proc_str = "PID\tMEM\tCOMMAND"
         for rss, pid, cmdline in sorted(proc_stats, reverse=True)[:10]:
             proc_str += "\n{}\t{}GiB\t{}".format(
@@ -108,13 +109,13 @@ class MemoryMonitor(object):
         self.worker_name = worker_name
 
     def raise_if_low_memory(self):
-        if not psutil:
+        if psutil is None:
             return  # nothing we can do
 
-        if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
-            return  # escape hatch, not intended for user use
-
         if time.time() - self.last_checked > self.check_interval:
+            if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
+                return  # escape hatch, not intended for user use
+
             self.last_checked = time.time()
             total_gb = psutil.virtual_memory().total / (1024**3)
             used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
@@ -140,7 +141,7 @@ class MemoryMonitor(object):
                             self.worker_name, round(heap_size / (1024**3), 4),
                             round(self.heap_limit / (1024**3), 4)))
                 elif heap_size > 0.8 * self.heap_limit:
-                    logger.warn(
+                    logger.warning(
                         "Heap memory usage for {} is {} / {} GiB limit".format(
                             self.worker_name, round(heap_size / (1024**3), 4),
                             round(self.heap_limit / (1024**3), 4)))

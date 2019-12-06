@@ -23,7 +23,7 @@ from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
 logger = logging.getLogger(__name__)
 
 tf = None
-use_tf150_api = True
+VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
 
 
 class Logger(object):
@@ -38,9 +38,10 @@ class Logger(object):
         logdir: Directory for all logger creators to log to.
     """
 
-    def __init__(self, config, logdir):
+    def __init__(self, config, logdir, trial=None):
         self.config = config
         self.logdir = logdir
+        self.trial = trial
         self._init()
 
     def _init(self):
@@ -135,34 +136,121 @@ class JsonLogger(Logger):
             cloudpickle.dump(self.config, f)
 
 
-def to_tf_values(result, path):
-    if use_tf150_api:
-        type_list = [int, float, np.float32, np.float64, np.int32]
+def tf2_compat_logger(config, logdir, trial=None):
+    """Chooses TensorBoard logger depending on imported TF version."""
+    global tf
+    if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
+        logger.warning("Not importing TensorFlow for test purposes")
+        tf = None
+        raise RuntimeError("Not importing TensorFlow for test purposes")
     else:
-        type_list = [int, float]
+        import tensorflow as tf
+        use_tf2_api = (distutils.version.LooseVersion(tf.__version__) >=
+                       distutils.version.LooseVersion("1.15.0"))
+        if use_tf2_api:
+            # This is temporarily for RLlib because it disables v2 behavior...
+            from tensorflow.python import tf2
+            if not tf2.enabled():
+                tf = tf.compat.v1
+                return TFLogger(config, logdir, trial)
+            tf = tf.compat.v2  # setting this for TF2.0
+            return TF2Logger(config, logdir, trial)
+        else:
+            return TFLogger(config, logdir, trial)
+
+
+class TF2Logger(Logger):
+    """TensorBoard Logger for TF version >= 2.0.0.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    If you need to do more advanced logging, it is recommended
+    to use a Summary Writer in the Trainable yourself.
+    """
+
+    def _init(self):
+        global tf
+        if tf is None:
+            import tensorflow as tf
+            tf = tf.compat.v2  # setting this for TF2.0
+        self._file_writer = None
+        self._hp_logged = False
+
+    def on_result(self, result):
+        if self._file_writer is None:
+            from tensorflow.python.eager import context
+            from tensorboard.plugins.hparams import api as hp
+            self._context = context
+            self._file_writer = tf.summary.create_file_writer(self.logdir)
+        with tf.device("/CPU:0"):
+            with tf.summary.record_if(True), self._file_writer.as_default():
+                step = result.get(
+                    TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+
+                tmp = result.copy()
+                if not self._hp_logged:
+                    if self.trial and self.trial.evaluated_params:
+                        try:
+                            hp.hparams(
+                                self.trial.evaluated_params,
+                                trial_id=self.trial.trial_id)
+                        except Exception as exc:
+                            logger.error("HParams failed with %s", exc)
+                    self._hp_logged = True
+
+                for k in [
+                        "config", "pid", "timestamp", TIME_TOTAL_S,
+                        TRAINING_ITERATION
+                ]:
+                    if k in tmp:
+                        del tmp[k]  # not useful to log these
+
+                flat_result = flatten_dict(tmp, delimiter="/")
+                path = ["ray", "tune"]
+                for attr, value in flat_result.items():
+                    if type(value) in VALID_SUMMARY_TYPES:
+                        tf.summary.scalar(
+                            "/".join(path + [attr]), value, step=step)
+        self._file_writer.flush()
+
+    def flush(self):
+        if self._file_writer is not None:
+            self._file_writer.flush()
+
+    def close(self):
+        if self._file_writer is not None:
+            self._file_writer.close()
+
+
+def to_tf_values(result, path):
     flat_result = flatten_dict(result, delimiter="/")
     values = [
         tf.Summary.Value(tag="/".join(path + [attr]), simple_value=value)
-        for attr, value in flat_result.items() if type(value) in type_list
+        for attr, value in flat_result.items()
+        if type(value) in VALID_SUMMARY_TYPES
     ]
     return values
 
 
 class TFLogger(Logger):
+    """TensorBoard Logger for TF version < 2.0.0.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    If you need to do more advanced logging, it is recommended
+    to use a Summary Writer in the Trainable yourself.
+    """
+
     def _init(self):
-        try:
-            global tf, use_tf150_api
-            if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
-                logger.warning("Not importing TensorFlow for test purposes")
-                tf = None
-            else:
-                import tensorflow
-                tf = tensorflow
-                use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                                 distutils.version.LooseVersion("1.5.0"))
-        except ImportError:
-            logger.warning("Couldn't import TensorFlow - "
-                           "disabling TensorBoard logging.")
+        global tf
+        if tf is None:
+            import tensorflow as tf
+            tf = tf.compat.v1  # setting this for regular TF logger
+        logger.debug("Initializing TFLogger instead of TF2Logger.")
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
@@ -191,9 +279,17 @@ class TFLogger(Logger):
 
 
 class CSVLogger(Logger):
+    """Logs results to progress.csv under the trial directory.
+
+    Automatically flattens nested dicts in the result dict before writing
+    to csv:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    """
+
     def _init(self):
         """CSV outputted with Headers as first set of results."""
-        # Note that we assume params.json was already created by JsonLogger
         progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
         self._continuing = os.path.exists(progress_file)
         self._file = open(progress_file, "a")
@@ -220,7 +316,64 @@ class CSVLogger(Logger):
         self._file.close()
 
 
-DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TFLogger)
+class TBXLogger(Logger):
+    """TensorBoardX Logger.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+    """
+
+    def _init(self):
+        try:
+            from tensorboardX import SummaryWriter
+        except ImportError:
+            logger.error("pip install tensorboardX to see TensorBoard files.")
+            raise
+        self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
+        self.last_result = None
+
+    def on_result(self, result):
+        step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+
+        tmp = result.copy()
+        for k in [
+                "config", "pid", "timestamp", TIME_TOTAL_S, TRAINING_ITERATION
+        ]:
+            if k in tmp:
+                del tmp[k]  # not useful to log these
+
+        flat_result = flatten_dict(tmp, delimiter="/")
+        path = ["ray", "tune"]
+        valid_result = {
+            "/".join(path + [attr]): value
+            for attr, value in flat_result.items()
+            if type(value) in VALID_SUMMARY_TYPES
+        }
+
+        for attr, value in valid_result.items():
+            self._file_writer.add_scalar(attr, value, global_step=step)
+        self.last_result = valid_result
+        self._file_writer.flush()
+
+    def flush(self):
+        if self._file_writer is not None:
+            self._file_writer.flush()
+
+    def close(self):
+        if self._file_writer is not None:
+            if self.trial and self.trial.evaluated_params and self.last_result:
+                from tensorboardX.summary import hparams
+                experiment_tag, session_start_tag, session_end_tag = hparams(
+                    hparam_dict=self.trial.evaluated_params,
+                    metric_dict=self.last_result)
+                self._file_writer.file_writer.add_summary(experiment_tag)
+                self._file_writer.file_writer.add_summary(session_start_tag)
+                self._file_writer.file_writer.add_summary(session_end_tag)
+            self._file_writer.close()
+
+
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
 
 
 class UnifiedLogger(Logger):
@@ -235,7 +388,12 @@ class UnifiedLogger(Logger):
             See ray/python/ray/tune/log_sync.py
     """
 
-    def __init__(self, config, logdir, loggers=None, sync_function=None):
+    def __init__(self,
+                 config,
+                 logdir,
+                 trial=None,
+                 loggers=None,
+                 sync_function=None):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
@@ -243,16 +401,16 @@ class UnifiedLogger(Logger):
         self._sync_function = sync_function
         self._log_syncer = None
 
-        super(UnifiedLogger, self).__init__(config, logdir)
+        super(UnifiedLogger, self).__init__(config, logdir, trial)
 
     def _init(self):
         self._loggers = []
         for cls in self._logger_cls_list:
             try:
-                self._loggers.append(cls(self.config, self.logdir))
-            except Exception:
-                logger.warning("Could not instantiate {} - skipping.".format(
-                    str(cls)))
+                self._loggers.append(cls(self.config, self.logdir, self.trial))
+            except Exception as exc:
+                logger.warning("Could not instantiate %s: %s.", cls.__name__,
+                               str(exc))
         self._log_syncer = get_log_syncer(
             self.logdir,
             remote_dir=self.logdir,
@@ -271,12 +429,21 @@ class UnifiedLogger(Logger):
     def close(self):
         for _logger in self._loggers:
             _logger.close()
-        self._log_syncer.sync_down()
 
     def flush(self):
         for _logger in self._loggers:
             _logger.flush()
-        self._log_syncer.sync_down()
+        if not self._log_syncer.sync_down():
+            logger.warning("Trial %s: Post-flush sync skipped.", self.trial)
+
+    def sync_up(self):
+        return self._log_syncer.sync_up()
+
+    def sync_down(self):
+        return self._log_syncer.sync_down()
+
+    def wait(self):
+        self._log_syncer.wait()
 
     def sync_results_to_new_location(self, worker_ip):
         """Sends the current log directory to the remote node.
@@ -285,13 +452,19 @@ class UnifiedLogger(Logger):
         with the Ray autoscaler.
         """
         if worker_ip != self._log_syncer.worker_ip:
-            logger.info("Syncing (blocking) results to {}".format(worker_ip))
+            logger.info("Trial %s: Syncing (blocking) results to %s",
+                        self.trial, worker_ip)
             self._log_syncer.reset()
             self._log_syncer.set_worker_ip(worker_ip)
-            self._log_syncer.sync_up()
-            # TODO: change this because this is blocking. But failures
-            # are rare, so maybe this is OK?
+            if not self._log_syncer.sync_up():
+                logger.error(
+                    "Trial %s: Sync up to new location skipped. "
+                    "This should not occur.", self.trial)
             self._log_syncer.wait()
+        else:
+            logger.error(
+                "Trial %s: Sync attempted to same IP %s. This "
+                "should not occur.", self.trial, worker_ip)
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

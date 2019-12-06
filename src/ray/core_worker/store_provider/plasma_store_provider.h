@@ -1,86 +1,92 @@
 #ifndef RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
 #define RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/local_plasma_provider.h"
-#include "ray/core_worker/store_provider/store_provider.h"
+#include "ray/core_worker/context.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
 
-class CoreWorker;
-
 /// The class provides implementations for accessing plasma store, which includes both
-/// local and remote store, remote access is done via raylet.
-class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
+/// local and remote stores. Local access goes is done via a
+/// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
+/// See `CoreWorkerStoreProvider` for the semantics of public methods.
+class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
-                                std::unique_ptr<RayletClient> &raylet_client);
+                                const std::shared_ptr<RayletClient> raylet_client,
+                                std::function<Status()> check_signals);
 
-  /// Put an object with specified ID into object store.
-  ///
-  /// \param[in] object The ray object.
-  /// \param[in] object_id Object ID specified by user.
-  /// \return Status.
-  Status Put(const RayObject &object, const ObjectID &object_id) override;
+  ~CoreWorkerPlasmaStoreProvider();
 
-  /// Get a list of objects from the object store.
-  ///
-  /// \param[in] ids IDs of the objects to get.
-  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
-  /// \param[in] task_id ID for the current task.
-  /// \param[out] results Result list of objects data.
-  /// \return Status.
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
-             std::vector<std::shared_ptr<RayObject>> *results) override;
+  Status SetClientOptions(std::string name, int64_t limit_bytes);
 
-  /// Wait for a list of objects to appear in the object store.
-  ///
-  /// \param[in] IDs of the objects to wait for.
-  /// \param[in] num_returns Number of objects that should appear.
-  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
-  /// \param[in] task_id ID for the current task.
-  /// \param[out] results A bitset that indicates each object has appeared or not.
-  /// \return Status.
-  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, const TaskID &task_id,
-              std::vector<bool> *results) override;
+  Status Put(const RayObject &object, const ObjectID &object_id);
 
-  /// Delete a list of objects from the object store.
-  ///
-  /// \param[in] object_ids IDs of the objects to delete.
-  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
-  /// the cluster.
-  /// \param[in] delete_creating_tasks Whether also delete the tasks that
-  /// created these objects.
-  /// \return Status.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
-                bool delete_creating_tasks = false) override;
+  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+
+  Status Seal(const ObjectID &object_id);
+
+  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
+             const WorkerContext &ctx,
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+             bool *got_exception);
+
+  Status Contains(const ObjectID &object_id, bool *has_object);
+
+  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
+              int64_t timeout_ms, const WorkerContext &ctx,
+              absl::flat_hash_set<ObjectID> *ready);
+
+  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
+                bool delete_creating_tasks);
+
+  std::string MemoryUsageString();
 
  private:
-  /// Whether the buffer represents an exception object.
+  /// Ask the raylet to fetch a set of objects and then attempt to get them
+  /// from the local plasma store. Successfully fetched objects will be removed
+  /// from the input set of remaining IDs and added to the results map.
   ///
-  /// \param[in] object Object data.
-  /// \return Whether it represents an exception object.
-  static bool IsException(const RayObject &object);
+  /// \param[in/out] remaining IDs of the remaining objects to get.
+  /// \param[in] batch_ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds.
+  /// \param[in] fetch_only Whether the raylet should only fetch or also attempt to
+  /// reconstruct objects.
+  /// \param[in] in_direct_call_task Whether the current task is direct call.
+  /// \param[in] task_id The current TaskID.
+  /// \param[out] results Map of objects to write results into. This method will only
+  /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
+  /// map.
+  /// \param[out] got_exception Set to true if any of the fetched objects contained an
+  /// exception.
+  /// \return Status.
+  Status FetchAndGetFromPlasmaStore(
+      absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
+      int64_t timeout_ms, bool fetch_only, bool in_direct_call_task,
+      const TaskID &task_id,
+      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+      bool *got_exception);
 
   /// Print a warning if we've attempted too many times, but some objects are still
-  /// unavailable.
+  /// unavailable. Only the keys in the 'remaining' map are used.
   ///
   /// \param[in] num_attemps The number of attempted times.
-  /// \param[in] unready The unready objects.
-  static void WarnIfAttemptedTooManyTimes(
-      int num_attempts, const std::unordered_map<ObjectID, int> &unready);
+  /// \param[in] remaining The remaining objects.
+  static void WarnIfAttemptedTooManyTimes(int num_attempts,
+                                          const absl::flat_hash_set<ObjectID> &remaining);
 
-  /// local plasma store provider.
-  CoreWorkerLocalPlasmaStoreProvider local_store_provider_;
-
-  /// Raylet client.
-  std::unique_ptr<RayletClient> &raylet_client_;
+  const std::shared_ptr<RayletClient> raylet_client_;
+  plasma::PlasmaClient store_client_;
+  std::mutex store_client_mutex_;
+  std::function<Status()> check_signals_;
 };
 
 }  // namespace ray

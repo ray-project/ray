@@ -31,7 +31,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
   Status AsyncDelete(const std::vector<TaskID> &task_ids, const StatusCallback &callback);
 
   Status AsyncSubscribe(const TaskID &task_id,
-                        const SubscribePairCallback<TaskID, TaskTableData> &subscribe,
+                        const SubscribeCallback<TaskID, TaskTableData> &subscribe,
                         const StatusCallback &done);
 
   Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done);

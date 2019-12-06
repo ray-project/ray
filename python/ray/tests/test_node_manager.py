@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tests.utils import run_string_as_driver
+from ray.test_utils import run_string_as_driver
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -16,7 +16,7 @@ def test_infeasible_tasks(ray_start_cluster):
         return
 
     cluster.add_node(resources={str(0): 100})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     # Submit an infeasible task.
     x_id = f._submit(args=[], kwargs={}, resources={str(1): 1})
@@ -30,14 +30,14 @@ def test_infeasible_tasks(ray_start_cluster):
     driver_script = """
 import ray
 
-ray.init(redis_address="{}")
+ray.init(address="{}")
 
 @ray.remote(resources={})
 def f():
 {}pass  # This is a weird hack to insert some blank space.
 
 f.remote()
-""".format(cluster.redis_address, "{str(2): 1}", "    ")
+""".format(cluster.address, "{str(2): 1}", "    ")
 
     run_string_as_driver(driver_script)
 
@@ -48,3 +48,9 @@ f.remote()
     ray.get([
         f._submit(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)
     ])
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

@@ -2,6 +2,11 @@
 #define RAY_RAYLET_LINEAGE_CACHE_H
 
 #include <gtest/gtest_prod.h>
+#if defined(__clang__) && defined(_MSC_VER)
+// TODO(mehrdadn): Remove this Windows (clang-cl) workaround once we upgrade to
+// Boost > 1.68: https://lists.boost.org/Archives/boost/2018/09/243420.php
+#include <boost/type_traits.hpp>
+#endif
 #include <boost/optional.hpp>
 
 #include "ray/common/id.h"

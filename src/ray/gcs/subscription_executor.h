@@ -2,6 +2,7 @@
 #define RAY_GCS_SUBSCRIPTION_EXECUTOR_H
 
 #include <atomic>
+#include <list>
 #include <mutex>
 #include "ray/gcs/callback.h"
 #include "ray/gcs/tables.h"
@@ -31,9 +32,9 @@ class SubscriptionExecutor {
   /// is registered or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const ClientID &client_id,
-                        const SubscribePairCallback<ID, Data> &subscribe,
-                        const StatusCallback &done);
+  Status AsyncSubscribeAll(const ClientID &client_id,
+                           const SubscribeCallback<ID, Data> &subscribe,
+                           const StatusCallback &done);
 
   /// Subscribe to operations of an element.
   /// Repeated subscription to an element will return a failure.
@@ -47,7 +48,7 @@ class SubscriptionExecutor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   Status AsyncSubscribe(const ClientID &client_id, const ID &id,
-                        const SubscribePairCallback<ID, Data> &subscribe,
+                        const SubscribeCallback<ID, Data> &subscribe,
                         const StatusCallback &done);
 
   /// Cancel subscription to an element.
@@ -67,14 +68,24 @@ class SubscriptionExecutor {
 
   std::mutex mutex_;
 
+  enum class RegistrationStatus : uint8_t {
+    kNotRegistered,
+    kRegistering,
+    kRegistered,
+  };
+
   /// Whether successfully registered subscription to GCS.
-  bool registered_{false};
+  RegistrationStatus registration_status_{RegistrationStatus::kNotRegistered};
+
+  /// List of subscriptions before registration to GCS is done, these callbacks
+  /// will be called when the registration to GCS finishes.
+  std::list<StatusCallback> pending_subscriptions_;
 
   /// Subscribe Callback of all elements.
-  SubscribePairCallback<ID, Data> subscribe_all_callback_{nullptr};
+  SubscribeCallback<ID, Data> subscribe_all_callback_{nullptr};
 
   /// A mapping from element ID to subscription callback.
-  typedef std::unordered_map<ID, SubscribePairCallback<ID, Data>> IDToCallbackMap;
+  typedef std::unordered_map<ID, SubscribeCallback<ID, Data>> IDToCallbackMap;
   IDToCallbackMap id_to_callback_map_;
 };
 

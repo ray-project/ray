@@ -1,5 +1,5 @@
-How-to: Using Actors
-====================
+Using Actors
+============
 
 An actor is essentially a stateful worker (or a service). When a new actor is
 instantiated, a new worker is created, and methods of the actor are scheduled on
@@ -42,6 +42,9 @@ When the above actor is instantiated, the following events happen.
 2. A ``Counter`` object is created on that worker and the ``Counter``
    constructor is run.
 
+Actor Methods
+-------------
+
 Any method of the actor can return multiple object IDs with the ``ray.method`` decorator:
 
 .. code-block:: python
@@ -58,6 +61,7 @@ Any method of the actor can return multiple object IDs with the ``ray.method`` d
     obj_id1, obj_id2 = f.bar.remote()
     assert ray.get(obj_id1) == 1
     assert ray.get(obj_id2) == 2
+
 
 Resources with Actors
 ---------------------
@@ -95,23 +99,34 @@ have these resources (see `configuration instructions
     lifetime, but every time it executes a method, it will need to acquire 1 CPU
     resource.
 
-If you need to instantiate many copies of the same actor with varying resource
-requirements, you can do so as follows.
-
-.. code-block:: python
-
-  a1 = Counter._remote(num_cpus=1, resources={"Custom1": 1})
-  a2 = Counter._remote(num_cpus=2, resources={"Custom2": 1})
-  a3 = Counter._remote(num_cpus=3, resources={"Custom3": 1})
-
-Note that to create these actors successfully, Ray will need to be started with
-sufficient CPU resources and the relevant custom resources.
 
 .. code-block:: python
 
   @ray.remote(resources={'Resource2': 1})
   class GPUActor(object):
       pass
+
+
+If you need to instantiate many copies of the same actor with varying resource
+requirements, you can do so as follows.
+
+.. code-block:: python
+
+  @ray.remote(num_cpus=4)
+  class Counter(object):
+      def __init__(self):
+          self.value = 0
+
+      def increment(self):
+          self.value += 1
+          return self.value
+
+  a1 = Counter.options(num_cpus=1, resources={"Custom1": 1}).remote()
+  a2 = Counter.options(num_cpus=2, resources={"Custom2": 1}).remote()
+  a3 = Counter.options(num_cpus=3, resources={"Custom3": 1}).remote()
+
+Note that to create these actors successfully, Ray will need to be started with
+sufficient CPU resources and the relevant custom resources.
 
 
 Terminating Actors
@@ -133,8 +148,7 @@ collected.
 Passing Around Actor Handles
 ----------------------------
 
-Actor handles can be passed into other tasks. To see an example of this, take a
-look at the `asynchronous parameter server example`_. To illustrate this with a
+Actor handles can be passed into other tasks. To illustrate this with a
 simple example, consider a simple actor definition.
 
 .. code-block:: python
@@ -175,5 +189,3 @@ If we instantiate an actor, we can pass the handle around to various tasks.
   for _ in range(10):
       time.sleep(1)
       print(ray.get(counter.get_counter.remote()))
-
-.. _`asynchronous parameter server example`: http://ray.readthedocs.io/en/latest/example-parameter-server.html

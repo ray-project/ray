@@ -6,13 +6,14 @@ import os
 import pytest
 import tempfile
 import torch
+import torch.nn as nn
 import torch.distributed as dist
 
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 
-from ray.experimental.sgd.tests.pytorch_utils import (
+from ray.experimental.sgd.examples.train_example import (
     model_creator, optimizer_creator, data_creator)
 
 
@@ -23,6 +24,7 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["validation_loss"]
@@ -45,6 +47,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         "model_creator": tune.function(model_creator),
         "data_creator": tune.function(data_creator),
         "optimizer_creator": tune.function(optimizer_creator),
+        "loss_creator": tune.function(lambda config: nn.MSELoss()),
         "num_replicas": num_replicas,
         "use_gpu": False,
         "batch_size": 512,
@@ -76,6 +79,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     trainer1.train()
 
@@ -90,6 +94,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     trainer2.restore(filename)
 

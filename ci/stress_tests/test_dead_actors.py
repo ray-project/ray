@@ -10,9 +10,10 @@ import sys
 
 import ray
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-ray.init(redis_address="localhost:6379")
+ray.init(address="localhost:6379")
 
 
 @ray.remote

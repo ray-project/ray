@@ -49,7 +49,7 @@ Status RedisTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
 }
 
 Status RedisTaskInfoAccessor::AsyncSubscribe(
-    const TaskID &task_id, const SubscribePairCallback<TaskID, TaskTableData> &subscribe,
+    const TaskID &task_id, const SubscribeCallback<TaskID, TaskTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);

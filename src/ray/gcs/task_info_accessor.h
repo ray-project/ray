@@ -56,7 +56,7 @@ class TaskInfoAccessor {
   /// \return Status
   virtual Status AsyncSubscribe(
       const TaskID &task_id,
-      const SubscribePairCallback<TaskID, TaskTableData> &subscribe,
+      const SubscribeCallback<TaskID, TaskTableData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Cancel subscribe to a task asynchronously.

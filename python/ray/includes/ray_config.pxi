@@ -10,8 +10,8 @@ cdef class Config:
         return RayConfig.instance().handler_warning_timeout_ms()
 
     @staticmethod
-    def heartbeat_timeout_milliseconds():
-        return RayConfig.instance().heartbeat_timeout_milliseconds()
+    def raylet_heartbeat_timeout_milliseconds():
+        return RayConfig.instance().raylet_heartbeat_timeout_milliseconds()
 
     @staticmethod
     def debug_dump_period_milliseconds():
@@ -142,8 +142,12 @@ cdef class Config:
         return RayConfig.instance().object_manager_default_chunk_size()
 
     @staticmethod
-    def num_workers_per_process():
-        return RayConfig.instance().num_workers_per_process()
+    def num_workers_per_process_python():
+        return RayConfig.instance().num_workers_per_process_python()
+
+    @staticmethod
+    def num_workers_per_process_java():
+        return RayConfig.instance().num_workers_per_process_java()
 
     @staticmethod
     def max_task_lease_timeout_ms():

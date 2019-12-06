@@ -7,14 +7,14 @@ import shutil
 import time
 import pytest
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 
 def test_conn_cluster():
     # plasma_store_socket_name
     with pytest.raises(Exception) as exc_info:
         ray.init(
-            redis_address="127.0.0.1:6379",
+            address="127.0.0.1:6379",
             plasma_store_socket_name="/tmp/this_should_fail")
     assert exc_info.value.args[0] == (
         "When connecting to an existing cluster, "
@@ -23,7 +23,7 @@ def test_conn_cluster():
     # raylet_socket_name
     with pytest.raises(Exception) as exc_info:
         ray.init(
-            redis_address="127.0.0.1:6379",
+            address="127.0.0.1:6379",
             raylet_socket_name="/tmp/this_should_fail")
     assert exc_info.value.args[0] == (
         "When connecting to an existing cluster, "
@@ -31,8 +31,7 @@ def test_conn_cluster():
 
     # temp_dir
     with pytest.raises(Exception) as exc_info:
-        ray.init(
-            redis_address="127.0.0.1:6379", temp_dir="/tmp/this_should_fail")
+        ray.init(address="127.0.0.1:6379", temp_dir="/tmp/this_should_fail")
     assert exc_info.value.args[0] == (
         "When connecting to an existing cluster, "
         "temp_dir must not be provided.")
@@ -151,3 +150,11 @@ def test_session_dir_uniqueness():
         session_dirs.add(ray.worker._global_node.get_session_dir_path)
         ray.shutdown()
     assert len(session_dirs) == 3
+
+
+if __name__ == "__main__":
+    import sys
+    # Make subprocess happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+    sys.exit(pytest.main(["-v", __file__]))

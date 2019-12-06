@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import binascii
 import errno
-import functools
 import hashlib
 import inspect
 import logging
@@ -264,13 +263,22 @@ def get_cuda_visible_devices():
     return [int(i) for i in gpu_ids_str.split(",")]
 
 
+last_set_gpu_ids = None
+
+
 def set_cuda_visible_devices(gpu_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
     Args:
         gpu_ids: This is a list of integers representing GPU IDs.
     """
+
+    global last_set_gpu_ids
+    if last_set_gpu_ids == gpu_ids:
+        return  # optimization: already set
+
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
+    last_set_gpu_ids = gpu_ids
 
 
 def resources_from_resource_arguments(
@@ -518,60 +526,6 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
         job_id=worker.current_job_id)
 
 
-class _ThreadSafeProxy(object):
-    """This class is used to create a thread-safe proxy for a given object.
-        Every method call will be guarded with a lock.
-
-    Attributes:
-        orig_obj (object): the original object.
-        lock (threading.Lock): the lock object.
-        _wrapper_cache (dict): a cache from original object's methods to
-            the proxy methods.
-    """
-
-    def __init__(self, orig_obj, lock):
-        self.orig_obj = orig_obj
-        self.lock = lock
-        self._wrapper_cache = {}
-
-    def __getattr__(self, attr):
-        orig_attr = getattr(self.orig_obj, attr)
-        if not callable(orig_attr):
-            # If the original attr is a field, just return it.
-            return orig_attr
-        else:
-            # If the orginal attr is a method,
-            # return a wrapper that guards the original method with a lock.
-            wrapper = self._wrapper_cache.get(attr)
-            if wrapper is None:
-
-                @functools.wraps(orig_attr)
-                def _wrapper(*args, **kwargs):
-                    with self.lock:
-                        return orig_attr(*args, **kwargs)
-
-                self._wrapper_cache[attr] = _wrapper
-                wrapper = _wrapper
-            return wrapper
-
-
-def thread_safe_client(client, lock=None):
-    """Create a thread-safe proxy which locks every method call
-    for the given client.
-
-    Args:
-        client: the client object to be guarded.
-        lock: the lock object that will be used to lock client's methods.
-            If None, a new lock will be used.
-
-    Returns:
-        A thread-safe proxy for the given client.
-    """
-    if lock is None:
-        lock = threading.Lock()
-    return _ThreadSafeProxy(client, lock)
-
-
 def is_main_thread():
     return threading.current_thread().getName() == "MainThread"
 
@@ -614,3 +568,34 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)
+
+
+def try_to_symlink(symlink_path, target_path):
+    """Attempt to create a symlink.
+
+    If the symlink path exists and isn't a symlink, the symlink will not be
+    created. If a symlink exists in the path, it will be attempted to be
+    removed and replaced.
+
+    Args:
+        symlink_path: The path at which to create the symlink.
+        target_path: The path the symlink should point to.
+    """
+    symlink_path = os.path.expanduser(symlink_path)
+    target_path = os.path.expanduser(target_path)
+
+    if os.path.exists(symlink_path):
+        if os.path.islink(symlink_path):
+            # Try to remove existing symlink.
+            try:
+                os.remove(symlink_path)
+            except OSError:
+                return
+        else:
+            # There's an existing non-symlink file, don't overwrite it.
+            return
+
+    try:
+        os.symlink(target_path, symlink_path)
+    except OSError:
+        return

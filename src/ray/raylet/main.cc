@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.8.0.dev3"},
+      {ray::stats::VersionKey, "0.8.0.dev6"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -104,8 +104,6 @@ int main(int argc, char *argv[]) {
   node_manager_config.node_manager_address = node_ip_address;
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
-  node_manager_config.num_workers_per_process =
-      RayConfig::instance().num_workers_per_process();
   node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
 
   if (!python_worker_command.empty()) {
@@ -122,9 +120,11 @@ int main(int argc, char *argv[]) {
   }
 
   node_manager_config.heartbeat_period_ms =
-      RayConfig::instance().heartbeat_timeout_milliseconds();
+      RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
   node_manager_config.debug_dump_period_ms =
       RayConfig::instance().debug_dump_period_milliseconds();
+  node_manager_config.fair_queueing_enabled =
+      RayConfig::instance().fair_queueing_enabled();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
   node_manager_config.temp_dir = temp_dir;
@@ -140,7 +140,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_push_timeout_ms();
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
-  object_manager_config.rpc_service_threads_number = std::max(2, num_cpus / 2);
+  object_manager_config.rpc_service_threads_number =
+      std::min(std::max(2, num_cpus / 4), 8);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
@@ -167,11 +168,11 @@ int main(int argc, char *argv[]) {
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
+    RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
     auto shutdown_callback = [&server, &main_service, &gcs_client]() {
       server.reset();
       gcs_client->Disconnect();
       main_service.stop();
-      RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
     };
     RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
     // Give a timeout for this Disconnect operation.
@@ -180,6 +181,7 @@ int main(int argc, char *argv[]) {
     timer.expires_from_now(stop_timeout);
     timer.async_wait([shutdown_callback](const boost::system::error_code &error) {
       if (!error) {
+        RAY_LOG(INFO) << "Disconnect from client table timed out, forcing shutdown.";
         shutdown_callback();
       }
     });

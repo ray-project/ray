@@ -7,7 +7,7 @@ import pytest
 import redis
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 
 @pytest.fixture
@@ -28,8 +28,8 @@ class TestRedisPassword(object):
             return 1
 
         info = ray.init(redis_password=password)
-        redis_address = info["redis_address"]
-        redis_ip, redis_port = redis_address.split(":")
+        address = info["redis_address"]
+        redis_ip, redis_port = address.split(":")
 
         # Check that we can run a task
         object_id = f.remote()
@@ -61,3 +61,9 @@ class TestRedisPassword(object):
 
         object_id = f.remote()
         ray.get(object_id)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

@@ -13,6 +13,17 @@
       "description": "The URL of the repo this project is part of",
       "type": "string"
     },
+    "tags": {
+      "description": "Relevant tags for this project",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "documentation": {
+      "description": "Link to the documentation of this project",
+      "type": "string"
+    },
     "cluster": {
       "description": "Path to a .yaml cluster configuration file (relative to the project root)",
       "type": "string"
@@ -55,6 +66,41 @@
           "command": {
             "description": "Shell command to run on the cluster",
             "type": "string"
+          },
+          "params" : {
+            "type": "array",
+            "items": {
+              "description": "Possible parameters in the command",
+              "type": "object",
+              "properties": {
+                "name": {
+                  "description": "Name of the parameter",
+                  "type": "string"
+                },
+                "help": {
+                  "description": "Help string for the parameter",
+                  "type": "string"
+                },
+                "choices": {
+                  "description": "Possible values the parameter can take",
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "config": {
+            "type": "object",
+            "items": {
+              "description": "Configuration options for the command",
+              "type": "object",
+              "properties": {
+                "tmux": {
+                  "description": "If true, the command will be run inside of tmux",
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
           }
         }
       }

@@ -165,6 +165,9 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
   auto entry = uncommitted_lineage.GetEntry(task_id);
   if (!entry) {
     return;
+  } else if (entry->TaskData().GetTaskSpecification().IsDirectCall()) {
+    // Disable lineage logging for direct tasks.
+    return;
   }
   RAY_CHECK(entry->GetStatus() == GcsStatus::UNCOMMITTED);
 
@@ -182,6 +185,10 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 }
 
 bool LineageCache::CommitTask(const Task &task) {
+  if (task.GetTaskSpecification().IsDirectCall()) {
+    // Disable lineage logging for direct tasks.
+    return true;
+  }
   const TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Committing task " << task_id;
 

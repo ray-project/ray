@@ -7,7 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/asio.h"
-#include "ray/gcs/gcs_client_interface.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/gcs/tables.h"
 #include "ray/util/logging.h"
 
@@ -17,13 +17,13 @@ namespace gcs {
 
 class RedisContext;
 
-class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
-  friend class ActorStateAccessor;
-  friend class JobStateAccessor;
+class RAY_EXPORT RedisGcsClient : public GcsClient {
+  // TODO(micafan) Will remove those friend class after we replace RedisGcsClient
+  // with interface class GcsClient in raylet.
+  friend class RedisActorInfoAccessor;
+  friend class RedisJobInfoAccessor;
   friend class SubscriptionExecutorTest;
-  friend void TestLogSubscribeAll(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
-  friend void TestLogSubscribeId(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
-  friend void TestLogSubscribeCancel(const JobID &, std::shared_ptr<gcs::RedisGcsClient>);
+  friend class LogSubscribeTestHelper;
 
  public:
   /// Constructor of RedisGcsClient.
@@ -31,11 +31,21 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// TODO(micafan) To read and write from the GCS tables requires a further
   /// call to Connect() to the client table. Will fix this in next pr.
   ///
-  /// \param GcsClientOptions Options of client, e.g. server address, is test client ...
+  /// \param options Options of this client, e.g. server address, password and so on.
   RedisGcsClient(const GcsClientOptions &options);
+
+  /// This constructor is only used for testing.
+  /// Connect() must be called(and return ok) before you call any other methods.
+  ///
+  /// \param options Options of this client, e.g. server address, password and so on.
+  /// \param command_type The commands issued type.
+  RedisGcsClient(const GcsClientOptions &options, CommandType command_type);
 
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.
+  ///
+  /// \param io_service The event loop for this client.
+  /// Must be single-threaded io_service (get more information from RedisAsioClient).
   ///
   /// \return Status
   Status Connect(boost::asio::io_service &io_service);
@@ -75,14 +85,18 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
  private:
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.
-  Status Attach(boost::asio::io_service &io_service);
+  void Attach(boost::asio::io_service &io_service);
 
-  /// Use method Actors() instead.
+  /// This method will be deprecated, use method Actors() instead.
   ActorTable &actor_table();
-  /// Use method Jobs() instead.
+  /// This method will be deprecated, use method Jobs() instead.
   JobTable &job_table();
   /// This method will be deprecated, use method Tasks() instead.
   TaskLeaseTable &task_lease_table();
+
+  // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
+  // might be used, if available.
+  CommandType command_type_{CommandType::kUnknown};
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;

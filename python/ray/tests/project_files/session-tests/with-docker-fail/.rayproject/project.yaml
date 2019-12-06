@@ -15,5 +15,5 @@ environment:
     - echo "Setting up the environment"
 
 commands:
-  - name: first-command
+  - name: default
     command: echo "Starting ray job"

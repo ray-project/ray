@@ -8,7 +8,8 @@ import random
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.variant_generator import generate_variants
+from ray.tune.suggest.variant_generator import (generate_variants, format_vars,
+                                                flatten_resolved_vars)
 from ray.tune.suggest.search import SearchAlgorithm
 
 
@@ -78,12 +79,13 @@ class BasicVariantGenerator(SearchAlgorithm):
             for resolved_vars, spec in generate_variants(unresolved_spec):
                 experiment_tag = str(self._counter)
                 if resolved_vars:
-                    experiment_tag += "_{}".format(resolved_vars)
+                    experiment_tag += "_{}".format(format_vars(resolved_vars))
                 self._counter += 1
                 yield create_trial_from_spec(
                     spec,
                     output_path,
                     self._parser,
+                    evaluated_params=flatten_resolved_vars(resolved_vars),
                     experiment_tag=experiment_tag)
 
     def is_finished(self):

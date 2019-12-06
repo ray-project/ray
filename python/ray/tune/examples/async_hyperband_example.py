@@ -51,10 +51,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     parser.add_argument(
-        "--ray-redis-address",
+        "--ray-address",
         help="Address of Ray cluster for seamless distributed execution.")
     args, _ = parser.parse_known_args()
-    ray.init(redis_address=args.ray_redis_address)
+    ray.init(address=args.ray_address)
 
     # asynchronous hyperband early stopping, configured with
     # `episode_reward_mean` as the
@@ -70,18 +70,13 @@ if __name__ == "__main__":
     run(MyTrainableClass,
         name="asynchyperband_test",
         scheduler=ahb,
-        **{
-            "stop": {
-                "training_iteration": 1 if args.smoke_test else 99999
-            },
-            "num_samples": 20,
-            "resources_per_trial": {
-                "cpu": 1,
-                "gpu": 0
-            },
-            "config": {
-                "width": sample_from(
-                    lambda spec: 10 + int(90 * random.random())),
-                "height": sample_from(lambda spec: int(100 * random.random())),
-            },
+        stop={"training_iteration": 1 if args.smoke_test else 99999},
+        num_samples=20,
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": 0
+        },
+        config={
+            "width": sample_from(lambda spec: 10 + int(90 * random.random())),
+            "height": sample_from(lambda spec: int(100 * random.random())),
         })

@@ -1,20 +1,23 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
 import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
+import org.ray.api.function.RayFuncVoid;
 import org.ray.api.id.ObjectId;
-import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtimecontext.RuntimeContext;
+import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.RuntimeContextImpl;
 import org.ray.runtime.context.WorkerContext;
@@ -25,12 +28,10 @@ import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.object.ObjectStore;
 import org.ray.runtime.object.RayObjectImpl;
-import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskExecutor;
 import org.ray.runtime.task.TaskSubmitter;
-import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,7 +50,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
-  protected RayletClient rayletClient;
   protected WorkerContext workerContext;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
@@ -57,11 +57,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     functionManager = new FunctionManager(rayConfig.jobResourcePath);
     runtimeContext = new RuntimeContextImpl(this);
   }
-
-  /**
-   * Start runtime.
-   */
-  public abstract void start() throws Exception;
 
   @Override
   public abstract void shutdown();
@@ -89,15 +84,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
-    if (nodeId == null) {
-      nodeId = UniqueId.NIL;
-    }
-    rayletClient.setResource(resourceName, capacity, nodeId);
-  }
-
-  @Override
   public <T> WaitResult<T> wait(List<RayObject<T>> waitList, int numReturns, int timeoutMs) {
     return objectStore.wait(waitList, numReturns, timeoutMs);
   }
@@ -107,7 +93,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
-    return callNormalFunction(functionDescriptor, args, options);
+    int numReturns = func instanceof RayFuncVoid ? 0 : 1;
+    return callNormalFunction(functionDescriptor, args, numReturns, options);
   }
 
   @Override
@@ -115,7 +102,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     FunctionDescriptor functionDescriptor =
         functionManager.getFunction(workerContext.getCurrentJobId(), func)
             .functionDescriptor;
-    return callActorFunction(actor, functionDescriptor, args);
+    int numReturns = func instanceof RayFuncVoid ? 0 : 1;
+    return callActorFunction(actor, functionDescriptor, args, numReturns);
   }
 
   @Override
@@ -143,7 +131,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(moduleName, "",
         functionName);
-    return callNormalFunction(functionDescriptor, args, options);
+    // Python functions always have a return value, even if it's `None`.
+    return callNormalFunction(functionDescriptor, args, /*numReturns=*/1, options);
   }
 
   @Override
@@ -151,7 +140,8 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     checkPyArguments(args);
     PyFunctionDescriptor functionDescriptor = new PyFunctionDescriptor(pyActor.getModuleName(),
         pyActor.getClassName(), functionName);
-    return callActorFunction(pyActor, functionDescriptor, args);
+    // Python functions always have a return value, even if it's `None`.
+    return callActorFunction(pyActor, functionDescriptor, args, /*numReturns=*/1);
   }
 
   @Override
@@ -163,35 +153,57 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return (RayPyActor) createActorImpl(functionDescriptor, args, options);
   }
 
+  @Override
+  public Runnable wrapRunnable(Runnable runnable) {
+    return runnable;
+  }
+
+  @Override
+  public Callable wrapCallable(Callable callable) {
+    return callable;
+  }
+
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
-      Object[] args, CallOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+      Object[] args, int numReturns, CallOptions options) {
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, /*isDirectCall*/false);
     List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
-        functionArgs, 1, options);
-    return new RayObjectImpl(returnIds.get(0));
+        functionArgs, numReturns, options);
+    Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
+    if (returnIds.isEmpty()) {
+      return null;
+    } else {
+      return new RayObjectImpl(returnIds.get(0));
+    }
   }
 
   private RayObject callActorFunction(RayActor rayActor,
-      FunctionDescriptor functionDescriptor, Object[] args) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+      FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, isDirectCall(rayActor));
     List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
-        functionDescriptor, functionArgs, 1, null);
-    return new RayObjectImpl(returnIds.get(0));
+        functionDescriptor, functionArgs, numReturns, null);
+    Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
+    if (returnIds.isEmpty()) {
+      return null;
+    } else {
+      return new RayObjectImpl(returnIds.get(0));
+    }
   }
 
   private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, /*isDirectCall*/false);
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
-      Preconditions.checkState(StringUtil.isNullOrEmpty(options.jvmOptions));
+      Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
-    RayActor actor = taskSubmitter
-        .createActor(functionDescriptor, functionArgs,
-            options);
+    RayActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
+  }
+
+  private boolean isDirectCall(RayActor rayActor) {
+    if (rayActor instanceof NativeRayActor) {
+      return ((NativeRayActor) rayActor).isDirectCallActor();
+    }
+    return false;
   }
 
   public WorkerContext getWorkerContext() {
@@ -200,10 +212,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public ObjectStore getObjectStore() {
     return objectStore;
-  }
-
-  public RayletClient getRayletClient() {
-    return rayletClient;
   }
 
   public FunctionManager getFunctionManager() {

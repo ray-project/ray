@@ -10,10 +10,10 @@ import time
 
 import ray
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-ray.init(redis_address="localhost:6379")
+ray.init(address="localhost:6379")
 
 # These numbers need to correspond with the autoscaler config file.
 # The number of remote nodes in the autoscaler should upper bound
@@ -24,8 +24,12 @@ num_remote_cpus = num_remote_nodes * head_node_cpus
 
 # Wait until the expected number of nodes have joined the cluster.
 while True:
-    if len(ray.nodes()) >= num_remote_nodes + 1:
+    num_nodes = len(ray.nodes())
+    logger.info("Waiting for nodes {}/{}".format(num_nodes,
+                                                 num_remote_nodes + 1))
+    if num_nodes >= num_remote_nodes + 1:
         break
+    time.sleep(5)
 logger.info("Nodes have all joined. There are %s resources.",
             ray.cluster_resources())
 
@@ -74,10 +78,13 @@ logger.info("Finished after %s seconds.", time.time() - start_time)
 # Submit a bunch of small tasks to each actor. (approximately 1070 seconds)
 start_time = time.time()
 logger.info("Submitting many small actor tasks.")
-x_ids = []
-for _ in range(100000):
-    x_ids = [a.method.remote(0) for a in actors]
-ray.get(x_ids)
+for N in [1000, 100000]:
+    x_ids = []
+    for i in range(N):
+        x_ids = [a.method.remote(0) for a in actors]
+        if i % 100 == 0:
+            logger.info("Submitted {}".format(i * len(actors)))
+    ray.get(x_ids)
 logger.info("Finished after %s seconds.", time.time() - start_time)
 
 # TODO(rkn): The test below is commented out because it currently does not

@@ -4,7 +4,7 @@ FROM ray-project/base-deps
 
 # We install ray and boto3 to enable the ray autoscaler as
 # a test runner.
-RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev3-cp36-cp36m-manylinux1_x86_64.whl boto3
+RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev5-cp36-cp36m-manylinux1_x86_64.whl boto3
 RUN mkdir -p /root/.ssh/
 
 # We port the source code in so that we run the most up-to-date stress tests.

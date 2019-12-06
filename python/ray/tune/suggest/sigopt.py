@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import os
 import logging
+import pickle
 try:
     import sigopt as sgo
 except ImportError:
@@ -77,6 +78,9 @@ class SigOptSearch(SuggestionAlgorithm):
                 "`reward_attr` is deprecated and will be removed in a future "
                 "version of Tune. "
                 "Setting `metric={}` and `mode=max`.".format(reward_attr))
+        if "use_early_stopped_trials" in kwargs:
+            logger.warning(
+                "`use_early_stopped_trials` is not used in SigOptSearch.")
 
         self._max_concurrent = max_concurrent
         self._metric = metric
@@ -117,7 +121,7 @@ class SigOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to SigOpt unless early terminated or errored.
+        """Notification for the completion of trial.
 
         If a trial fails, it will be reported as a failed Observation, telling
         the optimizer that the Suggestion led to a metric failure, which
@@ -140,3 +144,14 @@ class SigOptSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
+
+    def save(self, checkpoint_dir):
+        trials_object = (self.conn, self.experiment)
+        with open(checkpoint_dir, "wb") as outputFile:
+            pickle.dump(trials_object, outputFile)
+
+    def restore(self, checkpoint_dir):
+        with open(checkpoint_dir, "rb") as inputFile:
+            trials_object = pickle.load(inputFile)
+        self.conn = trials_object[0]
+        self.experiment = trials_object[1]

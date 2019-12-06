@@ -38,6 +38,16 @@ NUMPY_VERSIONS=("1.14.5"
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
+# Use the latest version of Node.js in order to build the dashboard.
+source $HOME/.nvm/nvm.sh
+nvm use node
+
+# Build the dashboard so its static assets can be included in the wheel.
+pushd python/ray/dashboard/client
+  npm ci
+  npm run build
+popd
+
 for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PY_VERSION=${PY_VERSIONS[i]}
   PY_INST=${PY_INSTS[i]}
@@ -47,7 +57,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
-  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR
+  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/dashboard/client
 
   # Install Python.
   INST_PATH=python_downloads/$PY_INST
@@ -58,7 +68,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
   pushd /tmp
-    # Install latest version of pip to avoid brownouts
+    # Install latest version of pip to avoid brownouts.
     curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
   popd
 

@@ -238,6 +238,11 @@ class RolloutWorker(EvaluatorInterface):
         global _global_worker
         _global_worker = self
 
+        policy_config = policy_config or {}
+        if (tf and policy_config.get("eager")
+                and not policy_config.get("no_eager_on_workers")):
+            tf.enable_eager_execution()
+
         if log_level:
             logging.getLogger("ray.rllib").setLevel(log_level)
 
@@ -247,7 +252,6 @@ class RolloutWorker(EvaluatorInterface):
             enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
-        policy_config = policy_config or {}
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
         self.worker_index = worker_index
@@ -255,10 +259,7 @@ class RolloutWorker(EvaluatorInterface):
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
         if not callable(policy_mapping_fn):
-            raise ValueError(
-                "Policy mapping function not callable. If you're using Tune, "
-                "make sure to escape the function with tune.function() "
-                "to prevent it from being evaluated as an expression.")
+            raise ValueError("Policy mapping function not callable?")
         self.env_creator = env_creator
         self.sample_batch_size = batch_steps * num_envs
         self.batch_mode = batch_mode
@@ -289,13 +290,15 @@ class RolloutWorker(EvaluatorInterface):
                     dim=model_config.get("dim"),
                     framestack=model_config.get("framestack"))
                 if monitor_path:
-                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
+                    from gym import wrappers
+                    env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         else:
 
             def wrap(env):
                 if monitor_path:
-                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
+                    from gym import wrappers
+                    env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
 
         self.env = wrap(self.env)
@@ -322,7 +325,8 @@ class RolloutWorker(EvaluatorInterface):
                 torch.manual_seed(seed)
             except ImportError:
                 logger.info("Could not seed torch")
-        if _has_tensorflow_graph(policy_dict):
+        if _has_tensorflow_graph(policy_dict) and not (tf and
+                                                       tf.executing_eagerly()):
             if (ray.is_initialized()
                     and ray.worker._mode() != ray.worker.LOCAL_MODE
                     and not ray.get_gpu_ids()):
@@ -608,7 +612,7 @@ class RolloutWorker(EvaluatorInterface):
             info_out = self.policy_map[DEFAULT_POLICY_ID].learn_on_batch(
                 samples)
         if log_once("learn_out"):
-            logger.info("Training output:\n\n{}\n".format(summarize(info_out)))
+            logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
 
     @DeveloperAPI
@@ -747,6 +751,16 @@ class RolloutWorker(EvaluatorInterface):
                     "Found raw Tuple|Dict space as input to policy. "
                     "Please preprocess these observations with a "
                     "Tuple|DictFlatteningPreprocessor.")
+            if tf and tf.executing_eagerly():
+                if hasattr(cls, "as_eager"):
+                    cls = cls.as_eager()
+                    if policy_config["eager_tracing"]:
+                        cls = cls.with_tracing()
+                elif not issubclass(cls, TFPolicy):
+                    pass  # could be some other type of policy
+                else:
+                    raise ValueError("This policy does not support eager "
+                                     "execution: {}".format(cls))
             if tf:
                 with tf.variable_scope(name):
                     policy_map[name] = cls(obs_space, act_space, merged_conf)

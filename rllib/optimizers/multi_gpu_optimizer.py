@@ -98,8 +98,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
         for policy_id, policy in self.policies.items():
             if not isinstance(policy, TFPolicy):
                 raise ValueError(
-                    "Only TF policies are supported with multi-GPU. Try using "
-                    "the simple optimizer instead.")
+                    "Only TF graph policies are supported with multi-GPU. "
+                    "Try setting `simple_optimizer=True` instead.")
 
         # per-GPU graph copies created below must share vars with the policy
         # reuse is set to AUTO_REUSE because Adam nodes are created after

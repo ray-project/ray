@@ -51,13 +51,16 @@ def register_actor(name, actor_handle):
         raise TypeError("The actor_handle argument must be an ActorHandle "
                         "object.")
     actor_name = _calculate_key(name)
-    pickled_state = pickle.dumps(actor_handle)
+
+    # First check if the actor already exists.
+    try:
+        get_actor(name)
+        exists = True
+    except ValueError:
+        exists = False
+
+    if exists:
+        raise ValueError("An actor with name={} already exists".format(name))
 
     # Add the actor to Redis if it does not already exist.
-    already_exists = _internal_kv_put(actor_name, pickled_state)
-    if already_exists:
-        # If the registration fails, then erase the new actor handle that
-        # was added when pickling the actor handle.
-        actor_handle._ray_new_actor_handles.pop()
-        raise ValueError(
-            "Error: the actor with name={} already exists".format(name))
+    _internal_kv_put(actor_name, pickle.dumps(actor_handle))

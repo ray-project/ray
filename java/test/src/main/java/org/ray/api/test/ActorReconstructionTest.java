@@ -17,6 +17,7 @@ import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+@Test(groups = {"directCall"})
 public class ActorReconstructionTest extends BaseTest {
 
   @RayRemote()
@@ -44,7 +45,6 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
-  @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =
@@ -65,7 +65,7 @@ public class ActorReconstructionTest extends BaseTest {
 
     // Try calling increase on this actor again and check the value is now 4.
     int value = Ray.call(Counter::increase, actor).get();
-    Assert.assertEquals(value, 4);
+    Assert.assertEquals(value, options.useDirectCall ? 1 : 4);
 
     Assert.assertTrue(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
 
@@ -125,7 +125,6 @@ public class ActorReconstructionTest extends BaseTest {
     }
   }
 
-  @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options =

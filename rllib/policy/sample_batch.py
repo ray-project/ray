@@ -58,7 +58,8 @@ class SampleBatch(object):
             self.data[k] = np.array(v, copy=False)
         if not lengths:
             raise ValueError("Empty sample batch")
-        assert len(set(lengths)) == 1, "data columns must be same length"
+        assert len(set(lengths)) == 1, ("data columns must be same length",
+                                        self.data, lengths)
         self.count = lengths[0]
 
     @staticmethod
@@ -182,6 +183,10 @@ class SampleBatch(object):
     @PublicAPI
     def items(self):
         return self.data.items()
+
+    @PublicAPI
+    def get(self, key):
+        return self.data.get(key)
 
     @PublicAPI
     def __getitem__(self, key):

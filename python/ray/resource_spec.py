@@ -13,6 +13,10 @@ import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
+# Prefix for the node id resource that is automatically added to each node.
+# For example, a node may have id `node:172.23.42.1`.
+NODE_ID_PREFIX = "node:"
+
 
 class ResourceSpec(
         namedtuple("ResourceSpec", [
@@ -100,21 +104,24 @@ class ResourceSpec(
         }
 
         # Check types.
-        for _, resource_quantity in resources.items():
+        for resource_label, resource_quantity in resources.items():
             assert (isinstance(resource_quantity, int)
                     or isinstance(resource_quantity, float))
             if (isinstance(resource_quantity, float)
                     and not resource_quantity.is_integer()):
                 raise ValueError(
                     "Resource quantities must all be whole numbers. "
-                    "Received {}.".format(resources))
+                    "Violated by resource '{}' in {}.".format(
+                        resource_label, resources))
             if resource_quantity < 0:
                 raise ValueError("Resource quantities must be nonnegative. "
-                                 "Received {}.".format(resources))
+                                 "Violated by resource '{}' in {}.".format(
+                                     resource_label, resources))
             if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
-                raise ValueError(
-                    "Resource quantities must be at most {}.".format(
-                        ray_constants.MAX_RESOURCE_QUANTITY))
+                raise ValueError("Resource quantities must be at most {}. "
+                                 "Violated by resource '{}' in {}.".format(
+                                     ray_constants.MAX_RESOURCE_QUANTITY,
+                                     resource_label, resources))
 
         return resources
 
@@ -126,6 +133,10 @@ class ResourceSpec(
         assert "GPU" not in resources, resources
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
+
+        # Automatically create a node id resource on each node. This is
+        # queryable with ray.state.node_ids() and ray.state.current_node_id().
+        resources[NODE_ID_PREFIX + ray.services.get_node_ip_address()] = 1.0
 
         num_cpus = self.num_cpus
         if num_cpus is None:
@@ -156,7 +167,7 @@ class ResourceSpec(
             # Cap memory to avoid memory waste and perf issues on large nodes
             if (object_store_memory >
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
-                logger.warning(
+                logger.debug(
                     "Warning: Capping object memory store to {}GB. ".format(
                         ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES //
                         1e9) +
@@ -183,7 +194,7 @@ class ResourceSpec(
         if memory is None:
             memory = (avail_memory - object_store_memory - (redis_max_memory
                                                             if is_head else 0))
-            if memory < 500e6 and memory < 0.05 * system_memory:
+            if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
                     "After taking into account object store and redis memory "
                     "usage, the amount of memory on this node available for "
@@ -197,7 +208,7 @@ class ResourceSpec(
         logger.info(
             "Starting Ray with {} GiB memory available for workers and up to "
             "{} GiB for objects. You can adjust these settings "
-            "with ray.remote(memory=<bytes>, "
+            "with ray.init(memory=<bytes>, "
             "object_store_memory=<bytes>).".format(
                 round(
                     ray_constants.round_to_memory_units(

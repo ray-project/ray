@@ -20,7 +20,7 @@ from ray.tune import commands
 from ray.tune.result import CONFIG_PREFIX
 
 
-class Capturing():
+class Capturing(object):
     def __enter__(self):
         self._stdout = sys.stdout
         sys.stdout = self._stringio = StringIO()
@@ -74,8 +74,7 @@ def test_ls(start_ray, tmpdir):
         name=experiment_name,
         stop={"training_iteration": 1},
         num_samples=num_samples,
-        local_dir=str(tmpdir),
-        global_checkpoint_period=0)
+        local_dir=str(tmpdir))
 
     columns = ["episode_reward_mean", "training_iteration", "trial_id"]
     limit = 2
@@ -114,8 +113,7 @@ def test_ls_with_cfg(start_ray, tmpdir):
         name=experiment_name,
         stop={"training_iteration": 1},
         config={"test_variable": tune.grid_search(list(range(5)))},
-        local_dir=str(tmpdir),
-        global_checkpoint_period=0)
+        local_dir=str(tmpdir))
 
     columns = [CONFIG_PREFIX + "test_variable", "trial_id"]
     limit = 4
@@ -138,8 +136,7 @@ def test_lsx(start_ray, tmpdir):
             name=experiment_name,
             stop={"training_iteration": 1},
             num_samples=1,
-            local_dir=project_path,
-            global_checkpoint_period=0)
+            local_dir=project_path)
 
     limit = 2
     with Capturing() as output:
@@ -159,3 +156,10 @@ def test_lsx(start_ray, tmpdir):
     lines = output.captured
     assert sum("1" in line for line in lines) >= num_experiments
     assert len(lines) == 3 + num_experiments + 1
+
+
+if __name__ == "__main__":
+    # Make click happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+    sys.exit(pytest.main([__file__]))

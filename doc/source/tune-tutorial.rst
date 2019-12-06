@@ -1,5 +1,7 @@
-Tune Example Walkthrough
-========================
+Tune Walkthrough
+================
+
+.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
 
 This tutorial will walk you through the following process to setup a Tune experiment. Specifically, we'll leverage ASHA and Bayesian Optimization (via HyperOpt) via the following steps:
 
@@ -60,6 +62,8 @@ We can then plot the performance of this trial.
    :start-after: __plot_begin__
    :end-before: __plot_end__
 
+.. important:: Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster. To limit the number of cores that Tune uses, you can call ``ray.init(num_cpus=<int>, num_gpus=<int>)`` before ``tune.run``.
+
 
 Early Stopping with ASHA
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -67,7 +71,7 @@ Early Stopping with ASHA
 Let's integrate an early stopping algorithm to our search - ASHA, a scalable algorithm for principled early stopping.
 
 How does it work? On a high level, it terminates trials that are less promising and
-allocates more time and resources to more promising trials. See `this blog post <ttps://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details.
+allocates more time and resources to more promising trials. See `this blog post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details.
 
 We can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``. See the `Trial Scheduler section <tune-schedulers.html>`__ for more details of available schedulers and library integrations.
 

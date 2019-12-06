@@ -3,11 +3,48 @@ RLlib Table of Contents
 
 Training APIs
 -------------
-* `Command-line <rllib-training.html>`__
-* `Configuration <rllib-training.html#configuration>`__
-* `Python API <rllib-training.html#python-api>`__
-* `Debugging <rllib-training.html#debugging>`__
-* `REST API <rllib-training.html#rest-api>`__
+*  `Command-line <rllib-training.html>`__
+*  `Configuration <rllib-training.html#configuration>`__
+
+   -  `Specifying Parameters <rllib-training.html#specifying-parameters>`__
+
+   -  `Specifying Resources <rllib-training.html#specifying-resources>`__
+
+   -  `Common Parameters <rllib-training.html#common-parameters>`__
+
+   -  `Tuned Examples <rllib-training.html#tuned-examples>`__
+
+*  `Python API <rllib-training.html#python-api>`__
+
+   -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
+
+   -  `Computing Actions <rllib-training.html#computing-actions>`__
+
+   -  `Accessing Policy State <rllib-training.html#accessing-policy-state>`__
+
+   -  `Accessing Model State <rllib-training.html#accessing-model-state>`__
+
+   -  `Global Coordination <rllib-training.html#global-coordination>`__
+
+   -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
+
+   -  `Rewriting Trajectories <rllib-training.html#rewriting-trajectories>`__
+
+   -  `Curriculum Learning <rllib-training.html#curriculum-learning>`__
+
+*  `Debugging <rllib-training.html#debugging>`__
+
+   -  `Gym Monitor <rllib-training.html#gym-monitor>`__
+
+   -  `Eager Mode <rllib-training.html#eager-mode>`__
+
+   -  `Episode Traces <rllib-training.html#episode-traces>`__
+
+   -  `Log Verbosity <rllib-training.html#log-verbosity>`__
+
+   -  `Stack Traces <rllib-training.html#stack-traces>`__
+
+*  `REST API <rllib-training.html#rest-api>`__
 
 Environments
 ------------
@@ -136,3 +173,8 @@ If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
 the stack traces of all Ray workers on the current node, and ``ray timeline`` to dump
 a timeline visualization of tasks to a file.
+
+TensorFlow 2.0
+~~~~~~~~~~~~~~
+
+RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.

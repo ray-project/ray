@@ -14,12 +14,10 @@ public class BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseTest.class);
 
-  private List<File> filesToDelete;
+  private List<File> filesToDelete = ImmutableList.of();
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setUpBase(Method method) {
-    LOGGER.info("===== Running test: "
-        + method.getDeclaringClass().getName() + "." + method.getName());
     Ray.init();
     // These files need to be deleted after each test case.
     filesToDelete = ImmutableList.of(
@@ -34,7 +32,7 @@ public class BaseTest {
     filesToDelete.forEach(File::deleteOnExit);
   }
 
-  @AfterMethod
+  @AfterMethod(alwaysRun = true)
   public void tearDownBase() {
     Ray.shutdown();
 

@@ -3,10 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
+from ray.rllib.policy import eager_tf_policy
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 @DeveloperAPI
@@ -20,9 +24,7 @@ def build_tf_policy(name,
                     apply_gradients_fn=None,
                     grad_stats_fn=None,
                     extra_action_fetches_fn=None,
-                    extra_action_feed_fn=None,
                     extra_learn_fetches_fn=None,
-                    extra_learn_feed_fn=None,
                     before_init=None,
                     before_loss_init=None,
                     after_init=None,
@@ -42,8 +44,9 @@ def build_tf_policy(name,
     This means that you can e.g., depend on any policy attributes created in
     the running of `loss_fn` in later functions such as `stats_fn`.
 
-    In eager mode (to be implemented), the following functions will be run
-    repeatedly on each eager execution: loss_fn, stats_fn
+    In eager mode, the following functions will be run repeatedly on each
+    eager execution: loss_fn, stats_fn, gradients_fn, apply_gradients_fn,
+    and grad_stats_fn.
 
     This means that these functions should not define any variables internally,
     otherwise they will fail in eager mode execution. Variable should only
@@ -51,8 +54,8 @@ def build_tf_policy(name,
 
     Arguments:
         name (str): name of the policy (e.g., "PPOTFPolicy")
-        loss_fn (func): function that returns a loss tensor the policy,
-            and dict of experience tensor placeholdes
+        loss_fn (func): function that returns a loss tensor as arguments
+            (policy, model, dist_class, train_batch)
         get_default_config (func): optional function that returns the default
             config to merge with any overrides
         postprocess_fn (func): optional experience postprocessing function
@@ -70,12 +73,8 @@ def build_tf_policy(name,
             TF fetches given the policy, batch input, and gradient tensors
         extra_action_fetches_fn (func): optional function that returns
             a dict of TF fetches given the policy object
-        extra_action_feed_fn (func): optional function that returns a feed dict
-            to also feed to TF when computing actions
         extra_learn_fetches_fn (func): optional function that returns a dict of
             extra values to fetch and return when learning on a batch
-        extra_learn_feed_fn (func): optional function that returns a feed dict
-            to also feed to TF when learning on a batch
         before_init (func): optional function to run at the beginning of
             policy init that takes the same arguments as the policy constructor
         before_loss_init (func): optional function to run prior to loss
@@ -161,34 +160,27 @@ def build_tf_policy(name,
             if optimizer_fn:
                 return optimizer_fn(self, self.config)
             else:
-                return TFPolicy.optimizer(self)
+                return base.optimizer(self)
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):
             if gradients_fn:
                 return gradients_fn(self, optimizer, loss)
             else:
-                return TFPolicy.gradients(self, optimizer, loss)
+                return base.gradients(self, optimizer, loss)
 
         @override(TFPolicy)
         def build_apply_op(self, optimizer, grads_and_vars):
             if apply_gradients_fn:
                 return apply_gradients_fn(self, optimizer, grads_and_vars)
             else:
-                return TFPolicy.build_apply_op(self, optimizer, grads_and_vars)
+                return base.build_apply_op(self, optimizer, grads_and_vars)
 
         @override(TFPolicy)
         def extra_compute_action_fetches(self):
             return dict(
-                TFPolicy.extra_compute_action_fetches(self),
+                base.extra_compute_action_fetches(self),
                 **self._extra_action_fetches)
-
-        @override(TFPolicy)
-        def extra_compute_action_feed_dict(self):
-            if extra_action_feed_fn:
-                return extra_action_feed_fn(self)
-            else:
-                return TFPolicy.extra_compute_action_feed_dict(self)
 
         @override(TFPolicy)
         def extra_compute_grad_fetches(self):
@@ -198,20 +190,18 @@ def build_tf_policy(name,
                     LEARNER_STATS_KEY: {}
                 }, **extra_learn_fetches_fn(self))
             else:
-                return TFPolicy.extra_compute_grad_fetches(self)
-
-        @override(TFPolicy)
-        def extra_compute_grad_feed_dict(self):
-            if extra_learn_feed_fn:
-                return extra_learn_feed_fn(self)
-            else:
-                return TFPolicy.extra_compute_grad_feed_dict(self)
+                return base.extra_compute_grad_fetches(self)
 
     @staticmethod
     def with_updates(**overrides):
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
+    @staticmethod
+    def as_eager():
+        return eager_tf_policy.build_eager_tf_policy(**original_kwargs)
+
     policy_cls.with_updates = with_updates
+    policy_cls.as_eager = as_eager
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls

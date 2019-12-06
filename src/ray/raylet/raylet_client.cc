@@ -21,40 +21,37 @@
 using MessageType = ray::protocol::MessageType;
 
 // TODO(rkn): The io methods below should be removed.
-int connect_ipc_sock(const std::string &socket_pathname) {
+bool connect_ipc_sock(Socket &sock, const std::string &socket_pathname) {
   struct sockaddr_un socket_address;
-  int socket_fd;
 
-  socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (socket_fd < 0) {
+  sock.reset(socket(AF_UNIX, SOCK_STREAM, 0));
+  if (sock.get() < 0) {
     RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
-    return -1;
+    return false;
   }
 
   memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
   if (socket_pathname.length() + 1 > sizeof(socket_address.sun_path)) {
     RAY_LOG(ERROR) << "Socket pathname is too long.";
-    close(socket_fd);
-    return -1;
+    return false;
   }
   strncpy(socket_address.sun_path, socket_pathname.c_str(), socket_pathname.length() + 1);
 
-  if (connect(socket_fd, (struct sockaddr *)&socket_address, sizeof(socket_address)) !=
+  if (connect(sock.get(), (struct sockaddr *)&socket_address, sizeof(socket_address)) !=
       0) {
-    close(socket_fd);
-    return -1;
+    return false;
   }
-  return socket_fd;
+  return true;
 }
 
-int read_bytes(int socket_fd, uint8_t *cursor, size_t length) {
+int read_bytes(Socket &conn, uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
   // Termination condition: EOF or read 'length' bytes total.
   size_t bytesleft = length;
   size_t offset = 0;
   while (bytesleft > 0) {
-    nbytes = read(socket_fd, cursor + offset, bytesleft);
+    nbytes = read(conn.get(), cursor + offset, bytesleft);
     if (nbytes < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
@@ -71,14 +68,14 @@ int read_bytes(int socket_fd, uint8_t *cursor, size_t length) {
   return 0;
 }
 
-int write_bytes(int socket_fd, uint8_t *cursor, size_t length) {
+int write_bytes(Socket &conn, uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
   size_t bytesleft = length;
   size_t offset = 0;
   while (bytesleft > 0) {
     // While we haven't written the whole message, write to the file
     // descriptor, advance the cursor, and decrease the amount left to write.
-    nbytes = write(socket_fd, cursor + offset, bytesleft);
+    nbytes = write(conn.get(), cursor + offset, bytesleft);
     if (nbytes < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
@@ -105,10 +102,12 @@ RayletConnection::RayletConnection(const std::string &raylet_socket, int num_ret
     timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
   RAY_CHECK(!raylet_socket.empty());
-  conn_ = -1;
+  bool connected = false;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-    conn_ = connect_ipc_sock(raylet_socket);
-    if (conn_ >= 0) break;
+    connected = connect_ipc_sock(conn_, raylet_socket);
+    if (connected) {
+      break;
+    }
     if (num_attempts > 0) {
       RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << raylet_socket
                      << " (num_attempts = " << num_attempts
@@ -118,7 +117,7 @@ RayletConnection::RayletConnection(const std::string &raylet_socket, int num_ret
     usleep(timeout * 1000);
   }
   // If we could not connect to the socket, exit.
-  if (conn_ == -1) {
+  if (!connected) {
     RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
   }
 }
@@ -201,10 +200,14 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
+RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client)
+    : grpc_client_(std::move(grpc_client)) {}
+
+RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
+                           const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
-                           int port)
-    : worker_id_(worker_id), is_worker_(is_worker), job_id_(job_id), language_(language) {
+                           ClientID *raylet_id, int port)
+    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
@@ -215,11 +218,24 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
-  auto status = conn_->WriteMessage(MessageType::RegisterClientRequest, &fbb);
+  std::unique_ptr<uint8_t[]> reply;
+  auto status = conn_->AtomicRequestReply(MessageType::RegisterClientRequest,
+                                          MessageType::RegisterClientReply, reply, &fbb);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
+  auto reply_message =
+      flatbuffers::GetRoot<ray::protocol::RegisterClientReply>(reply.get());
+  *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
+        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
+            << "Passing direct call objects to non-direct tasks is not allowed.";
+      }
+    }
+  }
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateSubmitTaskRequest(
       fbb, fbb.CreateString(task_spec.Serialize()));
@@ -227,55 +243,18 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
-  std::unique_ptr<uint8_t[]> reply;
-  // Receive a task from the raylet. This will block until the raylet
-  // gives this client a task.
-  auto status =
-      conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask, reply);
-  if (!status.ok()) return status;
-  // Parse the flatbuffer object.
-  auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply.get());
-  // Set the resource IDs for this task.
-  resource_ids_.clear();
-  for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
-    auto const &fractional_resource_ids =
-        reply_message->fractional_resource_ids()->Get(i);
-    auto &acquired_resources =
-        resource_ids_[string_from_flatbuf(*fractional_resource_ids->resource_name())];
-
-    size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
-    size_t num_resource_fractions = fractional_resource_ids->resource_fractions()->size();
-    RAY_CHECK(num_resource_ids == num_resource_fractions);
-    RAY_CHECK(num_resource_ids > 0);
-    for (size_t j = 0; j < num_resource_ids; ++j) {
-      int64_t resource_id = fractional_resource_ids->resource_ids()->Get(j);
-      double resource_fraction = fractional_resource_ids->resource_fractions()->Get(j);
-      if (num_resource_ids > 1) {
-        int64_t whole_fraction = resource_fraction;
-        RAY_CHECK(whole_fraction == resource_fraction);
-      }
-      acquired_resources.push_back(std::make_pair(resource_id, resource_fraction));
-    }
-  }
-
-  // Return the copy of the task spec and pass ownership to the caller.
-  task_spec->reset(
-      new ray::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
-  return ray::Status::OK();
-}
-
 ray::Status RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                             bool fetch_only,
+                                             bool fetch_only, bool mark_worker_blocked,
                                              const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::protocol::CreateFetchOrReconstruct(
-      fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
+      fbb, object_ids_message, fetch_only, mark_worker_blocked,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   auto status = conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
   return status;
@@ -289,14 +268,29 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
+ray::Status RayletClient::NotifyDirectCallTaskBlocked() {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateNotifyDirectCallTaskBlocked(fbb);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
+}
+
+ray::Status RayletClient::NotifyDirectCallTaskUnblocked() {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
+}
+
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                                int64_t timeout_milliseconds, bool wait_local,
-                               const TaskID &current_task_id, WaitResultPair *result) {
+                               bool mark_worker_blocked, const TaskID &current_task_id,
+                               WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
-      to_flatbuf(fbb, current_task_id));
+      mark_worker_blocked, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::unique_ptr<uint8_t[]> reply;
   auto status = conn_->AtomicRequestReply(MessageType::WaitRequest,
@@ -305,16 +299,25 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply.get());
   auto found = reply_message->found();
-  for (uint i = 0; i < found->size(); i++) {
+  for (size_t i = 0; i < found->size(); i++) {
     ObjectID object_id = ObjectID::FromBinary(found->Get(i)->str());
     result->first.push_back(object_id);
   }
   auto remaining = reply_message->remaining();
-  for (uint i = 0; i < remaining->size(); i++) {
+  for (size_t i = 0; i < remaining->size(); i++) {
     ObjectID object_id = ObjectID::FromBinary(remaining->Get(i)->str());
     result->second.push_back(object_id);
   }
   return ray::Status::OK();
+}
+
+ray::Status RayletClient::WaitForDirectActorCallArgs(
+    const std::vector<ObjectID> &object_ids, int64_t tag) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateWaitForDirectActorCallArgsRequest(
+      fbb, to_flatbuf(fbb, object_ids), tag);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::WaitForDirectActorCallArgsRequest, &fbb);
 }
 
 ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string &type,
@@ -389,4 +392,34 @@ ray::Status RayletClient::SetResource(const std::string &resource_name,
       fbb, fbb.CreateString(resource_name), capacity, to_flatbuf(fbb, client_Id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
+}
+
+ray::Status RayletClient::ReportActiveObjectIDs(
+    const std::unordered_set<ObjectID> &object_ids) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreateReportActiveObjectIDs(fbb, to_flatbuf(fbb, object_ids));
+  fbb.Finish(message);
+
+  return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
+}
+
+ray::Status RayletClient::RequestWorkerLease(
+    const ray::TaskSpecification &resource_spec,
+    const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) {
+  ray::rpc::WorkerLeaseRequest request;
+  request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  return grpc_client_->RequestWorkerLease(request, callback);
+}
+
+ray::Status RayletClient::ReturnWorker(int worker_port, bool disconnect_worker) {
+  ray::rpc::ReturnWorkerRequest request;
+  request.set_worker_port(worker_port);
+  request.set_disconnect_worker(disconnect_worker);
+  return grpc_client_->ReturnWorker(
+      request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Error returning worker: " << status;
+        }
+      });
 }

@@ -2,16 +2,14 @@
 
 ## Why are these changes needed?
 
-<!-- Please give a short summary of the problem these changes address. -->
-
-## What do these changes do?
-
-<!-- Please give a short summary of these changes. -->
+<!-- Please give a short summary of the change and the problem this solves. -->
 
 ## Related issue number
 
 <!-- For example: "Closes #1234" -->
 
-## Linter
+## Checks
 
 - [ ] I've run `scripts/format.sh` to lint the changes in this PR.
+- [ ] I've included any doc changes needed for https://ray.readthedocs.io/en/latest/.
+- [ ] I've made sure the tests are passing. Note that there might be a few flaky tests, see the recent failure rates at https://ray-travis-tracker.herokuapp.com/.

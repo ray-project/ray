@@ -53,7 +53,7 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Exploration ===
     # Number of env steps to optimize for before returning
-    "timesteps_per_iteration": 1000,
+    "timesteps_per_iteration": 100,
     "exploration_enabled": True,
 
     # === Replay buffer ===

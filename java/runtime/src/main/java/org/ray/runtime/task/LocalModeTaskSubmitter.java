@@ -1,6 +1,7 @@
 package org.ray.runtime.task;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
@@ -94,12 +95,12 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       if (task.getType() == TaskType.ACTOR_TASK) {
         taskExecutor = actorTaskExecutors.get(getActorId(task));
       } else if (task.getType() == TaskType.ACTOR_CREATION_TASK) {
-        taskExecutor = new TaskExecutor(runtime);
+        taskExecutor = new LocalModeTaskExecutor(runtime);
         actorTaskExecutors.put(getActorId(task), taskExecutor);
       } else if (idleTaskExecutors.size() > 0) {
         taskExecutor = idleTaskExecutors.pop();
       } else {
-        taskExecutor = new TaskExecutor(runtime);
+        taskExecutor = new LocalModeTaskExecutor(runtime);
       }
     }
     currentTaskExecutor.set(taskExecutor);
@@ -153,14 +154,16 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             .collect(Collectors.toList()))
         .addAllArgs(args.stream().map(arg -> arg.id != null ? TaskArg.newBuilder()
             .addObjectIds(ByteString.copyFrom(arg.id.getBytes())).build()
-            : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.data)).build())
+            : TaskArg.newBuilder().setData(ByteString.copyFrom(arg.value.data))
+                .setMetadata(arg.value.metadata != null ? ByteString
+                    .copyFrom(arg.value.metadata) : ByteString.EMPTY).build())
             .collect(Collectors.toList()));
   }
 
   @Override
   public List<ObjectId> submitTask(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       int numReturns, CallOptions options) {
-    Preconditions.checkState(numReturns == 1);
+    Preconditions.checkState(numReturns <= 1);
     TaskSpec taskSpec = getTaskSpecBuilder(TaskType.NORMAL_TASK, functionDescriptor, args)
         .setNumReturns(numReturns)
         .build();
@@ -185,7 +188,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   @Override
   public List<ObjectId> submitActorTask(RayActor actor, FunctionDescriptor functionDescriptor,
       List<FunctionArg> args, int numReturns, CallOptions options) {
-    Preconditions.checkState(numReturns == 1);
+    Preconditions.checkState(numReturns <= 1);
     TaskSpec.Builder builder = getTaskSpecBuilder(TaskType.ACTOR_TASK, functionDescriptor, args);
     List<ObjectId> returnIds = getReturnIds(
         TaskId.fromBytes(builder.getTaskId().toByteArray()), numReturns + 1);
@@ -200,7 +203,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                 .build())
         .build();
     submitTaskSpec(taskSpec);
-    return Collections.singletonList(returnIds.get(0));
+    if (numReturns  == 0) {
+      return ImmutableList.of();
+    } else {
+      return ImmutableList.of(returnIds.get(0));
+    }
+  }
+
+  public void shutdown() {
+    exec.shutdown();
   }
 
   public static ActorId getActorId(TaskSpec taskSpec) {
@@ -228,7 +239,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
                 .map(arg -> arg.id != null ?
                     objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
-                    : new NativeRayObject(arg.data, null))
+                    : arg.value)
                 .collect(Collectors.toList());
             ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
             List<NativeRayObject> returnObjects = taskExecutor
@@ -241,7 +252,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
                 // If the task is an actor task or an actor creation task,
                 // put the dummy object in object store, so those tasks which depends on it
                 // can be executed.
-                putObject = new NativeRayObject(new byte[]{}, new byte[]{});
+                putObject = new NativeRayObject(new byte[]{1}, null);
               } else {
                 putObject = returnObjects.get(i);
               }
@@ -274,7 +285,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         functionArgs.add(FunctionArg
             .passByReference(new ObjectId(arg.getObjectIds(0).toByteArray())));
       } else {
-        functionArgs.add(FunctionArg.passByValue(arg.getData().toByteArray()));
+        functionArgs.add(FunctionArg.passByValue(
+            new NativeRayObject(arg.getData().toByteArray(), arg.getMetadata().toByteArray())));
       }
     }
     return functionArgs;

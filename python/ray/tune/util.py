@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 import copy
 import logging
 import threading
@@ -99,27 +98,17 @@ class UtilMonitor(Thread):
 
 
 def pin_in_object_store(obj):
-    """Pin an object in the object store.
+    """Deprecated, use ray.put(value, weakref=False) instead."""
 
-    It will be available as long as the pinning process is alive. The pinned
-    object can be retrieved by calling get_pinned_object on the identifier
-    returned by this call.
-    """
-
-    obj_id = ray.put(_to_pinnable(obj))
-    _pinned_objects.append(ray.get(obj_id))
-    return "{}{}".format(PINNED_OBJECT_PREFIX,
-                         base64.b64encode(obj_id.binary()).decode("utf-8"))
+    obj_id = ray.put(obj, weakref=False)
+    _pinned_objects.append(obj_id)
+    return obj_id
 
 
 def get_pinned_object(pinned_id):
-    """Retrieve a pinned object from the object store."""
+    """Deprecated."""
 
-    from ray import ObjectID
-
-    return _from_pinnable(
-        ray.get(
-            ObjectID(base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))))
+    return ray.get(pinned_id)
 
 
 class warn_if_slow(object):
@@ -130,18 +119,25 @@ class warn_if_slow(object):
         ...    ray.get(something)
     """
 
-    def __init__(self, name):
+    DEFAULT_THRESHOLD = 0.5
+
+    def __init__(self, name, threshold=None):
         self.name = name
+        self.threshold = threshold or self.DEFAULT_THRESHOLD
+        self.too_slow = False
 
     def __enter__(self):
         self.start = time.time()
+        return self
 
     def __exit__(self, type, value, traceback):
         now = time.time()
-        if now - self.start > 0.1 and now - START_OF_TIME > 60.0:
-            logger.warning("The `{}` operation took {} seconds to complete, ".
-                           format(self.name, now - self.start) +
-                           "which may be a performance bottleneck.")
+        if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
+            self.too_slow = True
+            logger.warning(
+                "The `%s` operation took %s seconds to complete, "
+                "which may be a performance bottleneck.", self.name,
+                now - self.start)
 
 
 def merge_dicts(d1, d2):
@@ -211,18 +207,22 @@ def _from_pinnable(obj):
     return obj[0]
 
 
-def validate_save_restore(trainable_cls, config=None, use_object_store=False):
+def validate_save_restore(trainable_cls,
+                          config=None,
+                          num_gpus=0,
+                          use_object_store=False):
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
         trainable_cls: Trainable class for evaluation.
         config (dict): Config to pass to Trainable when testing.
+        num_gpus (int): GPU resources to allocate when testing.
         use_object_store (bool): Whether to save and restore to Ray's object
             store. Recommended to set this to True if planning to use
             algorithms that pause training (i.e., PBT, HyperBand).
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
-    remote_cls = ray.remote(trainable_cls)
+    remote_cls = ray.remote(num_gpus=num_gpus)(trainable_cls)
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
 
