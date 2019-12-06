@@ -1212,7 +1212,6 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
         ids_to_deserialize = [ObjectID(object_id.Binary())]
         objects = ray.worker.global_worker.deserialize_objects(
             data_metadata_pairs, ids_to_deserialize)
-
         py_future.set_result(
             AsyncGetResponse(
                 plasma_fallback_id=None, result=objects[0]))

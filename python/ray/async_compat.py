@@ -62,7 +62,7 @@ def get_async(object_id):
         else:
             # Result from direct call.
             assert isinstance(result, AsyncGetResponse), result
-            if result.result is not None:
+            if result.plasma_fallback_id is None:
                 user_future.set_result(result.result)
             else:
                 # Schedule plasma to async get, use the the same callback.

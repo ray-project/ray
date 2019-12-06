@@ -170,3 +170,30 @@ def test_asyncio_actor_concurrency(ray_start_regular):
             answer.append(status)
 
     assert history == answer
+
+def test_async_get(ray_start_regular):
+    loop = asyncio.get_event_loop()
+
+    # Test Async Plasma
+    @ray.remote
+    def task():
+        return 1
+    regular_plasma_future = ray.async_compat.get_async(task.remote())
+    assert loop.run_until_complete(regular_plasma_future) == 1
+
+    # Test Direct Actor Call
+    str_len = 200*1024
+    @ray.remote
+    class DirectActor:
+        def echo(self, i):
+            return i
+        def big_object(self):
+            # 100Kb is the limit for direct call
+            return 'a'*(str_len)
+    direct = DirectActor.options(is_direct_call=True).remote()
+
+    direct_actor_call_future = ray.async_compat.get_async(direct.echo.remote(2))
+    assert loop.run_until_complete(direct_actor_call_future) == 2
+
+    promoted_to_plasma_future = ray.async_compat.get_async(direct.big_object.remote())
+    assert loop.run_until_complete(promoted_to_plasma_future) == 'a'*str_len
