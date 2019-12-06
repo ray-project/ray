@@ -1,11 +1,10 @@
-import random
 import logging
+import random
 from queue import Queue
 from typing import List
 
 import ray
 import ray.streaming._streaming as _streaming
-import ray.streaming.generated.streaming_pb2 as streaming_pb
 from ray.actor import ActorHandle, ActorID
 from ray.streaming.config import Config
 

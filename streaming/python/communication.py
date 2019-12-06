@@ -9,10 +9,10 @@ import sys
 import time
 
 import ray
-from ray.streaming.operator import PStrategy
-from ray.streaming.runtime.channel import ChannelID
+import ray.streaming.runtime.transfer as transfer
 from ray.streaming.config import Config
-import ray.streaming.runtime.channel as channel
+from ray.streaming.operator import PStrategy
+from ray.streaming.runtime.transfer import ChannelID
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -101,7 +101,7 @@ class DataInput(object):
             .current_driver_id,
             Config.CHANNEL_TYPE: self.env.config.channel_type
         }
-        self.reader = channel.DataReader(channels, input_actors, conf)
+        self.reader = transfer.DataReader(channels, input_actors, conf)
 
     def pull(self):
         # pull from channel
@@ -220,7 +220,7 @@ class DataOutput(object):
             .current_driver_id,
             Config.CHANNEL_TYPE: self.env.config.channel_type
         }
-        self.writer = channel.DataWriter(channel_ids, to_actors, conf)
+        self.writer = transfer.DataWriter(channel_ids, to_actors, conf)
 
     def close(self):
         """Close the channel (True) by propagating _CLOSE_FLAG

@@ -10,7 +10,7 @@ import time
 import networkx as nx
 import ray
 import ray.streaming.processor as processor
-import ray.streaming.runtime.channel as channel
+import ray.streaming.runtime.transfer as transfer
 from ray.streaming.communication import DataChannel
 from ray.streaming.config import Config
 from ray.streaming.jobworker import JobWorker
@@ -166,8 +166,8 @@ class ExecutionGraph:
             src_operator_id, src_instance_index)
         to_task_id = self.env.execution_graph.get_task_id(
             dst_operator_id, dst_instance_index)
-        return channel.ChannelID.gen_id(from_task_id, to_task_id,
-                                        self.build_time)
+        return transfer.ChannelID.gen_id(from_task_id, to_task_id,
+                                         self.build_time)
 
     def _gen_task_id(self):
         task_id = self.task_id_counter

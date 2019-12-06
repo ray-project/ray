@@ -1,12 +1,10 @@
-from __future__ import print_function
-
 import pickle
 import threading
 import time
 
 import ray
 import ray.streaming._streaming as _streaming
-import ray.streaming.runtime.channel as channel
+import ray.streaming.runtime.transfer as transfer
 from ray.function_manager import FunctionDescriptor
 from ray.streaming.config import Config
 
@@ -39,9 +37,9 @@ class Worker:
             .current_driver_id,
             Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
         }
-        self.writer = channel.DataWriter([output_channel],
-                                         [pickle.loads(reader_actor)], conf)
-        self.output_channel_id = channel.ChannelID(output_channel)
+        self.writer = transfer.DataWriter([output_channel],
+                                          [pickle.loads(reader_actor)], conf)
+        self.output_channel_id = transfer.ChannelID(output_channel)
 
     def init_reader(self, input_channel, writer_actor):
         conf = {
@@ -49,8 +47,8 @@ class Worker:
             .current_driver_id,
             Config.CHANNEL_TYPE: Config.NATIVE_CHANNEL
         }
-        self.reader = channel.DataReader([input_channel],
-                                         [pickle.loads(writer_actor)], conf)
+        self.reader = transfer.DataReader([input_channel],
+                                          [pickle.loads(writer_actor)], conf)
 
     def start_write(self, msg_nums):
         self.t = threading.Thread(
@@ -110,7 +108,7 @@ def test_queue():
     ray.init()
     writer = Worker._remote(is_direct_call=True)
     reader = Worker._remote(is_direct_call=True)
-    channel_id_str = channel.ChannelID.gen_random_id()
+    channel_id_str = transfer.ChannelID.gen_random_id()
     inits = [
         writer.init_writer.remote(channel_id_str, pickle.dumps(reader)),
         reader.init_reader.remote(channel_id_str, pickle.dumps(writer))

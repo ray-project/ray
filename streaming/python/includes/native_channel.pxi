@@ -173,8 +173,8 @@ cdef class DataWriter:
             msg = "initialize writer failed, status={}".format(<uint32_t>status)
             channel_logger.error(msg)
             del c_writer
-            import ray.streaming.runtime.channel as channel
-            raise channel.ChannelInitException(msg, qid_vector_to_list(remain_id_vec))
+            import ray.streaming.runtime.transfer as transfer
+            raise transfer.ChannelInitException(msg, qid_vector_to_list(remain_id_vec))
 
         c_writer.Run()
         channel_logger.info("create native writer succeed")
@@ -265,8 +265,8 @@ cdef class DataReader:
         if <uint32_t> status != <uint32_t> libstreaming.StatusOK:
             if <uint32_t> status == <uint32_t> libstreaming.StatusInterrupted:
                 # avoid cyclic import
-                import ray.streaming.runtime.channel as channel
-                raise channel.ChannelInterruptException("reader interrupted")
+                import ray.streaming.runtime.transfer as transfer
+                raise transfer.ChannelInterruptException("reader interrupted")
             elif <uint32_t> status == <uint32_t> libstreaming.StatusInitQueueFailed:
                 raise Exception("init channel failed")
             elif <uint32_t> status == <uint32_t> libstreaming.StatusWaitQueueTimeOut:
