@@ -156,6 +156,7 @@ class JavaByteArrayBuffer : public ray::Buffer {
 
   ~JavaByteArrayBuffer() {
     env_->ReleaseByteArrayElements(java_byte_array_, native_bytes_, JNI_ABORT);
+    env_->DeleteLocalRef(java_byte_array_);
   }
 
  private:
@@ -205,8 +206,9 @@ inline void JavaListToNativeVector(
   int size = env->CallIntMethod(java_list, java_list_size);
   native_vector->clear();
   for (int i = 0; i < size; i++) {
-    native_vector->emplace_back(
-        element_converter(env, env->CallObjectMethod(java_list, java_list_get, (jint)i)));
+    auto element = env->CallObjectMethod(java_list, java_list_get, (jint)i);
+    native_vector->emplace_back(element_converter(env, element));
+    env->DeleteLocalRef(element);
   }
 }
 
@@ -228,7 +230,9 @@ inline jobject NativeVectorToJavaList(
       env->NewObject(java_array_list_class, java_array_list_init_with_capacity,
                      (jint)native_vector.size());
   for (const auto &item : native_vector) {
-    env->CallVoidMethod(java_list, java_list_add, element_converter(env, item));
+    auto element = element_converter(env, item);
+    env->CallVoidMethod(java_list, java_list_add, element);
+    env->DeleteLocalRef(element);
   }
   return java_list;
 }
@@ -304,6 +308,8 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   auto java_obj = env->NewObject(java_native_ray_object_class,
                                  java_native_ray_object_init, java_data, java_metadata);
+  env->DeleteLocalRef(java_metadata);
+  env->DeleteLocalRef(java_data);
   return java_obj;
 }
 
