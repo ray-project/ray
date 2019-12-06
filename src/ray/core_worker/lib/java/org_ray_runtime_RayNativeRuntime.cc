@@ -64,6 +64,10 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
         for (auto &obj : return_objects) {
           results->push_back(obj);
         }
+
+        env->DeleteLocalRef(java_return_objects);
+        env->DeleteLocalRef(args_array_list);
+        env->DeleteLocalRef(ray_function_array_list);
         return ray::Status::OK();
       };
 
