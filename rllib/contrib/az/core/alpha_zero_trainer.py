@@ -160,10 +160,10 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         else:
 
             def _env_creator():
-                env_creator(config["env_config"])
+                return env_creator(config["env_config"])
 
         def mcts_creator():
-            MCTS(model, config["mcts_config"])
+            return MCTS(model, config["mcts_config"])
 
         super().__init__(obs_space, action_space, model, alpha_zero_loss,
                          TorchCategorical, mcts_creator, _env_creator)
