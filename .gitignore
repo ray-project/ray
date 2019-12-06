@@ -147,7 +147,7 @@ java/**/.project
 java/runtime/native_dependencies/
 
 # streaming/python
-streaming/python/ray/streaming/generated/
+streaming/python/generated/
 
 # python virtual env
 venv
