@@ -37,7 +37,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def testStartStop(self):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
-        running = self.trial_executor.get_running_trials()
+        running = self.trial_executor.get_active_trials()
         self.assertEqual(1, len(running))
         self.trial_executor.stop_trial(trial)
 

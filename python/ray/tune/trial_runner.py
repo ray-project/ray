@@ -330,7 +330,7 @@ class TrialRunner(object):
         if next_trial is not None:
             with warn_if_slow("start_trial"):
                 self.trial_executor.start_trial(next_trial)
-        elif self.trial_executor.get_running_trials():
+        elif self.trial_executor.get_active_trials():
             self._process_events()  # blocking
         else:
             self.trial_executor.on_no_available_trials(self)
@@ -394,7 +394,7 @@ class TrialRunner(object):
         Blocks if all trials queued have finished, but search algorithm is
         still not finished.
         """
-        trials_done = all(trial.is_finished() for trial in self._trials)
+        trials_done = all(trial.is_finished for trial in self._trials)
         wait_for_trial = trials_done and not self._search_alg.is_finished()
         self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
@@ -411,11 +411,45 @@ class TrialRunner(object):
             with warn_if_slow("process_failed_trial"):
                 self._process_trial_failure(failed_trial, error_msg=error_msg)
         else:
+            # TODO(ujvl): Consider combining get_next_available_trial and
+            #  fetch_result functionality so that we don't timeout on fetch.
             trial = self.trial_executor.get_next_available_trial()  # blocking
-            with warn_if_slow("process_trial"):
-                self._process_trial(trial)
+            if trial.status == Trial.RUNNING:
+                with warn_if_slow("process_trial"):
+                    self._process_running_trial(trial)
+            elif trial.status == Trial.CHECKPOINTING:
+                with warn_if_slow("process_checkpointing_trial"):
+                    self._process_checkpointed_trial(trial)
+            elif trial.status == Trial.RESTORING:
+                with warn_if_slow("process_restoring_trial"):
+                    self._process_restored_trial(trial)
 
-    def _process_trial(self, trial):
+    def _process_checkpointed_trial(self, trial):
+        """Processes a trial's persisted checkpoint."""
+        value = None
+        try:
+            value = self.trial_executor.fetch_result(trial)
+            checkpoint = Checkpoint(Checkpoint.DISK, value, trial.last_result)
+            trial.on_checkpoint(checkpoint)
+            # notify trial_executor according to cached decision.
+        except Exception:
+            error_msg = "Trial {}: Error processing checkpoint".format(trial)
+            error_msg += "{}.".format(value) if value else ""
+            logger.exception(error_msg)
+
+    def _process_restored_trial(self, trial):
+        """Processes a trial restore."""
+        try:
+            self.trial_executor.fetch_result(trial)
+            self.trial_executor.set_status(trial, Trial.RUNNING)
+        except Exception:
+            logger.exception("Trial %s: Error processing restoration.", trial)
+            # Need to keep track of restore attempt state and call something
+            # like _process_trial_restore_failure(...)
+            self._process_trial_failure(trial, traceback.format_exc())
+
+    def _process_running_trial(self, trial):
+        """Processes a trial result."""
         try:
             result = self.trial_executor.fetch_result(trial)
 
@@ -462,6 +496,7 @@ class TrialRunner(object):
             self._checkpoint_trial_if_needed(
                 trial, force=result.get(SHOULD_CHECKPOINT, False))
 
+            # For on-disk checkpointing trials, cache decision...
             if decision == TrialScheduler.CONTINUE:
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
@@ -473,7 +508,7 @@ class TrialRunner(object):
                 assert False, "Invalid scheduling decision: {}".format(
                     decision)
         except Exception:
-            logger.exception("Error processing event.")
+            logger.exception("Trial %s: Error processing event.", trial)
             self._process_trial_failure(trial, traceback.format_exc())
 
     def _process_trial_failure(self, trial, error_msg):
@@ -511,30 +546,30 @@ class TrialRunner(object):
             trial (Trial): Trial to recover.
             error_msg (str): Error message from prior to invoking this method.
         """
-        try:
-            self.trial_executor.stop_trial(
-                trial,
-                error=error_msg is not None,
-                error_msg=error_msg,
-                stop_logger=False)
-            trial.result_logger.flush()
-            if self.trial_executor.has_resources(trial.resources):
-                logger.info(
-                    "Trial %s: Attempting to recover "
-                    "trial state from last checkpoint.", trial)
-                self.trial_executor.start_trial(trial)
-                if trial.status == Trial.ERROR:
-                    logger.error("Trial %s: Did not start correctly.", trial)
-                    raise RuntimeError("Trial did not start correctly.")
-                logger.debug("Trial %s: Started correctly.", trial)
+        self.trial_executor.stop_trial(
+            trial,
+            error=error_msg is not None,
+            error_msg=error_msg,
+            stop_logger=False)
+        trial.result_logger.flush()
+        if self.trial_executor.has_resources(trial.resources):
+            logger.info(
+                "Trial %s: Attempting to recover "
+                "trial state from last checkpoint.", trial)
+            # This is asynchronous now, refactor
+            self.trial_executor.start_trial(trial)
+            if trial.status == Trial.ERROR:
+                logger.exception(
+                    "Trial %s: Error recovering trial from "
+                    "checkpoint, abort.", trial)
+                self._scheduler_alg.on_trial_error(self, trial)
+                self._search_alg.on_trial_complete(trial.trial_id, error=True)
             else:
-                logger.debug("Trial %s: Notifying Scheduler and requeueing.",
-                             trial)
-                self._requeue_trial(trial)
-        except Exception:
-            logger.exception("Error recovering trial from checkpoint, abort.")
-            self._scheduler_alg.on_trial_error(self, trial)
-            self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                logger.debug("Trial %s: Recovery dispatched correctly.", trial)
+        else:
+            logger.debug("Trial %s: Notifying Scheduler and requeueing.",
+                         trial)
+            self._requeue_trial(trial)
 
     def _requeue_trial(self, trial):
         """Notification to TrialScheduler and requeue trial.

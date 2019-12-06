@@ -32,8 +32,7 @@ class TrialExecutor(object):
         """Sets status and checkpoints metadata if needed.
 
         Only checkpoints metadata if trial status is a terminal condition.
-        PENDING, PAUSED, and RUNNING switches have checkpoints taken care of
-        in the TrialRunner.
+        All other switches have checkpoints taken care of in the TrialRunner.
 
         Args:
             trial (Trial): Trial to checkpoint.
@@ -141,10 +140,10 @@ class TrialExecutor(object):
         """
         raise NotImplementedError
 
-    def get_running_trials(self):
-        """Returns all running trials."""
+    def get_active_trials(self):
+        """Returns all active trials."""
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
-                                  "get_running_trials() method")
+                                  "get_active_trials() method")
 
     def on_step_begin(self, trial_runner):
         """A hook called before running one step of the trial event loop."""

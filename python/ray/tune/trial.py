@@ -85,9 +85,16 @@ class Trial(object):
 
     PENDING = "PENDING"
     RUNNING = "RUNNING"
+    CHECKPOINTING = "CHECKPOINTING"
+    RESTORING = "RESTORING"
     PAUSED = "PAUSED"
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
+
+    # States in which the trial is actively doing some work.
+    ACTIVE_STATES = [RUNNING, CHECKPOINTING, RESTORING]
+    # Terminal states (states that cannot be transitioned out of).
+    TERMINAL_STATES = [ERROR, TERMINATED]
 
     def __init__(self,
                  trainable_name,
@@ -374,8 +381,13 @@ class Trial(object):
     def set_verbose(self, verbose):
         self.verbose = verbose
 
+    @property
     def is_finished(self):
-        return self.status in [Trial.TERMINATED, Trial.ERROR]
+        return self.status in Trial.TERMINAL_STATES
+
+    @property
+    def is_active(self):
+        return self.status in Trial.ACTIVE_STATES
 
     def __repr__(self):
         return str(self)
