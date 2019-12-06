@@ -198,15 +198,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   }
 
-  auto it = scheduling_queue_.find(task_spec.CallerId());
-  if (it == scheduling_queue_.end()) {
-    auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
-    it = result.first;
-  }
-
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
   std::shared_ptr<ResourceMappingType> resource_ids;
@@ -289,10 +280,25 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   };
 
+  // Run actor creation task immediately on the main thread, without going
+  // through a scheduling queue.
+  if (task_spec.IsActorCreationTask()) {
+    accept_callback();
+    return;
+  }
+
   auto reject_callback = [send_reply_callback]() {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto it = scheduling_queue_.find(task_spec.CallerId());
+  if (it == scheduling_queue_.end()) {
+    auto result = scheduling_queue_.emplace(
+        task_spec.CallerId(),
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
+    it = result.first;
+  }
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                   accept_callback, reject_callback, dependencies);
 }
