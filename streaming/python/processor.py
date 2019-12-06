@@ -35,7 +35,8 @@ class ReadTextFile:
             if not record:
                 self.reader.close()
                 return
-            output_gate.push(record[:-1])  # Push after removing newline characters
+            output_gate.push(
+                record[:-1])  # Push after removing newline characters
 
 
 class Map:

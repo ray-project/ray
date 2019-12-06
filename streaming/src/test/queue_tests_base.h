@@ -38,8 +38,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
       raylet_socket_names_[i] =
-          StartRaylet(raylet_store_socket_names_[i], "127.0.0.1", node_manager_port_+i, "127.0.0.1",
-                      "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
+          StartRaylet(raylet_store_socket_names_[i], "127.0.0.1", node_manager_port_ + i,
+                      "127.0.0.1", "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
     }
   }
 
@@ -225,9 +225,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
     ActorCreationOptions actor_options{
-      max_reconstructions,   is_direct_call,
-      /*max_concurrency*/ 1, resources,           resources, {},
-      /*is_detached*/ false, /*is_asyncio*/ false};
+        max_reconstructions,   is_direct_call,
+        /*max_concurrency*/ 1, resources,           resources, {},
+        /*is_detached*/ false, /*is_asyncio*/ false};
 
     // Create an actor.
     ActorID actor_id;
@@ -259,8 +259,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
     CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "", node_manager_port_,
-                      nullptr);
+                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "",
+                      node_manager_port_, nullptr);
 
     // Create writer and reader actors
     std::unordered_map<std::string, double> resources;

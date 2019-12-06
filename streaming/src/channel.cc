@@ -52,7 +52,8 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel() {
 }
 
 StreamingStatus StreamingQueueProducer::CreateQueue() {
-  STREAMING_LOG(INFO) << "CreateQueue qid: " << channel_info.channel_id << " data_size: " << channel_info.queue_size;
+  STREAMING_LOG(INFO) << "CreateQueue qid: " << channel_info.channel_id
+                      << " data_size: " << channel_info.queue_size;
   auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
   if (upstream_handler->UpstreamQueueExists(channel_info.channel_id)) {
     RAY_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
@@ -60,12 +61,13 @@ StreamingStatus StreamingQueueProducer::CreateQueue() {
   }
 
   upstream_handler->SetPeerActorID(channel_info.channel_id, channel_info.actor_id);
-  queue_ = upstream_handler->CreateUpstreamQueue(channel_info.channel_id, channel_info.actor_id, channel_info.queue_size);
+  queue_ = upstream_handler->CreateUpstreamQueue(
+      channel_info.channel_id, channel_info.actor_id, channel_info.queue_size);
   STREAMING_CHECK(queue_ != nullptr);
 
   std::vector<ObjectID> queue_ids, failed_queues;
   queue_ids.push_back(channel_info.channel_id);
-  upstream_handler->WaitQueues(queue_ids, 10*1000, failed_queues);
+  upstream_handler->WaitQueues(queue_ids, 10 * 1000, failed_queues);
 
   STREAMING_LOG(INFO) << "q id => " << channel_info.channel_id << ", queue size => "
                       << channel_info.queue_size;
@@ -89,8 +91,8 @@ StreamingStatus StreamingQueueProducer::NotifyChannelConsumed(uint64_t channel_o
 
 StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
                                                              uint32_t data_size) {
-  Status status = PushQueueItem(channel_info.current_seq_id + 1, data,
-                                               data_size, current_time_ms());
+  Status status =
+      PushQueueItem(channel_info.current_seq_id + 1, data, data_size, current_time_ms());
 
   if (status.code() != StatusCode::OK) {
     STREAMING_LOG(DEBUG) << channel_info.channel_id << " => Queue is full"
@@ -108,12 +110,11 @@ StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
   return StreamingStatus::OK;
 }
 
-Status StreamingQueueProducer::PushQueueItem(uint64_t seq_id,
-                                             uint8_t *data, uint32_t data_size,
-                                             uint64_t timestamp) {
+Status StreamingQueueProducer::PushQueueItem(uint64_t seq_id, uint8_t *data,
+                                             uint32_t data_size, uint64_t timestamp) {
   STREAMING_LOG(INFO) << "StreamingQueueProducer::PushQueueItem:"
-                       << " qid: " << channel_info.channel_id << " seq_id: " << seq_id
-                       << " data_size: " << data_size;
+                      << " qid: " << channel_info.channel_id << " seq_id: " << seq_id
+                      << " data_size: " << data_size;
   Status status = queue_->Push(seq_id, data, data_size, timestamp, false);
   if (status.IsOutOfMemory()) {
     status = queue_->TryEvictItems();
@@ -144,7 +145,8 @@ StreamingStatus StreamingQueueConsumer::CreateTransferChannel() {
   // pull remote queue to local store if scheduler connection is set
 
   auto downstream_handler = ray::streaming::DownstreamQueueMessageHandler::GetService();
-  STREAMING_LOG(INFO) << "GetQueue qid: " << channel_info.channel_id << " start_seq_id: " << channel_info.current_seq_id + 1;
+  STREAMING_LOG(INFO) << "GetQueue qid: " << channel_info.channel_id
+                      << " start_seq_id: " << channel_info.current_seq_id + 1;
   if (downstream_handler->DownstreamQueueExists(channel_info.channel_id)) {
     RAY_LOG(INFO) << "StreamingQueueReader::GetQueue duplicate!!!";
     return StreamingStatus::OK;
@@ -153,7 +155,8 @@ StreamingStatus StreamingQueueConsumer::CreateTransferChannel() {
   downstream_handler->SetPeerActorID(channel_info.channel_id, channel_info.actor_id);
   STREAMING_LOG(INFO) << "Create ReaderQueue " << channel_info.channel_id
                       << " pull from start_seq_id: " << channel_info.current_seq_id + 1;
-  queue_ = downstream_handler->CreateDownstreamQueue(channel_info.channel_id, channel_info.actor_id);
+  queue_ = downstream_handler->CreateDownstreamQueue(channel_info.channel_id,
+                                                     channel_info.actor_id);
 
   return StreamingStatus::OK;
 }
@@ -187,8 +190,7 @@ StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(uint64_t &offset_
   data_size = item.Buffer()->Size();
 
   STREAMING_LOG(DEBUG) << "GetQueueItem qid: " << channel_info.channel_id
-                       << " seq_id: " << offset_id
-                       << " msg_id: " << item.MaxMsgId()
+                       << " seq_id: " << offset_id << " msg_id: " << item.MaxMsgId()
                        << " data_size: " << data_size;
   return StreamingStatus::OK;
 }

@@ -65,7 +65,8 @@ class ExecutionGraph:
     # Constructs and deploys a Ray actor of a specific type
     # TODO (john): Actor placement information should be specified in
     # the environment's configuration
-    def __generate_actor(self, instance_index, operator, input_channels, output_channels):
+    def __generate_actor(self, instance_index, operator, input_channels,
+                         output_channels):
         """Generates an actor that will execute a particular instance of
         the logical operator
 
@@ -79,9 +80,9 @@ class ExecutionGraph:
         # Record the physical dataflow graph (for debugging purposes)
         self.__add_channel(worker_id, output_channels)
         # Note direct_call only support pass by value
-        return JobWorker._remote(args=[worker_id, operator,
-                                       input_channels, output_channels],
-                                 is_direct_call=True)
+        return JobWorker._remote(
+            args=[worker_id, operator, input_channels, output_channels],
+            is_direct_call=True)
 
     # Constructs and deploys a Ray actor for each instance of
     # the given operator
@@ -150,7 +151,8 @@ class ExecutionGraph:
             elif p_scheme.strategy in all_to_all_strategies:
                 for i in range(operator.num_instances):
                     for j in range(num_dest_instances):
-                        qid = self._gen_str_qid(operator.id, i, dst_operator, j)
+                        qid = self._gen_str_qid(operator.id, i, dst_operator,
+                                                j)
                         c = DataChannel(operator.id, i, dst_operator, j, qid)
                         entry.append(c)
             else:
@@ -160,9 +162,12 @@ class ExecutionGraph:
 
     def _gen_str_qid(self, src_operator_id, src_instance_index,
                      dst_operator_id, dst_instance_index):
-        from_task_id = self.env.execution_graph.get_task_id(src_operator_id, src_instance_index)
-        to_task_id = self.env.execution_graph.get_task_id(dst_operator_id, dst_instance_index)
-        return channel.ChannelID.gen_id(from_task_id, to_task_id, self.build_time)
+        from_task_id = self.env.execution_graph.get_task_id(
+            src_operator_id, src_instance_index)
+        to_task_id = self.env.execution_graph.get_task_id(
+            dst_operator_id, dst_instance_index)
+        return channel.ChannelID.gen_id(from_task_id, to_task_id,
+                                        self.build_time)
 
     def _gen_task_id(self):
         task_id = self.task_id_counter
@@ -213,8 +218,9 @@ class ExecutionGraph:
         for node in nx.topological_sort(self.env.logical_topo):
             operator = self.env.operators[node]
             # Instantiate Ray actors
-            handles = self.__generate_actors(operator, self.input_channels.get(node, []),
-                                             self.output_channels.get(node, []))
+            handles = self.__generate_actors(
+                operator, self.input_channels.get(node, []),
+                self.output_channels.get(node, []))
             if handles:
                 self.actor_handles.extend(handles)
 
@@ -325,7 +331,11 @@ class Environment(object):
         source_id = self.gen_operator_id()
         source_stream = DataStream(self, source_id)
         self.operators[source_id] = Operator(
-            source_id, OpType.ReadTextFile, processor.ReadTextFile, "Read Text File", other=filepath)
+            source_id,
+            OpType.ReadTextFile,
+            processor.ReadTextFile,
+            "Read Text File",
+            other=filepath)
         return source_stream
 
     # Constructs and deploys the physical dataflow
@@ -460,14 +470,17 @@ class DataStream(object):
         src_operator = self.env.operators[self.src_operator_id]
         if self.is_partitioned is True:
             partitioning, _ = src_operator._get_partition_strategy(self.id)
-            src_operator._set_partition_strategy(self.id, partitioning, operator.id)
+            src_operator._set_partition_strategy(self.id, partitioning,
+                                                 operator.id)
         elif src_operator.type == OpType.KeyBy:
             # Set the output partitioning strategy to shuffle by key
             partitioning = PScheme(PStrategy.ShuffleByKey)
-            src_operator._set_partition_strategy(self.id, partitioning, operator.id)
+            src_operator._set_partition_strategy(self.id, partitioning,
+                                                 operator.id)
         else:  # No partitioning strategy has been defined - set default
             partitioning = PScheme(PStrategy.Forward)
-            src_operator._set_partition_strategy(self.id, partitioning, operator.id)
+            src_operator._set_partition_strategy(self.id, partitioning,
+                                                 operator.id)
         return self.__expand()
 
     # Sets the level of parallelism for an operator, i.e. its total

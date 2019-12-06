@@ -80,8 +80,8 @@ class DataWriter {
   StreamingStatus WriteChannelProcess(ProducerChannelInfo &channel_info,
                                       bool *is_empty_message);
 
-  StreamingStatus InitChannel(const ObjectID &q_id, const ActorID &actor_id, uint64_t channel_message_id,
-                              uint64_t queue_size);
+  StreamingStatus InitChannel(const ObjectID &q_id, const ActorID &actor_id,
+                              uint64_t channel_message_id, uint64_t queue_size);
 
  public:
   explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);

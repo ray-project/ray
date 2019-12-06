@@ -43,8 +43,8 @@ class DataChannel(object):
          dst_instance_index (int): The id of the destination instance.
     """
 
-    def __init__(self, src_operator_id, src_instance_index,
-                 dst_operator_id, dst_instance_index, str_qid):
+    def __init__(self, src_operator_id, src_instance_index, dst_operator_id,
+                 dst_instance_index, str_qid):
         self.src_operator_id = src_operator_id
         self.src_instance_index = src_instance_index
         self.dst_operator_id = dst_operator_id
@@ -55,8 +55,7 @@ class DataChannel(object):
     def __repr__(self):
         return "(src({},{}),dst({},{}), qid({}))".format(
             self.src_operator_id, self.src_instance_index,
-            self.dst_operator_id, self.dst_instance_index,
-            self.str_qid)
+            self.dst_operator_id, self.dst_instance_index, self.str_qid)
 
 
 _CLOSE_FLAG = b' '
@@ -93,11 +92,13 @@ class DataInput(object):
         channels = [c.str_qid for c in self.input_channels]
         input_actors = []
         for c in self.input_channels:
-            actor = self.env.execution_graph.get_actor(c.src_operator_id, c.src_instance_index)
+            actor = self.env.execution_graph.get_actor(c.src_operator_id,
+                                                       c.src_instance_index)
             input_actors.append(actor)
         logger.info("DataInput input_actors %s", input_actors)
         conf = {
-            Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context().current_driver_id,
+            Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context()
+            .current_driver_id,
             Config.CHANNEL_TYPE: self.env.config.channel_type
         }
         self.reader = channel.DataReader(channels, input_actors, conf)
@@ -209,12 +210,14 @@ class DataOutput(object):
         channel_ids = [c.str_qid for c in self.channels]
         to_actors = []
         for c in self.channels:
-            actor = self.env.execution_graph.get_actor(c.dst_operator_id, c.dst_instance_index)
+            actor = self.env.execution_graph.get_actor(c.dst_operator_id,
+                                                       c.dst_instance_index)
             to_actors.append(actor)
         logger.info("DataOutput output_actors %s", to_actors)
 
         conf = {
-            Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context().current_driver_id,
+            Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context()
+            .current_driver_id,
             Config.CHANNEL_TYPE: self.env.config.channel_type
         }
         self.writer = channel.DataWriter(channel_ids, to_actors, conf)
@@ -278,4 +281,3 @@ class DataOutput(object):
     def push_all(self, records):
         for record in records:
             self.push(record)
-

@@ -24,15 +24,15 @@ static int node_manager_port;
 class StreamingWriterTest : public StreamingQueueTestBase {
  public:
   StreamingWriterTest()
-      : StreamingQueueTestBase(1, raylet_executable, store_executable, node_manager_port, actor_executable) {
-  }
+      : StreamingQueueTestBase(1, raylet_executable, store_executable, node_manager_port,
+                               actor_executable) {}
 };
 
 class StreamingExactlySameTest : public StreamingQueueTestBase {
  public:
   StreamingExactlySameTest()
-      : StreamingQueueTestBase(1, raylet_executable, store_executable, node_manager_port, actor_executable) {
-  }
+      : StreamingQueueTestBase(1, raylet_executable, store_executable, node_manager_port,
+                               actor_executable) {}
 };
 
 TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {

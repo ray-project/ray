@@ -28,8 +28,7 @@ class JobWorker(object):
         the operator instance.
     """
 
-    def __init__(self, worker_id, operator,
-                 input_channels, output_channels):
+    def __init__(self, worker_id, operator, input_channels, output_channels):
         self.env = None
         self.worker_id = worker_id
         self.operator = operator
@@ -52,28 +51,32 @@ class JobWorker(object):
 
         if env.config.channel_type == Config.NATIVE_CHANNEL:
             core_worker = ray.worker.global_worker.core_worker
-            reader_async_func = FunctionDescriptor(__name__, self.on_reader_message.__name__,
-                                                   self.__class__.__name__)
-            reader_sync_func = FunctionDescriptor(__name__, self.on_reader_message_sync.__name__,
-                                                  self.__class__.__name__)
-            self.reader_client = _streaming.ReaderClient(core_worker,
-                                                         reader_async_func,
-                                                         reader_sync_func)
-            writer_async_func = FunctionDescriptor(__name__, self.on_writer_message.__name__,
-                                                   self.__class__.__name__)
-            writer_sync_func = FunctionDescriptor(__name__, self.on_writer_message_sync.__name__,
-                                                  self.__class__.__name__)
-            self.writer_client = _streaming.WriterClient(core_worker,
-                                                         writer_async_func,
-                                                         writer_sync_func)
+            reader_async_func = FunctionDescriptor(
+                __name__, self.on_reader_message.__name__,
+                self.__class__.__name__)
+            reader_sync_func = FunctionDescriptor(
+                __name__, self.on_reader_message_sync.__name__,
+                self.__class__.__name__)
+            self.reader_client = _streaming.ReaderClient(
+                core_worker, reader_async_func, reader_sync_func)
+            writer_async_func = FunctionDescriptor(
+                __name__, self.on_writer_message.__name__,
+                self.__class__.__name__)
+            writer_sync_func = FunctionDescriptor(
+                __name__, self.on_writer_message_sync.__name__,
+                self.__class__.__name__)
+            self.writer_client = _streaming.WriterClient(
+                core_worker, writer_async_func, writer_sync_func)
         if len(self.input_channels) > 0:
             self.input_gate = DataInput(env, self.input_channels)
             self.input_gate.init()
         if len(self.output_channels) > 0:
-            self.output_gate = DataOutput(env, self.output_channels,
-                                          self.operator.partitioning_strategies)
+            self.output_gate = DataOutput(
+                env, self.output_channels,
+                self.operator.partitioning_strategies)
             self.output_gate.init()
-        logger.info("init operator instance %s succeed", self.__class__.__name__)
+        logger.info("init operator instance %s succeed",
+                    self.__class__.__name__)
         return True
 
     # Starts the actor
@@ -81,7 +84,8 @@ class JobWorker(object):
         self.t = threading.Thread(target=self.run, daemon=True)
         self.t.start()
         actor_id = ray.worker.global_worker.actor_id
-        logger.info("%s %s started, actor id %s", self.__class__.__name__, self.processor_name, actor_id)
+        logger.info("%s %s started, actor id %s", self.__class__.__name__,
+                    self.processor_name, actor_id)
 
     def run(self):
         logger.info("%s start running", self.processor_name)

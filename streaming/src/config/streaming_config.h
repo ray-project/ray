@@ -20,8 +20,7 @@ class StreamingConfig {
  private:
   uint32_t ring_buffer_capacity_ = DEFAULT_RING_BUFFER_CAPACITY;
 
-  uint32_t empty_message_time_interval_ =
-      DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
+  uint32_t empty_message_time_interval_ = DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
 
   streaming::proto::OperatorType operator_type_ =
       streaming::proto::OperatorType::TRANSFORM;

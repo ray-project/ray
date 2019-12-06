@@ -51,7 +51,7 @@ struct ConsumerChannelInfo {
 ///   * ProducerChannel is supporting all writing operations for upperlevel.
 ///   * ConsumerChannel is for all reader operations.
 ///  They share similar interfaces:
-///    * ClearTransferCheckpoint(it's empty and unsupported now, we will add 
+///    * ClearTransferCheckpoint(it's empty and unsupported now, we will add
 ///      implementation in next PR)
 ///    * NotifychannelConsumed (notify owner of channel which range data should
 //       be release to avoid out of memory)
@@ -107,8 +107,8 @@ class StreamingQueueProducer : public ProducerChannel {
 
  private:
   StreamingStatus CreateQueue();
-  Status PushQueueItem(uint64_t seq_id, uint8_t *data,
-                       uint32_t data_size, uint64_t timestamp);
+  Status PushQueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size,
+                       uint64_t timestamp);
 
  private:
   std::shared_ptr<WriterQueue> queue_;

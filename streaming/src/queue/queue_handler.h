@@ -14,11 +14,13 @@ namespace streaming {
 
 /// Base class of UpstreamQueueMessageHandler and DownstreamQueueMessageHandler.
 /// A queue service manages a group of queues, upstream queues or downstream queues of
-/// the current actor. Each queue service holds a boost.asio io_service, to handle messages
-/// asynchronously. When a message received by Writer/Reader in ray call thread, the
-/// message was delivered to UpstreamQueueMessageHandler/DownstreamQueueMessageHandler, then the ray call thread
-/// returns immediately. The queue service parses meta infomation from the message, including
-/// queue_id actor_id, etc, and dispatchs message to queue according to queue_id.
+/// the current actor. Each queue service holds a boost.asio io_service, to handle
+/// messages asynchronously. When a message received by Writer/Reader in ray call thread,
+/// the message was delivered to
+/// UpstreamQueueMessageHandler/DownstreamQueueMessageHandler, then the ray call thread
+/// returns immediately. The queue service parses meta infomation from the message,
+/// including queue_id actor_id, etc, and dispatchs message to queue according to
+/// queue_id.
 class QueueMessageHandler {
  public:
   /// Construct a QueueMessageHandler instance.
@@ -137,8 +139,8 @@ class UpstreamQueueMessageHandler : public QueueMessageHandler {
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) override;
 
-  static std::shared_ptr<UpstreamQueueMessageHandler> CreateService(CoreWorker *core_worker,
-                                                        const ActorID &actor_id);
+  static std::shared_ptr<UpstreamQueueMessageHandler> CreateService(
+      CoreWorker *core_worker, const ActorID &actor_id);
   static std::shared_ptr<UpstreamQueueMessageHandler> GetService();
 
   static RayFunction peer_sync_function_;
@@ -175,8 +177,8 @@ class DownstreamQueueMessageHandler : public QueueMessageHandler {
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
 
-  static std::shared_ptr<DownstreamQueueMessageHandler> CreateService(CoreWorker *core_worker,
-                                                          const ActorID &actor_id);
+  static std::shared_ptr<DownstreamQueueMessageHandler> CreateService(
+      CoreWorker *core_worker, const ActorID &actor_id);
   static std::shared_ptr<DownstreamQueueMessageHandler> GetService();
   static RayFunction peer_sync_function_;
   static RayFunction peer_async_function_;

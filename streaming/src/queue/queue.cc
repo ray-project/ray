@@ -135,7 +135,8 @@ void WriterQueue::Send() {
                     item.IsRaw());
     std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
     STREAMING_CHECK(transport_ != nullptr);
-    transport_->Send(std::move(buffer), DownstreamQueueMessageHandler::peer_async_function_);
+    transport_->Send(std::move(buffer),
+                     DownstreamQueueMessageHandler::peer_async_function_);
   }
 }
 

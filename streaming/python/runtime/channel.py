@@ -98,7 +98,12 @@ class DataMessage:
     DataMessage represents data between upstream and downstream operator
     """
 
-    def __init__(self, body, timestamp, channel_id, message_id_, is_empty_message=False):
+    def __init__(self,
+                 body,
+                 timestamp,
+                 channel_id,
+                 message_id_,
+                 is_empty_message=False):
         self.__body = body
         self.__timestamp = timestamp
         self.__channel_id = channel_id
@@ -141,7 +146,8 @@ class DataWriter:
      workers
     """
 
-    def __init__(self, output_channels, to_actors: List[ActorHandle], conf: dict):
+    def __init__(self, output_channels, to_actors: List[ActorHandle],
+                 conf: dict):
         """Get DataWriter of output channels
         Args:
             output_channels: output channels ids
@@ -150,14 +156,20 @@ class DataWriter:
             DataWriter
         """
         assert len(output_channels) > 0
-        py_output_channels = [channel_id_str_to_bytes(qid_str) for qid_str in output_channels]
-        output_actor_ids: List[ActorID] = [handle._ray_actor_id for handle in to_actors]
-        channel_size = conf.get(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT)
+        py_output_channels = [
+            channel_id_str_to_bytes(qid_str) for qid_str in output_channels
+        ]
+        output_actor_ids: List[ActorID] = [
+            handle._ray_actor_id for handle in to_actors
+        ]
+        channel_size = conf.get(Config.CHANNEL_SIZE,
+                                Config.CHANNEL_SIZE_DEFAULT)
         py_msg_ids = [0 for _ in range(len(output_channels))]
         config_bytes = _to_native_conf(conf)
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
-        self.writer = _streaming.DataWriter.create(py_output_channels, output_actor_ids,
-                                                   channel_size, py_msg_ids, config_bytes, is_mock)
+        self.writer = _streaming.DataWriter.create(
+            py_output_channels, output_actor_ids, channel_size, py_msg_ids,
+            config_bytes, is_mock)
 
         logger.info("create DataWriter succeed")
 
@@ -188,7 +200,8 @@ class DataReader:
     from channels of upstream workers
     """
 
-    def __init__(self, input_channels: List, from_actors: List[ActorHandle], conf: dict):
+    def __init__(self, input_channels: List, from_actors: List[ActorHandle],
+                 conf: dict):
         """Get DataReader of input channels
         Args:
             input_channels:  input channels
@@ -197,8 +210,12 @@ class DataReader:
             DataReader
         """
         assert len(input_channels) > 0
-        py_input_channels = [channel_id_str_to_bytes(qid_str) for qid_str in input_channels]
-        input_actor_ids: List[ActorID] = [handle._ray_actor_id for handle in from_actors]
+        py_input_channels = [
+            channel_id_str_to_bytes(qid_str) for qid_str in input_channels
+        ]
+        input_actor_ids: List[ActorID] = [
+            handle._ray_actor_id for handle in from_actors
+        ]
         py_seq_ids = [0 for _ in range(len(input_channels))]
         py_msg_ids = [0 for _ in range(len(input_channels))]
         timer_interval = int(conf.get(Config.TIMER_INTERVAL_MS, -1))
@@ -207,8 +224,8 @@ class DataReader:
         self.__queue = Queue(10000)
         is_mock = conf[Config.CHANNEL_TYPE] == Config.MEMORY_CHANNEL
         self.reader = _streaming.DataReader.create(
-            py_input_channels, input_actor_ids,
-            py_seq_ids, py_msg_ids, timer_interval, is_recreate, config_bytes, is_mock)
+            py_input_channels, input_actor_ids, py_seq_ids, py_msg_ids,
+            timer_interval, is_recreate, config_bytes, is_mock)
         logger.info("create DataReader succeed")
 
     def read(self, timeout_millis):
@@ -222,7 +239,8 @@ class DataReader:
             msgs = self.reader.read(timeout_millis)
             for msg in msgs:
                 msg_bytes, msg_id, timestamp, qid_bytes = msg
-                data_msg = DataMessage(msg_bytes, timestamp, channel_bytes_to_str(qid_bytes), msg_id)
+                data_msg = DataMessage(msg_bytes, timestamp,
+                                       channel_bytes_to_str(qid_bytes), msg_id)
                 self.__queue.put(data_msg)
         if self.__queue.empty():
             return None

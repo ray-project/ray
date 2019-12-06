@@ -11,7 +11,7 @@ class Config:
     MEMORY_CHANNEL = "memory_channel"
     NATIVE_CHANNEL = "native_channel"
     CHANNEL_SIZE = "channel_size"
-    CHANNEL_SIZE_DEFAULT = 10 ** 8
+    CHANNEL_SIZE_DEFAULT = 10**8
     IS_RECREATE = "streaming.is_recreate"
     # return from StreamingReader.getBundle if only empty message read in this interval.
     TIMER_INTERVAL_MS = "timer_interval_ms"

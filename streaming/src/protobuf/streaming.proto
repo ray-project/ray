@@ -21,6 +21,3 @@ message StreamingConfig {
   uint32 ring_buffer_capacity = 6;
   uint32 empty_message_interval = 7;
 }
-
-
-

@@ -7,8 +7,10 @@ namespace streaming {
 
 constexpr uint64_t COMMON_SYNC_CALL_TIMEOUTT_MS = 5 * 1000;
 
-std::shared_ptr<UpstreamQueueMessageHandler> UpstreamQueueMessageHandler::upstream_handler_ = nullptr;
-std::shared_ptr<DownstreamQueueMessageHandler> DownstreamQueueMessageHandler::downstream_handler_ = nullptr;
+std::shared_ptr<UpstreamQueueMessageHandler>
+    UpstreamQueueMessageHandler::upstream_handler_ = nullptr;
+std::shared_ptr<DownstreamQueueMessageHandler>
+    DownstreamQueueMessageHandler::downstream_handler_ = nullptr;
 
 RayFunction UpstreamQueueMessageHandler::peer_sync_function_;
 RayFunction UpstreamQueueMessageHandler::peer_async_function_;
@@ -50,7 +52,8 @@ std::shared_ptr<Message> QueueMessageHandler::ParseMessage(
   return message;
 }
 
-void QueueMessageHandler::DispatchMessageAsync(std::shared_ptr<LocalMemoryBuffer> buffer) {
+void QueueMessageHandler::DispatchMessageAsync(
+    std::shared_ptr<LocalMemoryBuffer> buffer) {
   queue_service_.post(
       boost::bind(&QueueMessageHandler::DispatchMessageInternal, this, buffer, nullptr));
 }
@@ -71,14 +74,16 @@ std::shared_ptr<LocalMemoryBuffer> QueueMessageHandler::DispatchMessageSync(
   return result;
 }
 
-std::shared_ptr<Transport> QueueMessageHandler::GetOutTransport(const ObjectID &queue_id) {
+std::shared_ptr<Transport> QueueMessageHandler::GetOutTransport(
+    const ObjectID &queue_id) {
   auto it = out_transports_.find(queue_id);
   if (it == out_transports_.end()) return nullptr;
 
   return it->second;
 }
 
-void QueueMessageHandler::SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id) {
+void QueueMessageHandler::SetPeerActorID(const ObjectID &queue_id,
+                                         const ActorID &actor_id) {
   actors_.emplace(queue_id, actor_id);
   out_transports_.emplace(
       queue_id, std::make_shared<ray::streaming::Transport>(core_worker_, actor_id));
@@ -107,10 +112,11 @@ void QueueMessageHandler::Stop() {
   }
 }
 
-std::shared_ptr<UpstreamQueueMessageHandler> UpstreamQueueMessageHandler::CreateService(CoreWorker *core_worker,
-                                                                const ActorID &actor_id) {
+std::shared_ptr<UpstreamQueueMessageHandler> UpstreamQueueMessageHandler::CreateService(
+    CoreWorker *core_worker, const ActorID &actor_id) {
   if (nullptr == upstream_handler_) {
-    upstream_handler_ = std::make_shared<UpstreamQueueMessageHandler>(core_worker, actor_id);
+    upstream_handler_ =
+        std::make_shared<UpstreamQueueMessageHandler>(core_worker, actor_id);
   }
   return upstream_handler_;
 }
@@ -178,8 +184,8 @@ bool UpstreamQueueMessageHandler::CheckQueueSync(const ObjectID &queue_id) {
 }
 
 void UpstreamQueueMessageHandler::WaitQueues(const std::vector<ObjectID> &queue_ids,
-                                 int64_t timeout_ms,
-                                 std::vector<ObjectID> &failed_queues) {
+                                             int64_t timeout_ms,
+                                             std::vector<ObjectID> &failed_queues) {
   failed_queues.insert(failed_queues.begin(), queue_ids.begin(), queue_ids.end());
   uint64_t start_time_us = current_time_ms();
   uint64_t current_time_us = start_time_us;
@@ -220,7 +226,8 @@ void UpstreamQueueMessageHandler::DispatchMessageInternal(
   }
 }
 
-void UpstreamQueueMessageHandler::OnNotify(std::shared_ptr<NotificationMessage> notify_msg) {
+void UpstreamQueueMessageHandler::OnNotify(
+    std::shared_ptr<NotificationMessage> notify_msg) {
   auto queue = GetUpQueue(notify_msg->QueueId());
   if (queue == nullptr) {
     STREAMING_LOG(WARNING) << "Can not find queue for "
@@ -239,15 +246,18 @@ void UpstreamQueueMessageHandler::ReleaseAllUpQueues() {
   Release();
 }
 
-std::shared_ptr<DownstreamQueueMessageHandler> DownstreamQueueMessageHandler::CreateService(
-    CoreWorker *core_worker, const ActorID &actor_id) {
+std::shared_ptr<DownstreamQueueMessageHandler>
+DownstreamQueueMessageHandler::CreateService(CoreWorker *core_worker,
+                                             const ActorID &actor_id) {
   if (nullptr == downstream_handler_) {
-    downstream_handler_ = std::make_shared<DownstreamQueueMessageHandler>(core_worker, actor_id);
+    downstream_handler_ =
+        std::make_shared<DownstreamQueueMessageHandler>(core_worker, actor_id);
   }
   return downstream_handler_;
 }
 
-std::shared_ptr<DownstreamQueueMessageHandler> DownstreamQueueMessageHandler::GetService() {
+std::shared_ptr<DownstreamQueueMessageHandler>
+DownstreamQueueMessageHandler::GetService() {
   return downstream_handler_;
 }
 

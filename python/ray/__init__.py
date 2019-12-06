@@ -30,7 +30,6 @@ if os.path.exists(so_path):
     from ctypes import CDLL
     CDLL(so_path, ctypes.RTLD_GLOBAL)
 
-
 # MUST import ray._raylet before pyarrow to initialize some global variables.
 # It seems the library related to memory allocation in pyarrow will destroy the
 # initialization of grpc if we import pyarrow at first.

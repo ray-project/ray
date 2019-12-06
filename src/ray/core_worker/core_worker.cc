@@ -601,7 +601,8 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   BuildCommonTaskSpec(
       builder, worker_context_.GetCurrentJobID(), task_id,
       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, task_options.num_returns, task_options.resources, required_resources,
+      function, args, task_options.num_returns, task_options.resources,
+      required_resources,
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
       return_ids);
   TaskSpecification task_spec = builder.Build();

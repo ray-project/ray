@@ -292,8 +292,10 @@ class StreamingWorker {
     RayFunction writer_async_call_func{ray::Language::PYTHON, {"writer_async_call_func"}};
     RayFunction writer_sync_call_func{ray::Language::PYTHON, {"writer_sync_call_func"}};
 
-    reader_client_ = std::make_shared<ReaderClient>(worker_.get(), reader_async_call_func, reader_sync_call_func);
-    writer_client_ = std::make_shared<WriterClient>(worker_.get(), writer_async_call_func, writer_sync_call_func);
+    reader_client_ = std::make_shared<ReaderClient>(worker_.get(), reader_async_call_func,
+                                                    reader_sync_call_func);
+    writer_client_ = std::make_shared<WriterClient>(worker_.get(), writer_async_call_func,
+                                                    writer_sync_call_func);
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
 
@@ -430,7 +432,8 @@ int main(int argc, char **argv) {
   auto node_manager_port = std::stoi(std::string(argv[3]));
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
-  ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
+  ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port,
+                                         gcs_options);
   worker.StartExecutingTasks();
   return 0;
 }
