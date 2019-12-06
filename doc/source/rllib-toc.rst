@@ -78,7 +78,7 @@ Algorithms
 
    -  `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
 
-   -  `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#alpha-zero-contrib-alphazero>`__
+   -  `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
 
 *  Gradient-based
 
