@@ -526,6 +526,8 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
+  std::unique_ptr<gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>> direct_actor_table_subscriber_;
+
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all

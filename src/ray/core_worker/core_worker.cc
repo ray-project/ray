@@ -96,6 +96,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  direct_actor_table_subscriber_ = std::unique_ptr<gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>(new gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>(gcs_client_->direct_actor_table()));
 
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->direct_actor_table()));
 
@@ -265,7 +266,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   // Clear all actor handles at the end of each non-actor task.
   if (actor_id_.IsNil() && task_id.IsNil()) {
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
+      RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncUnsubscribe(gcs_client_->client_table().GetLocalClientId(), handle.first, nullptr));
     }
     actor_handles_.clear();
   }
@@ -760,6 +761,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
       } else {
+        direct_actor_submitter_->DisconnectActor(actor_id);
         direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
       }
 
@@ -769,7 +771,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                     << ", port: " << actor_data.address().port();
     };
 
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+
+    RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
+        gcs_client_->client_table().GetLocalClientId(), 
         actor_id, actor_notification_callback, nullptr));
   }
   return inserted;

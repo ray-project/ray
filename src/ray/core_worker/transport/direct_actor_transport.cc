@@ -69,26 +69,28 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id, c
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id) {
   absl::MutexLock lock(&mu_);
   // Remove rpc client if it's dead or being reconstructed.
-  rpc_clients_.erase(actor_id);
+  auto erased = rpc_clients_.erase(actor_id);
 
-  // If there are pending requests, treat the pending tasks as failed.
-  auto pending_it = pending_requests_.find(actor_id);
-  if (pending_it != pending_requests_.end()) {
-    auto head = pending_it->second.begin();
-    while (head != pending_it->second.end()) {
-      auto request = std::move(head->second);
-      head = pending_it->second.erase(head);
-      auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-      task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
+  if (erased > 0) {
+    // If there are pending requests, treat the pending tasks as failed.
+    auto pending_it = pending_requests_.find(actor_id);
+    if (pending_it != pending_requests_.end()) {
+      auto head = pending_it->second.begin();
+      while (head != pending_it->second.end()) {
+        auto request = std::move(head->second);
+        head = pending_it->second.erase(head);
+        auto task_id = TaskID::FromBinary(request->task_spec().task_id());
+        task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
+      }
+      pending_requests_.erase(pending_it);
     }
-    pending_requests_.erase(pending_it);
+
+    next_send_position_.erase(actor_id);
+    next_send_position_to_assign_.erase(actor_id);
+
+    // No need to clean up tasks that have been sent and are waiting for
+    // replies. They will be treated as failed once the connection dies.
   }
-
-  next_send_position_.erase(actor_id);
-  next_send_position_to_assign_.erase(actor_id);
-
-  // No need to clean up tasks that have been sent and are waiting for
-  // replies. They will be treated as failed once the connection dies.
 }
 
 
