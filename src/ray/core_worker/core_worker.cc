@@ -779,7 +779,6 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
       } else {
-        direct_actor_submitter_->DisconnectActor(actor_id);
         direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
       }
 
