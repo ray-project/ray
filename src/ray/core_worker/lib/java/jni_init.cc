@@ -16,7 +16,11 @@ jmethodID java_array_list_init;
 jmethodID java_array_list_init_with_capacity;
 
 jclass java_map_class;
+jmethodID java_map_put;
 jmethodID java_map_entry_set;
+
+jclass java_hash_map_class;
+jmethodID java_hash_map_init;
 
 jclass java_set_class;
 jmethodID java_set_iterator;
@@ -30,6 +34,9 @@ jmethodID java_map_entry_get_key;
 jmethodID java_map_entry_get_value;
 
 jclass java_ray_exception_class;
+
+jclass java_jni_exception_util_class;
+jmethodID java_jni_exception_util_get_stack_trace;
 
 jclass java_base_id_class;
 jmethodID java_base_id_get_bytes;
@@ -103,7 +110,12 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetMethodID(java_array_list_class, "<init>", "(I)V");
 
   java_map_class = LoadClass(env, "java/util/Map");
+  java_map_put = env->GetMethodID(
+      java_map_class, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
   java_map_entry_set = env->GetMethodID(java_map_class, "entrySet", "()Ljava/util/Set;");
+
+  java_hash_map_class = LoadClass(env, "java/util/HashMap");
+  java_hash_map_init = env->GetMethodID(java_hash_map_class, "<init>", "()V");
 
   java_set_class = LoadClass(env, "java/util/Set");
   java_set_iterator =
@@ -121,6 +133,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetMethodID(java_map_entry_class, "getValue", "()Ljava/lang/Object;");
 
   java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
+
+  java_jni_exception_util_class = LoadClass(env, "org/ray/runtime/util/JniExceptionUtil");
+  java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
+      java_jni_exception_util_class, "getStackTrace",
+      "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Throwable;)Ljava/lang/String;");
 
   java_base_id_class = LoadClass(env, "org/ray/api/id/BaseId");
   java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
@@ -191,10 +208,12 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_map_class);
+  env->DeleteGlobalRef(java_hash_map_class);
   env->DeleteGlobalRef(java_set_class);
   env->DeleteGlobalRef(java_iterator_class);
   env->DeleteGlobalRef(java_map_entry_class);
   env->DeleteGlobalRef(java_ray_exception_class);
+  env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_function_descriptor_class);
   env->DeleteGlobalRef(java_language_class);

@@ -35,8 +35,15 @@ extern jmethodID java_array_list_init_with_capacity;
 
 /// Map interface
 extern jclass java_map_class;
+/// put method of Map interface
+extern jmethodID java_map_put;
 /// entrySet method of Map interface
 extern jmethodID java_map_entry_set;
+
+/// HashMap class
+extern jclass java_hash_map_class;
+/// Constructor of HashMap class
+extern jmethodID java_hash_map_init;
 
 /// Set interface
 extern jclass java_set_class;
@@ -59,6 +66,11 @@ extern jmethodID java_map_entry_get_value;
 
 /// RayException class
 extern jclass java_ray_exception_class;
+
+/// JniExceptionUtil class
+extern jclass java_jni_exception_util_class;
+/// getStackTrace method of JniExceptionUtil class
+extern jmethodID java_jni_exception_util_get_stack_trace;
 
 /// BaseId class
 extern jclass java_base_id_class;
@@ -136,6 +148,29 @@ extern JavaVM *jvm;
     }                                                                        \
   }
 
+#define RAY_CHECK_JAVA_EXCEPTION(env)                                                 \
+  {                                                                                   \
+    jthrowable throwable = env->ExceptionOccurred();                                  \
+    if (throwable) {                                                                  \
+      jstring java_file_name = env->NewStringUTF(__FILE__);                           \
+      jstring java_function = env->NewStringUTF(__func__);                            \
+      jobject java_error_message = env->CallStaticObjectMethod(                       \
+          java_jni_exception_util_class, java_jni_exception_util_get_stack_trace,     \
+          java_file_name, __LINE__, java_function, throwable);                        \
+      std::string error_message =                                                     \
+          JavaStringToNativeString(env, static_cast<jstring>(java_error_message));    \
+      env->DeleteLocalRef(throwable);                                                 \
+      env->DeleteLocalRef(java_file_name);                                            \
+      env->DeleteLocalRef(java_function);                                             \
+      env->DeleteLocalRef(java_error_message);                                        \
+      RAY_LOG(FATAL) << "An unexpected exception occurred while executing Java code " \
+                        "from JNI ("                                                  \
+                     << __FILE__ << ":" << __LINE__ << " " << __func__ << ")."        \
+                     << "\n"                                                          \
+                     << error_message;                                                \
+    }                                                                                 \
+  }
+
 /// Represents a byte buffer of Java byte array.
 /// The destructor will automatically call ReleaseByteArrayElements.
 /// NOTE: Instances of this class cannot be used across threads.
@@ -203,10 +238,12 @@ inline void JavaListToNativeVector(
     JNIEnv *env, jobject java_list, std::vector<NativeT> *native_vector,
     std::function<NativeT(JNIEnv *, jobject)> element_converter) {
   int size = env->CallIntMethod(java_list, java_list_size);
+  RAY_CHECK_JAVA_EXCEPTION(env);
   native_vector->clear();
   for (int i = 0; i < size; i++) {
-    native_vector->emplace_back(
-        element_converter(env, env->CallObjectMethod(java_list, java_list_get, (jint)i)));
+    auto element = env->CallObjectMethod(java_list, java_list_get, (jint)i);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    native_vector->emplace_back(element_converter(env, element));
   }
 }
 
@@ -229,6 +266,7 @@ inline jobject NativeVectorToJavaList(
                      (jint)native_vector.size());
   for (const auto &item : native_vector) {
     env->CallVoidMethod(java_list, java_list_add, element_converter(env, item));
+    RAY_CHECK_JAVA_EXCEPTION(env);
   }
   return java_list;
 }
