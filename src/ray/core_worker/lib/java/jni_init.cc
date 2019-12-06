@@ -16,11 +16,7 @@ jmethodID java_array_list_init;
 jmethodID java_array_list_init_with_capacity;
 
 jclass java_map_class;
-jmethodID java_map_put;
 jmethodID java_map_entry_set;
-
-jclass java_hash_map_class;
-jmethodID java_hash_map_init;
 
 jclass java_set_class;
 jmethodID java_set_iterator;
@@ -110,12 +106,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetMethodID(java_array_list_class, "<init>", "(I)V");
 
   java_map_class = LoadClass(env, "java/util/Map");
-  java_map_put = env->GetMethodID(
-      java_map_class, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
   java_map_entry_set = env->GetMethodID(java_map_class, "entrySet", "()Ljava/util/Set;");
-
-  java_hash_map_class = LoadClass(env, "java/util/HashMap");
-  java_hash_map_init = env->GetMethodID(java_hash_map_class, "<init>", "()V");
 
   java_set_class = LoadClass(env, "java/util/Set");
   java_set_iterator =
@@ -208,7 +199,6 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_map_class);
-  env->DeleteGlobalRef(java_hash_map_class);
   env->DeleteGlobalRef(java_set_class);
   env->DeleteGlobalRef(java_iterator_class);
   env->DeleteGlobalRef(java_map_entry_class);

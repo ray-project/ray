@@ -35,15 +35,8 @@ extern jmethodID java_array_list_init_with_capacity;
 
 /// Map interface
 extern jclass java_map_class;
-/// put method of Map interface
-extern jmethodID java_map_put;
 /// entrySet method of Map interface
 extern jmethodID java_map_entry_set;
-
-/// HashMap class
-extern jclass java_hash_map_class;
-/// Constructor of HashMap class
-extern jmethodID java_hash_map_init;
 
 /// Set interface
 extern jclass java_set_class;
