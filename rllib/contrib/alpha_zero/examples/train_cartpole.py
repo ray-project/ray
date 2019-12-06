@@ -19,7 +19,6 @@ if __name__ == "__main__":
 
     ModelCatalog.register_custom_model("dense_model", DenseModel)
 
-    # tune.run("PG", config={"env": CartPole})
     tune.run(
         "contrib/AlphaZero",
         max_failures=0,
