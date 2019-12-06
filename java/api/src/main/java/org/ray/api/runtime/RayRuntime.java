@@ -143,6 +143,10 @@ public interface RayRuntime {
   RayPyActor createPyActor(String moduleName, String className, Object[] args,
       ActorCreationOptions options);
 
+  Object getAsyncContext();
+
+  void setAsyncContext(Object asyncContext);
+
   /**
    * Wrap a {@link Runnable} with necessary context capture.
    * @param runnable The runnable to wrap.

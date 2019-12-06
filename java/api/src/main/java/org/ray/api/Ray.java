@@ -119,7 +119,25 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * If users want to use Ray API in there own threads, they should wrap their {@link Runnable}
+   * If users want to use Ray API in their own threads, call this method to get the async context
+   * and then call {@link #setAsyncContext} at the beginning of the new thread.
+   *
+   * @return The async context.
+   */
+  public static Object getAsyncContext() {
+    return runtime.getAsyncContext();
+  }
+
+  /**
+   * Set the async context for the current thread.
+   * @param asyncContext The async context to set.
+   */
+  public static void setAsyncContext(Object asyncContext) {
+    runtime.setAsyncContext(asyncContext);
+  }
+
+  /**
+   * If users want to use Ray API in their own threads, they should wrap their {@link Runnable}
    * objects with this method.
    *
    * @param runnable The runnable to wrap.
@@ -130,7 +148,7 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * If users want to use Ray API in there own threads, they should wrap their {@link Callable}
+   * If users want to use Ray API in their own threads, they should wrap their {@link Callable}
    * objects with this method.
    *
    * @param callable The callable to wrap.
