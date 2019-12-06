@@ -28,24 +28,23 @@ cc_proto_library(
 # ray shared lib
 cc_binary(
     name = "ray_util.so",
+    linkshared = 1,
     visibility = ["//visibility:public"],
-    linkshared=1,
     deps = ["//:ray_util"],
 )
 
 cc_binary(
     name = "ray_common.so",
+    linkshared = 1,
     visibility = ["//visibility:public"],
-    linkshared=1,
     deps = ["//:ray_common"],
 )
 
 cc_binary(
     name = "core_worker_lib.so",
-    linkshared=1,
+    linkshared = 1,
     deps = ["//:core_worker_lib"],
 )
-
 
 cc_library(
     name = "streaming_util",
@@ -75,9 +74,9 @@ cc_library(
         "src/config/*.h",
     ]),
     deps = [
+        "ray_common.so",
         ":streaming_cc_proto",
         ":streaming_util",
-        "ray_common.so",
     ],
 )
 
@@ -90,9 +89,9 @@ cc_library(
         "src/message/*.h",
     ]),
     deps = [
+        "ray_common.so",
         ":streaming_config",
         ":streaming_util",
-        "ray_common.so",
     ],
 )
 
@@ -105,13 +104,13 @@ cc_library(
         "src/queue/*.h",
     ]),
     deps = [
+        "core_worker_lib.so",
+        "ray_common.so",
+        "ray_util.so",
         ":streaming_config",
         ":streaming_message",
         ":streaming_queue_cc_proto",
         ":streaming_util",
-        "core_worker_lib.so",
-        "ray_common.so",
-        "ray_util.so",
         "@boost//:asio",
         "@boost//:thread",
     ],
@@ -130,12 +129,12 @@ cc_library(
     includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
+        "ray_common.so",
+        "ray_util.so",
         ":streaming_config",
         ":streaming_message",
         ":streaming_queue",
         ":streaming_util",
-        "ray_common.so",
-        "ray_util.so",
         "@boost//:circular_buffer",
     ],
 )
@@ -156,7 +155,7 @@ cc_binary(
     includes = [
         "streaming/src/test",
     ],
-    deps = test_common_deps
+    deps = test_common_deps,
 )
 
 # use src/test/run_streamingqueue_test.sh to run this test
@@ -165,7 +164,7 @@ cc_binary(
     srcs = glob(["src/test/*.h"]) + [
         "src/test/streamingqueue_tests.cc",
     ],
-    deps = test_common_deps
+    deps = test_common_deps,
 )
 
 cc_test(
@@ -176,7 +175,7 @@ cc_test(
     includes = [
         "streaming/src/test",
     ],
-    deps = test_common_deps
+    deps = test_common_deps,
 )
 
 cc_test(
@@ -184,7 +183,7 @@ cc_test(
     srcs = [
         "src/test/message_serialization_tests.cc",
     ],
-    deps = test_common_deps
+    deps = test_common_deps,
 )
 
 cc_test(
@@ -192,7 +191,7 @@ cc_test(
     srcs = [
         "src/test/mock_transfer_tests.cc",
     ],
-    deps = test_common_deps
+    deps = test_common_deps,
 )
 
 cc_test(
@@ -200,7 +199,7 @@ cc_test(
     srcs = [
         "src/test/streaming_util_tests.cc",
     ],
-    deps = test_common_deps
+    deps = test_common_deps,
 )
 
 python_proto_compile(

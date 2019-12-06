@@ -223,10 +223,10 @@ cc_library(
         ],
     ),
     copts = COPTS,
-    visibility = ["//visibility:public"],
     includes = [
         "@boost//:asio",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":common_cc_proto",
         ":gcs_cc_proto",
@@ -324,7 +324,6 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
-    visibility = ["//streaming:__subpackages__"],
     defines = select({
         "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
         "//conditions:default": [],
@@ -336,6 +335,7 @@ cc_library(
             "-lpthread",
         ],
     }),
+    visibility = ["//streaming:__subpackages__"],
     deps = [
         ":common_cc_proto",
         ":gcs",
@@ -798,18 +798,19 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    copts = COPTS + if_linux_x86_64(["-fno-gnu-unique"]),
     # Hide protobuf symbols to avoid symbols conflicts, so we can expose
     # _raylet.so symbols which then can be used by _streaming.so
     cc_kwargs = {
         "features": ["-supports_start_end_lib"],
         "linkstatic": 1,
-        "linkopts": if_linux_x86_64(["-Wl,--exclude-libs,libprotobuf.a",
-                                     "-Wl,--exclude-libs,libprotobuf.pic.a",
-                                     "-Wl,--exclude-libs,libprotobuf_lite.a",
-                                     "-Wl,--exclude-libs,libprotobuf_lite.pic.a",
-                                     ]),
+        "linkopts": if_linux_x86_64([
+            "-Wl,--exclude-libs,libprotobuf.a",
+            "-Wl,--exclude-libs,libprotobuf.pic.a",
+            "-Wl,--exclude-libs,libprotobuf_lite.a",
+            "-Wl,--exclude-libs,libprotobuf_lite.pic.a",
+        ]),
     },
+    copts = COPTS + if_linux_x86_64(["-fno-gnu-unique"]),
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
