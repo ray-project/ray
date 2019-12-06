@@ -104,7 +104,6 @@ from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
     RAW_BUFFER_METADATA,
-    ASCII_METADATA,
     PICKLE_BUFFER_METADATA,
     PICKLE5_BUFFER_METADATA,
 )
@@ -459,8 +458,6 @@ cdef deserialize_args(
                 elif meta == PICKLE_BUFFER_METADATA:
                     # This is a pickled "simple python value" argument.
                     args.append(pickle.loads(data.to_pybytes()))
-                elif meta == ASCII_METADATA:
-                    args.append(data.to_pybytes().decode('ascii'))
                 else:
                     raise Exception("Unsupported meta " + str(meta))
             else:

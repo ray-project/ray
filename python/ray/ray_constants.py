@@ -184,8 +184,6 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is raw binary.
 RAW_BUFFER_METADATA = b"RAW"
-# A constant used as object metadata to indicate the object is ascii encoding.
-ASCII_METADATA = b"ASCII"
 # A constant used as object metadata to indicate the object is pickled. This
 # format is only ever used for Python inline task argument values.
 PICKLE_BUFFER_METADATA = b"PICKLE"
