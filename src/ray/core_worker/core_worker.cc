@@ -310,7 +310,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   RAY_LOG(DEBUG) << "Register owner info for " << object_id.Hex();
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
-  reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
+  reference_counter_->AddOwnershipInfo(object_id, owner_id, owner_address);
 
   RAY_CHECK(!owner_id.IsNil());
   // We will ask the owner about the object until the object is
