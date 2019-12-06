@@ -8,6 +8,7 @@ import subprocess
 import time
 
 import ray
+from ray import ray_constants
 from ray.test_utils import (
     RayTestTimeoutException,
     run_string_as_driver,
@@ -483,6 +484,9 @@ print("success")
         assert "success" in out
 
 
+@pytest.mark.skipif(
+    ray_constants.direct_call_enabled(),
+    reason="fate sharing not implemented yet")
 def test_driver_exiting_when_worker_blocked(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
