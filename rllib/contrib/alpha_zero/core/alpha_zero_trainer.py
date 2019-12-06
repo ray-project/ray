@@ -173,4 +173,3 @@ AlphaZeroTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     default_policy=AlphaZeroPolicyWrapperClass,
     make_policy_optimizer=choose_policy_optimizer)
-

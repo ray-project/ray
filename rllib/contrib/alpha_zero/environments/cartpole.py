@@ -7,7 +7,8 @@ from gym.spaces import Discrete, Dict, Box
 
 class CartPole:
     """
-    Wrapper for gym CartPole environment
+    Wrapper for gym CartPole environment where the reward
+    is accumulated to the end
     """
 
     def __init__(self, config=None):
