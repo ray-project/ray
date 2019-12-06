@@ -2274,7 +2274,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   auto task_id = spec.TaskId();
   if (task.OnDispatch() != nullptr) {
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
-                      worker->GetTaskResourceIds());
+                      spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
+                                                 : worker->GetTaskResourceIds());
     post_assign_callbacks->push_back([this, worker, task_id]() {
       FinishAssignTask(worker, task_id, /*success=*/true);
     });
