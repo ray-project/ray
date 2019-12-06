@@ -28,25 +28,23 @@ class NodeStateAccessor {
 
   ~NodeStateAccessor() {}
 
-  /// Register local node to GCS synchronously, and begins subscription to all nodes
-  /// from GCS (the node informations will be cached).
+  /// Register local node to GCS synchronously.
   ///
   /// \param node_info The information of node to register to GCS.
   /// \return Status
   Status RegisterSelf(const GcsNodeInfo &local_node_info);
 
-  /// Cancel registration of local node to GCS synchronously, and cancel subscription
-  /// to all nodes from GCS.
+  /// Cancel registration of local node to GCS synchronously.
   ///
   /// \return Status
   Status UnregisterSelf();
 
-  /// Get id of local node which registered by 'RegisterSelf'.
+  /// Get id of local node which was registered by 'RegisterSelf'.
   ///
   /// \return ClientID
   const ClientID &GetSelfId() const;
 
-  /// Get information of local node which registered by 'RegisterSelf'.
+  /// Get information of local node which was registered by 'RegisterSelf'.
   ///
   /// \return GcsNodeInfo
   const GcsNodeInfo &GetSelfInfo() const;
@@ -64,7 +62,7 @@ class NodeStateAccessor {
   /// \return Status
   Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback);
 
-  /// Subscribe to node add or node remove from GCS.
+  /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
   /// \param subscribe Callback that will be called if a node is
   /// added or a node is removed.
@@ -75,7 +73,8 @@ class NodeStateAccessor {
       const StatusCallback &done);
 
   /// Get nodes cache. The cache stores node information subscribed from GCS.
-  /// It provides read-only interfaces such as `Get`.
+  /// NodeInfoCahce provides read-only interfaces such as `Get`.
+  /// AsyncSubscribeToNodeChange() must be called successfully before you call this method.
   ///
   /// \return NodeStateCache
   NodeStateCache &Cache() const;
