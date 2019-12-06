@@ -455,7 +455,7 @@ cdef deserialize_args(
                 data = Buffer.make(c_args[i].get().GetData())
                 meta = Buffer.make(c_args[i].get().GetMetadata()).to_pybytes()
                 if meta == RAW_BUFFER_METADATA:
-                    args.append(data)
+                    args.append(data.to_pybytes())
                 elif meta == PICKLE_BUFFER_METADATA:
                     # This is a pickled "simple python value" argument.
                     args.append(pickle.loads(data.to_pybytes()))

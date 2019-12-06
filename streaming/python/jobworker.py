@@ -46,8 +46,8 @@ class JobWorker(object):
     def init(self, env):
         """init streaming actor"""
         env = pickle.loads(env)
-        logger.info("init operator instance %s", self.__class__.__name__)
         self.env = env
+        logger.info("init operator instance %s", self.processor_name)
 
         if env.config.channel_type == Config.NATIVE_CHANNEL:
             core_worker = ray.worker.global_worker.core_worker
@@ -76,7 +76,7 @@ class JobWorker(object):
                 self.operator.partitioning_strategies)
             self.output_gate.init()
         logger.info("init operator instance %s succeed",
-                    self.__class__.__name__)
+                    self.processor_name)
         return True
 
     # Starts the actor
@@ -102,22 +102,22 @@ class JobWorker(object):
     def is_finished(self):
         return not self.t.is_alive()
 
-    def on_reader_message(self, buffer: ray._raylet.Buffer):
+    def on_reader_message(self, buffer: bytes):
         """used in direct call mode"""
         self.reader_client.on_reader_message(buffer)
 
-    def on_reader_message_sync(self, buffer: ray._raylet.Buffer):
+    def on_reader_message_sync(self, buffer: bytes):
         """used in direct call mode"""
         if self.reader_client is None:
             return b" " * 4  # special flag to indicate this actor not ready
         result = self.reader_client.on_reader_message_sync(buffer)
         return result
 
-    def on_writer_message(self, buffer: ray._raylet.Buffer):
+    def on_writer_message(self, buffer: bytes):
         """used in direct call mode"""
         self.writer_client.on_writer_message(buffer)
 
-    def on_writer_message_sync(self, buffer: ray._raylet.Buffer):
+    def on_writer_message_sync(self, buffer: bytes):
         """used in direct call mode"""
         if self.writer_client is None:
             return b" " * 4  # special flag to indicate this actor not ready

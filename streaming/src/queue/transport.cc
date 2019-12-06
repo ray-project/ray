@@ -18,15 +18,11 @@ void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &fun
 
   std::vector<TaskArg> args;
   if (function.GetLanguage() == Language::PYTHON) {
-    // see _raylet.pyx for assci
-    char ascii_meta[5] = {'A', 'S', 'C', 'I', 'I'};
-    std::shared_ptr<LocalMemoryBuffer> ascii_meta_buf =
-        std::make_shared<LocalMemoryBuffer>((uint8_t *)ascii_meta, 5, true);
     auto dummy = "__RAY_DUMMY__";
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
         std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
     args.emplace_back(TaskArg::PassByValue(
-        std::make_shared<RayObject>(std::move(dummyBuffer), ascii_meta_buf, true)));
+        std::make_shared<RayObject>(std::move(dummyBuffer), meta, true)));
   }
   args.emplace_back(
       TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true)));
@@ -58,14 +54,11 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
 
   std::vector<TaskArg> args;
   if (function.GetLanguage() == Language::PYTHON) {
-    char ascii_meta[5] = {'A', 'S', 'C', 'I', 'I'};
-    std::shared_ptr<LocalMemoryBuffer> ascii_meta_buf =
-        std::make_shared<LocalMemoryBuffer>((uint8_t *)ascii_meta, 5, true);
     auto dummy = "__RAY_DUMMY__";
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
         std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
     args.emplace_back(TaskArg::PassByValue(
-        std::make_shared<RayObject>(std::move(dummyBuffer), ascii_meta_buf, true)));
+        std::make_shared<RayObject>(std::move(dummyBuffer), meta, true)));
   }
   args.emplace_back(
       TaskArg::PassByValue(std::make_shared<RayObject>(buffer, meta, true)));

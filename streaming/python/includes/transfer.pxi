@@ -70,19 +70,19 @@ cdef class ReaderClient:
         del self.client
         self.client = NULL
 
-    def on_reader_message(self, value: Buffer):
+    def on_reader_message(self, const unsigned char[:] value):
         cdef:
-            shared_ptr[CBuffer] buffer = (<Buffer>value).buffer
+            size_t size = value.nbytes
             shared_ptr[CLocalMemoryBuffer] local_buf = \
-                make_shared[CLocalMemoryBuffer](buffer.get().Data(), buffer.get().Size(), True)
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
         with nogil:
             self.client.OnReaderMessage(local_buf)
 
-    def on_reader_message_sync(self, value: Buffer):
+    def on_reader_message_sync(self, const unsigned char[:] value):
         cdef:
-            shared_ptr[CBuffer] buffer = (<Buffer>value).buffer
+            size_t size = value.nbytes
             shared_ptr[CLocalMemoryBuffer] local_buf = \
-                make_shared[CLocalMemoryBuffer](buffer.get().Data(), buffer.get().Size(), True)
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
             shared_ptr[CLocalMemoryBuffer] result_buffer
         with nogil:
             result_buffer = self.client.OnReaderMessageSync(local_buf)
@@ -111,19 +111,19 @@ cdef class WriterClient:
         del self.client
         self.client = NULL
 
-    def on_writer_message(self, value: Buffer):
+    def on_writer_message(self, const unsigned char[:] value):
         cdef:
-            shared_ptr[CBuffer] buffer = (<Buffer>value).buffer
+            size_t size = value.nbytes
             shared_ptr[CLocalMemoryBuffer] local_buf = \
-                make_shared[CLocalMemoryBuffer](buffer.get().Data(), buffer.get().Size(), True)
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
         with nogil:
             self.client.OnWriterMessage(local_buf)
 
-    def on_writer_message_sync(self, value: Buffer):
+    def on_writer_message_sync(self, const unsigned char[:] value):
         cdef:
-            shared_ptr[CBuffer] buffer = (<Buffer>value).buffer
+            size_t size = value.nbytes
             shared_ptr[CLocalMemoryBuffer] local_buf = \
-                make_shared[CLocalMemoryBuffer](buffer.get().Data(), buffer.get().Size(), True)
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), size, True)
             shared_ptr[CLocalMemoryBuffer] result_buffer
         with nogil:
             result_buffer = self.client.OnWriterMessageSync(local_buf)
