@@ -362,6 +362,13 @@ class CoreWorker {
                                const std::vector<std::shared_ptr<Buffer>> &metadatas,
                                std::vector<std::shared_ptr<RayObject>> *return_objects);
 
+  /// Get a handle to an actor.
+  ///
+  /// \param[in] actor_id The actor handle to get.
+  /// \param[out] actor_handle A handle to the requested actor.
+  /// \return Status::Invalid if we don't have this actor handle.
+  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
@@ -427,14 +434,6 @@ class CoreWorker {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
-
-  /// Get a handle to an actor. This asserts that the worker actually has this
-  /// handle.
-  ///
-  /// \param[in] actor_id The actor handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
-  /// \return Status::Invalid if we don't have this actor handle.
-  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
@@ -559,8 +558,13 @@ class CoreWorker {
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
+  /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
+  /// need a mutex to protect it.
+  mutable absl::Mutex actor_handles_mutex_;
+
   /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
+      GUARDED_BY(actor_handles_mutex_);
 
   /// Resolve local and remote dependencies for actor creation.
   std::unique_ptr<LocalDependencyResolver> resolver_;
