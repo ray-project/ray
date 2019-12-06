@@ -114,7 +114,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
  private:
   /// Methods for handling clients.
 
-  /// Handler for the addition of a new GCS node.
+  /// Handler for the addition of a new node.
   ///
   /// \param data Data associated with the new node.
   /// \return Void.
