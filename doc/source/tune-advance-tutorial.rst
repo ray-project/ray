@@ -81,7 +81,7 @@ values throughout training, leading to automatic learning of the best configurat
 
 First we define a Trainable that wraps a ConvNet model.
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
    :language: python
    :start-after: __trainable_begin__
    :end-before: __trainable_end__
@@ -95,7 +95,7 @@ with reuse_actors=True.
 
 Then we define a PBT scheduler
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_trainable.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
    :language: python
    :start-after: __pbt_begin__
    :end-before: __pbt_end__
@@ -115,7 +115,7 @@ may go out of the specific range.
 
 Now we can kick off the tuning process by invoking tune.run:
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
    :language: python
    :start-after: __tune_begin__
    :end-before: __tune_end__
@@ -144,9 +144,7 @@ and individual policy perturbations are recorded in pbt_policy_{i}.txt. Tune log
 [target trial tag, clone trial tag, target trial iteration, clone trial iteration,
 old config, new config] on each perturbation step.
 
-
-
-
+Checking the accuracy:
 
 .. code-block:: python
 
@@ -167,5 +165,87 @@ old config, new config] on each perturbation step.
 DCGAN with Trainable and PBT
 ----------------------------
 
+The Generative Adversarial Networks (GAN) (Goodfellow et al., 2014) framework learns generative
+models via a training paradigm consisting of two competing modules – a generator and a
+discriminator. GAN training can be remarkably brittle and unstable in the face of suboptimal
+hyper- parameter selection with generators often collapsing to a single mode or diverging entirely.
 
+As presented in `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__,
+PBT can help with the DCGAN training and next we're gonna to build a simple DCGAN demo.
+Complete code example at `github <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples/dcgan_mnist_pbt>`__
 
+We define the Generator and Discriminator with standard Pytorch API:
+
+.. literalinclude:: ../../python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py
+   :language: python
+   :start-after: __GANmodel_begin__
+   :end-before: __GANmodel_end__
+
+To train the model with PBT, we need to define a metric for the scheduler to evaluate
+the model candidates. For a GAN network, inception score is arguably the most
+commonly used metric. We trained a mnist classification model (LeNet) and use
+it to inference the generated images and evaluate the image quality.
+
+.. literalinclude:: ../../python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py
+   :language: python
+   :start-after: __INCEPTION_SCORE_begin__
+   :end-before: __INCEPTION_SCORE_end__
+
+The ``Trainable`` class includes a Generator and a Discriminator, each with an
+independent learning rate and optimizer.
+
+.. literalinclude:: ../../python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py
+   :language: python
+   :start-after: __Trainable_begin__
+   :end-before: __Trainable_end__
+
+We specify inception score as the metric and start the tuning:
+
+.. literalinclude:: ../../python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py
+   :language: python
+   :start-after: __tune_begin__
+   :end-before: __tune_end__
+
+The trained Generator models can be load from checkpoints, and generate images
+from noise signals.
+
+.. image:: images/tune_advance_dcgan_generated.gif
+
+Visualize the increasing inception score from the training logs.
+
+.. code-block:: python
+
+    lossG = [df['is_score'].tolist() for df in list(analysis.trial_dataframes.values())]
+
+    plt.figure(figsize=(10,5))
+    plt.title("Inception Score During Training")
+    for i, lossg in enumerate(lossG):
+        plt.plot(lossg,label=i)
+
+    plt.xlabel("iterations")
+    plt.ylabel("is_score")
+    plt.legend()
+    plt.show()
+
+.. image:: images/tune_advance_dcgan_inscore.png
+
+And the Generator loss:
+
+.. code-block:: python
+
+    lossG = [df['lossg'].tolist() for df in list(analysis.trial_dataframes.values())]
+
+    plt.figure(figsize=(10,5))
+    plt.title("Generator Loss During Training")
+    for i, lossg in enumerate(lossG):
+        plt.plot(lossg,label=i)
+
+    plt.xlabel("iterations")
+    plt.ylabel("LossG")
+    plt.legend()
+    plt.show()
+
+.. image:: images/tune_advance_dcgan_Gloss.png
+
+Training of the MNist Generator takes about several minutes. The example can be easily
+altered to generate images for other dataset, e.g. cifar10 or LSUN.
