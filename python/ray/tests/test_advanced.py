@@ -1294,8 +1294,8 @@ def test_two_custom_resources(ray_start_cluster):
         return ray.worker.global_worker.node.unique_id
 
     # The f and g tasks should be scheduled on both raylets.
-    assert len(set(ray.get([f.remote() for _ in range(50)]))) == 2
-    assert len(set(ray.get([g.remote() for _ in range(50)]))) == 2
+    assert len(set(ray.get([f.remote() for _ in range(500)]))) == 2
+    assert len(set(ray.get([g.remote() for _ in range(500)]))) == 2
 
     node_id = ray.worker.global_worker.node.unique_id
 
@@ -1555,6 +1555,8 @@ def wait_for_num_objects(num_objects, timeout=10):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="New GCS API doesn't have a Python API yet.")
+@pytest.mark.skipif(
+    ray_constants.direct_call_enabled(), reason="state API not supported")
 def test_global_state_api(shutdown_only):
 
     error_message = ("The ray global state API cannot be used "
