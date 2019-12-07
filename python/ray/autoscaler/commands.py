@@ -140,7 +140,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
                 node_creation_commands=[],
-                ray_restart_commands=[],
+                ray_start_commands=[],
                 runtime_hash="")
 
             _exec(updater, "ray stop", False, False)
@@ -259,7 +259,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             node_creation_commands=node_setup_commands,
-            ray_restart_commands=ray_restart_commands,
+            ray_start_commands=ray_restart_commands,
             runtime_hash=runtime_hash,
         )
         updater.start()
@@ -370,7 +370,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             node_creation_commands=[],
-            ray_restart_commands=[],
+            ray_start_commands=[],
             runtime_hash="",
         )
 
@@ -463,7 +463,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             node_creation_commands=[],
-            ray_restart_commands=[],
+            ray_start_commands=[],
             runtime_hash="",
         )
         if down:

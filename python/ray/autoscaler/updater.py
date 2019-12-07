@@ -295,7 +295,7 @@ class NodeUpdater(object):
                  cluster_name,
                  file_mounts,
                  node_creation_commands,
-                 ray_restart_commands,
+                 ray_start_commands,
                  runtime_hash,
                  process_runner=subprocess,
                  use_internal_ip=False):
@@ -321,7 +321,7 @@ class NodeUpdater(object):
             for remote, local in file_mounts.items()
         }
         self.node_creation_commands = node_creation_commands
-        self.ray_restart_commands = ray_restart_commands
+        self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
 
     def run(self):
@@ -420,7 +420,7 @@ class NodeUpdater(object):
                     self.cmd_runner.run(cmd)
 
         with LogTimer(self.log_prefix + "Ray start commands completed"):
-            for cmd in self.ray_restart_commands:
+            for cmd in self.ray_start_commands:
                 self.cmd_runner.run(cmd)
 
     def rsync_up(self, source, target):

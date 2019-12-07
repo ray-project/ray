@@ -552,7 +552,7 @@ class StandardAutoscaler(object):
             cluster_name=self.config["cluster_name"],
             file_mounts={},
             node_creation_commands=[],
-            ray_restart_commands=with_head_node_ip(
+            ray_start_commands=with_head_node_ip(
                 get_commands(self.config, RAY_START_COMMAND, is_head=False)),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
@@ -590,7 +590,7 @@ class StandardAutoscaler(object):
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             node_creation_commands=with_head_node_ip(node_creation_commands),
-            ray_restart_commands=with_head_node_ip(ray_restart_commands),
+            ray_start_commands=with_head_node_ip(ray_restart_commands),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
