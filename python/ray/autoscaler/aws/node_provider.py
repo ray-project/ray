@@ -12,8 +12,8 @@ import botocore
 from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_FIRST_BOOT, \
-    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_NAME, TAG_RAY_NODE_TYPE
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_LAUNCH_CONFIG, \
+    TAG_RAY_NODE_NAME, TAG_RAY_NODE_TYPE
 from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
@@ -222,10 +222,8 @@ class AWSNodeProvider(NodeProvider):
 
                 self.ec2.meta.client.start_instances(
                     InstanceIds=reuse_node_ids)
-                reuse_tags = dict(tags)
                 for node_id in reuse_node_ids:
-                    reuse_tags[TAG_RAY_FIRST_BOOT] = False
-                    self.set_node_tags(node_id, reuse_tags)
+                    self.set_node_tags(node_id, tags)
                 count -= len(reuse_node_ids)
 
         if count:
@@ -244,9 +242,6 @@ class AWSNodeProvider(NodeProvider):
         tag_pairs = [{
             "Key": TAG_RAY_CLUSTER_NAME,
             "Value": self.cluster_name,
-        }, {
-            "Key": TAG_RAY_FIRST_BOOT,
-            "Value": True,
         }]
         for k, v in tags.items():
             tag_pairs.append({

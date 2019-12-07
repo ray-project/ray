@@ -24,9 +24,6 @@ STATUS_UP_TO_DATE = "up-to-date"
 # Tag uniquely identifying all nodes of a cluster
 TAG_RAY_CLUSTER_NAME = "ray-cluster-name"
 
-# Whether the node has just been created (True), or is restarted (False)
-TAG_RAY_FIRST_BOOT = "ray-first-boot"
-
 # Hash of the node launch config, used to identify out-of-date nodes
 TAG_RAY_LAUNCH_CONFIG = "ray-launch-config"
 

@@ -16,7 +16,7 @@ from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
     fillout_defaults, validate_config
 from ray.autoscaler.schema import NODE_CREATION_COMMANDS, RAY_START_COMMAND
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
-    TAG_RAY_FIRST_BOOT, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.test_utils import RayTestTimeoutException
 import pytest
@@ -131,10 +131,8 @@ class MockProvider(NodeProvider):
                     count -= 1
                     node.state = "pending"
                     node.tags.update(tags)
-                    node.tags[TAG_RAY_FIRST_BOOT] = False
         for _ in range(count):
             tags = tags.copy()
-            tags[TAG_RAY_FIRST_BOOT] = True
             self.mock_nodes[self.next_id] = MockNode(self.next_id, tags)
             self.next_id += 1
 
