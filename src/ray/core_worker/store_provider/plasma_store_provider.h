@@ -8,6 +8,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
@@ -34,14 +35,14 @@ class CoreWorkerPlasmaStoreProvider {
   Status Seal(const ObjectID &object_id);
 
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
-             const TaskID &task_id,
+             const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, const TaskID &task_id,
+              int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
   Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
@@ -59,6 +60,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] timeout_ms Timeout in milliseconds.
   /// \param[in] fetch_only Whether the raylet should only fetch or also attempt to
   /// reconstruct objects.
+  /// \param[in] in_direct_call_task Whether the current task is direct call.
   /// \param[in] task_id The current TaskID.
   /// \param[out] results Map of objects to write results into. This method will only
   /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
@@ -68,7 +70,8 @@ class CoreWorkerPlasmaStoreProvider {
   /// \return Status.
   Status FetchAndGetFromPlasmaStore(
       absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
-      int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
+      int64_t timeout_ms, bool fetch_only, bool in_direct_call_task,
+      const TaskID &task_id,
       absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
 

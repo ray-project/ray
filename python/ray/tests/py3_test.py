@@ -4,11 +4,12 @@ from __future__ import division
 from __future__ import print_function
 
 import asyncio
+import threading
 import pytest
 
 import ray
-import ray.tests.cluster_utils
-import ray.tests.utils
+import ray.cluster_utils
+import ray.test_utils
 
 
 @pytest.mark.parametrize(
@@ -102,13 +103,9 @@ def test_asyncio_actor(ray_start_regular):
     class AsyncBatcher(object):
         def __init__(self):
             self.batch = []
-            # The event currently need to be created from the same thread.
-            # We currently run async coroutines from a different thread.
-            self.event = None
+            self.event = asyncio.Event()
 
         async def add(self, x):
-            if self.event is None:
-                self.event = asyncio.Event()
             self.batch.append(x)
             if len(self.batch) >= 3:
                 self.event.set()
@@ -125,3 +122,51 @@ def test_asyncio_actor(ray_start_regular):
     r3 = ray.get(x3)
     assert r1 == [1, 2, 3]
     assert r1 == r2 == r3
+
+
+def test_asyncio_actor_same_thread(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def sync_thread_id(self):
+            return threading.current_thread().ident
+
+        async def async_thread_id(self):
+            return threading.current_thread().ident
+
+    a = Actor.options(is_direct_call=True, is_asyncio=True).remote()
+    sync_id, async_id = ray.get(
+        [a.sync_thread_id.remote(),
+         a.async_thread_id.remote()])
+    assert sync_id == async_id
+
+
+def test_asyncio_actor_concurrency(ray_start_regular):
+    @ray.remote
+    class RecordOrder:
+        def __init__(self):
+            self.history = []
+
+        async def do_work(self):
+            self.history.append("STARTED")
+            # Force a context switch
+            await asyncio.sleep(0)
+            self.history.append("ENDED")
+
+        def get_history(self):
+            return self.history
+
+    num_calls = 10
+
+    a = RecordOrder.options(
+        is_direct_call=True, max_concurrency=1, is_asyncio=True).remote()
+    ray.get([a.do_work.remote() for _ in range(num_calls)])
+    history = ray.get(a.get_history.remote())
+
+    # We only care about ordered start-end-start-end sequence because
+    # coroutines may be executed out of enqueued order.
+    answer = []
+    for _ in range(num_calls):
+        for status in ["STARTED", "ENDED"]:
+            answer.append(status)
+
+    assert history == answer

@@ -378,7 +378,10 @@ class ActorClass(object):
                 task.
             is_direct_call: Use direct actor calls.
             max_concurrency: The max number of concurrent calls to allow for
-                this actor. This only works with direct actor calls.
+                this actor. This only works with direct actor calls. The max
+                concurrency defaults to 1 for threaded execution, and 100 for
+                asyncio execution. Note that the execution order is not
+                guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: Whether the actor should be kept alive after driver
                 exits.
@@ -395,7 +398,10 @@ class ActorClass(object):
         if is_direct_call is None:
             is_direct_call = bool(os.environ.get("RAY_FORCE_DIRECT"))
         if max_concurrency is None:
-            max_concurrency = 1
+            if is_asyncio:
+                max_concurrency = 100
+            else:
+                max_concurrency = 1
 
         if max_concurrency > 1 and not is_direct_call:
             raise ValueError(
@@ -406,8 +412,6 @@ class ActorClass(object):
         if is_asyncio and not is_direct_call:
             raise ValueError(
                 "Setting is_asyncio requires is_direct_call=True.")
-        if is_asyncio and max_concurrency != 1:
-            raise ValueError("Setting is_asyncio requires max_concurrency=1.")
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:

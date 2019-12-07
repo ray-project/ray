@@ -9,7 +9,8 @@
 
 namespace ray {
 
-typedef std::function<void(const std::shared_ptr<void>, const std::string &, int)>
+typedef std::function<void(const std::shared_ptr<void>, const std::string &, int,
+                           const ResourceIdSet &)>
     DispatchTaskCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.

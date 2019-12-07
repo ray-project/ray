@@ -67,43 +67,6 @@ matrix:
         - go get github.com/bazelbuild/buildtools/buildifier
         - ./ci/travis/bazel-format.sh
 
-    - os: linux
-      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
-      before_install:
-        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
-
-        # Install a newer version of valgrind, the one that comes with
-        # Ubuntu 16.04 is broken (Illegal instruction)
-        - sudo add-apt-repository -y ppa:msulikowski/valgrind
-        - sudo apt-get update -qq
-        - sudo apt-get install -qq valgrind
-
-      install:
-        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
-
-        - ./ci/suppress_output ./ci/travis/install-bazel.sh
-        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
-
-      script:
-        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
-
-        - bash src/ray/test/run_object_manager_valgrind.sh
-
-        - export RAY_PLASMA_STORE_VALGRIND=1
-        # - export RAY_RAYLET_VALGRIND=1
-        # - export RAY_RAYLET_MONITOR_VALGRIND=1
-        # - export RAY_REDIS_SERVER_VALGRIND=1
-
-        # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 python/ray/experimental/test/async_test.py
-        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_mini.py
-        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_array.py
-        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_multi_node_2.py
-        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_node_manager.py
-
     # Build Linux wheels.
     - os: linux
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
@@ -122,6 +85,9 @@ matrix:
         # except the `$MOUNT_BAZEL_CACHE` part.
 
         - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+
+        # Ignore any error for successful wheel uploads
+        - $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh || true
       script:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
 
@@ -154,27 +120,16 @@ install:
   - ./ci/suppress_output ./ci/travis/install-ray.sh
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
-  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
-
-  # core worker test.
-  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
-
-  # Raylet tests.
-  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
-  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc //:all
-  # Shutdown bazel to release the memory held by bazel.
-  - bazel shutdown
-
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
-  # The following is needed so cloudpickle can find some of the
-  # class definitions: The main module of tests that are run
-  # with pytest have the same name as the test file -- and this
-  # module is only found if the test directory is in the PYTHONPATH.
-  # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
-  # ray tune tests, except tests tagged jenkins only.
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=120 --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
+  # raylet integration tests
+  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
+
+  # cc bazel tests
+  - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
@@ -184,7 +139,9 @@ script:
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests --ignore=python/ray/tests/perf_integration_tests --ignore=python/ray/tests/py3_test.py; fi
+
+  # py bazel tests, run using local strategy since PY2 breaks with sandbox
+  - ./ci/keep_alive bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --nocache_test_results --test_verbose_timeout_warnings --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
 
 deploy:
   - provider: s3
@@ -211,12 +168,12 @@ deploy:
     local_dir: .whl
     upload-dir: latest
     skip_cleanup: true
-    only:
-      - master
     on:
+      branch: master
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
 cache:
   directories:
     - $HOME/ray-bazel-cache
+

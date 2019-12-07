@@ -41,6 +41,7 @@ from libcpp.vector cimport vector as c_vector
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
+    CAddress,
     CLanguage,
     CRayObject,
     CRayStatus,
@@ -130,11 +131,13 @@ MEMCOPY_THREADS = 12
 PY3 = cpython.PY_MAJOR_VERSION >= 3
 
 
-if cpython.PY_MAJOR_VERSION >= 3:
+if PY3:
     import pickle
 else:
     import cPickle as pickle
 
+if PY3:
+    from ray.async_compat import sync_to_async
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
@@ -394,7 +397,7 @@ cdef class RayletClient:
                              TaskID current_task_id=TaskID.nil()):
         cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
         check_status(self.client.FetchOrReconstruct(
-            fetch_ids, fetch_only, current_task_id.native()))
+            fetch_ids, fetch_only, True, current_task_id.native()))
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
@@ -449,7 +452,7 @@ cdef deserialize_args(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == RAW_BUFFER_METADATA):
                 data = Buffer.make(c_args[i].get().GetData())
-                args.append(data)
+                args.append(data.to_pybytes())
             elif (c_args[i].get().HasMetadata() and Buffer.make(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == PICKLE_BUFFER_METADATA):
@@ -534,14 +537,14 @@ cdef execute_task(
                   b' "task_id": ' + task_id.Hex() + b'}')
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        title = "ray_worker:{}()".format(function_name)
-        next_title = "ray_worker"
+        title = "ray::{}()".format(function_name)
+        next_title = "ray::IDLE"
         function_executor = execution_info.function
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
-        title = "ray_{}:{}()".format(class_name, function_name)
-        next_title = "ray_{}".format(class_name)
+        title = "ray::{}.{}()".format(class_name, function_name)
+        next_title = "ray::{}".format(class_name)
         worker_name = "ray_{}_{}".format(class_name, os.getpid())
         if c_resources.find(b"memory") != c_resources.end():
             worker.memory_monitor.set_heap_limit(
@@ -557,10 +560,17 @@ cdef execute_task(
 
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
-            result_or_coroutine = function(actor, *arguments, **kwarguments)
 
-            if PY3 and inspect.iscoroutine(result_or_coroutine):
-                coroutine = result_or_coroutine
+            if PY3 and core_worker.current_actor_is_asyncio():
+                if inspect.iscoroutinefunction(function.method):
+                    async_function = function
+                else:
+                    # Just execute the method if it's ray internal method.
+                    if function.name.startswith("__ray"):
+                        return function(actor, *arguments, **kwarguments)
+                    async_function = sync_to_async(function)
+
+                coroutine = async_function(actor, *arguments, **kwarguments)
                 loop = core_worker.create_or_get_event_loop()
 
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
@@ -573,7 +583,7 @@ cdef execute_task(
 
                 return future.result()
 
-            return result_or_coroutine
+            return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -749,6 +759,7 @@ cdef class CoreWorker:
             task_execution_handler, check_signals, exit_handler, True))
 
     def disconnect(self):
+        self.destory_event_loop_if_exists()
         with nogil:
             self.core_worker.get().Disconnect()
 
@@ -900,7 +911,8 @@ cdef class CoreWorker:
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
-                    resources):
+                    resources,
+                    int max_retries):
         cdef:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
@@ -918,7 +930,8 @@ cdef class CoreWorker:
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
-                    ray_function, args_vector, task_options, &return_ids))
+                    ray_function, args_vector, task_options, &return_ids,
+                    max_retries))
 
             return VectorToObjectIDs(return_ids)
 
@@ -1042,11 +1055,29 @@ cdef class CoreWorker:
         # Note: faster to not release GIL for short-running op.
         self.core_worker.get().RemoveObjectIDReference(c_object_id)
 
-    def promote_object_to_plasma(self, ObjectID object_id):
+    def serialize_and_promote_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-        self.core_worker.get().PromoteObjectToPlasma(c_object_id)
-        return object_id.with_plasma_transport_type()
+            CTaskID c_owner_id = CTaskID.Nil()
+            CAddress c_owner_address = CAddress()
+        self.core_worker.get().PromoteToPlasmaAndGetOwnershipInfo(
+                c_object_id, &c_owner_id, &c_owner_address)
+        return (object_id,
+                TaskID(c_owner_id.Binary()),
+                c_owner_address.SerializeAsString())
+
+    def deserialize_and_register_object_id(
+            self, const c_string &object_id_binary, const c_string
+            &owner_id_binary, const c_string &serialized_owner_address):
+        cdef:
+            CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
+            CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
+            CAddress c_owner_address = CAddress()
+        c_owner_address.ParseFromString(serialized_owner_address)
+        self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
+                c_object_id,
+                c_owner_id,
+                c_owner_address)
 
     # TODO: handle noreturn better
     cdef store_task_outputs(
@@ -1099,6 +1130,18 @@ cdef class CoreWorker:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()
             )
+            # Making the thread a daemon causes it to exit
+            # when the main thread exits.
+            self.async_thread.daemon = True
             self.async_thread.start()
 
         return self.async_event_loop
+
+    def destory_event_loop_if_exists(self):
+        if self.async_event_loop is not None:
+            self.async_event_loop.stop()
+        if self.async_thread is not None:
+            self.async_thread.join()
+
+    def current_actor_is_asyncio(self):
+        return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()

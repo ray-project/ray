@@ -173,7 +173,11 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     auto promoted_it = promoted_to_plasma_.find(object_id);
     if (promoted_it != promoted_to_plasma_.end()) {
       RAY_CHECK(store_in_plasma_ != nullptr);
-      store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+      if (!object.IsInPlasmaError()) {
+        // Only need to promote to plasma if it wasn't already put into plasma
+        // by the task that created the object.
+        store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+      }
       promoted_to_plasma_.erase(promoted_it);
     }
 
@@ -263,10 +267,8 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   }
 
   // Only send block/unblock IPCs for non-actor tasks on the main thread.
-  // TODO(ekl) support non-lifetime resources for direct actor calls.
   bool should_notify_raylet =
-      (raylet_client_ != nullptr && !ctx.CurrentActorIsDirectCall() &&
-       ctx.CurrentThreadIsMain());
+      (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
 
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
@@ -358,10 +360,19 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
   return Status::OK();
 }
 
-void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids) {
+void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids,
+                                   absl::flat_hash_set<ObjectID> *plasma_ids_to_delete) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
-    objects_.erase(object_id);
+    auto it = objects_.find(object_id);
+    if (it != objects_.end()) {
+      if (it->second->IsInPlasmaError()) {
+        plasma_ids_to_delete->insert(
+            object_id.WithTransportType(TaskTransportType::RAYLET));
+      } else {
+        objects_.erase(it);
+      }
+    }
   }
 }
 
@@ -375,6 +386,9 @@ void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
 bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
   absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
+  if (it != objects_.end() && it->second->IsInPlasmaError()) {
+    return false;
+  }
   return it != objects_.end();
 }
 

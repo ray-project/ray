@@ -11,11 +11,13 @@ namespace ray {
 
 class CoreWorkerRayletTaskReceiver {
  public:
-  using TaskHandler = std::function<Status(
-      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_objects)>;
+  using TaskHandler =
+      std::function<Status(const TaskSpecification &task_spec,
+                           const std::shared_ptr<ResourceMappingType> &resource_ids,
+                           std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
-  CoreWorkerRayletTaskReceiver(std::shared_ptr<RayletClient> &raylet_client,
+  CoreWorkerRayletTaskReceiver(const WorkerID &worker_id,
+                               std::shared_ptr<RayletClient> &raylet_client,
                                const TaskHandler &task_handler,
                                const std::function<void()> &exit_handler);
 
@@ -31,6 +33,8 @@ class CoreWorkerRayletTaskReceiver {
                         rpc::SendReplyCallback send_reply_callback);
 
  private:
+  // WorkerID of this worker.
+  WorkerID worker_id_;
   /// Reference to the core worker's raylet client. This is a pointer ref so that it
   /// can be initialized by core worker after this class is constructed.
   std::shared_ptr<RayletClient> &raylet_client_;

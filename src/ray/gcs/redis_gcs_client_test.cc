@@ -2,7 +2,7 @@
 
 // TODO(pcm): get rid of this and replace with the type safe plasma event loop
 extern "C" {
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/hiredis.h"
 }
 
 #include "ray/common/ray_config.h"
