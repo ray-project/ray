@@ -14,8 +14,7 @@ import ray
 import ray.services as services
 from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
     fillout_defaults, validate_config
-from ray.autoscaler.schema import NODE_CREATION_COMMANDS, \
-    NODE_START_COMMANDS, RAY_START_COMMAND
+from ray.autoscaler.schema import NODE_CREATION_COMMANDS, RAY_START_COMMAND
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
     TAG_RAY_FIRST_BOOT, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
@@ -188,9 +187,6 @@ SMALL_CLUSTER = {
     NODE_CREATION_COMMANDS: ["setup_cmd"],
     "head_" + NODE_CREATION_COMMANDS: ["head_setup_cmd"],
     "worker_" + NODE_CREATION_COMMANDS: ["worker_setup_cmd"],
-    NODE_START_COMMANDS: ["boot_cmd"],
-    "head_" + NODE_START_COMMANDS: ["head_boot_cmd"],
-    "worker_" + NODE_START_COMMANDS: ["worker_boot_cmd"],
     RAY_START_COMMAND: ["start_ray"],
     "head_" + RAY_START_COMMAND: ["head_start_ray"],
     "worker_" + RAY_START_COMMAND: ["worker_start_ray"],
@@ -965,8 +961,7 @@ class AutoscalingTest(unittest.TestCase):
 
     def testSetupCommandsWithNoNodeCaching(self):
         expected_fields = [
-            "setup_cmd", "worker_setup_cmd", "boot_cmd", "worker_boot_cmd",
-            "start_ray", "worker_start_ray"
+            "setup_cmd", "worker_setup_cmd", "start_ray", "worker_start_ray"
         ]
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 1
@@ -1004,7 +999,6 @@ class AutoscalingTest(unittest.TestCase):
 
     def testSetupCommandsWithStoppedNodeCaching(self):
         expected_setup_fields = ["setup_cmd", "worker_setup_cmd"]
-        expected_boot_fields = ["boot_cmd", "worker_boot_cmd"]
         expected_start_fields = ["start_ray", "worker_start_ray"]
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 1
@@ -1025,8 +1019,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-        for fld in (expected_setup_fields + expected_boot_fields +
-                    expected_start_fields):
+        for fld in expected_setup_fields + expected_start_fields:
             runner.assert_has_call("172.0.0.0", fld)
 
         # Check the node was indeed reused
@@ -1040,13 +1033,12 @@ class AutoscalingTest(unittest.TestCase):
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         for fld in expected_setup_fields:
             runner.assert_not_has_call("172.0.0.0", fld)
-        for fld in expected_boot_fields + expected_start_fields:
+        for fld in expected_start_fields:
             runner.assert_has_call("172.0.0.0", fld)
 
         runner.clear_history()
         autoscaler.update()
-        for fld in (expected_setup_fields + expected_boot_fields +
-                    expected_start_fields):
+        for fld in expected_setup_fields + expected_start_fields:
             runner.assert_not_has_call("172.0.0.0", fld)
 
         # We did not start any other nodes

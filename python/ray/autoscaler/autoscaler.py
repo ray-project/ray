@@ -17,8 +17,7 @@ import numpy as np
 import ray.services as services
 import yaml
 from ray.autoscaler.schema import CLUSTER_CONFIG_SCHEMA, \
-    NODE_CREATION_COMMANDS, NODE_START_COMMANDS, RAY_START_COMMAND, \
-    REQUIRED, get_commands
+    NODE_CREATION_COMMANDS, RAY_START_COMMAND, REQUIRED, get_commands
 from ray.worker import global_worker
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
@@ -442,14 +441,13 @@ class StandardAutoscaler(object):
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id in nodes:
-            (node_id, node_setup_commands, node_start_commands,
-             ray_start) = self.should_update(node_id)
+            node_id, node_setup_commands, ray_start = self.should_update(
+                node_id)
             if node_id is not None:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, node_setup_commands,
-                              node_start_commands, ray_start)))
+                        args=(node_id, node_setup_commands, ray_start)))
         for t in T:
             t.start()
         for t in T:
@@ -549,8 +547,7 @@ class StandardAutoscaler(object):
             auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts={},
-            node_setup_commands=[],
-            node_start_commands=[],
+            node_creation_commands=[],
             ray_restart_commands=with_head_node_ip(
                 get_commands(self.config, RAY_START_COMMAND, is_head=False)),
             runtime_hash=self.runtime_hash,
@@ -561,29 +558,25 @@ class StandardAutoscaler(object):
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
-            return None, None, None, None  # no update
+            return None, None, None  # no update
 
         status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
-            return None, None, None, None  # no update
+            return None, None, None  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         node_setup_commands = get_commands(
             self.config, NODE_CREATION_COMMANDS, is_head=False)
-        node_start_commands = get_commands(
-            self.config, NODE_START_COMMANDS, is_head=False)
         ray_restart_commands = get_commands(
             self.config, RAY_START_COMMAND, is_head=False)
         if successful_updated and self.config.get("restart_only", False):
             node_setup_commands = []
-            node_start_commands = []
         elif successful_updated and self.config.get("no_restart", False):
             ray_restart_commands = []
 
-        return (node_id, node_setup_commands, node_start_commands,
-                ray_restart_commands)
+        return node_id, node_setup_commands, ray_restart_commands
 
-    def spawn_updater(self, node_id, node_setup_commands, node_start_commands,
+    def spawn_updater(self, node_id, node_creation_commands,
                       ray_restart_commands):
         updater = NodeUpdaterThread(
             node_id=node_id,
@@ -592,8 +585,7 @@ class StandardAutoscaler(object):
             auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
-            node_setup_commands=with_head_node_ip(node_setup_commands),
-            node_start_commands=with_head_node_ip(node_start_commands),
+            node_creation_commands=with_head_node_ip(node_creation_commands),
             ray_restart_commands=with_head_node_ip(ray_restart_commands),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,

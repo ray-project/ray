@@ -294,8 +294,7 @@ class NodeUpdater(object):
                  auth_config,
                  cluster_name,
                  file_mounts,
-                 node_setup_commands,
-                 node_start_commands,
+                 node_creation_commands,
                  ray_restart_commands,
                  runtime_hash,
                  process_runner=subprocess,
@@ -321,8 +320,7 @@ class NodeUpdater(object):
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
         }
-        self.node_setup_commands = node_setup_commands
-        self.node_start_commands = node_start_commands
+        self.node_creation_commands = node_creation_commands
         self.ray_restart_commands = ray_restart_commands
         self.runtime_hash = runtime_hash
 
@@ -416,13 +414,9 @@ class NodeUpdater(object):
             # Run init commands
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            with LogTimer(self.log_prefix + "Node setup commands completed"):
-                for cmd in self.node_setup_commands:
-                    self.cmd_runner.run(cmd)
-
-        if not same_config or self.provider.is_cached(self.node_id):
-            with LogTimer(self.log_prefix + "Node start commands completed"):
-                for cmd in self.node_start_commands:
+            with LogTimer(self.log_prefix +
+                          "Node creation commands completed"):
+                for cmd in self.node_creation_commands:
                     self.cmd_runner.run(cmd)
 
         with LogTimer(self.log_prefix + "Ray start commands completed"):

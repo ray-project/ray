@@ -9,8 +9,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.schema import NODE_CREATION_COMMANDS, \
-    NODE_START_COMMANDS, RAY_START_COMMAND
+from ray.autoscaler.schema import NODE_CREATION_COMMANDS, RAY_START_COMMAND
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +41,15 @@ def dockerize_if_needed(config):
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
     # Rewrite commands to include `docker exec` where needed
-    for suffix in [NODE_START_COMMANDS, RAY_START_COMMAND]:
-        for prefix in ["", "head_", "worker_"]:
-            env_vars = None
-            if suffix == RAY_START_COMMAND and prefix == "worker_":
-                env_vars = ["RAY_HEAD_IP"]
+    for prefix in ["", "head_", "worker_"]:
+        env_vars = None
+        if prefix == "worker_":
+            env_vars = ["RAY_HEAD_IP"]
 
-            config[prefix + suffix] = maybe_docker_exec(
-                config.get(prefix + suffix, []),
-                container_name=cname,
-                env_vars=env_vars)
+        config[prefix + RAY_START_COMMAND] = maybe_docker_exec(
+            config.get(prefix + RAY_START_COMMAND, []),
+            container_name=cname,
+            env_vars=env_vars)
 
     if docker_pull:
         docker_pull_cmd = "docker pull {}".format(docker_image)
@@ -66,13 +64,11 @@ def dockerize_if_needed(config):
                                             docker_mounts, cname,
                                             run_options + worker_run_options)
 
-    config["head_" + NODE_START_COMMANDS] = (
-        head_docker_start + config["head_" + NODE_START_COMMANDS])
     config["head_" + RAY_START_COMMAND] = (
-        docker_autoscaler_setup(cname) + config["head_" + RAY_START_COMMAND])
-
-    config["worker_" + NODE_START_COMMANDS] = (
-        worker_docker_start + config["worker_" + NODE_START_COMMANDS])
+        head_docker_start + docker_autoscaler_setup(cname) +
+        config["head_" + RAY_START_COMMAND])
+    config["worker_" + RAY_START_COMMAND] = (
+        worker_docker_start + config["worker_" + RAY_START_COMMAND])
 
     return config
 

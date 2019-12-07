@@ -125,15 +125,11 @@ def make_command_schema(suffix):
 
 # Commands that will be run when the cluster is first created.
 NODE_CREATION_COMMANDS = "node_creation_commands"
-# Commands that will be run whenever a node is booted, including after
-# `node_setup_commands` when the cluster is created.
-NODE_START_COMMANDS = "node_start_commands"
 # Commands that will be run whenever Ray is (re)started.
 RAY_START_COMMAND = "start_ray_commands"
 
 for suffix in [
         NODE_CREATION_COMMANDS,
-        NODE_START_COMMANDS,
         RAY_START_COMMAND,
         # TODO: remove deprecated "setup_commands" in 0.8.x release
         "setup_commands"
