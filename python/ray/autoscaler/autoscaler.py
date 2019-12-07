@@ -720,8 +720,10 @@ def fillout_defaults(config):
     defaults["node_creation_commands"].append("rm -f {}".format(sentinel_path))
     for prefix in ["", "head_", "worker_"]:
         k = prefix + RAY_START_COMMAND
-        res = [maybe_start_only(cmd, sentinel_path)
-               for cmd in defaults.get(k, [])]
+        res = [
+            maybe_start_only(cmd, sentinel_path)
+            for cmd in defaults.get(k, [])
+        ]
         defaults[k] = res
 
     return defaults
