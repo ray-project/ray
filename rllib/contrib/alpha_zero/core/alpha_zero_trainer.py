@@ -15,11 +15,11 @@ from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
-from rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
-from rllib.contrib.alpha_zero.core.mcts import MCTS
-from rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
-from rllib.contrib.alpha_zero.optimizer.sync_batches_replay_optimizer import \
-    SyncBatchesReplayOptimizer
+from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
+from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
+from ray.rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
+from ray.rllib.contrib.alpha_zero.optimizer.sync_batches_replay_optimizer \
+    import SyncBatchesReplayOptimizer
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
