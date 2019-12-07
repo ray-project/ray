@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
@@ -50,6 +51,8 @@ public class ActorTest extends BaseTest {
     // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // A java actor is not a python actor
+    Assert.assertFalse(actor instanceof RayPyActor);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
     Ray.call(Counter::increase, actor, 1);

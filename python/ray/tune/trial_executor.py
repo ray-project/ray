@@ -226,12 +226,15 @@ class TrialExecutor(object):
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "restore() method")
 
-    def save(self, trial, storage=Checkpoint.DISK):
+    def save(self, trial, storage=Checkpoint.DISK, result=None):
         """Saves training state of this trial to a checkpoint.
+
+        If result is None, this trial's last result will be used.
 
         Args:
             trial (Trial): The state of this trial to be saved.
             storage (str): Where to store the checkpoint. Defaults to DISK.
+            result (dict): The state of this trial as a dictionary to be saved.
 
         Return:
             A Python object if storage==Checkpoint.MEMORY otherwise
