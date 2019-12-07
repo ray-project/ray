@@ -1472,7 +1472,10 @@ void NodeManager::ProcessReportActiveObjectIDs(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
-    RAY_CHECK(worker);
+    if (!worker) {
+      RAY_LOG(ERROR) << "Ignoring object ids report from failed / unknown worker.";
+      return;
+    }
   }
 
   auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
