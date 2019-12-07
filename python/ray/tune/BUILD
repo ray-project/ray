@@ -48,6 +48,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_experiment_analysis.py"],
     deps = [":tune_lib"],
+    flaky = 1,
 )
 
 py_test(
@@ -55,6 +56,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_experiment_analysis_mem.py"],
     deps = [":tune_lib"],
+    flaky = 1,
 )
 
 py_test(
@@ -85,6 +87,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_track.py"],
     deps = [":tune_lib"],
+    flaky = 1,
 )
 
 py_test(
@@ -101,6 +104,25 @@ py_test(
     srcs = ["tests/test_trial_runner.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
+    flaky = 1,
+)
+
+py_test(
+    name = "test_trial_runner_2",
+    size = "medium",
+    srcs = ["tests/test_trial_runner_2.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+    flaky = 1,
+)
+
+py_test(
+    name = "test_trial_runner_3",
+    size = "medium",
+    srcs = ["tests/test_trial_runner_3.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+    flaky = 1,
 )
 
 py_test(
