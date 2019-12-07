@@ -2273,6 +2273,9 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
 
   auto task_id = spec.TaskId();
   if (task.OnDispatch() != nullptr) {
+    if (task.GetTaskSpecification().IsDetachedActor()) {
+      worker->MarkDetachedActor();
+    }
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
                                                  : worker->GetTaskResourceIds());
