@@ -124,9 +124,9 @@ script:
   - export PATH="$HOME/miniconda/bin:$PATH"
 
   # raylet integration tests
-  #- TODO ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
-  #- TODO ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
-  #- TODO ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests
   #- TODO ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
