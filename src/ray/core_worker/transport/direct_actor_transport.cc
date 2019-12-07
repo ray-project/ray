@@ -69,10 +69,13 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                                          bool dead) {
   absl::MutexLock lock(&mu_);
-  // Remove rpc client if it's dead or being reconstructed.
-  auto erased = rpc_clients_.erase(actor_id);
 
-  if (erased > 0 || dead) {
+  if (!dead) {
+    // We're reconstructing the actor, so erase the client for now. The new client
+    // will be inserted once actor reconstruction completes. We don't erase the
+    // client when the actor is DEAD, so that all further tasks will be failed.
+    rpc_clients_.erase(actor_id);
+  } else {
     // If there are pending requests, treat the pending tasks as failed.
     auto pending_it = pending_requests_.find(actor_id);
     if (pending_it != pending_requests_.end()) {
@@ -85,12 +88,10 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
       }
       pending_requests_.erase(pending_it);
     }
-
-    next_send_position_.erase(actor_id);
-    next_send_position_to_assign_.erase(actor_id);
-
     // No need to clean up tasks that have been sent and are waiting for
     // replies. They will be treated as failed once the connection dies.
+    // We retain the sequencing information so that we can properly fail
+    // any tasks submitted after the actor death.
   }
 }
 

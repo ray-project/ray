@@ -760,9 +760,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
           // last actor checkpoint.
           it->second->Reset();
         }
-        direct_actor_submitter_->DisconnectActor(actor_id);
+        direct_actor_submitter_->DisconnectActor(actor_id, /*dead=*/false);
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        direct_actor_submitter_->DisconnectActor(actor_id, true);
+        direct_actor_submitter_->DisconnectActor(actor_id, /*dead=*/true);
 
         ActorHandle *actor_handle = nullptr;
         RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
