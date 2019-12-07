@@ -140,7 +140,6 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
                 node_creation_commands=[],
-                node_start_commands=[],
                 ray_restart_commands=[],
                 runtime_hash="")
 
@@ -371,7 +370,6 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             node_creation_commands=[],
-            node_start_commands=[],
             ray_restart_commands=[],
             runtime_hash="",
         )
@@ -465,7 +463,6 @@ def rsync(config_file, source, target, override_cluster_name, down):
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             node_creation_commands=[],
-            node_start_commands=[],
             ray_restart_commands=[],
             runtime_hash="",
         )

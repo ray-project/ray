@@ -20,10 +20,10 @@ file_mounts:
 node_creation_commands: []
 head_node_creation_commands: []
 worker_node_creation_commands: []
-node_start_commands:
-    - source activate ray && test -e ray || git clone https://github.com/YOUR_GITHUB/ray.git
-    - source activate ray && cd ray && git fetch && git reset --hard `cat /tmp/ray_sha`
-#    - source activate ray && cd ray/python && pip install -e .
+start_ray_commands:
+    - ON_NODE_START_ONLY source activate ray && test -e ray || git clone https://github.com/YOUR_GITHUB/ray.git
+    - ON_NODE_START_ONLY source activate ray && cd ray && git fetch && git reset --hard `cat /tmp/ray_sha`
+#    - ON_NODE_START_ONLY source activate ray && cd ray/python && pip install -e .
 head_start_ray_commands:
     - source activate ray && ray stop
     - source activate ray && ulimit -c unlimited && ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml

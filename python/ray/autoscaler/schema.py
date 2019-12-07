@@ -140,7 +140,7 @@ for suffix in [
 def get_commands(config, key, is_head=False):
     """Get commands for a head or worker node under key `key`.
 
-    This prepends `"common"` commands, that should run on head and worker,
+    This appends `"common"` commands, that should run on head and worker,
     to the head/worker specific config.
     """
     kind_specific = "head" if is_head else "worker"
@@ -155,4 +155,4 @@ def get_commands(config, key, is_head=False):
                        "update your config to use 'node_creation_commands'.")
                 warnings.warn(msg, DeprecationWarning)
             return res
-    return config.get(key, []) + config.get(kind_specific + "_" + key, [])
+    return config.get(kind_specific + "_" + key, []) + config.get(key, [])

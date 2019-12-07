@@ -124,14 +124,6 @@ head_node_creation_commands:
 # List of commands run on worker nodes after `node_creation_commands`.
 worker_node_creation_commands: []
 
-# List of commands that will be run each time the node is booted.
-# On the first boot, these will run after `node_creation_commands`.
-node_start_commands: []
-# List of commands run on the head node after `node_start_commands`.
-head_node_start_commands: []
-# List of commands run on worker nodes after `node_start_commands`.
-worker_node_start_commands: []
-
 # Commands to start Ray on the nodes. You do not need to change this.
 start_ray_commands:
     - ray stop

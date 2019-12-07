@@ -103,21 +103,15 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-# List of commands that will be run each time the node is booted.
-# On the first boot, these will run after `node_creation_commands`.
-node_start_commands:
-    # - IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp27-cp27mu-manylinux1_x86_64.whl
-    - IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp35-cp35m-manylinux1_x86_64.whl
-    # - IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp36-cp36m-manylinux1_x86_64.whl
-# List of commands run on the head node after `node_start_commands`.
-head_node_start_commands:
-    - IN_DOCKER pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
-
 # Commands to start Ray on the nodes. You do not need to change this.
 start_ray_commands:
+    # - ON_NODE_START_ONLY IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp27-cp27mu-manylinux1_x86_64.whl
+    - ON_NODE_START_ONLY IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp35-cp35m-manylinux1_x86_64.whl
+    # - ON_NODE_START_ONLY IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp36-cp36m-manylinux1_x86_64.whl
     - IN_DOCKER ray stop
 # List of commands run on the head node after `start_ray_commands`.
 head_start_ray_commands:
+    - ON_NODE_START_ONLY IN_DOCKER pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
     - IN_DOCKER ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 # List of commands run on worker nodes after `start_ray_commands`.
 worker_start_ray_commands:

@@ -132,10 +132,6 @@ node_creation_commands:
 head_node_creation_commands:
     - pip install google-api-python-client==1.7.8
 
-# List of commands that will be run each time the node is booted.
-# On the first boot, these will run after `node_creation_commands`.
-node_start_commands: []
-
 # Commands to start Ray on the nodes. You do not need to change this.
 start_ray_commands:
     - ray stop

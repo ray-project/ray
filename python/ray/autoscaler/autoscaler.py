@@ -8,6 +8,10 @@ import json
 import logging
 import math
 import os
+try:  # py3
+    from shlex import quote
+except ImportError:  # py2
+    from pipes import quote
 import subprocess
 import threading
 import time
@@ -711,7 +715,29 @@ def fillout_defaults(config):
     defaults.update(config)
     dockerize_if_needed(defaults)
     defaults["auth"] = defaults.get("auth", {})
+
+    sentinel_path = "/tmp/boot_ok_{}".format(defaults["cluster_name"])
+    defaults["node_creation_commands"].append("rm -f {}".format(sentinel_path))
+    for prefix in ["", "head_", "worker_"]:
+        k = prefix + RAY_START_COMMAND
+        res = [maybe_start_only(cmd, sentinel_path)
+               for cmd in defaults.get(k, [])]
+        defaults[k] = res
+
     return defaults
+
+
+def maybe_start_only(cmd, sentinel_path):
+    """Add shell conditional to commands starting with "ON_NODE_START_ONLY"."""
+    args = cmd.split(" ")
+    if "ON_NODE_START_ONLY" in args:
+        idx = args.index("ON_NODE_START_ONLY")
+        # This allows for these macros to be nested.
+        head = " ".join(args[:idx])
+        tail = quote(" ".join(args[idx + 1:]))
+        fstr = "[ -e {} ] || /bin/sh -c {} && touch -m {}"
+        return head + fstr.format(sentinel_path, tail, sentinel_path)
+    return cmd
 
 
 def with_head_node_ip(cmds):

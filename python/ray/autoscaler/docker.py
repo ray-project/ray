@@ -83,14 +83,11 @@ def maybe_docker_exec(cmds, container_name, env_vars=None):
     res = []
     for cmd in cmds:
         args = cmd.split(" ")
-        if not args[0] == "IN_DOCKER":
-            res.append(cmd)
-            continue
-
-        cmd = " ".join(args[1:])
-        dockerized_cmd = "docker exec {} {} /bin/sh -c {} ".format(
-            env_str, container_name, quote(cmd))
-        res.append(dockerized_cmd)
+        if args[0] == "IN_DOCKER":
+            cmd = " ".join(args[1:])
+            cmd = "docker exec {} {} /bin/sh -c {} ".format(
+                env_str, container_name, quote(cmd))
+        res.append(cmd)
 
     return res
 
@@ -143,6 +140,6 @@ def docker_autoscaler_setup(cname):
             path=path, dpath=base_path, cname=cname))
         cmds.extend(
             maybe_docker_exec(
-                ["cp {} {}".format("/" + base_path, path)],
+                ["IN_DOCKER cp {} {}".format("/" + base_path, path)],
                 container_name=cname))
     return cmds
