@@ -11,12 +11,15 @@ inline ray::CoreWorker &GetCoreWorker(jlong nativeCoreWorkerPointer) {
 
 inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject functionDescriptor) {
   std::vector<std::string> function_descriptor;
-  JavaStringListToNativeStringVector(
-      env, env->CallObjectMethod(functionDescriptor, java_function_descriptor_to_list),
-      &function_descriptor);
+  jobject list =
+      env->CallObjectMethod(functionDescriptor, java_function_descriptor_to_list);
+  RAY_CHECK_JAVA_EXCEPTION(env);
+  JavaStringListToNativeStringVector(env, list, &function_descriptor);
   jobject java_language =
       env->CallObjectMethod(functionDescriptor, java_function_descriptor_get_language);
+  RAY_CHECK_JAVA_EXCEPTION(env);
   int language = env->CallIntMethod(java_language, java_language_get_number);
+  RAY_CHECK_JAVA_EXCEPTION(env);
   ray::RayFunction ray_function{static_cast<::Language>(language), function_descriptor};
   return ray_function;
 }
@@ -29,6 +32,7 @@ inline std::vector<ray::TaskArg> ToTaskArgs(JNIEnv *env, jobject args) {
         if (java_id) {
           auto java_id_bytes = static_cast<jbyteArray>(
               env->CallObjectMethod(java_id, java_base_id_get_bytes));
+          RAY_CHECK_JAVA_EXCEPTION(env);
           return ray::TaskArg::PassByReference(
               JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes));
         }
@@ -46,16 +50,23 @@ inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
   std::unordered_map<std::string, double> resources;
   if (java_resources) {
     jobject entry_set = env->CallObjectMethod(java_resources, java_map_entry_set);
+    RAY_CHECK_JAVA_EXCEPTION(env);
     jobject iterator = env->CallObjectMethod(entry_set, java_set_iterator);
+    RAY_CHECK_JAVA_EXCEPTION(env);
     while (env->CallBooleanMethod(iterator, java_iterator_has_next)) {
+      RAY_CHECK_JAVA_EXCEPTION(env);
       jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
-      std::string key = JavaStringToNativeString(
-          env, (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key));
-      double value = env->CallDoubleMethod(
-          env->CallObjectMethod(map_entry, java_map_entry_get_value),
-          java_double_double_value);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      auto java_key = (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      std::string key = JavaStringToNativeString(env, java_key);
+      auto java_value = env->CallObjectMethod(map_entry, java_map_entry_get_value);
+      RAY_CHECK_JAVA_EXCEPTION(env);
+      double value = env->CallDoubleMethod(java_value, java_double_double_value);
+      RAY_CHECK_JAVA_EXCEPTION(env);
       resources.emplace(key, value);
     }
+    RAY_CHECK_JAVA_EXCEPTION(env);
   }
   return resources;
 }
