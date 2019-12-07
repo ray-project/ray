@@ -33,15 +33,6 @@ cdef class Buffer:
         """
         return self.buffer.get().Size()
 
-    @staticmethod
-    def from_buffer(const unsigned char[:] buffer):
-        cdef:
-            shared_ptr[CBuffer] buf = dynamic_pointer_cast[
-                CBuffer, LocalMemoryBuffer](
-                make_shared[LocalMemoryBuffer](
-                    <uint8_t*>(&buffer[0]), <size_t>buffer.nbytes, True))
-        return Buffer.make(buf)
-
     def to_pybytes(self):
         """
         Return this buffer as a Python bytes object.  Memory is copied.

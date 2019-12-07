@@ -107,7 +107,6 @@ from ray.ray_constants import (
     PICKLE_BUFFER_METADATA,
     PICKLE5_BUFFER_METADATA,
 )
-from ray.signature import DUMMY_TYPE
 
 # pyarrow cannot be imported until after _raylet finishes initializing
 # (see ray/__init__.py for details).
