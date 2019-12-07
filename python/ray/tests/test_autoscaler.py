@@ -109,9 +109,6 @@ class MockProvider(NodeProvider):
     def is_running(self, node_id):
         return self.mock_nodes[node_id].state == "running"
 
-    def is_cached(self, node_id):
-        return not self.mock_nodes[node_id].tags[TAG_RAY_FIRST_BOOT]
-
     def is_terminated(self, node_id):
         return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 

@@ -144,10 +144,6 @@ class AWSNodeProvider(NodeProvider):
         node = self._get_cached_node(node_id)
         return node.state["Name"] == "running"
 
-    def is_cached(self, node_id):
-        tags = self.node_tags(node_id)
-        return not tags[TAG_RAY_FIRST_BOOT]
-
     def is_terminated(self, node_id):
         node = self._get_cached_node(node_id)
         state = node.state["Name"]
