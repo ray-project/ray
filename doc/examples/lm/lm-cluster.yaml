@@ -109,14 +109,9 @@ head_node_creation_commands:
 # List of commands run on worker nodes after `node_creation_commands`.
 worker_node_creation_commands: []
 
-# List of commands that will be run each time the node is booted.
-# On the first boot, these will run after `node_creation_commands`.
-node_start_commands:
-    sudo mount -t efs {{FileSystemId}}:/ efs;
-    sudo chmod 777 efs;
-
 # Commands to start Ray on the nodes. You do not need to change this.
 start_ray_commands:
+    - ON_NODE_START_ONLY sudo mount -t efs {{FileSystemId}}:/ efs && sudo chmod 777 efs
     - ray stop
 # List of commands run on the head node after `start_ray_commands`.
 head_start_ray_commands:
