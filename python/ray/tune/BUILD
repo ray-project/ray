@@ -80,6 +80,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
+    flaky = 1,
 )
 
 py_test(

@@ -33,10 +33,29 @@ py_test(
 
 py_test(
     name = "test_advanced",
-    size = "large",
+    size = "medium",
     srcs = ["test_advanced.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
+    flaky = 1,
+)
+
+py_test(
+    name = "test_advanced_2",
+    size = "medium",
+    srcs = ["test_advanced_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+    flaky = 1,
+)
+
+py_test(
+    name = "test_advanced_3",
+    size = "medium",
+    srcs = ["test_advanced_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
@@ -49,7 +68,7 @@ py_test(
 
 py_test(
     name = "test_multinode_failures",
-    size = "large",
+    size = "medium",
     srcs = ["test_multinode_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -164,6 +183,7 @@ py_test(
     srcs = ["test_memory_limits.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
@@ -286,7 +306,7 @@ py_test(
 
 py_test(
     name = "test_unreconstructable_errors",
-    size = "medium",
+    size = "small",
     srcs = ["test_unreconstructable_errors.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
