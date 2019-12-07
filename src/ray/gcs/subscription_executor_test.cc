@@ -1,7 +1,8 @@
+#include "ray/gcs/subscription_executor.h"
 #include "gtest/gtest.h"
-#include "ray/gcs/accessor_test_base.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/test/accessor_test_base.h"
 
 namespace ray {
 
@@ -42,7 +43,7 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
 
  protected:
   virtual void GenTestData() {
-    for (size_t i = 0; i < 2; ++i) {
+    for (size_t i = 0; i < 100; ++i) {
       std::shared_ptr<ActorTableData> actor = std::make_shared<ActorTableData>();
       actor->set_max_reconstructions(1);
       actor->set_remaining_reconstructions(1);
@@ -85,12 +86,12 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
 TEST_F(SubscriptionExecutorTest, SubscribeAllTest) {
   ++do_sub_pending_count_;
   Status status =
-      actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
+      actor_sub_executor_->AsyncSubscribeAll(ClientID::Nil(), subscribe_, sub_done_);
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   ASSERT_TRUE(status.ok());
   sub_pending_count_ = id_to_data_.size();
   AsyncRegisterActorToGcs();
-  status = actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
+  status = actor_sub_executor_->AsyncSubscribeAll(ClientID::Nil(), subscribe_, sub_done_);
   ASSERT_TRUE(status.IsInvalid());
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
@@ -128,7 +129,7 @@ TEST_F(SubscriptionExecutorTest, SubscribeOneAfterActorRegistrationWithClientIDT
 TEST_F(SubscriptionExecutorTest, SubscribeAllAndSubscribeOneTest) {
   ++do_sub_pending_count_;
   Status status =
-      actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
+      actor_sub_executor_->AsyncSubscribeAll(ClientID::Nil(), subscribe_, sub_done_);
   ASSERT_TRUE(status.ok());
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   for (const auto &item : id_to_data_) {

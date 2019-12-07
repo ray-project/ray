@@ -92,7 +92,7 @@ Status RedisActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return actor_sub_executor_.AsyncSubscribe(ClientID::Nil(), subscribe, done);
+  return actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 Status RedisActorInfoAccessor::AsyncSubscribe(
