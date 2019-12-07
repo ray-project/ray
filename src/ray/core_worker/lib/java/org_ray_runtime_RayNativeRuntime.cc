@@ -55,6 +55,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
         jobject java_return_objects =
             env->CallObjectMethod(local_java_task_executor, java_task_executor_execute,
                                   ray_function_array_list, args_array_list);
+        RAY_CHECK_JAVA_EXCEPTION(env);
         std::vector<std::shared_ptr<ray::RayObject>> return_objects;
         JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
             env, java_return_objects, &return_objects,
@@ -64,6 +65,10 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
         for (auto &obj : return_objects) {
           results->push_back(obj);
         }
+
+        env->DeleteLocalRef(java_return_objects);
+        env->DeleteLocalRef(args_array_list);
+        env->DeleteLocalRef(ray_function_array_list);
         return ray::Status::OK();
       };
 

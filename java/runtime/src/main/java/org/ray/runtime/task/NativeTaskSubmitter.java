@@ -37,7 +37,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       ActorCreationOptions options) {
     byte[] actorId = nativeCreateActor(nativeCoreWorkerPointer, functionDescriptor, args,
         options);
-    return new NativeRayActor(nativeCoreWorkerPointer, actorId);
+    return NativeRayActor.create(nativeCoreWorkerPointer, actorId, functionDescriptor.getLanguage());
   }
 
   @Override
