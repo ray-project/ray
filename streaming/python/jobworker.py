@@ -110,7 +110,7 @@ class JobWorker(object):
         if self.reader_client is None:
             return b" " * 4  # special flag to indicate this actor not ready
         result = self.reader_client.on_reader_message_sync(buffer)
-        return result
+        return result.to_pybytes()
 
     def on_writer_message(self, buffer: bytes):
         """used in direct call mode"""
@@ -121,4 +121,4 @@ class JobWorker(object):
         if self.writer_client is None:
             return b" " * 4  # special flag to indicate this actor not ready
         result = self.writer_client.on_writer_message_sync(buffer)
-        return result
+        return result.to_pybytes()

@@ -348,13 +348,29 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
     return out
 
 
+cdef:
+    c_string pickle_metadata_str = PICKLE_BUFFER_METADATA
+    shared_ptr[CBuffer] pickle_metadata = dynamic_pointer_cast[
+        CBuffer, LocalMemoryBuffer](
+        make_shared[LocalMemoryBuffer](
+            <uint8_t*>(pickle_metadata_str.data()),
+            pickle_metadata_str.size(), True))
+    c_string raw_meta_str = RAW_BUFFER_METADATA
+    shared_ptr[CBuffer] raw_metadata = dynamic_pointer_cast[
+        CBuffer, LocalMemoryBuffer](
+        make_shared[LocalMemoryBuffer](
+            <uint8_t*>(raw_meta_str.data()),
+            raw_meta_str.size(), True))
+
 cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
     cdef:
         c_string pickled_str
-        c_string metadata_str = PICKLE_BUFFER_METADATA
+        const unsigned char[:] buffer
+        size_t size
         shared_ptr[CBuffer] arg_data
         shared_ptr[CBuffer] arg_metadata
 
+    # TODO be consistent with store_task_outputs
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
@@ -362,23 +378,25 @@ cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
         elif not ray._raylet.check_simple_value(arg):
             args_vector.push_back(
                 CTaskArg.PassByReference((<ObjectID>ray.put(arg)).native()))
-        else:
-            pickled_str = pickle.dumps(
-                arg, protocol=pickle.HIGHEST_PROTOCOL)
-            # TODO(edoakes): This makes a copy that could be avoided.
+        elif type(arg) is bytes:
+            buffer = arg
+            size = buffer.nbytes
             arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(pickled_str.data()),
-                        pickled_str.size(),
-                        True))
-            arg_metadata = dynamic_pointer_cast[
-                CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(
-                            metadata_str.data()), metadata_str.size(), True))
+                make_shared[LocalMemoryBuffer](
+                    <uint8_t*>(&buffer[0]), size, True))
             args_vector.push_back(
                 CTaskArg.PassByValue(
-                    make_shared[CRayObject](arg_data, arg_metadata)))
+                    make_shared[CRayObject](arg_data, raw_metadata)))
+        else:
+            buffer = pickle.dumps(
+                arg, protocol=pickle.HIGHEST_PROTOCOL)
+            size = buffer.nbytes
+            arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(&buffer[0]), size, True))
+            args_vector.push_back(
+                CTaskArg.PassByValue(
+                    make_shared[CRayObject](arg_data, pickle_metadata)))
 
 
 cdef class RayletClient:
@@ -1081,8 +1099,6 @@ cdef class CoreWorker:
             c_vector[shared_ptr[CRayObject]] *returns):
         cdef:
             c_vector[size_t] data_sizes
-            c_string metadata_str
-            shared_ptr[CBuffer] meta
             c_vector[shared_ptr[CBuffer]] metadatas
 
         if return_ids.size() == 0:
@@ -1098,17 +1114,6 @@ cdef class CoreWorker:
                 serialized_objects.append(output)
                 data_sizes.push_back(0)
                 metadatas.push_back(string_to_buffer(b''))
-            elif type(output) is Buffer:
-                # take Buffer as raw data
-                serialized_objects.append(output)
-                data_sizes.push_back(output.size)
-                metadata_str = RAW_BUFFER_METADATA
-                meta = dynamic_pointer_cast[
-                    CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()), metadata_str.size(),
-                        True))
-                metadatas.push_back(meta)
             else:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
@@ -1120,17 +1125,12 @@ cdef class CoreWorker:
         check_status(self.core_worker.get().AllocateReturnObjects(
             return_ids, data_sizes, metadatas, returns))
 
-        cdef Buffer buf
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
             if returns[0][i].get() == NULL:
                 continue
             if serialized_object is NoReturn:
                 returns[0][i].reset()
-            elif type(serialized_object) is Buffer:
-                buf = serialized_object
-                memcpy(returns[0][i].get().GetData().get().Data(),
-                       buf.buffer.get().Data(), buf.buffer.get().Size())
             else:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
