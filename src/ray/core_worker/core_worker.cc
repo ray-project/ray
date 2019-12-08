@@ -1001,7 +1001,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   }
   // We own the task. Reply back to the borrower once the object has been
   // created.
-  // TODO: We could probably just send the object value if it is small
+  // TODO(swang): We could probably just send the object value if it is small
   // enough and we have it local.
   reply->set_status(rpc::GetObjectStatusReply::CREATED);
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
@@ -1010,8 +1010,12 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
                             [send_reply_callback](std::shared_ptr<RayObject> obj) {
                               send_reply_callback(Status::OK(), nullptr, nullptr);
                             });
-    // TODO(ekl) this is a race condition.
-    RAY_CHECK(task_manager_->IsTaskPending(object_id.TaskId()));
+    // TODO(ekl) this is a race condition that can occur if the task finishes,
+    // but we didn't register the GetAsync callback in time. In this case the
+    // object will be lost, and the GetAsync will hang forever. This will be
+    // fixed once we have distributed ref counting.
+    RAY_CHECK(task_manager_->IsTaskPending(object_id.TaskId()))
+        << "Object was evicted before we could respond with its status. ";
   } else {
     // The task is done. Send the reply immediately.
     send_reply_callback(Status::OK(), nullptr, nullptr);
