@@ -453,7 +453,7 @@ def test_multiple_actors(ray_start_regular):
         def reset(self):
             self.value = 0
 
-    num_actors = 20
+    num_actors = 5
     num_increases = 50
     # Create multiple actors.
     actors = [Counter.remote(i) for i in range(num_actors)]

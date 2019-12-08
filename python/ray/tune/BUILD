@@ -34,6 +34,7 @@ py_test(
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
+    flaky = 1,
 )
 
 py_test(

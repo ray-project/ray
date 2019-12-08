@@ -29,6 +29,7 @@ py_test(
     srcs = ["test_basic.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
