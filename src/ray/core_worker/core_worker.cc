@@ -1005,17 +1005,21 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   // enough and we have it local.
   reply->set_status(rpc::GetObjectStatusReply::CREATED);
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
-    // The task is pending. Send the reply once the task finishes.
-    memory_store_->GetAsync(object_id,
-                            [send_reply_callback](std::shared_ptr<RayObject> obj) {
-                              send_reply_callback(Status::OK(), nullptr, nullptr);
-                            });
-    // TODO(ekl) this is a race condition that can occur if the task finishes,
-    // but we didn't register the GetAsync callback in time. In this case the
-    // object will be lost, and the GetAsync will hang forever. This will be
-    // fixed once we have distributed ref counting.
-    RAY_CHECK(task_manager_->IsTaskPending(object_id.TaskId()))
-        << "Object was evicted before we could respond with its status. ";
+    // Acquire a reference and retry. This prevents the object from being
+    // evicted out from under us before we can start the get.
+    AddObjectIDReference(object_id);
+    if (task_manager_->IsTaskPending(object_id.TaskId())) {
+      // The task is pending. Send the reply once the task finishes.
+      memory_store_->GetAsync(object_id,
+                              [send_reply_callback](std::shared_ptr<RayObject> obj) {
+                                send_reply_callback(Status::OK(), nullptr, nullptr);
+                              });
+      RemoveObjectIDReference(object_id);
+    } else {
+      // We lost the race, the task is done.
+      RemoveObjectIDReference(object_id);
+      send_reply_callback(Status::OK(), nullptr, nullptr);
+    }
   } else {
     // The task is done. Send the reply immediately.
     send_reply_callback(Status::OK(), nullptr, nullptr);
