@@ -56,23 +56,47 @@ py_test(
 
 py_test(
     name = "test_advanced",
-    size = "large",
+    size = "medium",
     srcs = ["test_advanced.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_advanced_2",
+    size = "medium",
+    srcs = ["test_advanced_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_advanced_3",
+    size = "medium",
+    srcs = ["test_advanced_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_component_failures",
-    size = "large",
+    size = "medium",
     srcs = ["test_component_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_component_failures_2",
+    size = "medium",
+    srcs = ["test_component_failures_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_multinode_failures",
-    size = "large",
+    size = "medium",
     srcs = ["test_multinode_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -81,8 +105,8 @@ py_test(
 py_test(
     name = "test_multinode_failures_direct",
     size = "medium",
-    srcs = ["test_multinode_failures_direct.py", "test_multinode_failures.py"],
-    tags = ["exclusive", "manual"],
+    srcs = ["test_multinode_failures_direct.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
@@ -97,7 +121,7 @@ py_test(
 py_test(
     name = "test_stress_direct",
     size = "medium",
-    srcs = ["test_stress_direct.py", "test_stress.py"],
+    srcs = ["test_stress_direct.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -113,7 +137,7 @@ py_test(
 py_test(
     name = "test_stress_sharded_direct",
     size = "medium",
-    srcs = ["test_stress_sharded_direct.py", "test_stress_sharded.py"],
+    srcs = ["test_stress_sharded_direct.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -122,7 +146,8 @@ py_test(
     name = "test_stress_failure",
     size = "large",
     srcs = ["test_stress_failure.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) enable again once we support direct call reconstruction
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -131,7 +156,6 @@ py_test(
     size = "medium",
     srcs = ["test_array.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -139,7 +163,6 @@ py_test(
     size = "small",
     srcs = ["test_autoscaler.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -161,7 +184,6 @@ py_test(
     size = "small",
     srcs = ["test_debug_tools.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -183,10 +205,9 @@ py_test(
 py_test(
     name = "test_failure_direct",
     size = "medium",
-    srcs = ["test_failure_direct.py", "test_failure.py"],
+    srcs = ["test_failure_direct.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -256,7 +277,8 @@ py_test(
     name = "test_monitors",
     size = "small",
     srcs = ["test_monitors.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) tasks() and objects() are different in direct call mode.
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -304,7 +326,6 @@ py_test(
     size = "small",
     srcs = ["test_queue.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -340,7 +361,7 @@ py_test(
 
 py_test(
     name = "test_unreconstructable_errors",
-    size = "medium",
+    size = "small",
     srcs = ["test_unreconstructable_errors.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
