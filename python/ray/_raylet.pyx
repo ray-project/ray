@@ -34,7 +34,6 @@ from libcpp.memory cimport (
     unique_ptr,
 )
 from libcpp.string cimport string as c_string
-from libc.string cimport memcpy
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
@@ -475,8 +474,6 @@ cdef deserialize_args(
                 elif meta == PICKLE_BUFFER_METADATA:
                     # This is a pickled "simple python value" argument.
                     args.append(pickle.loads(data.to_pybytes()))
-                else:
-                    raise Exception("Unsupported meta " + str(meta))
             else:
                 # This is a Ray object inlined by the direct task submitter.
                 ids_to_deserialize.append(
