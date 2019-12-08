@@ -9,6 +9,11 @@ void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries)
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
 }
 
+bool TaskManager::IsTaskPending(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  return pending_tasks_.count(task_id) > 0;
+}
+
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
