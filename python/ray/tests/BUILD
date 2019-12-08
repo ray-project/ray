@@ -37,7 +37,6 @@ py_test(
     srcs = ["test_advanced.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -46,7 +45,6 @@ py_test(
     srcs = ["test_advanced_2.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -55,7 +53,6 @@ py_test(
     srcs = ["test_advanced_3.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -112,7 +109,6 @@ py_test(
     size = "medium",
     srcs = ["test_array.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -120,7 +116,6 @@ py_test(
     size = "small",
     srcs = ["test_autoscaler.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -142,7 +137,6 @@ py_test(
     size = "small",
     srcs = ["test_debug_tools.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -191,7 +185,6 @@ py_test(
     srcs = ["test_memory_limits.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -278,7 +271,6 @@ py_test(
     size = "small",
     srcs = ["test_queue.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
