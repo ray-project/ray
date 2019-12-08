@@ -103,14 +103,6 @@ py_test(
 )
 
 py_test(
-    name = "test_multinode_failures_direct",
-    size = "medium",
-    srcs = ["test_multinode_failures_direct.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_stress",
     size = "medium",
     srcs = ["test_stress.py"],
@@ -121,7 +113,7 @@ py_test(
 py_test(
     name = "test_stress_direct",
     size = "medium",
-    srcs = ["test_stress_direct.py"],
+    srcs = ["test_stress_direct.py", "test_stress.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -137,7 +129,7 @@ py_test(
 py_test(
     name = "test_stress_sharded_direct",
     size = "medium",
-    srcs = ["test_stress_sharded_direct.py"],
+    srcs = ["test_stress_sharded_direct.py", "test_stress_sharded.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -146,8 +138,7 @@ py_test(
     name = "test_stress_failure",
     size = "large",
     srcs = ["test_stress_failure.py"],
-    # TODO(ekl) enable again once we support direct call reconstruction
-    tags = ["exclusive", "manual"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
@@ -205,7 +196,7 @@ py_test(
 py_test(
     name = "test_failure_direct",
     size = "medium",
-    srcs = ["test_failure_direct.py"],
+    srcs = ["test_failure_direct.py", "test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -277,8 +268,7 @@ py_test(
     name = "test_monitors",
     size = "small",
     srcs = ["test_monitors.py"],
-    # TODO(ekl) tasks() and objects() are different in direct call mode.
-    tags = ["exclusive", "manual"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
