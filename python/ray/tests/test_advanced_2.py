@@ -482,7 +482,7 @@ def test_custom_resources(ray_start_cluster):
         return ray.worker.global_worker.node.unique_id
 
     # The f tasks should be scheduled on both raylets.
-    assert len(set(ray.get([f.remote() for _ in range(50)]))) == 2
+    assert len(set(ray.get([f.remote() for _ in range(500)]))) == 2
 
     node_id = ray.worker.global_worker.node.unique_id
 

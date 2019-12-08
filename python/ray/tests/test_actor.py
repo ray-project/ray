@@ -1182,7 +1182,7 @@ def test_fork_consistency(setup_queue_actor):
         return ray.get(x)
 
     # Fork num_iters times.
-    num_forks = 10
+    num_forks = 5
     num_items_per_fork = 100
 
     # Submit some tasks on new actor handles.
