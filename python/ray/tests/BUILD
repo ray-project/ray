@@ -29,7 +29,6 @@ py_test(
     srcs = ["test_basic.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -61,8 +60,16 @@ py_test(
 
 py_test(
     name = "test_component_failures",
-    size = "large",
+    size = "medium",
     srcs = ["test_component_failures.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_component_failures_2",
+    size = "medium",
+    srcs = ["test_component_failures_2.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
