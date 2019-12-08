@@ -637,9 +637,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources,
-                      actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
-                                                            : TaskTransportType::RAYLET,
-                      &return_ids);
+                      TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
