@@ -44,6 +44,7 @@ class TaskManager : public TaskFinisherInterface {
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is pending.
   bool IsTaskPending(const TaskID &task_id) const {
+    absl::MutexLock lock(&mu_);
     return pending_tasks_.count(task_id) > 0;
   }
 
@@ -75,7 +76,7 @@ class TaskManager : public TaskFinisherInterface {
   const RetryTaskCallback retry_task_callback_;
 
   /// Protects below fields.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// Map from task ID to a pair of:
   ///   {task spec, number of allowed retries left}

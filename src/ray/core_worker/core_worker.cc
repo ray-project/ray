@@ -637,7 +637,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources,
-                      TaskTransportType::RAYLET, &return_ids);
+                      actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
+                                                            : TaskTransportType::RAYLET,
+                      &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
@@ -972,26 +974,25 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   TaskID owner_id = TaskID::FromBinary(request.owner_id());
   if (owner_id != GetCallerId()) {
-    // We may have owned this object in the past, but we are now executing some
-    // other task or actor.
-    reply->set_status(rpc::GetObjectStatusReply::WRONG_OWNER);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by previous task "
+                  << owner_id.Hex();
+  }
+  // We own the task. Reply back to the borrower once the object has been
+  // created.
+  // TODO: We could probably just send the object value if it is small
+  // enough and we have it local.
+  reply->set_status(rpc::GetObjectStatusReply::CREATED);
+  if (task_manager_->IsTaskPending(object_id.TaskId())) {
+    // The task is pending. Send the reply once the task finishes.
+    memory_store_->GetAsync(object_id,
+                            [send_reply_callback](std::shared_ptr<RayObject> obj) {
+                              send_reply_callback(Status::OK(), nullptr, nullptr);
+                            });
+    // TODO(ekl) this is a race condition.
+    RAY_CHECK(task_manager_->IsTaskPending(object_id.TaskId()));
   } else {
-    // We own the task. Reply back to the borrower once the object has been
-    // created.
-    // TODO: We could probably just send the object value if it is small
-    // enough and we have it local.
-    reply->set_status(rpc::GetObjectStatusReply::CREATED);
-    if (task_manager_->IsTaskPending(object_id.TaskId())) {
-      // The task is pending. Send the reply once the task finishes.
-      memory_store_->GetAsync(object_id,
-                              [send_reply_callback](std::shared_ptr<RayObject> obj) {
-                                send_reply_callback(Status::OK(), nullptr, nullptr);
-                              });
-    } else {
-      // The task is done. Send the reply immediately.
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    }
+    // The task is done. Send the reply immediately.
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
 
