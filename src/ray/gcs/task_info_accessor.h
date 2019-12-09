@@ -54,10 +54,9 @@ class TaskInfoAccessor {
   /// \param subscribe Callback that will be called each time when the task is updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  virtual Status AsyncSubscribe(
-      const TaskID &task_id,
-      const SubscribeCallback<TaskID, TaskTableData> &subscribe,
-      const StatusCallback &done) = 0;
+  virtual Status AsyncSubscribe(const TaskID &task_id,
+                                const SubscribeCallback<TaskID, TaskTableData> &subscribe,
+                                const StatusCallback &done) = 0;
 
   /// Cancel subscribe to a task asynchronously.
   /// This method is for node only (core worker shouldn't use this method).

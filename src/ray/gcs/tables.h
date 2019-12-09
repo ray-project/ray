@@ -311,6 +311,9 @@ class Table : private Log<ID, Data>,
 
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
+  /// Expose this interface for use by subscription tools class SubscriptionExecutor.
+  /// In this way TaskTable() can also reuse class SubscriptionExecutor.
+  using Log<ID, Data>::Subscribe;
 
   /// Add an entry to the table. This overwrites any existing data at the key.
   ///

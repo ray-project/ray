@@ -4,8 +4,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_actor_info_accessor.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/gcs/redis_task_info_accessor.h"
 #include "ray/gcs/redis_job_info_accessor.h"
+#include "ray/gcs/redis_task_info_accessor.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
