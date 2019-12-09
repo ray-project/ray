@@ -1195,14 +1195,16 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
     # object into callback.
     # https://github.com/cython/cython/blob/master/Demos/callback/cheese.pyx
     py_future = <object>(future)
+    loop = py_future._loop
+
     if obj.get().IsInPlasmaError():
         # Object is promoted to plasma. Let the future waiter knows that
         # they need to retrieve the future from plasma.
         plasma_id = object_id.WithPlasmaTransportType()
         py_plasma_id = ObjectID(plasma_id.Binary())
-        py_future.set_result(
+        loop.call_soon_threadsafe(lambda: py_future.set_result(
             AsyncGetResponse(
-                plasma_fallback_id=py_plasma_id, result=None))
+                plasma_fallback_id=py_plasma_id, result=None)))
     else:
         # Object is retrieved from in memory store.
         # Here we go through the code path used to deserialize objects.
@@ -1212,6 +1214,6 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
         ids_to_deserialize = [ObjectID(object_id.Binary())]
         objects = ray.worker.global_worker.deserialize_objects(
             data_metadata_pairs, ids_to_deserialize)
-        py_future.set_result(
+        loop.call_soon_threadsafe(lambda: py_future.set_result(
             AsyncGetResponse(
-                plasma_fallback_id=None, result=objects[0]))
+                plasma_fallback_id=None, result=objects[0])))
