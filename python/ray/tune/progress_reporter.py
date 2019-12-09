@@ -178,8 +178,8 @@ def _fair_filter_trials(trials_by_state, max_trials):
     """Filters trials such that each state is represented fairly.
 
     Args:
-    trials_by_state (Dict[str, List[Trial]]: Trials by state.
-    max_trials (int): Maximum number of trials to return.
+        trials_by_state (Dict[str, List[Trial]]: Trials by state.
+        max_trials (int): Maximum number of trials to return.
     Returns:
         List of fairly represented trials.
     """
