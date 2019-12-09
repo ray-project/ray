@@ -410,13 +410,11 @@ class Set : private Log<ID, Data>,
  public:
   using Callback = typename Log<ID, Data>::Callback;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  // using NotificationCallback = typename Log<ID, Data>::NotificationCallback;
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
 
   Set(const std::vector<std::shared_ptr<RedisContext>> &contexts, RedisGcsClient *client)
       : Log<ID, Data>(contexts, client) {}
 
-  // using Log<ID, Data>::Subscribe;
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
   using Log<ID, Data>::Lookup;
@@ -447,7 +445,18 @@ class Set : private Log<ID, Data>,
   using NotificationCallback =
       std::function<void(RedisGcsClient *client, const ID &id,
                          const std::vector<ObjectChangeNotification> &data)>;
-
+  /// Subscribe to any add or remove operations to this table.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each add or remove to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe Callback that is called on each received message.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const NotificationCallback &subscribe,
                    const SubscriptionCallback &done);
