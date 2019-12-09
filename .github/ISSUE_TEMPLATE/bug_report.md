@@ -7,7 +7,7 @@ assignees: ''
 
 ---
 
-<!--Please tag the issue title as [tune], [rllib], [autoscaler] etc. if relevant-->
+<!--Please include [tune], [rllib], [autoscaler] etc. in the issue title if relevant-->
 
 ### What is the problem?
 

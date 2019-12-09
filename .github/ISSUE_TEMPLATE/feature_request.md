@@ -7,14 +7,6 @@ assignees: ''
 
 ---
 
-<!--Please tag the issue title as [tune], [rllib], [autoscaler] etc. if relevant-->
+<!--Please include [tune], [rllib], [autoscaler] etc. in the issue title if relevant-->
 
-### Information
-
-*Ray version and other system information (e.g., TensorFlow version, OS):*
-
-*Please describe what is the problem you're facing.*
-
-### Describe the ideal solution
-
-### Additional context
+### Describe your feature request
