@@ -172,17 +172,6 @@ py_test(
 )
 
 py_test(
-<<<<<<< HEAD
-=======
-    name = "test_failure_direct",
-    size = "medium",
-    srcs = ["test_failure_direct.py", "test_failure.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
->>>>>>> 304b4f0d3d672c0ece47da8aa9fded515c17c6f4
     name = "test_garbage_collection",
     size = "small",
     srcs = ["test_garbage_collection.py"],
@@ -333,7 +322,7 @@ py_test(
 
 py_test(
     name = "test_unreconstructable_errors",
-    size = "small",
+    size = "medium",
     srcs = ["test_unreconstructable_errors.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
