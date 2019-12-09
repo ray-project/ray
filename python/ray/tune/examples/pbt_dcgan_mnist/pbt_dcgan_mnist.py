@@ -294,18 +294,18 @@ if __name__ == "__main__":
     ray.init()
 
     dataloader = get_data_loader()
-    # Plot some training images
-    real_batch = next(iter(dataloader))
-    plt.figure(figsize=(8, 8))
-    plt.axis("off")
-    plt.title("Original Images")
-    plt.imshow(
-        np.transpose(
-            vutils.make_grid(
-                real_batch[0].to(device)[:64], padding=2,
-                normalize=True).cpu(), (1, 2, 0)))
-
     if not args.smoke_test:
+        # Plot some training images
+        real_batch = next(iter(dataloader))
+        plt.figure(figsize=(8, 8))
+        plt.axis("off")
+        plt.title("Original Images")
+        plt.imshow(
+            np.transpose(
+                vutils.make_grid(
+                    real_batch[0].to(device)[:64], padding=2,
+                    normalize=True).cpu(), (1, 2, 0)))
+
         plt.show()
 
     # load the pretrained mnist classification model for inception_score
