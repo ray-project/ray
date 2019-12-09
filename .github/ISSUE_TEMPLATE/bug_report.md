@@ -11,7 +11,7 @@ assignees: ''
 
 ### What is the problem?
 
-*Ray version and other system information (e.g., TensorFlow version, OS):*
+*Ray version and other system information (python version, TensorFlow version, OS):*
 
 *Does the problem occur on the [latest wheels](https://ray.readthedocs.io/en/latest/installation.html)?*
 
