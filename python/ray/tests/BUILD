@@ -56,7 +56,7 @@ py_test(
 
 py_test(
     name = "test_advanced",
-    size = "medium",
+    size = "small",
     srcs = ["test_advanced.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -80,7 +80,7 @@ py_test(
 
 py_test(
     name = "test_component_failures",
-    size = "medium",
+    size = "small",
     srcs = ["test_component_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],

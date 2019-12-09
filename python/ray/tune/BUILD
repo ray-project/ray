@@ -168,7 +168,7 @@ py_test(
 
 py_test(
     name = "test_tune_server",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
