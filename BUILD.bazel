@@ -789,6 +789,25 @@ flatbuffer_cc_library(
     out_prefix = "src/ray/object_manager/format/",
 )
 
+# Note that this will expose many unrelated symbols such as grpc_metadata_array_init
+# A better method is document ray ABI and list all ray ABI here.
+genrule(
+    name = "ray.lds",
+    outs = ["ray.lds"],
+    cmd = """
+cat > $@ <<EOF
+LIBRAYABI_1.0 {
+    global:
+        *ray*;
+        *Py*;
+        *Java*;
+    local: *;
+};
+EOF
+    cat $@ > /tmp/ray.lds
+    """,
+)
+
 pyx_library(
     name = "_raylet",
     srcs = glob([
@@ -805,11 +824,9 @@ pyx_library(
         "features": ["-supports_start_end_lib"],
         "linkstatic": 1,
         "linkopts": if_linux_x86_64([
-            "-Wl,--exclude-libs,libprotobuf.a",
-            "-Wl,--exclude-libs,libprotobuf.pic.a",
-            "-Wl,--exclude-libs,libprotobuf_lite.a",
-            "-Wl,--exclude-libs,libprotobuf_lite.pic.a",
+            "-Wl,--version-script=" + "/tmp/ray.lds"
         ]),
+        "data": ["//:ray.lds"],
     },
     copts = COPTS + if_linux_x86_64(["-fno-gnu-unique"]),
     deps = [
