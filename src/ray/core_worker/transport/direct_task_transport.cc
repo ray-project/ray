@@ -45,7 +45,10 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || queue_entry == task_queues_.end() ||
       current_time_ms() > lease_entry.second) {
-    RAY_CHECK_OK(lease_entry.first->ReturnWorker(addr.second, was_error));
+    auto status = lease_entry.first->ReturnWorker(addr.second, was_error);
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
+    }
     worker_to_lease_client_.erase(addr);
   } else {
     auto &client = *client_cache_[addr];
@@ -160,7 +163,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // access the task.
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
-  RAY_CHECK_OK(client.PushNormalTask(
+  auto status = client.PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, scheduling_key, addr, assigned_resources](
           Status status, const rpc::PushTaskReply &reply) {
@@ -179,6 +182,15 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
-      }));
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Error pushing task to worker: " << status.ToString();
+    {
+      absl::MutexLock lock(&mu_);
+      OnWorkerIdle(addr, scheduling_key, /*error=*/true, assigned_resources);
+    }
+    task_finisher_->PendingTaskFailed(
+        task_id, is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED);
+  }
 }
 };  // namespace ray
