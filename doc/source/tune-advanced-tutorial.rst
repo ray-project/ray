@@ -49,16 +49,18 @@ A naive example for ``Trainable`` is a simple number guesser:
 The program randomly picks 10 number from [1, 10000) and finds which is closer to the password.
 As a subclass of ``ray.tune.Trainable``, Tune will convert ``Example`` into a Ray actor, which
 runs on a separate process on a worker. ``_setup`` function is invoked once for each Actor for custom
-initialization. ``_train`` execute one logical iteration of training in the tuning process,
+initialization.
+
+``_train`` execute one logical iteration of training in the tuning process,
 which may include several iterations of actual training (see the next example). As a rule of
 thumb, the execution time of one train call should be large enough to avoid overheads
 (i.e. more than a few seconds), but short enough to report progress periodically
 (i.e. at most a few minutes).
 
-We only implemented ``_setup`` and ``_train``methods for simplification, usually it's also required
+We only implemented ``_setup`` and ``_train`` methods for simplification, usually it's also required
 to implement ``_save``, and ``_restore`` for checkpoint and fault tolerance.
 
-Next we trains a Pytorch convolution model with Trainable and PBT.
+Next, we train a Pytorch convolution model with Trainable and PBT.
 
 Trainable with Population Based Training (PBT)
 ----------------------------------------------
@@ -95,9 +97,9 @@ First we define a Trainable that wraps a ConvNet model.
 The example reuses some of the functions in ray/tune/examples/mnist_pytorch.py, and is also a good
 demo for how to decouple the tuning logic and original training code.
 
-Here we also overrides ``reset_config``. This method is optional, but can be implemented to speed
+Here, we also override ``reset_config``. This method is optional but can be implemented to speed
 up algorithms such as PBT, and to allow performance optimizations such as running experiments
-with reuse_actors=True.
+with ``reuse_actors=True``.
 
 Then we define a PBT scheduler
 
