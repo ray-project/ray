@@ -11,20 +11,17 @@ namespace gcs {
 
 class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData> {
  public:
-  typedef SubscriptionExecutor<ActorID, ActorNotification, ActorTable> ActorSubExecutor;
+  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable> ActorSubExecutor;
 
   virtual void SetUp() {
     AccessorTestBase<ActorID, ActorTableData>::SetUp();
 
     actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->actor_table()));
 
-    subscribe_ = [this](const ActorID &id, const ActorNotification &notification) {
-      const auto &data = notification.GetData();
-      if (!data.empty()) {
-        const auto it = id_to_data_.find(id);
-        ASSERT_TRUE(it != id_to_data_.end());
-        --sub_pending_count_;
-      }
+    subscribe_ = [this](const ActorID &id, const ActorTableData &data) {
+      const auto it = id_to_data_.find(id);
+      ASSERT_TRUE(it != id_to_data_.end());
+      --sub_pending_count_;
     };
 
     sub_done_ = [this](Status status) {
@@ -82,7 +79,7 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
   std::atomic<int> do_sub_pending_count_{0};
   std::atomic<int> do_unsub_pending_count_{0};
 
-  SubscribeCallback<ActorID, ActorNotification> subscribe_{nullptr};
+  SubscribeCallback<ActorID, ActorTableData> subscribe_{nullptr};
   StatusCallback sub_done_{nullptr};
   StatusCallback unsub_done_{nullptr};
 };
