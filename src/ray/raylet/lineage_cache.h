@@ -12,7 +12,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task.h"
-#include "ray/gcs/task_state_accessor.h"
+#include "ray/gcs/task_info_accessor.h"
 
 namespace ray {
 
@@ -209,7 +209,7 @@ class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
-  LineageCache(gcs::TaskStateAccessor &task_state_accessor, uint64_t max_lineage_size);
+  LineageCache(gcs::TaskInfoAccessor &task_info_accessor, uint64_t max_lineage_size);
 
   /// Asynchronously commit a task to the GCS.
   ///
@@ -301,8 +301,8 @@ class LineageCache {
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const TaskID &task_id);
 
-  /// The handler for reading or writing or subsribing task information from GCS.
-  gcs::TaskStateAccessor &task_state_accessor_;
+  /// The handler for accessing task information from GCS.
+  gcs::TaskInfoAccessor &task_info_accessor_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

@@ -152,9 +152,9 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
   }
 }
 
-LineageCache::LineageCache(gcs::TaskStateAccessor &task_state_accessor,
+LineageCache::LineageCache(gcs::TaskInfoAccessor &task_info_accessor,
                            uint64_t max_lineage_size)
-    : task_state_accessor_(task_state_accessor) {}
+    : task_info_accessor_(task_info_accessor) {}
 
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
@@ -283,7 +283,7 @@ void LineageCache::FlushTask(const TaskID &task_id) {
       task->TaskData().GetTaskSpecification().GetMessage());
   task_data->mutable_task()->mutable_task_execution_spec()->CopyFrom(
       task->TaskData().GetTaskExecutionSpec().GetMessage());
-  RAY_CHECK_OK(task_state_accessor_.AsyncAdd(task_data, task_callback));
+  RAY_CHECK_OK(task_info_accessor_.AsyncAdd(task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.
@@ -300,8 +300,8 @@ bool LineageCache::SubscribeTask(const TaskID &task_id) {
     // Subscribe to the task.
     // TODO(micafan) If we commit task and subscribe task at the same time,
     // we might not receive the commited message.
-    RAY_CHECK_OK(task_state_accessor_.AsyncSubscribe(task_id, subscribe,
-                                                     /*done*/ nullptr));
+    RAY_CHECK_OK(task_info_accessor_.AsyncSubscribe(task_id, subscribe,
+                                                    /*done*/ nullptr));
   }
   // Return whether we were previously unsubscribed to this task and are now
   // subscribed.
@@ -313,7 +313,7 @@ bool LineageCache::UnsubscribeTask(const TaskID &task_id) {
   bool subscribed = (it != subscribed_tasks_.end());
   if (subscribed) {
     // Cancel subscribe to the task.
-    RAY_CHECK_OK(task_state_accessor_.AsyncUnsubscribe(task_id, /*done*/ nullptr));
+    RAY_CHECK_OK(task_info_accessor_.AsyncUnsubscribe(task_id, /*done*/ nullptr));
     subscribed_tasks_.erase(it);
   }
   // Return whether we were previously subscribed to this task and are now

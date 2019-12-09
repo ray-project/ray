@@ -968,7 +968,7 @@ void NodeManager::ProcessClientMessage(
       for (const auto &object_id : object_ids) {
         creating_task_ids.push_back(object_id.TaskId());
       }
-      gcs_client_->Tasks().AsyncDelete(creating_task_ids, nullptr);
+      RAY_CHECK_OK(gcs_client_->Tasks().AsyncDelete(creating_task_ids, nullptr));
     }
   } break;
   case protocol::MessageType::PrepareActorCheckpointRequest: {

@@ -15,7 +15,7 @@ class RedisGcsClient;
 /// \class TaskInfoAccessor
 /// `TaskInfoAccessor` is a sub-interface of `GcsClient`.
 /// This class includes all the methods that are related to accessing
-/// actor information in the GCS.
+/// task information in the GCS.
 class TaskInfoAccessor {
  public:
   virtual ~TaskInfoAccessor() {}
@@ -32,7 +32,7 @@ class TaskInfoAccessor {
   /// Get task information from GCS asynchronously.
   ///
   /// \param task_id The ID of the task to look up in GCS.
-  /// \param callback Callback that is called after lookup finishes.
+  /// \param callback Callback that is called after lookup finished.
   /// \return Status
   virtual Status AsyncGet(const TaskID &task_id,
                           const OptionalItemCallback<TaskTableData> &callback) = 0;
@@ -40,7 +40,7 @@ class TaskInfoAccessor {
   /// Delete tasks from GCS asynchronously.
   ///
   /// \param task_ids The vector of IDs to delete from GCS.
-  /// \param callback Callback that is called after delete finishes.
+  /// \param callback Callback that is called after delete finished.
   /// \return Status
   // TODO(micafan) Will support callback of batch deletion in the future.
   // Currently this callback will never be called.
