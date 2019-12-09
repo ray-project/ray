@@ -19,11 +19,9 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
   RAY_CHECK_OK(it->second->GetObjectStatus(
       request,
       [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {
-        if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::WRONG_OWNER) {
-          RAY_LOG(ERROR)
-              << "Error retrieving the value of object ID " << object_id
-              << " that was deserialized. Probably, the task or actor that created the "
-                 "object ID initially (via ray.put or task submission) has exited.";
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Error retrieving the value of object ID " << object_id
+                         << " that was deserialized: " << status.ToString();
         }
         // Either the owner is gone or the owner replied that the object has
         // been created. In both cases, we can now try to fetch the object via

@@ -224,8 +224,7 @@ bool TaskSpecification::IsAsyncioActor() const {
 }
 
 bool TaskSpecification::IsDetachedActor() const {
-  RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().is_detached();
+  return IsActorCreationTask() && message_->actor_creation_task_spec().is_detached();
 }
 
 std::string TaskSpecification::DebugString() const {
