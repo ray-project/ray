@@ -51,11 +51,17 @@ py_test(
 )
 
 py_test(
+    name = "test_experiment_analysis_mem",
+    size = "small",
+    srcs = ["tests/test_experiment_analysis_mem.py"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "test_experiment",
     size = "small",
     srcs = ["tests/test_experiment.py"],
     deps = [":tune_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -92,6 +98,22 @@ py_test(
     name = "test_trial_runner",
     size = "medium",
     srcs = ["tests/test_trial_runner.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_trial_runner_2",
+    size = "medium",
+    srcs = ["tests/test_trial_runner_2.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_trial_runner_3",
+    size = "medium",
+    srcs = ["tests/test_trial_runner_3.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
@@ -146,7 +168,7 @@ py_test(
 
 py_test(
     name = "test_tune_server",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],

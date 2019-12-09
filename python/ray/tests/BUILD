@@ -56,33 +56,65 @@ py_test(
 
 py_test(
     name = "test_advanced",
-    size = "large",
+    size = "medium",
     srcs = ["test_advanced.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_advanced_2",
+    size = "medium",
+    srcs = ["test_advanced_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_advanced_3",
+    size = "medium",
+    srcs = ["test_advanced_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_component_failures",
-    size = "large",
+    size = "small",
     srcs = ["test_component_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_component_failures_2",
+    size = "medium",
+    srcs = ["test_component_failures_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_component_failures_3",
+    size = "medium",
+    srcs = ["test_component_failures_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_multinode_failures",
-    size = "large",
+    size = "medium",
     srcs = ["test_multinode_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
-    name = "test_multinode_failures_direct",
+    name = "test_multinode_failures_2",
     size = "medium",
-    srcs = ["test_multinode_failures_direct.py", "test_multinode_failures.py"],
-    tags = ["exclusive", "manual"],
+    srcs = ["test_multinode_failures_2.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
@@ -131,7 +163,6 @@ py_test(
     size = "medium",
     srcs = ["test_array.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -139,7 +170,6 @@ py_test(
     size = "small",
     srcs = ["test_autoscaler.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -161,7 +191,6 @@ py_test(
     size = "small",
     srcs = ["test_debug_tools.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -186,7 +215,6 @@ py_test(
     srcs = ["test_failure_direct.py", "test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -304,7 +332,6 @@ py_test(
     size = "small",
     srcs = ["test_queue.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
