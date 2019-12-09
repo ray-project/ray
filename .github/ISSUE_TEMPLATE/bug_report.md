@@ -1,43 +1,19 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report a bug on the latest version of Ray.
 title: ''
-labels: ''
+labels: bug
 assignees: ''
 
 ---
 
-<--Before submitting an issue, please fill out the following form.-->
-**Describe the bug**
-A clear and concise description of what the bug is.
+### What is the problem?
 
-Put an "x" in the below boxes to mark them as done.
-- [ ] I have confirmed that this bug occurs on the latest version of Ray (specifically, the nightly wheels [here](https://ray.readthedocs.io/en/latest/installation.html#latest-snapshots-nightlies))
-- [ ] I have provided a reproducible script for the maintainers to debug.
+*Ray version and other system information (e.g., TensorFlow version, OS):*
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+*Does the problem occur on the [latest wheels](https://ray.readthedocs.io/en/latest/installation.html)?*
 
-**System information**
-- **OS Platform and Distribution (e.g., Linux Ubuntu 16.04)**:
-- **Python version**:
-- **Ray installed from (source or binary)**:
-- **Ray version**:
+### Reproduction
+Please provide a script that can be run to reproduce the issue. The script should have **no external library dependencies** (i.e., use fake or mock data / environments):
 
-<!--
-You can obtain the Ray version with
-
-python -c "import ray; print(ray.__version__)"
--->
-
-### To Reproduce
-
-Steps to reproduce the behavior:
-1. Set this variable '...'
-2. Run '....'
-3.  '....'
-4. See error
-
-
-### Source code / logs
-Include any logs or source code that would be helpful to diagnose the problem.
+If we cannot run your script, we cannot fix your issue.
