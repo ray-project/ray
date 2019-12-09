@@ -25,22 +25,14 @@ import matplotlib.animation as animation
 
 from torch.autograd import Variable
 from torch.nn import functional as F
-import torch.utils.data
 from scipy.stats import entropy
-
-# Set random seed for reproducibility
-manualSeed = 999
-# manualSeed = random.randint(1, 10000) # use if you want new results
-print("Random Seed: ", manualSeed)
-random.seed(manualSeed)
-torch.manual_seed(manualSeed)
 
 # Training parameters
 dataroot = "/tmp/"
 workers = 2
 batch_size = 64
 image_size = 32
-device = 'cpu'
+device = "cpu"
 
 # Number of channels in the training images. For color images this is 3
 nc = 1
@@ -59,16 +51,18 @@ beta1 = 0.5
 
 
 def get_data_loader():
-    dataset = dset.MNIST(root=dataroot, download=True,
-                         transform=transforms.Compose([
-                             transforms.Resize(image_size),
-                             transforms.ToTensor(),
-                             transforms.Normalize((0.5,), (0.5,)),
-                         ]))
+    dataset = dset.MNIST(
+        root=dataroot,
+        download=True,
+        transform=transforms.Compose([
+            transforms.Resize(image_size),
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, ), (0.5, )),
+        ]))
 
     # Create the dataloader
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
-                                             shuffle=True, num_workers=workers)
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=batch_size, shuffle=True, num_workers=workers)
 
     return dataloader
 
@@ -77,9 +71,9 @@ def get_data_loader():
 # custom weights initialization called on netG and netD
 def weights_init(m):
     classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
+    if classname.find("Conv") != -1:
         nn.init.normal_(m.weight.data, 0.0, 0.02)
-    elif classname.find('BatchNorm') != -1:
+    elif classname.find("BatchNorm") != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
 
@@ -90,18 +84,17 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.main = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d( nz, ngf * 4, 4, 1, 0, bias=False),
+            nn.ConvTranspose2d(nz, ngf * 4, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 4),
             nn.ReLU(True),
             nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
-            nn.ConvTranspose2d( ngf * 2, ngf, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf),
             nn.ReLU(True),
             nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
-            nn.Tanh()
-        )
+            nn.Tanh())
 
     def forward(self, input):
         return self.main(input)
@@ -114,17 +107,15 @@ class Discriminator(nn.Module):
             nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 2),
-            nn.LeakyReLU(0.2, inplace=True),
+            nn.BatchNorm2d(ndf * 2), nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(ndf * 4, 1, 4, 1, 0, bias=False),
-            nn.Sigmoid()
-        )
+            nn.BatchNorm2d(ndf * 4), nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(ndf * 4, 1, 4, 1, 0, bias=False), nn.Sigmoid())
 
     def forward(self, input):
         return self.main(input)
+
+
 # __GANmodel_end__
 
 
@@ -133,6 +124,7 @@ class Net(nn.Module):
     """
     LeNet for MNist classification, used for inception_score
     """
+
     def __init__(self):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
@@ -156,7 +148,7 @@ def inception_score(imgs, batch_size=32, splits=1):
     dtype = torch.FloatTensor
     dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
     cm = ray.get(mnist_model_ref)
-    up = nn.Upsample(size=(28, 28), mode='bilinear').type(dtype)
+    up = nn.Upsample(size=(28, 28), mode="bilinear").type(dtype)
 
     def get_pred(x):
         x = up(x)
@@ -168,12 +160,12 @@ def inception_score(imgs, batch_size=32, splits=1):
         batch = batch.type(dtype)
         batchv = Variable(batch)
         batch_size_i = batch.size()[0]
-        preds[i*batch_size:i*batch_size + batch_size_i] = get_pred(batchv)
+        preds[i * batch_size:i * batch_size + batch_size_i] = get_pred(batchv)
 
     # Now compute the mean kl-div
     split_scores = []
     for k in range(splits):
-        part = preds[k * (N // splits): (k+1) * (N // splits), :]
+        part = preds[k * (N // splits):(k + 1) * (N // splits), :]
         py = np.mean(part, axis=0)
         scores = []
         for i in range(part.shape[0]):
@@ -182,6 +174,8 @@ def inception_score(imgs, batch_size=32, splits=1):
         split_scores.append(np.exp(np.mean(scores)))
 
     return np.mean(split_scores), np.std(split_scores)
+
+
 # __INCEPTION_SCORE_end__
 
 
@@ -196,7 +190,7 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration):
         netD.zero_grad()
         real_cpu = data[0].to(device)
         b_size = real_cpu.size(0)
-        label = torch.full((b_size,), real_label, device=device)
+        label = torch.full((b_size, ), real_label, device=device)
         output = netD(real_cpu).view(-1)
         errD_real = criterion(output, label)
         errD_real.backward()
@@ -224,10 +218,10 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration):
 
         # Output training stats
         if iteration % 10 == 0:
-            print('[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z))'
-                  ': %.4f / %.4f \tInception score: %.4f'
-                  % (iteration, len(dataloader),
-                     errD.item(), errG.item(), D_x, D_G_z1, D_G_z2, is_score))
+            print("[%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z))"
+                  ": %.4f / %.4f \tInception score: %.4f" %
+                  (iteration, len(dataloader), errD.item(), errG.item(), D_x,
+                   D_G_z1, D_G_z2, is_score))
 
     return errG.item(), errD.item(), is_score
 
@@ -240,12 +234,14 @@ class PytorchTrainable(tune.Trainable):
         self.netG = Generator().to(device)
         self.netG.apply(weights_init)
         self.criterion = nn.BCELoss()
-        self.optimizerD = optim.Adam(self.netD.parameters(),
-                                     lr=config.get("lr", 0.01),
-                                     betas=(beta1, 0.999))
-        self.optimizerG = optim.Adam(self.netG.parameters(),
-                                     lr=config.get("lr", 0.01),
-                                     betas=(beta1, 0.999))
+        self.optimizerD = optim.Adam(
+            self.netD.parameters(),
+            lr=config.get("lr", 0.01),
+            betas=(beta1, 0.999))
+        self.optimizerG = optim.Adam(
+            self.netG.parameters(),
+            lr=config.get("lr", 0.01),
+            betas=(beta1, 0.999))
         self.dataloader = get_data_loader()
 
     def _train(self):
@@ -255,34 +251,42 @@ class PytorchTrainable(tune.Trainable):
         return {"lossg": lossG, "lossd": lossD, "is_score": is_score}
 
     def _save(self, checkpoint_dir):
-        netD_path = os.path.join(checkpoint_dir, "netDmodel.pth")
-        torch.save(self.netD.state_dict(), netD_path)
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        torch.save({
+            "netDmodel": self.netD.state_dict(),
+            "netGmodel": self.netG.state_dict(),
+            "optimD": self.optimizerD.state_dict(),
+            "optimG": self.optimizerG.state_dict(),
+        }, path)
 
-        netG_path = os.path.join(checkpoint_dir, "netGmodel.pth")
-        torch.save(self.netG.state_dict(), netG_path)
         return checkpoint_dir
 
     def _restore(self, checkpoint_dir):
-        self.netD.load_state_dict(
-            torch.load(os.path.join(checkpoint_dir, "netDmodel.pth")))
-        self.netG.load_state_dict(
-            torch.load(os.path.join(checkpoint_dir, "netGmodel.pth")))
+        path = os.path.join(checkpoint_dir, "checkpoint")
+        checkpoint = torch.load(path)
+        self.netD.load_state_dict(checkpoint["netDmodel"])
+        self.netG.load_state_dict(checkpoint["netGmodel"])
+        self.optimizerD.load_state_dict(checkpoint["optimD"])
+        self.optimizerG.load_state_dict(checkpoint["optimG"])
 
     def reset_config(self, new_config):
         del self.optimizerD
         del self.optimizerG
-        self.optimizerD = optim.Adam(self.netD.parameters(),
-                                     lr=new_config.get("netD_lr"),
-                                     betas=(beta1, 0.999))
-        self.optimizerG = optim.Adam(self.netG.parameters(),
-                                     lr=new_config.get("netG_lr"),
-                                     betas=(beta1, 0.999))
+        self.optimizerD = optim.Adam(
+            self.netD.parameters(),
+            lr=new_config.get("netD_lr"),
+            betas=(beta1, 0.999))
+        self.optimizerG = optim.Adam(
+            self.netG.parameters(),
+            lr=new_config.get("netG_lr"),
+            betas=(beta1, 0.999))
         self.config = new_config
         return True
+
+
 # __Trainable_end__
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
@@ -295,8 +299,11 @@ if __name__ == '__main__':
     plt.figure(figsize=(8, 8))
     plt.axis("off")
     plt.title("Original Images")
-    plt.imshow(np.transpose(vutils.make_grid(
-        real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(), (1, 2, 0)))
+    plt.imshow(
+        np.transpose(
+            vutils.make_grid(
+                real_batch[0].to(device)[:64], padding=2,
+                normalize=True).cpu(), (1, 2, 0)))
 
     if not args.smoke_test:
         plt.show()
@@ -322,7 +329,7 @@ if __name__ == '__main__':
     tune_iter = 5 if args.smoke_test else 300
     analysis = tune.run(
         PytorchTrainable,
-        name="dcgan_mnist_pbt",
+        name="pbt_dcgan_mnist",
         scheduler=scheduler,
         reuse_actors=True,
         verbose=1,
@@ -333,23 +340,21 @@ if __name__ == '__main__':
         num_samples=8,
         config={
             "netG_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])
-            ),
+                lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
             "netD_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])
-            )
+                lambda spec: random.choice([0.0001, 0.0002, 0.0005]))
         })
     # __tune_end__
 
     # demo of the trained Generators
     if not args.smoke_test:
-        logdirs = analysis.dataframe()['logdir'].tolist()
+        logdirs = analysis.dataframe()["logdir"].tolist()
         img_list = []
         fixed_noise = torch.randn(64, nz, 1, 1, device=device)
         for d in logdirs:
-            netG_path = d + '/checkpoint_' + str(tune_iter) + '/netGmodel.pth'
+            netG_path = d + "/checkpoint_" + str(tune_iter) + "/checkpoint"
             loadedG = Generator().to(device)
-            loadedG.load_state_dict(torch.load(netG_path))
+            loadedG.load_state_dict(torch.load(netG_path)["netGmodel"])
             with torch.no_grad():
                 fake = loadedG(fixed_noise).detach().cpu()
             img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
@@ -360,5 +365,5 @@ if __name__ == '__main__':
                for i in img_list]
         ani = animation.ArtistAnimation(
             fig, ims, interval=1000, repeat_delay=1000, blit=True)
-        ani.save("./generated.gif", writer='imagemagick', dpi=72)
+        ani.save("./generated.gif", writer="imagemagick", dpi=72)
         plt.show()

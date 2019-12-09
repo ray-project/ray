@@ -256,12 +256,12 @@ Getting Involved
 
    tune.rst
    tune-tutorial.rst
+   tune-advanced-tutorial.rst
    tune-usage.rst
    tune-distributed.rst
    tune-schedulers.rst
    tune-searchalg.rst
    tune-package-ref.rst
-   tune-advance-tutorial.rst
    tune-design.rst
    tune-examples.rst
    tune-contrib.rst
