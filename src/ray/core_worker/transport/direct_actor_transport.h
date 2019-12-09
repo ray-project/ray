@@ -420,9 +420,10 @@ class SchedulingQueue {
 
 class CoreWorkerDirectTaskReceiver {
  public:
-  using TaskHandler = std::function<Status(
-      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_objects)>;
+  using TaskHandler =
+      std::function<Status(const TaskSpecification &task_spec,
+                           const std::shared_ptr<ResourceMappingType> resource_ids,
+                           std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,

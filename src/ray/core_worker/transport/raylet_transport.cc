@@ -36,14 +36,14 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   // Set the resource IDs for this task.
   // TODO: convert the resource map to protobuf and change this.
-  ResourceMappingType resource_ids;
+  auto resource_ids = std::make_shared<ResourceMappingType>();
   auto resource_infos =
       flatbuffers::GetRoot<protocol::ResourceIdSetInfos>(request.resource_ids().data())
           ->resource_infos();
   for (size_t i = 0; i < resource_infos->size(); ++i) {
     auto const &fractional_resource_ids = resource_infos->Get(i);
     auto &acquired_resources =
-        resource_ids[string_from_flatbuf(*fractional_resource_ids->resource_name())];
+        (*resource_ids)[string_from_flatbuf(*fractional_resource_ids->resource_name())];
 
     size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
     size_t num_resource_fractions = fractional_resource_ids->resource_fractions()->size();

@@ -470,7 +470,7 @@ def stop(force, verbose):
         debug_operator = "| tee /dev/stderr" if verbose else ""
 
         command = (
-            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep {} | grep ray |"
+            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep {} |"
             "awk '{{ print $1 }}') 2> /dev/null".format(
                 # ^^ This is how you escape braces in python format string.
                 "KILL" if force else "TERM",

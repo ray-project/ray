@@ -62,22 +62,22 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
-  /// Get ActorInfoAccessor for reading or writing or subscribing to
-  /// actors. This function is thread safe.
+  /// Get the sub-interface for accessing actor information in GCS.
+  /// This function is thread safe.
   ActorInfoAccessor &Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
 
-  /// Get JobInfoAccessor for reading or writing or subscribing to
-  /// jobs. This function is thread safe.
+  /// Get the sub-interface for accessing job information in GCS.
+  /// This function is thread safe.
   JobInfoAccessor &Jobs() {
     RAY_CHECK(job_accessor_ != nullptr);
     return *job_accessor_;
   }
 
-  /// Get TaskInfoAccessor for reading or writing or subsribing to
-  /// tasks. This function is thread safe.
+  /// Get the sub-interface for accessing task information in GCS.
+  /// This function is thread safe.
   TaskInfoAccessor &Tasks() {
     RAY_CHECK(task_accessor_ != nullptr);
     return *task_accessor_;
