@@ -399,24 +399,25 @@ class SetTestHelper {
     std::vector<std::string> managers = {"abc", "def", "ghi"};
 
     // Callback for a notification.
-    auto notification_callback = [object_ids, managers](
-                                     gcs::RedisGcsClient *client, const ObjectID &id,
-                                     const std::vector<ObjectChangeNotification> &notifications) {
-      if (test->NumCallbacks() < 3 * 3) {
-        ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
-      } else {
-        ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::REMOVE);
-      }
-      ASSERT_EQ(id, object_ids[test->NumCallbacks() / 3 % 3]);
-      // Check that we get notifications in the same order as the writes.
-      for (const auto &entry : notifications[0].GetData()) {
-        ASSERT_EQ(entry.manager(), managers[test->NumCallbacks() % 3]);
-        test->IncrementNumCallbacks();
-      }
-      if (test->NumCallbacks() == object_ids.size() * 3 * 2) {
-        test->Stop();
-      }
-    };
+    auto notification_callback =
+        [object_ids, managers](
+            gcs::RedisGcsClient *client, const ObjectID &id,
+            const std::vector<ObjectChangeNotification> &notifications) {
+          if (test->NumCallbacks() < 3 * 3) {
+            ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
+          } else {
+            ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::REMOVE);
+          }
+          ASSERT_EQ(id, object_ids[test->NumCallbacks() / 3 % 3]);
+          // Check that we get notifications in the same order as the writes.
+          for (const auto &entry : notifications[0].GetData()) {
+            ASSERT_EQ(entry.manager(), managers[test->NumCallbacks() % 3]);
+            test->IncrementNumCallbacks();
+          }
+          if (test->NumCallbacks() == object_ids.size() * 3 * 2) {
+            test->Stop();
+          }
+        };
 
     // Callback for subscription success. We are guaranteed to receive
     // notifications after this is called.
@@ -480,21 +481,22 @@ class SetTestHelper {
 
     // The callback for a notification from the table. This should only be
     // received for keys that we requested notifications for.
-    auto notification_callback = [object_id2, managers2](
-                                     gcs::RedisGcsClient *client, const ObjectID &id,
-                                     const std::vector<ObjectChangeNotification> &notifications) {
-      ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
-      // Check that we only get notifications for the requested key.
-      ASSERT_EQ(id, object_id2);
-      // Check that we get notifications in the same order as the writes.
-      for (const auto &entry : notifications[0].GetData()) {
-        ASSERT_EQ(entry.manager(), managers2[test->NumCallbacks()]);
-        test->IncrementNumCallbacks();
-      }
-      if (test->NumCallbacks() == managers2.size()) {
-        test->Stop();
-      }
-    };
+    auto notification_callback =
+        [object_id2, managers2](
+            gcs::RedisGcsClient *client, const ObjectID &id,
+            const std::vector<ObjectChangeNotification> &notifications) {
+          ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
+          // Check that we only get notifications for the requested key.
+          ASSERT_EQ(id, object_id2);
+          // Check that we get notifications in the same order as the writes.
+          for (const auto &entry : notifications[0].GetData()) {
+            ASSERT_EQ(entry.manager(), managers2[test->NumCallbacks()]);
+            test->IncrementNumCallbacks();
+          }
+          if (test->NumCallbacks() == managers2.size()) {
+            test->Stop();
+          }
+        };
 
     // The callback for subscription success. Once we've subscribed, request
     // notifications for only one of the keys, then write to both keys.
@@ -543,34 +545,36 @@ class SetTestHelper {
 
     // The callback for a notification from the object table. This should only be
     // received for the object that we requested notifications for.
-    auto notification_callback = [object_id, managers](
-                                     gcs::RedisGcsClient *client, const ObjectID &id,
-                                     const std::vector<ObjectChangeNotification> &notifications) {
-      ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
-      ASSERT_EQ(id, object_id);
-      // Check that we get a duplicate notification for the first write. We get a
-      // duplicate notification because notifications
-      // are canceled after the first write, then requested again.
-      const std::vector<ObjectTableData> &data = notifications[0].GetData();
-      if (data.size() == 1) {
-        // first notification
-        ASSERT_EQ(data[0].manager(), managers[0]);
-        test->IncrementNumCallbacks();
-      } else {
-        // second notification
-        ASSERT_EQ(data.size(), managers.size());
-        std::unordered_set<std::string> managers_set(managers.begin(), managers.end());
-        std::unordered_set<std::string> data_managers_set;
-        for (const auto &entry : data) {
-          data_managers_set.insert(entry.manager());
-          test->IncrementNumCallbacks();
-        }
-        ASSERT_EQ(managers_set, data_managers_set);
-      }
-      if (test->NumCallbacks() == managers.size() + 1) {
-        test->Stop();
-      }
-    };
+    auto notification_callback =
+        [object_id, managers](
+            gcs::RedisGcsClient *client, const ObjectID &id,
+            const std::vector<ObjectChangeNotification> &notifications) {
+          ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
+          ASSERT_EQ(id, object_id);
+          // Check that we get a duplicate notification for the first write. We get a
+          // duplicate notification because notifications
+          // are canceled after the first write, then requested again.
+          const std::vector<ObjectTableData> &data = notifications[0].GetData();
+          if (data.size() == 1) {
+            // first notification
+            ASSERT_EQ(data[0].manager(), managers[0]);
+            test->IncrementNumCallbacks();
+          } else {
+            // second notification
+            ASSERT_EQ(data.size(), managers.size());
+            std::unordered_set<std::string> managers_set(managers.begin(),
+                                                         managers.end());
+            std::unordered_set<std::string> data_managers_set;
+            for (const auto &entry : data) {
+              data_managers_set.insert(entry.manager());
+              test->IncrementNumCallbacks();
+            }
+            ASSERT_EQ(managers_set, data_managers_set);
+          }
+          if (test->NumCallbacks() == managers.size() + 1) {
+            test->Stop();
+          }
+        };
 
     // The callback for a notification from the table. This should only be
     // received for keys that we requested notifications for.

@@ -444,7 +444,6 @@ class Set : private Log<ID, Data>,
   Status Remove(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                 const WriteCallback &done);
 
-  
   using NotificationCallback =
       std::function<void(RedisGcsClient *client, const ID &id,
                          const std::vector<ObjectChangeNotification> &data)>;

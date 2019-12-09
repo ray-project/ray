@@ -46,7 +46,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     return Status::OK();
   }
 
-  auto on_subscribe = [this](RedisGcsClient *client, const ID &id, 
+  auto on_subscribe = [this](RedisGcsClient *client, const ID &id,
                              const std::vector<Data> &result) {
     RAY_LOG(DEBUG) << "Subscribe received update of id " << id;
     if (result.empty()) {
@@ -185,7 +185,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
   return table_.CancelNotifications(JobID::Nil(), id, client_id, on_done);
 }
 
-template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>; 
+template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
 template class SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>;
 
 }  // namespace gcs

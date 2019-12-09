@@ -45,7 +45,7 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
           object_accessor.AsyncAddLocation(elem.first, node_id, [this](Status status) {
             RAY_CHECK_OK(status);
             --pending_count_;
-      }));
+          }));
     }
   }
   WaitPendingDone(wait_pending_timeout_);
@@ -86,10 +86,10 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
     ++pending_count_;
     ++sub_pending_count;
     RAY_CHECK_OK(object_accessor.AsyncSubscribeToLocations(elem.first, subscribe,
-                                              [this](Status status) {
-                                                RAY_CHECK_OK(status);
-                                                --pending_count_;
-                                              }));
+                                                           [this](Status status) {
+                                                             RAY_CHECK_OK(status);
+                                                             --pending_count_;
+                                                           }));
   }
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);
@@ -99,10 +99,11 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
     ++sub_pending_count;
     const ObjectVector &object_vec = elem.second;
     ClientID node_id = ClientID::FromBinary(object_vec[0]->manager());
-    RAY_CHECK_OK(object_accessor.AsyncRemoveLocation(elem.first, node_id, [this](Status status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    }));
+    RAY_CHECK_OK(
+        object_accessor.AsyncRemoveLocation(elem.first, node_id, [this](Status status) {
+          RAY_CHECK_OK(status);
+          --pending_count_;
+        }));
   }
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);

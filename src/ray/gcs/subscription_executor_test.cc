@@ -1,8 +1,8 @@
 #include "gtest/gtest.h"
 #include "ray/gcs/accessor_test_base.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/entry_change_notification.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
