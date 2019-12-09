@@ -47,6 +47,7 @@ class Node(object):
                  ray_params,
                  head=False,
                  shutdown_at_exit=True,
+                 spawn_reaper=True,
                  connect_only=False):
         """Start a node.
 
@@ -56,9 +57,10 @@ class Node(object):
             head (bool): True if this is the head node, which means it will
                 start additional processes like the Redis servers, monitor
                 processes, and web UI.
-            shutdown_at_exit (bool): If true, a handler will be registered to
-                shutdown the processes started here when the Python interpreter
-                exits.
+            shutdown_at_exit (bool): If true, spawned processes will be cleaned
+                up if this process exits normally.
+            spawn_reaper (bool): If true, spawns a process that will clean up
+                other spawned processes if this process dies unexpectedly.
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
@@ -158,6 +160,9 @@ class Node(object):
                 # raylet starts.
                 self._ray_params.node_manager_port = self._get_unused_port()
 
+        if not connect_only and spawn_reaper:
+            self.start_reaper_process()
+
         # Start processes.
         if head:
             self.start_head_processes()
@@ -170,39 +175,10 @@ class Node(object):
             self.start_ray_processes()
 
     def _register_shutdown_hooks(self):
-        # Make ourselves a process group session leader to ensure we can clean
-        # up child processes later without killing a process that started us.
-        try:
-            os.setpgrp()
-        except OSError as e:
-            logger.warning("setpgrp failed, processes may not be "
-                           "cleaned up properly: {}.".format(e))
-
-        # Clean up child process by first going through the normal
-        # kill_all_processes procedure (which should clean them all up
-        # under normal circumstances), then sending a SIGTERM to our
-        # process group to take care of any children that may have been
-        # spawned but not yet added to the list.
-        def clean_up_children(sigterm_handler):
+        # Register the atexit handler. In this case, we shouldn't call sys.exit
+        # as we're already in the exit procedure.
+        def atexit_handler(*args):
             self.kill_all_processes(check_alive=False, allow_graceful=True)
-            signal.signal(signal.SIGTERM, sigterm_handler)
-            try:
-                # SIGTERM our process group as a last resort in case there
-                # were processes that we spawned but didn't add to the list
-                # (could happen if interrupted just after spawning them).
-                # We could send SIGKILL here to be sure, but we're also
-                # sending it to ourselves.
-                os.killpg(0, signal.SIGTERM)
-            except OSError as e:
-                print("killpg failed, processes may not have "
-                      "been cleaned up properly: {}.".format(e))
-
-        # Register the a handler to be called during the normal python
-        # shutdown process. We pass an empty lambda to clean_up_children
-        # because after cleaning up the child processes, it should do
-        # nothing and return so that the shutdown process can continue.
-        def atexit_handler():
-            return clean_up_children(lambda *args, **kwargs: None)
 
         atexit.register(atexit_handler)
 
@@ -210,7 +186,8 @@ class Node(object):
         # In this case, we want to exit with an error code (1) after
         # cleaning up child processes.
         def sigterm_handler(signum, frame):
-            return clean_up_children(lambda *args, **kwargs: sys.exit(1))
+            self.kill_all_processes(check_alive=False, allow_graceful=True)
+            sys.exit(1)
 
         signal.signal(signal.SIGTERM, sigterm_handler)
 
@@ -434,6 +411,20 @@ class Node(object):
             return socket_path
         return self._make_inc_temp(
             prefix=default_prefix, directory_name=self._sockets_dir)
+
+    def start_reaper_process(self):
+        """
+        Start the reaper process.
+
+        This must be the first process spawned and should only be called when
+        ray processes should be cleaned up if this process dies.
+        """
+        process_info = ray.services.start_reaper()
+        assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
+        if process_info is not None:
+            self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
+                process_info
+            ]
 
     def start_redis(self):
         """Start the Redis servers."""
@@ -790,6 +781,16 @@ class Node(object):
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_RAYLET_MONITOR, check_alive=check_alive)
 
+    def kill_reaper(self, check_alive=True):
+        """Kill the reaper process.
+
+        Args:
+            check_alive (bool): Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_REAPER, check_alive=check_alive)
+
     def kill_all_processes(self, check_alive=True, allow_graceful=False):
         """Kill all of the processes.
 
@@ -814,8 +815,17 @@ class Node(object):
         # We call "list" to copy the keys because we are modifying the
         # dictionary while iterating over it.
         for process_type in list(self.all_processes.keys()):
+            # Need to kill the reaper process last in case we die unexpectedly
+            # while cleaning up.
+            if process_type != ray_constants.PROCESS_TYPE_REAPER:
+                self._kill_process_type(
+                    process_type,
+                    check_alive=check_alive,
+                    allow_graceful=allow_graceful)
+
+        if ray_constants.PROCESS_TYPE_REAPER in self.all_processes:
             self._kill_process_type(
-                process_type,
+                ray_constants.PROCESS_TYPE_REAPER,
                 check_alive=check_alive,
                 allow_graceful=allow_graceful)
 

@@ -31,6 +31,9 @@ jmethodID java_map_entry_get_value;
 
 jclass java_ray_exception_class;
 
+jclass java_jni_exception_util_class;
+jmethodID java_jni_exception_util_get_stack_trace;
+
 jclass java_base_id_class;
 jmethodID java_base_id_get_bytes;
 
@@ -122,6 +125,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_ray_exception_class = LoadClass(env, "org/ray/api/exception/RayException");
 
+  java_jni_exception_util_class = LoadClass(env, "org/ray/runtime/util/JniExceptionUtil");
+  java_jni_exception_util_get_stack_trace = env->GetStaticMethodID(
+      java_jni_exception_util_class, "getStackTrace",
+      "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Throwable;)Ljava/lang/String;");
+
   java_base_id_class = LoadClass(env, "org/ray/api/id/BaseId");
   java_base_id_get_bytes = env->GetMethodID(java_base_id_class, "getBytes", "()[B");
 
@@ -195,6 +203,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_iterator_class);
   env->DeleteGlobalRef(java_map_entry_class);
   env->DeleteGlobalRef(java_ray_exception_class);
+  env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
   env->DeleteGlobalRef(java_function_descriptor_class);
   env->DeleteGlobalRef(java_language_class);
