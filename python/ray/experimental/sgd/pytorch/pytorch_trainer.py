@@ -77,6 +77,7 @@ class PyTorchTrainer(object):
                  "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
+        self.validation_function = validation_function
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
@@ -162,6 +163,8 @@ class PyTorchTrainer(object):
 
     def validate(self):
         """Evaluates the model on the validation data set."""
+        if self.validation_function is False:
+            return {}
         worker_stats = ray.get([w.validate.remote() for w in self.workers])
         validation_stats = worker_stats[0].copy()
         if "validation_loss" in validation_stats:
