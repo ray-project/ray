@@ -55,8 +55,9 @@ class LocalMemoryBuffer : public Buffer {
       : has_data_copy_(copy_data) {
     if (copy_data) {
       RAY_CHECK(data != nullptr);
-      data_ = (uint8_t *)malloc(size * sizeof(uint8_t));
-      memcpy(data_, data, size);
+      buffer_ = std::unique_ptr<uint8_t[]>(new uint8_t[size]);
+      memcpy(buffer_.get(), data, size);
+      data_ = buffer_.get();
       size_ = size;
     } else {
       data_ = data;
@@ -66,7 +67,8 @@ class LocalMemoryBuffer : public Buffer {
 
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
   LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
-    data_ = (uint8_t *)malloc(size * sizeof(uint8_t));
+    buffer_ = std::unique_ptr<uint8_t[]>(new uint8_t(size));
+    data_ = buffer_.get();
     size_ = size;
   }
 
@@ -78,13 +80,7 @@ class LocalMemoryBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  ~LocalMemoryBuffer() {
-    if (has_data_copy_ && data_) {
-      free(data_);
-      data_ = nullptr;
-    }
-    size_ = 0;
-  }
+  ~LocalMemoryBuffer() { size_ = 0; }
 
  private:
   /// Disable copy constructor and assignment, as default copy will
@@ -98,6 +94,8 @@ class LocalMemoryBuffer : public Buffer {
   size_t size_;
   /// Whether this buffer holds a copy of data.
   bool has_data_copy_;
+  /// This is only valid when `should_copy` is true.
+  std::unique_ptr<uint8_t[]> buffer_;
 };
 
 /// Represents a byte buffer for plasma object. This can be used to hold the
