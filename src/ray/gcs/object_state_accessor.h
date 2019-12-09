@@ -64,6 +64,7 @@ class ObjectStateAccessor {
   ///
   /// \param object_id The ID of the object to be unsubscribed to.
   /// \param done Callback that will be called when unsubscription is complete.
+  /// \return Status
   Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
                                      const StatusCallback &done);
 
