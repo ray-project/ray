@@ -118,7 +118,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
 
     auto object_notification_callback =
         [this](const ObjectID &object_id,
-               const gcs::ObjectNotification &object_notification) {
+               const gcs::ObjectChangeNotification &object_notification) {
           // Objects are added to this map in SubscribeObjectLocations.
           auto it = listeners_.find(object_id);
           // Do nothing for objects we are not listening for.

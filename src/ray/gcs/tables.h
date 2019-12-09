@@ -12,8 +12,8 @@
 #include "ray/util/logging.h"
 
 #include "ray/gcs/callback.h"
+#include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/gcs/subscription_notification.h"
 #include "ray/protobuf/gcs.pb.h"
 
 struct redisAsyncContext;
@@ -95,9 +95,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using Callback = std::function<void(RedisGcsClient *client, const ID &id,
                                       const std::vector<Data> &data)>;
 
-  using NotificationCallback = std::function<void(
-      RedisGcsClient *client, const ID &id,
-      const SubscriptionNotification<std::vector<Data>> &notification)>;
+  using NotificationCallback =
+      std::function<void(RedisGcsClient *client, const ID &id,
+                         const GcsChangeMode change_mode, const std::vector<Data> &data)>;
 
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
@@ -159,6 +159,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// called with an empty vector, then there was no data at the key.
   /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
+
   /// Subscribe to any Append operations to this table. The caller may choose
   /// requests notifications for. This may only be called once per Log
   ///
@@ -409,13 +410,13 @@ class Set : private Log<ID, Data>,
  public:
   using Callback = typename Log<ID, Data>::Callback;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  using NotificationCallback = typename Log<ID, Data>::NotificationCallback;
+  // using NotificationCallback = typename Log<ID, Data>::NotificationCallback;
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
 
   Set(const std::vector<std::shared_ptr<RedisContext>> &contexts, RedisGcsClient *client)
       : Log<ID, Data>(contexts, client) {}
 
-  using Log<ID, Data>::Subscribe;
+  // using Log<ID, Data>::Subscribe;
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
   using Log<ID, Data>::Lookup;
@@ -442,6 +443,15 @@ class Set : private Log<ID, Data>,
   /// \return Status
   Status Remove(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                 const WriteCallback &done);
+
+  
+  using NotificationCallback =
+      std::function<void(RedisGcsClient *client, const ID &id,
+                         const std::vector<ObjectChangeNotification> &data)>;
+
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const NotificationCallback &subscribe,
+                   const SubscriptionCallback &done);
 
   /// Returns debug string for class.
   ///

@@ -3,6 +3,7 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
+#include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
 
@@ -56,7 +57,7 @@ class ObjectStateAccessor {
   /// \return Status
   Status AsyncSubscribeToLocations(
       const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, ObjectNotification> &subscribe,
+      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
       const StatusCallback &done);
 
   /// Cancel subscription to any update of an object's location.
@@ -77,7 +78,7 @@ class ObjectStateAccessor {
   // TODO(micafan): Remove this random id, once GCS becomes a service.
   ClientID node_id_{ClientID::FromRandom()};
 
-  typedef SubscriptionExecutor<ObjectID, ObjectNotification, ObjectTable>
+  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
       ObjectSubscriptionExecutor;
   ObjectSubscriptionExecutor object_sub_executor_;
 };

@@ -58,7 +58,7 @@ Status ObjectStateAccessor::AsyncRemoveLocation(const ObjectID &object_id,
 
 Status ObjectStateAccessor::AsyncSubscribeToLocations(
     const ObjectID &object_id,
-    const SubscribeCallback<ObjectID, ObjectNotification> &subscribe,
+    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return object_sub_executor_.AsyncSubscribe(node_id_, object_id, subscribe, done);

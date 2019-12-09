@@ -41,10 +41,11 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
     for (const auto &item : elem.second) {
       ++pending_count_;
       ClientID node_id = ClientID::FromBinary(item->manager());
-      object_accessor.AsyncAddLocation(elem.first, node_id, [this](Status status) {
-        RAY_CHECK_OK(status);
-        --pending_count_;
-      });
+      RAY_CHECK_OK(
+          object_accessor.AsyncAddLocation(elem.first, node_id, [this](Status status) {
+            RAY_CHECK_OK(status);
+            --pending_count_;
+      }));
     }
   }
   WaitPendingDone(wait_pending_timeout_);
@@ -52,13 +53,13 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
   for (const auto &elem : object_id_to_data_) {
     ++pending_count_;
     size_t total_size = elem.second.size();
-    object_accessor.AsyncGetLocations(
+    RAY_CHECK_OK(object_accessor.AsyncGetLocations(
         elem.first,
         [this, total_size](Status status, const std::vector<ObjectTableData> &result) {
           RAY_CHECK_OK(status);
           RAY_CHECK(total_size == result.size());
           --pending_count_;
-        });
+        }));
   }
   WaitPendingDone(wait_pending_timeout_);
 
@@ -68,7 +69,7 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
   // subscribe
   std::atomic<int> sub_pending_count(0);
   auto subscribe = [this, &sub_pending_count](const ObjectID &object_id,
-                                              const ObjectNotification &result) {
+                                              const ObjectChangeNotification &result) {
     const auto it = object_id_to_data_.find(object_id);
     ASSERT_TRUE(it != object_id_to_data_.end());
     static size_t response_count = 1;
@@ -84,11 +85,11 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
   for (const auto &elem : object_id_to_data_) {
     ++pending_count_;
     ++sub_pending_count;
-    object_accessor.AsyncSubscribeToLocations(elem.first, subscribe,
+    RAY_CHECK_OK(object_accessor.AsyncSubscribeToLocations(elem.first, subscribe,
                                               [this](Status status) {
                                                 RAY_CHECK_OK(status);
                                                 --pending_count_;
-                                              });
+                                              }));
   }
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);
@@ -98,10 +99,10 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
     ++sub_pending_count;
     const ObjectVector &object_vec = elem.second;
     ClientID node_id = ClientID::FromBinary(object_vec[0]->manager());
-    object_accessor.AsyncRemoveLocation(elem.first, node_id, [this](Status status) {
+    RAY_CHECK_OK(object_accessor.AsyncRemoveLocation(elem.first, node_id, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
-    });
+    }));
   }
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);
@@ -109,13 +110,13 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
   for (const auto &elem : object_id_to_data_) {
     ++pending_count_;
     size_t total_size = elem.second.size();
-    object_accessor.AsyncGetLocations(
+    RAY_CHECK_OK(object_accessor.AsyncGetLocations(
         elem.first,
         [this, total_size](Status status, const std::vector<ObjectTableData> &result) {
           RAY_CHECK_OK(status);
           ASSERT_EQ(total_size - 1, result.size());
           --pending_count_;
-        });
+        }));
   }
   WaitPendingDone(wait_pending_timeout_);
 
