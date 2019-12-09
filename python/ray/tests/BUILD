@@ -16,15 +16,23 @@ py_test(
 
 py_test(
     name = "test_actor_resources",
-    size = "large",
+    size = "medium",
     srcs = ["test_actor_resources.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_actor_resources_direct",
+    size = "medium",
+    srcs = ["test_actor_resources_direct.py", "test_actor_resources.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_failures",
-    size = "large",
+    size = "medium",
     srcs = ["test_actor_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -71,17 +79,41 @@ py_test(
 )
 
 py_test(
+    name = "test_multinode_failures_direct",
+    size = "medium",
+    srcs = ["test_multinode_failures_direct.py", "test_multinode_failures.py"],
+    tags = ["exclusive", "manual"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_stress",
-    size = "large",
+    size = "medium",
     srcs = ["test_stress.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_stress_direct",
+    size = "medium",
+    srcs = ["test_stress_direct.py", "test_stress.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_stress_sharded",
-    size = "large",
+    size = "medium",
     srcs = ["test_stress_sharded.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_stress_sharded_direct",
+    size = "medium",
+    srcs = ["test_stress_sharded_direct.py", "test_stress_sharded.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -149,8 +181,17 @@ py_test(
 )
 
 py_test(
-    name = "test_garbage_collection",
+    name = "test_failure_direct",
     size = "medium",
+    srcs = ["test_failure_direct.py", "test_failure.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+    flaky = 1,
+)
+
+py_test(
+    name = "test_garbage_collection",
+    size = "small",
     srcs = ["test_garbage_collection.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -158,7 +199,7 @@ py_test(
 
 py_test(
     name = "test_global_state",
-    size = "medium",
+    size = "small",
     srcs = ["test_global_state.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -166,7 +207,7 @@ py_test(
 
 py_test(
     name = "test_logical_graph",
-    size = "medium",
+    size = "small",
     srcs = ["test_logical_graph.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -198,7 +239,7 @@ py_test(
 
 py_test(
     name = "test_microbenchmarks",
-    size = "medium",
+    size = "small",
     srcs = ["test_microbenchmarks.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -213,7 +254,7 @@ py_test(
 
 py_test(
     name = "test_monitors",
-    size = "medium",
+    size = "small",
     srcs = ["test_monitors.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -268,7 +309,7 @@ py_test(
 
 py_test(
     name = "test_ray_init",
-    size = "medium",
+    size = "small",
     srcs = ["test_ray_init.py"],
     deps = ["//:ray_lib"],
 )
@@ -291,7 +332,7 @@ py_test(
 
 py_test(
     name = "test_tensorflow",
-    size = "medium",
+    size = "small",
     srcs = ["test_tensorflow.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -307,7 +348,7 @@ py_test(
 
 py_test(
     name = "test_webui",
-    size = "medium",
+    size = "small",
     srcs = ["test_webui.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],

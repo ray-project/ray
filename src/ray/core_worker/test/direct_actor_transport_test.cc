@@ -42,7 +42,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   MockTaskFinisher() {}
 
   MOCK_METHOD2(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &));
-  MOCK_METHOD2(FailPendingTask, void(const TaskID &task_id, rpc::ErrorType error_type));
+  MOCK_METHOD2(PendingTaskFailed, void(const TaskID &task_id, rpc::ErrorType error_type));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
@@ -86,7 +86,7 @@ TEST_F(DirectActorTransportTest, TestSubmitTask) {
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _))
       .Times(worker_client_->callbacks.size());
-  EXPECT_CALL(*task_finisher_, FailPendingTask(_, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
@@ -163,7 +163,7 @@ TEST_F(DirectActorTransportTest, TestActorFailure) {
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
   // Simulate the actor dying. All submitted tasks should get failed.
-  EXPECT_CALL(*task_finisher_, FailPendingTask(_, _)).Times(2);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _)).Times(2);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));

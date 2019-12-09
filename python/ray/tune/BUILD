@@ -30,7 +30,7 @@ py_test(
 
 py_test(
     name = "test_commands",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -98,7 +98,7 @@ py_test(
 
 py_test(
     name = "test_var",
-    size = "medium",
+    size = "small",
     srcs = ["tests/test_var.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
@@ -138,7 +138,7 @@ py_test(
 
 py_test(
     name = "test_tune_save_restore",
-    size = "large",
+    size = "small",
     srcs = ["tests/test_tune_save_restore.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],

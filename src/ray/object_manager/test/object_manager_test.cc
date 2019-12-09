@@ -198,7 +198,7 @@ class TestObjectManager : public TestObjectManagerBase {
   void WaitConnections() {
     node_id_1 = gcs_client_1->Nodes().GetSelfId();
     node_id_2 = gcs_client_2->Nodes().GetSelfId();
-    gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
+    RAY_CHECK_OK(gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
         [this](const ClientID &node_id, const GcsNodeInfo &data) {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
@@ -207,7 +207,7 @@ class TestObjectManager : public TestObjectManagerBase {
             StartTests();
           }
         },
-        nullptr);
+        nullptr));
   }
 
   void StartTests() {

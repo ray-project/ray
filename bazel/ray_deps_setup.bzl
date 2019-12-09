@@ -71,6 +71,17 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
 
 def ray_deps_setup():
     github_repository(
+        name = "redis",
+        build_file = "@//bazel:BUILD.redis",
+        tag = "5.0.3",
+        remote = "https://github.com/antirez/redis",
+        sha256 = "8e5997b447b1afdd1efd33731968484d2fe71c271fa7f1cd6b2476367e964e0e",
+        patches = [
+            "//thirdparty/patches:hiredis-async-include-dict.patch",
+        ],
+    )
+
+    github_repository(
         name = "rules_jvm_external",
         tag = "2.10",
         remote = "https://github.com/bazelbuild/rules_jvm_external",
@@ -100,6 +111,7 @@ def ray_deps_setup():
         strip_prefix = "boost_1_68_0",
         url = "https://dl.bintray.com/boostorg/release/1.68.0/source/boost_1_68_0.tar.gz",
         patches = [
+            "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
             # Backport Clang-Cl patch on Boost 1.69 to Boost <= 1.68:
             #   https://lists.boost.org/Archives/boost/2018/09/243420.php
             "//thirdparty/patches:boost-type_traits-trivial_move.patch",
@@ -112,6 +124,9 @@ def ray_deps_setup():
         commit = "df908358c605a7d5b8bbacde07afbaede5ac12cf",
         remote = "https://github.com/nelhage/rules_boost",
         sha256 = "3775c5ab217e0c9cc380f56e243a4d75fe6fee8eaee1447899eaa04c5d582cf1",
+        patches = [
+            "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
+        ],
     )
 
     github_repository(
@@ -151,6 +166,13 @@ def ray_deps_setup():
         commit = "86f34aa07e611787d9cc98c6a33b0a0a536dce57",
         remote = "https://github.com/apache/arrow",
         sha256 = "4f1956e74188fa15078c8ad560bbc298624320d2aafd21fe7a2511afee7ea841",
+        patches = [
+            "//thirdparty/patches:arrow-headers-unused.patch",
+            "//thirdparty/patches:arrow-windows-export.patch",
+            "//thirdparty/patches:arrow-windows-poll.patch",
+            "//thirdparty/patches:arrow-windows-sigpipe.patch",
+            "//thirdparty/patches:arrow-windows-socket.patch",
+        ],
     )
 
     github_repository(

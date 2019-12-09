@@ -39,6 +39,12 @@ class NodeStateAccessor {
   /// \return Status
   Status UnregisterSelf();
 
+  /// Whether local node has been unregistered to GCS.
+  /// Non-thread safe.
+  ///
+  /// \return bool
+  bool IsSelfUnregistered() const;
+
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
   /// \return ClientID
@@ -74,7 +80,8 @@ class NodeStateAccessor {
 
   /// Get nodes cache. The cache stores node information subscribed from GCS.
   /// NodeInfoCahce provides read-only interfaces such as `Get`.
-  /// AsyncSubscribeToNodeChange() must be called successfully before you call this method.
+  /// AsyncSubscribeToNodeChange() must be called successfully before you call this
+  /// method.
   ///
   /// \return NodeStateCache
   NodeStateCache &Cache() const;

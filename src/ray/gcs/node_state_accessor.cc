@@ -20,6 +20,11 @@ Status NodeStateAccessor::UnregisterSelf() {
   return client_table.Disconnect();
 }
 
+bool NodeStateAccessor::IsSelfUnregistered() const {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.IsDisconnected();
+}
+
 const ClientID &NodeStateAccessor::GetSelfId() const {
   ClientTable &client_table = client_impl_->client_table();
   return client_table.GetLocalClientId();

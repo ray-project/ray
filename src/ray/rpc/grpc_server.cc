@@ -1,21 +1,18 @@
-
 #include "src/ray/rpc/grpc_server.h"
+
 #include <grpcpp/impl/service_type.h>
+#include <boost/asio/detail/socket_holder.hpp>
 
 namespace {
 
 bool PortNotInUse(int port) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (fd == -1) {
-    return false;
-  }
+  boost::asio::detail::socket_holder fd(socket(AF_INET, SOCK_STREAM, 0));
   struct sockaddr_in server_addr = {0};
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
   server_addr.sin_port = htons(port);
-  int err = bind(fd, (struct sockaddr *)&server_addr, sizeof(server_addr));
-  close(fd);
-  return err == 0;
+  return fd.get() >= 0 &&
+         bind(fd.get(), (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0;
 }
 
 }  // namespace

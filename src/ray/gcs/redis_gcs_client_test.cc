@@ -2,7 +2,7 @@
 
 // TODO(pcm): get rid of this and replace with the type safe plasma event loop
 extern "C" {
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/hiredis.h"
 }
 
 #include "ray/common/ray_config.h"
@@ -1169,7 +1169,7 @@ class ClientTableTestHelper {
                                      std::shared_ptr<gcs::RedisGcsClient> client) {
     // Subscribe to a node gets added and removed. The latter
     // event will stop the event loop.
-    client->client_table().SubscribeToNodeChange(
+    RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
         [client](const ClientID &id, const GcsNodeInfo &data) {
           // TODO(micafan)
           RAY_LOG(INFO) << "Test alive=" << data.state() << " id=" << id;
@@ -1178,7 +1178,7 @@ class ClientTableTestHelper {
             test->Stop();
           }
         },
-        nullptr);
+        nullptr));
 
     // Connect and disconnect to client table. We should receive notifications
     // for the addition and removal of our own entry.
@@ -1195,7 +1195,7 @@ class ClientTableTestHelper {
                                         std::shared_ptr<gcs::RedisGcsClient> client) {
     // Register callbacks for when a client gets added and removed. The latter
     // event will stop the event loop.
-    client->client_table().SubscribeToNodeChange(
+    RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
         [client](const ClientID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::ALIVE) {
             ClientTableNotification(client, id, data, /*is_insertion=*/true);
@@ -1207,7 +1207,7 @@ class ClientTableTestHelper {
             test->Stop();
           }
         },
-        nullptr);
+        nullptr));
 
     // Connect to the client table. We should receive notification for the
     // addition of our own entry.
@@ -1224,7 +1224,7 @@ class ClientTableTestHelper {
       const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
     // Register callbacks for when a client gets added and removed. The latter
     // event will stop the event loop.
-    client->client_table().SubscribeToNodeChange(
+    RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
         [client](const ClientID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::ALIVE) {
             ClientTableNotification(client, id, data, true);
@@ -1233,7 +1233,7 @@ class ClientTableTestHelper {
             test->Stop();
           }
         },
-        nullptr);
+        nullptr));
     // Connect to then immediately disconnect from the client table. We should
     // receive notifications for the addition and removal of our own entry.
     GcsNodeInfo local_node_info;
@@ -1260,14 +1260,14 @@ class ClientTableTestHelper {
     RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id, nullptr));
     // Make sure we only get a notification for the removal of the client we
     // marked as dead.
-    client->client_table().SubscribeToNodeChange(
+    RAY_CHECK_OK(client->client_table().SubscribeToNodeChange(
         [dead_client_id](const UniqueID &id, const GcsNodeInfo &data) {
           if (data.state() == GcsNodeInfo::DEAD) {
             ASSERT_EQ(ClientID::FromBinary(data.node_id()), dead_client_id);
             test->Stop();
           }
         },
-        nullptr);
+        nullptr));
     test->Start();
   }
 };

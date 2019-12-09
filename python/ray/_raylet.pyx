@@ -452,7 +452,7 @@ cdef deserialize_args(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == RAW_BUFFER_METADATA):
                 data = Buffer.make(c_args[i].get().GetData())
-                args.append(data)
+                args.append(data.to_pybytes())
             elif (c_args[i].get().HasMetadata() and Buffer.make(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == PICKLE_BUFFER_METADATA):
@@ -911,7 +911,8 @@ cdef class CoreWorker:
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
-                    resources):
+                    resources,
+                    int max_retries):
         cdef:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
@@ -929,7 +930,8 @@ cdef class CoreWorker:
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
-                    ray_function, args_vector, task_options, &return_ids))
+                    ray_function, args_vector, task_options, &return_ids,
+                    max_retries))
 
             return VectorToObjectIDs(return_ids)
 
