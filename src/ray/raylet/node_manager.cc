@@ -2040,6 +2040,10 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker) {
   if (new_scheduler_enabled_) {
     // TODO (ion): replace this hard coded # of CPUs.
+    if (!worker) {
+      RAY_LOG(ERROR) << "-----------------> NULL worker in NodeManager::HandleDirectCallTaskBlocked";
+    }
+    // RAY_LOG(ERROR) << "--------------------------> " <<  worker;
     std::unordered_map<std::string, double> task_request;
     task_request.emplace(kCPU_ResourceLabel, 1.);
     new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), task_request);
