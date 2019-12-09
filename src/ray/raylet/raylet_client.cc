@@ -419,7 +419,7 @@ ray::Status RayletClient::ReturnWorker(int worker_port, bool disconnect_worker) 
   return grpc_client_->ReturnWorker(
       request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Error returning worker: " << status;
+          RAY_LOG(INFO) << "Error returning worker: " << status;
         }
       });
 }

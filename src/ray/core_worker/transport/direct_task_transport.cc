@@ -99,7 +99,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();
-  RAY_CHECK_OK(lease_client->RequestWorkerLease(
+  auto status = lease_client->RequestWorkerLease(
       resource_spec,
       [this, lease_client, task_id, scheduling_key](
           const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
@@ -120,24 +120,31 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
           }
         } else {
-          RAY_LOG(DEBUG) << "Retrying lease request " << task_id;
-          if (lease_client != local_lease_client_) {
-            // A lease request to a remote raylet failed. Retry locally if the lease is
-            // still needed.
-            // TODO(swang): Fail after some number of retries?
-            RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
-                           << status.ToString();
-            RequestNewWorkerIfNeeded(scheduling_key);
-          } else {
-            // A local request failed. This shouldn't happen if the raylet is still alive
-            // and we don't currently handle raylet failures, so treat it as a fatal
-            // error.
-            RAY_LOG(FATAL) << "Lost connection with local raylet. Error: "
-                           << status.ToString();
-          }
+          RetryLeaseRequest(status, lease_client, scheduling_key);
         }
-      }));
+      });
+  if (!status.ok()) {
+    RetryLeaseRequest(status, lease_client, scheduling_key);
+  }
   pending_lease_requests_.insert(scheduling_key);
+}
+
+void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
+    Status status, std::shared_ptr<WorkerLeaseInterface> lease_client,
+    const SchedulingKey &scheduling_key) {
+  if (lease_client != local_lease_client_) {
+    // A lease request to a remote raylet failed. Retry locally if the lease is
+    // still needed.
+    // TODO(swang): Fail after some number of retries?
+    RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
+                   << status.ToString();
+    RequestNewWorkerIfNeeded(scheduling_key);
+  } else {
+    // A local request failed. This shouldn't happen if the raylet is still alive
+    // and we don't currently handle raylet failures, so treat it as a fatal
+    // error.
+    RAY_LOG(FATAL) << "Lost connection with local raylet. Error: " << status.ToString();
+  }
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
@@ -146,6 +153,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto task_id = task_spec.TaskId();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+  bool is_actor = task_spec.IsActorTask();
   RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -153,8 +161,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   RAY_CHECK_OK(client.PushNormalTask(
-      std::move(request), [this, task_id, scheduling_key, addr, assigned_resources](
-                              Status status, const rpc::PushTaskReply &reply) {
+      std::move(request),
+      [this, task_id, is_actor, scheduling_key, addr, assigned_resources](
+          Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mu_);
           OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok(), assigned_resources);
@@ -164,7 +173,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
           // not make sense to retry the task.
-          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::WORKER_DIED);
+          task_finisher_->PendingTaskFailed(task_id, is_actor
+                                                         ? rpc::ErrorType::ACTOR_DIED
+                                                         : rpc::ErrorType::WORKER_DIED);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
