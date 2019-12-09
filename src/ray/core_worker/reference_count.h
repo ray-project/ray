@@ -107,7 +107,7 @@ class ReferenceCounter {
     /// The object's owner, if we know it. This has no value if the object is
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
-    const absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    absl::optional<std::pair<TaskID, rpc::Address>> owner;
   };
 
   /// Helper function with the same semantics as AddReference to allow adding a reference
