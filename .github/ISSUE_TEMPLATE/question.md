@@ -11,4 +11,4 @@ assignees: ''
 
 ### What is your question?
 
-*Ray version and other system information (e.g., TensorFlow version, OS):*
+*Ray version and other system information (Python version, TensorFlow version, OS):*
