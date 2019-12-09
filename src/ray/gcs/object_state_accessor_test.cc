@@ -84,10 +84,10 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
     ++pending_count_;
     ++sub_pending_count;
     RAY_CHECK_OK(object_accessor.AsyncSubscribeToLocations(elem.first, subscribe,
-                                              [this](Status status) {
-                                                RAY_CHECK_OK(status);
-                                                --pending_count_;
-                                              }));
+                                                           [this](Status status) {
+                                                             RAY_CHECK_OK(status);
+                                                             --pending_count_;
+                                                           }));
   }
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);
