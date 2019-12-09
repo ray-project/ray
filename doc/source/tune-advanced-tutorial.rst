@@ -1,7 +1,7 @@
-Tune Advanced tutorials
-=====================
+Tune Advanced Tutorials
+=======================
 
-In this page, we will explore some advanced functions in Tune with more examples.
+In this page, we will explore some advanced functionality in Tune with more examples.
 
 On this page:
 
@@ -13,7 +13,7 @@ A native example of Trainable
 -----------------------------
 As mentioned in `Tune User Guide <tune-usage.html#Tune Training API>`_, Training can be done
 with either the `Trainable <tune-usage.html#trainable-api>`__ **Class API** or
-**function-based API**. Comparably, ``Trainable`` supports stateful Actor and checkpoint/restore,
+**function-based API**. Comparably, ``Trainable`` is stateful, supports checkpoint/restore functionality,
 and is preferable for advanced algorithms.
 
 A naive example for ``Trainable`` is a simple number guesser:
@@ -47,9 +47,9 @@ A naive example for ``Trainable`` is a simple number guesser:
     print('best config: ', analysis.get_best_config(metric="diff", mode="min"))
 
 The program randomly picks 10 number from [1, 10000) and finds which is closer to the password.
-As a subclass of ``ray.tune.Trainable``, Tune will convert ``Example`` into a Ray actor, which
+As a subclass of ``ray.tune.Trainable``, Tune will convert ``Guesser`` into a Ray actor, which
 runs on a separate process on a worker. ``_setup`` function is invoked once for each Actor for custom
-initialization. 
+initialization.
 
 ``_train`` execute one logical iteration of training in the tuning process,
 which may include several iterations of actual training (see the next example). As a rule of
@@ -101,7 +101,7 @@ Here, we also override ``reset_config``. This method is optional but can be impl
 up algorithms such as PBT, and to allow performance optimizations such as running experiments
 with ``reuse_actors=True``.
 
-Then we define a PBT scheduler
+Then, we define a PBT scheduler:
 
 .. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
    :language: python
@@ -111,15 +111,15 @@ Then we define a PBT scheduler
 Some of the most important parameters are:
 
 - ``hyperparam_mutations`` and ``custom_explore_fn`` are used to mutate the hyperparameters.
-``hyperparam_mutations`` is a dictionary where each key/value pair specifies the candidates
-or function for a hyperparameter. custom_explore_fn is applied after built-in perturbations
-from hyperparam_mutations are applied, and should return config updated as needed.
+  ``hyperparam_mutations`` is a dictionary where each key/value pair specifies the candidates
+  or function for a hyperparameter. custom_explore_fn is applied after built-in perturbations
+  from hyperparam_mutations are applied, and should return config updated as needed.
 
 - ``resample_probability``: The probability of resampling from the original distribution
-when applying hyperparam_mutations. If not resampled, the value will be perturbed by a
-factor of 1.2 or 0.8 if continuous, or changed to an adjacent value if discrete. Note that
-``resample_probability`` by default is 0.25, thus hyperparameter with a distribution
-may go out of the specific range.
+  when applying hyperparam_mutations. If not resampled, the value will be perturbed by a
+  factor of 1.2 or 0.8 if continuous, or changed to an adjacent value if discrete. Note that
+  ``resample_probability`` by default is 0.25, thus hyperparameter with a distribution
+  may go out of the specific range.
 
 Now we can kick off the tuning process by invoking tune.run:
 
@@ -176,10 +176,10 @@ DCGAN with Trainable and PBT
 The Generative Adversarial Networks (GAN) (Goodfellow et al., 2014) framework learns generative
 models via a training paradigm consisting of two competing modules – a generator and a
 discriminator. GAN training can be remarkably brittle and unstable in the face of suboptimal
-hyper- parameter selection with generators often collapsing to a single mode or diverging entirely.
+hyperparameter selection with generators often collapsing to a single mode or diverging entirely.
 
 As presented in `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__,
-PBT can help with the DCGAN training and next we're gonna to build a simple DCGAN demo.
+PBT can help with the DCGAN training. We will now walk through how to do this in Tune.
 Complete code example at `github <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples/pbt_dcgan_mnist>`__
 
 We define the Generator and Discriminator with standard Pytorch API:
