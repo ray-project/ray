@@ -119,17 +119,31 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
     for t in trials:
         trials_by_state[t.status].append(t)
 
-    num_trials_by_state = {s: len(trials_by_state[s]) for s in trials_by_state}
-    messages.append("Number of trials: {} ({})".format(num_trials,
-                                                       num_trials_by_state))
     for local_dir in sorted({t.local_dir for t in trials}):
         messages.append("Result logdir: {}".format(local_dir))
 
+    num_trials_strs = [
+        "{} {}".format(len(trials_by_state[state]), state)
+        for state in trials_by_state
+    ]
+    messages.append("Number of trials: {} ({})".format(
+        num_trials, ", ".join(num_trials_strs)))
+
     if num_trials > max_rows:
         # TODO(ujvl): suggestion for users to view more rows.
-        messages.append("Table truncated to {} rows ({} overflow).".format(
-            max_rows, num_trials - max_rows))
-        trials = _fair_filter_trials(trials_by_state, max_rows)
+        trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows)
+        trials = []
+        overflow_strs = []
+        for state in trials_by_state:
+            trials += trials_by_state[state]
+            overflow = len(trials_by_state[state]) - len(
+                trials_by_state_trunc[state])
+            overflow_strs.append("{} {}".format(overflow, state))
+        # Build overflow string.
+        overflow = num_trials - max_rows
+        overflow_str = ", ".join(overflow_strs)
+        messages.append("Table truncated to {} rows. {} trials ({}) not "
+                        "shown.".format(max_rows, overflow, overflow_str))
 
     # Pre-process trials to figure out what columns to show.
     keys = list(metrics or DEFAULT_PROGRESS_KEYS)
@@ -181,7 +195,7 @@ def _fair_filter_trials(trials_by_state, max_trials):
         trials_by_state (Dict[str, List[Trial]]: Trials by state.
         max_trials (int): Maximum number of trials to return.
     Returns:
-        List of fairly represented trials.
+        Dict mapping state to List of fairly represented trials.
     """
     num_trials_by_state = collections.defaultdict(int)
     no_change = False
@@ -192,9 +206,10 @@ def _fair_filter_trials(trials_by_state, max_trials):
                 no_change = False
                 max_trials -= 1
                 num_trials_by_state[state] += 1
-    trials = []
+    trials = collections.defaultdict(list)
     for state in trials_by_state:
-        trials += trials_by_state[state][:num_trials_by_state[state]]
+        state_trials = trials_by_state[state][:num_trials_by_state[state]]
+        trials[state] = state_trials
     return trials
 
 

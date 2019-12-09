@@ -27,23 +27,24 @@ class ProgressReporterTest(unittest.TestCase):
         num_trials_under = 2  # num of trials for each underrepresented state
         num_trials_over = 10  # num of trials for each overrepresented state
 
-        for state in states_under + states_over:
-            n = num_trials_under if state in states_under else num_trials_over
-            for _ in range(n):
+        for state in states_under:
+            for _ in range(num_trials_under):
+                trial = MagicMock()
+                trial.status = state
+                trials_by_state[state].append(trial)
+        for state in states_over:
+            for _ in range(num_trials_over):
                 trial = MagicMock()
                 trial.status = state
                 trials_by_state[state].append(trial)
 
-        trials = _fair_filter_trials(trials_by_state, max_trials=max_trials)
-
-        filtered_trials_by_state = collections.defaultdict(int)
-        for trial in trials:
-            filtered_trials_by_state[trial.status] += 1
+        filtered_trials_by_state = _fair_filter_trials(trials_by_state,
+                                                       max_trials=max_trials)
         for state in trials_by_state:
             if state in states_under:
                 expected_num_trials = num_trials_under
             else:
                 expected_num_trials = (max_trials - num_trials_under *
                                        len(states_under)) / len(states_over)
-            self.assertEqual(filtered_trials_by_state[state],
+            self.assertEqual(len(filtered_trials_by_state[state]),
                              expected_num_trials)
