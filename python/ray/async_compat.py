@@ -2,9 +2,11 @@
 This file should only be imported from Python 3.
 It will raise SyntaxError when importing from Python 2.
 """
-import ray
 import asyncio
 from collections import namedtuple
+import time
+
+import ray
 
 
 def sync_to_async(func):
@@ -60,12 +62,21 @@ def get_async(object_id):
         result = future.result()
         # Result from async plasma, transparently pass it to user future
         if isinstance(future, PlasmaObjectFuture):
-            user_future.set_result(result)
+            if isinstance(result, ray.exceptions.RayTaskError):
+                ray.worker.last_task_error_raise_time = time.time()
+                user_future.set_exception(result.as_instanceof_cause())
+            else:
+                user_future.set_result(result)
         else:
             # Result from direct call.
             assert isinstance(result, AsyncGetResponse), result
             if result.plasma_fallback_id is None:
-                user_future.set_result(result.result)
+                if isinstance(result.result, ray.exceptions.RayTaskError):
+                    ray.worker.last_task_error_raise_time = time.time()
+                    user_future.set_exception(
+                        result.result.as_instanceof_cause())
+                else:
+                    user_future.set_result(result.result)
             else:
                 # Schedule plasma to async get, use the the same callback.
                 retry_plasma_future = as_future(result.plasma_fallback_id)

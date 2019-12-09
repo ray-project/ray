@@ -176,6 +176,7 @@ def test_asyncio_actor_concurrency(ray_start_regular_shared):
 async def test_asyncio_get(ray_start_regular_shared, event_loop):
     loop = event_loop
     asyncio.set_event_loop(loop)
+    loop.set_debug(True)
 
     # This is needed for async plasma
     from ray.experimental.async_api import _async_init
@@ -187,6 +188,13 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
         return 1
 
     assert await ray.async_compat.get_async(task.remote()) == 1
+
+    @ray.remote
+    def task_throws():
+        1 / 0
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        await ray.async_compat.get_async(task_throws.remote())
 
     # Test Direct Actor Call
     str_len = 200 * 1024
@@ -200,6 +208,9 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
             # 100Kb is the limit for direct call
             return "a" * (str_len)
 
+        def throw_error(self):
+            1 / 0
+
     direct = DirectActor.options(is_direct_call=True).remote()
 
     direct_actor_call_future = ray.async_compat.get_async(
@@ -209,3 +220,6 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
     promoted_to_plasma_future = ray.async_compat.get_async(
         direct.big_object.remote())
     assert await promoted_to_plasma_future == "a" * str_len
+
+    with pytest.raises(ray.exceptions.RayTaskError):
+        await ray.async_compat.get_async(direct.throw_error.remote())
