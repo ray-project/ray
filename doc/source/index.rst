@@ -262,6 +262,7 @@ Getting Involved
    tune-schedulers.rst
    tune-searchalg.rst
    tune-package-ref.rst
+   tune-advance-tutorial.rst
    tune-design.rst
    tune-examples.rst
    tune-contrib.rst
