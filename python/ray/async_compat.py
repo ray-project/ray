@@ -30,6 +30,8 @@ def get_async(object_id):
     from ray.experimental.async_api import init as async_api_init, as_future
     from ray.experimental.async_plasma import PlasmaObjectFuture
 
+    assert isinstance(object_id, ray.ObjectID), "Batched get is not supported."
+
     # Setup
     async_api_init()
     loop = asyncio.get_event_loop()
