@@ -57,7 +57,7 @@ py_test(
 
 py_test(
     name = "test_component_failures",
-    size = "medium",
+    size = "small",
     srcs = ["test_component_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -72,9 +72,25 @@ py_test(
 )
 
 py_test(
+    name = "test_component_failures_3",
+    size = "medium",
+    srcs = ["test_component_failures_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_multinode_failures",
     size = "medium",
     srcs = ["test_multinode_failures.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_multinode_failures_2",
+    size = "medium",
+    srcs = ["test_multinode_failures_2.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -156,6 +172,17 @@ py_test(
 )
 
 py_test(
+<<<<<<< HEAD
+=======
+    name = "test_failure_direct",
+    size = "medium",
+    srcs = ["test_failure_direct.py", "test_failure.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+>>>>>>> 304b4f0d3d672c0ece47da8aa9fded515c17c6f4
     name = "test_garbage_collection",
     size = "small",
     srcs = ["test_garbage_collection.py"],
