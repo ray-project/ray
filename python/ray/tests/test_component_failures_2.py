@@ -15,8 +15,6 @@ import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray.test_utils import RayTestTimeoutException
 
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
-
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
 def ray_start_workers_separate_multinode(request):
@@ -84,20 +82,10 @@ def _test_component_failed(cluster, component_type):
     # Submit many tasks with many dependencies.
     @ray.remote
     def f(x):
-        if RAY_FORCE_DIRECT:
-            # Sleep to make sure that tasks actually fail mid-execution. We
-            # only use it for direct calls because the test already takes a
-            # long time to run with the raylet codepath.
-            time.sleep(0.01)
         return x
 
     @ray.remote
     def g(*xs):
-        if RAY_FORCE_DIRECT:
-            # Sleep to make sure that tasks actually fail mid-execution. We
-            # only use it for direct calls because the test already takes a
-            # long time to run with the raylet codepath.
-            time.sleep(0.01)
         return 1
 
     # Kill the component on all nodes except the head node as the tasks
@@ -149,13 +137,11 @@ def check_components_alive(cluster, component_type, check_component_alive):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster",
-    [{
+    "ray_start_cluster", [{
         "num_cpus": 8,
         "num_nodes": 4,
         "_internal_config": json.dumps({
-            # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100
+            "num_heartbeats_timeout": 100
         }),
     }],
     indirect=True)
@@ -173,13 +159,11 @@ def test_raylet_failed(ray_start_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 @pytest.mark.parametrize(
-    "ray_start_cluster",
-    [{
+    "ray_start_cluster", [{
         "num_cpus": 8,
         "num_nodes": 2,
         "_internal_config": json.dumps({
-            # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100
+            "num_heartbeats_timeout": 100
         }),
     }],
     indirect=True)
