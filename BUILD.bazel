@@ -789,13 +789,14 @@ flatbuffer_cc_library(
     out_prefix = "src/ray/object_manager/format/",
 )
 
-# Note that this will expose many unrelated symbols such as grpc_metadata_array_init
-# A better method is document ray ABI and list all ray ABI here.
+# Note that this will expose many unrelated symbols such as grpc_metadata_array_init.
+# TODO A better method is document ray ABI and list all ray ABI here.
+# TODO Or grep src/ using a sophisticated regex.
 genrule(
-    name = "ray.lds",
-    outs = ["ray.lds"],
+    name = "ray.ldvs",
+    outs = ["empty.h"],
     cmd = """
-cat > $@ <<EOF
+cat >  /tmp/ray.ldvs <<EOF
 LIBRAYABI_1.0 {
     global:
         *ray*;
@@ -804,7 +805,7 @@ LIBRAYABI_1.0 {
     local: *;
 };
 EOF
-    cat $@ > /tmp/ray.lds
+    touch $@
     """,
 )
 
@@ -824,9 +825,9 @@ pyx_library(
         "features": ["-supports_start_end_lib"],
         "linkstatic": 1,
         "linkopts": if_linux_x86_64([
-            "-Wl,--version-script=" + "/tmp/ray.lds"
+            "-Wl,--version-script=" + "/tmp/ray.ldvs"
         ]),
-        "data": ["//:ray.lds"],
+        "srcs": ["//:ray.ldvs"],
     },
     copts = COPTS + if_linux_x86_64(["-fno-gnu-unique"]),
     deps = [

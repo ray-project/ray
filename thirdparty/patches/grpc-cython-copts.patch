@@ -1,5 +1,5 @@
 diff --git bazel/cython_library.bzl bazel/cython_library.bzl
-index 48b41d74e8..e91971769f 100644
+index 48b41d74e8..a9bc168e5d 100644
 --- bazel/cython_library.bzl
 +++ bazel/cython_library.bzl
 @@ -7,18 +7,20 @@
@@ -28,10 +28,12 @@ index 48b41d74e8..e91971769f 100644
          py_deps: Pure Python dependencies of the final library.
          srcs: .py, .pyx, or .pxd files to either compile or pass through.
          **kwargs: Extra keyword arguments passed to the py_library.
-@@ -58,8 +60,10 @@ def pyx_library(name, deps=[], py_deps=[], srcs=[], **kwargs):
+@@ -57,9 +59,11 @@ def pyx_library(name, deps=[], py_deps=[], srcs=[], **kwargs):
+         shared_object_name = stem + ".so"
          native.cc_binary(
              name=shared_object_name,
-             srcs=[stem + ".cpp"],
+-            srcs=[stem + ".cpp"],
++            srcs=[stem + ".cpp"] + cc_kwargs.pop("srcs", []),
 +            copts=copts,
              deps=deps + ["@local_config_python//:python_headers"],
              linkshared=1,
