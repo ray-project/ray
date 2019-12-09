@@ -56,7 +56,7 @@ py_test(
 
 py_test(
     name = "test_advanced",
-    size = "small",
+    size = "medium",
     srcs = ["test_advanced.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -95,9 +95,25 @@ py_test(
 )
 
 py_test(
+    name = "test_component_failures_3",
+    size = "medium",
+    srcs = ["test_component_failures_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_multinode_failures",
     size = "medium",
     srcs = ["test_multinode_failures.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_multinode_failures_2",
+    size = "medium",
+    srcs = ["test_multinode_failures_2.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -351,7 +367,7 @@ py_test(
 
 py_test(
     name = "test_unreconstructable_errors",
-    size = "small",
+    size = "medium",
     srcs = ["test_unreconstructable_errors.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
