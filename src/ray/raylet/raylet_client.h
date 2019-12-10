@@ -54,7 +54,7 @@ class WorkerLeaseInterface {
 namespace raylet {
 
 class RayletConnection {
-public:
+ public:
   /// Connect to the raylet.
   ///
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
@@ -82,7 +82,7 @@ public:
                                  std::unique_ptr<uint8_t[]> &reply_message,
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
-private:
+ private:
   /// The Unix domain socket that connects to raylet.
   Socket conn_;
   /// A mutex to protect stateful operations of the raylet client.
@@ -265,8 +265,8 @@ class RayletClient : public WorkerLeaseInterface {
   std::unique_ptr<RayletConnection> conn_;
 };
 
-} // namespace raylet
+}  // namespace raylet
 
-} // namespace ray
+}  // namespace ray
 
 #endif

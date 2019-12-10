@@ -7,7 +7,8 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, const std::shared_ptr<raylet::RayletClient> raylet_client,
+    const std::string &store_socket,
+    const std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;

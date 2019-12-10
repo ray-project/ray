@@ -167,7 +167,8 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(raylet::RayletClient &raylet_client) : raylet_client_(raylet_client) {}
+  DependencyWaiterImpl(raylet::RayletClient &raylet_client)
+      : raylet_client_(raylet_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {
@@ -352,8 +353,7 @@ class SchedulingQueue {
           fiber_rate_limiter_->Acquire();
           request.Accept();
           fiber_rate_limiter_->Release();
-        })
-            .detach();
+        }).detach();
       } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
