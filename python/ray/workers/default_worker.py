@@ -85,13 +85,13 @@ if __name__ == "__main__":
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     internal_config = {}
-    config_list = args.config_list.split(",")
-    if len(config_list) > 1:
-        i = 0
-        while i < len(config_list):
-            internal_config[config_list[i]] = config_list[i + 1]
-            i += 2
-    internal_config_str = json.dumps(internal_config)
+    if args.config_list is not None:
+        config_list = args.config_list.split(",")
+        if len(config_list) > 1:
+            i = 0
+            while i < len(config_list):
+                internal_config[config_list[i]] = config_list[i + 1]
+                i += 2
 
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         temp_dir=args.temp_dir,
         load_code_from_local=args.load_code_from_local,
         use_pickle=args.use_pickle,
-        _internal_config=internal_config_str,
+        _internal_config=json.dumps(internal_config),
     )
 
     node = ray.node.Node(
@@ -114,5 +114,5 @@ if __name__ == "__main__":
         connect_only=True)
     ray.worker._global_node = node
     ray.worker.connect(
-        node, mode=ray.WORKER_MODE, internal_config=internal_config_str)
+        node, mode=ray.WORKER_MODE, internal_config=internal_config)
     ray.worker.global_worker.main_loop()

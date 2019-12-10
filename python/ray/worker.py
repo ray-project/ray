@@ -796,7 +796,8 @@ def init(address=None,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
         job_id=job_id,
-        internal_config=_internal_config)
+        internal_config=json.loads(_internal_config)
+        if _internal_config else {})
 
     for hook in _post_init_hooks:
         hook()
@@ -1091,7 +1092,7 @@ def connect(node,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    ray._raylet.set_internal_config(json.loads(internal_config))
+    ray._raylet.set_internal_config(internal_config)
 
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
