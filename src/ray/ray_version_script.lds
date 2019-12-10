@@ -25,6 +25,7 @@ VERSION_1.0 {
         # Others
         *ray*CoreWorker*;
         *PyInit*;
+        *init_raylet*;
         *Java*;
     local: *;
 };

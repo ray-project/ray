@@ -23,4 +23,5 @@
 # Others
 *ray*CoreWorker*
 *PyInit*
+*init_raylet*
 *Java*
