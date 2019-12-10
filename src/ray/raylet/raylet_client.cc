@@ -412,9 +412,11 @@ ray::Status RayletClient::RequestWorkerLease(
   return grpc_client_->RequestWorkerLease(request, callback);
 }
 
-ray::Status RayletClient::ReturnWorker(int worker_port, bool disconnect_worker) {
+ray::Status RayletClient::ReturnWorker(int worker_port, int worker_pid,
+                                       bool disconnect_worker) {
   ray::rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
+  request.set_worker_pid(worker_pid);
   request.set_disconnect_worker(disconnect_worker);
   return grpc_client_->ReturnWorker(
       request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {

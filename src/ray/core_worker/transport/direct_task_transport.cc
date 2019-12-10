@@ -29,7 +29,7 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
   if (it == client_cache_.end()) {
     client_cache_[addr] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
-    RAY_LOG(INFO) << "Connected to " << addr.first << ":" << addr.second;
+    RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
   }
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
   worker_to_lease_client_.emplace(addr,
@@ -45,7 +45,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || queue_entry == task_queues_.end() ||
       current_time_ms() > lease_entry.second) {
-    auto status = lease_entry.first->ReturnWorker(addr.second, was_error);
+    auto status = lease_entry.first->ReturnWorker(addr.port, addr.pid, was_error);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Error returning worker to raylet: " << status.ToString();
     }
@@ -113,8 +113,9 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // We got a lease for a worker. Add the lease client state and try to
             // assign work to the worker.
             RAY_LOG(DEBUG) << "Lease granted " << task_id;
-            rpc::WorkerAddress addr(reply.worker_address().ip_address(),
-                                    reply.worker_address().port());
+            rpc::WorkerAddress addr = {reply.worker_address().ip_address(),
+                                       reply.worker_address().port(),
+                                       reply.worker_address().pid()};
             AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
             OnWorkerIdle(addr, scheduling_key, /*error=*/false, resources_copy);

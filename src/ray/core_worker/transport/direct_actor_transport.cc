@@ -57,7 +57,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   absl::MutexLock lock(&mu_);
   // Create a new connection to the actor.
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc::WorkerAddress addr = {address.ip_address(), address.port()};
+    rpc::WorkerAddress addr = {address.ip_address(), address.port(), address.pid()};
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
   }
@@ -267,7 +267,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       if (task_spec.IsActorCreationTask()) {
         rpc::WorkerAddress addr = {task_spec.GetMessage().caller_address().ip_address(),
-                                   task_spec.GetMessage().caller_address().port()};
+                                   task_spec.GetMessage().caller_address().port(), 0};
         auto client =
             std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
 
