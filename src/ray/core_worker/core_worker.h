@@ -89,7 +89,7 @@ class CoreWorker {
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
-  RayletClient &GetRayletClient() { return *local_raylet_client_; }
+  raylet::RayletClient &GetRayletClient() { return *local_raylet_client_; }
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
@@ -525,7 +525,7 @@ class CoreWorker {
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
   // of the workers.
-  std::shared_ptr<RayletClient> local_raylet_client_;
+  std::shared_ptr<raylet::RayletClient> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
