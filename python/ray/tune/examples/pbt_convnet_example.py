@@ -71,6 +71,7 @@ if __name__ == "__main__":
     ray.init()
     datasets.MNIST("~/data", train=True, download=True)
 
+    # check if PytorchTrainble will save/restore correctly before execution
     validate_save_restore(PytorchTrainble)
     validate_save_restore(PytorchTrainble, use_object_store=True)
     print("Success!")

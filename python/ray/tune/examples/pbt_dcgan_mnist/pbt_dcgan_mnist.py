@@ -32,7 +32,6 @@ dataroot = "/tmp/"
 workers = 2
 batch_size = 64
 image_size = 32
-device = "cpu"
 
 # Number of channels in the training images. For color images this is 3
 nc = 1
@@ -48,6 +47,9 @@ ndf = 32
 
 # Beta1 hyperparam for Adam optimizers
 beta1 = 0.5
+
+# iterations of actual training in each Trainable _train
+train_iterations_per_step = 5
 
 
 def get_data_loader():
@@ -179,12 +181,13 @@ def inception_score(imgs, batch_size=32, splits=1):
 # __INCEPTION_SCORE_end__
 
 
-def train(netD, netG, optimG, optimD, criterion, dataloader, iteration):
+def train(netD, netG, optimG, optimD, criterion, dataloader, iteration,
+          device):
     real_label = 1
     fake_label = 0
 
     for i, data in enumerate(dataloader, 0):
-        if i >= 5:
+        if i >= train_iterations_per_step:
             break
 
         netD.zero_grad()
@@ -229,9 +232,11 @@ def train(netD, netG, optimG, optimD, criterion, dataloader, iteration):
 # __Trainable_begin__
 class PytorchTrainable(tune.Trainable):
     def _setup(self, config):
-        self.netD = Discriminator().to(device)
+        use_cuda = config.get("use_gpu") and torch.cuda.is_available()
+        self.device = torch.device("cuda" if use_cuda else "cpu")
+        self.netD = Discriminator().to(self.device)
         self.netD.apply(weights_init)
-        self.netG = Generator().to(device)
+        self.netG = Generator().to(self.device)
         self.netG.apply(weights_init)
         self.criterion = nn.BCELoss()
         self.optimizerD = optim.Adam(
@@ -245,9 +250,9 @@ class PytorchTrainable(tune.Trainable):
         self.dataloader = get_data_loader()
 
     def _train(self):
-        lossG, lossD, is_score = train(self.netD, self.netG, self.optimizerG,
-                                       self.optimizerD, self.criterion,
-                                       self.dataloader, self._iteration)
+        lossG, lossD, is_score = train(
+            self.netD, self.netG, self.optimizerG, self.optimizerD,
+            self.criterion, self.dataloader, self._iteration, self.device)
         return {"lossg": lossG, "lossd": lossD, "is_score": is_score}
 
     def _save(self, checkpoint_dir):
@@ -303,8 +308,8 @@ if __name__ == "__main__":
         plt.imshow(
             np.transpose(
                 vutils.make_grid(
-                    real_batch[0].to(device)[:64], padding=2,
-                    normalize=True).cpu(), (1, 2, 0)))
+                    real_batch[0][:64], padding=2, normalize=True).cpu(),
+                (1, 2, 0)))
 
         plt.show()
 
@@ -350,10 +355,10 @@ if __name__ == "__main__":
     if not args.smoke_test:
         logdirs = analysis.dataframe()["logdir"].tolist()
         img_list = []
-        fixed_noise = torch.randn(64, nz, 1, 1, device=device)
+        fixed_noise = torch.randn(64, nz, 1, 1)
         for d in logdirs:
             netG_path = d + "/checkpoint_" + str(tune_iter) + "/checkpoint"
-            loadedG = Generator().to(device)
+            loadedG = Generator()
             loadedG.load_state_dict(torch.load(netG_path)["netGmodel"])
             with torch.no_grad():
                 fake = loadedG(fixed_noise).detach().cpu()
