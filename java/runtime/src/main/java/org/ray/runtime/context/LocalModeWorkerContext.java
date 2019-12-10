@@ -1,6 +1,8 @@
 package org.ray.runtime.context;
 
 import com.google.common.base.Preconditions;
+import com.google.protobuf.ByteString;
+import java.util.Random;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
@@ -19,6 +21,14 @@ public class LocalModeWorkerContext implements WorkerContext {
 
   public LocalModeWorkerContext(JobId jobId) {
     this.jobId = jobId;
+
+    // Create a dummy driver task with a random task id, so that we can call
+    // `getCurrentTaskId` from a driver.
+    byte[] driverTaskId = new byte[TaskId.LENGTH];
+    new Random().nextBytes(driverTaskId);
+    TaskSpec dummyDriverTask = TaskSpec.newBuilder()
+        .setTaskId(ByteString.copyFrom(driverTaskId)).build();
+    currentTask.set(dummyDriverTask);
   }
 
   @Override

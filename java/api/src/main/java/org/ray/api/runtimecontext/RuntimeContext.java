@@ -3,6 +3,7 @@ package org.ray.api.runtimecontext;
 import java.util.List;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
 
 /**
  * A class used for getting information of Ray runtime.
@@ -13,6 +14,11 @@ public interface RuntimeContext {
    * Get the current Job ID.
    */
   JobId getCurrentJobId();
+
+  /**
+   * Get current task ID.
+   */
+  TaskId getCurrentTaskId();
 
   /**
    * Get the current actor ID.

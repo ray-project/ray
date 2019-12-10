@@ -5,6 +5,7 @@ import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
+import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -34,6 +35,7 @@ public class RuntimeContextTest extends BaseTest {
   @Test
   public void testRuntimeContextInDriver() {
     Assert.assertEquals(JOB_ID, Ray.getRuntimeContext().getCurrentJobId());
+    Assert.assertNotEquals(Ray.getRuntimeContext().getCurrentTaskId(), TaskId.NIL);
     Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.getRuntimeContext().getRayletSocketName());
     Assert.assertEquals(OBJECT_STORE_SOCKET_NAME,
         Ray.getRuntimeContext().getObjectStoreSocketName());
@@ -44,6 +46,7 @@ public class RuntimeContextTest extends BaseTest {
 
     public String testRuntimeContext(ActorId actorId) {
       Assert.assertEquals(JOB_ID, Ray.getRuntimeContext().getCurrentJobId());
+      Assert.assertNotEquals(Ray.getRuntimeContext().getCurrentTaskId(), TaskId.NIL);
       Assert.assertEquals(actorId, Ray.getRuntimeContext().getCurrentActorId());
       Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.getRuntimeContext().getRayletSocketName());
       Assert.assertEquals(OBJECT_STORE_SOCKET_NAME,
