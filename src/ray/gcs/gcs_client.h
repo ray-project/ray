@@ -7,7 +7,7 @@
 #include <vector>
 #include "ray/common/status.h"
 #include "ray/gcs/actor_info_accessor.h"
-#include "ray/gcs/object_state_accessor.h"
+#include "ray/gcs/object_info_accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -90,7 +90,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Get ObjectStateAccessor for reading or writing or subscribing to
   /// objects. This function is thread safe.
-  ObjectStateAccessor &Objects() {
+  ObjectInfoAccessor &Objects() {
     RAY_CHECK(object_accessor_ != nullptr);
     return *object_accessor_;
   }
@@ -107,7 +107,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   bool is_connected_{false};
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
-  std::unique_ptr<ObjectStateAccessor> object_accessor_;
+  std::unique_ptr<ObjectInfoAccessor> object_accessor_;
 };
 
 }  // namespace gcs

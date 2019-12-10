@@ -1,4 +1,4 @@
-#include "ray/gcs/object_state_accessor.h"
+#include "ray/gcs/redis_object_info_accessor.h"
 #include <unordered_map>
 #include <vector>
 #include "gtest/gtest.h"
@@ -10,7 +10,7 @@ namespace ray {
 
 namespace gcs {
 
-class ObjectStateAccessorTest : public AccessorTestBase<ObjectID, ObjectTableData> {
+class RedisObjectInfoAccessorTest : public AccessorTestBase<ObjectID, ObjectTableData> {
  protected:
   void GenTestData() {
     for (size_t i = 0; i < object_count_; ++i) {
@@ -33,8 +33,8 @@ class ObjectStateAccessorTest : public AccessorTestBase<ObjectID, ObjectTableDat
   size_t copy_count_{5};
 };
 
-TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
-  ObjectStateAccessor &object_accessor = gcs_client_->Objects();
+TEST_F(RedisObjectInfoAccessorTest, TestGetAddRemove) {
+  ObjectInfoAccessor &object_accessor = gcs_client_->Objects();
   // add && get
   // add
   for (const auto &elem : object_id_to_data_) {

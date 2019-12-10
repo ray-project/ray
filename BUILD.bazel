@@ -729,9 +729,9 @@ cc_binary(
 )
 
 cc_binary(
-    name = "object_state_accessor_test",
+    name = "redis_object_info_accessor_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/object_state_accessor_test.cc"],
+    srcs = ["src/ray/gcs/redis_object_info_accessor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",

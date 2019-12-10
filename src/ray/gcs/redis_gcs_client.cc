@@ -3,6 +3,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_actor_info_accessor.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/gcs/redis_object_info_accessor.h"
 
 #include <unistd.h>
 
@@ -139,7 +140,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
 
-  object_accessor_.reset(new ObjectStateAccessor(*this));
+  object_accessor_.reset(new RedisObjectInfoAccessor(this));
 
   Status status = Attach(io_service);
   is_connected_ = status.ok();
