@@ -179,7 +179,7 @@ class CoreWorkerTest : public ::testing::Test {
 
   std::string StartRayletMonitor(std::string redis_address) {
     std::string raylet_monitor_pid =
-        "/tmp/raylet_monitor" + RandomObjectID().Hex() + ".pid";
+        "/tmp/raylet_monitor" + ObjectID::FromRandom().Hex() + ".pid";
     std::string raylet_monitor_start_cmd = raylet_monitor_executable;
     raylet_monitor_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -1019,7 +1019,7 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 5);
+  RAY_CHECK(argc == 6);
   store_executable = std::string(argv[1]);
   raylet_executable = std::string(argv[2]);
   node_manager_port = std::stoi(std::string(argv[3]));
