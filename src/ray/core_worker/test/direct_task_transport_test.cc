@@ -54,7 +54,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override {
+  ray::Status ReturnWorker(int worker_port, int worker_pid,
+                           bool disconnect_worker) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
