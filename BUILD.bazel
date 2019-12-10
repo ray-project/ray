@@ -834,8 +834,8 @@ pyx_library(
         "//:core_worker_lib",
         "//:raylet_lib",
         "//:serialization_cc_proto",
-        "//:src/ray/ray_version_script.lds",
         "//:src/ray/ray_exported_symbols.lds",
+        "//:src/ray/ray_version_script.lds",
     ],
 )
 
