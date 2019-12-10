@@ -212,7 +212,8 @@ def _fair_filter_trials(trials_by_state, max_trials):
     # Sort by start time, descending.
     sorted_trials_by_state = {
         state: sorted(
-            trials_by_state[state], reverse=True,
+            trials_by_state[state],
+            reverse=True,
             key=lambda t: t.start_time if t.start_time else float("-inf"))
         for state in trials_by_state
     }

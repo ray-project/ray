@@ -17,7 +17,6 @@ else:
 
 
 class ProgressReporterTest(unittest.TestCase):
-
     def mock_trial(self, status, start_time):
         mock = MagicMock()
         mock.status = status
@@ -44,8 +43,8 @@ class ProgressReporterTest(unittest.TestCase):
                 trials_by_state[state].append(
                     self.mock_trial(state, time.time()))
 
-        filtered_trials_by_state = _fair_filter_trials(trials_by_state,
-                                                       max_trials=max_trials)
+        filtered_trials_by_state = _fair_filter_trials(
+            trials_by_state, max_trials=max_trials)
         for state in trials_by_state:
             if state in states_under:
                 expected_num_trials = num_trials_under
@@ -57,4 +56,4 @@ class ProgressReporterTest(unittest.TestCase):
             # Make sure trials are sorted newest-first within state.
             for i in range(len(state_trials) - 1):
                 self.assertGreaterEqual(state_trials[i].start_time,
-                                        state_trials[i+1].start_time)
+                                        state_trials[i + 1].start_time)
