@@ -813,13 +813,10 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    # Expose ray ABI symbols, which can then be used by _streaming.so.
+    # Export ray ABI symbols, which can then be used by _streaming.so.
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
-    # Note: Ray ABI is not finalized, the exact set of exported (C/C++) APIs
-    # is subject to change.
     cc_kwargs = {
-        "features": ["-supports_start_end_lib"],
         "linkstatic": 1,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         "linkopts": select({
