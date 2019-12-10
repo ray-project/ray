@@ -22,8 +22,6 @@ from ray.includes.common cimport (
     CLanguage,
     CRayObject,
     CRayStatus,
-    CGcsClientOptions,
-    CTaskType,
     CRayFunction
 )
 
