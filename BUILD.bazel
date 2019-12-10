@@ -10,6 +10,21 @@ load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "if_linux_x86_64")
 
 config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -789,26 +804,6 @@ flatbuffer_cc_library(
     out_prefix = "src/ray/object_manager/format/",
 )
 
-# Note that this will expose many unrelated symbols such as grpc_metadata_array_init.
-# TODO A better method is document ray ABI and list all ray ABI here.
-# TODO Or grep src/ using a sophisticated regex.
-genrule(
-    name = "ray.lds",
-    outs = ["ray.lds.h"],
-    cmd = """
-cat > /tmp/ray.lds <<EOF
-VERSION_1.0 {
-    global:
-        *ray*;
-        *Py*;
-        *Java*;
-    local: *;
-};
-EOF
-    touch $@
-    """,
-)
-
 pyx_library(
     name = "_raylet",
     srcs = glob([
@@ -818,27 +813,32 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    # Since we expose _raylet.so symbols, which can then be used by _streaming.so,
-    # it may cause symbols conflicts in linux. So we need to hide conflicted
-    # libraries symbols such as protobuf to avoid conflicts in linux.
+    # Expose ray ABI symbols, which can then be used by _streaming.so.
+    # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
+    # shared lib, see python/ray/__init__.py.
+    # Note: Ray ABI is not finalized, the exact set of exported (C/C++) APIs
+    # is subject to change.
     cc_kwargs = {
         "features": ["-supports_start_end_lib"],
         "linkstatic": 1,
-        "linkopts": if_linux_x86_64([
-            "-Wl,--exclude-libs,libprotobuf.a",
-            "-Wl,--exclude-libs,libprotobuf.pic.a",
-            "-Wl,--exclude-libs,libprotobuf_lite.a",
-            "-Wl,--exclude-libs,libprotobuf_lite.pic.a",
-            "-Wl,--version-script=" + "/tmp/ray.lds",
-        ]),
-        "srcs": ["//:ray.lds"],
+        # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
+        "linkopts": select({
+            "//:macos": [
+                "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+            ],
+            "//:windows": [],
+            "//conditions:default": [
+                "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+            ],
+        }),
     },
     copts = COPTS + if_linux_x86_64(["-fno-gnu-unique"]),
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
         "//:serialization_cc_proto",
-        "@com_google_protobuf//:protobuf",
+        "//:src/ray/ray_version_script.lds",
+        "//:src/ray/ray_exported_symbols.lds",
     ],
 )
 
