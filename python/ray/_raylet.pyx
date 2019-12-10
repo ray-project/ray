@@ -41,6 +41,7 @@ from libcpp.vector cimport vector as c_vector
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
+    CBuffer,
     CAddress,
     CLanguage,
     CRayObject,
@@ -346,13 +347,29 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
     return out
 
 
+cdef:
+    c_string pickle_metadata_str = PICKLE_BUFFER_METADATA
+    shared_ptr[CBuffer] pickle_metadata = dynamic_pointer_cast[
+        CBuffer, LocalMemoryBuffer](
+        make_shared[LocalMemoryBuffer](
+            <uint8_t*>(pickle_metadata_str.data()),
+            pickle_metadata_str.size(), True))
+    c_string raw_meta_str = RAW_BUFFER_METADATA
+    shared_ptr[CBuffer] raw_metadata = dynamic_pointer_cast[
+        CBuffer, LocalMemoryBuffer](
+        make_shared[LocalMemoryBuffer](
+            <uint8_t*>(raw_meta_str.data()),
+            raw_meta_str.size(), True))
+
 cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
     cdef:
         c_string pickled_str
-        c_string metadata_str = PICKLE_BUFFER_METADATA
+        const unsigned char[:] buffer
+        size_t size
         shared_ptr[CBuffer] arg_data
         shared_ptr[CBuffer] arg_metadata
 
+    # TODO be consistent with store_task_outputs
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
@@ -360,23 +377,25 @@ cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
         elif not ray._raylet.check_simple_value(arg):
             args_vector.push_back(
                 CTaskArg.PassByReference((<ObjectID>ray.put(arg)).native()))
-        else:
-            pickled_str = pickle.dumps(
-                arg, protocol=pickle.HIGHEST_PROTOCOL)
-            # TODO(edoakes): This makes a copy that could be avoided.
+        elif type(arg) is bytes:
+            buffer = arg
+            size = buffer.nbytes
             arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(pickled_str.data()),
-                        pickled_str.size(),
-                        True))
-            arg_metadata = dynamic_pointer_cast[
-                CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(
-                            metadata_str.data()), metadata_str.size(), True))
+                make_shared[LocalMemoryBuffer](
+                    <uint8_t*>(&buffer[0]), size, True))
             args_vector.push_back(
                 CTaskArg.PassByValue(
-                    make_shared[CRayObject](arg_data, arg_metadata)))
+                    make_shared[CRayObject](arg_data, raw_metadata)))
+        else:
+            buffer = pickle.dumps(
+                arg, protocol=pickle.HIGHEST_PROTOCOL)
+            size = buffer.nbytes
+            arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(&buffer[0]), size, True))
+            args_vector.push_back(
+                CTaskArg.PassByValue(
+                    make_shared[CRayObject](arg_data, pickle_metadata)))
 
 
 cdef class RayletClient:
@@ -738,10 +757,6 @@ cdef write_serialized_object(
 
 
 cdef class CoreWorker:
-    cdef:
-        unique_ptr[CCoreWorker] core_worker
-        object async_thread
-        object async_event_loop
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
@@ -1085,7 +1100,6 @@ cdef class CoreWorker:
             c_vector[shared_ptr[CRayObject]] *returns):
         cdef:
             c_vector[size_t] data_sizes
-            c_string metadata_str
             c_vector[shared_ptr[CBuffer]] metadatas
 
         if return_ids.size() == 0:
