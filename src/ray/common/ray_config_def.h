@@ -63,7 +63,7 @@ RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 /// If set to a negative value, the heartbeats will not be sent.
 /// These are used to report active object IDs for garbage collection and
 /// to ensure that workers go down when the raylet dies unexpectedly.
-RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 1000)
+RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, -1)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.
