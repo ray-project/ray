@@ -434,6 +434,10 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
         // object.
         will_throw_exception = true;
       }
+      // If we got the result for this ObjectID, the task that created it must
+      // have finished. Therefore, we can safely remove its reference counting
+      // dependencies.
+      RemoveObjectIDDependencies(ids[i]);
     } else {
       missing_result = true;
     }

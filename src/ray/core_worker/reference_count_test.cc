@@ -141,6 +141,49 @@ TEST_F(ReferenceCountTest, TestRecursiveDependencies) {
   ASSERT_EQ(out.size(), 4);
 }
 
+TEST_F(ReferenceCountTest, TestRemoveDependenciesOnly) {
+  std::vector<ObjectID> out;
+  ObjectID id1 = ObjectID::FromRandom();
+  ObjectID id2 = ObjectID::FromRandom();
+  ObjectID id3 = ObjectID::FromRandom();
+  ObjectID id4 = ObjectID::FromRandom();
+
+  std::shared_ptr<std::vector<ObjectID>> deps2 =
+      std::make_shared<std::vector<ObjectID>>();
+  deps2->push_back(id3);
+  deps2->push_back(id4);
+  rc->AddOwnedObject(id2, TaskID::Nil(), rpc::Address(), deps2);
+
+  std::shared_ptr<std::vector<ObjectID>> deps1 =
+      std::make_shared<std::vector<ObjectID>>();
+  deps1->push_back(id2);
+  rc->AddOwnedObject(id1, TaskID::Nil(), rpc::Address(), deps1);
+
+  rc->AddLocalReference(id1);
+  rc->AddLocalReference(id2);
+  rc->AddLocalReference(id4);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
+
+  rc->RemoveDependencies(id2, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
+  ASSERT_EQ(out.size(), 1);
+  rc->RemoveDependencies(id1, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
+  ASSERT_EQ(out.size(), 1);
+
+  rc->RemoveLocalReference(id1, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
+  ASSERT_EQ(out.size(), 2);
+
+  rc->RemoveLocalReference(id2, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
+  ASSERT_EQ(out.size(), 3);
+
+  rc->RemoveLocalReference(id4, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+  ASSERT_EQ(out.size(), 4);
+}
+
 // Tests that we can get the owner address correctly for objects that we own,
 // objects that we borrowed via a serialized object ID, and objects whose
 // origin we do not know.
