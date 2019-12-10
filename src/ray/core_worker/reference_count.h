@@ -4,7 +4,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
 #include "ray/util/logging.h"
@@ -40,8 +39,7 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The object whose dependencies should be removed.
   /// \param[out] deleted List to store objects that hit zero ref count.
-  void RemoveDependencies(const ObjectID &object_id,
-					  std::vector<ObjectID> *deleted)
+  void RemoveDependencies(const ObjectID &object_id, std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.

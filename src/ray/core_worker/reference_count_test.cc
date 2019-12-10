@@ -1,8 +1,9 @@
+#include "ray/core_worker/reference_count.h"
+
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 namespace ray {

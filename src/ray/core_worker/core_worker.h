@@ -2,7 +2,6 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "absl/container/flat_hash_map.h"
-
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"

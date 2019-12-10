@@ -1,11 +1,11 @@
+#include "ray/core_worker/core_worker.h"
+
 #include <cstdlib>
 
 #include "boost/fiber/all.hpp"
-
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
@@ -434,10 +434,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
         // object.
         will_throw_exception = true;
       }
-      // If we got the result for this ObjectID, the task that created it must
+      // If we got the result for this plasma ObjectID, the task that created it must
       // have finished. Therefore, we can safely remove its reference counting
       // dependencies.
-      RemoveObjectIDDependencies(ids[i]);
+      if (!ids[i].IsDirectCallType()) {
+        RemoveObjectIDDependencies(ids[i]);
+      }
     } else {
       missing_result = true;
     }
