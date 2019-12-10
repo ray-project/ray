@@ -8,9 +8,9 @@
 #include <queue>
 #include <set>
 #include <utility>
-#include "absl/container/flat_hash_map.h"
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -47,11 +47,12 @@ struct ActorStateData {
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
-                                     std::shared_ptr<CoreWorkerMemoryStore> store,
-                                     std::shared_ptr<TaskFinisherInterface> task_finisher)
+  CoreWorkerDirectActorTaskSubmitter(
+      rpc::ClientFactoryFn client_factory, std::shared_ptr<CoreWorkerMemoryStore> store,
+      std::shared_ptr<TaskFinisherInterface> task_finisher,
+      const std::function<void(const ObjectID &)> &on_object_inlined)
       : client_factory_(client_factory),
-        resolver_(store),
+        resolver_(store, on_object_inlined),
         task_finisher_(task_finisher) {}
 
   /// Submit a task to an actor for execution.
@@ -352,8 +353,7 @@ class SchedulingQueue {
           fiber_rate_limiter_->Acquire();
           request.Accept();
           fiber_rate_limiter_->Release();
-        })
-            .detach();
+        }).detach();
       } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {

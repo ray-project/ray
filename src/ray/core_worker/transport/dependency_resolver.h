@@ -12,8 +12,9 @@ namespace ray {
 // This class is thread-safe.
 class LocalDependencyResolver {
  public:
-  LocalDependencyResolver(std::shared_ptr<CoreWorkerMemoryStore> store)
-      : in_memory_store_(store), num_pending_(0) {}
+  LocalDependencyResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
+                          const std::function<void(const ObjectID &)> &on_object_inlined)
+      : in_memory_store_(store), on_object_inlined_(on_object_inlined), num_pending_(0) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -32,6 +33,9 @@ class LocalDependencyResolver {
  private:
   /// The in-memory store.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+
+  /// Callback to be called each time an object is inlined into a task spec.
+  std::function<void(const ObjectID &)> on_object_inlined_;
 
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;

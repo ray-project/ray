@@ -172,7 +172,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
         RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
       }));
-  resolver_.reset(new LocalDependencyResolver(memory_store_));
+  resolver_.reset(new LocalDependencyResolver(
+      memory_store_,
+      [this](const ObjectID &object_id) { RemoveObjectIDDependencies(object_id); }));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -201,8 +203,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new rpc::CoreWorkerClient(addr.first, addr.second, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
-                                             task_manager_));
+      new CoreWorkerDirectActorTaskSubmitter(
+          client_factory, memory_store_, task_manager_,
+          [this](const ObjectID &object_id) { RemoveObjectIDDependencies(object_id); }));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
@@ -213,8 +216,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<RayletClient>(
                 new RayletClient(std::move(grpc_client)));
           },
-          memory_store_, task_manager_, local_raylet_id,
-          RayConfig::instance().worker_lease_timeout_milliseconds()));
+          memory_store_, task_manager_,
+          [this](const ObjectID &object_id) { RemoveObjectIDDependencies(object_id); },
+          local_raylet_id, RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
 }
 
@@ -334,7 +338,7 @@ Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_,
-                                     std::make_shared<std::vector<ObjectID>>());
+                                     absl::flat_hash_set<ObjectID>());
   return Put(object, *object_id);
 }
 
@@ -584,12 +588,11 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
     num_returns--;
   }
 
-  std::shared_ptr<std::vector<ObjectID>> task_deps =
-      std::make_shared<std::vector<ObjectID>>();
+  absl::flat_hash_set<ObjectID> task_deps;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
       for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
-        task_deps->push_back(task_spec.ArgId(i, j));
+        task_deps.insert(task_spec.ArgId(i, j));
       }
     }
   }
@@ -597,7 +600,7 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
   // Note that we call this even if task_deps.size() == 0, in order to pin the return id.
   for (size_t i = 0; i < num_returns; i++) {
     reference_counter_->AddOwnedObject(task_spec.ReturnId(i, transport_type),
-                                       GetCallerId(), rpc_address_, task_deps);
+                                       GetCallerId(), rpc_address_, std::move(task_deps));
   }
 }
 

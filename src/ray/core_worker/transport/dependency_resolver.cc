@@ -11,10 +11,11 @@ struct TaskState {
   absl::flat_hash_set<ObjectID> local_dependencies;
 };
 
-void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> value,
+bool DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> value,
                          TaskSpecification &task) {
   auto &msg = task.GetMutableMessage();
   bool found = false;
+  bool inlined = false;
   for (size_t i = 0; i < task.NumArgs(); i++) {
     auto count = task.ArgIdCount(i);
     if (count > 0) {
@@ -27,6 +28,7 @@ void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> valu
           mutable_arg->add_object_ids(
               obj_id.WithTransportType(TaskTransportType::RAYLET).Binary());
         } else {
+          inlined = true;
           // Inline the object value.
           if (value->HasData()) {
             const auto &data = value->GetData();
@@ -42,6 +44,7 @@ void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> valu
     }
   }
   RAY_CHECK(found) << "obj id " << obj_id << " not found";
+  return inlined;
 }
 
 void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
@@ -72,14 +75,18 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
         obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
           bool complete = false;
+          bool inlined;
           {
             absl::MutexLock lock(&mu_);
             state->local_dependencies.erase(obj_id);
-            DoInlineObjectValue(obj_id, obj, state->task);
+            inlined = DoInlineObjectValue(obj_id, obj, state->task);
             if (state->local_dependencies.empty()) {
               complete = true;
               num_pending_ -= 1;
             }
+          }
+          if (inlined) {
+            on_object_inlined_(obj_id);
           }
           if (complete) {
             on_complete();

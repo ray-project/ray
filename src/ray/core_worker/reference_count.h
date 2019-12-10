@@ -3,6 +3,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
@@ -35,7 +36,7 @@ class ReferenceCounter {
       LOCKS_EXCLUDED(mutex_);
 
   /// Remove any references to dependencies that this object may have. This does *not*
-  /// decrease the object's own reference count.
+  /// decrease the object's local reference count.
   ///
   /// \param[in] object_id The object whose dependencies should be removed.
   /// \param[out] deleted List to store objects that hit zero ref count.
@@ -58,7 +59,7 @@ class ReferenceCounter {
   /// \param[in] dependencies The objects that the object depends on.
   void AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
                       const rpc::Address &owner_address,
-                      std::shared_ptr<std::vector<ObjectID>> dependencies)
+                      absl::flat_hash_set<ObjectID> &&dependencies)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
@@ -92,7 +93,7 @@ class ReferenceCounter {
     Reference() : owned_by_us(false) {}
     /// Constructor for a reference that we created.
     Reference(const TaskID &owner_id, const rpc::Address &owner_address,
-              std::shared_ptr<std::vector<ObjectID>> deps)
+              absl::flat_hash_set<ObjectID> &&deps)
         : dependencies(std::move(deps)),
           owned_by_us(true),
           owner({owner_id, owner_address}) {}
@@ -101,12 +102,9 @@ class ReferenceCounter {
         : owned_by_us(false), owner({owner_id, owner_address}) {}
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;
-    /// The objects that this object depends on. Tracked only by the owner of
-    /// the object. Dependencies are stored as shared_ptrs because the same set
-    /// of dependencies can be shared among multiple entries. For example, when
-    /// a task has multiple return values, the entry for each return ObjectID
-    /// depends on all task dependencies.
-    std::shared_ptr<std::vector<ObjectID>> dependencies;
+    /// The objects that the task corresponding to this object depends on.
+    /// Tracked only by the owner of the object.
+    absl::flat_hash_set<ObjectID> dependencies;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).

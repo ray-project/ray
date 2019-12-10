@@ -5,7 +5,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
@@ -31,16 +30,17 @@ using SchedulingKey = std::pair<SchedulingClass, std::vector<ObjectID>>;
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
-  CoreWorkerDirectTaskSubmitter(std::shared_ptr<WorkerLeaseInterface> lease_client,
-                                rpc::ClientFactoryFn client_factory,
-                                LeaseClientFactoryFn lease_client_factory,
-                                std::shared_ptr<CoreWorkerMemoryStore> store,
-                                std::shared_ptr<TaskFinisherInterface> task_finisher,
-                                ClientID local_raylet_id, int64_t lease_timeout_ms)
+  CoreWorkerDirectTaskSubmitter(
+      std::shared_ptr<WorkerLeaseInterface> lease_client,
+      rpc::ClientFactoryFn client_factory, LeaseClientFactoryFn lease_client_factory,
+      std::shared_ptr<CoreWorkerMemoryStore> store,
+      std::shared_ptr<TaskFinisherInterface> task_finisher,
+      const std::function<void(const ObjectID &)> &on_object_inlined,
+      ClientID local_raylet_id, int64_t lease_timeout_ms)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
-        resolver_(store),
+        resolver_(store, on_object_inlined),
         task_finisher_(task_finisher),
         local_raylet_id_(local_raylet_id),
         lease_timeout_ms_(lease_timeout_ms) {}
