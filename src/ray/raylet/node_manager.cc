@@ -1646,7 +1646,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
 
   // Check if a new worker has started on the same port. In that case, abort since we
   // must have already disconnected that worker in HandleWorkerAvailable().
-  RAY_CHECK(worker_pid != 0);
+  RAY_CHECK(worker_pid > 0) << "Invalid worker pid: " << worker_pid;
   auto it = leased_workers_.find(worker_pid);
   if (it != leased_workers_.end() && it->second->Pid() != worker_pid) {
     auto status =
