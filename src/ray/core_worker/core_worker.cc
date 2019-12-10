@@ -198,7 +198,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   auto client_factory = [this](const rpc::WorkerAddress &addr) {
     return std::shared_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(addr.first, addr.second, *client_call_manager_));
+        new rpc::CoreWorkerClient(addr.ip_address, addr.port, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
