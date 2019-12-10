@@ -269,14 +269,16 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void CoreWorker::ReportActiveObjectIDs() {
-  std::unordered_set<ObjectID> active_object_ids =
-      reference_counter_->GetAllInScopeObjectIDs();
-  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
+  std::unordered_set<ObjectID> active_object_ids;
   auto max_active = RayConfig::instance().raylet_max_active_object_ids();
-  if (max_active && active_object_ids.size() > max_active) {
-    RAY_LOG(INFO) << active_object_ids.size() << " object IDs are currently in scope.";
+  if (max_active > 0) {
+    if (active_object_ids.size() > max_active) {
+      RAY_LOG(INFO) << active_object_ids.size() << " object IDs are currently in scope.";
+    }
+    active_object_ids = reference_counter_->GetAllInScopeObjectIDs();
   }
 
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
   if (!local_raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
     RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
     Shutdown();
