@@ -597,6 +597,16 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "prioritised_io_context_test",
+    srcs = ["src/ray/util/prioritised_io_context_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "object_manager",
     srcs = glob([
@@ -664,6 +674,7 @@ cc_library(
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
+        "@boost//:asio",
     ],
 )
 
