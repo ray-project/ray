@@ -40,14 +40,14 @@ class UtilMonitor(Thread):
     """
 
     def __init__(self, start=True, delay=0.7):
-        return
-
         self.stopped = True
         if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
 
         if psutil is None and start:
             logger.warning("Install psutil to monitor system performance.")
+
+        return  # DO NOT MERGE
 
         if GPUtil is None and psutil is None:
             return

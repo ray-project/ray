@@ -25,7 +25,8 @@ void ReferenceCounter::AddOwnedObject(
   }
 
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
-      << "Cannot create an object that already exists. ObjectID: " << object_id;
+      << "Cannot create an object that already exists. ObjectID: " << object_id
+      << " ref owned: " << object_id_refs_[object_id].owned_by_us;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
