@@ -96,7 +96,7 @@ def memory_debug_str():
                 "(or ray[debug]) to resolve)")
 
 
-def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
+def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=20):
     """Returns a human readable message for printing to the console.
 
     This contains a table where each row represents a trial, its parameters
@@ -135,7 +135,7 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
         trials = []
         overflow_strs = []
         for state in trials_by_state:
-            trials += trials_by_state[state]
+            trials += trials_by_state_trunc[state]
             overflow = len(trials_by_state[state]) - len(
                 trials_by_state_trunc[state])
             overflow_strs.append("{} {}".format(overflow, state))
@@ -160,7 +160,7 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
     return delim.join(messages)
 
 
-def trial_errors_str(trials, fmt="psql", max_rows=100):
+def trial_errors_str(trials, fmt="psql", max_rows=20):
     """Returns a readable message regarding trial errors.
 
     Args:
@@ -191,6 +191,8 @@ def trial_errors_str(trials, fmt="psql", max_rows=100):
 def _fair_filter_trials(trials_by_state, max_trials):
     """Filters trials such that each state is represented fairly.
 
+    The oldest trials are truncated if necessary.
+
     Args:
         trials_by_state (Dict[str, List[Trial]]: Trials by state.
         max_trials (int): Maximum number of trials to return.
@@ -199,6 +201,7 @@ def _fair_filter_trials(trials_by_state, max_trials):
     """
     num_trials_by_state = collections.defaultdict(int)
     no_change = False
+    # Determine number of trials to keep per state.
     while max_trials > 0 and not no_change:
         no_change = True
         for state in trials_by_state:
@@ -206,11 +209,19 @@ def _fair_filter_trials(trials_by_state, max_trials):
                 no_change = False
                 max_trials -= 1
                 num_trials_by_state[state] += 1
-    trials = collections.defaultdict(list)
-    for state in trials_by_state:
-        state_trials = trials_by_state[state][:num_trials_by_state[state]]
-        trials[state] = state_trials
-    return trials
+    # Sort by start time, descending.
+    sorted_trials_by_state = {
+        state: sorted(
+            trials_by_state[state], reverse=True,
+            key=lambda t: t.start_time if t.start_time else float("-inf"))
+        for state in trials_by_state
+    }
+    # Truncate oldest trials.
+    filtered_trials = {
+        state: sorted_trials_by_state[state][:num_trials_by_state[state]]
+        for state in trials_by_state
+    }
+    return filtered_trials
 
 
 def _get_trial_info(trial, parameters, metrics):
