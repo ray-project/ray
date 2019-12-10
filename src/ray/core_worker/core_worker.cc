@@ -128,7 +128,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       node_ip_address, node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
-  local_raylet_client_ = std::shared_ptr<RayletClient>(new RayletClient(
+  local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       std::move(grpc_client), raylet_socket,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
@@ -210,8 +210,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           [this](const rpc::Address &address) {
             auto grpc_client = rpc::NodeManagerWorkerClient::make(
                 address.ip_address(), address.port(), *client_call_manager_);
-            return std::shared_ptr<RayletClient>(
-                new RayletClient(std::move(grpc_client)));
+            return std::shared_ptr<raylet::RayletClient>(
+                new raylet::RayletClient(std::move(grpc_client)));
           },
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
