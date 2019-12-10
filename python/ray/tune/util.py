@@ -40,6 +40,8 @@ class UtilMonitor(Thread):
     """
 
     def __init__(self, start=True, delay=0.7):
+        return
+
         self.stopped = True
         if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
