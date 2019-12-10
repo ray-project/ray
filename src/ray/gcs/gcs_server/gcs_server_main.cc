@@ -10,6 +10,7 @@ DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_password, "", "The password of redis.");
+DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -22,6 +23,7 @@ int main(int argc, char *argv[]) {
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const std::string config_list = FLAGS_config_list;
   const std::string redis_password = FLAGS_redis_password;
+  const bool retry_redis = FLAGS_retry_redis;
   gflags::ShutDownCommandLineFlags();
 
   std::unordered_map<std::string, std::string> config_map;
@@ -33,7 +35,6 @@ int main(int argc, char *argv[]) {
 
   while (std::getline(config_string, config_name, ',')) {
     RAY_CHECK(std::getline(config_string, config_value, ','));
-    // TODO(rkn): The line below could throw an exception. What should we do about this?
     config_map[config_name] = config_value;
   }
 
@@ -43,7 +44,10 @@ int main(int argc, char *argv[]) {
   gcs_server_config.server_name = "GcsServer";
   gcs_server_config.server_port = 0;
   gcs_server_config.server_thread_num = 1;
-  // TODO(hc): fill gcs server config
+  gcs_server_config.redis_address = redis_address;
+  gcs_server_config.redis_port = redis_port;
+  gcs_server_config.redis_password = redis_password;
+  gcs_server_config.retry_redis = retry_redis;
   ray::gcs::GcsServer gcs_server(gcs_server_config);
   gcs_server.Start();
 }

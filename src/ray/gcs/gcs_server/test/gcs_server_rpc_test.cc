@@ -44,7 +44,7 @@ TEST_F(GcsServerRpcTest, JobInfo) {
   MockedGcsServer<MockedJobInfoAccessHandler> server(config);
   std::thread([&server] { server.Start(); }).detach();
 
-  // Wait unit server start listening.
+  // Wait until server starts listening.
   while (server.GetPort() == 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
