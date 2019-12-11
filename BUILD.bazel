@@ -829,7 +829,7 @@ pyx_library(
             ],
         }),
     },
-    copts = COPTS + if_linux_x86_64(["-fno-gnu-unique"]),
+    copts = COPTS + ["-Wno-deprecated-declarations"] + if_linux_x86_64(["-fno-gnu-unique"]),
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
@@ -851,6 +851,7 @@ pyx_library(
         "python/ray/streaming/includes/*.pxd",
         "python/ray/streaming/includes/*.pxi",
     ]),
+    copts = COPTS + ["-Wno-deprecated-declarations"],
     deps = [
         "//streaming:streaming_lib",
     ],
