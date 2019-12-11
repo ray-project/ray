@@ -30,7 +30,7 @@
   RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)
 
 namespace ray {
 
@@ -532,7 +532,9 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
-  std::unique_ptr<gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>> direct_actor_table_subscriber_;
+  std::unique_ptr<
+      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>
+      direct_actor_table_subscriber_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through

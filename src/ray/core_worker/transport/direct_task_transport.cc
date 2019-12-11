@@ -116,7 +116,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                                     reply.worker_address().port());
             AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
-            OnWorkerIdle(addr, scheduling_key, /*is_actor_creation*/false, /*error=*/false, resources_copy);
+            OnWorkerIdle(addr, scheduling_key, /*is_actor_creation*/ false,
+                         /*error=*/false, resources_copy);
           } else {
             // The raylet redirected us to a different raylet to retry at.
             RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
@@ -160,9 +161,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
 
   std::function<void()> task_finish_callback;
   if (is_actor_creation) {
-    task_finish_callback = [task_spec, addr] () {
+    task_finish_callback = [task_spec, addr]() {
       // TODO: handle actor creation complete.
-
     };
   }
 
@@ -174,12 +174,12 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   RAY_CHECK_OK(client.PushNormalTask(
       std::move(request),
-      [this, task_id, is_actor, is_actor_creation, task_finish_callback, scheduling_key, addr, assigned_resources](
-          Status status, const rpc::PushTaskReply &reply) {
+      [this, task_id, is_actor, is_actor_creation, task_finish_callback, scheduling_key,
+       addr, assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mu_);
           OnWorkerIdle(addr, scheduling_key, /*is_actor_creation=*/is_actor_creation,
-              /*error=*/!status.ok(), assigned_resources);
+                       /*error=*/!status.ok(), assigned_resources);
         }
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node

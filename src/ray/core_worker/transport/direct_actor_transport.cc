@@ -52,12 +52,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   return Status::OK();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id, const rpc::Address &address) {
+void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
+                                                      const rpc::Address &address) {
   absl::MutexLock lock(&mu_);
   // Create a new connection to the actor.
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc::WorkerAddress addr = {address.ip_address(),
-                               address.port()};
+    rpc::WorkerAddress addr = {address.ip_address(), address.port()};
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
   }
@@ -66,7 +66,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id, c
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id, bool dead) {
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
+                                                         bool dead) {
   absl::MutexLock lock(&mu_);
   if (!dead) {
     // We're reconstructing the actor, so erase the client for now. The new client
@@ -93,7 +94,6 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // any tasks submitted after the actor death.
   }
 }
-
 
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
@@ -136,8 +136,8 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 }
 
 void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
-    rpc::ClientFactoryFn client_factory,
-    rpc::Address rpc_address) {
+                                        rpc::ClientFactoryFn client_factory,
+                                        rpc::Address rpc_address) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;

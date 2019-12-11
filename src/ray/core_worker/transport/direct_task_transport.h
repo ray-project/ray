@@ -61,7 +61,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] was_error Whether the task failed to be submitted.
   /// \param[in] assigned_resources Resource ids previously assigned to the worker.
   void OnWorkerIdle(
-      const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key, 
+      const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key,
       bool is_actor_creation, bool was_error,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);

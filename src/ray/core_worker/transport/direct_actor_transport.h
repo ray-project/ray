@@ -432,10 +432,10 @@ class CoreWorkerDirectTaskReceiver {
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
                                const std::function<void()> &exit_handler)
-    : worker_context_(worker_context),
-      task_handler_(task_handler),
-      exit_handler_(exit_handler),
-      task_main_io_service_(main_io_service) {}
+      : worker_context_(worker_context),
+        task_handler_(task_handler),
+        exit_handler_(exit_handler),
+        task_main_io_service_(main_io_service) {}
 
   ~CoreWorkerDirectTaskReceiver() {
     fiber_shutdown_event_.Notify();
@@ -443,9 +443,8 @@ class CoreWorkerDirectTaskReceiver {
   }
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(raylet::RayletClient &client,
-                               rpc::ClientFactoryFn client_factory,
-                               rpc::Address rpc_address);
+  void Init(raylet::RayletClient &client, rpc::ClientFactoryFn client_factory,
+            rpc::Address rpc_address);
 
   /// Handle a `PushTask` request.
   ///

@@ -87,7 +87,8 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   }
 }
 
-void TaskManager::MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
+void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
+                                        const TaskSpecification &spec,
                                         rpc::ErrorType error_type) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);

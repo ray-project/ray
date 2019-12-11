@@ -10,16 +10,17 @@ namespace ray {
 class ActorManager {
  public:
   ActorManager(gcs::DirectActorTable &global_actor_table)
-  : global_actor_table_(global_actor_table) {}
-  
+      : global_actor_table_(global_actor_table) {}
+
   /// Called when an actor creation task that we submitted finishes.
-  void PublishCreatedActor(const TaskSpecification &actor_creation_task, const rpc::Address &address);
+  void PublishCreatedActor(const TaskSpecification &actor_creation_task,
+                           const rpc::Address &address);
 
   /// Called when an actor that we own can no longer be restarted.
   void PublishTerminatedActor(const TaskSpecification &actor_creation_task);
 
   ///// Add a reference to an actor.
-  //bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle); 
+  // bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
 
  private:
   /// Global database of actors.
