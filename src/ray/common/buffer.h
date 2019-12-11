@@ -58,7 +58,7 @@ class LocalMemoryBuffer : public Buffer {
       buffer_.reserve(size);
       std::copy(data, data+size, buffer_.begin());
       data_ = buffer_.data();
-      size_ = size;
+      size_ = buffer_.size();
     } else {
       data_ = data;
       size_ = size;
