@@ -170,9 +170,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   task_manager_.reset(
       new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
         RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-      },
-      [this](const TaskSpecification &actor_creation_task_spec) {
-        actor_manager_->PublishTerminatedActor(actor_creation_task_spec);
       }));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
 
