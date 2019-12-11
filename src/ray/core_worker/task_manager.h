@@ -7,6 +7,7 @@
 
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/protobuf/core_worker.pb.h"
 #include "ray/protobuf/gcs.pb.h"
@@ -15,8 +16,8 @@ namespace ray {
 
 class TaskFinisherInterface {
  public:
-  virtual void CompletePendingTask(const TaskID &task_id,
-                                   const rpc::PushTaskReply &reply) = 0;
+  virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
+                                   const rpc::Address *actor_addr) = 0;
 
   virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) = 0;
 
@@ -29,11 +30,11 @@ using ActorDiedCallback = std::function<void(const TaskSpecification &spec)>;
 class TaskManager : public TaskFinisherInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-              RetryTaskCallback retry_task_callback,
-              ActorDiedCallback actor_died_callback)
+              std::shared_ptr<ActorManager> actor_manager,
+              RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
-        retry_task_callback_(retry_task_callback),
-        actor_died_callback_(actor_died_callback) {}
+        actor_manager_(actor_manager),
+        retry_task_callback_(retry_task_callback) {}
 
   /// Add a task that is pending execution.
   ///
@@ -53,9 +54,10 @@ class TaskManager : public TaskFinisherInterface {
   ///
   /// \param[in] task_id ID of the pending task.
   /// \param[in] reply Proto response to a direct actor or task call.
+  /// \param[in] actor_addr Address of the created actor, or nullptr.
   /// \return Void.
-  void CompletePendingTask(const TaskID &task_id,
-                           const rpc::PushTaskReply &reply) override;
+  void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
+                           const rpc::Address *actor_addr) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -64,6 +66,7 @@ class TaskManager : public TaskFinisherInterface {
   /// \param[in] error_type The type of the specific error.
   void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override;
 
+  /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
  private:
@@ -74,6 +77,9 @@ class TaskManager : public TaskFinisherInterface {
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+
+  // Interface for publishing actor creation.
+  std::shared_ptr<ActorManager> actor_manager_;
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;

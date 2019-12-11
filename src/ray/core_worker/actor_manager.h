@@ -2,7 +2,7 @@
 #define RAY_CORE_WORKER_ACTOR_MANAGER_H
 
 #include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -18,9 +18,6 @@ class ActorManager {
 
   /// Called when an actor that we own can no longer be restarted.
   void PublishTerminatedActor(const TaskSpecification &actor_creation_task);
-
-  ///// Add a reference to an actor.
-  // bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
 
  private:
   /// Global database of actors.

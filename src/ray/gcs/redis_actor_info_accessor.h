@@ -16,6 +16,8 @@ std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
     const TaskSpecification &task_spec, const rpc::Address &address,
     gcs::ActorTableData::ActorState state, uint64_t remaining_reconstructions);
 
+class RedisGcsClient;
+
 /// \class RedisActorInfoAccessor
 /// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
 /// that uses Redis as the backend storage.

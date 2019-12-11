@@ -57,8 +57,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   absl::MutexLock lock(&mu_);
   // Create a new connection to the actor.
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc::WorkerAddress addr = {address.ip_address(), address.port(),
-                               WorkerID::Nil() /* don't need */};
+    rpc::WorkerAddress addr = {address.ip_address(), address.port(), WorkerID::Nil(),
+                               ClientID::Nil()};
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
   }
@@ -70,13 +70,13 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                                          bool dead) {
   absl::MutexLock lock(&mu_);
-
   if (!dead) {
     // We're reconstructing the actor, so erase the client for now. The new client
     // will be inserted once actor reconstruction completes. We don't erase the
     // client when the actor is DEAD, so that all further tasks will be failed.
     rpc_clients_.erase(actor_id);
   } else {
+    RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     // If there are pending requests, treat the pending tasks as failed.
     auto pending_it = pending_requests_.find(actor_id);
     if (pending_it != pending_requests_.end()) {
@@ -124,7 +124,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
         if (!status.ok()) {
           task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply);
+          task_finisher_->CompletePendingTask(task_id, reply, nullptr);
         }
       }));
 }
@@ -135,14 +135,6 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   auto iter = rpc_clients_.find(actor_id);
   return (iter != rpc_clients_.end());
 }
-
-CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
-    WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
-    : worker_context_(worker_context),
-      task_handler_(task_handler),
-      exit_handler_(exit_handler),
-      task_main_io_service_(main_io_service) {}
 
 void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
                                         rpc::ClientFactoryFn client_factory,
@@ -189,7 +181,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  RAY_LOG(DEBUG) << "Received task: " << task_spec.DebugString();
+  RAY_LOG(DEBUG) << "Received task " << task_spec.DebugString();
   if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
@@ -235,7 +227,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    RAY_LOG(DEBUG) << "Executing task: " << task_spec.DebugString();
+    RAY_LOG(DEBUG) << "Executing task " << task_spec.DebugString();
     auto status = task_handler_(task_spec, resource_ids, &return_objects);
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
@@ -274,20 +266,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       task_main_io_service_.post([this]() { exit_handler_(); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
-      if (task_spec.IsActorCreationTask()) {
-        rpc::WorkerAddress addr = {task_spec.GetMessage().caller_address().ip_address(),
-                                   task_spec.GetMessage().caller_address().port(),
-                                   WorkerID::Nil()};
-        auto client =
-            std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
-
-        rpc::NotifyActorCreatedRequest request;
-        request.set_actor_creation_task_id(task_spec.TaskId().Binary());
-        request.mutable_address()->CopyFrom(rpc_address_);
-        RAY_CHECK_OK(client->NotifyActorCreated(request));
-      } else {
-        send_reply_callback(status, nullptr, nullptr);
-      }
+      send_reply_callback(status, nullptr, nullptr);
     }
   };
 

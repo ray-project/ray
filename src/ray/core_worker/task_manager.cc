@@ -15,13 +15,16 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
-                                      const rpc::PushTaskReply &reply) {
+                                      const rpc::PushTaskReply &reply,
+                                      const rpc::Address *actor_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
+  TaskSpecification spec;
   {
     absl::MutexLock lock(&mu_);
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
+    spec = it->second.first;
     pending_tasks_.erase(it);
   }
 
@@ -51,6 +54,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       RAY_CHECK_OK(
           in_memory_store_->Put(RayObject(data_buffer, metadata_buffer), object_id));
     }
+  }
+
+  if (spec.IsActorCreationTask()) {
+    RAY_CHECK(actor_addr != nullptr);
+    actor_manager_->PublishCreatedActor(spec, *actor_addr);
   }
 }
 
@@ -99,9 +107,8 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
         /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
     RAY_CHECK_OK(in_memory_store_->Put(RayObject(error_type), object_id));
   }
-
   if (spec.IsActorCreationTask()) {
-    actor_died_callback_(spec);
+    actor_manager_->PublishTerminatedActor(spec);
   }
 }
 

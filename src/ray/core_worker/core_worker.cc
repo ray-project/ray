@@ -171,14 +171,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       },
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
-  task_manager_.reset(
-      new TaskManager(memory_store_,
-                      [this](const TaskSpecification &spec) {
-                        RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-                      },
-                      [this](const TaskSpecification &actor_creation_task_spec) {
-                        actor_manager_->PublishTerminatedActor(actor_creation_task_spec);
-                      }));
+  task_manager_.reset(new TaskManager(
+      memory_store_, actor_manager_, [this](const TaskSpecification &spec) {
+        RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+      }));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
@@ -756,24 +752,13 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
 
   auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   if (inserted) {
+    RAY_LOG(ERROR) << "Subscribe to actor " << actor_id;
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
-      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
-        absl::MutexLock lock(&actor_handles_mutex_);
-        auto it = actor_handles_.find(actor_id);
-        RAY_CHECK(it != actor_handles_.end());
-        if (it->second->IsDirectCallActor()) {
-          // We have to reset the actor handle since the next instance of the
-          // actor will not have the last sequence number that we sent.
-          // TODO: Remove the check for direct calls. We do not reset for the
-          // raylet codepath because it tries to replay all tasks since the
-          // last actor checkpoint.
-          it->second->Reset();
-        }
-        direct_actor_submitter_->DisconnectActor(actor_id, /*dead=*/false);
-      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        direct_actor_submitter_->DisconnectActor(actor_id, /*dead=*/true);
+      RAY_CHECK(actor_data.state() != gcs::ActorTableData::RECONSTRUCTING);
+      if (actor_data.state() == gcs::ActorTableData::DEAD) {
+        direct_actor_submitter_->DisconnectActor(actor_id, true);
 
         ActorHandle *actor_handle = nullptr;
         RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
@@ -785,10 +770,10 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
       }
 
-      RAY_LOG(INFO) << "received notification on actor, state="
-                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
-                    << ", ip address: " << actor_data.address().ip_address()
-                    << ", port: " << actor_data.address().port();
+      RAY_LOG(ERROR) << "received notification on actor, state="
+                     << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
+                     << ", ip address: " << actor_data.address().ip_address()
+                     << ", port: " << actor_data.address().port();
     };
 
     RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
