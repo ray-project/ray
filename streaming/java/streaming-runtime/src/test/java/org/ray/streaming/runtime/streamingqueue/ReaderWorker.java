@@ -12,11 +12,11 @@ import org.ray.api.id.ActorId;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 
 import org.ray.streaming.runtime.queue.QueueConsumer;
-import org.ray.streaming.runtime.queue.QueueItem;
-import org.ray.streaming.runtime.queue.QueueMessage;
-import org.ray.streaming.runtime.queue.impl.QueueConfigKeys;
+import org.ray.streaming.runtime.transfer.QueueItem;
+import org.ray.streaming.runtime.transfer.QueueMessage;
+import org.ray.streaming.runtime.transfer.QueueConfigKeys;
 
-import org.ray.streaming.runtime.queue.impl.StreamingQueueLinkImpl;
+import org.ray.streaming.runtime.transfer.StreamingQueueLinkImpl;
 import org.ray.streaming.util.ConfigKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

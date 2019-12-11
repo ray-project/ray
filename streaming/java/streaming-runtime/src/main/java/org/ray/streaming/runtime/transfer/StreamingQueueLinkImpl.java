@@ -1,12 +1,4 @@
-package org.ray.streaming.runtime.queue.impl;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+package org.ray.streaming.runtime.transfer;
 
 import org.ray.api.Ray;
 import org.ray.api.id.ActorId;
@@ -15,16 +7,14 @@ import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
-import org.ray.streaming.runtime.queue.QueueConsumer;
-import org.ray.streaming.runtime.queue.QueueLink;
-import org.ray.streaming.runtime.queue.QueueProducer;
-import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.util.ConfigKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class StreamingQueueLinkImpl implements QueueLink {
+import java.util.*;
+
+public class StreamingQueueLinkImpl  {
 
   static {
   }
@@ -33,8 +23,8 @@ public class StreamingQueueLinkImpl implements QueueLink {
   private final Map<String, String> configuration = new HashMap<>();
   private Map<String, Object> inputCheckpoints = new HashMap<>();
   private Map<String, Object> outputCheckpoints = new HashMap<>();
-  private QueueConsumerImpl consumerInstance = null;
-  private QueueProducerImpl producerInstance = null;
+  private DataReader consumerInstance = null;
+  private DataWriter producerInstance = null;
   private long nativeMessageHandler = 0;
   private long nativeCoreWorker = 0;
   private JavaFunctionDescriptor streamingTransferFunction;
@@ -52,7 +42,6 @@ public class StreamingQueueLinkImpl implements QueueLink {
         "onStreamingTransferSync", "([B)[B");
   }
 
-  @Override
   public void setRayRuntime(RayRuntime runtime) {
     this.runtime = runtime;
     try {
@@ -66,20 +55,19 @@ public class StreamingQueueLinkImpl implements QueueLink {
     createMessageHandler();
   }
 
-  @Override
   public void setConfiguration(Map<String, String> conf) {
     for (Map.Entry<String, String> entry : conf.entrySet()) {
       configuration.put(entry.getKey(), entry.getValue());
     }
   }
 
-  @Override
+
   public Map<String, String> getConfiguration() {
     return configuration;
   }
 
-  @Override
-  public QueueConsumer registerQueueConsumer(Collection<String> inputQueues, Map<String, ActorId> inputActorIdsMap) {
+
+  public DataReader registerQueueConsumer(Collection<String> inputQueues, Map<String, ActorId> inputActorIdsMap) {
     if (this.consumerInstance != null) {
       return consumerInstance;
     }
@@ -114,25 +102,25 @@ public class StreamingQueueLinkImpl implements QueueLink {
     LOG.info("register consumer, isRecreate:{}, queues:{}, seqIds: {}, conf={}, inputActorIds: {}",
         isRecreate, inputQueueIds, plasmaQueueSeqIds, configuration, inputActorIds);
     try {
-      this.consumerInstance = new QueueConsumerImpl(newConsumer(
+      this.consumerInstance = new DataReader(newConsumer(
           nativeCoreWorker, ChannelUtils.actorIdListToByteArray(inputActorIds),
           streamingTransferFunction, streamingTransferSyncFunction,
           ChannelUtils.stringQueueIdListToByteArray(inputQueueIds),
           plasmaQueueSeqIds, streamingMsgIds,
           Long.parseLong(configuration.getOrDefault(QueueConfigKeys.TIMER_INTERVAL_MS, "-1")),
           isRecreate,
-          FbsConfigConverter.map2bytes(configuration)
+          new byte[0]
       ));
       LOG.info("Create QueueConsumerImpl success.");
-    } catch (QueueInitException e) {
-      LOG.warn("native consumer failed, abnormalQueues={}.", e.getAbnormalQueuesString());
-      abnormalInputQueues.addAll(e.getAbnormalQueuesString());
+    } catch (ChannelInitException e) {
+      LOG.warn("native consumer failed, abnormalQueues={}.", e.getAbnormalChannelsString());
+      abnormalInputQueues.addAll(e.getAbnormalChannelsString());
     }
     return this.consumerInstance;
   }
 
-  @Override
-  public QueueProducer registerQueueProducer(Collection<String> outputQueues, Map<String, ActorId> outputActorIdsMap) {
+
+  public DataWriter registerQueueProducer(Collection<String> outputQueues, Map<String, ActorId> outputActorIdsMap) {
     if (this.producerInstance != null) {
       return producerInstance;
     }
@@ -174,28 +162,28 @@ public class StreamingQueueLinkImpl implements QueueLink {
     LOG.info("register producer, createType: {}, queues:{}, msgIds: {}, conf={}, outputActorIds:{}",
         creatorTypes, outputQueueIds, msgIds, configuration, outputActorIds);
     try {
-      this.producerInstance = new QueueProducerImpl(newProducer(
+      this.producerInstance = new DataWriter(newProducer(
           nativeCoreWorker, ChannelUtils.actorIdListToByteArray(outputActorIds),
           streamingTransferFunction, streamingTransferSyncFunction,
           qidCopyList, ChannelUtils.longToPrimitives(msgIds),
           Long.parseLong(configuration.get(ConfigKey.QUEUE_SIZE)),
           creatorTypes,
-          FbsConfigConverter.map2bytes(configuration)
+          new byte[0]
       ), qidCopyList);
       LOG.info("Create QueueProducerImpl success.");
-    } catch (QueueInitException e) {
-      LOG.warn("native producer failed, abnormalQueues={}.", e.getAbnormalQueuesString());
-      abnormalOutputQueues.addAll(e.getAbnormalQueuesString());
+    } catch (ChannelInitException e) {
+      LOG.warn("native producer failed, abnormalQueues={}.", e.getAbnormalChannelsString());
+      abnormalOutputQueues.addAll(e.getAbnormalChannelsString());
     }
     return this.producerInstance;
   }
 
-  @Override
+
   public void onQueueTransfer(byte[] buffer) {
     onQueueTransfer(nativeMessageHandler, buffer);
   }
 
-  @Override
+
   public byte[] onQueueTransferSync(byte[] buffer) {
     return onQueueTransferSync(nativeMessageHandler, buffer);
   }
@@ -246,7 +234,7 @@ public class StreamingQueueLinkImpl implements QueueLink {
       long timerInterval,
       boolean isRecreate,
       byte[] fbsConfigBytes
-  ) throws QueueInitException;
+  ) throws ChannelInitException;
 
   private native long newProducer(
       long coreWorker,
@@ -258,7 +246,7 @@ public class StreamingQueueLinkImpl implements QueueLink {
       long queueSize,
       long[] creatorTypes,
       byte[] fbsConfigBytes
-  ) throws QueueInitException;
+  ) throws ChannelInitException;
 
   private native long newMessageHandler(long core_worker);
 

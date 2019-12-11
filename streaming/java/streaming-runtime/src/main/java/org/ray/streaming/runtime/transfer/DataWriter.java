@@ -1,4 +1,8 @@
-package org.ray.streaming.runtime.queue.impl;
+package org.ray.streaming.runtime.transfer;
+
+import org.ray.streaming.runtime.util.Platform;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -6,16 +10,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-import org.ray.streaming.runtime.queue.QueueID;
-import org.ray.streaming.runtime.queue.QueueProducer;
-import org.ray.streaming.runtime.transfer.ChannelUtils;
-import org.ray.streaming.runtime.util.Platform;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+public class DataWriter {
 
-public class QueueProducerImpl implements QueueProducer {
-
-  private static final Logger LOG = LoggerFactory.getLogger(QueueProducerImpl.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DataWriter.class);
 
   private long nativeQueueProducerPtr;
   private byte[][] subscribedQueues;
@@ -26,30 +23,41 @@ public class QueueProducerImpl implements QueueProducer {
     ensureBuffer(0);
   }
 
-  public QueueProducerImpl(long nativeQueueProducerPtr, byte[][] subscribedQueues) {
+  public DataWriter(long nativeQueueProducerPtr, byte[][] subscribedQueues) {
     this.nativeQueueProducerPtr = nativeQueueProducerPtr;
     this.subscribedQueues = subscribedQueues;
     this.subscribedQueuesStringId = new ArrayList<>();
 
-    for (byte[] qidByte : subscribedQueues) {
-      subscribedQueuesStringId.add(ChannelUtils.qidBytesToString(qidByte));
+    for (byte[] idBytes : subscribedQueues) {
+      subscribedQueuesStringId.add(ChannelUtils.qidBytesToString(idBytes));
     }
   }
 
-  @Override
-  public void produce(QueueID qid, ByteBuffer item) {
+  /**
+   * produce msg into the specified queue
+   *
+   * @param id   channel id
+   * @param item message item data section is specified by [position, limit).
+   */
+  public void produce(ChannelID id, ByteBuffer item) {
     int size = item.remaining();
     ensureBuffer(size);
     buffer.clear();
     buffer.put(item);
-    writeMessageNative(nativeQueueProducerPtr, qid.getNativeIDPtr(), bufferAddress, size);
+    writeMessageNative(nativeQueueProducerPtr, id.getNativeIDPtr(), bufferAddress, size);
   }
 
-  @Override
-  public void produce(Set<QueueID> ids, ByteBuffer item) {
+  /**
+   * produce msg into the specified queues
+   *
+   * @param ids   channel ids
+   * @param item message item data section is specified by [position, limit).
+   *            item doesn't have to be a direct buffer.
+   */
+  public void produce(Set<ChannelID> ids, ByteBuffer item) {
     int size = item.remaining();
     ensureBuffer(size);
-    for (QueueID id : ids) {
+    for (ChannelID id : ids) {
       buffer.clear();
       buffer.put(item.duplicate());
       writeMessageNative(nativeQueueProducerPtr, id.getNativeIDPtr(), bufferAddress, size);
@@ -64,20 +72,24 @@ public class QueueProducerImpl implements QueueProducer {
     }
   }
 
-  @Override
+  /**
+   * stop produce to avoid blocking
+   */
   public void stop() {
     stopProducerNative(nativeQueueProducerPtr);
   }
 
-  @Override
+  /**
+   * close produce to release resource
+   */
   public void close() {
     if (nativeQueueProducerPtr == 0) {
       return;
     }
-    LOG.info("closing queue producer.");
+    LOG.info("closing channel producer.");
     closeProducerNative(nativeQueueProducerPtr);
     nativeQueueProducerPtr = 0;
-    LOG.info("closing queue producer done.");
+    LOG.info("closing channel producer done.");
   }
 
   private native long writeMessageNative(long nativeQueueProducerPtr, long nativeIDPtr, long address, int size);

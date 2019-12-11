@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.queue.impl;
+package org.ray.streaming.runtime.transfer;
 
 import java.io.Serializable;
 

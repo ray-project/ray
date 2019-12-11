@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.queue.impl;
+package org.ray.streaming.runtime.transfer;
 
 public class QueueConfigKeys {
   public static final String PLASMA_STORE_PATH = "storePath";

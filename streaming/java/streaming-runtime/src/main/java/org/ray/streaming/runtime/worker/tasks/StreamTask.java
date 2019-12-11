@@ -18,7 +18,7 @@ import org.ray.streaming.runtime.queue.QueueConsumer;
 import org.ray.streaming.runtime.queue.QueueLink;
 import org.ray.streaming.runtime.queue.QueueProducer;
 import org.ray.streaming.runtime.transfer.ChannelUtils;
-import org.ray.streaming.runtime.queue.impl.StreamingQueueLinkImpl;
+import org.ray.streaming.runtime.transfer.StreamingQueueLinkImpl;
 import org.ray.streaming.runtime.queue.memory.MemQueueLinkImpl;
 import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.runtime.core.collector.OutputCollector;

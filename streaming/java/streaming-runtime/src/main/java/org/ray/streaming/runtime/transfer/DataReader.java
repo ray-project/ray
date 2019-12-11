@@ -1,20 +1,16 @@
-package org.ray.streaming.runtime.queue.impl;
+package org.ray.streaming.runtime.transfer;
+
+import org.ray.streaming.runtime.util.Platform;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
 import java.util.Queue;
 
-import org.ray.streaming.runtime.queue.QueueConsumer;
-import org.ray.streaming.runtime.queue.QueueID;
-import org.ray.streaming.runtime.queue.QueueItem;
-import org.ray.streaming.runtime.transfer.ChannelUtils;
-import org.ray.streaming.runtime.util.Platform;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-public class QueueConsumerImpl implements QueueConsumer {
-  private final static Logger LOG = LoggerFactory.getLogger(QueueConsumerImpl.class);
+public class DataReader {
+  private final static Logger LOG = LoggerFactory.getLogger(DataReader.class);
 
   public enum MessageBundleType {
     EMPTY(1),
@@ -29,9 +25,9 @@ public class QueueConsumerImpl implements QueueConsumer {
   }
 
   private long nativeQueueConsumerPtr;
-  private Queue<QueueItem> buf;
+  private Queue<DataMessage> buf;
 
-  public QueueConsumerImpl(long nativeQueueConsumerPtr) {
+  public DataReader(long nativeQueueConsumerPtr) {
     buf = new LinkedList<>();
     this.nativeQueueConsumerPtr = nativeQueueConsumerPtr;
   }
@@ -39,14 +35,14 @@ public class QueueConsumerImpl implements QueueConsumer {
   class QueueBundleMeta {
     // kMessageBundleHeaderSize + kUniqueIDSize:
     // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
-    // + bundleType(4b) + rawBundleSize(4b) + qid(20b)
+    // + bundleType(4b) + rawBundleSize(4b) + channelID(20b)
     static final int LENGTH = 4 + 8 + 8 + 4 + 4 + 4 + 20;
     private int magicNum;
     private long bundleTs;
     private long lastMessageId;
     private int messageListSize;
     private MessageBundleType bundleType;
-    private String qid;
+    private String channelID;
     private int rawBundleSize;
 
     public QueueBundleMeta(ByteBuffer buffer) {
@@ -68,7 +64,7 @@ public class QueueConsumerImpl implements QueueConsumer {
       }
       // rawBundleSize
       rawBundleSize = buffer.getInt();
-      qid = getQidString(buffer);
+      channelID = getQidString(buffer);
     }
 
     public int getMagicNum() {
@@ -92,7 +88,7 @@ public class QueueConsumerImpl implements QueueConsumer {
     }
 
     public String getQid() {
-      return qid;
+      return channelID;
     }
 
     public int getRawBundleSize() {
@@ -111,8 +107,13 @@ public class QueueConsumerImpl implements QueueConsumer {
     bundleMeta.order(ByteOrder.nativeOrder());
   }
 
-  @Override
-  public QueueItem pull(long timeoutMillis) {
+  /**
+   * pull message from input queues, if timeout, return null.
+   *
+   * @param timeoutMillis timeout
+   * @return message or null
+   */
+  public DataMessage pull(long timeoutMillis) {
     if (buf.isEmpty()) {
       getBundle(timeoutMillis);
       // if bundle not empty. empty message still has data size + seqId + msgId
@@ -122,13 +123,13 @@ public class QueueConsumerImpl implements QueueConsumer {
         if (queueBundleMeta.getBundleType() == MessageBundleType.BARRIER) {
           throw new UnsupportedOperationException("Unsupported bundle type " + queueBundleMeta.getBundleType());
         } else if (queueBundleMeta.getBundleType() == MessageBundleType.BUNDLE) {
-          String qid = queueBundleMeta.getQid();
+          String channelID = queueBundleMeta.getQid();
           long timestamp = queueBundleMeta.getBundleTs();
           for (int i = 0; i < queueBundleMeta.getMessageListSize(); ++i) {
-            buf.offer(getQueueMessage(bundleData, qid, timestamp));
+            buf.offer(getQueueMessage(bundleData, channelID, timestamp));
           }
         } else if (queueBundleMeta.getBundleType() == MessageBundleType.EMPTY) {
-          buf.offer(new QueueMessageImpl(queueBundleMeta.getQid(), null, queueBundleMeta.getBundleTs()));
+          buf.offer(new DataMessage(null, queueBundleMeta.getBundleTs(),  queueBundleMeta.getQid()));
         }
       }
     }
@@ -138,7 +139,7 @@ public class QueueConsumerImpl implements QueueConsumer {
     return buf.poll();
   }
 
-  private QueueItem getQueueMessage(ByteBuffer bundleData, String qid, long timestamp) {
+  private DataMessage getQueueMessage(ByteBuffer bundleData, String channelID, long timestamp) {
     int dataSize = bundleData.getInt();
     // seqId
     bundleData.getLong();
@@ -151,11 +152,11 @@ public class QueueConsumerImpl implements QueueConsumer {
     ByteBuffer data = bundleData.slice();
     bundleData.limit(limit);
     bundleData.position(position + dataSize);
-    return new QueueMessageImpl(qid, data, timestamp);
+    return new DataMessage(data, timestamp, channelID);
   }
 
   private String getQidString(ByteBuffer buffer) {
-    byte[] bytes = new byte[QueueID.ID_LENGTH];
+    byte[] bytes = new byte[ChannelID.ID_LENGTH];
     buffer.get(bytes);
     return ChannelUtils.qidBytesToString(bytes);
   }
@@ -178,12 +179,16 @@ public class QueueConsumerImpl implements QueueConsumer {
    */
   private native void getBundleNative(long nativeQueueConsumerPtr, long timeoutMillis, long params, long metaAddress);
 
-  @Override
+  /**
+   * stop consumer to avoid blocking
+   */
   public void stop() {
     stopConsumerNative(nativeQueueConsumerPtr);
   }
 
-  @Override
+  /**
+   * close queue consumer to release resource
+   */
   public void close() {
     if (nativeQueueConsumerPtr == 0) {
       return;
