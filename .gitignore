@@ -2,8 +2,10 @@
 /bazel-*
 /python/ray/core
 /python/ray/pyarrow_files/
+/python/ray/pickle5_files/
 /python/build
 /python/dist
+/python/python-driver-*
 /thirdparty/pkg/
 /build/java
 
@@ -128,6 +130,7 @@ scripts/nodes.txt
 
 # Pytest Cache
 **/.pytest_cache
+**/.cache
 .benchmarks
 
 # Vscode
@@ -143,18 +146,8 @@ java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
 
-# streaming/java
-streaming/java/streaming-runtime/native_dependencies/
-streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/
-streaming/java/**/.settings
-streaming/java/**/.project
-streaming/java/**/.classpath
-streaming/java/**/target
-streaming/java/**/lib
-streaming/build/**
-
 # streaming/python
-streaming/python/ray/streaming/generated/
+streaming/python/generated/
 
 # python virtual env
 venv

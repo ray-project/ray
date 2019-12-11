@@ -25,11 +25,6 @@ class RayObject {
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
             bool copy_data = false)
       : data_(data), metadata_(metadata), has_data_copy_(copy_data) {
-    RAY_CHECK(!data || data_->Size())
-        << "Zero-length buffers are not allowed when constructing a RayObject.";
-    RAY_CHECK(!metadata || metadata->Size())
-        << "Zero-length buffers are not allowed when constructing a RayObject.";
-
     if (has_data_copy_) {
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
@@ -46,6 +41,8 @@ class RayObject {
 
     RAY_CHECK(data_ || metadata_) << "Data and metadata cannot both be empty.";
   }
+
+  RayObject(rpc::ErrorType error_type);
 
   /// Return the data of the ray object.
   const std::shared_ptr<Buffer> &GetData() const { return data_; };
@@ -67,7 +64,11 @@ class RayObject {
   bool HasMetadata() const { return metadata_ != nullptr; }
 
   /// Whether the object represents an exception.
-  bool IsException();
+  bool IsException(rpc::ErrorType *error_type = nullptr) const;
+
+  /// Whether the object has been promoted to plasma (i.e., since it was too
+  /// large to return directly as part of a gRPC response).
+  bool IsInPlasmaError() const;
 
  private:
   std::shared_ptr<Buffer> data_;

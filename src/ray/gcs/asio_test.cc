@@ -5,8 +5,8 @@
 #include "ray/util/logging.h"
 
 extern "C" {
-#include "ray/thirdparty/hiredis/async.h"
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 }
 
 boost::asio::io_service io_service;

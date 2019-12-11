@@ -10,6 +10,7 @@ import json
 import os
 import logging
 import signal
+import socket
 import sys
 import tempfile
 import threading
@@ -46,6 +47,7 @@ class Node(object):
                  ray_params,
                  head=False,
                  shutdown_at_exit=True,
+                 spawn_reaper=True,
                  connect_only=False):
         """Start a node.
 
@@ -55,9 +57,10 @@ class Node(object):
             head (bool): True if this is the head node, which means it will
                 start additional processes like the Redis servers, monitor
                 processes, and web UI.
-            shutdown_at_exit (bool): If true, a handler will be registered to
-                shutdown the processes started here when the Python interpreter
-                exits.
+            shutdown_at_exit (bool): If true, spawned processes will be cleaned
+                up if this process exits normally.
+            spawn_reaper (bool): If true, spawns a process that will clean up
+                other spawned processes if this process dies unexpectedly.
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
@@ -117,7 +120,8 @@ class Node(object):
 
             # If user does not provide the socket name, get it from Redis.
             if (self._plasma_store_socket_name is None
-                    or self._raylet_socket_name is None):
+                    or self._raylet_socket_name is None
+                    or self._ray_params.node_manager_port is None):
                 # Get the address info of the processes to connect to
                 # from Redis.
                 address_info = ray.services.get_address_info_from_redis(
@@ -127,6 +131,8 @@ class Node(object):
                 self._plasma_store_socket_name = address_info[
                     "object_store_address"]
                 self._raylet_socket_name = address_info["raylet_socket_name"]
+                self._ray_params.node_manager_port = address_info[
+                    "node_manager_port"]
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -144,6 +150,19 @@ class Node(object):
             ray_params.include_java = (
                 ray.services.include_java_from_redis(redis_client))
 
+        if head or not connect_only:
+            # We need to start a local raylet.
+            if (self._ray_params.node_manager_port is None
+                    or self._ray_params.node_manager_port == 0):
+                # No port specified. Pick a random port for the raylet to use.
+                # NOTE: There is a possible but unlikely race condition where
+                # the port is bound by another process between now and when the
+                # raylet starts.
+                self._ray_params.node_manager_port = self._get_unused_port()
+
+        if not connect_only and spawn_reaper:
+            self.start_reaper_process()
+
         # Start processes.
         if head:
             self.start_head_processes()
@@ -156,47 +175,19 @@ class Node(object):
             self.start_ray_processes()
 
     def _register_shutdown_hooks(self):
-        # Make ourselves a process group session leader to ensure we can clean
-        # up child processes later without killing a process that started us.
-        try:
-            os.setpgrp()
-        except OSError as e:
-            logger.warning("setpgrp failed, processes may not be "
-                           "cleaned up properly: {}.".format(e))
-
-        # Clean up child process by first going through the normal
-        # kill_all_processes procedure (which should clean them all up
-        # under normal circumstances), then sending a SIGTERM to our
-        # process group to take care of any children that may have been
-        # spawned but not yet added to the list.
-        def clean_up_children(sigterm_handler):
+        # Register the atexit handler. In this case, we shouldn't call sys.exit
+        # as we're already in the exit procedure.
+        def atexit_handler(*args):
             self.kill_all_processes(check_alive=False, allow_graceful=True)
-            signal.signal(signal.SIGTERM, sigterm_handler)
-            try:
-                # SIGTERM our process group as a last resort in case there
-                # were processes that we spawned but didn't add to the list
-                # (could happen if interrupted just after spawning them).
-                # We could send SIGKILL here to be sure, but we're also
-                # sending it to ourselves.
-                os.killpg(0, signal.SIGTERM)
-            except OSError as e:
-                print("killpg failed, processes may not have "
-                      "been cleaned up properly: {}.".format(e))
-
-        # Register the a handler to be called during the normal python
-        # shutdown process. We pass an empty lambda to clean_up_children
-        # because after cleaning up the child processes, it should do
-        # nothing and return so that the shutdown process can continue.
-        def atexit_handler():
-            return clean_up_children(lambda *args, **kwargs: None)
 
         atexit.register(atexit_handler)
 
-        # Register the a handler to be called if we get a SIGTERM.
+        # Register the handler to be called if we get a SIGTERM.
         # In this case, we want to exit with an error code (1) after
         # cleaning up child processes.
-        def sigterm_handler():
-            return clean_up_children(lambda *args, **kwargs: sys.exit(1))
+        def sigterm_handler(signum, frame):
+            self.kill_all_processes(check_alive=False, allow_graceful=True)
+            sys.exit(1)
 
         signal.signal(signal.SIGTERM, sigterm_handler)
 
@@ -295,6 +286,11 @@ class Node(object):
         return self._raylet_socket_name
 
     @property
+    def node_manager_port(self):
+        """Get the node manager's port."""
+        return self._ray_params.node_manager_port
+
+    @property
     def address_info(self):
         """Get a dictionary of addresses."""
         return {
@@ -390,6 +386,13 @@ class Node(object):
         log_stderr_file = open(log_stderr, "a", buffering=1)
         return log_stdout_file, log_stderr_file
 
+    def _get_unused_port(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("", 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
     def _prepare_socket_file(self, socket_path, default_prefix):
         """Prepare the socket file for raylet and plasma.
 
@@ -408,6 +411,20 @@ class Node(object):
             return socket_path
         return self._make_inc_temp(
             prefix=default_prefix, directory_name=self._sockets_dir)
+
+    def start_reaper_process(self):
+        """
+        Start the reaper process.
+
+        This must be the first process spawned and should only be called when
+        ray processes should be cleaned up if this process dies.
+        """
+        process_info = ray.services.start_reaper()
+        assert ray_constants.PROCESS_TYPE_REAPER not in self.all_processes
+        if process_info is not None:
+            self.all_processes[ray_constants.PROCESS_TYPE_REAPER] = [
+                process_info
+            ]
 
     def start_redis(self):
         """Start the Redis servers."""
@@ -508,6 +525,7 @@ class Node(object):
         process_info = ray.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
+            self._ray_params.node_manager_port,
             self._raylet_socket_name,
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
@@ -515,7 +533,6 @@ class Node(object):
             self._session_dir,
             self.get_resource_spec(),
             self._ray_params.object_manager_port,
-            self._ray_params.node_manager_port,
             self._ray_params.redis_password,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
@@ -764,6 +781,16 @@ class Node(object):
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_RAYLET_MONITOR, check_alive=check_alive)
 
+    def kill_reaper(self, check_alive=True):
+        """Kill the reaper process.
+
+        Args:
+            check_alive (bool): Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_REAPER, check_alive=check_alive)
+
     def kill_all_processes(self, check_alive=True, allow_graceful=False):
         """Kill all of the processes.
 
@@ -788,8 +815,17 @@ class Node(object):
         # We call "list" to copy the keys because we are modifying the
         # dictionary while iterating over it.
         for process_type in list(self.all_processes.keys()):
+            # Need to kill the reaper process last in case we die unexpectedly
+            # while cleaning up.
+            if process_type != ray_constants.PROCESS_TYPE_REAPER:
+                self._kill_process_type(
+                    process_type,
+                    check_alive=check_alive,
+                    allow_graceful=allow_graceful)
+
+        if ray_constants.PROCESS_TYPE_REAPER in self.all_processes:
             self._kill_process_type(
-                process_type,
+                ray_constants.PROCESS_TYPE_REAPER,
                 check_alive=check_alive,
                 allow_graceful=allow_graceful)
 

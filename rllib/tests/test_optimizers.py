@@ -21,6 +21,20 @@ from ray.rllib.utils import try_import_tf
 tf = try_import_tf()
 
 
+class LRScheduleTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+
+    def testBasic(self):
+        ray.init(num_cpus=2)
+        ppo = PPOTrainer(
+            env="CartPole-v0",
+            config={"lr_schedule": [[0, 1e-5], [1000, 0.0]]})
+        for _ in range(10):
+            result = ppo.train()
+        assert result["episode_reward_mean"] < 100, "should not have learned"
+
+
 class AsyncOptimizerTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
@@ -169,9 +183,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         print(stats)
         self.assertLess(stats["num_steps_sampled"], 5000)
         replay_ratio = stats["num_steps_replayed"] / stats["num_steps_sampled"]
-        train_ratio = stats["num_steps_sampled"] / stats["num_steps_trained"]
         self.assertGreater(replay_ratio, 0.7)
-        self.assertLess(train_ratio, 0.4)
 
     def testMultiTierAggregationBadConf(self):
         local, remotes = self._make_envs()

@@ -1,7 +1,10 @@
 #include "ray/gcs/redis_gcs_client.h"
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/redis_actor_info_accessor.h"
 #include "ray/gcs/redis_context.h"
+
+#include <unistd.h>
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -70,8 +73,7 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options)
-    : GcsClientInterface(options) {}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {}
 
 Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
@@ -81,7 +83,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
     return Status::Invalid("gcs service address is invalid!");
   }
 
-  primary_context_ = std::make_shared<RedisContext>();
+  primary_context_ = std::make_shared<RedisContext>(io_service);
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_, options_.server_port_,
                                          /*sharding=*/true,
@@ -101,12 +103,12 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
     for (size_t i = 0; i < addresses.size(); ++i) {
       // Populate shard_contexts.
-      shard_contexts_.push_back(std::make_shared<RedisContext>());
+      shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
                                                /*password=*/options_.password_));
     }
   } else {
-    shard_contexts_.push_back(std::make_shared<RedisContext>());
+    shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
     RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_, options_.server_port_,
                                              /*sharding=*/true,
                                              /*password=*/options_.password_));
@@ -135,7 +137,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
 
-  actor_accessor_.reset(new ActorStateAccessor(*this));
+  actor_accessor_.reset(new RedisActorInfoAccessor(this));
 
   Status status = Attach(io_service);
   is_connected_ = status.ok();

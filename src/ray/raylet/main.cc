@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.8.0.dev6"},
+      {ray::stats::VersionKey, "0.8.0.dev7"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -140,7 +140,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_push_timeout_ms();
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
-  object_manager_config.rpc_service_threads_number = std::max(2, num_cpus / 2);
+  object_manager_config.rpc_service_threads_number =
+      std::min(std::max(2, num_cpus / 4), 8);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 

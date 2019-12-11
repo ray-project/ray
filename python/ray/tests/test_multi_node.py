@@ -8,7 +8,8 @@ import subprocess
 import time
 
 import ray
-from ray.tests.utils import (
+from ray import ray_constants
+from ray.test_utils import (
     RayTestTimeoutException,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
@@ -321,7 +322,7 @@ print("success")
         process_handle.kill()
 
 
-def test_calling_start_ray_head():
+def test_calling_start_ray_head(call_ray_stop_only):
     # Test that we can call ray start with various command line
     # parameters. TODO(rkn): This test only tests the --head code path. We
     # should also test the non-head node code path.
@@ -483,6 +484,9 @@ print("success")
         assert "success" in out
 
 
+@pytest.mark.skipif(
+    ray_constants.direct_call_enabled(),
+    reason="fate sharing not implemented yet")
 def test_driver_exiting_when_worker_blocked(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
@@ -615,3 +619,12 @@ def test_use_pickle(call_ray_start):
         return (3, "world")
 
     assert ray.get(f.remote(x)) == (3, "world")
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    # Make subprocess happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+    sys.exit(pytest.main(["-v", __file__]))

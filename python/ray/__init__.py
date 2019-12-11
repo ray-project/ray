@@ -3,14 +3,37 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from os.path import dirname
 import sys
+
+# MUST add pickle5 to the import path because it will be imported by some
+# raylet modules.
+
+if "pickle5" in sys.modules:
+    raise ImportError("Ray must be imported before pickle5 because Ray "
+                      "requires a specific version of pickle5 (which is "
+                      "packaged along with Ray).")
+
+# Add the directory containing pickle5 to the Python path so that we find the
+# pickle5 version packaged with ray and not a pre-existing pickle5.
+pickle5_path = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
+sys.path.insert(0, pickle5_path)
+
+# Expose ray ABI symbols which may be dependent by other shared
+# libraries such as _streaming.so. See BUILD.bazel:_raylet
+so_path = os.path.join(dirname(__file__), "_raylet.so")
+if os.path.exists(so_path):
+    import ctypes
+    from ctypes import CDLL
+    CDLL(so_path, ctypes.RTLD_GLOBAL)
 
 # MUST import ray._raylet before pyarrow to initialize some global variables.
 # It seems the library related to memory allocation in pyarrow will destroy the
 # initialization of grpc if we import pyarrow at first.
 # NOTE(JoeyJiang): See https://github.com/ray-project/ray/issues/5219 for more
 # details.
-import ray._raylet
+import ray._raylet  # noqa: E402
 
 if "pyarrow" in sys.modules:
     raise ImportError("Ray must be imported before pyarrow because Ray "
@@ -121,7 +144,7 @@ ray.streaming.QueueProducer = QueueProducer
 ray.streaming.QueueConsumer = QueueConsumer
 
 # Ray version string.
-__version__ = "0.8.0.dev6"
+__version__ = "0.8.0.dev7"
 
 __all__ = [
     "global_state",

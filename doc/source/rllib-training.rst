@@ -59,6 +59,8 @@ The ``rollout.py`` helper script reconstructs a DQN policy from the checkpoint
 located at ``~/ray_results/default/DQN_CartPole-v0_0upjmdgr0/checkpoint_1/checkpoint-1``
 and renders its behavior in the environment specified by ``--env``.
 
+(Type ``rllib rollout --help`` to see the available evaluation options.)
+
 Configuration
 -------------
 
@@ -181,6 +183,78 @@ Custom Training Workflows
 In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
 
 For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
+
+Computing Actions
+~~~~~~~~~~~~~~~~~
+
+The simplest way to programmatically compute actions from a trained agent is to use ``trainer.compute_action()``.
+This method preprocesses and filters the observation before passing it to the agent policy.
+For more advanced usage, you can access the ``workers`` and policies held by the trainer
+directly as ``compute_action()`` does:
+
+.. code-block:: python
+
+  class Trainer(Trainable):
+
+    @PublicAPI
+    def compute_action(self,
+                       observation,
+                       state=None,
+                       prev_action=None,
+                       prev_reward=None,
+                       info=None,
+                       policy_id=DEFAULT_POLICY_ID,
+                       full_fetch=False):
+        """Computes an action for the specified policy.
+
+        Note that you can also access the policy object through
+        self.get_policy(policy_id) and call compute_actions() on it directly.
+
+        Arguments:
+            observation (obj): observation from the environment.
+            state (list): RNN hidden state, if any. If state is not None,
+                          then all of compute_single_action(...) is returned
+                          (computed action, rnn state, logits dictionary).
+                          Otherwise compute_single_action(...)[0] is
+                          returned (computed action).
+            prev_action (obj): previous action value, if any
+            prev_reward (int): previous reward, if any
+            info (dict): info object, if any
+            policy_id (str): policy to query (only applies to multi-agent).
+            full_fetch (bool): whether to return extra action fetch results.
+                This is always set to true if RNN state is specified.
+
+        Returns:
+            Just the computed action if full_fetch=False, or the full output
+            of policy.compute_actions() otherwise.
+        """
+
+        if state is None:
+            state = []
+        preprocessed = self.workers.local_worker().preprocessors[
+            policy_id].transform(observation)
+        filtered_obs = self.workers.local_worker().filters[policy_id](
+            preprocessed, update=False)
+        if state:
+            return self.get_policy(policy_id).compute_single_action(
+                filtered_obs,
+                state,
+                prev_action,
+                prev_reward,
+                info,
+                clip_actions=self.config["clip_actions"])
+        res = self.get_policy(policy_id).compute_single_action(
+            filtered_obs,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"])
+        if full_fetch:
+            return res
+        else:
+            return res[0]  # backwards compatibility
+
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -565,12 +639,17 @@ You can use the `data output API <rllib-offline.html>`__ to save episode traces 
 Log Verbosity
 ~~~~~~~~~~~~~
 
-You can control the trainer log level via the ``"log_level"`` flag. Valid values are "INFO" (default), "DEBUG", "WARN", and "ERROR". This can be used to increase or decrease the verbosity of internal logging. For example:
+You can control the trainer log level via the ``"log_level"`` flag. Valid values are "DEBUG", "INFO", "WARN" (default), and "ERROR". This can be used to increase or decrease the verbosity of internal logging. You can also use the ``-v`` and ``-vv`` flags. For example, the following two commands are about equivalent:
 
 .. code-block:: bash
 
     rllib train --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 2, "log_level": "DEBUG"}'
+
+    rllib train --env=PongDeterministic-v4 \
+        --run=A2C --config '{"num_workers": 2}' -vv
+
+The default log level is ``WARN``. We strongly recommend using at least ``INFO`` level logging for development.
 
 Stack Traces
 ~~~~~~~~~~~~

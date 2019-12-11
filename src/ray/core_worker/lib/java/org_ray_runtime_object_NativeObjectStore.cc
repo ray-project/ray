@@ -9,11 +9,6 @@
 extern "C" {
 #endif
 
-/*
- * Class:     org_ray_runtime_object_NativeObjectStore
- * Method:    nativePut
- * Signature: (JLorg/ray/runtime/object/NativeRayObject;)[B
- */
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject obj) {
@@ -26,11 +21,6 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_objec
   return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }
 
-/*
- * Class:     org_ray_runtime_object_NativeObjectStore
- * Method:    nativePut
- * Signature: (J[BLorg/ray/runtime/object/NativeRayObject;)V
- */
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_object_NativeRayObject_2(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray objectId,
@@ -43,11 +33,6 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_ob
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
-/*
- * Class:     org_ray_runtime_object_NativeObjectStore
- * Method:    nativeGet
- * Signature: (JLjava/util/List;J)Ljava/util/List;
- */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeGet(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject ids, jlong timeoutMs) {
   std::vector<ray::ObjectID> object_ids;
@@ -63,11 +48,6 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeGe
       env, results, NativeRayObjectToJavaNativeRayObject);
 }
 
-/*
- * Class:     org_ray_runtime_object_NativeObjectStore
- * Method:    nativeWait
- * Signature: (JLjava/util/List;IJ)Ljava/util/List;
- */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWait(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject objectIds,
     jint numObjects, jlong timeoutMs) {
@@ -85,11 +65,6 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWa
   });
 }
 
-/*
- * Class:     org_ray_runtime_object_NativeObjectStore
- * Method:    nativeDelete
- * Signature: (JLjava/util/List;ZZ)V
- */
 JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeDelete(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jobject objectIds,
     jboolean localOnly, jboolean deleteCreatingTasks) {

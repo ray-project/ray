@@ -16,6 +16,10 @@ def env_integer(key, default):
     return default
 
 
+def direct_call_enabled():
+    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "0")))
+
+
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -50,6 +54,10 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 PICKLE_OBJECT_WARNING_SIZE = 10**7
+
+# If remote functions with the same source are imported this many times, then
+# print a warning.
+DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
@@ -147,6 +155,8 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 500)
 
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
+# Max number of retries to create an EC2 node (retry different subnet)
+BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
@@ -162,6 +172,7 @@ NO_RECONSTRUCTION = 0
 INFINITE_RECONSTRUCTION = 2**30
 
 # Constants used to define the different process types.
+PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"
@@ -177,8 +188,10 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is raw binary.
 RAW_BUFFER_METADATA = b"RAW"
-# '__RAY_DUMMY__' for positional args
-DUMMY_METADATA = b"DUMMY"
+# A constant used as object metadata to indicate the object is pickled. This
+# format is only ever used for Python inline task argument values.
+PICKLE_BUFFER_METADATA = b"PICKLE"
+# A constant used as object metadata to indicate the object is pickle5 format.
 PICKLE5_BUFFER_METADATA = b"PICKLE5"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"

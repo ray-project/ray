@@ -18,9 +18,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      object_manager_server_("ObjectManager", config_.object_manager_port),
+      object_manager_server_("ObjectManager", config_.object_manager_port,
+                             config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(main_service) {
+      client_call_manager_(main_service, config_.rpc_service_threads_number) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   client_id_ = object_directory_->GetLocalClientID();
   main_service_ = &main_service;
@@ -270,7 +271,7 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_requests_.find(object_id);
   RAY_CHECK(iter != unfulfilled_push_requests_.end());
-  uint num_erased = iter->second.erase(client_id);
+  size_t num_erased = iter->second.erase(client_id);
   RAY_CHECK(num_erased == 1);
   if (iter->second.size() == 0) {
     unfulfilled_push_requests_.erase(iter);
@@ -443,10 +444,7 @@ ray::Status ObjectManager::SendObjectChunk(
     RAY_RETURN_NOT_OK(status);
   }
 
-  std::string buffer;
-  buffer.resize(chunk_info.buffer_length);
-  buffer.assign(chunk_info.data, chunk_info.data + chunk_info.buffer_length);
-  push_request.set_data(std::move(buffer));
+  push_request.set_data(chunk_info.data, chunk_info.buffer_length);
 
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback = [this, start_time, object_id, client_id,
