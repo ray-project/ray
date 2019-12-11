@@ -34,8 +34,8 @@ time.sleep(2)
 # slo (10 milliseconds deadline) can be specified via http
 slo_ms = 10.0
 print("> [HTTP] Pinging http://127.0.0.1:8000/echo?slo_ms={}".format(slo_ms))
-print(requests.get(
-    "http://127.0.0.1:8000/echo?slo_ms={}".format(slo_ms)).json())
+print(
+    requests.get("http://127.0.0.1:8000/echo?slo_ms={}".format(slo_ms)).json())
 
 # get the handle of the endpoint
 handle = serve.get_handle("my_endpoint")
