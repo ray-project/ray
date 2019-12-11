@@ -2,7 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+from filelock import FileLock
 import logging
+import os
+import torch.nn as nn
 import torch.distributed as dist
 import torch.utils.data
 from torch.nn.parallel import DistributedDataParallel
@@ -52,22 +56,28 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
     def _setup_training(self):
         logger.debug("Creating model")
-        models = self.model_creator(self.config)
-        if not isinstance(models, list):
-            self.models = [models]
+        self.models = self.model_creator(self.config)
+        if not isinstance(self.models, collections.Iterable):
+            self.models = [self.models]
+        assert all(isinstance(model, nn.Module) for model in self.models), (
+            "All models must be PyTorch models: {}.".format(self.models))
         if torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
         self.models = [DistributedDataParallel(model) for model in self.models]
 
         logger.debug("Creating optimizer.")
-        self.optimizer = self.optimizer_creator(self.model, self.config)
+        self.optimizers = self.optimizer_creator(self.models, self.config)
+        if not isinstance(self.optimizers, collections.Iterable):
+            self.optimizers = [self.optimizers]
         self.criterion = self.loss_creator(self.config)
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
-        logger.debug("Creating dataset")
-        self.train_loader, self.validation_loader = self.data_creator(
-            self.batch_size, self.config)
+        logger.debug("Creating dataset.")
+        with FileLock(os.path.expanduser("~/.ray_data.lock")):
+            data_loaders = self.data_creator(self.batch_size, self.config)
+        self.train_loader, self.validation_loader = self._validate_loaders(
+            data_loaders)
 
     def step(self):
         """Runs a training epoch and updates the model parameters.
@@ -83,16 +93,21 @@ class DistributedPyTorchRunner(PyTorchRunner):
         """Returns the state of the runner."""
         return {
             "epoch": self.epoch,
-            "model": self.model.module.cpu().state_dict(),
-            "optimizer": self.optimizer.state_dict(),
+            "models": [
+                model.module.cpu().state_dict() for model in self.models
+            ],
+            "optimizers": [opt.state_dict() for opt in self.optimizers],
             "stats": self.stats()
         }
 
     def set_state(self, state):
         """Sets the state of the model."""
         # TODO: restore timer stats
-        self.model.module.load_state_dict(state["model"])
-        self.optimizer.load_state_dict(state["optimizer"])
+        for model, model_state_dict in zip(self.models, state["models"]):
+            model.module.load_state_dict(model_state_dict)
+        for optimizer, opt_state_dict in zip(self.optimizers,
+                                             state["optimizers"]):
+            optimizer.load_state_dict(opt_state_dict)
         self.epoch = state["stats"]["epoch"]
 
     def shutdown(self):

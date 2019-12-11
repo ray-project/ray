@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import time
 import torch
 
@@ -10,6 +11,12 @@ from ray.experimental.sgd.utils import TimerStat
 
 def train(model, train_iterator, criterion, optimizer, config):
     """Runs 1 training epoch"""
+    if isinstance(model, collections.Iterable) or isinstance(
+            optimizer, collections.Iterable):
+        raise ValueError(
+            "Need to provide custom training function if using multi-model "
+            "or multi-optimizer training.")
+
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -63,6 +70,10 @@ def train(model, train_iterator, criterion, optimizer, config):
 
 
 def validate(model, val_iterator, criterion, config):
+    if isinstance(model, collections.Iterable):
+        raise ValueError(
+            "Need to provide custom validation function if using multi-model "
+            "training.")
     batch_time = AverageMeter()
     losses = AverageMeter()
 

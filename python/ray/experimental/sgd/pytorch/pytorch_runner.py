@@ -2,7 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+from filelock import FileLock
 import logging
+import os
 import torch
 import torch.utils.data
 
@@ -65,26 +68,38 @@ class PyTorchRunner(object):
         self.train_loader = None
         self.validation_loader = None
 
+    def _validate_loaders(self, data_loaders):
+        assert data_loaders, "Dataloaders need to be returned in data_creator."
+        if not isinstance(data_loaders, collections.Iterable):
+            return data_loaders, None
+        elif len(data_loaders) == 2:
+            return data_loaders
+        else:
+            raise ValueError("Dataloaders must be <= 2.")
+
     def setup(self):
         """Initializes the model."""
         logger.debug("Creating model")
-        models = self.model_creator(self.config)
-        if not isinstance(models, list):
-            self.models = [models]
+        self.models = self.model_creator(self.config)
+        if not isinstance(self.models, collections.Iterable):
+            self.models = [self.models]
         if torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
 
         logger.debug("Creating optimizer")
-        optimizers = self.optimizer_creator(self.given_models, self.config)
-        if not isinstance(optimizers, list):
-            self.optimizers = [optimizers]
+        self.optimizers = self.optimizer_creator(self.given_models,
+                                                 self.config)
+        if not isinstance(self.optimizers, collections.Iterable):
+            self.optimizers = [self.optimizers]
         self.criterion = self.loss_creator(self.config)
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
         logger.debug("Creating dataset")
-        self.train_loader, self.validation_loader = self.data_creator(
-            self.batch_size, self.config)
+        with FileLock(os.path.expanduser("~/.ray_data.lock")):
+            dataloaders = self.data_creator(self.batch_size, self.config)
+            self.train_loader, self.validation_loader = self._validate_loaders(
+                dataloaders)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""

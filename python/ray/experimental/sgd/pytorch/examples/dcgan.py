@@ -4,9 +4,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import ray
-from ray import tune
-
 import argparse
 import torch
 import torch.nn as nn
@@ -15,24 +12,17 @@ import torch.optim as optim
 import torch.utils.data
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
-import torchvision.utils as vutils
 import numpy as np
 
 from torch.autograd import Variable
 from torch.nn import functional as F
-import torch.utils.data
 from scipy.stats import entropy
 
-from ray.experimental.sgd import PyTorchTrainer
+import ray
+from ray.experimental.sgd.pytorch import PyTorchTrainer
 
 # Training parameters
-dataroot = "/tmp/"
-workers = 2
-batch_size = 64
-image_size = 32
 TRAIN_BATCHES = 5
-device = "cpu"
-
 # Number of channels in the training images. For color images this is 3
 num_channels = 1
 
@@ -46,12 +36,12 @@ features_g = 32
 features_d = 32
 
 
-def data_creator(config):
+def data_creator(batch_size, config):
     dataset = dset.MNIST(
-        root=dataroot,
+        root="~/mnist/",
         download=True,
         transform=transforms.Compose([
-            transforms.Resize(image_size),
+            transforms.Resize(32),
             transforms.ToTensor(),
             transforms.Normalize((0.5, ), (0.5, )),
         ]))
@@ -59,9 +49,9 @@ def data_creator(config):
     # Create the dataloader
     # Make this distributed
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, num_workers=workers)
+        dataset, batch_size=batch_size, shuffle=True, num_workers=3)
 
-    return dataloader
+    return dataloader, None
 
 
 def weights_init(m):
@@ -181,6 +171,7 @@ def train(models, dataloader, criterion, optimizers, config):
     optimD, optimG = optimizers
     real_label = 1
     fake_label = 0
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     for i, data in enumerate(dataloader, 0):
         if i >= TRAIN_BATCHES:
@@ -201,7 +192,6 @@ def train(models, dataloader, criterion, optimizers, config):
         output = netD(fake.detach()).view(-1)
         errD_fake = criterion(output, label)
         errD_fake.backward()
-        D_G_z1 = output.mean().item()
         errD = errD_real + errD_fake
         optimD.step()
 
@@ -210,7 +200,6 @@ def train(models, dataloader, criterion, optimizers, config):
         output = netD(fake).view(-1)
         errG = criterion(output, label)
         errG.backward()
-        # D_G_z2 = output.mean().item()
         optimG.step()
 
         is_score, is_std = inception_score(fake)
@@ -239,7 +228,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         optimizer_creator,
         lambda config: nn.BCELoss(),
         train_function=train,
-        validation_function=None,
+        validation_function=False,
         num_replicas=num_replicas,
         config=config,
         use_gpu=use_gpu,
@@ -249,7 +238,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         stats = trainer1.train()
         print(stats)
 
-    print(trainer1.validate())
+    print("Validation", trainer1.validate())
     trainer1.shutdown()
     print("success!")
 
@@ -258,12 +247,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--address",
+        required=False,
+        type=str,
+        help="the address to use for Redis")
     args, _ = parser.parse_known_args()
-    ray.init()
+    import os
+    ray.init(address=args.address)
 
+    path = os.path.dirname(ray.__file__)
+    model_path = os.path.join(
+        path, "experimental/sgd/pytorch/pbt_dcgan_mnist/mnist_cnn.pt")
     # load the pretrained mnist classification model for inception_score
     mnist_cnn = Net()
-    mnist_cnn.load_state_dict(torch.load("./mnist_cnn.pt"))
+    mnist_cnn.load_state_dict(torch.load(model_path))
     mnist_cnn.eval()
     mnist_model_ref = ray.put(mnist_cnn)
 

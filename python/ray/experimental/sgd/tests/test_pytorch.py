@@ -41,6 +41,50 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
+def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
+    def multi_model_creator(config):
+        return nn.Linear(1, 1), nn.Linear(1, 1)
+
+    trainer1 = PyTorchTrainer(
+        multi_model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_replicas=num_replicas)
+    trainer1.train()
+
+    filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
+    trainer1.save(filename)
+
+    models1 = trainer1.get_model()
+
+    trainer1.shutdown()
+
+    trainer2 = PyTorchTrainer(
+        multi_model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_replicas=num_replicas)
+    trainer2.restore(filename)
+
+    os.remove(filename)
+
+    models2 = trainer2.get_model()
+
+    for model_1, model_2 in zip(models1, models2):
+
+        model1_state_dict = model_1.state_dict()
+        model2_state_dict = model_2.state_dict()
+
+        assert set(model1_state_dict.keys()) == set(model2_state_dict.keys())
+
+        for k in model1_state_dict:
+            assert torch.equal(model1_state_dict[k], model2_state_dict[k])
+
+
+@pytest.mark.parametrize(  # noqa: F811
+    "num_replicas", [1, 2] if dist.is_available() else [1])
 def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     config = {
