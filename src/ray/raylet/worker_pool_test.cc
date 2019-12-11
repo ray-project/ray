@@ -176,8 +176,8 @@ TEST_F(WorkerPoolTest, StartupWorkerProcessCount) {
        {"dummy_java_worker_command", num_workers_arg}}};
   int desired_initial_worker_process_count_per_language = 100;
   int expected_worker_process_count =
-      ((MAXIMUM_STARTUP_CONCURRENCY - 1) / NUM_WORKERS_PER_PROCESS + 1) *
-      LANGUAGES.size();
+      static_cast<int>(std::ceil(static_cast<double>(MAXIMUM_STARTUP_CONCURRENCY) /
+                                 NUM_WORKERS_PER_PROCESS * LANGUAGES.size()));
   ASSERT_TRUE(expected_worker_process_count <
               static_cast<int>(desired_initial_worker_process_count_per_language *
                                LANGUAGES.size()));
@@ -206,8 +206,10 @@ TEST_F(WorkerPoolTest, StartupWorkerProcessCount) {
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
   worker_pool_.Start(1);
-  // Because one worker process has exactly NUM_WORKERS_PER_PROCESS workers,
-  // The worker_pool.NumWorkersStarting() may not equal to num_workers.
+  // Here we try to start only 1 worker for each worker language. But since each worker
+  // process contains exactly NUM_WORKERS_PER_PROCESS (3) workers here, it's expected to
+  // see 3 workers for each worker language, instead of 1.
+  ASSERT_NE(worker_pool_.NumWorkersStarting(), 1 * LANGUAGES.size());
   ASSERT_EQ(worker_pool_.NumWorkersStarting(),
             NUM_WORKERS_PER_PROCESS * LANGUAGES.size());
   ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), LANGUAGES.size());
