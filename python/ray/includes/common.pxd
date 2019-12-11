@@ -132,6 +132,10 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
+    cdef cppclass CAddress "ray::rpc::Address":
+        CAddress()
+        const c_string &SerializeAsString()
+        void ParseFromString(const c_string &serialized)
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
@@ -217,9 +221,9 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_detached)
+            c_bool is_detached, c_bool is_asyncio)
 
-cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
+cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,
                           const c_string &password,

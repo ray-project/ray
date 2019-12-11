@@ -762,8 +762,8 @@ void SchedulingResources::Acquire(const ResourceSet &resources) {
   resources_available_.SubtractResourcesStrict(resources);
 }
 
-void SchedulingResources::UpdateResource(const std::string &resource_name,
-                                         int64_t capacity) {
+void SchedulingResources::UpdateResourceCapacity(const std::string &resource_name,
+                                                 int64_t capacity) {
   const FractionalResourceQuantity new_capacity = FractionalResourceQuantity(capacity);
   const FractionalResourceQuantity &current_capacity =
       resources_total_.GetResource(resource_name);

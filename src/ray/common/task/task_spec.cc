@@ -5,6 +5,7 @@
 
 namespace ray {
 
+absl::Mutex TaskSpecification::mutex_;
 std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
 std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
@@ -13,6 +14,7 @@ int TaskSpecification::next_sched_id_;
 
 SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
     SchedulingClass id) {
+  absl::MutexLock lock(&mutex_);
   auto it = sched_id_to_cls_.find(id);
   RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
   return it->second;
@@ -30,6 +32,7 @@ void TaskSpecification::ComputeResources() {
 
   // Map the scheduling class descriptor to an integer for performance.
   auto sched_cls = std::make_pair(GetRequiredResources(), FunctionDescriptor());
+  absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
   if (it == sched_cls_to_id_.end()) {
     sched_cls_id_ = ++next_sched_id_;
@@ -112,6 +115,20 @@ const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
+std::vector<ObjectID> TaskSpecification::GetDependencies() const {
+  std::vector<ObjectID> dependencies;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    int count = ArgIdCount(i);
+    for (int j = 0; j < count; j++) {
+      dependencies.push_back(ArgId(i, j));
+    }
+  }
+  if (IsActorTask()) {
+    dependencies.push_back(PreviousActorTaskDummyObjectId());
+  }
+  return dependencies;
+}
+
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
@@ -186,11 +203,13 @@ ObjectID TaskSpecification::ActorDummyObject() const {
   return ReturnId(NumReturns() - 1, TaskTransportType::RAYLET);
 }
 
-bool TaskSpecification::IsDirectCall() const {
+bool TaskSpecification::IsDirectCall() const { return message_->is_direct_call(); }
+
+bool TaskSpecification::IsDirectActorCreationCall() const {
   if (IsActorCreationTask()) {
     return message_->actor_creation_task_spec().is_direct_call();
   } else {
-    return message_->is_direct_call();
+    return false;
   }
 }
 
@@ -199,9 +218,13 @@ int TaskSpecification::MaxActorConcurrency() const {
   return message_->actor_creation_task_spec().max_concurrency();
 }
 
-bool TaskSpecification::IsDetachedActor() const {
+bool TaskSpecification::IsAsyncioActor() const {
   RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().is_detached();
+  return message_->actor_creation_task_spec().is_asyncio();
+}
+
+bool TaskSpecification::IsDetachedActor() const {
+  return IsActorCreationTask() && message_->actor_creation_task_spec().is_detached();
 }
 
 std::string TaskSpecification::DebugString() const {
@@ -229,6 +252,8 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_reconstructions=" << MaxActorReconstructions()
            << ", is_direct_call=" << IsDirectCall()
+           << ", max_concurrency=" << MaxActorConcurrency()
+           << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
   } else if (IsActorTask()) {
     // Print actor task spec.

@@ -67,3 +67,9 @@ class AutoMLSearcherTest(unittest.TestCase):
         best_trial = searcher.get_best_trial()
         self.assertEqual(best_trial, trials[-1])
         self.assertEqual(best_trial.best_result["reward"], 3 + 10 - 1)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

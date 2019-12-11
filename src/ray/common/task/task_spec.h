@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -113,6 +114,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that are required to place a task on a node.
   const ResourceSet &GetRequiredPlacementResources() const;
 
+  /// Return the dependencies of this task. This is recomputed each time, so it can
+  /// be used if the task spec is mutated.
+  ///
+  /// \return The recomputed dependencies for the task.
+  std::vector<ObjectID> GetDependencies() const;
+
   bool IsDriverTask() const;
 
   Language GetLanguage() const;
@@ -148,7 +155,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsDirectCall() const;
 
+  bool IsDirectActorCreationCall() const;
+
   int MaxActorConcurrency() const;
+
+  bool IsAsyncioActor() const;
 
   bool IsDetachedActor() const;
 
@@ -170,10 +181,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;
 
+  /// Below static fields could be mutated in `ComputeResources` concurrently due to
+  /// multi-threading, we need a mutex to protect it.
+  static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_;
-  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_;
-  static int next_sched_id_;
+  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
+      GUARDED_BY(mutex_);
+  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
+      GUARDED_BY(mutex_);
+  static int next_sched_id_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

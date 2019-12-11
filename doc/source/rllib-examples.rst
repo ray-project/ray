@@ -88,6 +88,8 @@ Community Examples
    Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
 - `NeuroCuts <https://github.com/neurocuts/neurocuts>`__:
    Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
+- `NeuroVectorizer <https://github.com/ucb-bar/NeuroVectorizer>`__:
+   Example of learning optimal LLVM vectorization compiler pragmas for loops in C and C++ codes using RLlib.
 - `Roboschool / SageMaker <https://github.com/awslabs/amazon-sagemaker-examples/tree/master/reinforcement_learning/rl_roboschool_ray>`__:
    Example of training robotic control policies in SageMaker with RLlib.
 - `StarCraft2 <https://github.com/oxwhirl/smac>`__:

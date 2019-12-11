@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import glob
+from itertools import chain
 import os
 import re
 import shutil
@@ -81,6 +82,8 @@ extras = {
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
     "tune": ["tabulate"],
 }
+
+extras["all"] = list(set(chain.from_iterable(extras.values())))
 
 
 class build_ext(_build_ext.build_ext):
@@ -174,6 +177,7 @@ requires = [
     "six >= 1.0.0",
     "faulthandler;python_version<'3.3'",
     "protobuf >= 3.8.0",
+    "cloudpickle",
 ]
 
 setup(

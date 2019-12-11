@@ -16,6 +16,10 @@ def env_integer(key, default):
     return default
 
 
+def direct_call_enabled():
+    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "0")))
+
+
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -50,6 +54,10 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 # If a remote function or actor (or some other export) has serialized size
 # greater than this quantity, print an warning.
 PICKLE_OBJECT_WARNING_SIZE = 10**7
+
+# If remote functions with the same source are imported this many times, then
+# print a warning.
+DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
@@ -164,6 +172,7 @@ NO_RECONSTRUCTION = 0
 INFINITE_RECONSTRUCTION = 2**30
 
 # Constants used to define the different process types.
+PROCESS_TYPE_REAPER = "reaper"
 PROCESS_TYPE_MONITOR = "monitor"
 PROCESS_TYPE_RAYLET_MONITOR = "raylet_monitor"
 PROCESS_TYPE_LOG_MONITOR = "log_monitor"

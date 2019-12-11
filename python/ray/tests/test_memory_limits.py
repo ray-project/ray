@@ -15,7 +15,7 @@ class LightActor(object):
         pass
 
     def sample(self):
-        return "tiny_return_value"
+        return np.zeros(1 * MB, dtype=np.uint8)
 
 
 @ray.remote
@@ -86,4 +86,6 @@ class TestMemoryLimits(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

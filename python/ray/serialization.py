@@ -157,19 +157,53 @@ class SerializationContext(object):
                 serialization_context)
 
             def id_serializer(obj):
-                if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
-                    obj = self.worker.core_worker.promote_object_to_plasma(obj)
                 return pickle.dumps(obj)
 
             def id_deserializer(serialized_obj):
                 return pickle.loads(serialized_obj)
 
+            def object_id_serializer(obj):
+                owner_id = ""
+                owner_address = ""
+                if obj.is_direct_call_type():
+                    worker = ray.worker.get_global_worker()
+                    worker.check_connected()
+                    obj, owner_id, owner_address = (
+                        worker.core_worker.serialize_and_promote_object_id(obj)
+                    )
+                obj = obj.__reduce__()
+                owner_id = owner_id.__reduce__() if owner_id else owner_id
+                return pickle.dumps((obj, owner_id, owner_address))
+
+            def object_id_deserializer(serialized_obj):
+                obj_id, owner_id, owner_address = pickle.loads(serialized_obj)
+                # NOTE(swang): Must deserialize the object first before asking
+                # the core worker to resolve the value. This is to make sure
+                # that the ref count for the ObjectID is greater than 0 by the
+                # time the core worker resolves the value of the object.
+                deserialized_object_id = obj_id[0](obj_id[1][0])
+                if owner_id:
+                    worker = ray.worker.get_global_worker()
+                    worker.check_connected()
+                    # UniqueIDs are serialized as
+                    # (class name, (unique bytes,)).
+                    worker.core_worker.deserialize_and_register_object_id(
+                        obj_id[1][0], owner_id[1][0], owner_address)
+                return deserialized_object_id
+
             for id_type in ray._raylet._ID_TYPES:
-                serialization_context.register_type(
-                    id_type,
-                    "{}.{}".format(id_type.__module__, id_type.__name__),
-                    custom_serializer=id_serializer,
-                    custom_deserializer=id_deserializer)
+                if id_type == ray._raylet.ObjectID:
+                    serialization_context.register_type(
+                        id_type,
+                        "{}.{}".format(id_type.__module__, id_type.__name__),
+                        custom_serializer=object_id_serializer,
+                        custom_deserializer=object_id_deserializer)
+                else:
+                    serialization_context.register_type(
+                        id_type,
+                        "{}.{}".format(id_type.__module__, id_type.__name__),
+                        custom_serializer=id_serializer,
+                        custom_deserializer=id_deserializer)
 
             # We register this serializer on each worker instead of calling
             # _register_custom_serializer from the driver so that isinstance
@@ -188,16 +222,47 @@ class SerializationContext(object):
                 custom_deserializer=actor_handle_deserializer)
 
             def id_serializer(obj):
-                if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
-                    obj = self.worker.core_worker.promote_object_to_plasma(obj)
                 return obj.__reduce__()
 
             def id_deserializer(serialized_obj):
                 return serialized_obj[0](*serialized_obj[1])
 
+            def object_id_serializer(obj):
+                owner_id = ""
+                owner_address = ""
+                if obj.is_direct_call_type():
+                    worker = ray.worker.get_global_worker()
+                    worker.check_connected()
+                    obj, owner_id, owner_address = (
+                        worker.core_worker.serialize_and_promote_object_id(obj)
+                    )
+                obj = id_serializer(obj)
+                owner_id = id_serializer(owner_id) if owner_id else owner_id
+                return (obj, owner_id, owner_address)
+
+            def object_id_deserializer(serialized_obj):
+                obj_id, owner_id, owner_address = serialized_obj
+                # NOTE(swang): Must deserialize the object first before asking
+                # the core worker to resolve the value. This is to make sure
+                # that the ref count for the ObjectID is greater than 0 by the
+                # time the core worker resolves the value of the object.
+                deserialized_object_id = id_deserializer(obj_id)
+                if owner_id:
+                    worker = ray.worker.get_global_worker()
+                    worker.check_connected()
+                    # UniqueIDs are serialized as
+                    # (class name, (unique bytes,)).
+                    worker.core_worker.deserialize_and_register_object_id(
+                        obj_id[1][0], owner_id[1][0], owner_address)
+                return deserialized_object_id
+
             for id_type in ray._raylet._ID_TYPES:
-                self._register_cloudpickle_serializer(id_type, id_serializer,
-                                                      id_deserializer)
+                if id_type == ray._raylet.ObjectID:
+                    self._register_cloudpickle_serializer(
+                        id_type, object_id_serializer, object_id_deserializer)
+                else:
+                    self._register_cloudpickle_serializer(
+                        id_type, id_serializer, id_deserializer)
 
     def initialize(self):
         """ Register custom serializers """
@@ -298,7 +363,10 @@ class SerializationContext(object):
             except pyarrow.DeserializationCallbackError:
                 raise DeserializationError()
         else:
-            # Object isn't available in plasma.
+            # Object isn't available in plasma. This should never be returned
+            # to the user. We should only reach this line if this object was
+            # deserialized as part of a list, and another object in the list
+            # throws an exception.
             return plasma.ObjectNotAvailable
 
     def _store_and_register_pyarrow(self, value, depth=100):

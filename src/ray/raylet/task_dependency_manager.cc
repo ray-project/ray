@@ -309,6 +309,11 @@ std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
 }
 
 void TaskDependencyManager::TaskPending(const Task &task) {
+  // Direct tasks are not tracked by the raylet.
+  if (task.GetTaskSpecification().IsDirectCall()) {
+    return;
+  }
+
   TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Task execution " << task_id << " pending";
 

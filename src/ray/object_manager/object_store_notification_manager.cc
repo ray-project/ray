@@ -24,7 +24,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
 
   RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
   boost::system::error_code ec;
-  socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
+  socket_.assign(local_stream_protocol(), c_socket_, ec);
   assert(!ec.value());
   NotificationWait();
 }
@@ -43,9 +43,14 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
     const boost::system::error_code &error) {
   notification_.resize(length_);
   if (error) {
-    RAY_LOG(FATAL)
-        << "Problem communicating with the object store from raylet, check logs or "
-        << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+    // When shutting down a cluster, it's possible that the plasma store is killed
+    // earlier than raylet, in this case we don't want raylet to crash, we instead
+    // log an error message and exit.
+    RAY_LOG(ERROR) << "Failed to process store length: "
+                   << boost_to_ray_status(error).ToString()
+                   << ", most likely plasma store is down, raylet will exit";
+    // Exit raylet process.
+    _exit(kRayletStoreErrorExitCode);
   }
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),

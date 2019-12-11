@@ -11,6 +11,8 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
@@ -208,16 +210,21 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);
-  /// Assign a task. The task is assumed to not be queued in local_queues_.
+  /// Assign a task to a worker. The task is assumed to not be queued in local_queues_.
   ///
-  /// \param task The task in question.
-  /// \return true, if tasks was assigned to a worker, false otherwise.
-  bool AssignTask(const Task &task);
+  /// \param[in] worker The worker to assign the task to.
+  /// \param[in] task The task in question.
+  /// \param[out] post_assign_callbacks Vector of callbacks that will be appended
+  /// to with any logic that should run after the DispatchTasks loop runs.
+  void AssignTask(const std::shared_ptr<Worker> &worker, const Task &task,
+                  std::vector<std::function<void()>> *post_assign_callbacks);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
-  /// \return Void.
-  void FinishAssignedTask(Worker &worker);
+  /// \return Whether the worker should be returned to the idle pool. This is
+  /// only false for direct actor creation calls, which should never be
+  /// returned to idle.
+  bool FinishAssignedTask(Worker &worker);
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task_spec Task specification of the actor creation task that created the
@@ -301,7 +308,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void DispatchTasks(
       const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &tasks_by_class);
 
-  /// Handle a task that is blocked. This could be a task assigned to a worker,
+  /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
   /// driver task. This can be triggered when a client starts a get call or a
   /// wait call.
@@ -309,24 +316,41 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that is executing the blocked task.
   /// \param required_object_ids The IDs that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
-  /// \param ray_get Whether the task is blocked in a `ray.get` call, as
-  /// opposed to a `ray.wait` call.
+  /// \param ray_get Whether the task is blocked in a `ray.get` call.
+  /// \param mark_worker_blocked Whether to mark the worker as blocked. This
+  ///                            should be False for direct calls.
   /// \return Void.
-  void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
-                         const std::vector<ObjectID> &required_object_ids,
-                         const TaskID &current_task_id, bool ray_get);
+  void AsyncResolveObjects(const std::shared_ptr<LocalClientConnection> &client,
+                           const std::vector<ObjectID> &required_object_ids,
+                           const TaskID &current_task_id, bool ray_get,
+                           bool mark_worker_blocked);
 
-  /// Handle a task that is unblocked. This could be a task assigned to a
+  /// Handle end of a blocking object get. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
   /// or a driver task. This can be triggered when a client finishes a get call
   /// or a wait call. The given task must be blocked, via a previous call to
-  /// HandleTaskBlocked.
+  /// AsyncResolveObjects.
   ///
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.
+  /// \param worker_was_blocked Whether we previously marked the worker as
+  ///                           blocked in AsyncResolveObjects().
   /// \return Void.
-  void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
-                           const TaskID &current_task_id);
+  void AsyncResolveObjectsFinish(const std::shared_ptr<LocalClientConnection> &client,
+                                 const TaskID &current_task_id, bool was_blocked);
+
+  /// Handle a direct call task that is blocked. Note that this callback may
+  /// arrive after the worker lease has been returned to the node manager.
+  ///
+  /// \param worker Shared ptr to the worker, or nullptr if lost.
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker);
+
+  /// Handle a direct call task that is unblocked. Note that this callback may
+  /// arrive after the worker lease has been returned to the node manager.
+  /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
+  ///
+  /// \param worker Shared ptr to the worker, or nullptr if lost.
+  void HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &worker);
 
   /// Kill a worker.
   ///
@@ -379,6 +403,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \return True if the invariants are satisfied and false otherwise.
   bool CheckDependencyManagerInvariant() const;
+
+  /// Process client message of SubmitTask
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessSubmitTaskMessage(const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
@@ -489,16 +519,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Finish assigning a task to a worker.
   ///
+  /// \param worker Worker that the task is assigned to.
   /// \param task_id Id of the task.
-  /// \param worker Worker which the task is assigned to.
-  /// \param success Whether the task is successfully assigned to the worker.
+  /// \param success Whether or not assigning the task was successful.
   /// \return void.
-  void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
-
-  /// Handle a `SubmitTask` request.
-  void HandleSubmitTask(const rpc::SubmitTaskRequest &request,
-                        rpc::SubmitTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
+  void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id,
+                        bool success);
 
   /// Handle a `WorkerLease` request.
   void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
@@ -523,6 +549,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
+
+  /// Dispatch tasks to available workers.
+  void DispatchScheduledTasksToWorkers();
+
+  /// For the pending task at the head of tasks_to_schedule_, return a node
+  /// in the system (local or remote) that has enough resources available to
+  /// run the task, if any such node exist.
+  /// Repeat the process as long as we can schedule a task.
+  void NewSchedulerSchedulePendingTasks();
 
   // GCS client ID for this node.
   ClientID client_id_;
@@ -599,6 +634,25 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Map of workers leased out to direct call clients.
   std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
+
+  /// Whether new schedule is enabled.
+  const bool new_scheduler_enabled_;
+
+  /// The new resource scheduler for direct task calls.
+  std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
+  /// Map of leased workers to their current resource usage.
+  std::unordered_map<int, std::unordered_map<std::string, double>>
+      leased_worker_resources_;
+
+  typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
+                             std::string address, int port)>
+      ScheduleFn;
+
+  /// Queue of lease requests that are waiting for resources to become available.
+  /// TODO this should be a queue for each SchedulingClass
+  std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
+  /// Queue of lease requests that should be scheduled onto workers.
+  std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
 };
 
 }  // namespace raylet

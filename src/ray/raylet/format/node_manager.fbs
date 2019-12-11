@@ -5,9 +5,12 @@
 namespace ray.protocol;
 
 enum MessageType:int {
+  // Task is submitted to the raylet. This is sent from a worker to a
+  // raylet.
+  SubmitTask = 1,
   // Notify the raylet that a task has finished. This is sent from a
   // worker to a raylet.
-  TaskDone = 1,
+  TaskDone,
   // Log a message to the event table. This is sent from a worker to a raylet.
   EventLogMessage,
   // Send an initial connection message to the raylet. This is sent
@@ -31,6 +34,11 @@ enum MessageType:int {
   // For a worker that was blocked on some object(s), tell the raylet
   // that the worker is now unblocked. This is sent from a worker to a raylet.
   NotifyUnblocked,
+  // Notify the current worker is blocked. This is only used by direct task calls;
+  // otherwise the block command is piggybacked on other messages.
+  NotifyDirectCallTaskBlocked,
+  // Notify the current worker is unblocked. This is only used by direct task calls.
+  NotifyDirectCallTaskUnblocked,
   // A request to get the task frontier for an actor, called by the actor when
   // saving a checkpoint.
   GetActorFrontierRequest,
@@ -89,6 +97,10 @@ table TaskExecutionSpecification {
 table Task {
   task_specification: string;
   task_execution_spec: TaskExecutionSpecification;
+}
+
+table SubmitTaskRequest {
+  task_spec: string;
 }
 
 // This message describes a given resource that is reserved for a worker.
@@ -152,13 +164,22 @@ table FetchOrReconstruct {
   object_ids: [string];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
-  // The current task ID. If fetch_only is false, then this task is blocked.
+  // False for direct call tasks. Blocking for those tasks is handled via the
+  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
+  mark_worker_blocked: bool;
+  // The current task ID.
   task_id: string;
 }
 
 table NotifyUnblocked {
   // The current task ID. This task is no longer blocked.
   task_id: string;
+}
+
+table NotifyDirectCallTaskBlocked {
+}
+
+table NotifyDirectCallTaskUnblocked {
 }
 
 table WaitRequest {
@@ -170,8 +191,10 @@ table WaitRequest {
   timeout: long;
   // Whether to wait until objects appear locally.
   wait_local: bool;
-  // The current task ID. If there are less than num_ready_objects local, then
-  // this task is blocked.
+  // False for direct call tasks. Blocking for those tasks is handled via the
+  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
+  mark_worker_blocked: bool;
+  // The current task ID.
   task_id: string;
 }
 

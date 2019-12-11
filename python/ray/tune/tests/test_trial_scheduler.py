@@ -207,7 +207,7 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None):
         pass
 
-    def save(self, trial, type=Checkpoint.DISK):
+    def save(self, trial, type=Checkpoint.DISK, result=None):
         return trial.trainable_name
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
@@ -1194,4 +1194,6 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

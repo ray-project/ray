@@ -6,6 +6,7 @@ import numpy as np
 import unittest
 
 import ray
+from ray import ray_constants
 
 
 class TestUnreconstructableErrors(unittest.TestCase):
@@ -27,6 +28,9 @@ class TestUnreconstructableErrors(unittest.TestCase):
                           lambda: ray.get(x_id))
 
     def testLineageEvictedReconstructionFails(self):
+        if ray_constants.direct_call_enabled():
+            return  # not relevant
+
         @ray.remote
         def f(data):
             return 0
@@ -44,4 +48,6 @@ class TestUnreconstructableErrors(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

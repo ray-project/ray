@@ -78,3 +78,9 @@ def test_add_remove_cluster_resources(ray_start_cluster_head):
         nodes += [cluster.add_node(num_cpus=1)]
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 6
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

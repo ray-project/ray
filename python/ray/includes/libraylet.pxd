@@ -41,7 +41,7 @@ ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
 
 
 cdef extern from "ray/raylet/raylet_client.h" nogil:
-    cdef cppclass CRayletClient "RayletClient":
+    cdef cppclass CRayletClient "ray::raylet::RayletClient":
         CRayletClient(const c_string &raylet_socket,
                       const CWorkerID &worker_id,
                       c_bool is_worker, const CJobID &job_id,
@@ -50,11 +50,13 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CRayStatus SubmitTask(const CTaskSpec &task_spec)
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
                                       c_bool fetch_only,
+                                      c_bool is_direct_call_task,
                                       const CTaskID &current_task_id)
         CRayStatus NotifyUnblocked(const CTaskID &current_task_id)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids,
                         int num_returns, int64_t timeout_milliseconds,
-                        c_bool wait_local, const CTaskID &current_task_id,
+                        c_bool wait_local, c_bool is_direct_call_task,
+                        const CTaskID &current_task_id,
                         WaitResultPair *result)
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)

@@ -10,7 +10,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
-#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 #include "ray/raylet/raylet_client.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -21,8 +21,8 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "ray/thirdparty/hiredis/async.h"
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 #include "ray/util/test_util.h"
 
 namespace {
@@ -56,9 +56,10 @@ ActorID CreateActorHelper(CoreWorker &worker,
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
-  ActorCreationOptions actor_options{max_reconstructions,   is_direct_call,
-                                     /*max_concurrency*/ 1, resources,      resources, {},
-                                     /*is_detached*/ false};
+  ActorCreationOptions actor_options{
+      max_reconstructions,   is_direct_call,
+      /*max_concurrency*/ 1, resources,           resources, {},
+      /*is_detached*/ false, /*is_asyncio*/ false};
 
   // Create an actor.
   ActorID actor_id;
@@ -189,6 +190,11 @@ class CoreWorkerTest : public ::testing::Test {
   bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id,
                                    bool wait_alive, int timeout_ms);
 
+  // Get the pid for the worker process that runs the actor.
+  int GetActorPid(CoreWorker &worker, const ActorID &actor_id,
+                  std::unordered_map<std::string, double> &resources,
+                  bool is_direct_call);
+
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
   gcs::GcsClientOptions gcs_options_;
@@ -203,6 +209,29 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
   };
 
   return WaitForCondition(condition_func, timeout_ms);
+}
+
+int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
+                                std::unordered_map<std::string, double> &resources,
+                                bool is_direct_call) {
+  std::vector<TaskArg> args;
+  TaskOptions options{1, is_direct_call, resources};
+  std::vector<ObjectID> return_ids;
+  RayFunction func{Language::PYTHON, {"GetWorkerPid"}};
+
+  RAY_CHECK_OK(worker.SubmitActorTask(actor_id, func, args, options, &return_ids));
+
+  std::vector<std::shared_ptr<ray::RayObject>> results;
+  RAY_CHECK_OK(worker.Get(return_ids, -1, &results));
+
+  if (nullptr == results[0]->GetData()) {
+    // If failed to get actor process pid, return -1
+    return -1;
+  }
+
+  auto data = reinterpret_cast<char *>(results[0]->GetData()->Data());
+  std::string pid_string(data, results[0]->GetData()->Size());
+  return std::stoi(pid_string);
 }
 
 void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
@@ -225,12 +254,13 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
       TaskOptions options;
       options.is_direct_call = true;
 
       std::vector<ObjectID> return_ids;
-      RAY_CHECK_OK(driver.SubmitTask(func, args, options, &return_ids));
+      RAY_CHECK_OK(
+          driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0));
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -272,7 +302,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -312,7 +342,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {});
+    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
     auto status = driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
     ASSERT_TRUE(status.ok());
 
@@ -343,6 +373,9 @@ void CoreWorkerTest::TestActorReconstruction(
   ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
+  auto pid = GetActorPid(driver, actor_id, resources, is_direct_call);
+  RAY_CHECK(pid != -1);
+
   // Test submitting some tasks with by-value args for that actor.
   {
     const int num_tasks = 100;
@@ -354,10 +387,12 @@ void CoreWorkerTest::TestActorReconstruction(
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
-        ASSERT_TRUE(
-            WaitForDirectCallActorState(driver, actor_id, false, 30 * 1000 /* 30s */));
-        ASSERT_TRUE(
-            WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
+        auto check_actor_restart_func = [this, pid, &driver, &actor_id, &resources,
+                                         is_direct_call]() -> bool {
+          auto new_pid = GetActorPid(driver, actor_id, resources, is_direct_call);
+          return new_pid != -1 && new_pid != pid;
+        };
+        ASSERT_TRUE(WaitForCondition(check_actor_restart_func, 30 * 1000 /* 30s */));
 
         RAY_LOG(INFO) << "actor has been reconstructed";
       }
@@ -372,7 +407,7 @@ void CoreWorkerTest::TestActorReconstruction(
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -417,7 +452,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -487,8 +522,14 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0,  /*is_direct_call*/ true, 1, resources, resources,
-                                     {}, /*is_detached*/ false};
+  ActorCreationOptions actor_options{0,
+                                     /*is_direct_call*/ true,
+                                     1,
+                                     resources,
+                                     resources,
+                                     {},
+                                     /*is_detached*/ false,
+                                     /*is_asyncio*/ false};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), job_id,
                            ObjectID::FromRandom(), function.GetLanguage(), true,
@@ -559,7 +600,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {});
+    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
@@ -619,11 +660,8 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
-  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
+  std::shared_ptr<CoreWorkerMemoryStore> provider_ptr =
       std::make_shared<CoreWorkerMemoryStore>();
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> provider_ptr =
-      std::unique_ptr<CoreWorkerMemoryStoreProvider>(
-          new CoreWorkerMemoryStoreProvider(memory_store));
 
   auto &provider = *provider_ptr;
 
@@ -646,15 +684,15 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   absl::flat_hash_set<ObjectID> wait_results;
 
   ObjectID nonexistent_id = ObjectID::FromRandom().WithDirectTransportType();
+  WorkerContext ctx(WorkerType::WORKER, JobID::Nil());
   wait_ids.insert(nonexistent_id);
-  RAY_CHECK_OK(
-      provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size() + 1, 100, ctx, &wait_results));
   ASSERT_EQ(wait_results.size(), ids.size());
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Wait() where the required `num_objects` is less than size of `wait_ids`.
   wait_results.clear();
-  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, ctx, &wait_results));
   ASSERT_EQ(wait_results.size(), ids.size());
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
@@ -662,7 +700,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
   absl::flat_hash_set<ObjectID> ids_set(ids.begin(), ids.end());
-  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results, &got_exception));
+  RAY_CHECK_OK(provider.Get(ids_set, -1, ctx, &results, &got_exception));
 
   ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), ids.size());
@@ -682,11 +720,12 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   // clear the reference held.
   results.clear();
 
-  RAY_CHECK_OK(provider.Delete(ids_set));
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  provider.Delete(ids_set, &plasma_object_ids);
+  ASSERT_TRUE(plasma_object_ids.empty());
 
   usleep(200 * 1000);
-  ASSERT_TRUE(
-      provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception).IsTimedOut());
+  ASSERT_TRUE(provider.Get(ids_set, 0, ctx, &results, &got_exception).IsTimedOut());
   ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), 0);
 
@@ -715,8 +754,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   wait_results.clear();
 
   // Check that only the ready ids are returned when timeout ends before thread runs.
-  RAY_CHECK_OK(
-      provider.Wait(wait_ids, ready_ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(provider.Wait(wait_ids, ready_ids.size() + 1, 100, ctx, &wait_results));
   ASSERT_EQ(ready_ids.size(), wait_results.size());
   for (const auto &ready_id : ready_ids) {
     ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
@@ -727,8 +765,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 
   wait_results.clear();
   // Check that enough objects are returned after the thread inserts at least one object.
-  RAY_CHECK_OK(
-      provider.Wait(wait_ids, ready_ids.size() + 1, 5000, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(provider.Wait(wait_ids, ready_ids.size() + 1, 5000, ctx, &wait_results));
   ASSERT_TRUE(wait_results.size() >= ready_ids.size() + 1);
   for (const auto &ready_id : ready_ids) {
     ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
@@ -737,8 +774,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   wait_results.clear();
   // Check that all objects are returned after the thread completes.
   async_thread.join();
-  RAY_CHECK_OK(
-      provider.Wait(wait_ids, wait_ids.size(), -1, RandomTaskId(), &wait_results));
+  RAY_CHECK_OK(provider.Wait(wait_ids, wait_ids.size(), -1, ctx, &wait_results));
   ASSERT_EQ(wait_results.size(), ready_ids.size() + unready_ids.size());
   for (const auto &ready_id : ready_ids) {
     ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
