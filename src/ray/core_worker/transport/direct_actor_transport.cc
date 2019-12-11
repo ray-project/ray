@@ -135,14 +135,6 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
-    WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
-    : worker_context_(worker_context),
-      task_handler_(task_handler),
-      exit_handler_(exit_handler),
-      task_main_io_service_(main_io_service) {}
-
 void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
     rpc::ClientFactoryFn client_factory,
     rpc::Address rpc_address) {
@@ -205,15 +197,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     for (int j = 0; j < count; j++) {
       dependencies.push_back(task_spec.ArgId(i, j));
     }
-  }
-
-  auto it = scheduling_queue_.find(task_spec.CallerId());
-  if (it == scheduling_queue_.end()) {
-    auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
-    it = result.first;
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -298,10 +281,25 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   };
 
+  // Run actor creation task immediately on the main thread, without going
+  // through a scheduling queue.
+  if (task_spec.IsActorCreationTask()) {
+    accept_callback();
+    return;
+  }
+
   auto reject_callback = [send_reply_callback]() {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto it = scheduling_queue_.find(task_spec.CallerId());
+  if (it == scheduling_queue_.end()) {
+    auto result = scheduling_queue_.emplace(
+        task_spec.CallerId(),
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
+    it = result.first;
+  }
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                   accept_callback, reject_callback, dependencies);
 }
