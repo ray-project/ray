@@ -76,7 +76,7 @@ class Experiment(object):
                  keep_checkpoints_num=None,
                  checkpoint_score_attr=None,
                  export_formats=None,
-                 max_failures=3,
+                 max_failures=0,
                  restore=None,
                  repeat=None,
                  trial_resources=None,
