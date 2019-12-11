@@ -169,7 +169,8 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(RayletClient &raylet_client) : raylet_client_(raylet_client) {}
+  DependencyWaiterImpl(raylet::RayletClient &raylet_client)
+      : raylet_client_(raylet_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {
@@ -189,7 +190,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
-  RayletClient &raylet_client_;
+  raylet::RayletClient &raylet_client_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -430,11 +431,7 @@ class CoreWorkerDirectTaskReceiver {
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
-                               const std::function<void()> &exit_handler)
-      : worker_context_(worker_context),
-        task_handler_(task_handler),
-        exit_handler_(exit_handler),
-        task_main_io_service_(main_io_service) {}
+                               const std::function<void()> &exit_handler);
 
   ~CoreWorkerDirectTaskReceiver() {
     fiber_shutdown_event_.Notify();
@@ -442,7 +439,7 @@ class CoreWorkerDirectTaskReceiver {
   }
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(RayletClient &client, rpc::ClientFactoryFn client_factory,
+  void Init(raylet::RayletClient &client, rpc::ClientFactoryFn client_factory,
             rpc::Address rpc_address);
 
   /// Handle a `PushTask` request.

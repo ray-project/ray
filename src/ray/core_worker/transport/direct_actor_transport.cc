@@ -57,7 +57,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   absl::MutexLock lock(&mu_);
   // Create a new connection to the actor.
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc::WorkerAddress addr = {address.ip_address(), address.port(), address.pid()};
+    rpc::WorkerAddress addr = {address.ip_address(), address.port(),
+                               WorkerID::Nil() /* don't need */};
     rpc_clients_[actor_id] =
         std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
   }
@@ -135,7 +136,15 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(RayletClient &raylet_client,
+CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
+    WorkerContext &worker_context, boost::asio::io_service &main_io_service,
+    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
+    : worker_context_(worker_context),
+      task_handler_(task_handler),
+      exit_handler_(exit_handler),
+      task_main_io_service_(main_io_service) {}
+
+void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
                                         rpc::ClientFactoryFn client_factory,
                                         rpc::Address rpc_address) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
@@ -267,7 +276,8 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       if (task_spec.IsActorCreationTask()) {
         rpc::WorkerAddress addr = {task_spec.GetMessage().caller_address().ip_address(),
-                                   task_spec.GetMessage().caller_address().port(), 0};
+                                   task_spec.GetMessage().caller_address().port(),
+                                   WorkerID::Nil()};
         auto client =
             std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
 

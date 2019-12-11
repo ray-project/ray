@@ -42,19 +42,20 @@ class WorkerAddress {
  public:
   template <typename H>
   friend H AbslHashValue(H h, const WorkerAddress &w) {
-    return H::combine(std::move(h), w.ip_address, w.port, w.pid);
+    return H::combine(std::move(h), w.ip_address, w.port, w.worker_id);
   }
 
   bool operator==(const WorkerAddress &other) const {
-    return other.ip_address == ip_address && other.port == port && other.pid == pid;
+    return other.ip_address == ip_address && other.port == port &&
+           other.worker_id == worker_id;
   }
 
   /// The ip address of the worker.
   const std::string ip_address;
   /// The local port of the worker.
   const int port;
-  /// The local pid of the worker.
-  const int pid;
+  /// The unique id of the worker.
+  const WorkerID worker_id;
 };
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
