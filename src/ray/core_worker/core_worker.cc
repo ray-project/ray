@@ -303,7 +303,6 @@ void CoreWorker::ReportActiveObjectIDs() {
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     TaskID *owner_id,
                                                     rpc::Address *owner_address) {
-  RAY_LOG(DEBUG) << "Promote to plasma and get info for " << object_id.Hex();
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
@@ -312,13 +311,17 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
-  RAY_CHECK(has_owner) << "Failed to get owner information for " << object_id.Hex();
+  RAY_CHECK(has_owner)
+      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+         "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
+         "which task will create them. "
+         "If this was not how your object ID was generated, please file an issue "
+         "at https://github.com/ray-project/ray/issues/";
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ObjectID &object_id, const TaskID &owner_id,
     const rpc::Address &owner_address) {
-  RAY_LOG(DEBUG) << "Register owner info for " << object_id.Hex();
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddOwnershipInfo(object_id, owner_id, owner_address);
