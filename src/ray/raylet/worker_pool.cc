@@ -197,8 +197,8 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   return -1;
 }
 
-#ifndef _WIN32
-// Cross-platform fork + exec combo. Returns -1 on failure.
+#ifdef _WIN32
+// Fork + exec combo for Windows. Returns -1 on failure.
 // TODO(mehrdadn): This is dangerous on Windows.
 // We need to keep the actual process handle alive for the PID to stay valid.
 // Make this change as soon as possible, or the PID may refer to the wrong process.
@@ -209,7 +209,6 @@ static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
     str_args.push_back(arg.c_str());
   }
   str_args.push_back(NULL);
-#ifdef _WIN32
   HANDLE handle = (HANDLE)spawnvp(P_NOWAIT, str_args[0], str_args.data());
   if (handle != INVALID_HANDLE_VALUE) {
     pid = static_cast<pid_t>(GetProcessId(handle));
@@ -221,7 +220,17 @@ static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
     pid = -1;
     errno = EINVAL;
   }
+  return pid;
+}
 #else
+// Fork + exec combo for POSIX. Returns -1 on failure.
+static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
+  pid_t pid;
+  std::vector<const char *> str_args;
+  for (const auto &arg : args) {
+    str_args.push_back(arg.c_str());
+  }
+  str_args.push_back(NULL);
   pid = fork();
   if (pid == 0) {
     // Child process case.
@@ -234,7 +243,6 @@ static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
       abort();  // fork() succeeded but exec() failed, so abort the child
     }
   }
-#endif
   return pid;
 }
 #endif
