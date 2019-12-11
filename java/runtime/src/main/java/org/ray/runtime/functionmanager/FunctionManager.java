@@ -54,8 +54,6 @@ public class FunctionManager {
    */
   private ConcurrentMap<JobId, JobFunctionTable> jobFunctionTables = new ConcurrentHashMap<>();
 
-  private final Object jobFunctionTablesLock = new Object();
-
   /**
    * The resource path which we can load the job's jar resources.
    */
@@ -104,35 +102,39 @@ public class FunctionManager {
       JavaFunctionDescriptor functionDescriptor) {
     JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
     if (jobFunctionTable == null) {
-      synchronized (jobFunctionTablesLock) {
+      synchronized (this) {
         jobFunctionTable = jobFunctionTables.get(jobId);
         if (jobFunctionTable == null) {
-          ClassLoader classLoader;
-          if (Strings.isNullOrEmpty(jobResourcePath)) {
-            classLoader = getClass().getClassLoader();
-          } else {
-            File resourceDir = new File(jobResourcePath + "/" + jobId.toString() + "/");
-            Collection<File> files = FileUtils.listFiles(resourceDir,
-                new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
-            files.add(resourceDir);
-            final List<URL> urlList = files.stream().map(file -> {
-              try {
-                return file.toURI().toURL();
-              } catch (MalformedURLException e) {
-                throw new RuntimeException(e);
-              }
-            }).collect(Collectors.toList());
-            classLoader = new URLClassLoader(urlList.toArray(new URL[urlList.size()]));
-            LOGGER.debug("Resource loaded for job {} from path {}.", jobId,
-                resourceDir.getAbsolutePath());
-          }
-
-          jobFunctionTable = new JobFunctionTable(classLoader);
+          jobFunctionTable = createJobFunctionTable(jobId);
           jobFunctionTables.put(jobId, jobFunctionTable);
         }
       }
     }
     return jobFunctionTable.getFunction(functionDescriptor);
+  }
+
+  private JobFunctionTable createJobFunctionTable(JobId jobId) {
+    ClassLoader classLoader;
+    if (Strings.isNullOrEmpty(jobResourcePath)) {
+      classLoader = getClass().getClassLoader();
+    } else {
+      File resourceDir = new File(jobResourcePath + "/" + jobId.toString() + "/");
+      Collection<File> files = FileUtils.listFiles(resourceDir,
+          new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
+      files.add(resourceDir);
+      final List<URL> urlList = files.stream().map(file -> {
+        try {
+          return file.toURI().toURL();
+        } catch (MalformedURLException e) {
+          throw new RuntimeException(e);
+        }
+      }).collect(Collectors.toList());
+      classLoader = new URLClassLoader(urlList.toArray(new URL[urlList.size()]));
+      LOGGER.debug("Resource loaded for job {} from path {}.", jobId,
+          resourceDir.getAbsolutePath());
+    }
+
+    return new JobFunctionTable(classLoader);
   }
 
   /**
