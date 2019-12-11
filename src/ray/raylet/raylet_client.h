@@ -30,6 +30,29 @@ using ResourceMappingType =
 using Socket = boost::asio::detail::socket_holder;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
+namespace ray {
+
+/// Interface for leasing workers. Abstract for testing.
+class WorkerLeaseInterface {
+ public:
+  /// Requests a worker from the raylet. The callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \return ray::Status
+  virtual ray::Status RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) = 0;
+
+  /// Returns a worker to the raylet.
+  /// \param worker_port The local port of the worker on the raylet node.
+  /// \param disconnect_worker Whether the raylet should disconnect the worker.
+  /// \return ray::Status
+  virtual ray::Status ReturnWorker(int worker_port, bool disconnect_worker) = 0;
+
+  virtual ~WorkerLeaseInterface(){};
+};
+
+namespace raylet {
+
 class RayletConnection {
  public:
   /// Connect to the raylet.
@@ -49,9 +72,12 @@ class RayletConnection {
   ///
   /// \return ray::Status.
   ray::Status Disconnect();
+
   ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
+
   ray::Status WriteMessage(MessageType type,
                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
+
   ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
                                  std::unique_ptr<uint8_t[]> &reply_message,
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
@@ -63,25 +89,6 @@ class RayletConnection {
   std::mutex mutex_;
   /// A mutex to protect write operations of the raylet client.
   std::mutex write_mutex_;
-};
-
-/// Interface for leasing workers. Abstract for testing.
-class WorkerLeaseInterface {
- public:
-  /// Requests a worker from the raylet. The callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be allocated for the worker.
-  /// \return ray::Status
-  virtual ray::Status RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) = 0;
-
-  /// Returns a worker to the raylet.
-  /// \param worker_port The local port of the worker on the raylet node.
-  /// \param disconnect_worker Whether the raylet should disconnect the worker.
-  /// \return ray::Status
-  virtual ray::Status ReturnWorker(int worker_port, bool disconnect_worker) = 0;
-
-  virtual ~WorkerLeaseInterface(){};
 };
 
 class RayletClient : public WorkerLeaseInterface {
@@ -257,5 +264,9 @@ class RayletClient : public WorkerLeaseInterface {
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
 };
+
+}  // namespace raylet
+
+}  // namespace ray
 
 #endif

@@ -5,7 +5,6 @@ from __future__ import print_function
 
 import collections
 import io
-import os
 import json
 import logging
 import re
@@ -23,8 +22,6 @@ import ray.cluster_utils
 import ray.test_utils
 
 logger = logging.getLogger(__name__)
-
-RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
 
 
 def test_simple_serialization(ray_start_regular):
@@ -94,7 +91,6 @@ def test_simple_serialization(ray_start_regular):
             assert type(obj) == type(new_obj_2)
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="resource shape not implemented")
 def test_fair_queueing(shutdown_only):
     ray.init(
         num_cpus=1, _internal_config=json.dumps({
@@ -1065,7 +1061,6 @@ def test_redefining_remote_functions(shutdown_only):
         assert ray.get(ray.get(h.remote(i))) == i
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="reconstruction not implemented")
 def test_submit_api(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
@@ -1124,7 +1119,6 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="reconstruction not implemented")
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 

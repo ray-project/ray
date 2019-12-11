@@ -15,11 +15,6 @@ cdef class Buffer:
 
     See https://docs.python.org/3/c-api/buffer.html for details.
     """
-    cdef:
-        shared_ptr[CBuffer] buffer
-        Py_ssize_t shape
-        Py_ssize_t strides
-
     @staticmethod
     cdef make(const shared_ptr[CBuffer]& buffer):
         cdef Buffer self = Buffer.__new__(Buffer)

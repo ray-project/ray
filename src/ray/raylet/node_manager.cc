@@ -1472,7 +1472,10 @@ void NodeManager::ProcessReportActiveObjectIDs(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
-    RAY_CHECK(worker);
+    if (!worker) {
+      RAY_LOG(ERROR) << "Ignoring object ids report from failed / unknown worker.";
+      return;
+    }
   }
 
   auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
@@ -1584,12 +1587,27 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
       [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
-                                                  const std::string &address, int port) {
+                                                  const std::string &address, int port,
+                                                  const ResourceIdSet &resource_ids) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_raylet_id(
             gcs_client_->client_table().GetLocalClientId().Binary());
+        for (const auto &mapping : resource_ids.AvailableResources()) {
+          auto resource = reply->add_resource_mapping();
+          resource->set_name(mapping.first);
+          for (const auto &id : mapping.second.WholeIds()) {
+            auto rid = resource->add_resource_ids();
+            rid->set_index(id);
+            rid->set_quantity(1.0);
+          }
+          for (const auto &id : mapping.second.FractionalIds()) {
+            auto rid = resource->add_resource_ids();
+            rid->set_index(id.first);
+            rid->set_quantity(id.second.ToDouble());
+          }
+        }
         send_reply_callback(Status::OK(), nullptr, nullptr);
 
         // TODO(swang): Kill worker if other end hangs up.
@@ -2258,7 +2276,12 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
 
   auto task_id = spec.TaskId();
   if (task.OnDispatch() != nullptr) {
-    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
+    if (task.GetTaskSpecification().IsDetachedActor()) {
+      worker->MarkDetachedActor();
+    }
+    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
+                      spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
+                                                 : worker->GetTaskResourceIds());
     post_assign_callbacks->push_back([this, worker, task_id]() {
       FinishAssignTask(worker, task_id, /*success=*/true);
     });

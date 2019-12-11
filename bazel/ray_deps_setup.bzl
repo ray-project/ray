@@ -166,6 +166,13 @@ def ray_deps_setup():
         commit = "86f34aa07e611787d9cc98c6a33b0a0a536dce57",
         remote = "https://github.com/apache/arrow",
         sha256 = "4f1956e74188fa15078c8ad560bbc298624320d2aafd21fe7a2511afee7ea841",
+        patches = [
+            "//thirdparty/patches:arrow-headers-unused.patch",
+            "//thirdparty/patches:arrow-windows-export.patch",
+            "//thirdparty/patches:arrow-windows-poll.patch",
+            "//thirdparty/patches:arrow-windows-sigpipe.patch",
+            "//thirdparty/patches:arrow-windows-socket.patch",
+        ],
     )
 
     github_repository(
