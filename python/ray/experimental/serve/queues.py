@@ -4,7 +4,7 @@ import numpy as np
 
 import ray
 from ray.experimental.serve.utils import logger
-
+import itertools
 
 class Query:
     def __init__(self,
@@ -140,19 +140,7 @@ class CentralizedQueues:
         }
         return list(backends_in_policy.intersection(available_workers))
 
-    def _flush(self):
-        # perform traffic splitting for requests
-        for service, queue in self.queues.items():
-            # while there are incoming requests and there are backends
-            while len(queue) and len(self.traffic[service]):
-                backend_names = list(self.traffic[service].keys())
-                backend_weights = list(self.traffic[service].values())
-                chosen_backend = np.random.choice(
-                    backend_names, p=backend_weights).squeeze()
-
-                request = queue.popleft()
-                self.buffer_queues[chosen_backend].append(request)
-
+    def _flush_buffer(self):
         # distach buffer queues to work queues
         for service in self.queues.keys():
             ready_backends = self._get_available_backends(service)
@@ -170,9 +158,14 @@ class CentralizedQueues:
                     )
                     work.replica_handle._ray_serve_call.remote(request)
 
+    def _flush(self):
+       pass
 
-@ray.remote
 class CentralizedQueuesActor(CentralizedQueues):
+    """
+    A wrapper class for converting wrapper policy classes to ray actors.
+    This is needed to make `flush` call asynchronous!
+    """
     self_handle = None
 
     def register_self_handle(self, handle_to_this_actor):
@@ -183,3 +176,44 @@ class CentralizedQueuesActor(CentralizedQueues):
             self.self_handle._flush.remote()
         else:
             self._flush()
+
+class RandomPolicyQueue(CentralizedQueues):
+    """
+    A wrapper class for Random policy in backend selection. 
+    """
+    def _flush(self):
+        # perform traffic splitting for requests
+        for service, queue in self.queues.items():
+            # while there are incoming requests and there are backends
+            while len(queue) and len(self.traffic[service]):
+                backend_names = list(self.traffic[service].keys())
+                backend_weights = list(self.traffic[service].values())
+                chosen_backend = np.random.choice(
+                    backend_names, p=backend_weights).squeeze()
+
+                request = queue.popleft()
+                self.buffer_queues[chosen_backend].append(request)
+
+        self._flush_buffer()
+
+
+@ray.remote
+class RandomPolicyQueueActor(RandomPolicyQueue,CentralizedQueuesActor):
+    pass
+
+class RoundRobinPolicyQueue(CentralizedQueues):
+    """
+    A wrapper class for round robin policy in backend selection. 
+    """
+    def _flush(self):
+        # perform traffic splitting for requests
+        for service, queue in self.queues.items():
+            # if there are incoming requests and there are backends
+            if len(queue) and len(self.traffic[service]):
+                backend_names = list(self.traffic[service].keys())
+                round_robin_backend = itertools.cycle(backend_names)
+                while len(queue):
+                    chosen_backend = next(round_robin_backend)
+                    request = queue.popleft()
+                    self.buffer_queues[chosen_backend].append(request)
+        self._flush_buffer()
