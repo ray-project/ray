@@ -197,6 +197,48 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   return -1;
 }
 
+#ifndef _WIN32
+// Cross-platform fork + exec combo. Returns -1 on failure.
+// TODO(mehrdadn): This is dangerous on Windows.
+// We need to keep the actual process handle alive for the PID to stay valid.
+// Make this change as soon as possible, or the PID may refer to the wrong process.
+static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
+  pid_t pid;
+  std::vector<const char *> str_args;
+  for (const auto &arg : args) {
+    str_args.push_back(arg.c_str());
+  }
+  str_args.push_back(NULL);
+#ifdef _WIN32
+  HANDLE handle = (HANDLE)spawnvp(P_NOWAIT, str_args[0], str_args.data());
+  if (handle != INVALID_HANDLE_VALUE) {
+    pid = static_cast<pid_t>(GetProcessId(handle));
+    if (pid == 0) {
+      pid = -1;
+    }
+    CloseHandle(handle);
+  } else {
+    pid = -1;
+    errno = EINVAL;
+  }
+#else
+  pid = fork();
+  if (pid == 0) {
+    // Child process case.
+    // Reset the SIGCHLD handler for the worker.
+    // TODO(mehrdadn): Move any work here to the child process itself
+    //                 so that it can also be implemented on Windows.
+    signal(SIGCHLD, SIG_DFL);
+    if (execvp(str_args[0], const_cast<char *const *>(str_args.data())) == -1) {
+      pid = -1;
+      abort();  // fork() succeeded but exec() failed, so abort the child
+    }
+  }
+#endif
+  return pid;
+}
+#endif
+
 pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
@@ -207,48 +249,12 @@ pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_ar
     RAY_LOG(DEBUG) << stream.str();
   }
 
-  pid_t pid;
-  int err;
-#ifdef _WIN32
-  // TODO(mehrdadn): This is dangerous on Windows.
-  // We need to keep the actual process handle alive for the PID to stay valid.
-  // Make this change as soon as possible, or the PID may refer to the wrong process.
-  intptr_t handle =
-      spawnvp(P_NOWAIT, worker_command_args_str[0], worker_command_args_str.data());
-  if (handle != -1) {
-    pid = static_cast<int>(GetProcessId((HANDLE)handle));
-    CloseHandle((HANDLE)handle);
-  } else {
-    pid = 0;
-  }
-  err = pid ? 0 : static_cast<int>(GetLastError());
-#else
+  pid_t pid = spawnvp_wrapper(worker_command_args);
   // Launch the process to create the worker.
-  pid = fork();
-
-  if (pid == 0) {
-    // Child process case.
-    // Reset the SIGCHLD handler for the worker.
-    // TODO(mehrdadn): Move any work here to the child process itself
-    //                 so that it can also be implemented on Windows.
-    signal(SIGCHLD, SIG_DFL);
-
-    // Try to execute the worker command.
-    std::vector<const char *> worker_command_args_str;
-    for (const auto &arg : worker_command_args) {
-      worker_command_args_str.push_back(arg.c_str());
-    }
-    worker_command_args_str.push_back(nullptr);
-    err = execvp(worker_command_args_str[0],
-                 const_cast<char *const *>(worker_command_args_str.data()));
-  } else {
-    err = pid != -1 ? 0 : errno;
-  }
-#endif
-  if (err != 0) {
+  if (pid == -1) {
     // The worker failed to start. This is a fatal error.
-    RAY_LOG(FATAL) << "Failed to start worker with error code " << err << ": "
-                   << strerror(err);
+    RAY_LOG(FATAL) << "Failed to start worker with return value " << rv << ": "
+                   << strerror(errno);
   }
   return pid;
 }
