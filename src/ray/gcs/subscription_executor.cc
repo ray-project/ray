@@ -48,7 +48,6 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
 
   auto on_subscribe = [this](RedisGcsClient *client, const ID &id,
                              const std::vector<Data> &result) {
-    RAY_LOG(DEBUG) << "Subscribe received update of id " << id;
     if (result.empty()) {
       return;
     }

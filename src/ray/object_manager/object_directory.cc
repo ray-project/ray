@@ -15,7 +15,7 @@ using ray::rpc::ObjectTableData;
 /// Process a notification of the object table entries and store the result in
 /// client_ids. This assumes that client_ids already contains the result of the
 /// object table entries up to but not including this notification.
-void UpdateObjectLocations(const GcsChangeMode change_mode,
+void UpdateObjectLocations(bool is_added,
                            const std::vector<ObjectTableData> &location_updates,
                            const ray::gcs::ClientTable &client_table,
                            std::unordered_set<ClientID> *client_ids) {
@@ -24,7 +24,7 @@ void UpdateObjectLocations(const GcsChangeMode change_mode,
   // addition or deletion.
   for (const auto &object_table_data : location_updates) {
     ClientID client_id = ClientID::FromBinary(object_table_data.manager());
-    if (change_mode != GcsChangeMode::REMOVE) {
+    if (is_added) {
       client_ids->insert(client_id);
     } else {
       client_ids->erase(client_id);
@@ -95,7 +95,7 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
       // its locations with an empty update so that the location will be removed.
-      UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, {}, gcs_client_->client_table(),
+      UpdateObjectLocations(/*is_added*/ true, {}, gcs_client_->client_table(),
                             &listener.second.current_object_locations);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
@@ -131,7 +131,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
 
           // Update entries for this object.
           UpdateObjectLocations(
-              object_notification.GetGcsChangeMode(), object_notification.GetData(),
+              object_notification.IsAdded(), object_notification.GetData(),
               gcs_client_->client_table(), &it->second.current_object_locations);
           // Copy the callbacks so that the callbacks can unsubscribe without interrupting
           // looping over the callbacks.
@@ -202,10 +202,10 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
         [this, object_id, callback](
             Status status, const std::vector<ObjectTableData> &location_updates) {
           RAY_CHECK(status.ok())
-              << "Get object location from GCS failed " << status.message();
+              << "Failed to get object location from GCS: " << status.message();
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
-          UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, location_updates,
+          UpdateObjectLocations(/*is_added*/ true, location_updates,
                                 gcs_client_->client_table(), &client_ids);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.

@@ -27,7 +27,13 @@ class EntryChangeNotification {
     data_ = std::move(other.data_);
   }
 
-  /// Get change mode of this notification.
+  /// Whether the entry data is removed from GCS.
+  bool IsRemoved() const { return change_mode_ == rpc::GcsChangeMode::REMOVE; }
+
+  /// Whether the entry data is added to GCS.
+  bool IsAdded() const { return change_mode_ == rpc::GcsChangeMode::APPEND_OR_ADD; }
+
+  /// Get change mode of this notification. For test only.
   ///
   /// \return rpc::GcsChangeMode
   rpc::GcsChangeMode GetGcsChangeMode() const { return change_mode_; }
