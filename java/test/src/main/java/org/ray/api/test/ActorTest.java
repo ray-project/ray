@@ -59,6 +59,25 @@ public class ActorTest extends BaseTest {
     Assert.assertEquals(Integer.valueOf(3), Ray.call(Counter::increaseAndGet, actor, 1).get());
   }
 
+  /**
+   * Test getting a direct object (an object that is returned by a direct-call task) twice from the
+   * object store.
+   *
+   * Direct objects are stored in core worker's local memory. And it will be removed after the first
+   * get. To enable getting it twice, we cache the object in `RayObjectImpl`.
+   *
+   * NOTE(hchen): this test will run for non-direct actors as well, which doesn't have the above
+   * issue and should also succeed.
+   */
+  public void testGetDirectObjectTwice() {
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    RayObject<Integer> result = Ray.call(Counter::getValue, actor);
+    Assert.assertEquals(result.get(), Integer.valueOf(1));
+    Assert.assertEquals(result.get(), Integer.valueOf(1));
+    // TODO(hchen): The following code will still fail, and can be fixed by using ref counting.
+    // Assert.assertEquals(Ray.get(result.getId()), Integer.valueOf(1));
+  }
+
   public void testCallActorWithLargeObject() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     LargeObject largeObject = new LargeObject();
@@ -131,7 +150,8 @@ public class ActorTest extends BaseTest {
 
     try {
       // Try getting the object again, this should throw an UnreconstructableException.
-      value.get();
+      // Use `Ray.get()` to bypass the cache in `RayObjectImpl`.
+      Ray.get(value.getId());
       Assert.fail("This line should not be reachable.");
     } catch (UnreconstructableException e) {
       Assert.assertEquals(value.getId(), e.objectId);
