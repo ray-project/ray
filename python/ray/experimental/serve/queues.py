@@ -24,7 +24,8 @@ class Query:
         else:
             self.result_object_id = result_object_id
 
-        # adding SLO (time taken to be completed)
+        # Service level objective in milliseconds. This is expected to be the
+        # absolute time since unix epoch.
         self.request_slo_ms = request_slo_ms
 
     # adding comparator fn for maintaining an
@@ -86,6 +87,12 @@ class CentralizedQueues:
 
         # backend_name -> worker payload queue
         # using blist sortedlist for deadline awareness
+        # blist is chosen because:  
+        # 1. pop operation should be O(1) (amortized) 
+        #    (helpful even for batched pop)
+        # 2. There should not be significant overhead in 
+        #    maintaining the sorted list.
+        # 3. The blist implementation is fast and uses C extensions.
         self.buffer_queues = defaultdict(sortedlist)
 
     def is_ready(self):

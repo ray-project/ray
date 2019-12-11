@@ -1,5 +1,5 @@
 """
-Slo [reverse] example of ray.serve module
+SLO [reverse] example of ray.serve module
 """
 
 import time
