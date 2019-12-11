@@ -20,7 +20,7 @@ type RayClusterSpec struct {
 	// One of Always, Never, IfNotPresent.
 	// Defaults to Always if :latest tag is specified, or IfNotPresent otherwise.
 	// Cannot be updated.
-	ImagePullPolicy string          `json:"imagePullPolicy,omitempty"`
+	ImagePullPolicy v1.PullPolicy `json:"imagePullPolicy,omitempty"`
 	// Specification of the desired behavior of pod group
 	Extensions      []Extension     `json:"extensions,omitempty"`
 }
