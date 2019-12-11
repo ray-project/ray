@@ -261,7 +261,7 @@ pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_ar
   // Launch the process to create the worker.
   if (pid == -1) {
     // The worker failed to start. This is a fatal error.
-    RAY_LOG(FATAL) << "Failed to start worker with return value " << rv << ": "
+    RAY_LOG(FATAL) << "Failed to start worker with error " << errno << ": "
                    << strerror(errno);
   }
   return pid;
