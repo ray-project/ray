@@ -1177,7 +1177,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
     }
     // Erase any lease metadata.
-    leased_workers_.erase(worker->Port());
+    leased_workers_.erase(worker->WorkerId());
   }
 
   if (is_worker) {
@@ -1562,11 +1562,12 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
             reply->mutable_worker_address()->set_ip_address(
                 initial_config_.node_manager_address);
             reply->mutable_worker_address()->set_port(worker->Port());
+            reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
             reply->mutable_worker_address()->set_raylet_id(
                 gcs_client_->client_table().GetLocalClientId().Binary());
-            RAY_CHECK(leased_workers_.find(worker->Port()) == leased_workers_.end());
-            leased_workers_[worker->Port()] = worker;
-            leased_worker_resources_[worker->Port()] = request_resources;
+            RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
+            leased_workers_[worker->WorkerId()] = worker;
+            leased_worker_resources_[worker->WorkerId()] = request_resources;
           } else {
             reply->mutable_retry_at_raylet_address()->set_ip_address(address);
             reply->mutable_retry_at_raylet_address()->set_port(port);
@@ -1586,12 +1587,13 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
-                                                  const std::string &address, int port,
-                                                  const ResourceIdSet &resource_ids) {
+      [this, task_id, reply, send_reply_callback](
+          const std::shared_ptr<void> granted, const std::string &address, int port,
+          const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
+        reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
         reply->mutable_worker_address()->set_raylet_id(
             gcs_client_->client_table().GetLocalClientId().Binary());
         for (const auto &mapping : resource_ids.AvailableResources()) {
@@ -1613,8 +1615,8 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         // TODO(swang): Kill worker if other end hangs up.
         // TODO(swang): Implement a lease term by which the owner needs to return the
         // worker.
-        RAY_CHECK(leased_workers_.find(port) == leased_workers_.end());
-        leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
+        RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end());
+        leased_workers_[worker_id] = std::static_pointer_cast<Worker>(granted);
       });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
@@ -1632,18 +1634,18 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
-  auto worker_port = request.worker_port();
-  std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_port]);
+  auto worker_id = WorkerID::FromBinary(request.worker_id());
+  std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_id]);
 
   if (new_scheduler_enabled_) {
-    auto it = leased_worker_resources_.find(worker_port);
+    auto it = leased_worker_resources_.find(worker_id);
     RAY_CHECK(it != leased_worker_resources_.end());
     new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), it->second);
     leased_worker_resources_.erase(it);
     NewSchedulerSchedulePendingTasks();
   }
 
-  leased_workers_.erase(worker_port);
+  leased_workers_.erase(worker_id);
   Status status;
   if (worker) {
     if (request.disconnect_worker()) {
@@ -2280,6 +2282,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
       worker->MarkDetachedActor();
     }
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
+                      worker->WorkerId(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
                                                  : worker->GetTaskResourceIds());
     post_assign_callbacks->push_back([this, worker, task_id]() {
