@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.transfer;
 
+import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.streaming.runtime.util.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,6 +92,21 @@ public class DataWriter {
     nativeQueueProducerPtr = 0;
     LOG.info("closing channel producer done.");
   }
+
+  private native long createDataWriterNative(
+      long coreWorker,
+      byte[][] outputActorIds,
+      FunctionDescriptor asyncFunction,
+      FunctionDescriptor syncFunction,
+      byte[][] outputQueueIds,
+      long[] seqIds,
+      long queueSize,
+      long[] creatorTypes,
+      byte[] fbsConfigBytes);
+
+  private native void onTransfer(long handler, byte[] buffer);
+
+  private native byte[] onTransferSync(long handler, byte[] buffer);
 
   private native long writeMessageNative(long nativeQueueProducerPtr, long nativeIDPtr, long address, int size);
 

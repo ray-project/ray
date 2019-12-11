@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.transfer;
 
+import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.streaming.runtime.util.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -171,13 +172,6 @@ public class DataReader {
     Platform.wrapDirectBuffer(bundleData, bundleAddress, bundleSize);
   }
 
-  /**
-   * Get bundle
-   *
-   * @param params      params buffer. Set bundle data address and size, bundle meta address and size into this buffer.
-   * @param metaAddress bundle meta buffer address
-   */
-  private native void getBundleNative(long nativeQueueConsumerPtr, long timeoutMillis, long params, long metaAddress);
 
   /**
    * stop consumer to avoid blocking
@@ -198,6 +192,24 @@ public class DataReader {
     nativeQueueConsumerPtr = 0;
     LOG.info("closing queue consumer done.");
   }
+
+  private native long createDataReaderNative(
+      long coreWorker,
+      byte[][] inputActorIds,
+      FunctionDescriptor asyncFunction,
+      FunctionDescriptor syncFunction,
+      byte[][] inputQueueIds,
+      long[] plasmaQueueSeqIds,
+      long[] streamingMsgIds,
+      long timerInterval,
+      boolean isRecreate,
+      byte[] fbsConfigBytes);
+
+  private native void onTransfer(long handler, byte[] buffer);
+
+  private native byte[] onTransferSync(long handler, byte[] buffer);
+
+  private native void getBundleNative(long nativeQueueConsumerPtr, long timeoutMillis, long params, long metaAddress);
 
   private native void stopConsumerNative(long nativeQueueConsumerPtr);
 
