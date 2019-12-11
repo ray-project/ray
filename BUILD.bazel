@@ -876,12 +876,13 @@ cc_binary(
         "@bazel_tools//src/conditions:darwin": ["external/bazel_tools/tools/jdk/include/darwin"],
         "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
     }),
-    # Export ray ABI symbols, which can then be used by _streaming.so. see `//:_raylet`
+    # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
     linkopts = select({
-        "//:macos": [
+        "@bazel_tools//src/conditions:darwin": [
             "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
         ],
-        "//:windows": [],
+        "@bazel_tools//src/conditions:windows": [
+        ],
         "//conditions:default": [
             "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
         ],
