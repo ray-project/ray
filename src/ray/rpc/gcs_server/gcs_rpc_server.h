@@ -1,5 +1,4 @@
-#ifndef RAY_RPC_GCS_RPC_SERVER_H
-#define RAY_RPC_GCS_RPC_SERVER_H
+#pragma once
 
 #include "src/ray/rpc/grpc_server.h"
 #include "src/ray/rpc/server_call.h"
@@ -38,7 +37,7 @@ namespace rpc {
 
 class JobInfoHandler {
  public:
-  virtual ~JobInfoHandler() = default;
+  virtual ~JobInfoAccessHandler() = default;
 
   virtual void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
                             SendReplyCallback send_reply_callback) = 0;
@@ -48,14 +47,14 @@ class JobInfoHandler {
                                      SendReplyCallback send_reply_callback) = 0;
 };
 
-/// The `GrpcService` for `JobInfoGcsService`.
-class JobInfoGrpcService : public GrpcService {
+/// The `GrpcService` for `JobInfoAccessService`.
+class JobInfoAccessGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit JobInfoGrpcService(boost::asio::io_service &io_service,
-                              JobInfoHandler &handler)
+  explicit JobInfoAccessGrpcService(boost::asio::io_service &io_service,
+                                    JobInfoAccessHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -71,9 +70,9 @@ class JobInfoGrpcService : public GrpcService {
 
  private:
   /// The grpc async service object.
-  JobInfoGcsService::AsyncService service_;
+  JobInfoAccessService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  JobInfoHandler &service_handler_;
+  JobInfoAccessHandler &service_handler_;
 };
 
 class ActorInfoHandler {

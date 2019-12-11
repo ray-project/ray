@@ -1,5 +1,4 @@
-#ifndef RAY_RPC_GCS_RPC_CLIENT_H
-#define RAY_RPC_GCS_RPC_CLIENT_H
+#pragma once
 
 #include <thread>
 
@@ -11,13 +10,13 @@
 namespace ray {
 namespace rpc {
 
-/// Client used for communicating with gcs server.
+/// Client used for communicating with a remote job info access server.
 class GcsRpcClient {
  public:
   /// Constructor.
   ///
-  /// \param[in] address Address of gcs server.
-  /// \param[in] port Port of the gcs server.
+  /// \param[in] address Address of job info access server.
+  /// \param[in] port Port of the job info access server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   GcsRpcClient(const std::string &address, const int port,
                ClientCallManager &client_call_manager)
@@ -29,19 +28,19 @@ class GcsRpcClient {
     node_info_stub_ = NodeInfoGcsService::NewStub(channel);
   };
 
-  /// Add job info to gcs server.
+  /// Add job info to remote job info access server
   ///
   /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
+  /// \param callback The callback function that handles reply from server
   void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply> &callback) {
     client_call_manager_.CreateCall<JobInfoGcsService, AddJobRequest, AddJobReply>(
         *job_info_stub_, &JobInfoGcsService::Stub::PrepareAsyncAddJob, request, callback);
   }
 
-  /// Mark job as finished to gcs server.
+  /// Mark job as finished to remote job info access server
   ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
+  /// \param request The request message
+  /// \param callback The callback function that handles reply from server
   void MarkJobFinished(const MarkJobFinishedRequest &request,
                        const ClientCallback<MarkJobFinishedReply> &callback) {
     client_call_manager_
