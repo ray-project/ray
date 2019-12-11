@@ -1200,10 +1200,12 @@ def start_raylet(redis_address,
                             "--object-store-name={} "
                             "--raylet-name={} "
                             "--redis-address={} "
+                            "--config-list={} "
                             "--temp-dir={}".format(
                                 sys.executable, worker_path, node_ip_address,
                                 node_manager_port, plasma_store_name,
-                                raylet_name, redis_address, temp_dir))
+                                raylet_name, redis_address, config_str,
+                                temp_dir))
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 

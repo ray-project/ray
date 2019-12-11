@@ -2,7 +2,6 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "absl/container/flat_hash_map.h"
-
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
@@ -468,6 +467,17 @@ class CoreWorker {
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
+
+  /// Remove reference counting dependencies of this object ID.
+  ///
+  /// \param[in] object_id The object whose dependencies should be removed.
+  void RemoveObjectIDDependencies(const ObjectID &object_id) {
+    std::vector<ObjectID> deleted;
+    reference_counter_->RemoveDependencies(object_id, &deleted);
+    if (ref_counting_enabled_) {
+      memory_store_->Delete(deleted);
+    }
+  }
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
