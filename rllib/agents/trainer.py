@@ -496,11 +496,7 @@ class Trainer(Trainable):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             else:
                 import gym  # soft dependency
-                env_ = gym.make(env)
-                act_wrap = NormalizeActionWrapper
-                if config["normalize_actions"]:
-                    env_ = act_wrap(env_.env)
-                self.env_creator = lambda env_config: env_
+                self.env_creator = lambda env_config: gym.make(env)
         else:
             self.env_creator = lambda env_config: None
 
@@ -511,6 +507,12 @@ class Trainer(Trainable):
                                     self._allow_unknown_subkeys)
         self.raw_user_config = config
         self.config = merged_config
+
+        if self.config["normalize_actions"]:
+            inner = self.env_creator
+            self.env_creator = (
+                lambda env_config: NormalizeActionWrapper(inner(env_config)))
+
         Trainer._validate_config(self.config)
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
