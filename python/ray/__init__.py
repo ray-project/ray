@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from os.path import dirname
 import sys
 
 # MUST add pickle5 to the import path because it will be imported by some
@@ -18,6 +19,14 @@ if "pickle5" in sys.modules:
 pickle5_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
 sys.path.insert(0, pickle5_path)
+
+# Expose ray ABI symbols which may be dependent by other shared
+# libraries such as _streaming.so. See BUILD.bazel:_raylet
+so_path = os.path.join(dirname(__file__), "_raylet.so")
+if os.path.exists(so_path):
+    import ctypes
+    from ctypes import CDLL
+    CDLL(so_path, ctypes.RTLD_GLOBAL)
 
 # MUST import ray._raylet before pyarrow to initialize some global variables.
 # It seems the library related to memory allocation in pyarrow will destroy the

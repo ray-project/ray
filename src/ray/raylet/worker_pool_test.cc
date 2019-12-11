@@ -85,7 +85,7 @@ class WorkerPoolTest : public ::testing::Test {
                                  int64_t message_type, const uint8_t *message) {
           HandleMessage(client, message_type, message);
         };
-    boost::asio::local::stream_protocol::socket socket(io_service_);
+    local_stream_protocol::socket socket(io_service_);
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
