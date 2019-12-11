@@ -1111,9 +1111,8 @@ def connect(node,
         if setproctitle:
             setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
-        # Code path of local mode
         if job_id is None:
-            job_id = JobID.from_int(random.randint(1, 100000))
+            job_id = JobID.from_int(random.randint(1, 65535))
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
     else:

@@ -8,6 +8,7 @@
 
 #include <grpcpp/grpcpp.h>
 #include "absl/base/thread_annotations.h"
+#include "absl/hash/hash.h"
 
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
@@ -34,9 +35,29 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 }
 
 // Shared between direct actor and task submitters.
-// TODO(swang): Remove and replace with rpc::Address.
 class CoreWorkerClientInterface;
-typedef std::pair<std::string, int> WorkerAddress;
+
+// TODO(swang): Remove and replace with rpc::Address.
+class WorkerAddress {
+ public:
+  template <typename H>
+  friend H AbslHashValue(H h, const WorkerAddress &w) {
+    return H::combine(std::move(h), w.ip_address, w.port, w.worker_id);
+  }
+
+  bool operator==(const WorkerAddress &other) const {
+    return other.ip_address == ip_address && other.port == port &&
+           other.worker_id == worker_id;
+  }
+
+  /// The ip address of the worker.
+  const std::string ip_address;
+  /// The local port of the worker.
+  const int port;
+  /// The unique id of the worker.
+  const WorkerID worker_id;
+};
+
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
     ClientFactoryFn;
 
