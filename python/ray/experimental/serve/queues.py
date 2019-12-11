@@ -7,6 +7,7 @@ from ray.experimental.serve.utils import logger
 from blist import sortedlist
 import time
 
+
 class Query:
     def __init__(self,
                  request_args,
@@ -26,7 +27,7 @@ class Query:
         # adding SLO (time taken to be completed)
         self.request_slo_ms = request_slo_ms
 
-    # adding comparator fn for maintaining a 
+    # adding comparator fn for maintaining an
     # ascending order sorted list w.r.t request_slo_ms
     def __lt__(self, other):
         return self.request_slo_ms < other.request_slo_ms
@@ -99,19 +100,23 @@ class CentralizedQueues:
             for backend_name, queue in self.buffer_queues.items()
         }
 
-    # request_slo_ms is time specified in milliseconds till which the 
+    # request_slo_ms is time specified in milliseconds till which the
     # answer of the query should be calculated
-    def enqueue_request(self, service, request_args, request_kwargs,
-                        request_context,request_slo_ms=None):
+    def enqueue_request(self,
+                        service,
+                        request_args,
+                        request_kwargs,
+                        request_context,
+                        request_slo_ms=None):
         if request_slo_ms is None:
             # if request_slo_ms is not specified then set it to a high level
             request_slo_ms = 1e9
-        
+
         # add wall clock time to specify the deadline for completion of query
         # this also assures FIFO behaviour if request_slo_ms is not specified
-        request_slo_ms += (time.time()*1000)
-        query = Query(request_args, request_kwargs, 
-            request_context, request_slo_ms)
+        request_slo_ms += (time.time() * 1000)
+        query = Query(request_args, request_kwargs, request_context,
+                      request_slo_ms)
         self.queues[service].append(query)
         self.flush()
         return query.result_object_id.binary()
@@ -169,7 +174,7 @@ class CentralizedQueues:
                 backend_names = list(self.traffic[service].keys())
                 backend_weights = list(self.traffic[service].values())
                 # TODO(alind): is random choice good for deadline awareness?
-                # putting query in a buffer of a non available backend may 
+                # putting query in a buffer of a non available backend may
                 # not be good
                 chosen_backend = np.random.choice(
                     backend_names, p=backend_weights).squeeze()

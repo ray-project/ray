@@ -131,7 +131,7 @@ class HTTPProxy:
         # get slo_ms before enqueuing the query 
         query_string = scope["query_string"].decode("ascii")
         query_kwargs = parse_qs(query_string)
-        request_slo_ms =  query_kwargs.pop('slo_ms',None)
+        request_slo_ms =  query_kwargs.pop("slo_ms",None)
         if request_slo_ms is not None:
             try:
                 if len(request_slo_ms) != 1:
