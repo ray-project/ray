@@ -44,9 +44,11 @@ class WorkerLeaseInterface {
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
+  /// \param worker_id The unique worker id of the worker on the raylet node.
   /// \param disconnect_worker Whether the raylet should disconnect the worker.
   /// \return ray::Status
-  virtual ray::Status ReturnWorker(int worker_port, bool disconnect_worker) = 0;
+  virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                                   bool disconnect_worker) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -243,7 +245,8 @@ class RayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) override;
 
   /// Implements WorkerLeaseInterface.
-  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override;
+  ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                           bool disconnect_worker) override;
 
   WorkerID GetWorkerID() const { return worker_id_; }
 
