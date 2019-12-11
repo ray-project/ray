@@ -1,6 +1,5 @@
 load("//bazel:ray.bzl", "define_java_module")
-load("//:streaming/streaming.bzl", "flatbuffer_java_library")
-load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
+load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 
 exports_files([
     "testng.xml",
@@ -49,10 +48,13 @@ define_java_module(
 
 define_java_module(
     name = "streaming-runtime",
-        additional_srcs = [
-            ":generate_java_streaming_fbs",
-        ],
-        additional_resources = [
+    additional_srcs = [
+        ":all_java_proto",
+    ],
+    exclude_srcs = [
+        "streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/*.java",
+    ],
+    additional_resources = [
             ":java_native_deps",
         ],
     deps = [
@@ -89,51 +91,23 @@ java_binary(
     ],
 )
 
-cc_flatbuffers_pkg = "ray/streaming/fbs/"
-flatbuffers_generated_files = [
-    "StreamingConfigKey.java",
-    "StreamingRole.java",
-    "StreamingStringPair.java",
-    "StreamingUintPair.java",
-    "StreamingConfig.java",
-]
-
-flatbuffer_java_library(
-    name = "streaming_java_fbs",
-    srcs = ["//streaming/src:streaming_fbs_file"],
-    outs = [cc_flatbuffers_pkg + f for f in flatbuffers_generated_files],
-    out_prefix = "",
+# proto buffer
+java_proto_compile(
+    name = "streaming_java_proto",
+    deps = ["//streaming:streaming_proto"],
 )
 
 filegroup(
-    name = "modify_generated_java_flatbuffers_files_py_tool",
-    srcs = ["modify_generated_java_flatbuffers_files.py"],
-)
-
-genrule(
-    name = "generate_java_streaming_fbs",
+    name = "all_java_proto",
     srcs = [
-        ":streaming_java_fbs",
-        ":modify_generated_java_flatbuffers_files_py_tool",
+        ":streaming_java_proto",
     ],
-    outs = [
-        "streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/" + file
-            for file in flatbuffers_generated_files
-    ],
-    cmd = """
-        for f in $(locations //streaming/java:streaming_java_fbs); do
-            chmod +w $$f
-            mv -f $$f $(@D)/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated
-        done
-        python $$(pwd)/streaming/java/modify_generated_java_flatbuffers_files.py $(@D)/../..
-    """,
-    local = 1,
 )
 
 filegroup(
     name = "java_native_deps",
     srcs = [
-        "//streaming/src:streaming_java",
+        "//streaming:streaming_java",
     ],
 )
 
@@ -158,7 +132,7 @@ genrule(
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":generate_java_streaming_fbs",
+        ":all_java_proto",
         ":java_native_deps",
         ":copy_pom_file",
     ],
@@ -174,13 +148,12 @@ genrule(
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
         done
-        # Copy flatbuffer-generated files.
         GENERATED_DIR=$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated
         rm -rf $$GENERATED_DIR
         mkdir -p $$GENERATED_DIR
-        # Copy flatbuffers-generated files
-        for f in $(locations //streaming/java:generate_java_streaming_fbs); do
-            cp $$f $$GENERATED_DIR
+        # Copy protobuf-generated files.
+        for f in $(locations //streaming/java:all_java_proto); do
+            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/streaming/java/streaming-runtime/src/main/java
         done
         echo $$(date) > $@
     """,

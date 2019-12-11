@@ -233,3 +233,57 @@ genrule(
     local = 1,
     visibility = ["//visibility:public"],
 )
+
+# Streaming Java
+genrule(
+    name = "copy_jni_h",
+    srcs = [
+        "@bazel_tools//tools/jdk:jni_header",
+    ],
+    outs = ["jni.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "copy_jni_md_h",
+    srcs = select({
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
+        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
+    outs = ["jni_md.h"],
+    cmd = "cp -f $< $@",
+)
+
+cc_binary(
+    name = "libstreaming_java.so",
+    srcs = glob([
+        "src/lib/java/*.cc", "src/lib/java/*.h"
+    ]) + [":jni.h", ":jni_md.h"],
+    includes = [
+        "src/lib/java",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+genrule(
+    name = "streaming-jni-darwin-compat",
+    srcs = [":libstreaming_java.so"],
+    outs = ["libstreaming_java.dylib"],
+    cmd = "cp $< $@",
+    output_to_bindir = 1,
+)
+
+filegroup(
+    name = "streaming_java",
+    srcs = select({
+        "@bazel_tools//src/conditions:darwin": [":libstreaming_java.dylib"],
+        "//conditions:default": [":libstreaming_java.so"],
+    }),
+    visibility = ["//visibility:public"],
+)
+
