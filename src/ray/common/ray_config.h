@@ -43,7 +43,9 @@ class RayConfig {
   }
 
   void initialize(const std::unordered_map<std::string, std::string> &config_map) {
-    RAY_CHECK(!initialized_);
+    if (initialized_) {
+      RAY_LOG(INFO) << "Re-initializing RayConfig.";
+    }
     for (auto const &pair : config_map) {
       // We use a big chain of if else statements because C++ doesn't allow
       // switch statements on strings.
