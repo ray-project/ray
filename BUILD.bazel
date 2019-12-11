@@ -7,28 +7,6 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "if_linux_x86_64")
-
-config_setting(
-    name = "windows",
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "macos",
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "linux_x86_64",
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
 
 # TODO(mehrdadn): (How to) support dynamic linking?
 PROPAGATED_WINDOWS_DEFINES = ["RAY_STATIC"]
@@ -820,16 +798,20 @@ pyx_library(
         "linkstatic": 1,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
         "linkopts": select({
-            "//:macos": [
+            "@bazel_tools//src/conditions:darwin": [
                 "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
             ],
-            "//:windows": [],
+            "@bazel_tools//src/conditions:windows": [
+            ],
             "//conditions:default": [
                 "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
             ],
         }),
     },
-    copts = COPTS + if_linux_x86_64(["-fno-gnu-unique"]),
+    copts = COPTS + select({
+        "@bazel_tools//src/conditions:linux_x86_64": ["-fno-gnu-unique"],
+        "//conditions:default": [],
+    }),
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
@@ -1000,7 +982,7 @@ genrule(
         set -x &&
         WORK_DIR=$$(pwd) &&
         cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
-        cp -f $(location python/ray/streaming/_streaming.so) $$WORK_DIR/python/ray/streaming &&
+        cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
