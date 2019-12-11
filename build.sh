@@ -93,15 +93,6 @@ fi
 
 pushd "$BUILD_DIR"
 
-# The following line installs pyarrow from S3, these wheels have been
-# generated from https://github.com/ray-project/arrow-build from
-# the commit listed in the command.
-if [ -z "$SKIP_PYARROW_INSTALL" ]; then
-    "$PYTHON_EXECUTABLE" -m pip install -q \
-        --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
-        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
-fi
-
 PYTHON_VERSION=`"$PYTHON_EXECUTABLE" -c 'import sys; version=sys.version_info[:3]; print("{0}.{1}".format(*version))'`
 if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
   WORK_DIR=`mktemp -d`
@@ -113,6 +104,15 @@ if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
       unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
     popd
   popd
+else
+  # The following line installs pyarrow from S3, these wheels have been
+  # generated from https://github.com/ray-project/arrow-build from
+  # the commit listed in the command.
+  if [ -z "$SKIP_PYARROW_INSTALL" ]; then
+    "$PYTHON_EXECUTABLE" -m pip install -q \
+        --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
+        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
+  fi
 fi
 
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
