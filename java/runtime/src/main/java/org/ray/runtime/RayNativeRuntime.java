@@ -1,15 +1,12 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
-
-import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
-import com.google.common.primitives.Bytes;
-
 import org.apache.commons.io.FileUtils;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;

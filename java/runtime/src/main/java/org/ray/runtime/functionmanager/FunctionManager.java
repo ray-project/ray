@@ -16,6 +16,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.DirectoryFileFilter;
@@ -42,24 +44,28 @@ public class FunctionManager {
    * Cache from a RayFunc object to its corresponding JavaFunctionDescriptor. Because
    * `LambdaUtils.getSerializedLambda` is expensive.
    */
+  // If the cache is not thread local, we'll need a lock to protect it,
+  // which means competition is highly possible.
   private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, JavaFunctionDescriptor>>
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
   /**
    * Mapping from the job id to the functions that belong to this job.
    */
-  private Map<JobId, JobFunctionTable> jobFunctionTables = new HashMap<>();
+  private ConcurrentMap<JobId, JobFunctionTable> jobFunctionTables = new ConcurrentHashMap<>();
+
+  private final Object jobFunctionTablesLock = new Object();
 
   /**
    * The resource path which we can load the job's jar resources.
    */
-  private String jobResourcePath;
+  private final String jobResourcePath;
 
   /**
    * Construct a FunctionManager with the specified job resource path.
    *
    * @param jobResourcePath The specified job resource that can store the job's
-   *     resources.
+   * resources.
    */
   public FunctionManager(String jobResourcePath) {
     this.jobResourcePath = jobResourcePath;
@@ -72,9 +78,11 @@ public class FunctionManager {
    * @param func The lambda.
    * @return A RayFunction object.
    */
-  public synchronized RayFunction getFunction(JobId jobId, RayFunc func) {
+  public RayFunction getFunction(JobId jobId, RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
     if (functionDescriptor == null) {
+      // It's OK to not lock here, because it's OK to have multiple JavaFunctionDescriptor instances
+      // for the same RayFunc instance.
       SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(func);
       final String className = serializedLambda.getImplClass().replace('/', '.');
       final String methodName = serializedLambda.getImplMethodName();
@@ -92,32 +100,37 @@ public class FunctionManager {
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
-  public synchronized RayFunction getFunction(JobId jobId,
+  public RayFunction getFunction(JobId jobId,
       JavaFunctionDescriptor functionDescriptor) {
     JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
     if (jobFunctionTable == null) {
-      ClassLoader classLoader;
-      if (Strings.isNullOrEmpty(jobResourcePath)) {
-        classLoader = getClass().getClassLoader();
-      } else {
-        File resourceDir = new File(jobResourcePath + "/" + jobId.toString() + "/");
-        Collection<File> files = FileUtils.listFiles(resourceDir,
-            new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
-        files.add(resourceDir);
-        final List<URL> urlList = files.stream().map(file -> {
-          try {
-            return file.toURI().toURL();
-          } catch (MalformedURLException e) {
-            throw new RuntimeException(e);
+      synchronized (jobFunctionTablesLock) {
+        jobFunctionTable = jobFunctionTables.get(jobId);
+        if (jobFunctionTable == null) {
+          ClassLoader classLoader;
+          if (Strings.isNullOrEmpty(jobResourcePath)) {
+            classLoader = getClass().getClassLoader();
+          } else {
+            File resourceDir = new File(jobResourcePath + "/" + jobId.toString() + "/");
+            Collection<File> files = FileUtils.listFiles(resourceDir,
+                new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
+            files.add(resourceDir);
+            final List<URL> urlList = files.stream().map(file -> {
+              try {
+                return file.toURI().toURL();
+              } catch (MalformedURLException e) {
+                throw new RuntimeException(e);
+              }
+            }).collect(Collectors.toList());
+            classLoader = new URLClassLoader(urlList.toArray(new URL[urlList.size()]));
+            LOGGER.debug("Resource loaded for job {} from path {}.", jobId,
+                resourceDir.getAbsolutePath());
           }
-        }).collect(Collectors.toList());
-        classLoader = new URLClassLoader(urlList.toArray(new URL[urlList.size()]));
-        LOGGER.debug("Resource loaded for job {} from path {}.", jobId,
-            resourceDir.getAbsolutePath());
-      }
 
-      jobFunctionTable = new JobFunctionTable(classLoader);
-      jobFunctionTables.put(jobId, jobFunctionTable);
+          jobFunctionTable = new JobFunctionTable(classLoader);
+          jobFunctionTables.put(jobId, jobFunctionTable);
+        }
+      }
     }
     return jobFunctionTable.getFunction(functionDescriptor);
   }
@@ -130,22 +143,29 @@ public class FunctionManager {
     /**
      * The job's corresponding class loader.
      */
-    ClassLoader classLoader;
+    final ClassLoader classLoader;
     /**
      * Functions per class, per function name + type descriptor.
      */
-    Map<String, Map<Pair<String, String>, RayFunction>> functions;
+    ConcurrentMap<String, Map<Pair<String, String>, RayFunction>> functions;
+
+    private final Object lock = new Object();
 
     JobFunctionTable(ClassLoader classLoader) {
       this.classLoader = classLoader;
-      this.functions = new HashMap<>();
+      this.functions = new ConcurrentHashMap<>();
     }
 
     RayFunction getFunction(JavaFunctionDescriptor descriptor) {
       Map<Pair<String, String>, RayFunction> classFunctions = functions.get(descriptor.className);
       if (classFunctions == null) {
-        classFunctions = loadFunctionsForClass(descriptor.className);
-        functions.put(descriptor.className, classFunctions);
+        synchronized (lock) {
+          classFunctions = functions.get(descriptor.className);
+          if (classFunctions == null) {
+            classFunctions = loadFunctionsForClass(descriptor.className);
+            functions.put(descriptor.className, classFunctions);
+          }
+        }
       }
       return classFunctions.get(ImmutablePair.of(descriptor.name, descriptor.typeDescriptor));
     }
