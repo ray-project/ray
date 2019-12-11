@@ -32,18 +32,6 @@ const int kMaxReorderWaitSeconds = 30;
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
-/// The state data for an actor.
-struct ActorStateData {
-  ActorStateData(gcs::ActorTableData::ActorState state, const std::string &ip, int port)
-      : state_(state), location_(std::make_pair(ip, port)) {}
-
-  /// Actor's state (e.g. alive, dead, reconstrucing).
-  gcs::ActorTableData::ActorState state_;
-
-  /// IP address and port that the actor is listening on.
-  std::pair<std::string, int> location_;
-};
-
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
@@ -60,7 +48,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
 
-  /// Create connection to actor and send all pending tasks. j
+  /// Create connection to actor and send all pending tasks.
   ///
   /// \param[in] actor_id Actor ID.
   /// \param[in] address The new address of the actor.

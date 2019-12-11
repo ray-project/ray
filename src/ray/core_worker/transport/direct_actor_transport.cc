@@ -123,7 +123,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
         if (!status.ok()) {
           task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply);
+          task_finisher_->CompletePendingTask(task_id, reply, nullptr);
         }
       }));
 }

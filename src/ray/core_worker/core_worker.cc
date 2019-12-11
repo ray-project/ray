@@ -171,8 +171,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       },
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
-  task_manager_.reset(
-      new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
+  task_manager_.reset(new TaskManager(
+      memory_store_, actor_manager_, [this](const TaskSpecification &spec) {
         RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
       }));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
@@ -372,9 +372,6 @@ Status CoreWorker::Seal(const ObjectID &object_id) {
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-  for (const auto &id : ids) {
-    RAY_LOG(DEBUG) << "CoreWorker GET " << id;
-  }
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -463,8 +460,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     RAY_CHECK(!missing_result);
   }
 
-  RAY_LOG(DEBUG) << "CoreWorker GET DONE";
-
   return Status::OK();
 }
 
@@ -487,9 +482,6 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
 
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
                         int64_t timeout_ms, std::vector<bool> *results) {
-  for (const auto &id : ids) {
-    RAY_LOG(DEBUG) << "CoreWorker WAIT " << id;
-  }
   results->resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
@@ -560,7 +552,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
       results->at(i) = true;
     }
   }
-  RAY_LOG(DEBUG) << "CoreWorker WAIT DONE";
 
   return Status::OK();
 }

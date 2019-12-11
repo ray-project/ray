@@ -37,15 +37,14 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 }
 
 void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
-    const rpc::WorkerAddress &addr, const SchedulingKey &scheduling_key,
-    bool is_actor_creation, bool was_error,
+    const rpc::WorkerAddress &addr, const SchedulingKey &scheduling_key, bool was_error,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto lease_entry = worker_to_lease_client_[addr];
   auto queue_entry = task_queues_.find(scheduling_key);
   // Return the worker if there was an error executing the previous task,
   // the previous task is an actor creation task,
   // there are no more applicable queued tasks, or the lease is expired.
-  if (was_error || is_actor_creation || queue_entry == task_queues_.end() ||
+  if (was_error || queue_entry == task_queues_.end() ||
       current_time_ms() > lease_entry.second) {
     RAY_CHECK_OK(lease_entry.first->ReturnWorker(addr.second, was_error));
     worker_to_lease_client_.erase(addr);
@@ -116,7 +115,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                                     reply.worker_address().port());
             AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
-            OnWorkerIdle(addr, scheduling_key, /*is_actor_creation*/ false,
+            OnWorkerIdle(addr, scheduling_key,
                          /*error=*/false, resources_copy);
           } else {
             // The raylet redirected us to a different raylet to retry at.
@@ -159,13 +158,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   bool is_actor = task_spec.IsActorTask();
   bool is_actor_creation = task_spec.IsActorCreationTask();
 
-  std::function<void()> task_finish_callback;
-  if (is_actor_creation) {
-    task_finish_callback = [task_spec, addr]() {
-      // TODO: handle actor creation complete.
-    };
-  }
-
   RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -174,12 +166,12 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   RAY_CHECK_OK(client.PushNormalTask(
       std::move(request),
-      [this, task_id, is_actor, is_actor_creation, task_finish_callback, scheduling_key,
+      [this, task_id, is_actor, is_actor_creation, scheduling_key,
        addr, assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        {
+        // Successful actor creation leases the worker indefinitely from the raylet.
+        if (!status.ok() || !is_actor_creation) {
           absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, scheduling_key, /*is_actor_creation=*/is_actor_creation,
-                       /*error=*/!status.ok(), assigned_resources);
+          OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok(), assigned_resources);
         }
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node
@@ -190,10 +182,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                                                          ? rpc::ErrorType::ACTOR_DIED
                                                          : rpc::ErrorType::WORKER_DIED);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply);
-          if (task_finish_callback != nullptr) {
-            task_finish_callback();
-          }
+          task_finisher_->CompletePendingTask(task_id, reply, &addr);
         }
       }));
 }

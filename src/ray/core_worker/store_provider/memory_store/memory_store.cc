@@ -94,11 +94,6 @@ void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> objec
     is_ready_ = true;
     cv_.notify_all();
   }
-  for (auto &id : object_ids_) {
-    if (objects_.count(id) == 0) {
-      RAY_LOG(DEBUG) << "Object still missing " << id;
-    }
-  }
 }
 
 std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
@@ -155,7 +150,6 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
 }
 
 Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
-  RAY_LOG(DEBUG) << "PUT " << object_id;
   RAY_CHECK(object_id.IsDirectCallType());
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry =
@@ -205,7 +199,6 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     }
 
     if (should_add_entry) {
-      RAY_LOG(DEBUG) << "PUT XXX " << object_id;
       // If there is no existing get request, then add the `RayObject` to map.
       objects_.emplace(object_id, object_entry);
     }
@@ -270,7 +263,6 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                                remove_after_get);
     for (const auto &object_id : get_request->ObjectIds()) {
       object_get_requests_[object_id].push_back(get_request);
-      RAY_LOG(DEBUG) << "GetRequest still missing " << object_id;
     }
   }
 
@@ -353,9 +345,6 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
-  for (auto &id : object_ids) {
-    RAY_LOG(DEBUG) << "WAIT " << id;
-  }
   auto status = Get(id_vector, num_objects, timeout_ms, ctx, false, &result_objects);
   // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
