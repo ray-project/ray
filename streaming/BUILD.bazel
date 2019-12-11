@@ -77,10 +77,10 @@ cc_library(
     srcs = glob([
         "src/config/*.cc",
     ]),
-    copts = COPTS,
     hdrs = glob([
         "src/config/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "ray_common.so",
         ":streaming_cc_proto",
@@ -93,10 +93,10 @@ cc_library(
     srcs = glob([
         "src/message/*.cc",
     ]),
-    copts = COPTS,
     hdrs = glob([
         "src/message/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "ray_common.so",
         ":streaming_config",
@@ -109,10 +109,10 @@ cc_library(
     srcs = glob([
         "src/queue/*.cc",
     ]),
-    copts = COPTS,
     hdrs = glob([
         "src/queue/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "core_worker_lib.so",
         "ray_common.so",

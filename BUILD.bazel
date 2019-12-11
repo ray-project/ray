@@ -7,7 +7,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "PROPAGATED_WINDOWS_DEFINES", "COPTS")
+load("//bazel:ray.bzl", "COPTS", "PROPAGATED_WINDOWS_DEFINES")
 
 # === Begin of protobuf definitions ===
 
@@ -961,7 +961,7 @@ genrule(
         cp -f $(location python/ray/streaming/_streaming.so) "$$WORK_DIR/python/ray/streaming" &&
         echo "$$WORK_DIR" > $@
     """,
-    local = 1
+    local = 1,
 )
 
 genrule(
