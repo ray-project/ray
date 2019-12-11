@@ -16,6 +16,10 @@ def env_integer(key, default):
     return default
 
 
+def direct_call_enabled():
+    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "0")))
+
+
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless

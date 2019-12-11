@@ -1472,7 +1472,10 @@ void NodeManager::ProcessReportActiveObjectIDs(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
-    RAY_CHECK(worker);
+    if (!worker) {
+      RAY_LOG(ERROR) << "Ignoring object ids report from failed / unknown worker.";
+      return;
+    }
   }
 
   auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
@@ -2273,6 +2276,9 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
 
   auto task_id = spec.TaskId();
   if (task.OnDispatch() != nullptr) {
+    if (task.GetTaskSpecification().IsDetachedActor()) {
+      worker->MarkDetachedActor();
+    }
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
                                                  : worker->GetTaskResourceIds());

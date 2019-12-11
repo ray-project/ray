@@ -552,15 +552,17 @@ class RayTrialExecutor(TrialExecutor):
         """Before step() called, update the available resources."""
         self._update_avail_resources()
 
-    def save(self, trial, storage=Checkpoint.DISK):
+    def save(self, trial, storage=Checkpoint.DISK, result=None):
         """Saves the trial's state to a checkpoint."""
+        result = result or trial.last_result
+
         if storage == Checkpoint.MEMORY:
             value = trial.runner.save_to_object.remote()
-            checkpoint = Checkpoint(storage, value, trial.last_result)
+            checkpoint = Checkpoint(storage, value, result)
         else:
             with warn_if_slow("save_checkpoint_to_disk"):
                 value = ray.get(trial.runner.save.remote())
-                checkpoint = Checkpoint(storage, value, trial.last_result)
+                checkpoint = Checkpoint(storage, value, result)
 
         with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
             try:

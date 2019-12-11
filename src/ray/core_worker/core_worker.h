@@ -2,7 +2,6 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "absl/container/flat_hash_map.h"
-
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/actor_manager.h"
@@ -91,7 +90,7 @@ class CoreWorker {
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
-  RayletClient &GetRayletClient() { return *local_raylet_client_; }
+  raylet::RayletClient &GetRayletClient() { return *local_raylet_client_; }
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
@@ -364,6 +363,13 @@ class CoreWorker {
                                const std::vector<std::shared_ptr<Buffer>> &metadatas,
                                std::vector<std::shared_ptr<RayObject>> *return_objects);
 
+  /// Get a handle to an actor.
+  ///
+  /// \param[in] actor_id The actor handle to get.
+  /// \param[out] actor_handle A handle to the requested actor.
+  /// \return Status::Invalid if we don't have this actor handle.
+  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+
   ///
   /// The following methods are handlers for the core worker's gRPC server, which follow
   /// a macro-generated call convention. These are executed on the io_service_ and
@@ -433,14 +439,6 @@ class CoreWorker {
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
 
-  /// Get a handle to an actor. This asserts that the worker actually has this
-  /// handle.
-  ///
-  /// \param[in] actor_id The actor handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
-  /// \return Status::Invalid if we don't have this actor handle.
-  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
-
   ///
   /// Private methods related to task execution. Should not be used by driver processes.
   ///
@@ -474,6 +472,17 @@ class CoreWorker {
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
+
+  /// Remove reference counting dependencies of this object ID.
+  ///
+  /// \param[in] object_id The object whose dependencies should be removed.
+  void RemoveObjectIDDependencies(const ObjectID &object_id) {
+    std::vector<ObjectID> deleted;
+    reference_counter_->RemoveDependencies(object_id, &deleted);
+    if (ref_counting_enabled_) {
+      memory_store_->Delete(deleted);
+    }
+  }
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
@@ -533,7 +542,7 @@ class CoreWorker {
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
   // of the workers.
-  std::shared_ptr<RayletClient> local_raylet_client_;
+  std::shared_ptr<raylet::RayletClient> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
@@ -568,8 +577,13 @@ class CoreWorker {
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
+  /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
+  /// need a mutex to protect it.
+  mutable absl::Mutex actor_handles_mutex_;
+
   /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
+      GUARDED_BY(actor_handles_mutex_);
 
   /// Resolve local and remote dependencies for actor creation.
   std::unique_ptr<LocalDependencyResolver> resolver_;

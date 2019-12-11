@@ -16,9 +16,10 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
+from ray import ray_constants
 from ray.test_utils import run_string_as_driver
 
-RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -452,7 +453,7 @@ def test_multiple_actors(ray_start_regular):
         def reset(self):
             self.value = 0
 
-    num_actors = 20
+    num_actors = 5
     num_increases = 50
     # Create multiple actors.
     actors = [Counter.remote(i) for i in range(num_actors)]
@@ -1181,7 +1182,7 @@ def test_fork_consistency(setup_queue_actor):
         return ray.get(x)
 
     # Fork num_iters times.
-    num_forks = 10
+    num_forks = 5
     num_items_per_fork = 100
 
     # Submit some tasks on new actor handles.

@@ -135,9 +135,17 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(RayletClient &raylet_client,
-                               rpc::ClientFactoryFn client_factory,
-                               rpc::Address rpc_address) {
+CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
+    WorkerContext &worker_context, boost::asio::io_service &main_io_service,
+    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
+    : worker_context_(worker_context),
+      task_handler_(task_handler),
+      exit_handler_(exit_handler),
+      task_main_io_service_(main_io_service) {}
+
+void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
+    rpc::ClientFactoryFn client_factory,
+    rpc::Address rpc_address) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
