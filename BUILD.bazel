@@ -622,6 +622,16 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "perf_local_memory_buffer_test",
+    srcs = ["src/ray/common/test/perf_local_memory_buffer_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "object_manager",
     srcs = glob([
