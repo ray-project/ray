@@ -4,12 +4,11 @@ from __future__ import print_function
 
 import numpy as np
 import sys
-import pytest
 import torch
 import torch.nn as nn
 import unittest
 
-from ray.experimental.sgd.pytorch import PyTorchRunner
+from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 
 if sys.version_info >= (3, 3):
     from unittest.mock import MagicMock
@@ -39,7 +38,7 @@ def model_creator(config):
 
 def optimizer_creator(models, config):
     """Returns optimizer."""
-    return torch.optim.SGD(models.parameters())
+    return torch.optim.SGD(models.parameters(), lr=0.1)
 
 
 def loss_creator(config):
@@ -76,10 +75,10 @@ class TestPyTorchRunner(unittest.TestCase):
         self.assertEqual(mock_function.call_count, 0)
         runner.validate()
         self.assertTrue(mock_function.called)
-        self.assertEqual(runner.stats()["epochs"], 3)
+        self.assertEqual(runner.stats()["epoch"], 3)
 
     def testStep(self):
-        mock_function = MagicMock(returns=dict(mean_accuracy=10))
+        mock_function = MagicMock(return_value=dict(mean_accuracy=10))
         runner = PyTorchRunner(
             model_creator,
             create_dataloaders,
@@ -91,15 +90,17 @@ class TestPyTorchRunner(unittest.TestCase):
         runner.step()
         result = runner.step()
         self.assertEqual(mock_function.call_count, 3)
-        self.assertEqual(result["epochs"], 3)
-        self.assertEqual(runner.stats()["epochs"], 3)
+        self.assertEqual(result["epoch"], 3)
+        self.assertEqual(runner.stats()["epoch"], 3)
 
     def testGivens(self):
         def three_model_creator(config):
             return nn.Linear(1, 1), nn.Linear(1, 1), nn.Linear(1, 1)
 
         def three_optimizer_creator(models, config):
-            opts = [torch.optim.SGD(model.parameters()) for model in models]
+            opts = [
+                torch.optim.SGD(model.parameters(), lr=0.1) for model in models
+            ]
             return opts[0], opts[1], opts[2]
 
         runner = PyTorchRunner(three_model_creator, single_loader,
@@ -139,18 +140,21 @@ class TestPyTorchRunner(unittest.TestCase):
                                loss_creator)
         runner.setup()
         runner.step()
-        self.assertRaises(lambda: runner.validate(), ValueError)
+        with self.assertRaises(ValueError):
+            runner.validate()
 
     def testMultiModel(self):
         def model_creator(config):
             return nn.Linear(1, 1), nn.Linear(1, 1), nn.Linear(1, 1)
 
         def optimizer_creator(models, config):
-            opts = [torch.optim.SGD(model.parameters()) for model in models]
+            opts = [
+                torch.optim.SGD(model.parameters(), lr=0.1) for model in models
+            ]
             return opts[0], opts[1], opts[2]
 
         runner = PyTorchRunner(model_creator, single_loader, optimizer_creator,
                                loss_creator)
         runner.setup()
-        with pytest.assertRaises(ValueError):
+        with self.assertRaises(ValueError):
             runner.step()

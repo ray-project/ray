@@ -8,6 +8,7 @@ import logging
 import os
 import torch
 import torch.utils.data
+from torch.utils.data import DataLoader
 
 import ray
 from ray.experimental.sgd.pytorch import utils as pytorch_utils
@@ -70,12 +71,14 @@ class PyTorchRunner(object):
 
     def _validate_loaders(self, data_loaders):
         assert data_loaders, "Dataloaders need to be returned in data_creator."
-        if not isinstance(data_loaders, collections.Iterable):
+        if isinstance(data_loaders, DataLoader):
             return data_loaders, None
-        elif len(data_loaders) == 2:
+        elif len(data_loaders) == 2 and isinstance(data_loaders[0],
+                                                   DataLoader):
             return data_loaders
         else:
-            raise ValueError("Dataloaders must be <= 2.")
+            raise ValueError(
+                "Dataloaders must be <= 2. Got {}".format(data_loaders))
 
     def setup(self):
         """Initializes the model."""
@@ -125,6 +128,8 @@ class PyTorchRunner(object):
 
     def validate(self):
         """Evaluates the model on the validation data set."""
+        if self.validation_loader is None:
+            raise ValueError("No validation dataloader provided.")
         with self._timers["validation"]:
             validation_stats = self.validation_function(
                 self.given_models, self.validation_loader, self.criterion,
