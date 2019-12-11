@@ -15,7 +15,7 @@ PYTHONS=("cp27-cp27mu"
          "cp35-cp35m"
          "cp36-cp36m"
          "cp37-cp37m"
-         "cp38-cp38m")
+         "cp38-cp38")
 
 # The minimum supported numpy version is 1.14, see
 # https://issues.apache.org/jira/browse/ARROW-3141
