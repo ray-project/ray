@@ -25,7 +25,6 @@ class TaskFinisherInterface {
 };
 
 using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
-using ActorDiedCallback = std::function<void(const TaskSpecification &spec)>;
 
 class TaskManager : public TaskFinisherInterface {
  public:
