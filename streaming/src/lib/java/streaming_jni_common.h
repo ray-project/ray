@@ -4,8 +4,7 @@
 #include <jni.h>
 #include <string>
 #include "ray/core_worker/common.h"
-#include "streaming_writer.h"
-
+#include "util/streaming_logging.h"
 
 /// DirectByteBuffer class. Global reference can be used in multi-threads
 extern jclass java_direct_buffer_class;
