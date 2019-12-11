@@ -18,9 +18,8 @@ import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.queue.QueueConsumer;
 import org.ray.streaming.runtime.queue.QueueLink;
 import org.ray.streaming.runtime.queue.QueueProducer;
-import org.ray.streaming.runtime.queue.QueueUtils;
+import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.runtime.util.JniUtils;
 import org.ray.streaming.util.ConfigKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -116,9 +115,9 @@ public class StreamingQueueLinkImpl implements QueueLink {
         isRecreate, inputQueueIds, plasmaQueueSeqIds, configuration, inputActorIds);
     try {
       this.consumerInstance = new QueueConsumerImpl(newConsumer(
-          nativeCoreWorker, QueueUtils.actorIdListToByteArray(inputActorIds),
+          nativeCoreWorker, ChannelUtils.actorIdListToByteArray(inputActorIds),
           streamingTransferFunction, streamingTransferSyncFunction,
-          QueueUtils.stringQueueIdListToByteArray(inputQueueIds),
+          ChannelUtils.stringQueueIdListToByteArray(inputQueueIds),
           plasmaQueueSeqIds, streamingMsgIds,
           Long.parseLong(configuration.getOrDefault(QueueConfigKeys.TIMER_INTERVAL_MS, "-1")),
           isRecreate,
@@ -170,15 +169,15 @@ public class StreamingQueueLinkImpl implements QueueLink {
     }
 
     // convert to ordered list
-    byte[][] qidCopyList = QueueUtils.stringQueueIdListToByteArray(outputQueueIds);
+    byte[][] qidCopyList = ChannelUtils.stringQueueIdListToByteArray(outputQueueIds);
 
     LOG.info("register producer, createType: {}, queues:{}, msgIds: {}, conf={}, outputActorIds:{}",
         creatorTypes, outputQueueIds, msgIds, configuration, outputActorIds);
     try {
       this.producerInstance = new QueueProducerImpl(newProducer(
-          nativeCoreWorker, QueueUtils.actorIdListToByteArray(outputActorIds),
+          nativeCoreWorker, ChannelUtils.actorIdListToByteArray(outputActorIds),
           streamingTransferFunction, streamingTransferSyncFunction,
-          qidCopyList, QueueUtils.longToPrimitives(msgIds),
+          qidCopyList, ChannelUtils.longToPrimitives(msgIds),
           Long.parseLong(configuration.get(ConfigKey.QUEUE_SIZE)),
           creatorTypes,
           FbsConfigConverter.map2bytes(configuration)

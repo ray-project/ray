@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.queue;
+package org.ray.streaming.runtime.transfer;
 
 import java.util.Collection;
 import java.util.List;
@@ -10,15 +10,15 @@ import org.ray.api.id.ActorId;
 
 import com.google.common.base.Preconditions;
 
-public class QueueUtils {
+public class ChannelUtils {
   public static byte[] qidStrToBytes(String qid) {
     byte[] qidBytes = DatatypeConverter.parseHexBinary(qid.toUpperCase());
-    assert qidBytes.length == QueueID.ID_LENGTH;
+    assert qidBytes.length == ChannelID.ID_LENGTH;
     return qidBytes;
   }
 
   public static String qidBytesToString(byte[] qid) {
-    assert qid.length == QueueID.ID_LENGTH;
+    assert qid.length == ChannelID.ID_LENGTH;
     return DatatypeConverter.printHexBinary(qid).toLowerCase();
   }
 
@@ -26,7 +26,7 @@ public class QueueUtils {
     byte[][] res = new byte[queueIds.size()][20];
     int i = 0;
     for (String s : queueIds) {
-      res[i] = QueueUtils.qidStrToBytes(s);
+      res[i] = ChannelUtils.qidStrToBytes(s);
       i++;
     }
     return res;
@@ -43,7 +43,7 @@ public class QueueUtils {
   public static String getRandomQueueId() {
     StringBuilder sb = new StringBuilder();
     Random random = new Random();
-    for (int i = 0; i < QueueID.ID_LENGTH * 2; ++i) {
+    for (int i = 0; i < ChannelID.ID_LENGTH * 2; ++i) {
       sb.append((char) (random.nextInt(6) + 'A'));
     }
     return sb.toString();
@@ -77,7 +77,7 @@ public class QueueUtils {
     queueName[18] = (byte) ((toTaskId & 0xffff) >> 8);
     queueName[19] = (byte) (toTaskId & 0xff);
 
-    return QueueUtils.qidBytesToString(queueName);
+    return ChannelUtils.qidBytesToString(queueName);
   }
 
   public static byte[][] actorIdListToByteArray(Collection<ActorId> actorIds) {

@@ -1,17 +1,15 @@
-package org.ray.streaming.runtime.queue;
-
-import java.lang.ref.Reference;
-import java.nio.ByteBuffer;
-import java.util.Set;
+package org.ray.streaming.runtime.transfer;
 
 import com.google.common.base.FinalizablePhantomReference;
 import com.google.common.base.FinalizableReferenceQueue;
 import com.google.common.collect.Sets;
 import sun.nio.ch.DirectBuffer;
 
-import org.ray.streaming.runtime.util.JniUtils;
+import java.lang.ref.Reference;
+import java.nio.ByteBuffer;
+import java.util.Set;
 
-public class QueueID {
+public class ChannelID {
   public static final int ID_LENGTH = 20;
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
   // This ensures that the FinalizablePhantomReference itself is not garbage-collected.
@@ -26,7 +24,7 @@ public class QueueID {
   private final long address;
   private final long nativeIDPtr;
 
-  private QueueID(String strID, byte[] idBytes) {
+  private ChannelID(String strID, byte[] idBytes) {
     this.strID = strID;
     this.bytes = idBytes;
     ByteBuffer directBuffer = ByteBuffer.allocateDirect(ID_LENGTH);
@@ -35,11 +33,7 @@ public class QueueID {
     this.buffer = directBuffer;
     this.address = ((DirectBuffer)(buffer)).address();
     long nativeIDPtr = 0;
-    try {
-      // for MemQueueProducerImpl, maybe throw UnsatisfiedLinkError.
-      nativeIDPtr = createNativeID(address);
-    } catch (UnsatisfiedLinkError ignored) {
-    }
+    nativeIDPtr = createNativeID(address);
     this.nativeIDPtr = nativeIDPtr;
   }
 
@@ -75,7 +69,7 @@ public class QueueID {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    QueueID that = (QueueID) o;
+    ChannelID that = (ChannelID) o;
     return strID.equals(that.strID);
   }
 
@@ -88,19 +82,19 @@ public class QueueID {
 
   private static native void destroyNativeID(long nativeIDPtr);
 
-  public static QueueID from(String id) {
-    return from(id, QueueUtils.qidStrToBytes(id));
+  public static ChannelID from(String id) {
+    return from(id, ChannelUtils.qidStrToBytes(id));
   }
 
-  public static QueueID from(byte[] idBytes) {
-    return from(QueueUtils.qidBytesToString(idBytes), idBytes);
+  public static ChannelID from(byte[] idBytes) {
+    return from(ChannelUtils.qidBytesToString(idBytes), idBytes);
   }
 
-  private static QueueID from(String strID, byte[] idBytes) {
-    QueueID id = new QueueID(strID, idBytes);
+  private static ChannelID from(String strID, byte[] idBytes) {
+    ChannelID id = new ChannelID(strID, idBytes);
     long nativeIDPtr = id.nativeIDPtr;
     if (nativeIDPtr != 0) {
-      Reference<QueueID> reference = new FinalizablePhantomReference<QueueID>(id, REFERENCE_QUEUE) {
+      Reference<ChannelID> reference = new FinalizablePhantomReference<ChannelID>(id, REFERENCE_QUEUE) {
         @Override
         public void finalizeReferent() {
           destroyNativeID(nativeIDPtr);

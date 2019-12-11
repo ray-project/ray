@@ -8,7 +8,7 @@ import java.util.Set;
 
 import org.ray.streaming.runtime.queue.QueueID;
 import org.ray.streaming.runtime.queue.QueueProducer;
-import org.ray.streaming.runtime.queue.QueueUtils;
+import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.runtime.util.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +32,7 @@ public class QueueProducerImpl implements QueueProducer {
     this.subscribedQueuesStringId = new ArrayList<>();
 
     for (byte[] qidByte : subscribedQueues) {
-      subscribedQueuesStringId.add(QueueUtils.qidBytesToString(qidByte));
+      subscribedQueuesStringId.add(ChannelUtils.qidBytesToString(qidByte));
     }
   }
 

@@ -20,6 +20,6 @@ def gen_java_deps():
             "redis.clients:jedis:2.8.0",
         ],
         repositories = [
-            "https://repo1.maven.org/maven2",
+            "http://mvn.dev.alipay.net:8080/artifactory/repo/",
         ],
     )

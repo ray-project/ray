@@ -8,7 +8,7 @@ import java.util.Queue;
 import org.ray.streaming.runtime.queue.QueueConsumer;
 import org.ray.streaming.runtime.queue.QueueID;
 import org.ray.streaming.runtime.queue.QueueItem;
-import org.ray.streaming.runtime.queue.QueueUtils;
+import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.runtime.util.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -157,7 +157,7 @@ public class QueueConsumerImpl implements QueueConsumer {
   private String getQidString(ByteBuffer buffer) {
     byte[] bytes = new byte[QueueID.ID_LENGTH];
     buffer.get(bytes);
-    return QueueUtils.qidBytesToString(bytes);
+    return ChannelUtils.qidBytesToString(bytes);
   }
 
   private void getBundle(long timeoutMillis) {

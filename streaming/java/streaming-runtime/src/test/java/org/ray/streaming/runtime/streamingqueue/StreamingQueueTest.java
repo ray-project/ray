@@ -1,13 +1,8 @@
 package org.ray.streaming.runtime.streamingqueue;
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
@@ -26,7 +21,7 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.stream.StreamSource;
-import org.ray.streaming.runtime.queue.QueueUtils;
+import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.util.ConfigKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -115,7 +110,7 @@ public class StreamingQueueTest implements Serializable {
     List<String> inputQueueList = new ArrayList<>();
     int queueNum = 2;
     for (int i = 0; i < queueNum; ++i) {
-      String qid = QueueUtils.getRandomQueueId();
+      String qid = ChannelUtils.getRandomQueueId();
       LOGGER.info("getRandomQueueId: {}", qid);
       inputQueueList.add(qid);
       outputQueueList.add(qid);

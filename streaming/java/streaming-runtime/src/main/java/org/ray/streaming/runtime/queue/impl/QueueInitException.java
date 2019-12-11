@@ -3,7 +3,7 @@ package org.ray.streaming.runtime.queue.impl;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.ray.streaming.runtime.queue.QueueUtils;
+import org.ray.streaming.runtime.transfer.ChannelUtils;
 
 public class QueueInitException extends Exception {
 
@@ -20,7 +20,7 @@ public class QueueInitException extends Exception {
 
   public List<String> getAbnormalQueuesString() {
     List<String> res = new ArrayList<>();
-    abnormalQueues.forEach(ele -> res.add(QueueUtils.qidBytesToString(ele)));
+    abnormalQueues.forEach(ele -> res.add(ChannelUtils.qidBytesToString(ele)));
     return res;
   }
 }
