@@ -84,9 +84,6 @@ class TaskManager : public TaskFinisherInterface {
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
 
-  /// Called when an actor that we created has died and cannot be restarted.
-  const ActorDiedCallback actor_died_callback_;
-
   /// Protects below fields.
   mutable absl::Mutex mu_;
 

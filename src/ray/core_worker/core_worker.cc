@@ -324,7 +324,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const rpc::Address &owner_address) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
-  reference_counter_->AddOwnershipInfo(object_id, owner_id, owner_address);
+  reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
 
   RAY_CHECK(!owner_id.IsNil());
   // We will ask the owner about the object until the object is
@@ -552,7 +552,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
       results->at(i) = true;
     }
   }
-  RAY_LOG(DEBUG) << "CoreWorker WAIT DONE";
 
   return Status::OK();
 }
@@ -1023,16 +1022,6 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
     // The task is done. Send the reply immediately.
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
-}
-
-void CoreWorker::HandleNotifyActorCreated(const rpc::NotifyActorCreatedRequest &request,
-                                          rpc::NotifyActorCreatedReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
-  TaskID actor_creation_task_id = TaskID::FromBinary(request.actor_creation_task_id());
-  RAY_CHECK(task_manager_->IsTaskPending(actor_creation_task_id));
-  auto spec = task_manager_->GetTaskSpec(actor_creation_task_id);
-  actor_manager_->PublishCreatedActor(spec, request.address());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

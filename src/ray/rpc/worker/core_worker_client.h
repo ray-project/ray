@@ -120,10 +120,6 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
-  virtual ray::Status NotifyActorCreated(const NotifyActorCreatedRequest &request) {
-    return Status::NotImplemented("");
-  }
-
   virtual ~CoreWorkerClientInterface(){};
 };
 

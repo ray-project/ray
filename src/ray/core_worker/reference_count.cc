@@ -2,9 +2,9 @@
 
 namespace ray {
 
-void ReferenceCounter::AddOwnershipInfo(const ObjectID &object_id, const TaskID &owner_id,
-                                        const rpc::Address &owner_address) {
-  RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
+void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
+                                         const TaskID &owner_id,
+                                         const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   RAY_CHECK(it != object_id_refs_.end());
@@ -17,7 +17,6 @@ void ReferenceCounter::AddOwnershipInfo(const ObjectID &object_id, const TaskID 
 void ReferenceCounter::AddOwnedObject(
     const ObjectID &object_id, const TaskID &owner_id, const rpc::Address &owner_address,
     std::shared_ptr<std::vector<ObjectID>> dependencies) {
-  RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
 
   for (const ObjectID &dependency_id : *dependencies) {
@@ -25,8 +24,7 @@ void ReferenceCounter::AddOwnedObject(
   }
 
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
-      << "Cannot create an object that already exists. ObjectID: " << object_id
-      << " ref owned: " << object_id_refs_[object_id].owned_by_us;
+      << "Cannot create an object that already exists. ObjectID: " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
@@ -50,7 +48,6 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
 
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
                                             std::vector<ObjectID> *deleted) {
-  RAY_LOG(DEBUG) << "Removing reference internal " << object_id;
   absl::MutexLock lock(&mutex_);
   RemoveReferenceRecursive(object_id, deleted);
 }

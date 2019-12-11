@@ -30,8 +30,7 @@
   RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
-  RAY_CORE_WORKER_RPC_HANDLER(NotifyActorCreated, 100)
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)
 
 namespace ray {
 
@@ -396,9 +395,6 @@ class CoreWorker {
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback);
 
-  void HandleNotifyActorCreated(const rpc::NotifyActorCreatedRequest &request,
-                                rpc::NotifyActorCreatedReply *reply,
-                                rpc::SendReplyCallback send_reply_callback);
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
