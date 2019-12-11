@@ -1033,17 +1033,6 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   }
 }
 
-void CoreWorker::HandleNotifyActorCreated(const rpc::NotifyActorCreatedRequest &request,
-                                       rpc::NotifyActorCreatedReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "Publishing actor creation";
-  TaskID actor_creation_task_id = TaskID::FromBinary(request.actor_creation_task_id());
-  RAY_CHECK(task_manager_->IsTaskPending(actor_creation_task_id));
-  auto spec = task_manager_->GetTaskSpec(actor_creation_task_id);
-  actor_manager_->PublishCreatedActor(spec, request.address());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();

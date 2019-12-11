@@ -265,19 +265,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       task_main_io_service_.post([this]() { exit_handler_(); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
-      if (task_spec.IsActorCreationTask()) {
-        rpc::WorkerAddress addr = {task_spec.GetMessage().caller_address().ip_address(),
-          task_spec.GetMessage().caller_address().port()};
-        auto client = std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
-
-        rpc::NotifyActorCreatedRequest request;
-        request.set_actor_creation_task_id(task_spec.TaskId().Binary());
-        request.mutable_address()->CopyFrom(rpc_address_);
-        RAY_CHECK_OK(client->NotifyActorCreated(request));
-        RAY_LOG(DEBUG) << "Notified owner that actor is created " << task_spec.DebugString();
-      } else {
-        send_reply_callback(status, nullptr, nullptr);
-      }
+      send_reply_callback(status, nullptr, nullptr);
     }
   };
 
