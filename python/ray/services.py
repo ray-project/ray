@@ -1070,10 +1070,11 @@ def start_dashboard(host,
         import aiohttp  # noqa: F401
         import psutil  # noqa: F401
         import setproctitle  # noqa: F401
+        import grpc  # noqa: F401
     except ImportError:
         raise ImportError(
             "Failed to start the dashboard. The dashboard requires Python 3 "
-            "as well as 'pip install aiohttp psutil setproctitle'.")
+            "as well as 'pip install aiohttp psutil setproctitle grpcio'.")
 
     process_info = start_ray_process(
         command,
