@@ -128,6 +128,15 @@ genrule(
     tags = ["no-cache"],
 )
 
+genrule(
+    name = "cp_java_generated",
+    srcs = [
+        ":all_java_proto",
+        ":java_native_deps",
+        ":copy_pom_file",
+    ],
+)
+
 # Generates the dependencies needed by maven.
 genrule(
     name = "gen_maven_deps",
