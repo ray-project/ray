@@ -4,7 +4,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
 #include "ray/util/logging.h"
@@ -30,9 +29,17 @@ class ReferenceCounter {
   /// zero, it will be erased from the map and the reference count for all of its
   /// dependencies will be decreased be one.
   ///
-  /// \param[in] object_id The object to to decrement the count for.
+  /// \param[in] object_id The object to decrement the count for.
   /// \param[out] deleted List to store objects that hit zero ref count.
   void RemoveLocalReference(const ObjectID &object_id, std::vector<ObjectID> *deleted)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Remove any references to dependencies that this object may have. This does *not*
+  /// decrease the object's own reference count.
+  ///
+  /// \param[in] object_id The object whose dependencies should be removed.
+  /// \param[out] deleted List to store objects that hit zero ref count.
+  void RemoveDependencies(const ObjectID &object_id, std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.

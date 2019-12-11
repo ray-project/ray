@@ -1,11 +1,11 @@
+#include "ray/core_worker/core_worker.h"
+
 #include <cstdlib>
 
 #include "boost/fiber/all.hpp"
-
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
@@ -269,14 +269,16 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void CoreWorker::ReportActiveObjectIDs() {
-  std::unordered_set<ObjectID> active_object_ids =
-      reference_counter_->GetAllInScopeObjectIDs();
-  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
-  auto max_active = RayConfig::instance().raylet_max_active_object_ids();
-  if (max_active && active_object_ids.size() > max_active) {
-    RAY_LOG(INFO) << active_object_ids.size() << " object IDs are currently in scope.";
+  std::unordered_set<ObjectID> active_object_ids;
+  size_t max_active = RayConfig::instance().raylet_max_active_object_ids();
+  if (max_active > 0) {
+    active_object_ids = reference_counter_->GetAllInScopeObjectIDs();
+    if (active_object_ids.size() > max_active) {
+      RAY_LOG(INFO) << active_object_ids.size() << " object IDs are currently in scope.";
+    }
   }
 
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
   if (!local_raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
     RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
     Shutdown();
@@ -433,6 +435,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
         // The language bindings should throw an exception if they see this
         // object.
         will_throw_exception = true;
+      }
+      // If we got the result for this plasma ObjectID, the task that created it must
+      // have finished. Therefore, we can safely remove its reference counting
+      // dependencies.
+      if (!ids[i].IsDirectCallType()) {
+        RemoveObjectIDDependencies(ids[i]);
       }
     } else {
       missing_result = true;
