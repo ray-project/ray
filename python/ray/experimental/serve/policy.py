@@ -1,5 +1,6 @@
 from enum import Enum
+from ray.experimental.serve.queues import RoundRobinPolicyQueueActor,RandomPolicyQueueActor
 class Policy(Enum):
     """Policy constants for centralized router"""
-    random = 'random'
-    roundRobin = 'roundRobin'
+    random = RandomPolicyQueueActor
+    roundRobin = RoundRobinPolicyQueueActor

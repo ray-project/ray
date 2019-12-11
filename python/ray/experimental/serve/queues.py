@@ -217,3 +217,7 @@ class RoundRobinPolicyQueue(CentralizedQueues):
                     request = queue.popleft()
                     self.buffer_queues[chosen_backend].append(request)
         self._flush_buffer()
+        
+@ray.remote
+class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue,CentralizedQueuesActor):
+    pass

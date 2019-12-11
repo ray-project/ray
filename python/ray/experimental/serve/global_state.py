@@ -6,7 +6,8 @@ from ray.experimental.serve.kv_store_service import (
     BackendTable, RoutingTable, TrafficPolicyTable)
 from ray.experimental.serve.metric import (MetricMonitor,
                                            start_metric_monitor_loop)
-from ray.experimental.serve.queues import CentralizedQueuesActor
+
+from ray.experimental.serve.policy import Policy
 from ray.experimental.serve.server import HTTPActor
 
 
@@ -73,13 +74,13 @@ class GlobalState:
         2. A actor supervisor service
     """
 
-    def __init__(self, actor_nursery_handle=None):
+    def __init__(self, actor_nursery_handle=None,router_policy=Policy.random):
         # Get actor nursery handle
         if actor_nursery_handle is None:
             actor_nursery_handle = ray.experimental.get_actor(
                 SERVE_NURSERY_NAME)
         self.actor_nursery_handle = actor_nursery_handle
-
+        
         # Connect to all the table
         bootstrap_config = ray.get(
             self.actor_nursery_handle.get_bootstrap_state_dict.remote())
@@ -89,7 +90,7 @@ class GlobalState:
         self.policy_table = TrafficPolicyTable(kv_store_connector)
 
         self.refresh_actor_handle_cache()
-
+        self.router_policy = self._get_router_policy(default_policy=router_policy)
     def refresh_actor_handle_cache(self):
         self.actor_handle_cache = ray.get(
             self.actor_nursery_handle.get_all_handles.remote())
@@ -105,15 +106,24 @@ class GlobalState:
             self.refresh_actor_handle_cache()
         return self.actor_handle_cache["http_server"]
 
+    def _get_router_policy(self,default_policy):
+        return_policy = default_policy
+        for p in Policy:
+            queue_actor_tag = "queue_actor::" + p.name
+            if queue_actor_tag in self.actor_handle_cache:
+                return_policy = p
+                break
+        return return_policy
     def init_or_get_router(self):
-        if "queue_actor" not in self.actor_handle_cache:
+        queue_actor_tag = "queue_actor::" + self.router_policy.name
+        if queue_actor_tag not in self.actor_handle_cache:
             [handle] = ray.get(
                 self.actor_nursery_handle.start_actor.remote(
-                    CentralizedQueuesActor, init_args=(), tag="queue_actor"))
+                    self.router_policy.value, init_args=(), tag=queue_actor_tag))
             handle.register_self_handle.remote(handle)
             self.refresh_actor_handle_cache()
 
-        return self.actor_handle_cache["queue_actor"]
+        return self.actor_handle_cache[queue_actor_tag]
 
     def init_or_get_metric_monitor(self, gc_window_seconds=3600):
         if "metric_monitor" not in self.actor_handle_cache:
