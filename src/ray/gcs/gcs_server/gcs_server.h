@@ -17,6 +17,10 @@ struct GcsServerConfig {
   bool retry_redis = true;
 };
 
+// The GcsServer will takes over all requests from ServiceBasedGcsClient and transparent
+// transmit the command to the backend reliable storage. For more details, please see the
+// design document.
+// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
   explicit GcsServer(const GcsServerConfig &config);
