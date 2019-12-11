@@ -116,7 +116,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             RAY_LOG(DEBUG) << "Lease granted " << task_id;
             rpc::WorkerAddress addr = {
                 reply.worker_address().ip_address(), reply.worker_address().port(),
-                WorkerID::FromBinary(reply.worker_address().worker_id())};
+                WorkerID::FromBinary(reply.worker_address().worker_id()),
+                ClientID::FromBinary(reply.worker_address().raylet_id())};
             AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
             OnWorkerIdle(addr, scheduling_key,
@@ -170,8 +171,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   auto status = client.PushNormalTask(
       std::move(request),
-      [this, task_id, is_actor, is_actor_creation, scheduling_key,
-       addr, assigned_resources](Status status, const rpc::PushTaskReply &reply) {
+      [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
+       assigned_resources](Status status, const rpc::PushTaskReply &reply) {
         // Successful actor creation leases the worker indefinitely from the raylet.
         if (!status.ok() || !is_actor_creation) {
           absl::MutexLock lock(&mu_);
@@ -186,7 +187,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                                                          ? rpc::ErrorType::ACTOR_DIED
                                                          : rpc::ErrorType::WORKER_DIED);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply, &addr);
+          rpc::Address proto = addr.ToProto();
+          task_finisher_->CompletePendingTask(task_id, reply, &proto);
         }
       });
   if (!status.ok()) {
