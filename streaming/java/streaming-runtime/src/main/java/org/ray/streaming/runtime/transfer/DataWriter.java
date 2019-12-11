@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.transfer;
 
+import org.ray.api.id.ActorId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.streaming.runtime.util.Platform;
 import org.slf4j.Logger;
@@ -9,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class DataWriter {
@@ -22,6 +24,12 @@ public class DataWriter {
   private long bufferAddress;
   {
     ensureBuffer(0);
+  }
+
+  public DataWriter(List<String> outputChannels,
+                    List<ActorId> toActors,
+                    Map<String, String> conf) {
+
   }
 
   public DataWriter(long nativeQueueProducerPtr, byte[][] subscribedQueues) {

@@ -1,32 +1,28 @@
 package org.ray.streaming.runtime.worker.tasks;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.api.collector.Collector;
+import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.runtime.core.collector.OutputCollector;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.processor.Processor;
-import org.ray.streaming.runtime.queue.QueueConsumer;
-import org.ray.streaming.runtime.queue.QueueLink;
-import org.ray.streaming.runtime.queue.QueueProducer;
 import org.ray.streaming.runtime.transfer.ChannelUtils;
-import org.ray.streaming.runtime.transfer.StreamingQueueLinkImpl;
-import org.ray.streaming.runtime.queue.memory.MemQueueLinkImpl;
+import org.ray.streaming.runtime.transfer.DataReader;
+import org.ray.streaming.runtime.transfer.DataWriter;
 import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.runtime.core.collector.OutputCollector;
 import org.ray.streaming.runtime.worker.context.RayRuntimeContext;
-import org.ray.streaming.api.context.RuntimeContext;
 import org.ray.streaming.util.ConfigKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public abstract class StreamTask implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
@@ -34,9 +30,8 @@ public abstract class StreamTask implements Runnable {
   protected int taskId;
   protected Processor processor;
   protected JobWorker worker;
-  private QueueLink queueLink;
-  protected QueueConsumer consumer;
-  private Map<ExecutionEdge, QueueProducer> producers;
+  protected DataReader reader;
+  private Map<ExecutionEdge, DataWriter> writers;
   private Thread t;
 
   public StreamTask(int taskId, Processor processor, JobWorker worker) {
@@ -52,23 +47,16 @@ public abstract class StreamTask implements Runnable {
   private void prepareTask() {
     String queueType = (String) worker.getConfig()
         .getOrDefault(ConfigKey.STREAMING_QUEUE_TYPE, ConfigKey.MEMORY_QUEUE);
-    if (ConfigKey.STREAMING_QUEUE.equals(queueType)) {
-      queueLink = new StreamingQueueLinkImpl();
-    } else {
-      queueLink = new MemQueueLinkImpl();
-    }
     Map<String, String> queueConf = new HashMap<>();
     String queueSize = (String) worker.getConfig()
         .getOrDefault(ConfigKey.QUEUE_SIZE, ConfigKey.QUEUE_SIZE_DEFAULT + "");
     queueConf.put(ConfigKey.QUEUE_SIZE, queueSize);
-    queueLink.setConfiguration(queueConf);
-    queueLink.setRayRuntime(Ray.internal());
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();
     ExecutionNode executionNode = worker.getExecutionNode();
 
-    // queue producers
-    producers = new HashMap<>();
+    // writers
+    writers = new HashMap<>();
     List<ExecutionEdge> outputEdges = executionNode.getOutputEdges();
     List<Collector> collectors = new ArrayList<>();
     for (ExecutionEdge edge : outputEdges) {
@@ -80,16 +68,21 @@ public abstract class StreamTask implements Runnable {
         outputActorIds.put(queueName, targetActor.getId());
       });
 
-      Set<String> queueIds = outputActorIds.keySet();
       if (!outputActorIds.isEmpty()) {
-        LOG.info("Register queue producer, queues {}.", queueIds);
-        QueueProducer producer = queueLink.registerQueueProducer(queueIds, outputActorIds);
-        producers.put(edge, producer);
-        collectors.add(new OutputCollector(queueIds, producer, edge.getPartition()));
+        List<String> channelIDs = new ArrayList<>();
+        List<ActorId> toActorIds = new ArrayList<>();
+        outputActorIds.forEach((k, v) -> {
+          channelIDs.add(k);
+          toActorIds.add(v);
+        });
+        DataWriter writer = new DataWriter(channelIDs, toActorIds, queueConf);
+        LOG.info("Create DataWriter succeed.");
+        writers.put(edge, writer);
+        collectors.add(new OutputCollector(channelIDs, writer, edge.getPartition()));
       }
     }
 
-    // queue consumer
+    // consumer
     List<ExecutionEdge> inputEdges = executionNode.getInputsEdges();
     Map<String, ActorId> inputActorIds = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
@@ -101,9 +94,14 @@ public abstract class StreamTask implements Runnable {
       });
     }
     if (!inputActorIds.isEmpty()) {
-      Set<String> queueIds = inputActorIds.keySet();
-      LOG.info("Register queue consumer, queues {}.", queueIds);
-      consumer = queueLink.registerQueueConsumer(queueIds, inputActorIds);
+      List<String> channelIDs = new ArrayList<>();
+      List<ActorId> fromActorIds = new ArrayList<>();
+      inputActorIds.forEach((k, v) -> {
+        channelIDs.add(k);
+        fromActorIds.add(v);
+      });
+      LOG.info("Register queue consumer, queues {}.", channelIDs);
+      reader = new DataReader(channelIDs, fromActorIds, queueConf);
     }
 
     RuntimeContext runtimeContext = new RayRuntimeContext(
@@ -121,14 +119,5 @@ public abstract class StreamTask implements Runnable {
     this.t.start();
     LOG.info("started {}-{}", this.getClass().getSimpleName(), taskId);
   }
-
-  public void onStreamingTransfer(byte[] buffer) {
-    queueLink.onQueueTransfer(buffer);
-  }
-
-  public byte[] onStreamingTransferSync(byte[] buffer) {
-    return queueLink.onQueueTransferSync(buffer);
-  }
-
 
 }

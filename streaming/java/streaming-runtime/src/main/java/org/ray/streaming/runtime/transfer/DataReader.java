@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.transfer;
 
+import org.ray.api.id.ActorId;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.streaming.runtime.util.Platform;
 import org.slf4j.Logger;
@@ -8,6 +9,8 @@ import org.slf4j.LoggerFactory;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 
 public class DataReader {
@@ -27,6 +30,11 @@ public class DataReader {
 
   private long nativeQueueConsumerPtr;
   private Queue<DataMessage> buf;
+  public DataReader(List<String> inputChannels,
+                    List<ActorId> fromActors,
+                    Map<String, String> conf) {
+
+  }
 
   public DataReader(long nativeQueueConsumerPtr) {
     buf = new LinkedList<>();
