@@ -154,7 +154,7 @@ class WorkerPool {
   /// any workers.
   ///
   /// \param language Which language this worker process should be.
-  /// \param is_startup Whether the process to start is an initial worker process.
+  /// \param is_initial_worker Whether the process to start is an initial worker process.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
