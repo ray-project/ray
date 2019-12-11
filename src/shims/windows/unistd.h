@@ -10,7 +10,7 @@ __declspec(
                "Furthermore, signals other than SIGKILL are NOT portable. "
                "Please use a wrapper that keeps the process handle alive"
                " and terminates it directly as needed. "
-               "For SIGNTERM or other signals, a different IPC mechanism may be"
+               "For SIGTERM or other signals, a different IPC mechanism may be"
                " more appropriate (such as window messages on Windows)."
                "")) int kill(pid_t pid, int sig);
 
