@@ -4,7 +4,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
 
@@ -36,6 +35,14 @@ class ReferenceCounter {
   /// reference count for each dependency is incremented.
   void SetDependencies(const ObjectID &object_id,
                        std::shared_ptr<std::vector<ObjectID>> dependencies)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Remove any references to dependencies that this object may have. This does *not*
+  /// decrease the object's own reference count.
+  ///
+  /// \param[in] object_id The object whose dependencies should be removed.
+  /// \param[out] deleted List to store objects that hit zero ref count.
+  void RemoveDependencies(const ObjectID &object_id, std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
