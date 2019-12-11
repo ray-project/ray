@@ -104,6 +104,8 @@ if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
       unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
     popd
   popd
+elif [[ "$PYTHON_VERSION" == "3.8" ]]; then
+  echo "For python 3.8 we can use the built in pickle5"
 else
   # The following line installs pyarrow from S3, these wheels have been
   # generated from https://github.com/ray-project/arrow-build from
