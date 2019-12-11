@@ -1184,6 +1184,7 @@ def start_raylet(redis_address,
         java_worker_command = build_java_worker_command(
             java_worker_options,
             redis_address,
+            node_manager_port,
             plasma_store_name,
             raylet_name,
             redis_password,
@@ -1251,6 +1252,7 @@ def start_raylet(redis_address,
 def build_java_worker_command(
         java_worker_options,
         redis_address,
+        node_manager_port,
         plasma_store_name,
         raylet_name,
         redis_password,
@@ -1275,6 +1277,7 @@ def build_java_worker_command(
 
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
+    command += "-Dray.raylet.node-manager-port={} ".format(node_manager_port)
 
     if plasma_store_name is not None:
         command += (

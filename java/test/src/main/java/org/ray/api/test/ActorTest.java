@@ -7,13 +7,12 @@ import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.actor.NativeRayActor;
-import org.ray.runtime.object.NativeRayObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -52,6 +51,8 @@ public class ActorTest extends BaseTest {
     // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // A java actor is not a python actor
+    Assert.assertFalse(actor instanceof RayPyActor);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
     Ray.call(Counter::increase, actor, 1);
@@ -107,14 +108,6 @@ public class ActorTest extends BaseTest {
             .get());
   }
 
-  public void testForkingActorHandle() {
-    TestUtils.skipTestUnderSingleProcess();
-    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
-    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increaseAndGet, counter, 1).get());
-    RayActor<Counter> counter2 = ((NativeRayActor) counter).fork();
-    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increaseAndGet, counter2, 2).get());
-  }
-
   public void testUnreconstructableActorObject() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     // The UnreconstructableException is created by raylet.
@@ -128,9 +121,9 @@ public class ActorTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);
     // Wait until the object is deleted, because the above free operation is async.
     while (true) {
-      NativeRayObject result = TestUtils.getRuntime().getObjectStore()
-          .getRaw(ImmutableList.of(value.getId()), 0).get(0);
-      if (result == null) {
+      Boolean result = TestUtils.getRuntime().getObjectStore()
+          .wait(ImmutableList.of(value.getId()), 1, 0).get(0);
+      if (!result) {
         break;
       }
       TimeUnit.MILLISECONDS.sleep(100);

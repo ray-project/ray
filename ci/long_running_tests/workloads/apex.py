@@ -5,7 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.tune import run_experiments
 
 num_redis_shards = 5
