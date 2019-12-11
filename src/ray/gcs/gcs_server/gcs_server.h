@@ -1,6 +1,6 @@
 #pragma once
 #include <ray/gcs/redis_gcs_client.h>
-#include <ray/rpc/gcs_server/job_info_access_server.h>
+#include <ray/rpc/gcs_server/gcs_rpc_server.h>
 #include <ray/rpc/grpc_server.h>
 #include <string>
 

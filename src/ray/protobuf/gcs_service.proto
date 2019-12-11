@@ -4,22 +4,26 @@ package ray.rpc;
 
 import "src/ray/protobuf/gcs.proto";
 
-message GcsJobInfo {
+message AddJobRequest {
+  JobTableData data = 1;
 }
 
 message AddJobReply {
+  bool success = 1;
 }
 
-message FinishedJob {
+message MarkJobFinishedRequest {
+  bytes job_id = 1;
 }
 
 message MarkJobFinishedReply {
+  bool success = 1;
 }
 
 // Service for job info access.
 service JobInfoAccessService {
   // Add job to gcs server.
-  rpc AddJob(GcsJobInfo) returns (AddJobReply);
+  rpc AddJob(AddJobRequest) returns (AddJobReply);
   // Mark job as finished to gcs server.
-  rpc MarkJobFinished(FinishedJob) returns (MarkJobFinishedReply);
+  rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
 }

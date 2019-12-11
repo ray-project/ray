@@ -73,14 +73,14 @@ python_grpc_compile(
 )
 
 proto_library(
-    name = "job_info_access_proto",
-    srcs = ["src/ray/protobuf/job_info_access.proto"],
+    name = "gcs_service_proto",
+    srcs = ["src/ray/protobuf/gcs_service.proto"],
     deps = [":gcs_proto"],
 )
 
 cc_proto_library(
-    name = "job_info_access_cc_proto",
-    deps = [":job_info_access_proto"],
+    name = "gcs_service_cc_proto",
+    deps = [":gcs_service_proto"],
 )
 
 proto_library(
@@ -162,23 +162,23 @@ cc_library(
 
 # Job info access gRPC lib.
 cc_grpc_library(
-    name = "job_info_access_cc_grpc",
-    srcs = [":job_info_access_proto"],
+    name = "gcs_service_cc_grpc",
+    srcs = [":gcs_service_proto"],
     grpc_only = True,
-    deps = [":job_info_access_cc_proto"],
+    deps = [":gcs_service_cc_proto"],
 )
 
 # Job info access server and client.
 cc_library(
-    name = "job_info_access_rpc",
+    name = "gcs_service_rpc",
     hdrs = glob([
-        "src/ray/rpc/gcs_server/job_info_access_server.h",
-        "src/ray/rpc/gcs_server/job_info_access_client.h",
+        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+        "src/ray/rpc/gcs_server/gcs_rpc_client.h",
     ]),
     copts = COPTS,
     deps = [
         ":grpc_common_lib",
-        ":job_info_access_cc_grpc",
+        ":gcs_service_cc_grpc",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -314,7 +314,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":gcs",
-        ":job_info_access_rpc",
+        ":gcs_service_rpc",
     ],
 )
 

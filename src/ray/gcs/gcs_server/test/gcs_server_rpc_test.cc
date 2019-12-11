@@ -2,7 +2,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/rpc/gcs_server/job_info_access_client.h"
+#include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
 class GcsServerRpcTest : public ::testing::Test {
@@ -25,12 +25,12 @@ class GcsServerRpcTest : public ::testing::Test {
 TEST_F(GcsServerRpcTest, JobInfo) {
   class MockedJobInfoAccessHandler : public rpc::JobInfoAccessHandler {
    public:
-    void HandleAddJob(const rpc::GcsJobInfo &request, rpc::AddJobReply *reply,
+    void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override {
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
 
-    void HandleMarkJobFinished(const rpc::FinishedJob &request,
+    void HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
                                rpc::MarkJobFinishedReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override {
       send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -52,14 +52,14 @@ TEST_F(GcsServerRpcTest, JobInfo) {
   boost::asio::io_context client_io_context;
   boost::asio::io_context::work worker(client_io_context);
   rpc::ClientCallManager client_call_manager(client_io_context);
-  rpc::JobInfoAccessClient client("0.0.0.0", server.GetPort(), client_call_manager);
+  rpc::GcsRpcClient client("0.0.0.0", server.GetPort(), client_call_manager);
   std::thread([&client_io_context] { client_io_context.run(); }).detach();
 
-  rpc::GcsJobInfo job_info;
+  rpc::AddJobRequest add_job_request;
   std::promise<rpc::AddJobReply> add_job_reply_promise;
   auto add_job_reply_future = add_job_reply_promise.get_future();
-  client.AddJob(job_info, [&add_job_reply_promise](const Status &status,
-                                                   const rpc::AddJobReply &reply) {
+  client.AddJob(add_job_request, [&add_job_reply_promise](const Status &status,
+                                                          const rpc::AddJobReply &reply) {
     if (status.ok()) {
       add_job_reply_promise.set_value(reply);
     }
@@ -67,12 +67,13 @@ TEST_F(GcsServerRpcTest, JobInfo) {
   auto future_status = add_job_reply_future.wait_for(std::chrono::milliseconds(200));
   ASSERT_EQ(future_status, std::future_status::ready);
 
-  rpc::FinishedJob job;
+  rpc::MarkJobFinishedRequest mark_job_finished_request;
   std::promise<rpc::MarkJobFinishedReply> mark_job_finished_reply_promise;
   auto mark_job_finished_reply_future = mark_job_finished_reply_promise.get_future();
   client.MarkJobFinished(
-      job, [&mark_job_finished_reply_promise](const Status &status,
-                                              const rpc::MarkJobFinishedReply &reply) {
+      mark_job_finished_request,
+      [&mark_job_finished_reply_promise](const Status &status,
+                                         const rpc::MarkJobFinishedReply &reply) {
         if (status.ok()) {
           mark_job_finished_reply_promise.set_value(reply);
         }
