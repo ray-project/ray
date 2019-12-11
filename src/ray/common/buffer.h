@@ -56,7 +56,7 @@ class LocalMemoryBuffer : public Buffer {
     if (copy_data) {
       RAY_CHECK(data != nullptr);
       buffer_.reserve(size);
-      std::copy(data, data + size, buffer_.begin());
+      buffer_.insert(buffer_.end(), data, data + size);
       data_ = buffer_.data();
       size_ = buffer_.size();
     } else {
