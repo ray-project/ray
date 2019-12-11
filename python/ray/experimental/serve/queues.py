@@ -4,13 +4,15 @@ import numpy as np
 
 import ray
 from ray.experimental.serve.utils import logger
-
+from blist import sortedlist
+import time
 
 class Query:
     def __init__(self,
                  request_args,
                  request_kwargs,
                  request_context,
+                 request_slo_ms,
                  result_object_id=None):
         self.request_args = request_args
         self.request_kwargs = request_kwargs
@@ -20,6 +22,14 @@ class Query:
             self.result_object_id = ray.ObjectID.from_random()
         else:
             self.result_object_id = result_object_id
+
+        # adding SLO (time taken to be completed)
+        self.request_slo_ms = request_slo_ms
+
+    # adding comparator fn for maintaining a 
+    # ascending order sorted list w.r.t request_slo_ms
+    def __lt__(self, other):
+        return self.request_slo_ms < other.request_slo_ms
 
 
 class WorkIntent:
@@ -74,7 +84,8 @@ class CentralizedQueues:
         self.workers = defaultdict(deque)
 
         # backend_name -> worker payload queue
-        self.buffer_queues = defaultdict(deque)
+        # using blist sortedlist for deadline awareness
+        self.buffer_queues = defaultdict(sortedlist)
 
     def is_ready(self):
         return True
@@ -88,9 +99,19 @@ class CentralizedQueues:
             for backend_name, queue in self.buffer_queues.items()
         }
 
+    # request_slo_ms is time specified in milliseconds till which the 
+    # answer of the query should be calculated
     def enqueue_request(self, service, request_args, request_kwargs,
-                        request_context):
-        query = Query(request_args, request_kwargs, request_context)
+                        request_context,request_slo_ms=None):
+        if request_slo_ms is None:
+            # if request_slo_ms is not specified then set it to a high level
+            request_slo_ms = 1e9
+        
+        # add wall clock time to specify the deadline for completion of query
+        # this also assures FIFO behaviour if request_slo_ms is not specified
+        request_slo_ms += (time.time()*1000)
+        query = Query(request_args, request_kwargs, 
+            request_context, request_slo_ms)
         self.queues[service].append(query)
         self.flush()
         return query.result_object_id.binary()
@@ -147,11 +168,15 @@ class CentralizedQueues:
             while len(queue) and len(self.traffic[service]):
                 backend_names = list(self.traffic[service].keys())
                 backend_weights = list(self.traffic[service].values())
+                # TODO(alind): is random choice good for deadline awareness?
+                # putting query in a buffer of a non available backend may 
+                # not be good
                 chosen_backend = np.random.choice(
                     backend_names, p=backend_weights).squeeze()
 
                 request = queue.popleft()
-                self.buffer_queues[chosen_backend].append(request)
+                # maintain a sorted list in the buffer queue of the backend
+                self.buffer_queues[chosen_backend].add(request)
 
         # distach buffer queues to work queues
         for service in self.queues.keys():
@@ -165,7 +190,7 @@ class CentralizedQueues:
                 work_queue = self.workers[backend]
                 while len(buffer_queue) and len(work_queue):
                     request, work = (
-                        buffer_queue.popleft(),
+                        buffer_queue.pop(0),
                         work_queue.popleft(),
                     )
                     work.replica_handle._ray_serve_call.remote(request)
