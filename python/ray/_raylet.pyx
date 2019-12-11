@@ -723,6 +723,7 @@ cdef CRayStatus check_signals() nogil:
 
 cdef void exit_handler() nogil:
     with gil:
+        print("EXIT HANDLER INVOKED")
         sys.exit(0)
 
 
