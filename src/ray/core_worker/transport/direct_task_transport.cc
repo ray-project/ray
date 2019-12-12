@@ -183,9 +183,10 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
           // not make sense to retry the task.
-          task_finisher_->PendingTaskFailed(task_id, is_actor
-                                                         ? rpc::ErrorType::ACTOR_DIED
-                                                         : rpc::ErrorType::WORKER_DIED);
+          task_finisher_->PendingTaskFailed(
+              task_id,
+              is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
+              &status);
         } else {
           rpc::Address proto = addr.ToProto();
           task_finisher_->CompletePendingTask(task_id, reply, &proto);
@@ -198,7 +199,8 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       OnWorkerIdle(addr, scheduling_key, /*error=*/true, assigned_resources);
     }
     task_finisher_->PendingTaskFailed(
-        task_id, is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED);
+        task_id, is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
+        &status);
   }
 }
 };  // namespace ray

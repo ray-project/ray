@@ -62,7 +62,7 @@ class ActorHandle {
 
   /// The actor's state (alive or dead). This defaults to ALIVE. Once marked
   /// DEAD, the actor handle can never go back to being ALIVE.
-  rpc::ActorTableData::ActorState state_;
+  rpc::ActorTableData::ActorState state_ = rpc::ActorTableData::ALIVE;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
