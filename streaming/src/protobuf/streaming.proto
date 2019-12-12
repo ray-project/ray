@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package ray.streaming.proto;
+
+option java_package = "org.ray.streaming.runtime.generated";
+
+enum OperatorType {
+  UNKNOWN = 0;
+  TRANSFORM = 1;
+  SOURCE = 2;
+  SINK = 3;
+}
+
+// all string in this message is ASCII string
+message StreamingConfig {
+  string job_name = 1;
+  string task_job_id = 2;
+  string worker_name = 3;
+  string op_name = 4;
+  OperatorType role = 5;
+  uint32 ring_buffer_capacity = 6;
+  uint32 empty_message_interval = 7;
+}

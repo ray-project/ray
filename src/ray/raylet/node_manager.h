@@ -633,7 +633,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_clients_;
 
   /// Map of workers leased out to direct call clients.
-  std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
+  std::unordered_map<WorkerID, std::shared_ptr<Worker>> leased_workers_;
 
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
@@ -641,7 +641,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   /// Map of leased workers to their current resource usage.
-  std::unordered_map<int, std::unordered_map<std::string, double>>
+  std::unordered_map<WorkerID, std::unordered_map<std::string, double>>
       leased_worker_resources_;
 
   typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,

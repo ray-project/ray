@@ -189,6 +189,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
 template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
 template class SubscriptionExecutor<JobID, JobTableData, JobTable>;
 template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;
+
 }  // namespace gcs
 
 }  // namespace ray

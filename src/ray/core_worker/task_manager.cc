@@ -9,6 +9,11 @@ void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries)
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
 }
 
+bool TaskManager::IsTaskPending(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  return pending_tasks_.count(task_id) > 0;
+}
+
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
@@ -50,17 +55,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 }
 
 void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) {
-  if (error_type == rpc::ErrorType::ACTOR_DIED) {
-    // Note that this might be the __ray_terminate__ task, so we don't log
-    // loudly with ERROR here.
-    RAY_LOG(INFO) << "Task " << task_id << " failed with error "
-                  << rpc::ErrorType_Name(error_type);
-  } else {
-    RAY_LOG(ERROR) << "Task " << task_id << " failed with error "
-                   << rpc::ErrorType_Name(error_type);
-  }
-
-  RAY_LOG(DEBUG) << "Failing task " << task_id;
+  // Note that this might be the __ray_terminate__ task, so we don't log
+  // loudly with ERROR here.
+  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
+                 << rpc::ErrorType_Name(error_type);
   int num_retries_left = 0;
   TaskSpecification spec;
   {
