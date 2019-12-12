@@ -151,8 +151,6 @@ public class FunctionManager {
      */
     ConcurrentMap<String, Map<Pair<String, String>, RayFunction>> functions;
 
-    private final Object lock = new Object();
-
     JobFunctionTable(ClassLoader classLoader) {
       this.classLoader = classLoader;
       this.functions = new ConcurrentHashMap<>();
@@ -161,7 +159,7 @@ public class FunctionManager {
     RayFunction getFunction(JavaFunctionDescriptor descriptor) {
       Map<Pair<String, String>, RayFunction> classFunctions = functions.get(descriptor.className);
       if (classFunctions == null) {
-        synchronized (lock) {
+        synchronized (this) {
           classFunctions = functions.get(descriptor.className);
           if (classFunctions == null) {
             classFunctions = loadFunctionsForClass(descriptor.className);
