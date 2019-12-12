@@ -1,6 +1,7 @@
 package org.ray.streaming.runtime.transfer;
 
 import org.ray.api.id.ActorId;
+import org.ray.streaming.runtime.util.JniUtils;
 import org.ray.streaming.runtime.util.Platform;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
@@ -20,6 +21,11 @@ import com.google.common.base.Preconditions;
  */
 public class DataWriter {
   private static final Logger LOGGER = LoggerFactory.getLogger(DataWriter.class);
+
+  static {
+    JniUtils.loadLibrary("core_worker_library_java");
+    JniUtils.loadLibrary("streaming_java");
+  }
 
   private long nativeWriterPtr;
   private ByteBuffer buffer = ByteBuffer.allocateDirect(0);

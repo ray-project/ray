@@ -10,6 +10,8 @@ import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.util.Set;
 
+import org.ray.streaming.runtime.util.JniUtils;
+
 public class ChannelID {
   public static final int ID_LENGTH = 20;
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
@@ -17,6 +19,8 @@ public class ChannelID {
   private static final Set<Reference<?>> references = Sets.newConcurrentHashSet();
 
   static {
+    JniUtils.loadLibrary("core_worker_library_java");
+    JniUtils.loadLibrary("streaming_java");
   }
 
   private final byte[] bytes;

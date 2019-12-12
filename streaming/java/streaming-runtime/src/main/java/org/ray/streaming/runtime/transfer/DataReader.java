@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Queue;
 
 import org.ray.api.id.ActorId;
+import org.ray.streaming.runtime.util.JniUtils;
 import org.ray.streaming.runtime.util.Platform;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
@@ -21,6 +22,11 @@ import com.google.common.base.Preconditions;
  */
 public class DataReader {
   private final static Logger LOGGER = LoggerFactory.getLogger(DataReader.class);
+
+  static {
+    JniUtils.loadLibrary("core_worker_library_java");
+    JniUtils.loadLibrary("streaming_java");
+  }
 
   private long nativeReaderPtr;
   private Queue<DataMessage> buf = new LinkedList<>();
