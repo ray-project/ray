@@ -91,6 +91,10 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
                    << ", attempting to resubmit.";
     retry_task_callback_(spec);
   } else {
+    auto debug_str = spec.DebugString();
+    if (debug_str.find("__ray_terminate__") == std::string::npos) {
+      RAY_LOG(ERROR) << "Task failed: " << spec.DebugString();
+    }
     MarkPendingTaskFailed(task_id, spec, error_type);
   }
 }
