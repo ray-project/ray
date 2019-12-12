@@ -301,8 +301,8 @@ class LineageCache {
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const TaskID &task_id);
 
-  /// The handler for accessing task information from GCS.
-  gcs::TaskInfoAccessor &task_info_accessor_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

@@ -74,13 +74,8 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {
-#if RAY_USE_NEW_GCS
-  command_type_ = CommandType::kChain;
-#else
-  command_type_ = CommandType::kRegular;
-#endif
-}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options)
+    : GcsClient(options), command_type_(CommandType::kRegular) {}
 
 RedisGcsClient::RedisGcsClient(const GcsClientOptions &options, CommandType command_type)
     : GcsClient(options), command_type_(command_type) {}

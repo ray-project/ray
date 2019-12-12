@@ -47,8 +47,7 @@ class TaskInfoAccessor {
   virtual Status AsyncDelete(const std::vector<TaskID> &task_ids,
                              const StatusCallback &callback) = 0;
 
-  /// Subscribe to any update operations of a task from GCS asynchronously.
-  /// This method is for node only (core worker shouldn't use this method).
+  /// Subscribe asynchronously to the event that the given task is added in GCS.
   ///
   /// \param task_id The ID of the task to be subscribed to.
   /// \param subscribe Callback that will be called each time when the task is updated.
@@ -58,7 +57,7 @@ class TaskInfoAccessor {
                                 const SubscribeCallback<TaskID, TaskTableData> &subscribe,
                                 const StatusCallback &done) = 0;
 
-  /// Cancel subscribe to a task asynchronously.
+  /// Cancel subscription to a task asynchronously.
   /// This method is for node only (core worker shouldn't use this method).
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
