@@ -30,7 +30,7 @@ using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
 class TaskManager : public TaskFinisherInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-              std::shared_ptr<ActorManager> actor_manager,
+              std::shared_ptr<ActorManagerInterface> actor_manager,
               RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
         actor_manager_(actor_manager),
@@ -81,7 +81,7 @@ class TaskManager : public TaskFinisherInterface {
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
   // Interface for publishing actor creation.
-  std::shared_ptr<ActorManager> actor_manager_;
+  std::shared_ptr<ActorManagerInterface> actor_manager_;
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;

@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "ray/common/task/task_spec.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/util/test_util.h"
@@ -14,16 +15,32 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns) {
   return task;
 }
 
+class MockActorManager : public ActorManagerInterface {
+  void PublishCreatedActor(const TaskSpecification &actor_creation_task,
+                           const rpc::Address &address) override {
+    num_publishes += 1;
+  }
+
+  void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override {
+    num_terminations += 1;
+  }
+
+  int num_publishes = 0;
+  int num_terminations = 0;
+};
+
 class TaskManagerTest : public ::testing::Test {
  public:
   TaskManagerTest()
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        manager_(store_, [this](const TaskSpecification &spec) {
+        actor_manager_(std::shared_ptr<ActorManagerInterface>(new MockActorManager())),
+        manager_(store_, actor_manager_, [this](const TaskSpecification &spec) {
           num_retries_++;
           return Status::OK();
         }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
+  std::shared_ptr<ActorManagerInterface> actor_manager_;
   TaskManager manager_;
   int num_retries_ = 0;
 };
@@ -41,7 +58,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   return_object->set_object_id(return_id.Binary());
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
-  manager_.CompletePendingTask(spec.TaskId(), reply);
+  manager_.CompletePendingTask(spec.TaskId(), reply, nullptr);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   std::vector<std::shared_ptr<RayObject>> results;

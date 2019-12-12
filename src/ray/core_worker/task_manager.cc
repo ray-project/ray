@@ -105,7 +105,8 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
       auto debug_str = spec.DebugString();
       if (debug_str.find("__ray_terminate__") == std::string::npos &&
           (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
-           (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
+           (current_time_ms() - last_log_time_ms_) >
+               kTaskFailureLoggingFrequencyMillis)) {
         if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
           RAY_LOG(ERROR) << "Too many failure logs, throttling to once every "
                          << kTaskFailureLoggingFrequencyMillis << " millis.";
