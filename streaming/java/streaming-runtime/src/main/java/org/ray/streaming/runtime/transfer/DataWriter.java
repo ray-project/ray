@@ -112,10 +112,6 @@ public class DataWriter {
       long[] creatorTypes,
       byte[] fbsConfigBytes);
 
-  private native void onTransfer(long handler, byte[] buffer);
-
-  private native byte[] onTransferSync(long handler, byte[] buffer);
-
   private native long writeMessageNative(long nativeQueueProducerPtr, long nativeIDPtr, long address, int size);
 
   private native void stopProducerNative(long nativeQueueProducerPtr);

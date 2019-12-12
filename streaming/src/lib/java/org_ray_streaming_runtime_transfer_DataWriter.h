@@ -38,23 +38,6 @@ JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_stopPr
  */
 JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_closeProducerNative
   (JNIEnv *, jobject, jlong);
-
-/*
- * Class:     org_ray_streaming_runtime_transfer_DataWriter
- * Method:    onTransfer
- * Signature: (J[B)V
- */
-JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_onTransfer
-  (JNIEnv *, jobject, jlong, jbyteArray);
-
-/*
- * Class:     org_ray_streaming_runtime_transfer_DataWriter
- * Method:    onTransferSync
- * Signature: (J[B)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_onTransferSync
-  (JNIEnv *, jobject, jlong, jbyteArray);
-
 #ifdef __cplusplus
 }
 #endif

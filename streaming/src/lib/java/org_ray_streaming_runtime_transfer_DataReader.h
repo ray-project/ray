@@ -39,22 +39,6 @@ JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_stopCo
 JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_closeConsumerNative
   (JNIEnv *, jobject, jlong);
 
-/*
- * Class:     org_ray_streaming_runtime_transfer_DataReader
- * Method:    onTransfer
- * Signature: (J[B)V
- */
-JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_onTransfer
-  (JNIEnv *, jobject, jlong, jbyteArray);
-
-/*
- * Class:     org_ray_streaming_runtime_transfer_DataReader
- * Method:    onTransferSync
- * Signature: (J[B)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_onTransferSync
-  (JNIEnv *, jobject, jlong, jbyteArray);
-
 #ifdef __cplusplus
 }
 #endif

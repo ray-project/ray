@@ -213,10 +213,6 @@ public class DataReader {
       boolean isRecreate,
       byte[] fbsConfigBytes);
 
-  private native void onTransfer(long handler, byte[] buffer);
-
-  private native byte[] onTransferSync(long handler, byte[] buffer);
-
   private native void getBundleNative(long nativeQueueConsumerPtr, long timeoutMillis, long params, long metaAddress);
 
   private native void stopConsumerNative(long nativeQueueConsumerPtr);
