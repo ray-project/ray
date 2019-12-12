@@ -29,6 +29,8 @@ public class ClassLoaderTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
+    // The potential issue of multiple `ClassLoader` instances for the same job on multi-threading
+    // scenario only occurs if the classes are loaded from the job resource path.
     System.setProperty("ray.job.resource-path", resourcePath);
   }
 
@@ -48,6 +50,8 @@ public class ClassLoaderTest extends BaseTest {
     jobResourceDir.mkdirs();
     jobResourceDir.deleteOnExit();
 
+    // In this test case the class is expected to be loaded from the job resource path, so we need
+    // to put the compiled class file into the job resource path and load it later.
     String testJavaFile = ""
         + "import java.lang.management.ManagementFactory;\n"
         + "import java.lang.management.RuntimeMXBean;\n"
