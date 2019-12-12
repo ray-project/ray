@@ -10,10 +10,10 @@ extern "C" {
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataReader
  * Method:    createDataReaderNative
- * Signature: (J[[B[[B[J[JJZ[BZ)J
+ * Signature: ([[B[[B[J[JJZ[BZ)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_createDataReaderNative
-  (JNIEnv *, jclass, jlong, jobjectArray, jobjectArray, jlongArray, jlongArray, jlong, jboolean, jbyteArray, jboolean);
+  (JNIEnv *, jclass, jobjectArray, jobjectArray, jlongArray, jlongArray, jlong, jboolean, jbyteArray, jboolean);
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataReader

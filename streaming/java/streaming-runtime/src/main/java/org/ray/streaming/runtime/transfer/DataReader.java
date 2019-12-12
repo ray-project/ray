@@ -48,7 +48,6 @@ public class DataReader {
     boolean isRecreate = Boolean.parseBoolean(
         conf.getOrDefault(Config.IS_RECREATE, "false"));
     this.nativeReaderPtr = createDataReaderNative(
-        ChannelUtils.getNativeCoreWorkerPtr(),
         inputChannelsBytes,
         fromActorsBytes,
         seqIds,
@@ -153,7 +152,6 @@ public class DataReader {
   }
 
   private static native long createDataReaderNative(
-      long coreWorkerPtr,
       byte[][] inputChannels,
       byte[][] inputActorIds,
       long[] seqIds,
