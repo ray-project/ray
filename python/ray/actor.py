@@ -811,7 +811,11 @@ def exit_actor():
         ray.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
-        sys.exit(0)
+        # Set a flag to indicate this is an intentional actor exit. This
+        # reduces log verbosity.
+        exit = SystemExit(0)
+        exit.is_ray_terminate = True
+        raise exit
         assert False, "This process should have terminated."
     else:
         raise Exception("exit_actor called on a non-actor worker.")
