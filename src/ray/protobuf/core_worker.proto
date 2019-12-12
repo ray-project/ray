@@ -100,12 +100,10 @@ message DirectActorCallArgWaitCompleteReply {
 }
 
 message GetObjectStatusRequest {
-  // The ID of the worker this message is intended for.
-  bytes intended_worker_id = 1;
   // The owner of the object.
-  bytes owner_id = 2;
+  bytes owner_id = 1;
   // Wait for this object's status.
-  bytes object_id = 3;
+  bytes object_id = 2;
 }
 
 message GetObjectStatusReply {

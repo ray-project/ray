@@ -1032,11 +1032,6 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
-    return;
-  }
-
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   TaskID owner_id = TaskID::FromBinary(request.owner_id());
   if (owner_id != GetCallerId()) {
