@@ -42,12 +42,12 @@ public class GcsClientTest extends BaseTest {
   public void testNextJob() {
     TestUtils.skipTestUnderSingleProcess();
     RayConfig config = TestUtils.getRuntime().getRayConfig();
-    // The value of job id of this driver in cluster should be `1L`.
-    Assert.assertEquals(config.getJobId(), JobId.fromInt(1));
+    // The value of job id of this driver in cluster should be 1.
+    Assert.assertEquals(config.getJobId(), JobId.fromShort((short) 1));
 
     GcsClient gcsClient = TestUtils.getRuntime().getGcsClient();
-    for (int i  = 2; i < 100; ++i) {
-      Assert.assertEquals(gcsClient.nextJobId(), JobId.fromInt(i));
+    for (short i = 2; i < 100; ++i) {
+      Assert.assertEquals(gcsClient.nextJobId(), JobId.fromShort(i));
     }
 
   }

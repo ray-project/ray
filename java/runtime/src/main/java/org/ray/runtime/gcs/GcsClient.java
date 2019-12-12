@@ -168,8 +168,8 @@ public class GcsClient {
   }
 
   public JobId nextJobId() {
-    int jobCounter = (int) primary.incr("JobCounter".getBytes());
-    return JobId.fromInt(jobCounter);
+    short jobCounter = (short) primary.incr("JobCounter".getBytes());
+    return JobId.fromShort(jobCounter);
   }
 
   private RedisClient getShardClient(BaseId key) {

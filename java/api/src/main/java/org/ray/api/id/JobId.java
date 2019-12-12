@@ -35,11 +35,11 @@ public class JobId extends BaseId implements Serializable {
     return new JobId(byteBuffer2Bytes(bb));
   }
 
-  public static JobId fromInt(int value) {
+  public static JobId fromShort(short value) {
     byte[] bytes = new byte[JobId.LENGTH];
     ByteBuffer wbb = ByteBuffer.wrap(bytes);
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    wbb.putInt(value);
+    wbb.putShort(value);
     return new JobId(bytes);
   }
 
