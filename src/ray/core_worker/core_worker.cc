@@ -756,7 +756,6 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
 
   auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   if (inserted) {
-    RAY_LOG(ERROR) << "Subscribe to actor " << actor_id;
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
@@ -767,7 +766,6 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         ActorHandle *actor_handle = nullptr;
         RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
         actor_handle->MarkDead();
-        RAY_LOG(ERROR) << "Marking actor handle as dead " << actor_id;
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
@@ -775,10 +773,10 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
       }
 
-      RAY_LOG(ERROR) << "received notification on actor, state="
-                     << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
-                     << ", ip address: " << actor_data.address().ip_address()
-                     << ", port: " << actor_data.address().port();
+      RAY_LOG(INFO) << "received notification on actor, state="
+                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
+                    << ", ip address: " << actor_data.address().ip_address()
+                    << ", port: " << actor_data.address().port();
     };
 
     RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
