@@ -23,7 +23,7 @@ func DefaultPodConfig(instance *rayiov1alpha1.RayCluster, podTypeName string, po
 	}
 }
 
-// The function buildPod build pod for cluster instance.
+// build a pod for the cluster instance.
 func BuildPod(conf *PodConfig) *corev1.Pod {
 	// build label for cluster
 	rayLabels := labelsForCluster(*conf.RayCluster, conf.PodName, conf.Extension.Labels)
