@@ -689,8 +689,7 @@ cdef execute_task(
         task_counter = manager.get_task_counter(job_id, function_descriptor)
         if task_counter == execution_info.max_calls:
             # Intentionally disconnect so the raylet doesn't print an error.
-            # TODO(edoakes): we should just return a special status for this
-            # and handle it in the core worker.
+            # TODO(edoakes): we should handle max_calls in the core worker.
             worker.core_worker.disconnect(True)
             sys.exit(0)
 
@@ -740,6 +739,9 @@ cdef CRayStatus check_signals() nogil:
 
 cdef void exit_handler() nogil:
     with gil:
+        # Delete the core worker. Its destructor will stop the event loop
+        # and deleting it here prevents python from running the destructor
+        # again during normal cleanup.
         del ray.worker.global_worker.core_worker
 
 
