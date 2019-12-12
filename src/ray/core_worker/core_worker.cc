@@ -199,9 +199,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     SetCurrentTaskId(task_id);
   }
 
-  auto client_factory = [this](const rpc::WorkerAddress &addr) {
+  auto client_factory = [this](const std::string ip_address, int port) {
     return std::shared_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(addr.ip_address, addr.port, *client_call_manager_));
+        new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
@@ -210,9 +210,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
           local_raylet_client_, client_factory,
-          [this](const rpc::Address &address) {
-            auto grpc_client = rpc::NodeManagerWorkerClient::make(
-                address.ip_address(), address.port(), *client_call_manager_);
+          [this](const std::string ip_address, int port) {
+            auto grpc_client = rpc::NodeManagerWorkerClient::make(ip_address, port,
+                                                                  *client_call_manager_);
             return std::shared_ptr<raylet::RayletClient>(
                 new raylet::RayletClient(std::move(grpc_client)));
           },
@@ -775,7 +775,10 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
       RAY_LOG(ERROR) << "received notification on actor, state="
                      << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
                      << ", ip address: " << actor_data.address().ip_address()
-                     << ", port: " << actor_data.address().port();
+                     << ", port: " << actor_data.address().port() << ", worker_id: "
+                     << WorkerID::FromBinary(actor_data.address().worker_id())
+                     << ", raylet_id: "
+                     << ClientID::FromBinary(actor_data.address().raylet_id());
     };
 
     RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
@@ -959,6 +962,11 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                                   rpc::AssignTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+
   if (worker_context_.CurrentActorIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
                         nullptr);
@@ -973,6 +981,11 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
 void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+
   task_execution_service_.post([=] {
     direct_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
@@ -982,6 +995,11 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     const rpc::DirectActorCallArgWaitCompleteRequest &request,
     rpc::DirectActorCallArgWaitCompleteReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+
   task_execution_service_.post([=] {
     direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
                                                                 send_reply_callback);
@@ -991,6 +1009,11 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   TaskID owner_id = TaskID::FromBinary(request.owner_id());
   if (owner_id != GetCallerId()) {

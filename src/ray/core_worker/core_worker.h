@@ -1,6 +1,7 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
@@ -477,6 +478,20 @@ class CoreWorker {
     reference_counter_->RemoveDependencies(object_id, &deleted);
     if (ref_counting_enabled_) {
       memory_store_->Delete(deleted);
+    }
+  }
+
+  /// Returns whether the message was sent to the wrong worker. The right error reply
+  /// is sent automatically.
+  bool HandleWrongRecipient(const WorkerID &intended_worker_id,
+                            rpc::SendReplyCallback send_reply_callback) {
+    if (intended_worker_id != worker_context_.GetWorkerID()) {
+      RAY_LOG(ERROR) << "Ignoring task for previous worker on the same port "
+                     << intended_worker_id << " vs " << worker_context_.GetWorkerID();
+      send_reply_callback(Status::Invalid("Mismatched WorkerID"), nullptr, nullptr);
+      return true;
+    } else {
+      return false;
     }
   }
 

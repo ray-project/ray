@@ -58,8 +58,9 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Create a new connection to the actor.
   if (rpc_clients_.count(actor_id) == 0) {
     rpc::WorkerAddress addr = {address.ip_address(), address.port()};
-    rpc_clients_[actor_id] =
-        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+    rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
+        client_factory_(address.ip_address(), address.port()));
+    worker_ids_[actor_id] = address.worker_id();
   }
   if (pending_requests_.count(actor_id) > 0) {
     SendPendingTasks(actor_id);
@@ -74,6 +75,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // will be inserted once actor reconstruction completes. We don't erase the
     // client when the actor is DEAD, so that all further tasks will be failed.
     rpc_clients_.erase(actor_id);
+    worker_ids_.erase(actor_id);
   } else {
     RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     // If there are pending requests, treat the pending tasks as failed.
@@ -116,7 +118,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   next_send_position_[actor_id]++;
-
+  request->set_intended_worker_id(worker_ids_[actor_id]);
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {
