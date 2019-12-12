@@ -1,5 +1,4 @@
 diff --git cpp/src/plasma/client.cc cpp/src/plasma/client.cc
-index 5142ee435..5266e3e66 100644
 --- cpp/src/plasma/client.cc
 +++ cpp/src/plasma/client.cc
 @@ -19,10 +19,6 @@
@@ -14,7 +13,6 @@ index 5142ee435..5266e3e66 100644
  #include <netinet/in.h>
  #include <stdio.h>
 diff --git cpp/src/plasma/plasma.h cpp/src/plasma/plasma.h
-index 79e33c2f0..c8241b2fe 100644
 --- cpp/src/plasma/plasma.h
 +++ cpp/src/plasma/plasma.h
 @@ -25,7 +25,6 @@

@@ -1,5 +1,4 @@
 diff --git bazel/glog.bzl bazel/glog.bzl
-index 4c11f12..2510ecc 100644
 --- bazel/glog.bzl
 +++ bazel/glog.bzl
 @@ -17,7 +17,6 @@ def glog_library(namespace = "google", with_gflags = 1, **kwargs):

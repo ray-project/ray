@@ -1,5 +1,4 @@
 diff --git bazel/cython_library.bzl bazel/cython_library.bzl
-index 48b41d74e8..a9bc168e5d 100644
 --- bazel/cython_library.bzl
 +++ bazel/cython_library.bzl
 @@ -7,18 +7,20 @@

@@ -1,5 +1,4 @@
 diff --git cpp/src/arrow/util/logging.cc cpp/src/arrow/util/logging.cc
-index e54a10e52..3dbfc7a12 100644
 --- cpp/src/arrow/util/logging.cc
 +++ cpp/src/arrow/util/logging.cc
 @@ -84,7 +84,9 @@ typedef google::LogMessage LoggingProvider;

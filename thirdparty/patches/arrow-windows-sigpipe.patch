@@ -1,5 +1,4 @@
 diff --git cpp/src/plasma/store.cc cpp/src/plasma/store.cc
-index 01aabfc7c..876cb59a6 100644
 --- cpp/src/plasma/store.cc
 +++ cpp/src/plasma/store.cc
 @@ -1182,9 +1182,11 @@ void HandleSignal(int signal) {

@@ -1,5 +1,4 @@
 diff --git third_party/py/python_configure.bzl third_party/py/python_configure.bzl
-index 2cb84077e5..e733b9204e 100644
 --- third_party/py/python_configure.bzl
 +++ third_party/py/python_configure.bzl
 @@ -190,7 +190,7 @@ def _get_python_lib(repository_ctx, python_bin, lib_path_key):

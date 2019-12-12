@@ -1,5 +1,4 @@
 diff --git cpp/src/plasma/client.cc cpp/src/plasma/client.cc
-index 0cb1d81a2..5142ee435 100644
 --- cpp/src/plasma/client.cc
 +++ cpp/src/plasma/client.cc
 @@ -983,8 +983,13 @@ Status PlasmaClient::Impl::Subscribe(int* fd) {
@@ -17,7 +16,6 @@ index 0cb1d81a2..5142ee435 100644
    RETURN_NOT_OK(SendSubscribeRequest(store_conn_));
    // Send the file descriptor that the Plasma store should use to push
 diff --git cpp/src/plasma/fling.cc cpp/src/plasma/fling.cc
-index f0960aab6..2f3997534 100644
 --- cpp/src/plasma/fling.cc
 +++ cpp/src/plasma/fling.cc
 @@ -18,6 +18,10 @@
