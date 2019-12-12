@@ -31,7 +31,7 @@ class StreamingConfig {
 
   std::string worker_name_ = "DEFAULT_WORKER_NAME";
 
-  std::string task_job_id_ = "ffffffff";
+  std::string task_job_id_ = JobID::Nil().Hex();
 
  public:
   void FromProto(const uint8_t *, uint32_t size);
