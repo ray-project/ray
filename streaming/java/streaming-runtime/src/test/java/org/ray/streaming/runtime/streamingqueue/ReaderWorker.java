@@ -10,12 +10,9 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
-
-import org.ray.streaming.runtime.transfer.DataReader;
 import org.ray.streaming.runtime.transfer.DataMessage;
-import org.ray.streaming.runtime.transfer.QueueConfigKeys;
-
-import org.ray.streaming.util.ConfigKey;
+import org.ray.streaming.runtime.transfer.DataReader;
+import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -68,11 +65,9 @@ public class ReaderWorker extends Worker {
 
     Map<String, String> conf = new HashMap<>();
 
-    conf.put(ConfigKey.STREAMING_QUEUE_TYPE, ConfigKey.STREAMING_QUEUE);
-    conf.put(ConfigKey.QUEUE_SIZE, "100000");
-    conf.put(QueueConfigKeys.STREAMING_WRITER_CONSUMED_STEP, "100");
-    conf.put(QueueConfigKeys.STREAMING_READER_CONSUMED_STEP, "20");
-    conf.put(QueueConfigKeys.STREAMING_JOB_NAME, "integrationTest1");
+    conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    conf.put(Config.CHANNEL_SIZE, "100000");
+    conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
     dataReader = new DataReader(inputQueueList, inputActorIds, conf);
 
     // Should not GetBundle in RayCall thread
@@ -117,7 +112,7 @@ public class ReaderWorker extends Worker {
         }
       } else {
         LOGGER.error("unknown message type");
-        Assert.assertTrue(false);
+        Assert.fail();
       }
 
       totalMsg++;

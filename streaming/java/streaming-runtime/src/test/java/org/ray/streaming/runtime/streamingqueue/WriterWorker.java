@@ -15,8 +15,7 @@ import org.ray.api.id.ActorId;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.transfer.DataWriter;
-import org.ray.streaming.runtime.transfer.QueueConfigKeys;
-import org.ray.streaming.util.ConfigKey;
+import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,11 +73,9 @@ public class WriterWorker extends Worker {
     }
     Map<String, String> conf = new HashMap<>();
 
-    conf.put(ConfigKey.STREAMING_QUEUE_TYPE, ConfigKey.STREAMING_QUEUE);
-    conf.put(ConfigKey.QUEUE_SIZE, "100000");
-    conf.put(QueueConfigKeys.STREAMING_WRITER_CONSUMED_STEP, "100");
-    conf.put(QueueConfigKeys.STREAMING_READER_CONSUMED_STEP, "20");
-    conf.put(QueueConfigKeys.STREAMING_JOB_NAME, "integrationTest1");
+    conf.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    conf.put(Config.CHANNEL_SIZE, "100000");
+    conf.put(Config.STREAMING_JOB_NAME, "integrationTest1");
 
     dataWriter = new DataWriter(this.outputQueueList, this.outputActorIds, conf);
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {

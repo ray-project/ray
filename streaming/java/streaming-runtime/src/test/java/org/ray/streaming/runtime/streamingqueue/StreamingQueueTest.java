@@ -22,7 +22,7 @@ import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.runtime.transfer.ChannelUtils;
-import org.ray.streaming.util.ConfigKey;
+import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -110,7 +110,7 @@ public class StreamingQueueTest implements Serializable {
     List<String> inputQueueList = new ArrayList<>();
     int queueNum = 2;
     for (int i = 0; i < queueNum; ++i) {
-      String qid = ChannelUtils.getRandomQueueId();
+      String qid = ChannelUtils.genRandomChannelID();
       LOGGER.info("getRandomQueueId: {}", qid);
       inputQueueList.add(qid);
       outputQueueList.add(qid);
@@ -146,9 +146,9 @@ public class StreamingQueueTest implements Serializable {
     Map<String, Integer> wordCount = new ConcurrentHashMap<>();
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, Object> config = new HashMap<>();
-    config.put(ConfigKey.STREAMING_BATCH_MAX_COUNT, 1);
-    config.put(ConfigKey.STREAMING_QUEUE_TYPE, ConfigKey.STREAMING_QUEUE);
-    config.put(ConfigKey.QUEUE_SIZE, "100000");
+    config.put(Config.STREAMING_BATCH_MAX_COUNT, 1);
+    config.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    config.put(Config.CHANNEL_SIZE, "100000");
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
@@ -172,7 +172,7 @@ public class StreamingQueueTest implements Serializable {
 
     streamingContext.execute();
 
-    Map<String, Integer> checkWordCount = (Map<String, Integer>)deserilizeResultFromFile(resultFile);
+    Map<String, Integer> checkWordCount = (Map<String, Integer>) deserializeResultFromFile(resultFile);
     // Sleep until the count for every word is computed.
     while (checkWordCount == null || checkWordCount.size() < 3) {
       LOGGER.info("sleep");
@@ -181,7 +181,7 @@ public class StreamingQueueTest implements Serializable {
       } catch (InterruptedException e) {
         LOGGER.warn("Got an exception while sleeping.", e);
       }
-      checkWordCount = (Map<String, Integer>)deserilizeResultFromFile(resultFile);
+      checkWordCount = (Map<String, Integer>) deserializeResultFromFile(resultFile);
     }
     LOGGER.info("check");
     Assert.assertEquals(checkWordCount, ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
@@ -196,7 +196,7 @@ public class StreamingQueueTest implements Serializable {
     }
   }
 
-  private Object deserilizeResultFromFile(String fileName) {
+  private Object deserializeResultFromFile(String fileName) {
     Map<String, Integer> checkWordCount = null;
     try {
       ObjectInputStream in = new ObjectInputStream(new FileInputStream(fileName));

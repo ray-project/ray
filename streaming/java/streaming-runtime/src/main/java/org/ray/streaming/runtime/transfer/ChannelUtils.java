@@ -51,7 +51,7 @@ public class ChannelUtils {
     return res;
   }
 
-  public static String getRandomChannelID() {
+  public static String genRandomChannelID() {
     StringBuilder sb = new StringBuilder();
     Random random = new Random();
     for (int i = 0; i < ChannelID.ID_LENGTH * 2; ++i) {

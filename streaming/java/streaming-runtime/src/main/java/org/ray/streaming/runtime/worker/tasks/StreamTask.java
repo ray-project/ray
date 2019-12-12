@@ -1,5 +1,10 @@
 package org.ray.streaming.runtime.worker.tasks;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
@@ -18,11 +23,6 @@ import org.ray.streaming.runtime.worker.context.RayRuntimeContext;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 public abstract class StreamTask implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(StreamTask.class);
@@ -45,12 +45,11 @@ public abstract class StreamTask implements Runnable {
   }
 
   private void prepareTask() {
-    String queueType = (String) worker.getConfig()
-        .getOrDefault(Config.MEMORY_CHANNEL, Config.MEMORY_CHANNEL);
     Map<String, String> queueConf = new HashMap<>();
     String queueSize = (String) worker.getConfig()
         .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
+    queueConf.put(Config.TASK_JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();
     ExecutionNode executionNode = worker.getExecutionNode();
