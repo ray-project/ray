@@ -6,7 +6,6 @@ import copy
 import inspect
 import logging
 import six
-import sys
 import weakref
 
 from abc import ABCMeta, abstractmethod
