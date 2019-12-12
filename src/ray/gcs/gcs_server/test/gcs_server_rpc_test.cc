@@ -16,14 +16,14 @@ class GcsServerRpcTest : public ::testing::Test {
    protected:
     void InitBackendClient() override {}
 
-    std::unique_ptr<rpc::JobInfoAccessHandler> InitJobInfoAccessHandler() override {
-      return std::unique_ptr<rpc::JobInfoAccessHandler>(new T);
+    std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler() override {
+      return std::unique_ptr<rpc::JobInfoHandler>(new T);
     }
   };
 };
 
 TEST_F(GcsServerRpcTest, JobInfo) {
-  class MockedJobInfoAccessHandler : public rpc::JobInfoAccessHandler {
+  class MockedJobInfoHandler : public rpc::JobInfoHandler {
    public:
     void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override {
@@ -38,10 +38,10 @@ TEST_F(GcsServerRpcTest, JobInfo) {
   };
 
   gcs::GcsServerConfig config;
-  config.server_port = 0;
-  config.server_name = "MockedGcsServer";
-  config.server_thread_num = 1;
-  MockedGcsServer<MockedJobInfoAccessHandler> server(config);
+  config.grpc_server_port = 0;
+  config.grpc_server_name = "MockedGcsServer";
+  config.grpc_server_thread_num = 1;
+  MockedGcsServer<MockedJobInfoHandler> server(config);
   std::thread([&server] { server.Start(); }).detach();
 
   // Wait until server starts listening.

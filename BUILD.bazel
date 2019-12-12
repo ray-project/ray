@@ -160,7 +160,7 @@ cc_library(
     ],
 )
 
-# Job info access gRPC lib.
+# gcs_service gRPC lib.
 cc_grpc_library(
     name = "gcs_service_cc_grpc",
     srcs = [":gcs_service_proto"],
@@ -168,7 +168,7 @@ cc_grpc_library(
     deps = [":gcs_service_cc_proto"],
 )
 
-# Job info access server and client.
+# gcs rpc server and client.
 cc_library(
     name = "gcs_service_rpc",
     hdrs = glob([

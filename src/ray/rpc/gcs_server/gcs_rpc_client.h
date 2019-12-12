@@ -10,46 +10,46 @@
 namespace ray {
 namespace rpc {
 
-/// Client used for communicating with a remote job info access server.
+/// Client used for communicating with gcs server.
 class GcsRpcClient {
  public:
   /// Constructor.
   ///
-  /// \param[in] address Address of job info access server.
-  /// \param[in] port Port of the job info access server.
+  /// \param[in] address Address of gcs server.
+  /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   GcsRpcClient(const std::string &address, const int port,
                ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = JobInfoAccessService::NewStub(channel);
+    stub_ = JobInfoGcsService::NewStub(channel);
   };
 
-  /// Add job info to remote job info access server
+  /// Add job info to gcs server.
   ///
   /// \param request The request message.
-  /// \param callback The callback function that handles reply from server
+  /// \param callback The callback function that handles reply from server.
   void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply> &callback) {
-    client_call_manager_.CreateCall<JobInfoAccessService, AddJobRequest, AddJobReply>(
-        *stub_, &JobInfoAccessService::Stub::PrepareAsyncAddJob, request, callback);
+    client_call_manager_.CreateCall<JobInfoGcsService, AddJobRequest, AddJobReply>(
+        *stub_, &JobInfoGcsService::Stub::PrepareAsyncAddJob, request, callback);
   }
 
-  /// Mark job as finished to remote job info access server
+  /// Mark job as finished to gcs server.
   ///
-  /// \param request The request message
-  /// \param callback The callback function that handles reply from server
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
   void MarkJobFinished(const MarkJobFinishedRequest &request,
                        const ClientCallback<MarkJobFinishedReply> &callback) {
     client_call_manager_
-        .CreateCall<JobInfoAccessService, MarkJobFinishedRequest, MarkJobFinishedReply>(
-            *stub_, &JobInfoAccessService::Stub::PrepareAsyncMarkJobFinished, request,
+        .CreateCall<JobInfoGcsService, MarkJobFinishedRequest, MarkJobFinishedReply>(
+            *stub_, &JobInfoGcsService::Stub::PrepareAsyncMarkJobFinished, request,
             callback);
   }
 
  private:
   /// The gRPC-generated stub.
-  std::unique_ptr<JobInfoAccessService::Stub> stub_;
+  std::unique_ptr<JobInfoGcsService::Stub> stub_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

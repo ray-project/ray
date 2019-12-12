@@ -8,9 +8,9 @@
 namespace ray {
 namespace rpc {
 
-class JobInfoAccessHandler {
+class JobInfoHandler {
  public:
-  virtual ~JobInfoAccessHandler() = default;
+  virtual ~JobInfoHandler() = default;
 
   virtual void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
                             SendReplyCallback send_reply_callback) = 0;
@@ -20,14 +20,14 @@ class JobInfoAccessHandler {
                                      SendReplyCallback send_reply_callback) = 0;
 };
 
-/// The `GrpcService` for `JobInfoAccessService`.
-class JobInfoAccessGrpcService : public GrpcService {
+/// The `GrpcService` for `JobInfoGcsService`.
+class JobInfoGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit JobInfoAccessGrpcService(boost::asio::io_service &io_service,
-                                    JobInfoAccessHandler &handler)
+  explicit JobInfoGrpcService(boost::asio::io_service &io_service,
+                              JobInfoHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -38,28 +38,27 @@ class JobInfoAccessGrpcService : public GrpcService {
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
     std::unique_ptr<ServerCallFactory> add_job_call_factory(
-        new ServerCallFactoryImpl<JobInfoAccessService, JobInfoAccessHandler,
-                                  AddJobRequest, AddJobReply>(
-            service_, &JobInfoAccessService::AsyncService::RequestAddJob,
-            service_handler_, &JobInfoAccessHandler::HandleAddJob, cq, main_service_));
+        new ServerCallFactoryImpl<JobInfoGcsService, JobInfoHandler, AddJobRequest,
+                                  AddJobReply>(
+            service_, &JobInfoGcsService::AsyncService::RequestAddJob, service_handler_,
+            &JobInfoHandler::HandleAddJob, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(std::move(add_job_call_factory),
                                                           1);
 
     std::unique_ptr<ServerCallFactory> mark_job_finished_call_factory(
-        new ServerCallFactoryImpl<JobInfoAccessService, JobInfoAccessHandler,
+        new ServerCallFactoryImpl<JobInfoGcsService, JobInfoHandler,
                                   MarkJobFinishedRequest, MarkJobFinishedReply>(
-            service_, &JobInfoAccessService::AsyncService::RequestMarkJobFinished,
-            service_handler_, &JobInfoAccessHandler::HandleMarkJobFinished, cq,
-            main_service_));
+            service_, &JobInfoGcsService::AsyncService::RequestMarkJobFinished,
+            service_handler_, &JobInfoHandler::HandleMarkJobFinished, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(mark_job_finished_call_factory), 1);
   }
 
  private:
   /// The grpc async service object.
-  JobInfoAccessService::AsyncService service_;
+  JobInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  JobInfoAccessHandler &service_handler_;
+  JobInfoHandler &service_handler_;
 };
 
 }  // namespace rpc
