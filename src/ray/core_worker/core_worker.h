@@ -80,7 +80,7 @@ class CoreWorker {
 
   ~CoreWorker();
 
-  void Disconnect();
+  void Disconnect(bool intentional);
 
   WorkerType GetWorkerType() const { return worker_type_; }
 

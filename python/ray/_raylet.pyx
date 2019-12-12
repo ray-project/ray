@@ -688,7 +688,10 @@ cdef execute_task(
         # If we've reached the max number of executions for this worker, exit.
         task_counter = manager.get_task_counter(job_id, function_descriptor)
         if task_counter == execution_info.max_calls:
-            worker.core_worker.disconnect()
+            # Intentionally disconnect so the raylet doesn't print an error.
+            # TODO(edoakes): we should just return a special status for this
+            # and handle it in the core worker.
+            worker.core_worker.disconnect(True)
             sys.exit(0)
 
 
@@ -737,7 +740,7 @@ cdef CRayStatus check_signals() nogil:
 
 cdef void exit_handler() nogil:
     with gil:
-        sys.exit(0)
+        del ray.worker.global_worker.core_worker
 
 
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
@@ -787,10 +790,10 @@ cdef class CoreWorker:
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, exit_handler, True))
 
-    def disconnect(self):
+    def disconnect(self, c_bool intentional):
         self.destory_event_loop_if_exists()
         with nogil:
-            self.core_worker.get().Disconnect()
+            self.core_worker.get().Disconnect(intentional)
 
     def run_task_loop(self):
         with nogil:

@@ -227,20 +227,24 @@ void CoreWorker::Shutdown() {
   if (!shutdown_) {
     shutdown_ = true;
     io_service_.stop();
-    if (worker_type_ == WorkerType::WORKER) {
-      task_execution_service_.stop();
-    }
     if (log_dir_ != "") {
       RayLog::ShutDownRayLog();
+    }
+    if (worker_type_ == WorkerType::WORKER) {
+      task_execution_service_.stop();
     }
   }
 }
 
-void CoreWorker::Disconnect() {
+void CoreWorker::Disconnect(bool intentional) {
   io_service_.stop();
-  gcs_client_->Disconnect();
-  if (local_raylet_client_) {
-    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+  if (intentional) {
+    if (gcs_client_) {
+      gcs_client_->Disconnect();
+    }
+    if (local_raylet_client_) {
+      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+    }
   }
 }
 

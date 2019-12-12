@@ -1336,7 +1336,7 @@ def disconnect(exiting_interpreter=False):
     # we will tear down any processes spawned by ray.init() and the background
     # threads in the core worker don't currently handle that gracefully.
     if hasattr(worker, "core_worker"):
-        del worker.core_worker
+        worker.core_worker.disconnect(False)
 
 
 @contextmanager
