@@ -1,7 +1,7 @@
 #include "lineage_cache.h"
-#include "ray/stats/stats.h"
-
 #include <sstream>
+#include "ray/gcs/redis_gcs_client.h"
+#include "ray/stats/stats.h"
 
 namespace ray {
 
@@ -298,8 +298,6 @@ bool LineageCache::SubscribeTask(const TaskID &task_id) {
       HandleEntryCommitted(task_id);
     };
     // Subscribe to the task.
-    // TODO(micafan) If we commit task and subscribe task at the same time,
-    // we might not receive the commited message.
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribe(task_id, subscribe,
                                                      /*done*/ nullptr));
   }
@@ -340,7 +338,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
 
   // Evict the task.
   RAY_LOG(DEBUG) << "Evicting task " << task_id << " on "
-                 << gcs_client_->ClientTable().GetLocalClientId();
+                 << gcs_client_->client_table().GetLocalClientId();
   lineage_.PopEntry(task_id);
   // Try to evict the children of the evict task. These are the tasks that have
   // a dependency on the evicted task.
