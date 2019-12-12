@@ -21,7 +21,7 @@ message MarkJobFinishedReply {
 }
 
 // Service for job info access.
-service JobInfoAccessService {
+service JobInfoGcsService {
   // Add job to gcs server.
   rpc AddJob(AddJobRequest) returns (AddJobReply);
   // Mark job as finished to gcs server.

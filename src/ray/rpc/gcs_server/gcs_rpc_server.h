@@ -37,7 +37,7 @@ namespace rpc {
 
 class JobInfoHandler {
  public:
-  virtual ~JobInfoAccessHandler() = default;
+  virtual ~JobInfoHandler() = default;
 
   virtual void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
                             SendReplyCallback send_reply_callback) = 0;
@@ -47,14 +47,14 @@ class JobInfoHandler {
                                      SendReplyCallback send_reply_callback) = 0;
 };
 
-/// The `GrpcService` for `JobInfoAccessService`.
-class JobInfoAccessGrpcService : public GrpcService {
+/// The `GrpcService` for `JobInfoGcsService`.
+class JobInfoGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
   /// \param[in] handler The service handler that actually handle the requests.
-  explicit JobInfoAccessGrpcService(boost::asio::io_service &io_service,
-                                    JobInfoAccessHandler &handler)
+  explicit JobInfoGrpcService(boost::asio::io_service &io_service,
+                              JobInfoHandler &handler)
       : GrpcService(io_service), service_handler_(handler){};
 
  protected:
@@ -70,9 +70,9 @@ class JobInfoAccessGrpcService : public GrpcService {
 
  private:
   /// The grpc async service object.
-  JobInfoAccessService::AsyncService service_;
+  JobInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
-  JobInfoAccessHandler &service_handler_;
+  JobInfoHandler &service_handler_;
 };
 
 class ActorInfoHandler {
