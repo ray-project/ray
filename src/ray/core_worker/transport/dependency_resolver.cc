@@ -24,8 +24,7 @@ void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> valu
         mutable_arg->clear_object_ids();
         if (value->IsInPlasmaError()) {
           // Promote the object id to plasma.
-          mutable_arg->add_object_ids(
-              obj_id.WithTransportType(TaskTransportType::RAYLET).Binary());
+          mutable_arg->add_object_ids(obj_id.Binary());
         } else {
           // Inline the object value.
           if (value->HasData()) {

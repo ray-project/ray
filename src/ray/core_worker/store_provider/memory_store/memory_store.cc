@@ -176,7 +176,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
       if (!object.IsInPlasmaError()) {
         // Only need to promote to plasma if it wasn't already put into plasma
         // by the task that created the object.
-        store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+        store_in_plasma_(object, object_id);
       }
       promoted_to_plasma_.erase(promoted_it);
     }
@@ -367,8 +367,7 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
     auto it = objects_.find(object_id);
     if (it != objects_.end()) {
       if (it->second->IsInPlasmaError()) {
-        plasma_ids_to_delete->insert(
-            object_id.WithTransportType(TaskTransportType::RAYLET));
+        plasma_ids_to_delete->insert(object_id);
       } else {
         objects_.erase(it);
       }

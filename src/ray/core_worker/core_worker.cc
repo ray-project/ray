@@ -394,8 +394,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     for (const auto &pair : result_map) {
       if (pair.second->IsInPlasmaError()) {
         RAY_LOG(DEBUG) << pair.first << " in plasma, doing fetch-and-get";
-        promoted_plasma_ids.insert(
-            pair.first.WithTransportType(TaskTransportType::RAYLET));
+        promoted_plasma_ids.insert(pair.first);
       }
     }
     if (!promoted_plasma_ids.empty()) {
@@ -411,9 +410,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       for (const auto &id : promoted_plasma_ids) {
         auto it = result_map.find(id);
         if (it == result_map.end()) {
-          result_map.erase(id.WithTransportType(TaskTransportType::DIRECT));
+          result_map.erase(id);
         } else {
-          result_map[id.WithTransportType(TaskTransportType::DIRECT)] = it->second;
+          result_map[id] = it->second;
         }
         result_map.erase(id);
       }
@@ -462,12 +461,17 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
     // ErrorType::OBJECT_IN_PLASMA.
     found = memory_store_->Contains(object_id);
   }
+  /*
+  // We don't need this if we hold the invariant that all the direct call
+  // objects would have a corresponding entry in memory store if it's
+  // promoted to plasma.
   if (!found) {
     // We check plasma as a fallback in all cases, since a direct call object
     // may have been spilled to plasma.
     RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(
         object_id.WithTransportType(TaskTransportType::RAYLET), &found));
   }
+  */
   *has_object = found;
   return Status::OK();
 }
@@ -811,8 +815,7 @@ Status CoreWorker::AllocateReturnObjects(
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(Create(
-            metadatas[i], data_sizes[i],
-            object_ids[i].WithTransportType(TaskTransportType::RAYLET), &data_buffer));
+            metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -873,7 +876,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       continue;
     }
     if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i].WithTransportType(TaskTransportType::RAYLET)).ok()) {
+      if (!Seal(return_ids[i]).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
