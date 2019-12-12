@@ -1,9 +1,7 @@
 diff --git deps/hiredis/async.c deps/hiredis/async.c
 --- deps/hiredis/async.c
 +++ deps/hiredis/async.c
-@@ -40,3 +40,3 @@
- #include "net.h"
+@@ -41,1 +41,1 @@
 -#include "dict.c"
 +#include "hiredis/dict.c"
- #include "sds.h"
 -- 

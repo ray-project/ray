@@ -13,10 +13,7 @@ diff --git boost/type_traits/has_trivial_move_assign.hpp boost/type_traits/has_t
 index 6d954ab..7b39269 100644
 --- boost/type_traits/has_trivial_move_assign.hpp
 +++ boost/type_traits/has_trivial_move_assign.hpp
-@@ -24,7 +24,7 @@
- #endif
- #endif
- 
+@@ -27,4 +27,4 @@
 -#if defined(__GNUC__) || defined(__clang)
 +#if defined(__GNUC__) || defined(__clang__)
  #include <boost/type_traits/is_assignable.hpp>
@@ -26,10 +23,7 @@ diff --git boost/type_traits/has_trivial_move_constructor.hpp boost/type_traits/
 index 5784f4b..2ecfc36 100644
 --- boost/type_traits/has_trivial_move_constructor.hpp
 +++ boost/type_traits/has_trivial_move_constructor.hpp
-@@ -22,7 +22,7 @@
- #include <boost/type_traits/is_volatile.hpp>
- #endif
- 
+@@ -25,4 +25,4 @@
 -#if defined(__GNUC__) || defined(__clang)
 +#if defined(__GNUC__) || defined(__clang__)
  #include <boost/type_traits/is_constructible.hpp>
