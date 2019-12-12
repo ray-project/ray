@@ -12,7 +12,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config)
 GcsServer::~GcsServer() { Stop(); }
 
 void GcsServer::Start() {
-  // Init redis gcs client.
+  // Init backend client.
   InitBackendClient();
 
   // Register rpc service.
