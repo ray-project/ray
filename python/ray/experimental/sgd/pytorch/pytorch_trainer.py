@@ -77,6 +77,7 @@ class PyTorchTrainer(object):
                  "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
+        self.train_function = train_function
         self.validation_function = validation_function
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)

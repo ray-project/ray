@@ -5,6 +5,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import os
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -128,7 +129,9 @@ def inception_score(imgs, batch_size=32, splits=1):
     N = len(imgs)
     dtype = torch.FloatTensor
     dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
-    cm = ray.get(mnist_model_ref)
+    cm = Net()
+    cm.load_state_dict(torch.load(model_path))
+    cm.eval()
     up = nn.Upsample(size=(28, 28), mode="bilinear").type(dtype)
 
     def get_pred(x):
@@ -174,7 +177,7 @@ def train(models, dataloader, criterion, optimizers, config):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     for i, data in enumerate(dataloader, 0):
-        if i >= TRAIN_BATCHES:
+        if i >= TRAIN_BATCHES and config.get("test_mode"):
             break
 
         netD.zero_grad()
@@ -222,7 +225,7 @@ def optimizer_creator(models, config):
 
 def train_example(num_replicas=1, use_gpu=False, test_mode=False):
     config = {"test_mode": test_mode}
-    trainer1 = PyTorchTrainer(
+    trainer = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
@@ -235,12 +238,10 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo")
     for i in range(5):
-        stats = trainer1.train()
+        stats = trainer.train()
         print(stats)
 
-    print("Validation", trainer1.validate())
-    trainer1.shutdown()
-    print("success!")
+    return trainer
 
 
 if __name__ == "__main__":
@@ -252,17 +253,27 @@ if __name__ == "__main__":
         required=False,
         type=str,
         help="the address to use for Redis")
+    parser.add_argument(
+        "--num-replicas",
+        "-n",
+        type=int,
+        default=1,
+        help="Sets number of replicas for training.")
+    parser.add_argument(
+        "--use-gpu",
+        action="store_true",
+        default=False,
+        help="Enables GPU training")
     args, _ = parser.parse_known_args()
-    import os
     ray.init(address=args.address)
 
     path = os.path.dirname(ray.__file__)
     model_path = os.path.join(
         path, "experimental/sgd/pytorch/pbt_dcgan_mnist/mnist_cnn.pt")
     # load the pretrained mnist classification model for inception_score
-    mnist_cnn = Net()
-    mnist_cnn.load_state_dict(torch.load(model_path))
-    mnist_cnn.eval()
-    mnist_model_ref = ray.put(mnist_cnn)
 
-    train_example(num_replicas=4, use_gpu=True)
+    trainer = train_example(
+        num_replicas=args.num_replicas,
+        use_gpu=args.use_gpu,
+        test_mode=args.smoke_test)
+    models = trainer.get_model()
