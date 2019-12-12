@@ -48,6 +48,9 @@ class GcsServer {
   /// The job info handler
   virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
 
+  /// The actor info handler
+  virtual std::unique_ptr<rpc::ActorInfoHandler> InitActorInfoHandler();
+
  private:
   /// Gcs server configuration
   GcsServerConfig config_;
@@ -58,6 +61,9 @@ class GcsServer {
   /// Job info handler and service
   std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
+  /// Actor info handler and service
+  std::unique_ptr<rpc::ActorInfoHandler> actor_info_handler_;
+  std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
 };

@@ -23,7 +23,8 @@ class GcsRpcClient {
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = JobInfoGcsService::NewStub(channel);
+    job_info_stub_ = JobInfoGcsService::NewStub(channel);
+    actor_info_stub_ = ActorInfoGcsService::NewStub(channel);
   };
 
   /// Add job info to gcs server.
@@ -32,7 +33,7 @@ class GcsRpcClient {
   /// \param callback The callback function that handles reply from server.
   void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply> &callback) {
     client_call_manager_.CreateCall<JobInfoGcsService, AddJobRequest, AddJobReply>(
-        *stub_, &JobInfoGcsService::Stub::PrepareAsyncAddJob, request, callback);
+        *job_info_stub_, &JobInfoGcsService::Stub::PrepareAsyncAddJob, request, callback);
   }
 
   /// Mark job as finished to gcs server.
@@ -43,13 +44,50 @@ class GcsRpcClient {
                        const ClientCallback<MarkJobFinishedReply> &callback) {
     client_call_manager_
         .CreateCall<JobInfoGcsService, MarkJobFinishedRequest, MarkJobFinishedReply>(
-            *stub_, &JobInfoGcsService::Stub::PrepareAsyncMarkJobFinished, request,
+            *job_info_stub_, &JobInfoGcsService::Stub::PrepareAsyncMarkJobFinished,
+            request, callback);
+  }
+
+  /// Get actor specification from gcs server asynchronously.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AsyncGet(const ActorAsyncGetRequest &request,
+                const ClientCallback<ActorAsyncGetReply> &callback) {
+    client_call_manager_
+        .CreateCall<ActorInfoGcsService, ActorAsyncGetRequest, ActorAsyncGetReply>(
+            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAsyncGet, request,
             callback);
+  }
+
+  /// Register an actor to gcs server asynchronously.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AsyncRegister(const ActorAsyncRegisterRequest &request,
+                     const ClientCallback<ActorAsyncRegisterReply> &callback) {
+    client_call_manager_.CreateCall<ActorInfoGcsService, ActorAsyncRegisterRequest,
+                                    ActorAsyncRegisterReply>(
+        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAsyncRegister, request,
+        callback);
+  }
+
+  ///  Update dynamic states of actor in gcs server asynchronously.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AsyncUpdate(const ActorAsyncUpdateRequest &request,
+                   const ClientCallback<ActorAsyncUpdateReply> &callback) {
+    client_call_manager_
+        .CreateCall<ActorInfoGcsService, ActorAsyncUpdateRequest, ActorAsyncUpdateReply>(
+            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAsyncUpdate,
+            request, callback);
   }
 
  private:
   /// The gRPC-generated stub.
-  std::unique_ptr<JobInfoGcsService::Stub> stub_;
+  std::unique_ptr<JobInfoGcsService::Stub> job_info_stub_;
+  std::unique_ptr<ActorInfoGcsService::Stub> actor_info_stub_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

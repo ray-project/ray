@@ -27,3 +27,41 @@ service JobInfoGcsService {
   // Mark job as finished to gcs server.
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
 }
+
+message ActorAsyncGetRequest {
+  // ID of this actor.
+  bytes actor_id = 1;
+}
+
+message ActorAsyncGetReply {
+  // Data of actor.
+  ActorTableData actor_table_data = 1;
+}
+
+message ActorAsyncRegisterRequest {
+  // Data of actor.
+  ActorTableData actor_table_data = 1;
+}
+
+message ActorAsyncRegisterReply {
+}
+
+message ActorAsyncUpdateRequest {
+  // ID of this actor.
+  bytes actor_id = 1;
+  // Data of actor.
+  ActorTableData actor_table_data = 2;
+}
+
+message ActorAsyncUpdateReply {
+}
+
+// Service for actor info access.
+service ActorInfoGcsService {
+  // Get actor specification from GCS Service asynchronously.
+  rpc AsyncGet(ActorAsyncGetRequest) returns (ActorAsyncGetReply);
+  // Register an actor to GCS Service asynchronously.
+  rpc AsyncRegister(ActorAsyncRegisterRequest) returns (ActorAsyncRegisterReply);
+  // Update dynamic states of actor in GCS Service asynchronously.
+  rpc AsyncUpdate(ActorAsyncUpdateRequest) returns (ActorAsyncUpdateReply);
+}
