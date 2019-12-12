@@ -62,5 +62,10 @@ std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
       new rpc::DefaultActorInfoHandler(*redis_gcs_client_));
 }
 
+std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
+  return std::unique_ptr<rpc::DefaultActorInfoHandler>(
+      new rpc::DefaultActorInfoHandler(*redis_gcs_client_));
+}
+
 }  // namespace gcs
 }  // namespace ray

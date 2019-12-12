@@ -1,5 +1,8 @@
 #include "actor_info_handler_impl.h"
+<<<<<<< HEAD
 #include <assert.h>
+=======
+>>>>>>> add actor_info_handler
 #include "ray/util/logging.h"
 
 namespace ray {

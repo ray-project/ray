@@ -84,6 +84,30 @@ class GcsRpcClient {
             request, callback);
   }
 
+  /// Register an actor to gcs server asynchronously.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AsyncRegister(const ActorAsyncRegisterRequest &request,
+                     const ClientCallback<ActorAsyncRegisterReply> &callback) {
+    client_call_manager_.CreateCall<ActorInfoGcsService, ActorAsyncRegisterRequest,
+                                    ActorAsyncRegisterReply>(
+        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAsyncRegister, request,
+        callback);
+  }
+
+  ///  Update dynamic states of actor in gcs server asynchronously.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AsyncUpdate(const ActorAsyncUpdateRequest &request,
+                   const ClientCallback<ActorAsyncUpdateReply> &callback) {
+    client_call_manager_
+        .CreateCall<ActorInfoGcsService, ActorAsyncUpdateRequest, ActorAsyncUpdateReply>(
+            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAsyncUpdate,
+            request, callback);
+  }
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<JobInfoGcsService::Stub> job_info_stub_;
