@@ -1,33 +1,43 @@
 package org.ray.streaming.runtime.transfer;
 
+import org.ray.runtime.functionmanager.FunctionDescriptor;
+import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import org.ray.streaming.runtime.worker.JobWorker;
+
 public class TransferHandler {
 
   private long writerClientNative;
   private long readerClientNative;
 
   public TransferHandler(long coreWorkerNative) {
-    writerClientNative = createWriterClientNative(coreWorkerNative);
-    readerClientNative = createReaderClientNative(coreWorkerNative);
+    writerClientNative = createWriterClientNative(coreWorkerNative,
+        new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessage", "([B)V"),
+        new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessageSync", "([B)[B"));
+    readerClientNative = createReaderClientNative(coreWorkerNative,
+        new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessage", "([B)V"),
+        new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessageSync", "([B)[B"));
   }
 
-  public void handleWriterMessage(byte[] buffer) {
+  public void onWriterMessage(byte[] buffer) {
     handleWriterMessageNative(writerClientNative, buffer);
   }
 
-  public byte[] handleWriterMessageSync(byte[] buffer) {
+  public byte[] onWriterMessageSync(byte[] buffer) {
     return handleWriterMessageSyncNative(writerClientNative, buffer);
   }
 
-  public void handleReaderMessage(byte[] buffer) {
+  public void onReaderMessage(byte[] buffer) {
     handleReaderMessageNative(readerClientNative, buffer);
   }
 
-  public byte[] handleReaderMessageSync(byte[] buffer) {
+  public byte[] onReaderMessageSync(byte[] buffer) {
     return handleReaderMessageSyncNative(readerClientNative, buffer);
   }
 
-  private native long createWriterClientNative(long coreWorkerNative);
-  private native long createReaderClientNative(long coreWorkerNative);
+  private native long createWriterClientNative(long coreWorkerNative,
+      FunctionDescriptor async_func, FunctionDescriptor sync_func);
+  private native long createReaderClientNative(long coreWorkerNative,
+      FunctionDescriptor async_func, FunctionDescriptor sync_func);
   private native void handleWriterMessageNative(long handler, byte[] buffer);
   private native byte[] handleWriterMessageSyncNative(long handler, byte[] buffer);
   private native void handleReaderMessageNative(long handler, byte[] buffer);

@@ -11,6 +11,7 @@ import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.core.processor.OneInputProcessor;
 import org.ray.streaming.runtime.core.processor.SourceProcessor;
 import org.ray.streaming.runtime.core.processor.StreamProcessor;
+import org.ray.streaming.runtime.transfer.TransferHandler;
 import org.ray.streaming.runtime.worker.context.WorkerContext;
 import org.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import org.ray.streaming.runtime.worker.tasks.SourceStreamTask;
@@ -34,6 +35,7 @@ public class JobWorker implements Serializable {
   private StreamProcessor streamProcessor;
   private NodeType nodeType;
   private StreamTask task;
+  TransferHandler transferHandler;
 
   public JobWorker() {
   }
@@ -101,5 +103,22 @@ public class JobWorker implements Serializable {
     return task;
   }
 
-  // TODO add TransferHandler
+  /**
+   * Send message to DataReader of the actor
+   **/
+  public void onReaderMessage(byte[] buffer) {
+    transferHandler.onReaderMessage(buffer);
+  }
+
+  public byte[] onReaderMessageSync(byte[] buffer) {
+    return transferHandler.onReaderMessageSync(buffer);
+  }
+
+  public void onWriterMessage(byte[] buffer) {
+    transferHandler.onWriterMessage(buffer);
+  }
+
+  public byte[] onWriterMessageSync(byte[] buffer) {
+    return transferHandler.onWriterMessageSync(buffer);
+  }
 }
