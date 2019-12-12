@@ -89,6 +89,9 @@ enum class StatusCode : char {
 class RAY_MUST_USE_RESULT RAY_EXPORT Status;
 #endif
 
+// The error message for SystemExit.
+const std::string kSystemExitMessage = "process raised SystemExit";
+
 class RAY_EXPORT Status {
  public:
   // Create a success status.
@@ -154,7 +157,7 @@ class RAY_EXPORT Status {
   }
 
   static Status SystemExit() {
-    return Status(StatusCode::SystemExit, "process requested exit");
+    return Status(StatusCode::SystemExit, kSystemExitMessage);
   }
 
   // Returns true iff the status indicates success.

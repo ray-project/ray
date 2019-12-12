@@ -121,6 +121,12 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
+          // We don't need to log system exit status, since it will either be an
+          // intentional __ray_terminate__, or the worker will log the error message
+          // on the Python side in _raylet.pyx. TODO: checking the string is hacky.
+          if (status.message().find(kSystemExitMessage) == std::string::npos) {
+            RAY_LOG(ERROR) << "Actor task failed: " << status;
+          }
           task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply, nullptr);
