@@ -6,7 +6,10 @@ import java.util.Arrays;
 import java.util.Random;
 
 public class ActorId extends BaseId implements Serializable {
-  public static final int LENGTH = 8;
+
+  private static final int UNIQUE_BYTES_LENGTH = 4;
+
+  public static final int LENGTH = JobId.LENGTH + UNIQUE_BYTES_LENGTH;
 
   public static final ActorId NIL = nil();
 

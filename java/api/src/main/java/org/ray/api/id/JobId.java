@@ -10,10 +10,7 @@ import java.util.Arrays;
  */
 public class JobId extends BaseId implements Serializable {
 
-  // Note that the max value of a job id is NIL which value is (2^32 - 1).
-  public static final Long MAX_VALUE = (long) Math.pow(2, 32) - 1;
-
-  public static final int LENGTH = 4;
+  public static final int LENGTH = 2;
 
   public static final JobId NIL = genNil();
 
