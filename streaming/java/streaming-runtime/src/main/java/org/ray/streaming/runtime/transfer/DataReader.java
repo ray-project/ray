@@ -160,7 +160,7 @@ public class DataReader {
       boolean isRecreate,
       byte[] configBytes,
       boolean isMock);
-  
+
   private native void getBundleNative(long nativeReaderPtr, long timeoutMillis, long params, long metaAddress);
 
   private native void stopReaderNative(long nativeReaderPtr);

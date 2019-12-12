@@ -23,7 +23,7 @@ public class TaskAssignImpl implements ITaskAssign {
   /**
    * Assign an optimized logical plan to execution graph.
    *
-   * @param plan The logical plan.
+   * @param plan    The logical plan.
    * @param workers The worker actors.
    * @return The physical execution graph.
    */

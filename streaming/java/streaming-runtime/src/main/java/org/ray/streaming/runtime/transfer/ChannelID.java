@@ -3,6 +3,7 @@ package org.ray.streaming.runtime.transfer;
 import com.google.common.base.FinalizablePhantomReference;
 import com.google.common.base.FinalizableReferenceQueue;
 import com.google.common.collect.Sets;
+
 import sun.nio.ch.DirectBuffer;
 
 import java.lang.ref.Reference;
@@ -31,7 +32,7 @@ public class ChannelID {
     directBuffer.put(bytes);
     directBuffer.rewind();
     this.buffer = directBuffer;
-    this.address = ((DirectBuffer)(buffer)).address();
+    this.address = ((DirectBuffer) (buffer)).address();
     long nativeIDPtr = 0;
     nativeIDPtr = createNativeID(address);
     this.nativeIDPtr = nativeIDPtr;

@@ -27,9 +27,9 @@ public class DataMessage implements Message {
   @Override
   public String toString() {
     return "DataMessage{" +
-            "body=" + body +
-            ", timestamp=" + timestamp +
-            ", channelID='" + channelID + '\'' +
-            '}';
+        "body=" + body +
+        ", timestamp=" + timestamp +
+        ", channelID='" + channelID + '\'' +
+        '}';
   }
 }

@@ -1,6 +1,7 @@
 package org.ray.streaming.runtime.core.graph;
 
 import java.io.Serializable;
+
 import org.ray.streaming.api.partition.Partition;
 
 /**
