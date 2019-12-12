@@ -314,7 +314,6 @@ void CoreWorker::ReportActiveObjectIDs() {
 }
 
 void CoreWorker::InternalHeartbeat() {
-  RAY_LOG(ERROR) << "IntenralHerabeat";
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
     to_resubmit_.pop_front();
