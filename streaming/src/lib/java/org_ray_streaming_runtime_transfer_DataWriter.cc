@@ -1,13 +1,13 @@
 #include "org_ray_streaming_runtime_transfer_DataWriter.h"
+#include "config/streaming_config.h"
 #include "data_writer.h"
 #include "streaming_jni_common.h"
-#include "config/streaming_config.h"
 
 using namespace ray::streaming;
 
-JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_createDataWriterNative(
-  JNIEnv *env, jobject this_obj,
-  jlong core_worker, jobjectArray actor_id_vec,
+JNIEXPORT jlong JNICALL
+Java_org_ray_streaming_runtime_transfer_DataWriter_createDataWriterNative(
+    JNIEnv *env, jobject this_obj, jlong core_worker, jobjectArray actor_id_vec,
     jobject async_func, jobject sync_func,
     jobjectArray output_queue_ids,  // byte[][]
     jlongArray seq_ids, jlong queue_size, jlongArray creator_type,
@@ -31,7 +31,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_creat
   LongVectorFromJLongArray create_types_vec(env, creator_type);
   std::vector<ray::ActorID> actor_ids = jarray_to_actor_id_vec(env, actor_id_vec);
 
-  STREAMING_LOG(INFO) << "core_worker: " << reinterpret_cast<ray::CoreWorker *>(core_worker);
+  STREAMING_LOG(INFO) << "core_worker: "
+                      << reinterpret_cast<ray::CoreWorker *>(core_worker);
   STREAMING_LOG(INFO) << "actor_ids: " << actor_ids[0];
   ray::RayFunction af = FunctionDescriptorToRayFunction(env, async_func);
   ray::RayFunction sf = FunctionDescriptorToRayFunction(env, sync_func);
@@ -47,14 +48,13 @@ JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_creat
   const jbyte *fbs_conf_bytes = env->GetByteArrayElements(fsb_conf_byte_array, 0);
   uint32_t fbs_len = env->GetArrayLength(fsb_conf_byte_array);
   STREAMING_CHECK(fbs_conf_bytes != nullptr);
-  std::shared_ptr<RuntimeContext> runtime_context = 
-    std::make_shared<RuntimeContext>();
-  runtime_context->SetConfig(reinterpret_cast<const uint8_t *>(fbs_conf_bytes),
-                            fbs_len);
-  
-  auto* data_writer = new DataWriter(runtime_context);
+  std::shared_ptr<RuntimeContext> runtime_context = std::make_shared<RuntimeContext>();
+  runtime_context->SetConfig(reinterpret_cast<const uint8_t *>(fbs_conf_bytes), fbs_len);
 
-  StreamingStatus st = data_writer->Init(queue_id_vec, actor_ids, msg_ids_vec, queue_size_vec);
+  auto *data_writer = new DataWriter(runtime_context);
+
+  StreamingStatus st =
+      data_writer->Init(queue_id_vec, actor_ids, msg_ids_vec, queue_size_vec);
   if (st != StreamingStatus::OK) {
     STREAMING_LOG(WARNING) << "DataWriter init failed.";
   } else {
@@ -73,7 +73,7 @@ Java_org_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(
   auto data = reinterpret_cast<uint8_t *>(address);
   auto data_size = static_cast<uint32_t>(size);
   jlong result = data_writer->WriteMessageToBufferRing(qid, data, data_size,
-                                                         StreamingMessageType::Message);
+                                                       StreamingMessageType::Message);
 
   if (result == 0) {
     STREAMING_LOG(INFO) << "producer interrupted, return 0.";
@@ -83,16 +83,18 @@ Java_org_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_DataWriter_stopProducerNative(
-    JNIEnv *env, jobject thisObj, jlong ptr) {
+Java_org_ray_streaming_runtime_transfer_DataWriter_stopProducerNative(JNIEnv *env,
+                                                                      jobject thisObj,
+                                                                      jlong ptr) {
   STREAMING_LOG(INFO) << "jni: stop producer.";
   DataWriter *data_writer = reinterpret_cast<DataWriter *>(ptr);
   data_writer->Stop();
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_DataWriter_closeProducerNative(
-    JNIEnv *env, jobject thisObj, jlong ptr) {
+Java_org_ray_streaming_runtime_transfer_DataWriter_closeProducerNative(JNIEnv *env,
+                                                                       jobject thisObj,
+                                                                       jlong ptr) {
   DataWriter *data_writer = reinterpret_cast<DataWriter *>(ptr);
   delete data_writer;
 }
