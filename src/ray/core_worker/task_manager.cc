@@ -6,7 +6,10 @@ void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries)
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
-  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
+  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), spec.num_returns()).second);
+  if (max_retries > 0) {
+    RAY_CHECK(pending_tasks_to_retry_.emplace(spec.TaskId(), std::move(entry)).second);
+  }
 }
 
 bool TaskManager::IsTaskPending(const TaskID &task_id) const {
@@ -23,6 +26,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
     pending_tasks_.erase(it);
+    pending_tasks_to_retry_.erase(task_id);
   }
 
   for (int i = 0; i < reply.return_objects_size(); i++) {
@@ -61,18 +65,29 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
                  << rpc::ErrorType_Name(error_type);
   int num_retries_left = 0;
   TaskSpecification spec;
+  int num_returns = 0;
   {
     absl::MutexLock lock(&mu_);
-    auto it = pending_tasks_.find(task_id);
-    RAY_CHECK(it != pending_tasks_.end())
-        << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.first;
-    num_retries_left = it->second.second;
+    auto it = pending_tasks_to_retry_.find(task_id);
+    if (it != pending_tasks_to_retry_.end()) {
+      spec = it->second.first;
+      num_retries_left = it->second.second;
+      if (num_retries_left == 0) {
+        pending_tasks_to_retry_.erase(it);
+      } else {
+        RAY_CHECK(num_retries_left > 0);
+        it->second.second--;
+      }
+    }
+
     if (num_retries_left == 0) {
+      // Either the task is not retryable, or it has reached its max number
+      // of retries.
+      auto it = pending_tasks_.find(task_id);
+      RAY_CHECK(it != pending_tasks_.end())
+          << "Tried to complete task that was not pending " << task_id;
+      num_returns = it->second;
       pending_tasks_.erase(it);
-    } else {
-      RAY_CHECK(num_retries_left > 0);
-      it->second.second--;
     }
   }
 
@@ -83,7 +98,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
                    << ", attempting to resubmit.";
     retry_task_callback_(spec);
   } else {
-    MarkPendingTaskFailed(task_id, spec.NumReturns(), error_type);
+    MarkPendingTaskFailed(task_id, num_returns, error_type);
   }
 }
 
