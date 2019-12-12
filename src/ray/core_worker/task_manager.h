@@ -30,7 +30,7 @@ using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
 class TaskManager : public TaskFinisherInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-              std::shared_ptr<ActorManager> actor_manager,
+              std::shared_ptr<ActorManagerInterface> actor_manager,
               RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
         actor_manager_(actor_manager),
@@ -81,10 +81,16 @@ class TaskManager : public TaskFinisherInterface {
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
   // Interface for publishing actor creation.
-  std::shared_ptr<ActorManager> actor_manager_;
+  std::shared_ptr<ActorManagerInterface> actor_manager_;
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
+
+  // The number of task failures we have logged total.
+  int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
+
+  // The last time we logged a task failure.
+  int64_t last_log_time_ms_ GUARDED_BY(mu_) = 0;
 
   /// Protects below fields.
   mutable absl::Mutex mu_;

@@ -154,7 +154,7 @@ class RAY_EXPORT Status {
   }
 
   static Status SystemExit() {
-    return Status(StatusCode::SystemExit, "process raised SystemExit");
+    return Status(StatusCode::SystemExit, "process requested exit");
   }
 
   // Returns true iff the status indicates success.

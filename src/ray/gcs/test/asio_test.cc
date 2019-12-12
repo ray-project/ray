@@ -1,7 +1,7 @@
 #include <iostream>
 
-#include "asio.h"
 #include "gtest/gtest.h"
+#include "ray/gcs/asio.h"
 #include "ray/util/logging.h"
 
 extern "C" {

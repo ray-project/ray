@@ -9,7 +9,6 @@ void ActorManager::PublishCreatedActor(const TaskSpecification &actor_creation_t
   auto data = gcs::CreateActorTableData(actor_creation_task, address,
                                         gcs::ActorTableData::ALIVE, 0);
   RAY_CHECK_OK(global_actor_table_.Append(JobID::Nil(), actor_id, data, nullptr));
-  RAY_LOG(ERROR) << "Published actor creation for " << actor_id;
 }
 
 void ActorManager::PublishTerminatedActor(const TaskSpecification &actor_creation_task) {
@@ -17,7 +16,6 @@ void ActorManager::PublishTerminatedActor(const TaskSpecification &actor_creatio
   auto data = gcs::CreateActorTableData(actor_creation_task, rpc::Address(),
                                         gcs::ActorTableData::DEAD, 0);
   RAY_CHECK_OK(global_actor_table_.Append(JobID::Nil(), actor_id, data, nullptr));
-  RAY_LOG(ERROR) << "Published actor termination for " << actor_id;
 }
 
 }  // namespace ray

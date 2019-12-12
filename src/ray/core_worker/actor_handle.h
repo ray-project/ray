@@ -53,7 +53,10 @@ class ActorHandle {
   /// ActorHandle and reset them in this method.
   void Reset();
 
+  // Mark the actor handle as dead.
   void MarkDead() { state_ = rpc::ActorTableData::DEAD; }
+
+  // Returns whether the actor is known to be dead.
   bool IsDead() const { return state_ == rpc::ActorTableData::DEAD; }
 
  private:
