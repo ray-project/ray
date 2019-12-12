@@ -140,8 +140,8 @@ class CentralizedQueues:
         }
         return list(backends_in_policy.intersection(available_workers))
 
+    # flushes the buffer queue and assigns work to workers
     def _flush_buffer(self):
-        # distach buffer queues to work queues
         for service in self.queues.keys():
             ready_backends = self._get_available_backends(service)
             for backend in ready_backends:
@@ -158,8 +158,15 @@ class CentralizedQueues:
                     )
                     work.replica_handle._ray_serve_call.remote(request)
 
+    # selects the backend and puts the service queue query to the buffer
+    # different policies will implement different backend selection policies
+    def _flush_service_queue(self):
+        pass
+
+    # _flush function has to flush the service and buffer queues. 
     def _flush(self):
-       pass
+       self._flush_service_queue()
+       self._flush_buffer()
 
 class CentralizedQueuesActor(CentralizedQueues):
     """
@@ -181,7 +188,7 @@ class RandomPolicyQueue(CentralizedQueues):
     """
     A wrapper class for Random policy in backend selection. 
     """
-    def _flush(self):
+    def _flush_service_queue(self):
         # perform traffic splitting for requests
         for service, queue in self.queues.items():
             # while there are incoming requests and there are backends
@@ -193,10 +200,7 @@ class RandomPolicyQueue(CentralizedQueues):
 
                 request = queue.popleft()
                 self.buffer_queues[chosen_backend].append(request)
-
-        self._flush_buffer()
-
-
+                
 @ray.remote
 class RandomPolicyQueueActor(RandomPolicyQueue,CentralizedQueuesActor):
     pass
@@ -205,7 +209,7 @@ class RoundRobinPolicyQueue(CentralizedQueues):
     """
     A wrapper class for round robin policy in backend selection. 
     """
-    def _flush(self):
+    def _flush_service_queue(self):
         # perform traffic splitting for requests
         for service, queue in self.queues.items():
             # if there are incoming requests and there are backends
@@ -216,7 +220,6 @@ class RoundRobinPolicyQueue(CentralizedQueues):
                     chosen_backend = next(round_robin_backend)
                     request = queue.popleft()
                     self.buffer_queues[chosen_backend].append(request)
-        self._flush_buffer()
         
 @ray.remote
 class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue,CentralizedQueuesActor):
