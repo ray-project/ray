@@ -1,4 +1,7 @@
 #include "org_ray_streaming_runtime_transfer_DataWriter.h"
+#include "data_writer.h"
+#include "streaming_jni_common.h"
+#include "config/streaming_config.h"
 
 using namespace ray::streaming;
 
@@ -8,8 +11,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_creat
     jobject async_func, jobject sync_func,
     jobjectArray output_queue_ids,  // byte[][]
     jlongArray seq_ids, jlong queue_size, jlongArray creator_type,
-    jbyteArray fsb_conf_byte_array)
-  ) {
+    jbyteArray fsb_conf_byte_array) {
   STREAMING_LOG(INFO) << "[JNI]: createDataWriterNative.";
   std::vector<ray::ObjectID> queue_id_vec =
       jarray_to_object_id_vec(env, output_queue_ids);
@@ -45,7 +47,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_creat
   const jbyte *fbs_conf_bytes = env->GetByteArrayElements(fsb_conf_byte_array, 0);
   uint32_t fbs_len = env->GetArrayLength(fsb_conf_byte_array);
   STREAMING_CHECK(fbs_conf_bytes != nullptr);
-  std::shared<RuntimeContext> runtime_context = 
+  std::shared_ptr<RuntimeContext> runtime_context = 
     std::make_shared<RuntimeContext>();
   runtime_context->SetConfig(reinterpret_cast<const uint8_t *>(fbs_conf_bytes),
                             fbs_len);
