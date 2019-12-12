@@ -188,6 +188,7 @@ class RandomPolicyQueue(CentralizedQueues):
     """
     A wrapper class for Random policy in backend selection. 
     """
+    
     def _flush_service_queue(self):
         # perform traffic splitting for requests
         for service, queue in self.queues.items():
@@ -209,6 +210,7 @@ class RoundRobinPolicyQueue(CentralizedQueues):
     """
     A wrapper class for round robin policy in backend selection. 
     """
+
     def _flush_service_queue(self):
         # perform traffic splitting for requests
         for service, queue in self.queues.items():
