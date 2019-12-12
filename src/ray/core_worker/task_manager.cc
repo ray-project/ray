@@ -62,7 +62,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 }
 
-void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) {
+void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                                    Status *status) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -93,7 +94,11 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   } else {
     auto debug_str = spec.DebugString();
     if (debug_str.find("__ray_terminate__") == std::string::npos) {
-      RAY_LOG(ERROR) << "Task failed: " << spec.DebugString();
+      if (status != nullptr) {
+        RAY_LOG(ERROR) << "Task failed: " << *status << ": " << spec.DebugString();
+      } else {
+        RAY_LOG(ERROR) << "Task failed: " << spec.DebugString();
+      }
     }
     MarkPendingTaskFailed(task_id, spec, error_type);
   }

@@ -86,7 +86,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
         auto request = std::move(head->second);
         head = pending_it->second.erase(head);
         auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-        task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
+        auto status = Status::IOError("cancelling all pending tasks of dead actor");
+        task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
       }
       pending_requests_.erase(pending_it);
     }
@@ -123,7 +124,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
-          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
+          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply, nullptr);
         }

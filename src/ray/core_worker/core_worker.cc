@@ -720,7 +720,9 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
     task_manager_->AddPendingTask(task_spec);
     PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     if (actor_handle->IsDead()) {
-      task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
+      auto status = Status::IOError("sent task to dead actor");
+      task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
+                                       &status);
     } else {
       status = direct_actor_submitter_->SubmitTask(task_spec);
     }
@@ -765,6 +767,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         ActorHandle *actor_handle = nullptr;
         RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
         actor_handle->MarkDead();
+        RAY_LOG(ERROR) << "Marking actor handle as dead " << actor_id;
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.

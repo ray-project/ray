@@ -19,7 +19,8 @@ class TaskFinisherInterface {
   virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                                    const rpc::Address *actor_addr) = 0;
 
-  virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) = 0;
+  virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                                 Status *status = nullptr) = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
@@ -63,7 +64,9 @@ class TaskManager : public TaskFinisherInterface {
   ///
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override;
+  /// \param[in] status Optional status message.
+  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                         Status *status = nullptr) override;
 
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
