@@ -86,6 +86,12 @@ class TaskManager : public TaskFinisherInterface {
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
 
+  // The number of task failures we have logged total.
+  int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
+
+  // The last time we logged a task failure.
+  int64_t last_log_time_ms_ GUARDED_BY(mu_) = 0;
+
   /// Protects below fields.
   mutable absl::Mutex mu_;
 

@@ -1,6 +1,13 @@
 #include "ray/core_worker/task_manager.h"
+#include "ray/util/util.h"
 
 namespace ray {
+
+// Start throttling task failure logs once we hit this threshold.
+const int64_t kTaskFailureThrottlingThreshold = 50;
+
+// Throttle task failure logs to once this interval.
+const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
@@ -92,12 +99,23 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
                    << ", attempting to resubmit.";
     retry_task_callback_(spec);
   } else {
-    auto debug_str = spec.DebugString();
-    if (debug_str.find("__ray_terminate__") == std::string::npos) {
-      if (status != nullptr) {
-        RAY_LOG(ERROR) << "Task failed: " << *status << ": " << spec.DebugString();
-      } else {
-        RAY_LOG(ERROR) << "Task failed: " << spec.DebugString();
+    // Throttled logging of task failure errors.
+    {
+      absl::MutexLock lock(&mu_);
+      auto debug_str = spec.DebugString();
+      if (debug_str.find("__ray_terminate__") == std::string::npos &&
+          (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
+           (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
+        if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
+          RAY_LOG(ERROR) << "Too many failure logs, throttling to once every "
+                         << kTaskFailureLoggingFrequencyMillis << " millis.";
+        }
+        last_log_time_ms_ = current_time_ms();
+        if (status != nullptr) {
+          RAY_LOG(ERROR) << "Task failed: " << *status << ": " << spec.DebugString();
+        } else {
+          RAY_LOG(ERROR) << "Task failed: " << spec.DebugString();
+        }
       }
     }
     MarkPendingTaskFailed(task_id, spec, error_type);
