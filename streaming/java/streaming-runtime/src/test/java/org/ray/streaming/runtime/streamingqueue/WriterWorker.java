@@ -110,7 +110,7 @@ public class WriterWorker extends Worker {
 
         bb.clear();
         ChannelID qid = ChannelID.from(outputQueueList.get(j));
-        dataWriter.produce(qid, bb);
+        dataWriter.write(qid, bb);
       }
     }
     try {

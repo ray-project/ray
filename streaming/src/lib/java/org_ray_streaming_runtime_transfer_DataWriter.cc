@@ -6,56 +6,40 @@
 using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL
-Java_org_ray_streaming_runtime_transfer_DataWriter_createDataWriterNative(
-    JNIEnv *env, jobject this_obj, jlong core_worker, jobjectArray actor_id_vec,
-    jobject async_func, jobject sync_func,
-    jobjectArray output_queue_ids,  // byte[][]
-    jlongArray seq_ids, jlong queue_size, jlongArray creator_type,
-    jbyteArray fsb_conf_byte_array) {
+Java_org_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
+    JNIEnv *env, jobject this_obj, jobjectArray output_queue_ids,
+    jobjectArray output_actor_ids, jlongArray msg_ids, jlong channel_size,
+    jbyteArray conf_bytes_array, jboolean is_mock) {
   STREAMING_LOG(INFO) << "[JNI]: createDataWriterNative.";
   std::vector<ray::ObjectID> queue_id_vec =
       jarray_to_object_id_vec(env, output_queue_ids);
-  for (auto qid : queue_id_vec) {
-    STREAMING_LOG(INFO) << "output qid: " << qid.Hex();
+  for (auto id : queue_id_vec) {
+    STREAMING_LOG(INFO) << "output channel id: " << id.Hex();
   }
-  STREAMING_LOG(INFO) << "total queue size: " << queue_size << "*" << queue_id_vec.size()
-                      << "=" << queue_id_vec.size() * queue_size;
-  LongVectorFromJLongArray long_array_obj(env, seq_ids);
-
-  std::vector<uint64_t> msg_ids_vec = LongVectorFromJLongArray(env, seq_ids).data;
-
-  std::vector<uint64_t> queue_size_vec(long_array_obj.data.size(), queue_size);
-
+  STREAMING_LOG(INFO) << "total channel size: " << channel_size << "*"
+                      << queue_id_vec.size() << "=" << queue_id_vec.size() * channel_size;
+  LongVectorFromJLongArray long_array_obj(env, msg_ids);
+  std::vector<uint64_t> msg_ids_vec = LongVectorFromJLongArray(env, msg_ids).data;
+  std::vector<uint64_t> queue_size_vec(long_array_obj.data.size(), channel_size);
   std::vector<ray::ObjectID> remain_id_vec;
+  std::vector<ray::ActorID> actor_ids = jarray_to_actor_id_vec(env, output_actor_ids);
 
-  LongVectorFromJLongArray create_types_vec(env, creator_type);
-  std::vector<ray::ActorID> actor_ids = jarray_to_actor_id_vec(env, actor_id_vec);
-
-  STREAMING_LOG(INFO) << "core_worker: "
-                      << reinterpret_cast<ray::CoreWorker *>(core_worker);
   STREAMING_LOG(INFO) << "actor_ids: " << actor_ids[0];
-  ray::RayFunction af = FunctionDescriptorToRayFunction(env, async_func);
-  ray::RayFunction sf = FunctionDescriptorToRayFunction(env, sync_func);
-  std::vector<std::string> af_ds = af.GetFunctionDescriptor();
-  std::vector<std::string> sf_ds = sf.GetFunctionDescriptor();
-  for (auto &str : af_ds) {
-    STREAMING_LOG(INFO) << "af_ds: " << str;
-  }
-  for (auto &str : sf_ds) {
-    STREAMING_LOG(INFO) << "sf_ds: " << str;
-  }
 
-  const jbyte *fbs_conf_bytes = env->GetByteArrayElements(fsb_conf_byte_array, 0);
-  uint32_t fbs_len = env->GetArrayLength(fsb_conf_byte_array);
-  STREAMING_CHECK(fbs_conf_bytes != nullptr);
-  std::shared_ptr<RuntimeContext> runtime_context = std::make_shared<RuntimeContext>();
-  runtime_context->SetConfig(reinterpret_cast<const uint8_t *>(fbs_conf_bytes), fbs_len);
-
+  const jbyte *conf_bytes = env->GetByteArrayElements(conf_bytes_array, nullptr);
+  uint32_t conf_size = env->GetArrayLength(conf_bytes_array);
+  STREAMING_CHECK(conf_bytes != nullptr);
+  auto runtime_context = std::make_shared<RuntimeContext>();
+  if (conf_size > 0) {
+    runtime_context->SetConfig(reinterpret_cast<const uint8_t *>(conf_bytes), conf_size);
+  }
+  if (is_mock) {
+    runtime_context->MarkMockTest();
+  }
   auto *data_writer = new DataWriter(runtime_context);
-
-  StreamingStatus st =
+  auto status =
       data_writer->Init(queue_id_vec, actor_ids, msg_ids_vec, queue_size_vec);
-  if (st != StreamingStatus::OK) {
+  if (status != StreamingStatus::OK) {
     STREAMING_LOG(WARNING) << "DataWriter init failed.";
   } else {
     STREAMING_LOG(INFO) << "DataWriter init success";
@@ -83,18 +67,18 @@ Java_org_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_DataWriter_stopProducerNative(JNIEnv *env,
-                                                                      jobject thisObj,
-                                                                      jlong ptr) {
+Java_org_ray_streaming_runtime_transfer_DataWriter_stopWriterNative(JNIEnv *env,
+                                                                    jobject thisObj,
+                                                                    jlong ptr) {
   STREAMING_LOG(INFO) << "jni: stop producer.";
-  DataWriter *data_writer = reinterpret_cast<DataWriter *>(ptr);
+  auto *data_writer = reinterpret_cast<DataWriter *>(ptr);
   data_writer->Stop();
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_runtime_transfer_DataWriter_closeProducerNative(JNIEnv *env,
-                                                                       jobject thisObj,
-                                                                       jlong ptr) {
-  DataWriter *data_writer = reinterpret_cast<DataWriter *>(ptr);
+Java_org_ray_streaming_runtime_transfer_DataWriter_closeWriterNative(JNIEnv *env,
+                                                                     jobject thisObj,
+                                                                     jlong ptr) {
+  auto *data_writer = reinterpret_cast<DataWriter *>(ptr);
   delete data_writer;
 }

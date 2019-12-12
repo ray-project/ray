@@ -9,11 +9,11 @@ extern "C" {
 #endif
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataWriter
- * Method:    createDataWriterNative
- * Signature: (J[[BLorg/ray/runtime/functionmanager/FunctionDescriptor;Lorg/ray/runtime/functionmanager/FunctionDescriptor;[[B[JJ[J[B)J
+ * Method:    createWriterNative
+ * Signature: ([[B[[B[JJ[BZ)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_createDataWriterNative
-  (JNIEnv *, jobject, jlong, jobjectArray, jobject, jobject, jobjectArray, jlongArray, jlong, jlongArray, jbyteArray);
+JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_createWriterNative
+  (JNIEnv *, jclass, jobjectArray, jobjectArray, jlongArray, jlong, jbyteArray, jboolean);
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataWriter
@@ -25,19 +25,20 @@ JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_write
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataWriter
- * Method:    stopProducerNative
+ * Method:    stopWriterNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_stopProducerNative
+JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_stopWriterNative
   (JNIEnv *, jobject, jlong);
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataWriter
- * Method:    closeProducerNative
+ * Method:    closeWriterNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_closeProducerNative
+JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataWriter_closeWriterNative
   (JNIEnv *, jobject, jlong);
+
 #ifdef __cplusplus
 }
 #endif
