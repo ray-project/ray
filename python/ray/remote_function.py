@@ -6,6 +6,7 @@ import logging
 from functools import wraps
 
 from ray import cloudpickle as pickle
+from ray import ray_constants
 from ray.function_manager import FunctionDescriptor
 import ray.signature
 
@@ -94,7 +95,7 @@ class RemoteFunction(object):
             return self._remote(args=args, kwargs=kwargs)
 
         self.remote = _remote_proxy
-        self.direct_call_enabled = ray.ray_constants.direct_call_enabled()
+        self.direct_call_enabled = ray_constants.direct_call_enabled()
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
