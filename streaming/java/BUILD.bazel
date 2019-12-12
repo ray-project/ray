@@ -132,18 +132,31 @@ genrule(
     name = "cp_java_generated",
     srcs = [
         ":all_java_proto",
-        ":java_native_deps",
         ":copy_pom_file",
     ],
+    outs = ["cp_java_generated.out"],
+    cmd = """
+        set -x
+        WORK_DIR=$$(pwd)
+        GENERATED_DIR=$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated
+        rm -rf $$GENERATED_DIR
+        mkdir -p $$GENERATED_DIR
+        # Copy protobuf-generated files.
+        for f in $(locations //streaming/java:all_java_proto); do
+            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/streaming/java/streaming-runtime/src/main/java
+        done
+        echo $$(date) > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
 )
 
 # Generates the dependencies needed by maven.
 genrule(
     name = "gen_maven_deps",
     srcs = [
-        ":all_java_proto",
         ":java_native_deps",
-        ":copy_pom_file",
+        ":cp_java_generated",
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """
@@ -156,13 +169,6 @@ genrule(
         for f in $(locations //streaming/java:java_native_deps); do
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
-        done
-        GENERATED_DIR=$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated
-        rm -rf $$GENERATED_DIR
-        mkdir -p $$GENERATED_DIR
-        # Copy protobuf-generated files.
-        for f in $(locations //streaming/java:all_java_proto); do
-            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/streaming/java/streaming-runtime/src/main/java
         done
         echo $$(date) > $@
     """,

@@ -1,6 +1,6 @@
 package org.ray.streaming.runtime.worker.context;
 
-import static org.ray.streaming.util.ConfigKey.STREAMING_BATCH_MAX_COUNT;
+import static org.ray.streaming.util.Config.STREAMING_BATCH_MAX_COUNT;
 
 import java.util.Map;
 

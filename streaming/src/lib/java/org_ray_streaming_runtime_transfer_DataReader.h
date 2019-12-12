@@ -10,10 +10,10 @@ extern "C" {
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataReader
  * Method:    createDataReaderNative
- * Signature: (J[[BLorg/ray/runtime/functionmanager/FunctionDescriptor;Lorg/ray/runtime/functionmanager/FunctionDescriptor;[[B[J[JJZ[B)J
+ * Signature: (J[[B[[B[J[JJZ[BZ)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_createDataReaderNative
-  (JNIEnv *, jobject, jlong, jobjectArray, jobject, jobject, jobjectArray, jlongArray, jlongArray, jlong, jboolean, jbyteArray);
+  (JNIEnv *, jclass, jlong, jobjectArray, jobjectArray, jlongArray, jlongArray, jlong, jboolean, jbyteArray, jboolean);
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataReader
@@ -25,18 +25,18 @@ JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_getBun
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataReader
- * Method:    stopConsumerNative
+ * Method:    stopReaderNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_stopConsumerNative
+JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_stopReaderNative
   (JNIEnv *, jobject, jlong);
 
 /*
  * Class:     org_ray_streaming_runtime_transfer_DataReader
- * Method:    closeConsumerNative
+ * Method:    closeReaderNative
  * Signature: (J)V
  */
-JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_closeConsumerNative
+JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_closeReaderNative
   (JNIEnv *, jobject, jlong);
 
 #ifdef __cplusplus

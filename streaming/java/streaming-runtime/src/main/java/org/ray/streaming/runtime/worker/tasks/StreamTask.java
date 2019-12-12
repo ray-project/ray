@@ -15,7 +15,7 @@ import org.ray.streaming.runtime.transfer.DataReader;
 import org.ray.streaming.runtime.transfer.DataWriter;
 import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.runtime.worker.context.RayRuntimeContext;
-import org.ray.streaming.util.ConfigKey;
+import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,11 +46,11 @@ public abstract class StreamTask implements Runnable {
 
   private void prepareTask() {
     String queueType = (String) worker.getConfig()
-        .getOrDefault(ConfigKey.STREAMING_QUEUE_TYPE, ConfigKey.MEMORY_QUEUE);
+        .getOrDefault(Config.MEMORY_CHANNEL, Config.MEMORY_CHANNEL);
     Map<String, String> queueConf = new HashMap<>();
     String queueSize = (String) worker.getConfig()
-        .getOrDefault(ConfigKey.QUEUE_SIZE, ConfigKey.QUEUE_SIZE_DEFAULT + "");
-    queueConf.put(ConfigKey.QUEUE_SIZE, queueSize);
+        .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
+    queueConf.put(Config.CHANNEL_SIZE, queueSize);
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();
     ExecutionNode executionNode = worker.getExecutionNode();
@@ -64,7 +64,7 @@ public abstract class StreamTask implements Runnable {
       Map<Integer, RayActor<JobWorker>> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
       taskId2Worker.forEach((targetTaskId, targetActor) -> {
-        String queueName = ChannelUtils.genQueueName(taskId, targetTaskId, executionGraph.getBuildTime());
+        String queueName = ChannelUtils.genChannelName(taskId, targetTaskId, executionGraph.getBuildTime());
         outputActorIds.put(queueName, targetActor.getId());
       });
 
@@ -89,7 +89,7 @@ public abstract class StreamTask implements Runnable {
       Map<Integer, RayActor<JobWorker>> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getSrcNodeId());
       taskId2Worker.forEach((srcTaskId, srcActor) -> {
-        String queueName = ChannelUtils.genQueueName(srcTaskId, taskId, executionGraph.getBuildTime());
+        String queueName = ChannelUtils.genChannelName(srcTaskId, taskId, executionGraph.getBuildTime());
         inputActorIds.put(queueName, srcActor.getId());
       });
     }

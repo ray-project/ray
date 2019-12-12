@@ -6,7 +6,7 @@ import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.function.impl.SinkFunction;
 import org.ray.streaming.api.stream.StreamSource;
-import org.ray.streaming.util.ConfigKey;
+import org.ray.streaming.util.Config;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,7 +31,7 @@ public class WordCountTest implements Serializable {
   public void testWordCount() {
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, Object> config = new HashMap<>();
-    config.put(ConfigKey.STREAMING_BATCH_MAX_COUNT, 1);
+    config.put(Config.STREAMING_BATCH_MAX_COUNT, 1);
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");

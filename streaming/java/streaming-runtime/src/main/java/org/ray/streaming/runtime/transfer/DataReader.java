@@ -1,11 +1,5 @@
 package org.ray.streaming.runtime.transfer;
 
-import org.ray.api.id.ActorId;
-import org.ray.runtime.functionmanager.FunctionDescriptor;
-import org.ray.streaming.runtime.util.Platform;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
@@ -13,102 +7,65 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
+import org.ray.api.id.ActorId;
+import org.ray.streaming.runtime.util.Platform;
+import org.ray.streaming.util.Config;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Preconditions;
+
+/**
+ * Data Reader is wrapper of streaming c++ DataReader, which read data
+ * from channels of upstream workers
+ */
 public class DataReader {
-  private final static Logger LOG = LoggerFactory.getLogger(DataReader.class);
+  private final static Logger LOGGER = LoggerFactory.getLogger(DataReader.class);
 
-  public enum MessageBundleType {
-    EMPTY(1),
-    BARRIER(2),
-    BUNDLE(3);
+  private long nativeReaderPtr;
+  private Queue<DataMessage> buf = new LinkedList<>();
 
-    private int code;
-
-    MessageBundleType(int code) {
-      this.code = code;
-    }
-  }
-
-  private long nativeQueueConsumerPtr;
-  private Queue<DataMessage> buf;
   public DataReader(List<String> inputChannels,
                     List<ActorId> fromActors,
                     Map<String, String> conf) {
-
-  }
-
-  public DataReader(long nativeQueueConsumerPtr) {
-    buf = new LinkedList<>();
-    this.nativeQueueConsumerPtr = nativeQueueConsumerPtr;
-  }
-
-  class QueueBundleMeta {
-    // kMessageBundleHeaderSize + kUniqueIDSize:
-    // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
-    // + bundleType(4b) + rawBundleSize(4b) + channelID(20b)
-    static final int LENGTH = 4 + 8 + 8 + 4 + 4 + 4 + 20;
-    private int magicNum;
-    private long bundleTs;
-    private long lastMessageId;
-    private int messageListSize;
-    private MessageBundleType bundleType;
-    private String channelID;
-    private int rawBundleSize;
-
-    public QueueBundleMeta(ByteBuffer buffer) {
-      // StreamingMessageBundleMeta Deserialization
-      // magicNum
-      magicNum = buffer.getInt();
-      // messageBundleTs
-      bundleTs = buffer.getLong();
-      // lastOffsetSeqId
-      lastMessageId = buffer.getLong();
-      messageListSize = buffer.getInt();
-      int bTypeInt = buffer.getInt();
-      if (MessageBundleType.BUNDLE.code == bTypeInt) {
-        bundleType = MessageBundleType.BUNDLE;
-      } else if (MessageBundleType.BARRIER.code == bTypeInt) {
-        bundleType = MessageBundleType.BARRIER;
-      } else {
-        bundleType = MessageBundleType.EMPTY;
-      }
-      // rawBundleSize
-      rawBundleSize = buffer.getInt();
-      channelID = getQidString(buffer);
+    Preconditions.checkArgument(inputChannels.size() > 0);
+    Preconditions.checkArgument(inputChannels.size() == fromActors.size());
+    byte[][] inputChannelsBytes = ChannelUtils.stringQueueIdListToByteArray(inputChannels);
+    byte[][] fromActorsBytes = ChannelUtils.actorIdListToByteArray(fromActors);
+    long[] seqIds = new long[inputChannels.size()];
+    long[] msgIds = new long[inputChannels.size()];
+    for (int i = 0; i < inputChannels.size(); i++) {
+      seqIds[i] = 0;
+      msgIds[i] = 0;
     }
-
-    public int getMagicNum() {
-      return magicNum;
+    long timerInterval = Long.parseLong(
+        conf.getOrDefault(Config.TIMER_INTERVAL_MS, "-1"));
+    String channelType = conf.getOrDefault(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
+    boolean isMock = false;
+    if (Config.MEMORY_CHANNEL.equals(channelType)) {
+      isMock = true;
     }
-
-    public long getBundleTs() {
-      return bundleTs;
-    }
-
-    public long getLastMessageId() {
-      return lastMessageId;
-    }
-
-    public int getMessageListSize() {
-      return messageListSize;
-    }
-
-    public MessageBundleType getBundleType() {
-      return bundleType;
-    }
-
-    public String getQid() {
-      return channelID;
-    }
-
-    public int getRawBundleSize() {
-      return rawBundleSize;
-    }
+    boolean isRecreate = Boolean.parseBoolean(
+        conf.getOrDefault(Config.IS_RECREATE, "false"));
+    this.nativeReaderPtr = createDataReaderNative(
+        ChannelUtils.getNativeCoreWorker(),
+        inputChannelsBytes,
+        fromActorsBytes,
+        seqIds,
+        msgIds,
+        timerInterval,
+        isRecreate,
+        ChannelUtils.toNativeConf(conf),
+        isMock
+    );
+    LOGGER.info("create DataReader succeed");
   }
 
   // params set by getBundleNative: bundle data address + size
   private final ByteBuffer getBundleParams = ByteBuffer.allocateDirect(24);
+  // We use direct buffer to reduce gc overhead and memory copy.
   private final ByteBuffer bundleData = Platform.wrapDirectBuffer(0, 0);
-  private final ByteBuffer bundleMeta = ByteBuffer.allocateDirect(QueueBundleMeta.LENGTH);
+  private final ByteBuffer bundleMeta = ByteBuffer.allocateDirect(BundleMeta.LENGTH);
 
   {
     getBundleParams.order(ByteOrder.nativeOrder());
@@ -117,7 +74,7 @@ public class DataReader {
   }
 
   /**
-   * pull message from input queues, if timeout, return null.
+   * Pull message from input channels, if timeout, return null.
    *
    * @param timeoutMillis timeout
    * @return message or null
@@ -127,18 +84,18 @@ public class DataReader {
       getBundle(timeoutMillis);
       // if bundle not empty. empty message still has data size + seqId + msgId
       if (bundleData.position() < bundleData.limit()) {
-        QueueBundleMeta queueBundleMeta = new QueueBundleMeta(bundleMeta);
+        BundleMeta bundleMeta = new BundleMeta(this.bundleMeta);
         // barrier
-        if (queueBundleMeta.getBundleType() == MessageBundleType.BARRIER) {
-          throw new UnsupportedOperationException("Unsupported bundle type " + queueBundleMeta.getBundleType());
-        } else if (queueBundleMeta.getBundleType() == MessageBundleType.BUNDLE) {
-          String channelID = queueBundleMeta.getQid();
-          long timestamp = queueBundleMeta.getBundleTs();
-          for (int i = 0; i < queueBundleMeta.getMessageListSize(); ++i) {
-            buf.offer(getQueueMessage(bundleData, channelID, timestamp));
+        if (bundleMeta.getBundleType() == MessageBundleType.BARRIER) {
+          throw new UnsupportedOperationException("Unsupported bundle type " + bundleMeta.getBundleType());
+        } else if (bundleMeta.getBundleType() == MessageBundleType.BUNDLE) {
+          String channelID = bundleMeta.getChannelID();
+          long timestamp = bundleMeta.getBundleTs();
+          for (int i = 0; i < bundleMeta.getMessageListSize(); i++) {
+            buf.offer(getDataMessage(bundleData, channelID, timestamp));
           }
-        } else if (queueBundleMeta.getBundleType() == MessageBundleType.EMPTY) {
-          buf.offer(new DataMessage(null, queueBundleMeta.getBundleTs(),  queueBundleMeta.getQid()));
+        } else if (bundleMeta.getBundleType() == MessageBundleType.EMPTY) {
+          buf.offer(new DataMessage(null, bundleMeta.getBundleTs(), bundleMeta.getChannelID()));
         }
       }
     }
@@ -148,13 +105,14 @@ public class DataReader {
     return buf.poll();
   }
 
-  private DataMessage getQueueMessage(ByteBuffer bundleData, String channelID, long timestamp) {
+  private DataMessage getDataMessage(ByteBuffer bundleData, String channelID, long timestamp) {
     int dataSize = bundleData.getInt();
     // seqId
     bundleData.getLong();
     // msgType
     bundleData.getInt();
-    // make `data.capacity() == data.remaining()`, because some code used `capacity()` rather than `remaining()`
+    // make `data.capacity() == data.remaining()`, because some code used `capacity()`
+    // rather than `remaining()`
     int position = bundleData.position();
     int limit = bundleData.limit();
     bundleData.limit(position + dataSize);
@@ -164,14 +122,8 @@ public class DataReader {
     return new DataMessage(data, timestamp, channelID);
   }
 
-  private String getQidString(ByteBuffer buffer) {
-    byte[] bytes = new byte[ChannelID.ID_LENGTH];
-    buffer.get(bytes);
-    return ChannelUtils.qidBytesToString(bytes);
-  }
-
   private void getBundle(long timeoutMillis) {
-    getBundleNative(nativeQueueConsumerPtr, timeoutMillis,
+    getBundleNative(nativeReaderPtr, timeoutMillis,
         Platform.getAddress(getBundleParams), Platform.getAddress(bundleMeta));
     bundleMeta.rewind();
     long bundleAddress = getBundleParams.getLong(0);
@@ -180,43 +132,123 @@ public class DataReader {
     Platform.wrapDirectBuffer(bundleData, bundleAddress, bundleSize);
   }
 
-
   /**
-   * stop consumer to avoid blocking
+   * Stop reader
    */
   public void stop() {
-    stopConsumerNative(nativeQueueConsumerPtr);
+    stopReaderNative(nativeReaderPtr);
   }
 
   /**
-   * close queue consumer to release resource
+   * Close reader to release resource
    */
   public void close() {
-    if (nativeQueueConsumerPtr == 0) {
+    if (nativeReaderPtr == 0) {
       return;
     }
-    LOG.info("closing queue consumer.");
-    closeConsumerNative(nativeQueueConsumerPtr);
-    nativeQueueConsumerPtr = 0;
-    LOG.info("closing queue consumer done.");
+    LOGGER.info("closing DataReader.");
+    closeReaderNative(nativeReaderPtr);
+    nativeReaderPtr = 0;
+    LOGGER.info("closing DataReader done.");
   }
 
-  private native long createDataReaderNative(
-      long coreWorker,
+  private static native long createDataReaderNative(
+      long coreWorkerPtr,
+      byte[][] inputChannels,
       byte[][] inputActorIds,
-      FunctionDescriptor asyncFunction,
-      FunctionDescriptor syncFunction,
-      byte[][] inputQueueIds,
-      long[] plasmaQueueSeqIds,
-      long[] streamingMsgIds,
+      long[] seqIds,
+      long[] msgIds,
       long timerInterval,
       boolean isRecreate,
-      byte[] fbsConfigBytes);
+      byte[] configBytes,
+      boolean isMock);
+  
+  private native void getBundleNative(long nativeReaderPtr, long timeoutMillis, long params, long metaAddress);
 
-  private native void getBundleNative(long nativeQueueConsumerPtr, long timeoutMillis, long params, long metaAddress);
+  private native void stopReaderNative(long nativeReaderPtr);
 
-  private native void stopConsumerNative(long nativeQueueConsumerPtr);
+  private native void closeReaderNative(long nativeReaderPtr);
 
-  private native void closeConsumerNative(long nativeQueueConsumerPtr);
+}
 
+enum MessageBundleType {
+  EMPTY(1),
+  BARRIER(2),
+  BUNDLE(3);
+
+  int code;
+
+  MessageBundleType(int code) {
+    this.code = code;
+  }
+}
+
+class BundleMeta {
+  // kMessageBundleHeaderSize + kUniqueIDSize:
+  // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
+  // + bundleType(4b) + rawBundleSize(4b) + channelID(20b)
+  static final int LENGTH = 4 + 8 + 8 + 4 + 4 + 4 + 20;
+  private int magicNum;
+  private long bundleTs;
+  private long lastMessageId;
+  private int messageListSize;
+  private MessageBundleType bundleType;
+  private String channelID;
+  private int rawBundleSize;
+
+  BundleMeta(ByteBuffer buffer) {
+    // StreamingMessageBundleMeta Deserialization
+    // magicNum
+    magicNum = buffer.getInt();
+    // messageBundleTs
+    bundleTs = buffer.getLong();
+    // lastOffsetSeqId
+    lastMessageId = buffer.getLong();
+    messageListSize = buffer.getInt();
+    int bTypeInt = buffer.getInt();
+    if (MessageBundleType.BUNDLE.code == bTypeInt) {
+      bundleType = MessageBundleType.BUNDLE;
+    } else if (MessageBundleType.BARRIER.code == bTypeInt) {
+      bundleType = MessageBundleType.BARRIER;
+    } else {
+      bundleType = MessageBundleType.EMPTY;
+    }
+    // rawBundleSize
+    rawBundleSize = buffer.getInt();
+    channelID = getQidString(buffer);
+  }
+
+  private String getQidString(ByteBuffer buffer) {
+    byte[] bytes = new byte[ChannelID.ID_LENGTH];
+    buffer.get(bytes);
+    return ChannelUtils.qidBytesToString(bytes);
+  }
+
+  public int getMagicNum() {
+    return magicNum;
+  }
+
+  public long getBundleTs() {
+    return bundleTs;
+  }
+
+  public long getLastMessageId() {
+    return lastMessageId;
+  }
+
+  public int getMessageListSize() {
+    return messageListSize;
+  }
+
+  public MessageBundleType getBundleType() {
+    return bundleType;
+  }
+
+  public String getChannelID() {
+    return channelID;
+  }
+
+  public int getRawBundleSize() {
+    return rawBundleSize;
+  }
 }
