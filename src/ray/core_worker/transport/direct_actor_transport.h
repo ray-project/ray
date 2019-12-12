@@ -167,7 +167,8 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(RayletClient &raylet_client) : raylet_client_(raylet_client) {}
+  DependencyWaiterImpl(raylet::RayletClient &raylet_client)
+      : raylet_client_(raylet_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {
@@ -187,7 +188,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
-  RayletClient &raylet_client_;
+  raylet::RayletClient &raylet_client_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -436,7 +437,7 @@ class CoreWorkerDirectTaskReceiver {
   }
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(RayletClient &client);
+  void Init(raylet::RayletClient &client);
 
   /// Handle a `PushTask` request.
   ///

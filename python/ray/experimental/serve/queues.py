@@ -5,12 +5,15 @@ import numpy as np
 import ray
 from ray.experimental.serve.utils import logger
 import itertools
+from blist import sortedlist
+import time
 
 class Query:
     def __init__(self,
                  request_args,
                  request_kwargs,
                  request_context,
+                 request_slo_ms,
                  result_object_id=None):
         self.request_args = request_args
         self.request_kwargs = request_kwargs
@@ -20,6 +23,15 @@ class Query:
             self.result_object_id = ray.ObjectID.from_random()
         else:
             self.result_object_id = result_object_id
+
+        # Service level objective in milliseconds. This is expected to be the
+        # absolute time since unix epoch.
+        self.request_slo_ms = request_slo_ms
+
+    # adding comparator fn for maintaining an
+    # ascending order sorted list w.r.t request_slo_ms
+    def __lt__(self, other):
+        return self.request_slo_ms < other.request_slo_ms
 
 
 class WorkIntent:
@@ -74,7 +86,14 @@ class CentralizedQueues:
         self.workers = defaultdict(deque)
 
         # backend_name -> worker payload queue
-        self.buffer_queues = defaultdict(deque)
+        # using blist sortedlist for deadline awareness
+        # blist is chosen because:
+        # 1. pop operation should be O(1) (amortized)
+        #    (helpful even for batched pop)
+        # 2. There should not be significant overhead in
+        #    maintaining the sorted list.
+        # 3. The blist implementation is fast and uses C extensions.
+        self.buffer_queues = defaultdict(sortedlist)
 
     def is_ready(self):
         return True
@@ -88,9 +107,23 @@ class CentralizedQueues:
             for backend_name, queue in self.buffer_queues.items()
         }
 
-    def enqueue_request(self, service, request_args, request_kwargs,
-                        request_context):
-        query = Query(request_args, request_kwargs, request_context)
+    # request_slo_ms is time specified in milliseconds till which the
+    # answer of the query should be calculated
+    def enqueue_request(self,
+                        service,
+                        request_args,
+                        request_kwargs,
+                        request_context,
+                        request_slo_ms=None):
+        if request_slo_ms is None:
+            # if request_slo_ms is not specified then set it to a high level
+            request_slo_ms = 1e9
+
+        # add wall clock time to specify the deadline for completion of query
+        # this also assures FIFO behaviour if request_slo_ms is not specified
+        request_slo_ms += (time.time() * 1000)
+        query = Query(request_args, request_kwargs, request_context,
+                      request_slo_ms)
         self.queues[service].append(query)
         self.flush()
         return query.result_object_id.binary()
@@ -153,7 +186,7 @@ class CentralizedQueues:
                 work_queue = self.workers[backend]
                 while len(buffer_queue) and len(work_queue):
                     request, work = (
-                        buffer_queue.popleft(),
+                        buffer_queue.pop(0),
                         work_queue.popleft(),
                     )
                     work.replica_handle._ray_serve_call.remote(request)

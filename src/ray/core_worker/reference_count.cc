@@ -52,6 +52,23 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   RemoveReferenceRecursive(object_id, deleted);
 }
 
+void ReferenceCounter::RemoveDependencies(const ObjectID &object_id,
+                                          std::vector<ObjectID> *deleted) {
+  absl::MutexLock lock(&mutex_);
+  auto entry = object_id_refs_.find(object_id);
+  if (entry == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Tried to remove dependencies for nonexistent object ID: "
+                     << object_id;
+    return;
+  }
+  if (entry->second.dependencies) {
+    for (const ObjectID &pending_task_object_id : *entry->second.dependencies) {
+      RemoveReferenceRecursive(pending_task_object_id, deleted);
+    }
+    entry->second.dependencies = nullptr;
+  }
+}
+
 void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id,
                                                 std::vector<ObjectID> *deleted) {
   auto entry = object_id_refs_.find(object_id);
