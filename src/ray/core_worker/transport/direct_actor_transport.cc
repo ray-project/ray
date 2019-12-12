@@ -55,12 +55,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                                                       const rpc::Address &address) {
   absl::MutexLock lock(&mu_);
+  // Update the mapping so new RPCs go out with the right intended worker id.
+  worker_ids_[actor_id] = address.worker_id();
   // Create a new connection to the actor.
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc::WorkerAddress addr = {address.ip_address(), address.port()};
     rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
         client_factory_(address.ip_address(), address.port()));
-    worker_ids_[actor_id] = address.worker_id();
   }
   if (pending_requests_.count(actor_id) > 0) {
     SendPendingTasks(actor_id);
@@ -119,7 +119,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   next_send_position_[actor_id]++;
-  request->set_intended_worker_id(worker_ids_[actor_id]);
+  auto it = worker_ids_.find(actor_id);
+  RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
+  request->set_intended_worker_id(it->second);
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {

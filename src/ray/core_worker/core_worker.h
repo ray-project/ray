@@ -490,9 +490,12 @@ class CoreWorker {
   bool HandleWrongRecipient(const WorkerID &intended_worker_id,
                             rpc::SendReplyCallback send_reply_callback) {
     if (intended_worker_id != worker_context_.GetWorkerID()) {
-      RAY_LOG(ERROR) << "Mismatched WorkerID: ignoring RPC for previous worker "
-                     << intended_worker_id << " vs " << worker_context_.GetWorkerID();
-      send_reply_callback(Status::Invalid("Mismatched WorkerID"), nullptr, nullptr);
+      std::ostringstream stream;
+      stream << "Mismatched WorkerID: ignoring RPC for previous worker "
+             << intended_worker_id << " vs " << worker_context_.GetWorkerID();
+      auto msg = stream.str();
+      RAY_LOG(ERROR) << msg;
+      send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
       return true;
     } else {
       return false;
