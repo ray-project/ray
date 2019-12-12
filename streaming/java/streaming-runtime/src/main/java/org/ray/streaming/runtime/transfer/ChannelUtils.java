@@ -128,21 +128,10 @@ public class ChannelUtils {
     return streamingConf.toByteArray();
   }
 
-  // TODO: do not use reflection
-  static long getNativeCoreWorker() {
-    long pointer = 0;
-    try {
-      java.lang.reflect.Field pointerField =
-          RayNativeRuntime.class.getDeclaredField("nativeCoreWorkerPointer");
-      pointerField.setAccessible(true);
-      pointer = (long) pointerField.get(((RayMultiWorkerNativeRuntime) (Ray.internal())).getCurrentRuntime());
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-
-    return pointer;
+  static long getNativeCoreWorkerPtr() {
+    RayMultiWorkerNativeRuntime runtime = (RayMultiWorkerNativeRuntime) (Ray.internal());
+    return runtime.getCurrentRuntime().getNativeCoreWorkerPointer();
   }
-
 
 }
 
