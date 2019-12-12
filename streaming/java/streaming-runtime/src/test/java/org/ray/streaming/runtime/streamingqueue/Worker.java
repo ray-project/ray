@@ -1,19 +1,18 @@
 package org.ray.streaming.runtime.streamingqueue;
 
 import org.ray.api.Ray;
-import org.ray.runtime.RayNativeRuntime;
+import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.transfer.TransferHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 public class Worker {
   private static final Logger LOGGER = LoggerFactory.getLogger(Worker.class);
 
   protected TransferHandler transferHandler = null;
   public Worker() {
-    transferHandler = new TransferHandler(((RayNativeRuntime) Ray.internal()).getNativeCoreWorkerPointer(),
+    transferHandler = new TransferHandler(((RayMultiWorkerNativeRuntime) Ray.internal()).getCurrentRuntime().getNativeCoreWorkerPointer(),
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onWriterMessageSync", "([B)[B"),
         new JavaFunctionDescriptor(Worker.class.getName(), "onReaderMessage", "([B)V"),
