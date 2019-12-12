@@ -221,8 +221,7 @@ TEST_F(WorkerPoolTest, IgnoreMaximumStartupConcurrencyDuringStartup) {
       std::ceil(MAXIMUM_STARTUP_CONCURRENCY * 2.0 / NUM_WORKERS_PER_PROCESS));
   ASSERT_TRUE(num_initial_workers - NUM_WORKERS_PER_PROCESS >=
               MAXIMUM_STARTUP_CONCURRENCY);
-  worker_pool_.Start({{ray::Language::JAVA, num_initial_workers},
-                      {ray::Language::PYTHON, num_initial_workers}});
+  worker_pool_.Start(num_initial_workers);
   ASSERT_EQ(worker_pool_.NumWorkersStarting(), num_initial_workers * LANGUAGES.size());
 }
 
