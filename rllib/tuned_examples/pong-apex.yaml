@@ -1,13 +1,14 @@
-# This can be expected to reach 20.8 reward within an hour when using a V100 GPU
-# (e.g. p3.2xl instance on AWS, and m4.4xl workers). It also can reach ~21 reward
-# within an hour with fewer workers (e.g. 4-8) but less reliably.
+# This reaches ~20 reward in 50 minutes (6M train steps, 2M env steps) on a
+# p3.2xlarge AWS instance.
+# See https://app.wandb.ai/zplizzi/test/runs/ayuuhixr?workspace=user-zplizzi
+# for training curves.
 pong-apex:
     env: PongNoFrameskip-v4
     run: APEX
     config:
-        target_network_update_freq: 50000
-        num_workers: 32
-        ## can also enable vectorization within processes
-        # num_envs_per_worker: 4
-        lr: .0001
+        target_network_update_freq: 20000
+        num_workers: 4
+        num_envs_per_worker: 8
+        lr: .00005
+        train_batch_size: 64
         gamma: 0.99

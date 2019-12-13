@@ -342,7 +342,7 @@ def test_actor_worker_dying(ray_start_regular):
 
 
 def test_actor_worker_dying_future_tasks(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def getpid(self):
             return os.getpid()
@@ -364,7 +364,7 @@ def test_actor_worker_dying_future_tasks(ray_start_regular):
 
 
 def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def getpid(self):
             return os.getpid()

@@ -718,7 +718,9 @@ cdef CRayStatus task_execution_handler(
                     traceback_str,
                     job_id=None)
                 sys.exit(1)
-        except SystemExit:
+        except SystemExit as e:
+            if not hasattr(e, "is_ray_terminate"):
+                logger.exception("SystemExit was raised from the worker")
             # Tell the core worker to exit as soon as the result objects
             # are processed.
             return CRayStatus.SystemExit()

@@ -8,6 +8,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/protobuf/core_worker.pb.h"
+#include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -52,9 +53,19 @@ class ActorHandle {
   /// ActorHandle and reset them in this method.
   void Reset();
 
+  // Mark the actor handle as dead.
+  void MarkDead() { state_ = rpc::ActorTableData::DEAD; }
+
+  // Returns whether the actor is known to be dead.
+  bool IsDead() const { return state_ == rpc::ActorTableData::DEAD; }
+
  private:
   // Protobuf-defined persistent state of the actor handle.
   const ray::rpc::ActorHandle inner_;
+
+  /// The actor's state (alive or dead). This defaults to ALIVE. Once marked
+  /// DEAD, the actor handle can never go back to being ALIVE.
+  rpc::ActorTableData::ActorState state_ = rpc::ActorTableData::ALIVE;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
