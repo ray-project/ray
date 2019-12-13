@@ -20,6 +20,19 @@ from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 logger = logging.getLogger(__name__)
 
 
+def retry_on_fail(actor_call, actors):
+    unfinished = [actor_call(actor) for actor in actors]
+    success = False
+    try:
+        while len(unfinished) > 0:
+            finished, unfinished = ray.wait(unfinished)
+            finished = ray.get(finished)
+        success = True
+    except Exception as inst:
+        logger.exception()
+    return success
+
+
 class PyTorchTrainer(object):
     """Train a PyTorch model using distributed PyTorch.
 
@@ -77,8 +90,13 @@ class PyTorchTrainer(object):
                  "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
+        self.data_creator = data_creator
+        self.optimizer_creator = optimizer_creator
+        self.loss_creator = loss_creator
         self.train_function = train_function
         self.validation_function = validation_function
+        self.batch_size = batch_size
+        self.num_replicas = num_replicas
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
@@ -86,7 +104,10 @@ class PyTorchTrainer(object):
             backend = "nccl" if use_gpu else "gloo"
 
         logger.info("Using {} as backend.".format(backend))
+        self.backend = backend
+        self.start_workers()
 
+    def start_workers(self, num_replicas, use_gpu=False):
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(
@@ -94,14 +115,14 @@ class PyTorchTrainer(object):
             # Start workers
             self.workers = [
                 Runner.remote(
-                    model_creator,
-                    data_creator,
-                    optimizer_creator,
-                    loss_creator,
-                    train_function=train_function,
-                    validation_function=validation_function,
+                    self.model_creator,
+                    self.data_creator,
+                    self.optimizer_creator,
+                    self.loss_creator,
+                    train_function=self.train_function,
+                    validation_function=self.validation_function,
                     config=self.config,
-                    batch_size=batch_size)
+                    batch_size=self.batch_size)
             ]
             if initialization_hook:
                 self.apply_all_workers(initialization_hook)
@@ -111,8 +132,9 @@ class PyTorchTrainer(object):
             # Generate actor class
             Runner = ray.remote(
                 num_cpus=1, num_gpus=int(use_gpu))(DistributedPyTorchRunner)
+            Runner = Runner.options(is_direct_call=True, max_concurrency=2)
             # Compute batch size per replica
-            batch_size_per_replica = batch_size // num_replicas
+            batch_size_per_replica = self.batch_size // num_replicas
             if batch_size % num_replicas > 0:
                 new_batch_size = batch_size_per_replica * num_replicas
                 logger.warning(
@@ -149,13 +171,20 @@ class PyTorchTrainer(object):
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self):
+    def train(self, retries=3):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers.
         """
         with self.optimizer_timer:
-            worker_stats = ray.get([w.step.remote() for w in self.workers])
+            results = [w.step.remote() for w in self.workers]
+            for i in retries:
+                results = retry_on_fail()
+                if not results:
+                    self.shutdown()
+                    self.start_workers()
+
+        worker_stats = ray.get(results)
 
         train_stats = {}
         for stat_key in worker_stats[0]:
