@@ -54,7 +54,7 @@ def get_async(object_id):
     #     When inner_future completes, done_callback will be invoked. This
     #     callback set the final object in user_future if the object hasn't
     #     been promoted by plasma, otherwise it will retry from plasma.
-    # retry_lasma_future is only created when we are getting objects that's
+    # retry_plasma_future is only created when we are getting objects that's
     #     promoted to plasma. It will also invoke the done_callback when it's
     #     fulfilled.
 

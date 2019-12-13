@@ -1173,11 +1173,9 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
 
-    def in_memory_store_get_async(self, object_id, future):
-        cdef:
-            CObjectID c_object_id = (<ObjectID>object_id).native()
+    def in_memory_store_get_async(self, ObjectID object_id, future):
         self.core_worker.get().GetAsync(
-            c_object_id,
+            object_id.native(),
             async_set_result_callback,
             <void*>future)
 
@@ -1198,7 +1196,7 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
     loop = py_future._loop
 
     if obj.get().IsInPlasmaError():
-        # Object is promoted to plasma. Let the future waiter knows that
+        # Object is promoted to plasma. Let the future waiter know that
         # they need to retrieve the future from plasma.
         plasma_id = object_id.WithPlasmaTransportType()
         py_plasma_id = ObjectID(plasma_id.Binary())
