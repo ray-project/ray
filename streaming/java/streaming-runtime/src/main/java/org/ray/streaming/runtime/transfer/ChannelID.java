@@ -10,6 +10,7 @@ import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.util.Set;
 
+import org.ray.runtime.RayNativeRuntime;
 import org.ray.streaming.runtime.util.JniUtils;
 
 public class ChannelID {
@@ -19,6 +20,12 @@ public class ChannelID {
   private static final Set<Reference<?>> references = Sets.newConcurrentHashSet();
 
   static {
+    // load core_worker_library_java before load streaming_java
+    try {
+      Class.forName(RayNativeRuntime.class.getName());
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(e);
+    }
     JniUtils.loadLibrary("streaming_java");
   }
 

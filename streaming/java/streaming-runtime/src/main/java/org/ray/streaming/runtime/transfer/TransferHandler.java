@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.transfer;
 
+import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.util.JniUtils;
@@ -8,6 +9,11 @@ import org.ray.streaming.runtime.worker.JobWorker;
 public class TransferHandler {
 
   static {
+    try {
+      Class.forName(RayNativeRuntime.class.getName());
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(e);
+    }
     JniUtils.loadLibrary("streaming_java");
   }
 
