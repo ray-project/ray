@@ -1411,11 +1411,12 @@ def test_detached_actor(ray_start_regular):
         DetachedActor._remote(name="d_actor")
 
     redis_address = ray_start_regular["redis_address"]
+    redis_password = ray_start_regular["redis_password"]
 
     actor_name = "DetachedActor"
     driver_script = """
 import ray
-ray.init(address="{}")
+ray.init(redis_address="{}", redis_password="{}")
 
 @ray.remote
 class DetachedActor(object):
@@ -1424,7 +1425,7 @@ class DetachedActor(object):
 
 actor = DetachedActor._remote(name="{}", detached=True)
 ray.get(actor.ping.remote())
-""".format(redis_address, actor_name)
+""".format(redis_address, redis_password, actor_name)
 
     run_string_as_driver(driver_script)
     detached_actor = ray.experimental.get_actor(actor_name)
