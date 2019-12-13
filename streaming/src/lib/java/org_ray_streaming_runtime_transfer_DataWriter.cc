@@ -26,12 +26,11 @@ Java_org_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
 
   STREAMING_LOG(INFO) << "actor_ids: " << actor_ids[0];
 
-  const jbyte *conf_bytes = env->GetByteArrayElements(conf_bytes_array, nullptr);
-  uint32_t conf_size = env->GetArrayLength(conf_bytes_array);
-  STREAMING_CHECK(conf_bytes != nullptr);
+  RawDataFromJByteArray conf(env, conf_bytes_array);
+  STREAMING_CHECK(conf.data != nullptr);
   auto runtime_context = std::make_shared<RuntimeContext>();
-  if (conf_size > 0) {
-    runtime_context->SetConfig(reinterpret_cast<const uint8_t *>(conf_bytes), conf_size);
+  if (conf.data_size > 0) {
+    runtime_context->SetConfig(conf.data, conf.data_size);
   }
   if (is_mock) {
     runtime_context->MarkMockTest();

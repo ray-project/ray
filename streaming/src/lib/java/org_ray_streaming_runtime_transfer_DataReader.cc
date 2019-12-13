@@ -20,11 +20,10 @@ Java_org_ray_streaming_runtime_transfer_DataReader_createDataReaderNative(
   std::vector<uint64_t> msg_ids = LongVectorFromJLongArray(env, msg_id_array).data;
 
   auto ctx = std::make_shared<RuntimeContext>();
-  const jbyte *conf_bytes = env->GetByteArrayElements(config_bytes, nullptr);
-  uint32_t conf_size = env->GetArrayLength(config_bytes);
-  if (conf_size > 0) {
-    STREAMING_LOG(INFO) << "load config, config bytes size: " << conf_size;
-    ctx->SetConfig((uint8_t *)conf_bytes, conf_size);
+  RawDataFromJByteArray conf(env, config_bytes);
+  if (conf.data_size > 0) {
+    STREAMING_LOG(INFO) << "load config, config bytes size: " << conf.data_size;
+    ctx->SetConfig(conf.data, conf.data_size);
   }
   if (is_mock) {
     ctx->MarkMockTest();
