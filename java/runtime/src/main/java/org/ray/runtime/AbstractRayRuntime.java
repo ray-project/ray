@@ -154,16 +154,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   }
 
   @Override
-  public Object getAsyncContext() {
-    return null;
-  }
-
-  @Override
-  public void setAsyncContext(Object asyncContext) {
-    return;
-  }
-
-  @Override
   public Runnable wrapRunnable(Runnable runnable) {
     return runnable;
   }
