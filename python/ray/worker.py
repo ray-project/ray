@@ -15,6 +15,7 @@ import redis
 import signal
 from six.moves import queue
 import sys
+import string
 import threading
 import time
 import traceback
@@ -656,8 +657,12 @@ def init(address=None,
     """
 
     if redis_address is not None or address is not None:
-        redis_address, _, _ = services.validate_redis_address(
-            address, redis_address)
+        (redis_address, _, _,
+         redis_password_found) = services.validate_redis_address(
+             address, redis_address)
+
+        if redis_password is None:
+            redis_password = redis_password_found
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -694,6 +699,11 @@ def init(address=None,
         _global_node = ray.node.LocalNode()
     elif redis_address is None:
         # In this case, we need to start a new cluster.
+
+        if redis_password is None:
+            redis_password = "".join(
+                random.choices(string.ascii_letters + string.digits, k=16))
+
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
             node_ip_address=node_ip_address,

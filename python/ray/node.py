@@ -221,6 +221,13 @@ class Node(object):
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir, warn_if_exist=False)
 
+        # Write the redis password a file in session directory.
+        if os.path.exists(self._session_dir):
+            with open(os.path.join(self._session_dir, "redis_password"),
+                      "w") as f:
+                if self._ray_params.redis_password is not None:
+                    f.write(self._ray_params.redis_password)
+
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
         if not self._resource_spec:
@@ -296,6 +303,7 @@ class Node(object):
         return {
             "node_ip_address": self._node_ip_address,
             "redis_address": self._redis_address,
+            "redis_password": self._ray_params.redis_password,
             "object_store_address": self._plasma_store_socket_name,
             "raylet_socket_name": self._raylet_socket_name,
             "webui_url": self._webui_url,

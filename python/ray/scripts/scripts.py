@@ -252,9 +252,13 @@ def start(node_ip_address, redis_address, address, redis_port,
         node_ip_address = services.address_to_ip(node_ip_address)
 
     if redis_address is not None or address is not None:
-        (redis_address, redis_address_ip,
-         redis_address_port) = services.validate_redis_address(
+        (redis_address, redis_address_ip, redis_address_port,
+         redis_password_found) = services.validate_redis_address(
              address, redis_address)
+
+    # We will only override the redis password if it's not set.
+    if redis_password is None:
+        redis_password = redis_password_found
 
     try:
         resources = json.loads(resources)
@@ -828,9 +832,9 @@ def clusterbenchmark():
     help="Override the redis address to connect to.")
 def timeline(redis_address):
     if not redis_address:
-        redis_address = services.find_redis_address_or_die()
+        redis_address, redis_password = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(redis_address))
-    ray.init(redis_address=redis_address)
+    ray.init(redis_address=redis_address, redis_password=redis_password)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = "/tmp/ray-timeline-{}.json".format(time)
     ray.timeline(filename=filename)

@@ -101,6 +101,7 @@ def find_redis_address_or_die():
             "Please install `psutil` to automatically detect the Ray cluster.")
     pids = psutil.pids()
     redis_addresses = set()
+    redis_passwords = set()
     for pid in pids:
         try:
             proc = psutil.Process(pid)
@@ -109,20 +110,24 @@ def find_redis_address_or_die():
                     if arg.startswith("--redis-address="):
                         addr = arg.split("=")[1]
                         redis_addresses.add(addr)
+                    if arg.startswith("--redis-password"):
+                        password = arg.split("=")[1]
+                        redis_passwords.add(password)
         except psutil.AccessDenied:
             pass
         except psutil.NoSuchProcess:
             pass
-    if len(redis_addresses) > 1:
+    if len(redis_addresses) > 1 or len(redis_passwords) > 1:
         raise ConnectionError(
-            "Found multiple active Ray instances: {}. ".format(redis_addresses)
+            "Found multiple active Ray instances: {}, ".format(redis_addresses)
             + "Please specify the one to connect to by setting `address`.")
         sys.exit(1)
     elif not redis_addresses:
         raise ConnectionError(
             "Could not find any running Ray instance. "
             "Please specify the one to connect to by setting `address`.")
-    return redis_addresses.pop()
+    redis_password = redis_passwords.pop() if len(redis_passwords) else None
+    return redis_addresses.pop(), redis_password
 
 
 def get_address_info_from_redis_helper(redis_address,
@@ -214,6 +219,7 @@ def validate_redis_address(address, redis_address):
         redis_address: string containing the full <host:port> address.
         redis_ip: string representing the host portion of the address.
         redis_port: integer representing the port portion of the address.
+        redis_password: string containing the redis password.
 
     Raises:
         ValueError: if both address and redis_address were specified or the
@@ -224,12 +230,13 @@ def validate_redis_address(address, redis_address):
         raise ValueError("auto address resolution not supported for "
                          "redis_address parameter. Please use address.")
 
+    redis_password = None
     if address:
         if redis_address:
             raise ValueError(
                 "Both address and redis_address specified. Use only address.")
         if address == "auto":
-            address = find_redis_address_or_die()
+            address, redis_password = find_redis_address_or_die()
         redis_address = address
 
     redis_address = address_to_ip(redis_address)
@@ -246,7 +253,7 @@ def validate_redis_address(address, redis_address):
         raise ValueError("Invalid address port. Must "
                          "be between 1024 and 65535.")
 
-    return redis_address, redis_ip, redis_port
+    return redis_address, redis_ip, redis_port, redis_password
 
 
 def address_to_ip(address):
@@ -968,7 +975,7 @@ def start_log_monitor(redis_address,
         "--logs-dir={}".format(logs_dir)
     ]
     if redis_password:
-        command += ["--redis-password", redis_password]
+        command += ["--redis-password={}".format(redis_password)]
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_LOG_MONITOR,
@@ -1001,7 +1008,7 @@ def start_reporter(redis_address,
         "--redis-address={}".format(redis_address)
     ]
     if redis_password:
-        command += ["--redis-password", redis_password]
+        command += ["--redis-password={}".format(redis_password)]
 
     try:
         import psutil  # noqa: F401
@@ -1062,7 +1069,7 @@ def start_dashboard(host,
         "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
-        command += ["--redis-password", redis_password]
+        command += ["--redis-password={}".format(redis_password)]
 
     if sys.version_info <= (3, 0):
         return None, None
@@ -1208,7 +1215,7 @@ def start_raylet(redis_address,
                                 raylet_name, redis_address, config_str,
                                 temp_dir))
     if redis_password:
-        start_worker_command += " --redis-password {}".format(redis_password)
+        start_worker_command += " --redis-password={}".format(redis_password)
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
