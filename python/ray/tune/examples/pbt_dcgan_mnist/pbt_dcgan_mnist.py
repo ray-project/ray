@@ -315,7 +315,10 @@ if __name__ == "__main__":
 
     # load the pretrained mnist classification model for inception_score
     mnist_cnn = Net()
-    mnist_cnn.load_state_dict(torch.load("./mnist_cnn.pt"))
+    model_path = os.path.join(
+        os.path.dirname(ray.__file__),
+        "tune/examples/pbt_dcgan_mnist/mnist_cnn.pt")
+    mnist_cnn.load_state_dict(torch.load(model_path))
     mnist_cnn.eval()
     mnist_model_ref = ray.put(mnist_cnn)
 
