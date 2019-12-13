@@ -74,7 +74,8 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
 class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
-    def __init__(self, out_dim, num_heads, head_dim, rel_pos_encoder, **kwargs):
+    def __init__(self, out_dim, num_heads, head_dim, rel_pos_encoder,
+                 input_layernorm=False, output_activation=None, **kwargs):
         super(RelativeMultiHeadAttention, self).__init__(**kwargs)
 
         # no bias or non-linearity
@@ -84,7 +85,8 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
                                                 use_bias=False)
         self._linear_layer = tf.keras.layers.TimeDistributed(
             tf.keras.layers.Dense(out_dim,
-                                  use_bias=False))
+                                  use_bias=False,
+                                  activation=output_activation))
 
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
@@ -92,6 +94,10 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         self._pos_proj = tf.keras.layers.Dense(num_heads * head_dim,
                                                use_bias=False)
         self._rel_pos_encoder = rel_pos_encoder
+
+        self._input_layernorm = None
+        if input_layernorm:
+            self._input_layernorm = tf.keras.layers.LayerNormalization(axis=-1)
 
     def call(self, inputs, memory=None):
         L = tf.shape(inputs)[0]  # length of segment
@@ -102,7 +108,10 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         M = memory.shape[0] if memory is not None else 0
 
         if memory is not None:
-            inputs = np.concatenate((memory, inputs), axis=-1)
+            inputs = np.concatenate((tf.stop_gradient(memory), inputs), axis=-1)
+
+        if self._input_layernorm is not None:
+            inputs = self._input_layernorm(inputs)
 
         qkv = self._qkv_layer(inputs)
 
@@ -135,15 +144,15 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
 class PositionwiseFeedforward(tf.keras.layers.Layer):
 
-    def __init__(self, out_dim, hidden_dim, **kwargs):
+    def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
         super(PositionwiseFeedforward, self).__init__(**kwargs)
 
         self._hidden_layer = tf.keras.layers.Dense(
             hidden_dim,
             activation=tf.nn.relu,
         )
-        self._output_layer = tf.keras.layers.Dense(out_dim)
-        self._layer_norm = tf.keras.layers.LayerNormalization(axis=-1)
+        self._output_layer = tf.keras.layers.Dense(out_dim,
+                                                   activation=output_activation)
 
     def call(self, inputs, **kwargs):
         output = self._hidden_layer(inputs)
@@ -174,7 +183,8 @@ class SkipConnection(tf.keras.layers.Layer):
 
 class GRUGate(tf.keras.layers.Layer):
 
-    def __init__(self, init_bias=0.):
+    def __init__(self, init_bias=0., **kwargs):
+        super(GRUGate, self).__init__(**kwargs)
         self._init_bias = init_bias
 
     def build(self, input_shape):
@@ -198,23 +208,68 @@ class GRUGate(tf.keras.layers.Layer):
 
     def call(self, inputs, **kwargs):
         x, y = inputs
-        r = (tf.tensordot(self._w_r, y, axes=1)
-             + tf.tensordot(self._u_r, x, axes=1))
+        r = (tf.tensordot(y, self._w_r, axes=1)
+             + tf.tensordot(x, self._u_r, axes=1))
         r = tf.nn.sigmoid(r)
 
-        z = (tf.tensordot(self._w_z, y, axes=1)
-             + tf.tensordot(self._u_z, x, axes=1)
+        z = (tf.tensordot(y, self._w_z, axes=1)
+             + tf.tensordot(x, self._u_z, axes=1)
              + self._bias_z)
         z = tf.nn.sigmoid(z)
 
-        h = (tf.tensordot(self._w_h, y, axes=1)
-             + tf.tensordot(self._u_h, (x * r), axes=1))
+        h = (tf.tensordot(y, self._w_h, axes=1)
+             + tf.tensordot((x * r), self._u_h, axes=1))
         h = tf.nn.tanh(h)
 
         return (1 - z) * x + z * h
 
 
-class TransformerXL(TFModelV2):
+def make_TrXL(seq_length, num_layers, attn_dim, num_heads,
+              head_dim, ff_hidden_dim):
+    pos_embedding = relative_position_embedding(seq_length, attn_dim)
 
-    def __init__(self):
-        pass
+    layers = [tf.keras.layers.Dense(attn_dim)]
+    for _ in range(num_layers):
+        layers.append(
+            SkipConnection(
+                RelativeMultiHeadAttention(attn_dim, num_heads,
+                                           head_dim, pos_embedding))
+        )
+        layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+
+        layers.append(
+            SkipConnection(
+                PositionwiseFeedforward(attn_dim, ff_hidden_dim))
+        )
+        layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+
+    return tf.keras.Sequential(layers)
+
+
+def make_GRU_TrXL(seq_length, num_layers, attn_dim,
+                  num_heads, head_dim, ff_hidden_dim, init_gate_bias=2.):
+    # Default initial bias for the gate taken from
+    # Parisotto, Emilio, et al. "Stabilizing Transformers for Reinforcement Learning." arXiv preprint arXiv:1910.06764 (2019).
+    pos_embedding = relative_position_embedding(seq_length, attn_dim)
+
+    layers = [tf.keras.layers.Dense(attn_dim)]
+    for _ in range(num_layers):
+        layers.append(
+            SkipConnection(
+                RelativeMultiHeadAttention(attn_dim, num_heads,
+                                           head_dim, pos_embedding,
+                                           input_layernorm=True,
+                                           output_activation=tf.nn.relu),
+                fan_in_layer=GRUGate(init_gate_bias),
+            ))
+
+        layers.append(
+            SkipConnection(
+                tf.keras.Sequential((
+                    tf.keras.layers.LayerNormalization(axis=-1),
+                    PositionwiseFeedforward(attn_dim, ff_hidden_dim,
+                                            output_activation=tf.nn.relu))),
+                fan_in_layer=GRUGate(init_gate_bias),
+            ))
+
+    return tf.keras.Sequential(layers)

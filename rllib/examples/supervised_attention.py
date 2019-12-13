@@ -22,26 +22,11 @@ def bit_shift_generator(seq_length, shift, batch_size):
 def make_model(seq_length, num_tokens, num_layers, attn_dim, num_heads, head_dim,
                ff_hidden_dim):
 
-    pos_embedding = attention.relative_position_embedding(seq_length, attn_dim)
-
-    layers = [tf.keras.layers.Dense(attn_dim)]
-    for _ in range(num_layers):
-        layers.append(
-            attention.SkipConnection(
-                attention.RelativeMultiHeadAttention(attn_dim, num_heads,
-                                                     head_dim, pos_embedding))
-        )
-        layers.append(tf.keras.layers.LayerNormalization(axis=-1))
-
-        layers.append(
-            attention.SkipConnection(
-                attention.PositionwiseFeedforward(attn_dim, ff_hidden_dim))
-        )
-        layers.append(tf.keras.layers.LayerNormalization(axis=-1))
-
-    layers.append(tf.keras.layers.Dense(num_tokens))
-
-    return tf.keras.Sequential(layers)
+    return tf.keras.Sequential((
+        attention.make_TrXL(seq_length, num_layers, attn_dim, num_heads,
+                            head_dim, ff_hidden_dim),
+        tf.keras.layers.Dense(num_tokens),
+    ))
 
 
 def train_loss(targets, outputs):
