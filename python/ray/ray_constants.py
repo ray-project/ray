@@ -17,7 +17,7 @@ def env_integer(key, default):
 
 
 def direct_call_enabled():
-    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "0")))
+    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "1")))
 
 
 ID_SIZE = 20
