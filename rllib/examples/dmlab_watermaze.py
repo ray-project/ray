@@ -1,9 +1,6 @@
 from deepmind_lab import dmenv_module
 
 from ray.rllib import env
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 
 class Watermaze(env.DMEnv):
