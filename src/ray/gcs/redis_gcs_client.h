@@ -25,17 +25,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class RedisTaskInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
-  friend void TestTableLookup(const JobID &job_id,
-                              std::shared_ptr<gcs::RedisGcsClient> client);
-  friend void TestTableLookupFailure(const JobID &job_id,
-                                     std::shared_ptr<gcs::RedisGcsClient> client);
-  friend void TestDeleteKeysFromTable(
-      const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client,
-      std::vector<std::shared_ptr<TaskTableData>> &data_vector, bool stop_at_end);
-  friend void TestTableSubscribeId(const JobID &job_id,
-                                   std::shared_ptr<gcs::RedisGcsClient> client);
-  friend void TestTableSubscribeCancel(const JobID &job_id,
-                                       std::shared_ptr<gcs::RedisGcsClient> client);
+  friend class TaskTableTestHelper;
 
  public:
   /// Constructor of RedisGcsClient.
