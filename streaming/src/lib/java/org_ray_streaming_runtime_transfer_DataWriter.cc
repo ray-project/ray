@@ -7,9 +7,9 @@ using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
-    JNIEnv *env, jobject this_obj, jobjectArray output_queue_ids,
-    jobjectArray output_actor_ids, jlongArray msg_ids, jlong channel_size,
-    jbyteArray conf_bytes_array, jboolean is_mock) {
+    JNIEnv *env, jclass, jobjectArray output_queue_ids, jobjectArray output_actor_ids,
+    jlongArray msg_ids, jlong channel_size, jbyteArray conf_bytes_array,
+    jboolean is_mock) {
   STREAMING_LOG(INFO) << "[JNI]: createDataWriterNative.";
   std::vector<ray::ObjectID> queue_id_vec =
       jarray_to_object_id_vec(env, output_queue_ids);
@@ -37,8 +37,7 @@ Java_org_ray_streaming_runtime_transfer_DataWriter_createWriterNative(
     runtime_context->MarkMockTest();
   }
   auto *data_writer = new DataWriter(runtime_context);
-  auto status =
-      data_writer->Init(queue_id_vec, actor_ids, msg_ids_vec, queue_size_vec);
+  auto status = data_writer->Init(queue_id_vec, actor_ids, msg_ids_vec, queue_size_vec);
   if (status != StreamingStatus::OK) {
     STREAMING_LOG(WARNING) << "DataWriter init failed.";
   } else {
