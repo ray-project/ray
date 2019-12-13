@@ -119,7 +119,7 @@ def find_redis_address_or_die():
             pass
     if len(redis_addresses) > 1 or len(redis_passwords) > 1:
         raise ConnectionError(
-            "Found multiple active Ray instances: {}, ".format(redis_addresses)
+            "Found multiple active Ray instances: {}. ".format(redis_addresses)
             + "Please specify the one to connect to by setting `address`.")
         sys.exit(1)
     elif not redis_addresses:
