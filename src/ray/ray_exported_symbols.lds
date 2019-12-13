@@ -25,3 +25,4 @@
 *PyInit*
 *init_raylet*
 *Java*
+*JNI_*

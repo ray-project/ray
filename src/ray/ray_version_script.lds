@@ -27,5 +27,6 @@ VERSION_1.0 {
         *PyInit*;
         *init_raylet*;
         *Java*;
+        *JNI_*;
     local: *;
 };
