@@ -15,7 +15,7 @@ class LightActor(object):
         pass
 
     def sample(self):
-        return "tiny_return_value"
+        return np.zeros(1 * MB, dtype=np.uint8)
 
 
 @ray.remote

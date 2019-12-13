@@ -19,7 +19,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
     CUniqueID,
-    CWorkerID,
+    CWorkerID
 )
 
 import ray
@@ -40,8 +40,6 @@ cdef extern from "ray/common/constants.h" nogil:
 
 cdef class BaseID:
 
-    # To avoid the error of "Python int too large to convert to C ssize_t",
-    # here `cdef size_t` is required.
     cdef size_t hash(self):
         pass
 
@@ -129,13 +127,6 @@ cdef class UniqueID(BaseID):
 
 
 cdef class ObjectID(BaseID):
-    cdef:
-        CObjectID data
-        object buffer_ref
-        # Flag indicating whether or not this object ID was added to the set
-        # of active IDs in the core worker so we know whether we should clean
-        # it up.
-        c_bool in_core_worker
 
     def __init__(self, id):
         check_id(id)
@@ -297,6 +288,7 @@ cdef class JobID(BaseID):
 
     @classmethod
     def from_int(cls, value):
+        assert value < 65536, "Maximum JobID integer is 65535."
         return cls(CJobID.FromInt(value).Binary())
 
     @classmethod
@@ -332,8 +324,6 @@ cdef class WorkerID(UniqueID):
         return <CWorkerID>self.data
 
 cdef class ActorID(BaseID):
-    cdef CActorID data
-
     def __init__(self, id):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
