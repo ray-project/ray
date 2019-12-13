@@ -1607,7 +1607,8 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         // TODO(swang): Kill worker if other end hangs up.
         // TODO(swang): Implement a lease term by which the owner needs to return the
         // worker.
-        RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end());
+        RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
+            << "Worker is already leased out " << worker_id;
         leased_workers_[worker_id] = std::static_pointer_cast<Worker>(granted);
       });
   task.OnSpillbackInstead(

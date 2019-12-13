@@ -18,7 +18,8 @@
 
 namespace ray {
 
-typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &)>
+typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
+                                                            int port)>
     LeaseClientFactoryFn;
 
 // The task queues are keyed on resource shape & function descriptor

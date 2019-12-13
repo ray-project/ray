@@ -69,7 +69,8 @@ class WorkerAddress {
   const ClientID raylet_id;
 };
 
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const std::string &,
+                                                                 int)>
     ClientFactoryFn;
 
 /// Abstract client interface for testing.
