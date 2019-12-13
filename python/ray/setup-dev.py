@@ -18,11 +18,8 @@ def do_link(package, force=False, local_path=""):
         os.path.join(ray.__file__, "../{}".format(package)))
     local_home = os.path.abspath(
         os.path.join(__file__, local_path + "../{}".format(package)))
-    for path in [package_home, local_home]:
-        if not os.path.exists(path):
-            print("{} does not exist. Skipping {}".format(path, package))
-            return
-    assert os.path.isdir(package_home), package_home
+    if not os.path.isdir(package_home):
+        print("{} does not exist. Continuing to link.".format(package_home))
     assert os.path.isdir(local_home), local_home
     if not force and not click.confirm(
             "This will replace:\n  {}\nwith a symlink to:\n  {}".format(
