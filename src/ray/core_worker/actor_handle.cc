@@ -1,6 +1,6 @@
-#include <memory>
-
 #include "ray/core_worker/actor_handle.h"
+
+#include <memory>
 
 namespace {
 

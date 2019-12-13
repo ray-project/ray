@@ -151,7 +151,7 @@ CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
       exit_handler_(exit_handler),
       task_main_io_service_(main_io_service) {}
 
-void CoreWorkerDirectTaskReceiver::Init(RayletClient &raylet_client) {
+void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
 }
 

@@ -128,7 +128,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       node_ip_address, node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
-  local_raylet_client_ = std::shared_ptr<RayletClient>(new RayletClient(
+  local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
       std::move(grpc_client), raylet_socket,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
@@ -200,7 +200,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   auto client_factory = [this](const rpc::WorkerAddress &addr) {
     return std::shared_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(addr.first, addr.second, *client_call_manager_));
+        new rpc::CoreWorkerClient(addr.ip_address, addr.port, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(
@@ -213,8 +213,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           [this](const rpc::Address &address) {
             auto grpc_client = rpc::NodeManagerWorkerClient::make(
                 address.ip_address(), address.port(), *client_call_manager_);
-            return std::shared_ptr<RayletClient>(
-                new RayletClient(std::move(grpc_client)));
+            return std::shared_ptr<raylet::RayletClient>(
+                new raylet::RayletClient(std::move(grpc_client)));
           },
           memory_store_, task_manager_,
           [this](const ObjectID &object_id) { RemoveObjectIDDependencies(object_id); },
@@ -274,12 +274,12 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 
 void CoreWorker::ReportActiveObjectIDs() {
   std::unordered_set<ObjectID> active_object_ids;
-  auto max_active = RayConfig::instance().raylet_max_active_object_ids();
+  size_t max_active = RayConfig::instance().raylet_max_active_object_ids();
   if (max_active > 0) {
+    active_object_ids = reference_counter_->GetAllInScopeObjectIDs();
     if (active_object_ids.size() > max_active) {
       RAY_LOG(INFO) << active_object_ids.size() << " object IDs are currently in scope.";
     }
-    active_object_ids = reference_counter_->GetAllInScopeObjectIDs();
   }
 
   RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
@@ -614,11 +614,13 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
 
+  const std::unordered_map<std::string, double> required_resources;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(
       builder, worker_context_.GetCurrentJobID(), task_id,
       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, args, task_options.num_returns, task_options.resources, {},
+      function, args, task_options.num_returns, task_options.resources,
+      required_resources,
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
       return_ids);
   TaskSpecification task_spec = builder.Build();
@@ -692,10 +694,11 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
+  const std::unordered_map<std::string, double> required_resources;
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      {}, transport_type, return_ids);
+                      required_resources, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);

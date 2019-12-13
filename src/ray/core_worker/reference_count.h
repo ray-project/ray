@@ -36,7 +36,7 @@ class ReferenceCounter {
       LOCKS_EXCLUDED(mutex_);
 
   /// Remove any references to dependencies that this object may have. This does *not*
-  /// decrease the object's local reference count.
+  /// decrease the object's own local reference count.
   ///
   /// \param[in] object_id The object whose dependencies should be removed.
   /// \param[out] deleted List to store objects that hit zero ref count.

@@ -62,14 +62,16 @@ void ReferenceCounter::RemoveDependencies(const ObjectID &object_id,
                      << object_id;
     return;
   }
-  for (const ObjectID &pending_task_object_id : entry->second.dependencies) {
-    RemoveReferenceRecursive(pending_task_object_id, deleted);
-  }
-  if (entry->second.local_ref_count == 0) {
-    object_id_refs_.erase(entry);
-    deleted->push_back(object_id);
-  } else {
-    entry->second.dependencies.clear();
+  if (entry->second.dependencies) {
+    for (const ObjectID &pending_task_object_id : *entry->second.dependencies) {
+      RemoveReferenceRecursive(pending_task_object_id, deleted);
+    }
+    if (entry->second.local_ref_count == 0) {
+      object_id_refs_.erase(entry);
+      deleted->push_back(object_id);
+    } else {
+      entry->second.dependencies = nullptr;
+    }
   }
 }
 

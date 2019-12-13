@@ -99,9 +99,9 @@ class UniqueID : public BaseID<UniqueID> {
 
 class JobID : public BaseID<JobID> {
  public:
-  static constexpr int64_t kLength = 4;
+  static constexpr int64_t kLength = 2;
 
-  static JobID FromInt(uint32_t value);
+  static JobID FromInt(uint16_t value);
 
   static size_t Size() { return kLength; }
 
@@ -161,7 +161,7 @@ class ActorID : public BaseID<ActorID> {
 
 class TaskID : public BaseID<TaskID> {
  private:
-  static constexpr size_t kUniqueBytesLength = 6;
+  static constexpr size_t kUniqueBytesLength = 8;
 
  public:
   static constexpr size_t kLength = kUniqueBytesLength + ActorID::kLength;

@@ -234,14 +234,6 @@ py_test(
 )
 
 py_test(
-    name = "test_logical_graph",
-    size = "small",
-    srcs = ["test_logical_graph.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_memory_limits",
     size = "medium",
     srcs = ["test_memory_limits.py"],

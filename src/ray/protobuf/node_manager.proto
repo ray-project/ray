@@ -24,9 +24,11 @@ message WorkerLeaseReply {
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
   int32 worker_port = 1;
+  // Unique id of the leased worker we are now returning.
+  bytes worker_id = 2;
   // If true, there was some unrecoverable error and the raylet should
   // disconnect the worker.
-  bool disconnect_worker = 2;
+  bool disconnect_worker = 3;
 }
 
 message ReturnWorkerReply {
