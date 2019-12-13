@@ -1,10 +1,10 @@
 #include "ray/gcs/redis_gcs_client.h"
 
+#include <unistd.h>
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_actor_info_accessor.h"
 #include "ray/gcs/redis_context.h"
-
-#include <unistd.h>
+#include "ray/gcs/redis_job_info_accessor.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -73,7 +73,16 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {
+#if RAY_USE_NEW_GCS
+  command_type_ = CommandType::kChain;
+#else
+  command_type_ = CommandType::kRegular;
+#endif
+}
+
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options, CommandType command_type)
+    : GcsClient(options), command_type_(command_type) {}
 
 Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
@@ -114,7 +123,10 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
                                              /*password=*/options_.password_));
   }
 
+  Attach(io_service);
+
   actor_table_.reset(new ActorTable({primary_context_}, this));
+  direct_actor_table_.reset(new DirectActorTable({primary_context_}, this));
 
   // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
   // We will use NodeID instead of ClientID.
@@ -127,8 +139,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
   // Tables below would be sharded.
   object_table_.reset(new ObjectTable(shard_contexts_, this));
-  raylet_task_table_.reset(
-      new raylet::TaskTable(shard_contexts_, this, options_.command_type_));
+  raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type_));
   task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
   task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
   heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
@@ -138,14 +149,13 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
+  job_accessor_.reset(new RedisJobInfoAccessor(this));
 
-  Status status = Attach(io_service);
-  is_connected_ = status.ok();
+  is_connected_ = true;
 
-  // TODO(micafan): Synchronously register node and look up existing nodes here
-  // for this client is Raylet.
-  RAY_LOG(INFO) << "RedisGcsClient::Connect finished with status " << status;
-  return status;
+  RAY_LOG(INFO) << "RedisGcsClient Connected.";
+
+  return Status::OK();
 }
 
 void RedisGcsClient::Disconnect() {
@@ -155,7 +165,7 @@ void RedisGcsClient::Disconnect() {
   // TODO(micafan): Synchronously unregister node if this client is Raylet.
 }
 
-Status RedisGcsClient::Attach(boost::asio::io_service &io_service) {
+void RedisGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
   RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
   for (std::shared_ptr<RedisContext> context : shard_contexts_) {
@@ -168,7 +178,6 @@ Status RedisGcsClient::Attach(boost::asio::io_service &io_service) {
       new RedisAsioClient(io_service, primary_context_->async_context()));
   asio_subscribe_auxiliary_client_.reset(
       new RedisAsioClient(io_service, primary_context_->subscribe_context()));
-  return Status::OK();
 }
 
 std::string RedisGcsClient::DebugString() const {
@@ -191,6 +200,8 @@ ObjectTable &RedisGcsClient::object_table() { return *object_table_; }
 raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
+
+DirectActorTable &RedisGcsClient::direct_actor_table() { return *direct_actor_table_; }
 
 TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;

@@ -4,6 +4,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
@@ -15,6 +16,7 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/subscription_executor.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -413,6 +415,9 @@ class CoreWorker {
   /// Send the list of active object IDs to the raylet.
   void ReportActiveObjectIDs();
 
+  /// Heartbeat for internal bookkeeping.
+  void InternalHeartbeat();
+
   ///
   /// Private methods related to task submission.
   ///
@@ -522,6 +527,9 @@ class CoreWorker {
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
+  /// Timer for internal book-keeping.
+  boost::asio::steady_timer internal_timer_;
+
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;
 
@@ -530,6 +538,11 @@ class CoreWorker {
 
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+
+  // Client to listen to direct actor events.
+  std::unique_ptr<
+      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>
+      direct_actor_table_subscriber_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
@@ -561,6 +574,9 @@ class CoreWorker {
 
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
+
+  // Interface for publishing actor creation.
+  std::shared_ptr<ActorManager> actor_manager_;
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
@@ -611,6 +627,9 @@ class CoreWorker {
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+
+  // Queue of tasks to resubmit when the specified time passes.
+  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_;
 
   friend class CoreWorkerTest;
 };

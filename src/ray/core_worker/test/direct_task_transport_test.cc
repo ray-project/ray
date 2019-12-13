@@ -41,10 +41,13 @@ class MockTaskFinisher : public TaskFinisherInterface {
  public:
   MockTaskFinisher() {}
 
-  void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &) override {
+  void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &,
+                           const rpc::Address *actor_addr) override {
     num_tasks_complete++;
   }
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override {
+
+  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                         Status *status) override {
     num_tasks_failed++;
   }
 
@@ -54,7 +57,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override {
+  ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                           bool disconnect_worker) override {
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
