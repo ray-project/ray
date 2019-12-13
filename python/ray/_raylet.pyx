@@ -690,7 +690,7 @@ cdef execute_task(
         if task_counter == execution_info.max_calls:
             # Intentionally disconnect so the raylet doesn't print an error.
             # TODO(edoakes): we should handle max_calls in the core worker.
-            worker.core_worker.disconnect(True)
+            worker.core_worker.disconnect()
             sys.exit(0)
 
 
