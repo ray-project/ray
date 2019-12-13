@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import copy
 import inspect
 import logging
@@ -396,7 +395,7 @@ class ActorClass(object):
         if kwargs is None:
             kwargs = {}
         if is_direct_call is None:
-            is_direct_call = bool(os.environ.get("RAY_FORCE_DIRECT"))
+            is_direct_call = ray_constants.direct_call_enabled()
         if max_concurrency is None:
             if is_asyncio:
                 max_concurrency = 100
@@ -756,7 +755,12 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
             "methods in the `Checkpointable` interface.")
 
     if max_reconstructions is None:
-        max_reconstructions = 0
+        if ray_constants.direct_call_enabled():
+            # Allow the actor creation task to be resubmitted automatically
+            # by default.
+            max_reconstructions = 3
+        else:
+            max_reconstructions = 0
 
     if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
             ray_constants.INFINITE_RECONSTRUCTION):

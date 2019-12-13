@@ -8,8 +8,12 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
+#include "ray/util/util.h"
 
 namespace {
+
+// Duration between internal book-keeping heartbeats.
+const int kInternalHeartbeatMillis = 1000;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
@@ -78,6 +82,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       heartbeat_timer_(io_service_),
+      internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
       task_execution_service_work_(task_execution_service_),
@@ -158,6 +163,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
   }
 
+  internal_timer_.expires_from_now(
+      boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
+
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
@@ -170,7 +179,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   task_manager_.reset(
       new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
-        RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+        // Retry after a delay to emulate the existing Raylet reconstruction
+        // behaviour. TODO(ekl) backoff exponentially.
+        RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
+                       << spec.DebugString();
+        to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
       }));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
 
@@ -290,6 +303,16 @@ void CoreWorker::ReportActiveObjectIDs() {
       boost::asio::chrono::milliseconds(
           RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
+}
+
+void CoreWorker::InternalHeartbeat() {
+  while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
+    RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
+    to_resubmit_.pop_front();
+  }
+  internal_timer_.expires_at(internal_timer_.expiry() +
+                             boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
+  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
 }
 
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
