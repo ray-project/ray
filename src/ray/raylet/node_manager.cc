@@ -1606,8 +1606,8 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
           }
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
-        RAY_LOG(ERROR) << "Leasing out worker " << worker_id << " for " << debug
-          << " " << port;
+        RAY_LOG(ERROR) << "Leasing out worker " << worker_id << " for " << debug << " "
+                       << port;
 
         // TODO(swang): Kill worker if other end hangs up.
         // TODO(swang): Implement a lease term by which the owner needs to return the
