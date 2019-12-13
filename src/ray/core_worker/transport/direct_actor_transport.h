@@ -103,6 +103,10 @@ class CoreWorkerDirectActorTaskSubmitter {
   absl::flat_hash_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
       rpc_clients_ GUARDED_BY(mu_);
 
+  /// Map from actor ids to worker ids. TODO(ekl) consider unifying this with the
+  /// rpc_clients_ map.
+  absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
+
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
   absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>

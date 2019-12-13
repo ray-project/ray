@@ -993,13 +993,13 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
   TestActorTask(resources, true);
 }
 
-// TODO(ekl) support reconstruction for direct call actors
+// TODO(ekl) re-enable once reconstruction is implemented
 // TEST_F(SingleNodeTest, TestDirectActorTaskLocalReconstruction) {
 //  std::unordered_map<std::string, double> resources;
 //  TestActorReconstruction(resources, true);
 //}
 
-// TODO(ekl) support reconstruction for direct call actors
+// TODO(ekl) re-enable once reconstruction is implemented
 // TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesReconstruction) {
 //  std::unordered_map<std::string, double> resources;
 //  resources.emplace("resource1", 1);
