@@ -15,6 +15,7 @@ import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.processor.Processor;
+import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.runtime.transfer.DataReader;
 import org.ray.streaming.runtime.transfer.DataWriter;
@@ -66,7 +67,7 @@ public abstract class StreamTask implements Runnable {
       Map<Integer, RayActor<JobWorker>> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
       taskId2Worker.forEach((targetTaskId, targetActor) -> {
-        String queueName = ChannelUtils.genChannelName(taskId, targetTaskId, executionGraph.getBuildTime());
+        String queueName = ChannelID.genIdStr(taskId, targetTaskId, executionGraph.getBuildTime());
         outputActorIds.put(queueName, targetActor.getId());
       });
 
@@ -91,7 +92,7 @@ public abstract class StreamTask implements Runnable {
       Map<Integer, RayActor<JobWorker>> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getSrcNodeId());
       taskId2Worker.forEach((srcTaskId, srcActor) -> {
-        String queueName = ChannelUtils.genChannelName(srcTaskId, taskId, executionGraph.getBuildTime());
+        String queueName = ChannelID.genIdStr(srcTaskId, taskId, executionGraph.getBuildTime());
         inputActorIds.put(queueName, srcActor.getId());
       });
     }

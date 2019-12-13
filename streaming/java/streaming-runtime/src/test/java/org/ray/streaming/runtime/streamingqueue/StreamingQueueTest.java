@@ -21,6 +21,7 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
@@ -110,7 +111,7 @@ public class StreamingQueueTest implements Serializable {
     List<String> inputQueueList = new ArrayList<>();
     int queueNum = 2;
     for (int i = 0; i < queueNum; ++i) {
-      String qid = ChannelUtils.genRandomChannelID();
+      String qid = ChannelID.genRandomIdStr();
       LOGGER.info("getRandomQueueId: {}", qid);
       inputQueueList.add(qid);
       outputQueueList.add(qid);

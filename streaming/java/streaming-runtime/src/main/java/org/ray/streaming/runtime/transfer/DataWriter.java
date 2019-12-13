@@ -50,8 +50,10 @@ public class DataWriter {
                     Map<String, String> conf) {
     Preconditions.checkArgument(!outputChannels.isEmpty());
     Preconditions.checkArgument(outputChannels.size() == toActors.size());
-    byte[][] outputChannelsBytes = ChannelUtils.stringQueueIdListToByteArray(outputChannels);
-    byte[][] toActorsBytes = ChannelUtils.actorIdListToByteArray(toActors);
+    byte[][] outputChannelsBytes = outputChannels.stream()
+        .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
+    byte[][] toActorsBytes = toActors.stream()
+        .map(ActorId::getBytes).toArray(byte[][]::new);
     long channelSize = Long.parseLong(
         conf.getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT));
     long[] msgIds = new long[outputChannels.size()];

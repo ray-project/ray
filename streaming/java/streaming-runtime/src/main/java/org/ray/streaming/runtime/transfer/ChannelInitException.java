@@ -3,8 +3,6 @@ package org.ray.streaming.runtime.transfer;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.ray.streaming.runtime.transfer.ChannelUtils;
-
 public class ChannelInitException extends Exception {
 
   private final List<byte[]> abnormalQueues;
@@ -20,7 +18,7 @@ public class ChannelInitException extends Exception {
 
   public List<String> getAbnormalChannelsString() {
     List<String> res = new ArrayList<>();
-    abnormalQueues.forEach(ele -> res.add(ChannelUtils.qidBytesToString(ele)));
+    abnormalQueues.forEach(ele -> res.add(ChannelID.idBytesToStr(ele)));
     return res;
   }
 }

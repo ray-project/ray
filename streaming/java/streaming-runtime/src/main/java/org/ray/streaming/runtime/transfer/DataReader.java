@@ -41,8 +41,10 @@ public class DataReader {
                     Map<String, String> conf) {
     Preconditions.checkArgument(inputChannels.size() > 0);
     Preconditions.checkArgument(inputChannels.size() == fromActors.size());
-    byte[][] inputChannelsBytes = ChannelUtils.stringQueueIdListToByteArray(inputChannels);
-    byte[][] fromActorsBytes = ChannelUtils.actorIdListToByteArray(fromActors);
+    byte[][] inputChannelsBytes = inputChannels.stream()
+        .map(ChannelID::idStrToBytes).toArray(byte[][]::new);
+    byte[][] fromActorsBytes = fromActors.stream()
+        .map(ActorId::getBytes).toArray(byte[][]::new);
     long[] seqIds = new long[inputChannels.size()];
     long[] msgIds = new long[inputChannels.size()];
     for (int i = 0; i < inputChannels.size(); i++) {
@@ -230,7 +232,7 @@ class BundleMeta {
   private String getQidString(ByteBuffer buffer) {
     byte[] bytes = new byte[ChannelID.ID_LENGTH];
     buffer.get(bytes);
-    return ChannelUtils.qidBytesToString(bytes);
+    return ChannelID.idBytesToStr(bytes);
   }
 
   public int getMagicNum() {

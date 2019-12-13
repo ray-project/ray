@@ -1,18 +1,26 @@
 package org.ray.streaming.runtime.transfer;
 
+import com.google.common.base.Preconditions;
+import java.lang.ref.Reference;
+import java.nio.ByteBuffer;
+import java.util.Random;
+import java.util.Set;
+
+import javax.xml.bind.DatatypeConverter;
+
+import org.ray.runtime.RayNativeRuntime;
+import org.ray.streaming.runtime.util.JniUtils;
+
 import com.google.common.base.FinalizablePhantomReference;
 import com.google.common.base.FinalizableReferenceQueue;
 import com.google.common.collect.Sets;
 
 import sun.nio.ch.DirectBuffer;
 
-import java.lang.ref.Reference;
-import java.nio.ByteBuffer;
-import java.util.Set;
-
-import org.ray.runtime.RayNativeRuntime;
-import org.ray.streaming.runtime.util.JniUtils;
-
+/**
+ * ChannelID is used to identify a transfer channel between a upstream worker
+ * and downstream worker.
+ */
 public class ChannelID {
   public static final int ID_LENGTH = 20;
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
@@ -94,11 +102,11 @@ public class ChannelID {
   private static native void destroyNativeID(long nativeIDPtr);
 
   public static ChannelID from(String id) {
-    return from(id, ChannelUtils.qidStrToBytes(id));
+    return from(id, ChannelID.idStrToBytes(id));
   }
 
   public static ChannelID from(byte[] idBytes) {
-    return from(ChannelUtils.qidBytesToString(idBytes), idBytes);
+    return from(idBytesToStr(idBytes), idBytes);
   }
 
   private static ChannelID from(String strID, byte[] idBytes) {
@@ -115,6 +123,60 @@ public class ChannelID {
       references.add(reference);
     }
     return id;
+  }
+
+  /**
+   * @return a random channel id string
+   */
+  public static String genRandomIdStr() {
+    StringBuilder sb = new StringBuilder();
+    Random random = new Random();
+    for (int i = 0; i < ChannelID.ID_LENGTH * 2; ++i) {
+      sb.append((char) (random.nextInt(6) + 'A'));
+    }
+    return sb.toString();
+  }
+
+  /**
+   * Generate channel name, which will be 20 character
+   *
+   * @param fromTaskId upstream task id
+   * @param toTaskId   downstream task id
+   * @return channel name
+   */
+  public static String genIdStr(int fromTaskId, int toTaskId, long ts) {
+    /*
+      | Queue Head | Timestamp | Empty | From  |  To    |
+      | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |
+    */
+    Preconditions.checkArgument(fromTaskId < Short.MAX_VALUE,
+        "fromTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+    Preconditions.checkArgument(toTaskId < Short.MAX_VALUE,
+        "toTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+    byte[] queueName = new byte[20];
+
+    for (int i = 11; i >= 8; i--) {
+      queueName[i] = (byte) (ts & 0xff);
+      ts >>= 8;
+    }
+
+    queueName[16] = (byte) ((fromTaskId & 0xffff) >> 8);
+    queueName[17] = (byte) (fromTaskId & 0xff);
+    queueName[18] = (byte) ((toTaskId & 0xffff) >> 8);
+    queueName[19] = (byte) (toTaskId & 0xff);
+
+    return ChannelID.idBytesToStr(queueName);
+  }
+
+  static byte[] idStrToBytes(String id) {
+    byte[] qidBytes = DatatypeConverter.parseHexBinary(id.toUpperCase());
+    assert qidBytes.length == ChannelID.ID_LENGTH;
+    return qidBytes;
+  }
+
+  static String idBytesToStr(byte[] qid) {
+    assert qid.length == ChannelID.ID_LENGTH;
+    return DatatypeConverter.printHexBinary(qid).toLowerCase();
   }
 
 }
