@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.transfer;
 
+import com.google.common.base.Preconditions;
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
@@ -24,6 +25,7 @@ public class TransferHandler {
                          JavaFunctionDescriptor writerSyncFunc,
                          JavaFunctionDescriptor readerAsyncFunc,
                          JavaFunctionDescriptor readerSyncFunc) {
+    Preconditions.checkArgument(coreWorkerNative != 0);
     writerClientNative = createWriterClientNative(
         coreWorkerNative, writerAsyncFunc, writerSyncFunc);
     readerClientNative = createReaderClientNative(

@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
@@ -16,7 +15,6 @@ import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.processor.Processor;
 import org.ray.streaming.runtime.transfer.ChannelID;
-import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.runtime.transfer.DataReader;
 import org.ray.streaming.runtime.transfer.DataWriter;
 import org.ray.streaming.runtime.worker.JobWorker;

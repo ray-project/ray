@@ -18,6 +18,7 @@ import org.ray.streaming.runtime.worker.context.WorkerContext;
 import org.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import org.ray.streaming.runtime.worker.tasks.SourceStreamTask;
 import org.ray.streaming.runtime.worker.tasks.StreamTask;
+import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,15 +40,6 @@ public class JobWorker implements Serializable {
   private StreamTask task;
   private TransferHandler transferHandler;
 
-  public JobWorker() {
-    transferHandler = new TransferHandler(
-        getNativeCoreWorker(),
-        new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessage", "([B)V"),
-        new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessageSync", "([B)[B"),
-        new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessage", "([B)V"),
-        new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessageSync", "([B)[B"));
-  }
-
   public Boolean init(WorkerContext workerContext) {
     this.workerContext = workerContext;
     this.taskId = workerContext.getTaskId();
@@ -60,6 +52,16 @@ public class JobWorker implements Serializable {
     this.streamProcessor = executionNode.getStreamProcessor();
     LOGGER.debug("Initializing StreamWorker, taskId: {}, operator: {}.", taskId, streamProcessor);
 
+    String channelType = (String) this.config.getOrDefault(
+        Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
+    if(channelType.equals(Config.NATIVE_CHANNEL)) {
+      transferHandler = new TransferHandler(
+          getNativeCoreWorker(),
+          new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessage", "([B)V"),
+          new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessageSync", "([B)[B"),
+          new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessage", "([B)V"),
+          new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessageSync", "([B)[B"));
+    }
     task = createStreamTask();
     task.start();
     return true;
