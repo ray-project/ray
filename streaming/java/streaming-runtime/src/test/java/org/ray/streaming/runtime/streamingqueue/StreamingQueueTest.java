@@ -167,7 +167,7 @@ public class StreamingQueueTest implements Serializable {
         .sink(s -> {
           LOGGER.info("sink {} {}", s.word, s.count);
           wordCount.put(s.word, s.count);
-          serilizeResultToFile(resultFile, wordCount);
+          serializeResultToFile(resultFile, wordCount);
         });
 
     streamingContext.execute();
@@ -187,7 +187,7 @@ public class StreamingQueueTest implements Serializable {
     Assert.assertEquals(checkWordCount, ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
   }
 
-  private void serilizeResultToFile(String fileName, Object obj) {
+  private void serializeResultToFile(String fileName, Object obj) {
     try {
       ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(fileName));
       out.writeObject(obj);

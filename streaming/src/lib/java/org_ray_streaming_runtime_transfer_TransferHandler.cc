@@ -41,8 +41,6 @@ Java_org_ray_streaming_runtime_transfer_TransferHandler_createReaderClientNative
 JNIEXPORT void JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
-  STREAMING_LOG(INFO) << "Java_org_ray_streaming_runtime_transfer_TransferHandler_"
-                         "handleWriterMessageNative";
   WriterClient *writer_client = reinterpret_cast<WriterClient *>(ptr);
 
   writer_client->OnWriterMessage(JByteArrayToBuffer(env, bytes));
@@ -51,8 +49,6 @@ Java_org_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageNativ
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
-  STREAMING_LOG(INFO) << "Java_org_ray_streaming_runtime_transfer_TransferHandler_"
-                         "handleWriterMessageSyncNative";
   WriterClient *writer_client = reinterpret_cast<WriterClient *>(ptr);
 
   std::shared_ptr<ray::LocalMemoryBuffer> result_buffer =
@@ -67,8 +63,6 @@ Java_org_ray_streaming_runtime_transfer_TransferHandler_handleWriterMessageSyncN
 JNIEXPORT void JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
-  STREAMING_LOG(INFO) << "Java_org_ray_streaming_runtime_transfer_TransferHandler_"
-                         "handleReaderMessageNative";
   ReaderClient *reader_client = reinterpret_cast<ReaderClient *>(ptr);
 
   reader_client->OnReaderMessage(JByteArrayToBuffer(env, bytes));
@@ -77,8 +71,6 @@ Java_org_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageNativ
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_streaming_runtime_transfer_TransferHandler_handleReaderMessageSyncNative(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
-  STREAMING_LOG(INFO) << "Java_org_ray_streaming_runtime_transfer_TransferHandler_"
-                         "handleReaderMessageSyncNative";
   ReaderClient *reader_client = reinterpret_cast<ReaderClient *>(ptr);
 
   std::shared_ptr<ray::LocalMemoryBuffer> result_buffer =
