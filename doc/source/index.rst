@@ -246,6 +246,7 @@ Getting Involved
 
    tune.rst
    tune-tutorial.rst
+   tune-advanced-tutorial.rst
    tune-usage.rst
    tune-distributed.rst
    tune-schedulers.rst
