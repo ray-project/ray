@@ -13,6 +13,6 @@ def gen_streaming_java_deps():
             "org.testng:testng:6.9.10",
         ],
         repositories = [
-            "http://mvn.dev.alipay.net:8080/artifactory/repo/",
+            "https://repo1.maven.org/maven2/",
         ],
     )
