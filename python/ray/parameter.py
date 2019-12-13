@@ -95,7 +95,7 @@ class RayParams(object):
                  redis_shard_ports=None,
                  object_manager_port=None,
                  node_manager_port=None,
-                 node_ip_address="127.0.0.1",
+                 node_ip_address=None,
                  object_id_seed=None,
                  local_mode=False,
                  driver_mode=None,
