@@ -19,7 +19,6 @@ public class ChannelID {
   private static final Set<Reference<?>> references = Sets.newConcurrentHashSet();
 
   static {
-    JniUtils.loadLibrary("core_worker_library_java");
     JniUtils.loadLibrary("streaming_java");
   }
 

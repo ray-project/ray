@@ -2,9 +2,14 @@ package org.ray.streaming.runtime.transfer;
 
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import org.ray.streaming.runtime.util.JniUtils;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 public class TransferHandler {
+
+  static {
+    JniUtils.loadLibrary("streaming_java");
+  }
 
   private long writerClientNative;
   private long readerClientNative;

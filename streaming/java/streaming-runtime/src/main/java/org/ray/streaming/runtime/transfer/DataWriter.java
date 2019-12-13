@@ -23,7 +23,6 @@ public class DataWriter {
   private static final Logger LOGGER = LoggerFactory.getLogger(DataWriter.class);
 
   static {
-    JniUtils.loadLibrary("core_worker_library_java");
     JniUtils.loadLibrary("streaming_java");
   }
 

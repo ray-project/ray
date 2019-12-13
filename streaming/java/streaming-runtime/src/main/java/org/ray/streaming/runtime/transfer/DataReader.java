@@ -24,7 +24,6 @@ public class DataReader {
   private final static Logger LOGGER = LoggerFactory.getLogger(DataReader.class);
 
   static {
-    JniUtils.loadLibrary("core_worker_library_java");
     JniUtils.loadLibrary("streaming_java");
   }
 
