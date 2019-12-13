@@ -419,8 +419,8 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   auto factory = [&](const std::string &addr, int port) { return worker_client; };
 
   std::unordered_map<ClientID, std::shared_ptr<MockRayletClient>> remote_lease_clients;
-  auto lease_client_factory = [&](const rpc::Address &addr) {
-    ClientID raylet_id = ClientID::FromBinary(addr.raylet_id());
+  auto lease_client_factory = [&](const std::string &rid, int port) {
+    ClientID raylet_id = ClientID::FromBinary(rid);
     // We should not create a connection to the same raylet more than once.
     RAY_CHECK(remote_lease_clients.count(raylet_id) == 0);
     auto client = std::make_shared<MockRayletClient>();
@@ -468,8 +468,8 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   auto factory = [&](const std::string &addr, int port) { return worker_client; };
 
   std::unordered_map<ClientID, std::shared_ptr<MockRayletClient>> remote_lease_clients;
-  auto lease_client_factory = [&](const rpc::Address &addr) {
-    ClientID raylet_id = ClientID::FromBinary(addr.raylet_id());
+  auto lease_client_factory = [&](const std::string &rid, int port) {
+    ClientID raylet_id = ClientID::FromBinary(rid);
     // We should not create a connection to the same raylet more than once.
     RAY_CHECK(remote_lease_clients.count(raylet_id) == 0);
     auto client = std::make_shared<MockRayletClient>();
