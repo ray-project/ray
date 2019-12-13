@@ -1110,7 +1110,6 @@ void NodeManager::HandleWorkerAvailable(
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
   RAY_CHECK(worker);
-  RAY_LOG(ERROR) << "Worker available " << worker->WorkerId() << " " << worker->Port();
   bool worker_idle = true;
   // If the worker was assigned a task, mark it as finished.
   if (!worker->GetAssignedTaskId().IsNil()) {
@@ -1173,7 +1172,6 @@ void NodeManager::ProcessDisconnectClientMessage(
     }
     // Erase any lease metadata.
     leased_workers_.erase(worker->WorkerId());
-    RAY_LOG(ERROR) << "Erasing lease of dead worker " << worker->WorkerId();
   }
 
   if (is_worker) {
@@ -1580,9 +1578,8 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   // task directly on the worker.
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
-  auto debug = task.GetTaskSpecification().DebugString();
   task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback, debug](
+      [this, task_id, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
@@ -1606,8 +1603,6 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
           }
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
-        RAY_LOG(ERROR) << "Leasing out worker " << worker_id << " for " << debug << " "
-                       << port;
 
         // TODO(swang): Kill worker if other end hangs up.
         // TODO(swang): Implement a lease term by which the owner needs to return the
@@ -1634,7 +1629,6 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
   std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_id]);
-  RAY_LOG(ERROR) << "Worker lease returned " << worker_id;
 
   if (new_scheduler_enabled_) {
     auto it = leased_worker_resources_.find(worker_id);
@@ -2252,7 +2246,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
         << spec.TaskId() << " has: " << spec.ActorCounter();
   }
 
-  RAY_LOG(ERROR) << "Assigning task " << spec.TaskId() << " to worker with pid "
+  RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
                  << worker->Pid() << " and wid " << worker->WorkerId();
   flatbuffers::FlatBufferBuilder fbb;
 
@@ -2413,7 +2407,6 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
 }
 
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
-  RAY_LOG(INFO) << "Finishing assigned actor task";
   ActorID actor_id;
   TaskID caller_id;
   const TaskSpecification task_spec = task.GetTaskSpecification();
@@ -2885,13 +2878,11 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
   Task assigned_task;
   TaskState state;
   if (!local_queues_.RemoveTask(task_id, &assigned_task, &state)) {
-    RAY_LOG(ERROR) << "Condition 4";
     // TODO(edoakes): should we be failing silently here?
     return;
   }
   RAY_CHECK(state == TaskState::READY);
 
-  RAY_LOG(ERROR) << "FinishAssign " << task_id << " to " << worker->WorkerId();
   if (success) {
     auto spec = assigned_task.GetTaskSpecification();
     // We successfully assigned the task to the worker.

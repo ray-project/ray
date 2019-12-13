@@ -103,7 +103,6 @@ void FillRandom(T *data) {
       std::this_thread::sleep_for(std::chrono::microseconds(10));
       seed += std::chrono::high_resolution_clock::now().time_since_epoch().count();
     }
-    RAY_LOG(ERROR) << "Seeding process " << seed;
     std::mt19937 seeded_engine(seed);
     return seeded_engine;
   };

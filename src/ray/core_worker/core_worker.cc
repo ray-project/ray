@@ -787,7 +787,6 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         ActorHandle *actor_handle = nullptr;
         RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
         actor_handle->MarkDead();
-        RAY_LOG(ERROR) << "Marking actor handle as dead " << actor_id;
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.

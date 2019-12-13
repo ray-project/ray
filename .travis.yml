@@ -144,7 +144,7 @@ script:
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests
-  #- TODO ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
+  - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi

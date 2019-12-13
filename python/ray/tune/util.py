@@ -47,8 +47,6 @@ class UtilMonitor(Thread):
         if psutil is None and start:
             logger.warning("Install psutil to monitor system performance.")
 
-        return  # DO NOT MERGE
-
         if GPUtil is None and psutil is None:
             return
 

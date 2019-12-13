@@ -63,7 +63,6 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
   GetThreadContext(true).SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
                                               ? TaskID::ForDriverTask(job_id)
                                               : TaskID::Nil());
-  RAY_LOG(ERROR) << "Generated WID " << worker_id_;
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
