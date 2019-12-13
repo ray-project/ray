@@ -121,11 +121,15 @@ public class StreamingQueueTest implements Serializable {
     }
     Ray.call(WriterWorker::init, writerActor, outputQueueList, readerActor, msgCount);
 
-
-    try {
-      Thread.sleep(20*1000);
-    } catch (InterruptedException e) {
-      e.printStackTrace();
+    long time = 0;
+    while (time < 20000 &&
+        Ray.call(ReaderWorker::getTotalMsg, readerActor).get() < msgCount*queueNum) {
+      try {
+        Thread.sleep(1000);
+        time += 1000;
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
     }
 
     Assert.assertEquals(
