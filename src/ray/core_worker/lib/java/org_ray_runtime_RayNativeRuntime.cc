@@ -109,14 +109,14 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv 
   std::string log_dir = JavaStringToNativeString(env, logDir);
   ray::RayLog::StartRayLog("java_worker", ray::RayLogLevel::INFO, log_dir);
   // TODO (kfstorm): We can't InstallFailureSignalHandler here, because JVM already
-  // installed its own signale handler.
-  // See https://docs.oracle.com/javase/9/troubleshoot/handle-signals-and-exceptions.htm.
+  // installed its own signal handler. It's possible to fix this by chaining signal
+  // handlers. But it's not easy. See
+  // https://docs.oracle.com/javase/9/troubleshoot/handle-signals-and-exceptions.htm.
 }
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
                                                                                 jclass) {
-  // TODO (kfstorm): JVM would crash on exit if uninstall_signal_handlers was set to true.
-  ray::RayLog::ShutDownRayLog(/*uninstall_signal_handlers=*/false);
+  ray::RayLog::ShutDownRayLog();
 }
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(

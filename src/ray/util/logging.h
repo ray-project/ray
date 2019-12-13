@@ -98,9 +98,7 @@ class RayLog : public RayLogBase {
                           const std::string &logDir = "");
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
-  /// \param uninstall_signal_handlers If set to false, UninstallSignalAction woundn't be
-  /// called.
-  static void ShutDownRayLog(bool uninstall_signal_handlers = true);
+  static void ShutDownRayLog();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
   static void UninstallSignalAction();
@@ -130,6 +128,9 @@ class RayLog : public RayLogBase {
   /// The directory where the log files are stored.
   /// If this is empty, logs are printed to stdout.
   static std::string log_dir_;
+  /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
+  /// InstallFailureSignalHandler was not called.
+  static bool is_failure_signal_handler_installed_;
 
  protected:
   virtual std::ostream &Stream();
