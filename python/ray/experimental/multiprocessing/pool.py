@@ -3,9 +3,13 @@ from __future__ import division
 from __future__ import print_function
 
 from multiprocessing import TimeoutError
+import os
 import random
+import time
 
 import ray
+
+RAY_ADDRESS_ENV = "RAY_ADDRESS"
 
 
 # TODO: implement callbacks
@@ -107,7 +111,7 @@ class UnorderedIMapIterator(IMapIterator):
             raise StopIteration
 
         ready_ids, self._chunk_object_ids = ray.wait(
-            self._chunk_object_ids, timeout=timeout)
+            self._chunk_object_ids, num_returns=1, timeout=timeout)
         if len(ready_ids) == 0:
             raise TimeoutError
 
@@ -123,6 +127,9 @@ class PoolActor(object):
     def __init__(self, initializer=None, *initargs):
         if initializer:
             initializer(*initargs)
+
+    def ping(self):
+        pass
 
     def run_batch(self, func, batch):
         results = []
@@ -144,13 +151,35 @@ class Pool(object):
                  initargs=None,
                  maxtasksperchild=None,
                  context=None):
-        ray.init(num_cpus=processes)
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs if initargs else ()
         self._maxtasksperchild = maxtasksperchild if maxtasksperchild else -1
-        self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
         self._actor_deletion_ids = []
+
+        processes = self._init_ray(processes)
+        self._start_actor_pool(processes)
+
+    def _init_ray(self, processes=None):
+        # Cluster mode.
+        if RAY_ADDRESS_ENV in os.environ:
+            address = os.environ[RAY_ADDRESS_ENV]
+            print("Connecting to ray cluster at address='{}'".format(address))
+            ray.init(address=address)
+        # Local mode.
+        else:
+            print("Starting local ray cluster")
+            ray.init(num_cpus=processes)
+        if processes is None:
+            processes = int(ray.state.cluster_resources()["CPU"])
+        return processes
+
+    def _start_actor_pool(self, processes):
+        print("Starting {} actors...".format(processes))
+        start = time.time()
+        self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
+        ray.get([actor.ping.remote() for actor, _ in self._actor_pool])
+        print("Actors ready in {0:.2f}s".format(time.time()-start))
 
     def _wait_for_stopping_actors(self, timeout=None):
         if len(self._actor_deletion_ids) == 0:
@@ -178,7 +207,7 @@ class Pool(object):
     def _new_actor_entry(self):
         # TODO(edoakes): initializer can't be used to import or set globals.
         return (PoolActor._remote(
-            self._initializer, *self._initargs, is_direct_call=False), 0)
+            self._initializer, *self._initargs), 0)
 
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch(self, actor_index, func, batch):
@@ -284,10 +313,17 @@ class Pool(object):
 
     # TODO: shouldn't actually submit everything at once for memory
     # considerations.
-    def imap_unordered(self, func, iterable, chunksize=None):
+    def imap_unordered(self, func, iterable, chunksize=1):
         self._check_running()
         return UnorderedIMapIterator(
             self._chunk_and_run(func, iterable, chunksize=chunksize))
+
+    def __enter__(self):
+        self._check_running()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.terminate()
 
     def close(self):
         for actor, _ in self._actor_pool:
