@@ -166,7 +166,7 @@ class DiagGaussian(TFActionDistribution):
     @override(ActionDistribution)
     def entropy(self):
         return tf.reduce_sum(
-            .5 * self.log_std + .5 * np.log(2.0 * np.pi * np.e),
+            self.log_std + .5 * np.log(2.0 * np.pi * np.e),
             reduction_indices=[1])
 
     @override(TFActionDistribution)
