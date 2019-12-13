@@ -11,7 +11,7 @@ tf = try_import_tf()
 
 
 def relative_position_embedding(seq_length, out_dim):
-    inverse_freq = 1 / (10000 ** (tf.range(0, out_dim, 2.0) / out_dim))
+    inverse_freq = 1 / (10000**(tf.range(0, out_dim, 2.0) / out_dim))
     pos_offsets = tf.range(seq_length - 1., -1., -1.)
     inputs = pos_offsets[:, None] * inverse_freq[None, :]
     return tf.concat((tf.sin(inputs), tf.cos(inputs)), axis=-1)
@@ -31,18 +31,16 @@ def rel_shift(x):
 
 
 class MultiHeadAttention(tf.keras.layers.Layer):
-
     def __init__(self, out_dim, num_heads, head_dim, **kwargs):
         super(MultiHeadAttention, self).__init__(**kwargs)
 
         # no bias or non-linearity
         self._num_heads = num_heads
         self._head_dim = head_dim
-        self._qkv_layer = tf.keras.layers.Dense(3 * num_heads * head_dim,
-                                                use_bias=False)
+        self._qkv_layer = tf.keras.layers.Dense(
+            3 * num_heads * head_dim, use_bias=False)
         self._linear_layer = tf.keras.layers.TimeDistributed(
-            tf.keras.layers.Dense(out_dim,
-                                  use_bias=False))
+            tf.keras.layers.Dense(out_dim, use_bias=False))
 
     def call(self, inputs):
         L = tf.shape(inputs)[0]  # length of segment
@@ -59,7 +57,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         values = tf.reshape(values, [L, -1, H, D])
 
         score = tf.einsum("ibhd,jbhd->ijbh", queries, keys)
-        score = score / D ** 0.5
+        score = score / D**0.5
 
         # causal mask of the same length as the sequence
         mask = tf.sequence_mask(tf.range(1, L + 1), dtype=score.dtype)
@@ -73,26 +71,30 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
 
 class RelativeMultiHeadAttention(tf.keras.layers.Layer):
-
-    def __init__(self, out_dim, num_heads, head_dim, rel_pos_encoder,
-                 input_layernorm=False, output_activation=None, **kwargs):
+    def __init__(self,
+                 out_dim,
+                 num_heads,
+                 head_dim,
+                 rel_pos_encoder,
+                 input_layernorm=False,
+                 output_activation=None,
+                 **kwargs):
         super(RelativeMultiHeadAttention, self).__init__(**kwargs)
 
         # no bias or non-linearity
         self._num_heads = num_heads
         self._head_dim = head_dim
-        self._qkv_layer = tf.keras.layers.Dense(3 * num_heads * head_dim,
-                                                use_bias=False)
+        self._qkv_layer = tf.keras.layers.Dense(
+            3 * num_heads * head_dim, use_bias=False)
         self._linear_layer = tf.keras.layers.TimeDistributed(
-            tf.keras.layers.Dense(out_dim,
-                                  use_bias=False,
-                                  activation=output_activation))
+            tf.keras.layers.Dense(
+                out_dim, use_bias=False, activation=output_activation))
 
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
 
-        self._pos_proj = tf.keras.layers.Dense(num_heads * head_dim,
-                                               use_bias=False)
+        self._pos_proj = tf.keras.layers.Dense(
+            num_heads * head_dim, use_bias=False)
         self._rel_pos_encoder = rel_pos_encoder
 
         self._input_layernorm = None
@@ -108,7 +110,8 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         M = memory.shape[0] if memory is not None else 0
 
         if memory is not None:
-            inputs = np.concatenate((tf.stop_gradient(memory), inputs), axis=-1)
+            inputs = np.concatenate(
+                (tf.stop_gradient(memory), inputs), axis=-1)
 
         if self._input_layernorm is not None:
             inputs = self._input_layernorm(inputs)
@@ -143,7 +146,6 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
 
 class PositionwiseFeedforward(tf.keras.layers.Layer):
-
     def __init__(self, out_dim, hidden_dim, output_activation=None, **kwargs):
         super(PositionwiseFeedforward, self).__init__(**kwargs)
 
@@ -151,8 +153,8 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
             hidden_dim,
             activation=tf.nn.relu,
         )
-        self._output_layer = tf.keras.layers.Dense(out_dim,
-                                                   activation=output_activation)
+        self._output_layer = tf.keras.layers.Dense(
+            out_dim, activation=output_activation)
 
     def call(self, inputs, **kwargs):
         output = self._hidden_layer(inputs)
@@ -182,7 +184,6 @@ class SkipConnection(tf.keras.layers.Layer):
 
 
 class GRUGate(tf.keras.layers.Layer):
-
     def __init__(self, init_bias=0., **kwargs):
         super(GRUGate, self).__init__(**kwargs)
         self._init_bias = init_bias
@@ -203,51 +204,52 @@ class GRUGate(tf.keras.layers.Layer):
         def bias_initializer(shape, dtype):
             return tf.fill(shape, tf.cast(self._init_bias, dtype=dtype))
 
-        self._bias_z = self.add_weight(shape=(x_shape[-1],),
-                                       initializer=bias_initializer)
+        self._bias_z = self.add_weight(
+            shape=(x_shape[-1], ), initializer=bias_initializer)
 
     def call(self, inputs, **kwargs):
         x, y = inputs
-        r = (tf.tensordot(y, self._w_r, axes=1)
-             + tf.tensordot(x, self._u_r, axes=1))
+        r = (tf.tensordot(y, self._w_r, axes=1) + tf.tensordot(
+            x, self._u_r, axes=1))
         r = tf.nn.sigmoid(r)
 
-        z = (tf.tensordot(y, self._w_z, axes=1)
-             + tf.tensordot(x, self._u_z, axes=1)
-             + self._bias_z)
+        z = (tf.tensordot(y, self._w_z, axes=1) + tf.tensordot(
+            x, self._u_z, axes=1) + self._bias_z)
         z = tf.nn.sigmoid(z)
 
-        h = (tf.tensordot(y, self._w_h, axes=1)
-             + tf.tensordot((x * r), self._u_h, axes=1))
+        h = (tf.tensordot(y, self._w_h, axes=1) + tf.tensordot(
+            (x * r), self._u_h, axes=1))
         h = tf.nn.tanh(h)
 
         return (1 - z) * x + z * h
 
 
-def make_TrXL(seq_length, num_layers, attn_dim, num_heads,
-              head_dim, ff_hidden_dim):
+def make_TrXL(seq_length, num_layers, attn_dim, num_heads, head_dim,
+              ff_hidden_dim):
     pos_embedding = relative_position_embedding(seq_length, attn_dim)
 
     layers = [tf.keras.layers.Dense(attn_dim)]
     for _ in range(num_layers):
         layers.append(
             SkipConnection(
-                RelativeMultiHeadAttention(attn_dim, num_heads,
-                                           head_dim, pos_embedding))
-        )
+                RelativeMultiHeadAttention(attn_dim, num_heads, head_dim,
+                                           pos_embedding)))
         layers.append(tf.keras.layers.LayerNormalization(axis=-1))
 
         layers.append(
-            SkipConnection(
-                PositionwiseFeedforward(attn_dim, ff_hidden_dim))
-        )
+            SkipConnection(PositionwiseFeedforward(attn_dim, ff_hidden_dim)))
         layers.append(tf.keras.layers.LayerNormalization(axis=-1))
 
     return tf.keras.Sequential(layers)
 
 
-def make_GRU_TrXL(seq_length, num_layers, attn_dim,
-                  num_heads, head_dim, ff_hidden_dim, init_gate_bias=2.):
+def make_GRU_TrXL(seq_length,
+                  num_layers,
+                  attn_dim,
+                  num_heads,
+                  head_dim,
+                  ff_hidden_dim,
+                  init_gate_bias=2.):
     # Default initial bias for the gate taken from
     # Parisotto, Emilio, et al. "Stabilizing Transformers for Reinforcement Learning." arXiv preprint arXiv:1910.06764 (2019).
     pos_embedding = relative_position_embedding(seq_length, attn_dim)
@@ -256,19 +258,23 @@ def make_GRU_TrXL(seq_length, num_layers, attn_dim,
     for _ in range(num_layers):
         layers.append(
             SkipConnection(
-                RelativeMultiHeadAttention(attn_dim, num_heads,
-                                           head_dim, pos_embedding,
-                                           input_layernorm=True,
-                                           output_activation=tf.nn.relu),
+                RelativeMultiHeadAttention(
+                    attn_dim,
+                    num_heads,
+                    head_dim,
+                    pos_embedding,
+                    input_layernorm=True,
+                    output_activation=tf.nn.relu),
                 fan_in_layer=GRUGate(init_gate_bias),
             ))
 
         layers.append(
             SkipConnection(
-                tf.keras.Sequential((
-                    tf.keras.layers.LayerNormalization(axis=-1),
-                    PositionwiseFeedforward(attn_dim, ff_hidden_dim,
-                                            output_activation=tf.nn.relu))),
+                tf.keras.Sequential(
+                    (tf.keras.layers.LayerNormalization(axis=-1),
+                     PositionwiseFeedforward(
+                         attn_dim, ff_hidden_dim,
+                         output_activation=tf.nn.relu))),
                 fan_in_layer=GRUGate(init_gate_bias),
             ))
 
