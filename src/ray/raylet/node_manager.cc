@@ -2321,7 +2321,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   worker.ResetTaskResourceIds();
 
   const auto &spec = task.GetTaskSpecification();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  if ((spec.IsActorCreationTask() || spec.IsActorTask()) && !spec.IsDirectCall()) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
     FinishAssignedActorTask(worker, task);
@@ -2406,6 +2406,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
 }
 
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
+  RAY_LOG(INFO) << "Finishing assigned actor task";
   ActorID actor_id;
   TaskID caller_id;
   const TaskSpecification task_spec = task.GetTaskSpecification();
@@ -2508,7 +2509,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
   auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, port);
-  new_actor_info->set_parent_actor_id(parent_actor_id.Binary());
+  new_actor_info->set_parent_id(parent_actor_id.Binary());
   auto update_callback = [actor_id](Status status) {
     if (!status.ok()) {
       // Only one node at a time should succeed at creating or updating the actor.

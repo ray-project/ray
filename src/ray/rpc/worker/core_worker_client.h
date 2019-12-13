@@ -42,12 +42,21 @@ class WorkerAddress {
  public:
   template <typename H>
   friend H AbslHashValue(H h, const WorkerAddress &w) {
-    return H::combine(std::move(h), w.ip_address, w.port, w.worker_id);
+    return H::combine(std::move(h), w.ip_address, w.port, w.worker_id, w.raylet_id);
   }
 
   bool operator==(const WorkerAddress &other) const {
     return other.ip_address == ip_address && other.port == port &&
-           other.worker_id == worker_id;
+           other.worker_id == worker_id && other.raylet_id == raylet_id;
+  }
+
+  rpc::Address ToProto() const {
+    rpc::Address addr;
+    addr.set_raylet_id(raylet_id.Binary());
+    addr.set_ip_address(ip_address);
+    addr.set_port(port);
+    addr.set_worker_id(worker_id.Binary());
+    return addr;
   }
 
   /// The ip address of the worker.
@@ -56,6 +65,8 @@ class WorkerAddress {
   const int port;
   /// The unique id of the worker.
   const WorkerID worker_id;
+  /// The unique id of the worker raylet.
+  const ClientID raylet_id;
 };
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
@@ -184,6 +195,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         *stub_, &CoreWorkerService::Stub::PrepareAsyncGetObjectStatus, request, callback);
     return call->GetStatus();
   }
+
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being

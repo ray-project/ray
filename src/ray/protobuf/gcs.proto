@@ -26,7 +26,8 @@ enum TablePrefix {
   ACTOR_CHECKPOINT = 15;
   ACTOR_CHECKPOINT_ID = 16;
   NODE_RESOURCE = 17;
-  TABLE_PREFIX_MAX = 18;
+  DIRECT_ACTOR = 18;
+  TABLE_PREFIX_MAX = 19;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -44,7 +45,8 @@ enum TablePubsub {
   TASK_LEASE_PUBSUB = 10;
   JOB_PUBSUB = 11;
   NODE_RESOURCE_PUBSUB = 12;
-  TABLE_PUBSUB_MAX = 13;
+  DIRECT_ACTOR_PUBSUB = 13;
+  TABLE_PUBSUB_MAX = 14;
 }
 
 enum GcsChangeMode {
@@ -89,8 +91,8 @@ message ActorTableData {
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;
-  // The ID of the actor that created it, null if created by non-actor task.
-  bytes parent_actor_id = 2;
+  // The ID of the caller of the actor creation task.
+  bytes parent_id = 2;
   // The dummy object ID returned by the actor creation task. If the actor
   // dies, then this is the object that should be reconstructed for the actor
   // to be recreated.

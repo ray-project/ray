@@ -102,6 +102,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  direct_actor_table_subscriber_ = std::unique_ptr<
+      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>(
+      new gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>(
+          gcs_client_->direct_actor_table()));
+
+  actor_manager_ =
+      std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->direct_actor_table()));
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
@@ -138,10 +145,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
-  // Unfortunately the raylet client has to be constructed after the receivers.
-  if (direct_task_receiver_ != nullptr) {
-    direct_task_receiver_->Init(*local_raylet_client_);
-  }
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
@@ -177,8 +180,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       },
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
-  task_manager_.reset(
-      new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
+  task_manager_.reset(new TaskManager(
+      memory_store_, actor_manager_, [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
@@ -229,6 +232,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
+  // Unfortunately the raylet client has to be constructed after the receivers.
+  if (direct_task_receiver_ != nullptr) {
+    direct_task_receiver_->Init(*local_raylet_client_, client_factory, rpc_address_);
+  }
 }
 
 CoreWorker::~CoreWorker() {
@@ -275,7 +282,8 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   if (actor_id_.IsNil() && task_id.IsNil()) {
     absl::MutexLock lock(&actor_handles_mutex_);
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
+      RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncUnsubscribe(
+          gcs_client_->client_table().GetLocalClientId(), handle.first, nullptr));
     }
     actor_handles_.clear();
   }
@@ -670,7 +678,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources,
-                      TaskTransportType::RAYLET, &return_ids);
+                      actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
+                                                            : TaskTransportType::RAYLET,
+                      &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
@@ -685,13 +695,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
-  PinObjectReferences(task_spec, TaskTransportType::RAYLET);
-  // TODO(ekl) if we moved actor creation to use direct call tasks, then we won't
-  // need to manually resolve direct call args here.
-  resolver_->ResolveDependencies(task_spec, [this, task_spec]() {
-    RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));
-  });
-  return Status::OK();
+  if (actor_creation_options.is_direct_call) {
+    task_manager_->AddPendingTask(task_spec, actor_creation_options.max_reconstructions);
+    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
+    return direct_task_submitter_->SubmitTask(task_spec);
+  } else {
+    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
+    return local_raylet_client_->SubmitTask(task_spec);
+  }
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -731,7 +742,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   if (is_direct_call) {
     task_manager_->AddPendingTask(task_spec);
     PinObjectReferences(task_spec, TaskTransportType::DIRECT);
-    status = direct_actor_submitter_->SubmitTask(task_spec);
+    if (actor_handle->IsDead()) {
+      auto status = Status::IOError("sent task to dead actor");
+      task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
+                                       &status);
+    } else {
+      status = direct_actor_submitter_->SubmitTask(task_spec);
+    }
   } else {
     PinObjectReferences(task_spec, TaskTransportType::RAYLET);
     RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));
@@ -765,25 +782,19 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
-      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
-        absl::MutexLock lock(&actor_handles_mutex_);
-        auto it = actor_handles_.find(actor_id);
-        RAY_CHECK(it != actor_handles_.end());
-        if (it->second->IsDirectCallActor()) {
-          // We have to reset the actor handle since the next instance of the
-          // actor will not have the last sequence number that we sent.
-          // TODO: Remove the check for direct calls. We do not reset for the
-          // raylet codepath because it tries to replay all tasks since the
-          // last actor checkpoint.
-          it->second->Reset();
-        }
-      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
+      RAY_CHECK(actor_data.state() != gcs::ActorTableData::RECONSTRUCTING);
+      if (actor_data.state() == gcs::ActorTableData::DEAD) {
+        direct_actor_submitter_->DisconnectActor(actor_id, true);
+
+        ActorHandle *actor_handle = nullptr;
+        RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+        actor_handle->MarkDead();
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
+      } else {
+        direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
       }
-
-      direct_actor_submitter_->HandleActorUpdate(actor_id, actor_data);
 
       RAY_LOG(INFO) << "received notification on actor, state="
                     << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
@@ -791,8 +802,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                     << ", port: " << actor_data.address().port();
     };
 
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
-        actor_id, actor_notification_callback, nullptr));
+    RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
+        gcs_client_->client_table().GetLocalClientId(), actor_id,
+        actor_notification_callback, nullptr));
   }
   return inserted;
 }

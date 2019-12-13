@@ -126,6 +126,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   Attach(io_service);
 
   actor_table_.reset(new ActorTable({primary_context_}, this));
+  direct_actor_table_.reset(new DirectActorTable({primary_context_}, this));
 
   // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
   // We will use NodeID instead of ClientID.
@@ -199,6 +200,8 @@ ObjectTable &RedisGcsClient::object_table() { return *object_table_; }
 raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
+
+DirectActorTable &RedisGcsClient::direct_actor_table() { return *direct_actor_table_; }
 
 TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;
