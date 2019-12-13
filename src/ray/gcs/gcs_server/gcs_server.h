@@ -20,8 +20,10 @@ struct GcsServerConfig {
 };
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
-/// transmit the command to the backend reliable storage. For more details, please see the
-/// design document.
+/// transmit the command to the backend reliable storage for the time being.
+/// In the future, GCS server's main responsibility is to manage meta data
+/// and the management of actor creation.
+/// For more details, please see the design document.
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 class GcsServer {
  public:
@@ -39,8 +41,8 @@ class GcsServer {
 
  protected:
   /// Initialize the backend storage client
-  /// The gcs server is just the proxy between the gcs client and reliable storage, so we
-  /// need a backend client to connect to the storage.
+  /// The gcs server is just the proxy between the gcs client and reliable storage
+  /// for the time being, so we need a backend client to connect to the storage.
   virtual void InitBackendClient();
 
   /// The job info handler
