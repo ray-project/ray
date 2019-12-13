@@ -8,7 +8,7 @@ import argparse
 import os
 import torch
 import torch.nn as nn
-import torch.nn.parallel
+from torch import distributed
 import torch.optim as optim
 import torch.utils.data
 import torchvision.datasets as dset
@@ -17,6 +17,7 @@ import numpy as np
 
 from torch.autograd import Variable
 from torch.nn import functional as F
+from torch.utils.data.distributed import DistributedSampler
 from scipy.stats import entropy
 
 import ray
@@ -48,9 +49,14 @@ def data_creator(batch_size, config):
         ]))
 
     # Create the dataloader
-    # Make this distributed
+    if distributed.is_initialized():
+        train_sampler = DistributedSampler(dataset)
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, num_workers=3)
+        dataset,
+        batch_size=batch_size,
+        num_workers=3,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler)
 
     return dataloader, None
 
@@ -187,7 +193,6 @@ def train(models, dataloader, criterion, optimizers, config):
         output = netD(real_cpu).view(-1)
         errD_real = criterion(output, label)
         errD_real.backward()
-        # D_x = output.mean().item()
 
         noise = torch.randn(b_size, latent_vector_size, 1, 1, device=device)
         fake = netG(noise)
@@ -269,7 +274,7 @@ if __name__ == "__main__":
 
     path = os.path.dirname(ray.__file__)
     model_path = os.path.join(
-        path, "experimental/sgd/pytorch/pbt_dcgan_mnist/mnist_cnn.pt")
+        path, "experimental/sgd/pytorch/examples/mnist_cnn.pt")
     # load the pretrained mnist classification model for inception_score
 
     trainer = train_example(
