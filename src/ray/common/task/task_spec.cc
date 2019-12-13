@@ -5,6 +5,7 @@
 
 namespace ray {
 
+absl::Mutex TaskSpecification::mutex_;
 std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
 std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
@@ -13,6 +14,7 @@ int TaskSpecification::next_sched_id_;
 
 SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
     SchedulingClass id) {
+  absl::MutexLock lock(&mutex_);
   auto it = sched_id_to_cls_.find(id);
   RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
   return it->second;
@@ -30,6 +32,7 @@ void TaskSpecification::ComputeResources() {
 
   // Map the scheduling class descriptor to an integer for performance.
   auto sched_cls = std::make_pair(GetRequiredResources(), FunctionDescriptor());
+  absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
   if (it == sched_cls_to_id_.end()) {
     sched_cls_id_ = ++next_sched_id_;
@@ -50,12 +53,23 @@ void TaskSpecification::ComputeResources() {
 
 // Task specification getter methods.
 TaskID TaskSpecification::TaskId() const {
+  if (message_->task_id().empty() /* e.g., empty proto default */) {
+    return TaskID::Nil();
+  }
   return TaskID::FromBinary(message_->task_id());
 }
 
-JobID TaskSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
+JobID TaskSpecification::JobId() const {
+  if (message_->job_id().empty() /* e.g., empty proto default */) {
+    return JobID::Nil();
+  }
+  return JobID::FromBinary(message_->job_id());
+}
 
 TaskID TaskSpecification::ParentTaskId() const {
+  if (message_->parent_task_id().empty() /* e.g., empty proto default */) {
+    return TaskID::Nil();
+  }
   return TaskID::FromBinary(message_->parent_task_id());
 }
 
@@ -221,8 +235,7 @@ bool TaskSpecification::IsAsyncioActor() const {
 }
 
 bool TaskSpecification::IsDetachedActor() const {
-  RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().is_detached();
+  return IsActorCreationTask() && message_->actor_creation_task_spec().is_detached();
 }
 
 std::string TaskSpecification::DebugString() const {

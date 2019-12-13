@@ -43,21 +43,15 @@ class RayConfig {
   }
 
   void initialize(const std::unordered_map<std::string, std::string> &config_map) {
-    RAY_CHECK(!initialized_);
     for (auto const &pair : config_map) {
       // We use a big chain of if else statements because C++ doesn't allow
       // switch statements on strings.
 #include "ray_config_def.h"
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.first;
     }
-    initialized_ = true;
   }
 /// ---------------------------------------------------------------------
 #undef RAY_CONFIG
-
-  /// Whether the initialization of the instance has been called before.
-  /// The RayConfig instance can only (and must) be initialized once.
-  bool initialized_ = false;
 };
 // clang-format on
 

@@ -444,7 +444,7 @@ def stop(force, verbose):
         ["plasma_store", True],
         ["raylet_monitor", True],
         ["monitor.py", False],
-        ["redis-server", True],
+        ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker.
         ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
@@ -470,7 +470,7 @@ def stop(force, verbose):
         debug_operator = "| tee /dev/stderr" if verbose else ""
 
         command = (
-            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep {} | grep ray |"
+            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep {} |"
             "awk '{{ print $1 }}') 2> /dev/null".format(
                 # ^^ This is how you escape braces in python format string.
                 "KILL" if force else "TERM",

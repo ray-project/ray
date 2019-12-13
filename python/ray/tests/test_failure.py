@@ -23,7 +23,7 @@ from ray.test_utils import (
     RayTestTimeoutException,
 )
 
-RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_failed_task(ray_start_regular):
@@ -117,7 +117,7 @@ def temporary_helper_function():
 
     wait_for_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR)
-    assert len(errors) == 2
+    assert len(errors) >= 2, errors
     assert "No module named" in errors[0]["message"]
     assert "No module named" in errors[1]["message"]
 
@@ -308,7 +308,7 @@ def test_worker_raising_exception(ray_start_regular):
 
 def test_worker_dying(ray_start_regular):
     # Define a remote function that will kill the worker that runs it.
-    @ray.remote
+    @ray.remote(max_retries=0)
     def f():
         eval("exit()")
 
@@ -342,7 +342,7 @@ def test_actor_worker_dying(ray_start_regular):
 
 
 def test_actor_worker_dying_future_tasks(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def getpid(self):
             return os.getpid()
@@ -364,7 +364,7 @@ def test_actor_worker_dying_future_tasks(ray_start_regular):
 
 
 def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def getpid(self):
             return os.getpid()

@@ -12,10 +12,10 @@ import yaml
 
 class ProjectDefinition:
     def __init__(self, current_dir):
-        """Finds .rayproject folder for current project, parse and validates it.
+        """Finds ray-project folder for current project, parse and validates it.
 
         Args:
-            current_dir (str): Path from which to search for .rayproject.
+            current_dir (str): Path from which to search for ray-project.
 
         Raises:
             jsonschema.exceptions.ValidationError: This exception is raised
@@ -31,7 +31,7 @@ class ProjectDefinition:
         self.root = os.path.join(root, "")
 
         # Parse the project YAML.
-        project_file = os.path.join(self.root, ".rayproject", "project.yaml")
+        project_file = os.path.join(self.root, "ray-project", "project.yaml")
         if not os.path.exists(project_file):
             raise ValueError("Project file {} not found".format(project_file))
         with open(project_file) as f:
@@ -92,20 +92,22 @@ class ProjectDefinition:
         # with them, save it in the following dictionary.
         choices = {}
         for param in params:
-            name = param.pop("name")
+            # Construct arguments to pass into argparse's parser.add_argument.
+            argparse_kwargs = copy.deepcopy(param)
+            name = argparse_kwargs.pop("name")
             if wildcards and "choices" in param:
-                choices[name] = copy.deepcopy(param["choices"])
-                param["choices"] = param["choices"] + ["*"]
+                choices[name] = param["choices"]
+                argparse_kwargs["choices"] = param["choices"] + ["*"]
             if "type" in param:
                 types = {"int": int, "str": str, "float": float}
                 if param["type"] in types:
-                    param["type"] = types[param["type"]]
+                    argparse_kwargs["type"] = types[param["type"]]
                 else:
                     raise ValueError(
                         "Parameter {} has type {} which is not supported. "
                         "Type must be one of {}".format(
                             name, param["type"], list(types.keys())))
-            parser.add_argument("--" + name, dest=name, **param)
+            parser.add_argument("--" + name, dest=name, **argparse_kwargs)
 
         parsed_args = vars(parser.parse_args(list(args)))
 
@@ -127,12 +129,12 @@ def find_root(directory):
         directory (str): Directory to start the search in.
 
     Returns:
-        Path of the parent directory containing the .rayproject or
+        Path of the parent directory containing the ray-project or
         None if no such project is found.
     """
     prev, directory = None, os.path.abspath(directory)
     while prev != directory:
-        if os.path.isdir(os.path.join(directory, ".rayproject")):
+        if os.path.isdir(os.path.join(directory, "ray-project")):
             return directory
         prev, directory = directory, os.path.abspath(
             os.path.join(directory, os.pardir))
@@ -160,7 +162,7 @@ def check_project_config(project_root, project_config):
     """Checks if the project definition is valid.
 
     Args:
-        project_root (str): Path containing the .rayproject
+        project_root (str): Path containing the ray-project
         project_config (dict): Project config definition
 
     Raises:

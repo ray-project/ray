@@ -2,12 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import copy
 import inspect
 import logging
 import six
-import sys
 import weakref
 
 from abc import ABCMeta, abstractmethod
@@ -396,7 +394,7 @@ class ActorClass(object):
         if kwargs is None:
             kwargs = {}
         if is_direct_call is None:
-            is_direct_call = bool(os.environ.get("RAY_FORCE_DIRECT"))
+            is_direct_call = ray_constants.direct_call_enabled()
         if max_concurrency is None:
             if is_asyncio:
                 max_concurrency = 100
@@ -756,7 +754,12 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
             "methods in the `Checkpointable` interface.")
 
     if max_reconstructions is None:
-        max_reconstructions = 0
+        if ray_constants.direct_call_enabled():
+            # Allow the actor creation task to be resubmitted automatically
+            # by default.
+            max_reconstructions = 3
+        else:
+            max_reconstructions = 0
 
     if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
             ray_constants.INFINITE_RECONSTRUCTION):
@@ -811,7 +814,11 @@ def exit_actor():
         ray.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
-        sys.exit(0)
+        # Set a flag to indicate this is an intentional actor exit. This
+        # reduces log verbosity.
+        exit = SystemExit(0)
+        exit.is_ray_terminate = True
+        raise exit
         assert False, "This process should have terminated."
     else:
         raise Exception("exit_actor called on a non-actor worker.")

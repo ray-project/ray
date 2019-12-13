@@ -7,13 +7,12 @@ import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.actor.NativeRayActor;
-import org.ray.runtime.object.NativeRayObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -52,10 +51,31 @@ public class ActorTest extends BaseTest {
     // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // A java actor is not a python actor
+    Assert.assertFalse(actor instanceof RayPyActor);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
     Ray.call(Counter::increase, actor, 1);
     Assert.assertEquals(Integer.valueOf(3), Ray.call(Counter::increaseAndGet, actor, 1).get());
+  }
+
+  /**
+   * Test getting a direct object (an object that is returned by a direct-call task) twice from the
+   * object store.
+   *
+   * Direct objects are stored in core worker's local memory. And it will be removed after the first
+   * get. To enable getting it twice, we cache the object in `RayObjectImpl`.
+   *
+   * NOTE(hchen): this test will run for non-direct actors as well, which doesn't have the above
+   * issue and should also succeed.
+   */
+  public void testGetDirectObjectTwice() {
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    RayObject<Integer> result = Ray.call(Counter::getValue, actor);
+    Assert.assertEquals(result.get(), Integer.valueOf(1));
+    Assert.assertEquals(result.get(), Integer.valueOf(1));
+    // TODO(hchen): The following code will still fail, and can be fixed by using ref counting.
+    // Assert.assertEquals(Ray.get(result.getId()), Integer.valueOf(1));
   }
 
   public void testCallActorWithLargeObject() {
@@ -107,14 +127,6 @@ public class ActorTest extends BaseTest {
             .get());
   }
 
-  public void testForkingActorHandle() {
-    TestUtils.skipTestUnderSingleProcess();
-    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
-    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increaseAndGet, counter, 1).get());
-    RayActor<Counter> counter2 = ((NativeRayActor) counter).fork();
-    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increaseAndGet, counter2, 2).get());
-  }
-
   public void testUnreconstructableActorObject() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     // The UnreconstructableException is created by raylet.
@@ -128,9 +140,9 @@ public class ActorTest extends BaseTest {
     Ray.internal().free(ImmutableList.of(value.getId()), false, false);
     // Wait until the object is deleted, because the above free operation is async.
     while (true) {
-      NativeRayObject result = TestUtils.getRuntime().getObjectStore()
-          .getRaw(ImmutableList.of(value.getId()), 0).get(0);
-      if (result == null) {
+      Boolean result = TestUtils.getRuntime().getObjectStore()
+          .wait(ImmutableList.of(value.getId()), 1, 0).get(0);
+      if (!result) {
         break;
       }
       TimeUnit.MILLISECONDS.sleep(100);
@@ -138,7 +150,8 @@ public class ActorTest extends BaseTest {
 
     try {
       // Try getting the object again, this should throw an UnreconstructableException.
-      value.get();
+      // Use `Ray.get()` to bypass the cache in `RayObjectImpl`.
+      Ray.get(value.getId());
       Assert.fail("This line should not be reachable.");
     } catch (UnreconstructableException e) {
       Assert.assertEquals(value.getId(), e.objectId);

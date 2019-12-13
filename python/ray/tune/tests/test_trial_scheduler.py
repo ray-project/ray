@@ -207,7 +207,7 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None):
         pass
 
-    def save(self, trial, type=Checkpoint.DISK):
+    def save(self, trial, type=Checkpoint.DISK, result=None):
         return trial.trainable_name
 
     def reset_trial(self, trial, new_config, new_experiment_tag):

@@ -12,13 +12,32 @@ public final class RayObjectImpl<T> implements RayObject<T>, Serializable {
 
   private final ObjectId id;
 
+  /**
+   * Cache the result of `Ray.get()`.
+   *
+   * Note, this is necessary for direct calls, in which case, it's not allowed to call `Ray.get` on
+   * the same object twice.
+   */
+  private T object;
+
+  /**
+   * Whether the object is already gotten from the object store.
+   */
+  private boolean objectGotten;
+
   public RayObjectImpl(ObjectId id) {
     this.id = id;
+    object = null;
+    objectGotten = false;
   }
 
   @Override
-  public T get() {
-    return Ray.get(id);
+  public synchronized T get() {
+    if (!objectGotten) {
+      object = Ray.get(id);
+      objectGotten = true;
+    }
+    return object;
   }
 
   @Override

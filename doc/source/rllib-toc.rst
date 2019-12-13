@@ -18,6 +18,8 @@ Training APIs
 
    -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
 
+   -  `Computing Actions <rllib-training.html#computing-actions>`__
+
    -  `Accessing Policy State <rllib-training.html#accessing-policy-state>`__
 
    -  `Accessing Model State <rllib-training.html#accessing-model-state>`__
@@ -75,6 +77,8 @@ Algorithms
    -  `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 
    -  `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
+
+   -  `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
 
 *  Gradient-based
 

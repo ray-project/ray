@@ -32,18 +32,6 @@ const int kMaxReorderWaitSeconds = 30;
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
-/// The state data for an actor.
-struct ActorStateData {
-  ActorStateData(gcs::ActorTableData::ActorState state, const std::string &ip, int port)
-      : state_(state), location_(std::make_pair(ip, port)) {}
-
-  /// Actor's state (e.g. alive, dead, reconstrucing).
-  gcs::ActorTableData::ActorState state_;
-
-  /// IP address and port that the actor is listening on.
-  std::pair<std::string, int> location_;
-};
-
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
@@ -60,11 +48,16 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
 
-  /// Handle an update about an actor.
+  /// Create connection to actor and send all pending tasks.
   ///
-  /// \param[in] actor_id The ID of the actor whose status has changed.
-  /// \param[in] actor_data The actor's new status information.
-  void HandleActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data);
+  /// \param[in] actor_id Actor ID.
+  /// \param[in] address The new address of the actor.
+  void ConnectActor(const ActorID &actor_id, const rpc::Address &address);
+
+  /// Disconnect from a failed actor.
+  ///
+  /// \param[in] actor_id Actor ID.
+  void DisconnectActor(const ActorID &actor_id, bool dead = false);
 
  private:
   /// Push a task to a remote actor via the given client.
@@ -79,7 +72,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Void.
   void PushActorTask(rpc::CoreWorkerClientInterface &client,
                      std::unique_ptr<rpc::PushTaskRequest> request,
-                     const ActorID &actor_id, const TaskID &task_id, int num_returns);
+                     const ActorID &actor_id, const TaskID &task_id, int num_returns)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
   /// Note that this function doesn't take lock, the caller is expected to hold
@@ -87,7 +81,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id);
+  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Whether the specified actor is alive.
   ///
@@ -99,27 +93,33 @@ class CoreWorkerDirectActorTaskSubmitter {
   rpc::ClientFactoryFn client_factory_;
 
   /// Mutex to proect the various maps below.
-  mutable std::mutex mutex_;
-
-  /// Map from actor id to actor state. This only includes actors that we send tasks to.
-  std::unordered_map<ActorID, ActorStateData> actor_states_;
+  mutable absl::Mutex mu_;
 
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
   /// We use shared_ptr to enable shared_from_this for pending client callbacks.
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.
-  std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      rpc_clients_;
+  absl::flat_hash_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
+      rpc_clients_ GUARDED_BY(mu_);
+
+  /// Map from actor ids to worker ids. TODO(ekl) consider unifying this with the
+  /// rpc_clients_ map.
+  absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
   absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
-      pending_requests_;
+      pending_requests_ GUARDED_BY(mu_);
 
-  /// Map from actor id to the sequence number of the next task to send to that
-  /// actor.
-  std::unordered_map<ActorID, int64_t> next_sequence_number_;
+  /// Map from actor id to the send position of the next task to queue for send
+  /// for that actor. This is always greater than or equal to next_send_position_.
+  absl::flat_hash_map<ActorID, int64_t> next_send_position_to_assign_ GUARDED_BY(mu_);
+
+  /// Map from actor id to the send position of the next task to send to that actor.
+  /// Note that this differs from the PushTaskRequest's sequence number in that it
+  /// increases monotonically in this process independently of CallerId changes.
+  absl::flat_hash_map<ActorID, int64_t> next_send_position_ GUARDED_BY(mu_);
 
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
@@ -161,7 +161,8 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(RayletClient &raylet_client) : raylet_client_(raylet_client) {}
+  DependencyWaiterImpl(raylet::RayletClient &raylet_client)
+      : raylet_client_(raylet_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {
@@ -181,7 +182,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
-  RayletClient &raylet_client_;
+  raylet::RayletClient &raylet_client_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -307,6 +308,7 @@ class SchedulingQueue {
                      << client_processed_up_to;
       next_seq_no_ = client_processed_up_to + 1;
     }
+    RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
     pending_tasks_[seq_no] =
         InboundRequest(accept_request, reject_request, dependencies.size() > 0);
     if (dependencies.size() > 0) {
@@ -413,14 +415,19 @@ class SchedulingQueue {
 
 class CoreWorkerDirectTaskReceiver {
  public:
-  using TaskHandler = std::function<Status(
-      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_objects)>;
+  using TaskHandler =
+      std::function<Status(const TaskSpecification &task_spec,
+                           const std::shared_ptr<ResourceMappingType> resource_ids,
+                           std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
-                               const std::function<void()> &exit_handler);
+                               const std::function<void()> &exit_handler)
+      : worker_context_(worker_context),
+        task_handler_(task_handler),
+        exit_handler_(exit_handler),
+        task_main_io_service_(main_io_service) {}
 
   ~CoreWorkerDirectTaskReceiver() {
     fiber_shutdown_event_.Notify();
@@ -428,7 +435,8 @@ class CoreWorkerDirectTaskReceiver {
   }
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(RayletClient &client);
+  void Init(raylet::RayletClient &client, rpc::ClientFactoryFn client_factory,
+            rpc::Address rpc_address);
 
   /// Handle a `PushTask` request.
   ///
@@ -462,6 +470,10 @@ class CoreWorkerDirectTaskReceiver {
   std::function<void()> exit_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
+  /// Factory for producing new core worker clients.
+  rpc::ClientFactoryFn client_factory_;
+  /// Address of our RPC server.
+  rpc::Address rpc_address_;
   /// Shared waiter for dependencies required by incoming tasks.
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.

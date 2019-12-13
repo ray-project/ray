@@ -130,6 +130,7 @@ scripts/nodes.txt
 
 # Pytest Cache
 **/.pytest_cache
+**/.cache
 .benchmarks
 
 # Vscode
@@ -144,6 +145,9 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
+
+# streaming/python
+streaming/python/generated/
 
 # python virtual env
 venv

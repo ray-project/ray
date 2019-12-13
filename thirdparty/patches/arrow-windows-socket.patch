@@ -1,0 +1,34 @@
+diff --git cpp/src/plasma/client.cc cpp/src/plasma/client.cc
+index 0cb1d81a2..5142ee435 100644
+--- cpp/src/plasma/client.cc
++++ cpp/src/plasma/client.cc
+@@ -983,8 +983,13 @@ Status PlasmaClient::Impl::Subscribe(int* fd) {
+   // notifications from the Plasma store to the client.
+   socketpair(AF_UNIX, SOCK_STREAM, 0, sock);
+   // Make the socket non-blocking.
++#ifdef _WINSOCKAPI_
++  unsigned long value = 1;
++  ARROW_CHECK(ioctlsocket(sock[1], FIONBIO, &value) == 0);
++#else
+   int flags = fcntl(sock[1], F_GETFL, 0);
+   ARROW_CHECK(fcntl(sock[1], F_SETFL, flags | O_NONBLOCK) == 0);
++#endif
+   // Tell the Plasma store about the subscription.
+   RETURN_NOT_OK(SendSubscribeRequest(store_conn_));
+   // Send the file descriptor that the Plasma store should use to push
+diff --git cpp/src/plasma/fling.cc cpp/src/plasma/fling.cc
+index f0960aab6..2f3997534 100644
+--- cpp/src/plasma/fling.cc
++++ cpp/src/plasma/fling.cc
+@@ -18,6 +18,10 @@
+ 
+ #include "arrow/util/logging.h"
+ 
++#ifdef _WIN32
++#include <ws2tcpip.h>  // socklen_t
++#endif
++
+ void init_msg(struct msghdr* msg, struct iovec* iov, char* buf, size_t buf_len) {
+   iov->iov_base = buf;
+   iov->iov_len = 1;
+-- 
