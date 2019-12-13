@@ -8,9 +8,9 @@
 #include <queue>
 #include <set>
 #include <utility>
+#include "absl/container/flat_hash_map.h"
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -353,7 +353,8 @@ class SchedulingQueue {
           fiber_rate_limiter_->Acquire();
           request.Accept();
           fiber_rate_limiter_->Release();
-        }).detach();
+        })
+            .detach();
       } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
