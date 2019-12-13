@@ -66,9 +66,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &log_dir, const std::string &node_ip_address,
                        int node_manager_port,
                        const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals,
-                       const std::function<void()> exit_handler,
-                       bool ref_counting_enabled)
+                       std::function<Status()> check_signals, bool ref_counting_enabled)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
@@ -107,13 +105,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RAY_CHECK(task_execution_callback_ != nullptr);
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
+    auto exit = std::bind(&CoreWorker::Shutdown, this);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_.GetWorkerID(), local_raylet_client_, execute_task,
-            exit_handler));
+            worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
     direct_task_receiver_ =
         std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
-            worker_context_, task_execution_service_, execute_task, exit_handler));
+            worker_context_, task_execution_service_, execute_task, exit));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -219,32 +217,27 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 }
 
 CoreWorker::~CoreWorker() {
-  Shutdown();
+  io_service_.stop();
   io_thread_.join();
-}
-
-void CoreWorker::Shutdown() {
-  if (!shutdown_) {
-    shutdown_ = true;
-    io_service_.stop();
-    if (log_dir_ != "") {
-      RayLog::ShutDownRayLog();
-    }
-    if (worker_type_ == WorkerType::WORKER) {
-      task_execution_service_.stop();
-    }
+  if (log_dir_ != "") {
+    RayLog::ShutDownRayLog();
   }
 }
 
-void CoreWorker::Disconnect(bool intentional) {
+void CoreWorker::Shutdown() {
   io_service_.stop();
-  if (intentional) {
-    if (gcs_client_) {
-      gcs_client_->Disconnect();
-    }
-    if (local_raylet_client_) {
-      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
-    }
+  if (worker_type_ == WorkerType::WORKER) {
+    task_execution_service_.stop();
+  }
+}
+
+void CoreWorker::Disconnect() {
+  io_service_.stop();
+  if (gcs_client_) {
+    gcs_client_->Disconnect();
+  }
+  if (local_raylet_client_) {
+    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
   }
 }
 

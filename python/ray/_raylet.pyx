@@ -737,14 +737,6 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
-cdef void exit_handler() nogil:
-    with gil:
-        # Delete the core worker. Its destructor will stop the event loop
-        # and deleting it here prevents python from running the destructor
-        # again during normal cleanup.
-        del ray.worker.global_worker.core_worker
-
-
 cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
     if c_str.size() == 0:
@@ -790,12 +782,12 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, exit_handler, True))
+            task_execution_handler, check_signals, True))
 
-    def disconnect(self, c_bool intentional):
+    def disconnect(self):
         self.destory_event_loop_if_exists()
         with nogil:
-            self.core_worker.get().Disconnect(intentional)
+            self.core_worker.get().Disconnect()
 
     def run_task_loop(self):
         with nogil:

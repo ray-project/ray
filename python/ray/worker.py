@@ -426,11 +426,11 @@ class Worker(object):
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
-            shutdown(True)
             sys.exit(1)
 
         signal.signal(signal.SIGTERM, sigterm_handler)
         self.core_worker.run_task_loop()
+        sys.exit(0)
 
 
 def get_gpu_ids():
@@ -833,6 +833,12 @@ def shutdown(exiting_interpreter=False):
         time.sleep(0.5)
 
     disconnect(exiting_interpreter)
+
+    # We need to destruct the core worker here because after this function,
+    # we will tear down any processes spawned by ray.init() and the background
+    # IO thread in the core worker doesn't currently handle that gracefully.
+    if hasattr(global_worker, "core_worker"):
+        del global_worker.core_worker
 
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
@@ -1331,12 +1337,6 @@ def disconnect(exiting_interpreter=False):
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
-
-    # We need to destruct the core worker here because after this function,
-    # we will tear down any processes spawned by ray.init() and the background
-    # threads in the core worker don't currently handle that gracefully.
-    if hasattr(worker, "core_worker"):
-        worker.core_worker.disconnect(False)
 
 
 @contextmanager
