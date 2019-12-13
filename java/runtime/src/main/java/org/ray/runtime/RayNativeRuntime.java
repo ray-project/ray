@@ -2,6 +2,8 @@ package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
+import com.sun.jna.NativeLibrary;
+
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -46,6 +48,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     for (String library : libraries) {
       String fileName = System.mapLibraryName(library);
       try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
+        // Expose ray ABI symbols which may be dependent by other shared
+        // libraries such as libstreaming_java.so.
+        // See BUILD.bazel:libcore_worker_library_java.so
+        NativeLibrary.getInstance(libFile.getFile().getAbsolutePath());
         System.load(libFile.getFile().getAbsolutePath());
       }
       LOGGER.debug("Native libraries loaded.");

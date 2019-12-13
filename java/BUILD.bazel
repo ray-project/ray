@@ -76,6 +76,7 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:redis_clients_jedis",
+        "@maven//:net_java_dev_jna_jna",
     ],
     visibility = ["//visibility:public"]
 )
