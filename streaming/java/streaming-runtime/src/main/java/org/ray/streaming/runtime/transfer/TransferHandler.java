@@ -20,15 +20,6 @@ public class TransferHandler {
   private long writerClientNative;
   private long readerClientNative;
 
-  public TransferHandler(long coreWorkerNative) {
-    writerClientNative = createWriterClientNative(coreWorkerNative,
-        new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessage", "([B)V"),
-        new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessageSync", "([B)[B"));
-    readerClientNative = createReaderClientNative(coreWorkerNative,
-        new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessage", "([B)V"),
-        new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessageSync", "([B)[B"));
-  }
-
   public TransferHandler(long coreWorkerNative, JavaFunctionDescriptor writerAsynFunc, JavaFunctionDescriptor writerSyncFunc,
                          JavaFunctionDescriptor readerAsyncFunc, JavaFunctionDescriptor readerSyncFunc) {
     writerClientNative = createWriterClientNative(coreWorkerNative, writerAsynFunc, writerSyncFunc);
