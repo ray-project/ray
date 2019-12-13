@@ -1,4 +1,6 @@
-#pragma once
+#ifndef RAY_GCS_GCS_SERVER_H
+#define RAY_GCS_GCS_SERVER_H
+
 #include <ray/gcs/redis_gcs_client.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
 #include <ray/rpc/grpc_server.h>
@@ -60,3 +62,5 @@ class GcsServer {
 
 }  // namespace gcs
 }  // namespace ray
+
+#endif
