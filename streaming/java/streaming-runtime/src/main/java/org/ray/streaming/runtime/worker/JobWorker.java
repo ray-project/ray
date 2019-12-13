@@ -2,7 +2,6 @@ package org.ray.streaming.runtime.worker;
 
 import java.io.Serializable;
 import java.util.Map;
-
 import org.ray.api.Ray;
 import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
@@ -41,10 +40,8 @@ public class JobWorker implements Serializable {
   private TransferHandler transferHandler;
 
   public JobWorker() {
-    long nativeCoreWorkerPointer = ((RayMultiWorkerNativeRuntime) Ray.internal())
-        .getCurrentRuntime().getNativeCoreWorkerPointer();
     transferHandler = new TransferHandler(
-        nativeCoreWorkerPointer,
+        getNativeCoreWorker(),
         new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessageSync", "([B)[B"),
         new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessage", "([B)V"),
@@ -131,5 +128,14 @@ public class JobWorker implements Serializable {
 
   public byte[] onWriterMessageSync(byte[] buffer) {
     return transferHandler.onWriterMessageSync(buffer);
+  }
+
+  private static long getNativeCoreWorker() {
+    long pointer = 0;
+    if (Ray.internal() instanceof RayMultiWorkerNativeRuntime) {
+      pointer = ((RayMultiWorkerNativeRuntime) Ray.internal())
+          .getCurrentRuntime().getNativeCoreWorkerPointer();
+    }
+    return pointer;
   }
 }
