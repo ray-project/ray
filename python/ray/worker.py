@@ -426,6 +426,7 @@ class Worker(object):
         """The main loop a worker runs to receive and execute tasks."""
 
         def sigterm_handler(signum, frame):
+            shutdown(True)
             sys.exit(1)
 
         signal.signal(signal.SIGTERM, sigterm_handler)
@@ -849,7 +850,7 @@ def shutdown(exiting_interpreter=False):
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
-    # TODO(rkn): Instead of manually reseting some of the worker fields, we
+    # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker._post_get_hooks = []
