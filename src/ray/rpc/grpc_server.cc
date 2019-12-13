@@ -3,8 +3,6 @@
 #include <grpcpp/impl/service_type.h>
 #include <boost/asio/detail/socket_holder.hpp>
 
-namespace {}  // namespace
-
 namespace ray {
 namespace rpc {
 
