@@ -32,6 +32,7 @@ public class WordCountTest implements Serializable {
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, Object> config = new HashMap<>();
     config.put(Config.STREAMING_BATCH_MAX_COUNT, 1);
+    config.put(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
