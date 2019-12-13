@@ -1,8 +1,9 @@
 from deepmind_lab import dmenv_module
 
-import ray
 from ray.rllib import env
-from ray.rllib.agents import ppo
+from ray.rllib.utils import try_import_tf
+
+tf = try_import_tf()
 
 
 class Watermaze(env.DMEnv):
@@ -16,11 +17,11 @@ class Watermaze(env.DMEnv):
         super(Watermaze, self).__init__(lab)
 
 
-ray.init()
-trainer = ppo.PPOTrainer(env=Watermaze, config={
-    "env_config": {"width": "320",
-                   "height": "160"},
-})
+env = Watermaze({"width": "320", "height": "160"})
+print(env.action_space)
 
-for i in range(10):
-    print(trainer.train())
+for i in range(2):
+    print(env.step({"CROUCH": 0., "FIRE": 0., "JUMP": 0.,
+                    "LOOK_DOWN_UP_PIXELS_PER_FRAME": 0.,
+                    "LOOK_LEFT_RIGHT_PIXELS_PER_FRAME": 0.,
+                    "MOVE_BACK_FORWARD": 0., "STRAFE_LEFT_RIGHT": 0.}))

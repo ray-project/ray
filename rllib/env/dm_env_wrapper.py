@@ -41,7 +41,7 @@ class DMEnv(gym.Env):
         self._prev_obs = None
 
     def step(self, action):
-        ts = self._env(action)
+        ts = self._env.step(action)
 
         reward = ts.reward
         if reward is None:
