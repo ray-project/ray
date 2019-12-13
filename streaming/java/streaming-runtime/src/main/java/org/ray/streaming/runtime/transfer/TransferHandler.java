@@ -4,7 +4,6 @@ import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.util.JniUtils;
-import org.ray.streaming.runtime.worker.JobWorker;
 
 public class TransferHandler {
 
@@ -20,10 +19,15 @@ public class TransferHandler {
   private long writerClientNative;
   private long readerClientNative;
 
-  public TransferHandler(long coreWorkerNative, JavaFunctionDescriptor writerAsynFunc, JavaFunctionDescriptor writerSyncFunc,
-                         JavaFunctionDescriptor readerAsyncFunc, JavaFunctionDescriptor readerSyncFunc) {
-    writerClientNative = createWriterClientNative(coreWorkerNative, writerAsynFunc, writerSyncFunc);
-    readerClientNative = createReaderClientNative(coreWorkerNative, readerAsyncFunc, readerSyncFunc);
+  public TransferHandler(long coreWorkerNative,
+                         JavaFunctionDescriptor writerAsyncFunc,
+                         JavaFunctionDescriptor writerSyncFunc,
+                         JavaFunctionDescriptor readerAsyncFunc,
+                         JavaFunctionDescriptor readerSyncFunc) {
+    writerClientNative = createWriterClientNative(
+        coreWorkerNative, writerAsyncFunc, writerSyncFunc);
+    readerClientNative = createReaderClientNative(
+        coreWorkerNative, readerAsyncFunc, readerSyncFunc);
   }
 
   public void onWriterMessage(byte[] buffer) {
@@ -42,11 +46,15 @@ public class TransferHandler {
     return handleReaderMessageSyncNative(readerClientNative, buffer);
   }
 
-  private native long createWriterClientNative(long coreWorkerNative,
-                                               FunctionDescriptor async_func, FunctionDescriptor sync_func);
+  private native long createWriterClientNative(
+      long coreWorkerNative,
+      FunctionDescriptor async_func,
+      FunctionDescriptor sync_func);
 
-  private native long createReaderClientNative(long coreWorkerNative,
-                                               FunctionDescriptor async_func, FunctionDescriptor sync_func);
+  private native long createReaderClientNative(
+      long coreWorkerNative,
+      FunctionDescriptor async_func,
+      FunctionDescriptor sync_func);
 
   private native void handleWriterMessageNative(long handler, byte[] buffer);
 

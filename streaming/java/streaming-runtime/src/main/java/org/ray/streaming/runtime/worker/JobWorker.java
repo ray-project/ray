@@ -41,7 +41,10 @@ public class JobWorker implements Serializable {
   private TransferHandler transferHandler;
 
   public JobWorker() {
-    transferHandler = new TransferHandler(((RayMultiWorkerNativeRuntime) Ray.internal()).getCurrentRuntime().getNativeCoreWorkerPointer(),
+    long nativeCoreWorkerPointer = ((RayMultiWorkerNativeRuntime) Ray.internal())
+        .getCurrentRuntime().getNativeCoreWorkerPointer();
+    transferHandler = new TransferHandler(
+        nativeCoreWorkerPointer,
         new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessage", "([B)V"),
         new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessageSync", "([B)[B"),
         new JavaFunctionDescriptor(JobWorker.class.getName(), "onReaderMessage", "([B)V"),
