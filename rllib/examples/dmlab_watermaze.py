@@ -4,7 +4,6 @@ from ray.rllib import env
 
 
 class Watermaze(env.DMEnv):
-
     def __init__(self, env_config):
         lab = dmenv_module.Lab(
             "contributed/dmlab30/rooms_watermaze",
@@ -18,7 +17,13 @@ env = Watermaze({"width": "320", "height": "160"})
 print(env.action_space)
 
 for i in range(2):
-    print(env.step({"CROUCH": 0., "FIRE": 0., "JUMP": 0.,
-                    "LOOK_DOWN_UP_PIXELS_PER_FRAME": 0.,
-                    "LOOK_LEFT_RIGHT_PIXELS_PER_FRAME": 0.,
-                    "MOVE_BACK_FORWARD": 0., "STRAFE_LEFT_RIGHT": 0.}))
+    print(
+        env.step({
+            "CROUCH": 0.,
+            "FIRE": 0.,
+            "JUMP": 0.,
+            "LOOK_DOWN_UP_PIXELS_PER_FRAME": 0.,
+            "LOOK_LEFT_RIGHT_PIXELS_PER_FRAME": 0.,
+            "MOVE_BACK_FORWARD": 0.,
+            "STRAFE_LEFT_RIGHT": 0.
+        }))
