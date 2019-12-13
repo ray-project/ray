@@ -413,6 +413,9 @@ class CoreWorker {
   /// Send the list of active object IDs to the raylet.
   void ReportActiveObjectIDs();
 
+  /// Heartbeat for internal bookkeeping.
+  void InternalHeartbeat();
+
   ///
   /// Private methods related to task submission.
   ///
@@ -522,6 +525,9 @@ class CoreWorker {
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
+  /// Timer for internal book-keeping.
+  boost::asio::steady_timer internal_timer_;
+
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;
 
@@ -611,6 +617,9 @@ class CoreWorker {
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+
+  // Queue of tasks to resubmit when the specified time passes.
+  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_;
 
   friend class CoreWorkerTest;
 };
