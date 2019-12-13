@@ -38,7 +38,6 @@ import com.google.common.collect.ImmutableMap;
 public class StreamingQueueTest implements Serializable {
 
   private static Logger LOGGER = LoggerFactory.getLogger(StreamingQueueTest.class);
-  private String runModeBackup = null;
 
   @org.testng.annotations.BeforeSuite
   public void suiteSetUp() throws Exception {
@@ -66,9 +65,6 @@ public class StreamingQueueTest implements Serializable {
     Ray.shutdown();
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
-
-    runModeBackup = System.getProperty("ray.run-mode");
-    LOGGER.info("runModeBackup: {}", runModeBackup);
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
     // ray init
@@ -79,18 +75,16 @@ public class StreamingQueueTest implements Serializable {
   void afterMethod() {
     LOGGER.info("afterTest");
     Ray.shutdown();
-    System.setProperty("ray.run-mode", "SINGLE_PROCESS");
+    System.clearProperty("ray.run-mode");
   }
 
   @Test(timeOut = 3000000)
-  public void testProducerConsumer() {
-    LOGGER.info("StreamingQueueTest.testProducerConsumer");
+  public void testReaderWriter() {
+    LOGGER.info("StreamingQueueTest.testReaderWriter run-mode: {}", System.getProperty("ray.run-mode"));
     Ray.shutdown();
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
 
-    runModeBackup = System.getProperty("ray.run-mode");
-    LOGGER.info("runModeBackup: {}", runModeBackup);
     System.setProperty("ray.run-mode", "CLUSTER");
     System.setProperty("ray.redirect-output", "true");
     // ray init
@@ -141,6 +135,7 @@ public class StreamingQueueTest implements Serializable {
 
   @Test(timeOut = 60000)
   public void testWordCount() {
+    LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}", System.getProperty("ray.run-mode"));
     String resultFile = "/tmp/org.ray.streaming.runtime.streamingqueue.testWordCount.txt";
     deleteResultFile(resultFile);
 
