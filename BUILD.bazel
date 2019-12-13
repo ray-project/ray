@@ -796,10 +796,7 @@ pyx_library(
             ],
         }),
     },
-    copts = COPTS + select({
-        "@bazel_tools//src/conditions:linux_x86_64": ["-fno-gnu-unique"],
-        "//conditions:default": [],
-    }),
+    copts = COPTS,
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
