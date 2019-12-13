@@ -7,7 +7,7 @@ set -e
 set -x
 
 bazel build "//:redis_gcs_client_test" "//:asio_test" "//:libray_redis_module.so"
-bazel build "//:subscription_executor_test" "//:redis_actor_info_accessor_test" "//:redis_object_info_accessor_test"
+bazel build "//:subscription_executor_test" "//:redis_actor_info_accessor_test" "//:redis_job_info_accessor_test" "//:redis_object_info_accessor_test"
 
 # Start Redis.
 ./bazel-bin/redis-server \
@@ -20,6 +20,7 @@ sleep 1s
 ./bazel-bin/asio_test
 ./bazel-bin/subscription_executor_test
 ./bazel-bin/redis_actor_info_accessor_test
+./bazel-bin/redis_job_info_accessor_test
 ./bazel-bin/redis_object_info_accessor_test
 
 ./bazel-bin/redis-cli -p 6379 shutdown

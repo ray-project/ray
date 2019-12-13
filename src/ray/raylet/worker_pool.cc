@@ -38,10 +38,9 @@ namespace ray {
 
 namespace raylet {
 
-/// A constructor that initializes a worker pool with
-/// (num_worker_processes * states_by_lang_[language].num_workers_per_process) workers for
+/// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
-WorkerPool::WorkerPool(int num_worker_processes, int maximum_startup_concurrency,
+WorkerPool::WorkerPool(int num_workers, int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
     : maximum_startup_concurrency_(maximum_startup_concurrency),
@@ -70,12 +69,20 @@ WorkerPool::WorkerPool(int num_worker_processes, int maximum_startup_concurrency
         << "Number of workers per process of language " << Language_Name(entry.first)
         << " must be positive.";
     state.multiple_for_warning =
-        std::max(num_worker_processes, maximum_startup_concurrency) *
-        state.num_workers_per_process;
+        std::max(state.num_workers_per_process,
+                 std::max(num_workers, maximum_startup_concurrency));
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
-    // Force-start num_workers worker processes for this language.
+  }
+  Start(num_workers);
+}
+
+void WorkerPool::Start(int num_workers) {
+  for (auto &entry : states_by_lang_) {
+    auto &state = entry.second;
+    int num_worker_processes = static_cast<int>(
+        std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));
     for (int i = 0; i < num_worker_processes; i++) {
       StartWorkerProcess(entry.first);
     }
@@ -120,11 +127,14 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
-  if (static_cast<int>(state.starting_worker_processes.size()) >=
-      maximum_startup_concurrency_) {
+  int starting_workers = 0;
+  for (auto &entry : state.starting_worker_processes) {
+    starting_workers += entry.second;
+  }
+  if (starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, " << state.starting_worker_processes.size()
-                   << " worker processes of language type " << static_cast<int>(language)
+    RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
+                   << " workers of language type " << static_cast<int>(language)
                    << " pending registration";
     return -1;
   }

@@ -427,6 +427,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output --force-direct python /ray/rllib/contrib/random_agent/random_agent.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output --force-direct python /ray/rllib/contrib/alpha_zero/examples/train_cartpole.py --training-iteration=1
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output --force-direct python /ray/rllib/examples/centralized_critic.py --stop=2000
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \

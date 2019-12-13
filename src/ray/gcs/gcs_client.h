@@ -7,6 +7,7 @@
 #include <vector>
 #include "ray/common/status.h"
 #include "ray/gcs/actor_info_accessor.h"
+#include "ray/gcs/job_info_accessor.h"
 #include "ray/gcs/object_info_accessor.h"
 #include "ray/util/logging.h"
 
@@ -30,24 +31,7 @@ class GcsClientOptions {
       : server_ip_(ip),
         server_port_(port),
         password_(password),
-        is_test_client_(is_test_client) {
-#if RAY_USE_NEW_GCS
-    command_type_ = CommandType::kChain;
-#else
-    command_type_ = CommandType::kRegular;
-#endif
-  }
-
-  /// This constructor is only used for testing (RedisGcsClient's test).
-  ///
-  /// \param ip GCS service ip
-  /// \param port GCS service port
-  /// \param command_type Command type of RedisGcsClient
-  GcsClientOptions(const std::string &ip, int port, CommandType command_type)
-      : server_ip_(ip),
-        server_port_(port),
-        command_type_(command_type),
-        is_test_client_(true) {}
+        is_test_client_(is_test_client) {}
 
   // GCS server address
   std::string server_ip_;
@@ -55,9 +39,6 @@ class GcsClientOptions {
 
   // Password of GCS server.
   std::string password_;
-  // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
-  // might be used, if available.
-  CommandType command_type_ = CommandType::kUnknown;
 
   // Whether this client is used for tests.
   bool is_test_client_{false};
@@ -81,15 +62,22 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
-  /// Get ActorInfoAccessor for reading or writing or subscribing to
-  /// actors. This function is thread safe.
+  /// Get the sub-interface for accessing actor information in GCS.
+  /// This function is thread safe.
   ActorInfoAccessor &Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
 
-  /// Get ObjectStateAccessor for reading or writing or subscribing to
-  /// objects. This function is thread safe.
+  /// Get the sub-interface for accessing job information in GCS.
+  /// This function is thread safe.
+  JobInfoAccessor &Jobs() {
+    RAY_CHECK(job_accessor_ != nullptr);
+    return *job_accessor_;
+  }
+
+  /// Get the sub-interface for accessing object information in GCS.
+  /// This function is thread safe.
   ObjectInfoAccessor &Objects() {
     RAY_CHECK(object_accessor_ != nullptr);
     return *object_accessor_;
@@ -107,6 +95,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   bool is_connected_{false};
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
+  std::unique_ptr<JobInfoAccessor> job_accessor_;
   std::unique_ptr<ObjectInfoAccessor> object_accessor_;
 };
 
