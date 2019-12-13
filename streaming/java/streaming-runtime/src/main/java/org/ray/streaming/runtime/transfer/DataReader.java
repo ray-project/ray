@@ -96,15 +96,15 @@ public class DataReader {
       if (bundleData.position() < bundleData.limit()) {
         BundleMeta bundleMeta = new BundleMeta(this.bundleMeta);
         // barrier
-        if (bundleMeta.getBundleType() == MessageBundleType.BARRIER) {
+        if (bundleMeta.getBundleType() == DataBundleType.BARRIER) {
           throw new UnsupportedOperationException("Unsupported bundle type " + bundleMeta.getBundleType());
-        } else if (bundleMeta.getBundleType() == MessageBundleType.BUNDLE) {
+        } else if (bundleMeta.getBundleType() == DataBundleType.BUNDLE) {
           String channelID = bundleMeta.getChannelID();
           long timestamp = bundleMeta.getBundleTs();
           for (int i = 0; i < bundleMeta.getMessageListSize(); i++) {
             buf.offer(getDataMessage(bundleData, channelID, timestamp));
           }
-        } else if (bundleMeta.getBundleType() == MessageBundleType.EMPTY) {
+        } else if (bundleMeta.getBundleType() == DataBundleType.EMPTY) {
           buf.offer(new DataMessage(null, bundleMeta.getBundleTs(), bundleMeta.getChannelID()));
         }
       }
@@ -180,14 +180,14 @@ public class DataReader {
 
 }
 
-enum MessageBundleType {
+enum DataBundleType {
   EMPTY(1),
   BARRIER(2),
   BUNDLE(3);
 
   int code;
 
-  MessageBundleType(int code) {
+  DataBundleType(int code) {
     this.code = code;
   }
 }
@@ -201,7 +201,7 @@ class BundleMeta {
   private long bundleTs;
   private long lastMessageId;
   private int messageListSize;
-  private MessageBundleType bundleType;
+  private DataBundleType bundleType;
   private String channelID;
   private int rawBundleSize;
 
@@ -215,12 +215,12 @@ class BundleMeta {
     lastMessageId = buffer.getLong();
     messageListSize = buffer.getInt();
     int bTypeInt = buffer.getInt();
-    if (MessageBundleType.BUNDLE.code == bTypeInt) {
-      bundleType = MessageBundleType.BUNDLE;
-    } else if (MessageBundleType.BARRIER.code == bTypeInt) {
-      bundleType = MessageBundleType.BARRIER;
+    if (DataBundleType.BUNDLE.code == bTypeInt) {
+      bundleType = DataBundleType.BUNDLE;
+    } else if (DataBundleType.BARRIER.code == bTypeInt) {
+      bundleType = DataBundleType.BARRIER;
     } else {
-      bundleType = MessageBundleType.EMPTY;
+      bundleType = DataBundleType.EMPTY;
     }
     // rawBundleSize
     rawBundleSize = buffer.getInt();
@@ -249,7 +249,7 @@ class BundleMeta {
     return messageListSize;
   }
 
-  public MessageBundleType getBundleType() {
+  public DataBundleType getBundleType() {
     return bundleType;
   }
 
