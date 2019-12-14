@@ -205,15 +205,23 @@ struct MockQueueItem {
   std::shared_ptr<uint8_t> data;
 };
 
-struct MockQueue {
+class MockQueue {
+ public:
   std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBufferImpl<MockQueueItem>>>
       message_buffer_;
   std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBufferImpl<MockQueueItem>>>
       consumed_buffer_;
+  static std::mutex mutex;
+  static MockQueue &GetMockQueue() {
+    static MockQueue mock_queue;
+    return mock_queue;
+  }
 };
-static MockQueue mock_queue;
+std::mutex MockQueue::mutex;
 
 StreamingStatus MockProducer::CreateTransferChannel() {
+  std::unique_lock<std::mutex> lock(MockQueue::mutex);
+  MockQueue &mock_queue = MockQueue::GetMockQueue();
   mock_queue.message_buffer_[channel_info.channel_id] =
       std::make_shared<RingBufferImplThreadSafe<MockQueueItem>>(500);
   mock_queue.consumed_buffer_[channel_info.channel_id] =
@@ -222,12 +230,16 @@ StreamingStatus MockProducer::CreateTransferChannel() {
 }
 
 StreamingStatus MockProducer::DestroyTransferChannel() {
+  std::unique_lock<std::mutex> lock(MockQueue::mutex);
+  MockQueue &mock_queue = MockQueue::GetMockQueue();
   mock_queue.message_buffer_.erase(channel_info.channel_id);
   mock_queue.consumed_buffer_.erase(channel_info.channel_id);
   return StreamingStatus::OK;
 }
 
 StreamingStatus MockProducer::ProduceItemToChannel(uint8_t *data, uint32_t data_size) {
+  std::unique_lock<std::mutex> lock(MockQueue::mutex);
+  MockQueue &mock_queue = MockQueue::GetMockQueue();
   auto &ring_buffer = mock_queue.message_buffer_[channel_info.channel_id];
   if (ring_buffer->Full()) {
     return StreamingStatus::OutOfMemory;
@@ -244,6 +256,8 @@ StreamingStatus MockProducer::ProduceItemToChannel(uint8_t *data, uint32_t data_
 StreamingStatus MockConsumer::ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
                                                      uint32_t &data_size,
                                                      uint32_t timeout) {
+  std::unique_lock<std::mutex> lock(MockQueue::mutex);
+  MockQueue &mock_queue = MockQueue::GetMockQueue();
   auto &channel_id = channel_info.channel_id;
   if (mock_queue.message_buffer_.find(channel_id) == mock_queue.message_buffer_.end()) {
     return StreamingStatus::NoSuchItem;
@@ -262,6 +276,8 @@ StreamingStatus MockConsumer::ConsumeItemFromChannel(uint64_t &offset_id, uint8_
 }
 
 StreamingStatus MockConsumer::NotifyChannelConsumed(uint64_t offset_id) {
+  std::unique_lock<std::mutex> lock(MockQueue::mutex);
+  MockQueue &mock_queue = MockQueue::GetMockQueue();
   auto &channel_id = channel_info.channel_id;
   auto &ring_buffer = mock_queue.consumed_buffer_[channel_id];
   while (!ring_buffer->Empty() && ring_buffer->Front().seq_id <= offset_id) {
