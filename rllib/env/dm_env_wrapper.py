@@ -1,9 +1,12 @@
-from dm_env import specs
-
 import gym
 from gym import spaces
 
 import numpy as np
+
+try:
+    from dm_env import specs
+except ModuleNotFoundError:
+    specs = None
 
 
 def _convert_spec_to_space(spec):
@@ -41,6 +44,12 @@ class DMEnv(gym.Env):
         super(DMEnv, self).__init__()
         self._env = dm_env
         self._prev_obs = None
+
+        if specs is None:
+            raise RuntimeError((
+                "The `specs` module from `dm_env` was not imported. Make sure "
+                "`dm_env` is installed and visible in the current python "
+                "environment."))
 
     def step(self, action):
         ts = self._env.step(action)
