@@ -144,17 +144,17 @@ class TestPyTorchRunner(unittest.TestCase):
             runner.validate()
 
     def testMultiModel(self):
-        def model_creator(config):
+        def multi_model_creator(config):
             return nn.Linear(1, 1), nn.Linear(1, 1), nn.Linear(1, 1)
 
-        def optimizer_creator(models, config):
+        def multi_optimizer_creator(models, config):
             opts = [
                 torch.optim.SGD(model.parameters(), lr=0.1) for model in models
             ]
             return opts[0], opts[1], opts[2]
 
-        runner = PyTorchRunner(model_creator, single_loader, optimizer_creator,
-                               loss_creator)
+        runner = PyTorchRunner(multi_model_creator, single_loader,
+                               multi_optimizer_creator, loss_creator)
         runner.setup()
         with self.assertRaises(ValueError):
             runner.step()
