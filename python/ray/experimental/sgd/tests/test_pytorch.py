@@ -45,10 +45,17 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
     def multi_model_creator(config):
         return nn.Linear(1, 1), nn.Linear(1, 1)
 
+    def multi_optimizer_creator(models, config):
+        opts = [
+            torch.optim.SGD(model.parameters(), lr=0.1) for model in models
+        ]
+        return opts[0], opts[1]
+
+
     trainer1 = PyTorchTrainer(
         multi_model_creator,
         data_creator,
-        optimizer_creator,
+        multi_optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     trainer1.train()
@@ -63,7 +70,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer2 = PyTorchTrainer(
         multi_model_creator,
         data_creator,
-        optimizer_creator,
+        multi_optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     trainer2.restore(filename)
