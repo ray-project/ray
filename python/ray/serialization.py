@@ -1,12 +1,16 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import hashlib
 import io
 import logging
 import time
+
+import numpy as np
 import pyarrow
 import pyarrow.plasma as plasma
+
 import ray.cloudpickle as pickle
 from ray import ray_constants, JobID
 import ray.utils
@@ -476,6 +480,9 @@ class SerializationContext(object):
             return RawSerializedObject(value)
 
         if self.worker.use_pickle:
+            assert hasattr(np.ndarray, "__reduce_ex__"), "Need "
+            "numpy >= 1.16.0 for use_pickle=True support. Use "
+            "ray.init(use_pickle=False) for older numpy versions."
             writer = Pickle5Writer()
             if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
                 inband = pickle.dumps(
