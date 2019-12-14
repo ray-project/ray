@@ -12,6 +12,7 @@ import torch.distributed as dist
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
+from ray.experimental.sgd.pytorch.utils import train
 
 from ray.experimental.sgd.examples.train_example import (
     model_creator, optimizer_creator, data_creator)
@@ -42,6 +43,13 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
 def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
+    def custom_train(models, dataloader, criterion, optimizers, config):
+        result = {}
+        for i, (model, optimizer) in enumerate(zip(models, optimizers)):
+            result["model_{}".format(i)] = train(model, dataloader, criterion,
+                                                 optimizer, config)
+        return result
+
     def multi_model_creator(config):
         return nn.Linear(1, 1), nn.Linear(1, 1)
 
@@ -50,7 +58,6 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
             torch.optim.SGD(model.parameters(), lr=0.1) for model in models
         ]
         return opts[0], opts[1]
-
 
     trainer1 = PyTorchTrainer(
         multi_model_creator,
