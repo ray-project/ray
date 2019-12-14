@@ -55,7 +55,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     def multi_optimizer_creator(models, config):
         opts = [
-            torch.optim.SGD(model.parameters(), lr=0.1) for model in models
+            torch.optim.SGD(model.parameters(), lr=0.0001) for model in models
         ]
         return opts[0], opts[1]
 
