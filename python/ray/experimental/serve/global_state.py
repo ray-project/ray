@@ -43,6 +43,12 @@ class ActorNursery:
         self.actor_handles[handle] = tag
         return [handle]
 
+    def start_actor_kwargs(self, actor_cls, init_kwargs, tag):
+        """Start an actor and add it to the nursery"""
+        handle = actor_cls.remote(**init_kwargs)
+        self.actor_handles[handle] = tag
+        return [handle]
+
     def start_actor_with_creator(self, creator, tag):
         handle = creator()
         self.actor_handles[handle] = tag
@@ -74,13 +80,13 @@ class GlobalState:
         2. A actor supervisor service
     """
 
-    def __init__(self, actor_nursery_handle=None,router_policy=Policy.random):
+    def __init__(self, actor_nursery_handle=None):
         # Get actor nursery handle
         if actor_nursery_handle is None:
             actor_nursery_handle = ray.experimental.get_actor(
                 SERVE_NURSERY_NAME)
         self.actor_nursery_handle = actor_nursery_handle
-        
+
         # Connect to all the table
         bootstrap_config = ray.get(
             self.actor_nursery_handle.get_bootstrap_state_dict.remote())
@@ -90,7 +96,7 @@ class GlobalState:
         self.policy_table = TrafficPolicyTable(kv_store_connector)
 
         self.refresh_actor_handle_cache()
-        self.router_policy = self._get_router_policy(default_policy=router_policy)
+
     def refresh_actor_handle_cache(self):
         self.actor_handle_cache = ray.get(
             self.actor_nursery_handle.get_all_handles.remote())
@@ -106,7 +112,7 @@ class GlobalState:
             self.refresh_actor_handle_cache()
         return self.actor_handle_cache["http_server"]
 
-    def _get_router_policy(self,default_policy):
+    def _get_queueing_policy(self, default_policy):
         return_policy = default_policy
         for p in Policy:
             queue_actor_tag = "queue_actor::" + p.name
@@ -114,12 +120,20 @@ class GlobalState:
                 return_policy = p
                 break
         return return_policy
-    def init_or_get_router(self):
-        queue_actor_tag = "queue_actor::" + self.router_policy.name
+
+    def init_or_get_router(self,
+                           queueing_policy=Policy.random,
+                           policy_kwargs={}):
+        # get queueing policy
+        self.queueing_policy = self._get_queueing_policy(
+            default_policy=queueing_policy)
+        queue_actor_tag = "queue_actor::" + self.queueing_policy.name
         if queue_actor_tag not in self.actor_handle_cache:
             [handle] = ray.get(
-                self.actor_nursery_handle.start_actor.remote(
-                    self.router_policy.value, init_args=(), tag=queue_actor_tag))
+                self.actor_nursery_handle.start_actor_kwargs.remote(
+                    self.queueing_policy.value,
+                    init_kwargs=policy_kwargs,
+                    tag=queue_actor_tag))
             handle.register_self_handle.remote(handle)
             self.refresh_actor_handle_cache()
 

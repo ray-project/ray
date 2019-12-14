@@ -23,10 +23,13 @@ def _get_global_state():
     """
     return global_state
 
-def _get_router_policy(router_policy_name):
+
+def _get_router_policy(queueing_policy_name):
     for p in Policy:
-        if p.name == router_policy_name:
+        if p.name == queueing_policy_name:
             return p
+
+
 def _ensure_connected(f):
     @wraps(f)
     def check(*args, **kwargs):
@@ -45,7 +48,8 @@ def init(kv_store_connector=None,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={"object_store_memory": int(1e8)},
          gc_window_seconds=3600,
-         router_policy='random'):
+         queueing_policy="random",
+         **policy_kwargs):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -68,17 +72,17 @@ def init(kv_store_connector=None,
         gc_window_seconds(int): How long will we keep the metric data in
             memory. Data older than the gc_window will be deleted. The default
             is 3600 seconds, which is 1 hour.
-        router_policy(str): Define the router policy for selecting the backend 
-        for a service. Ray serve supports the following policy : 
-                1. random (default)
-                2. roundRobin
+        queueing_policy(str): Define the queueing policy for selecting the
+            backend for a service.
+        policy_kwargs: Arguments required to instantiate a queueing policy
     """
     global global_state
-    router_policy = _get_router_policy(router_policy)
-    if router_policy is None:
-        supported_policies = ' , '.join([p.name for p in Policy])
-        raise ValueError('Please specify supported router policy.'
-                        ' Supported policies are: {}'.format(supported_policies))
+    queueing_policy = _get_router_policy(queueing_policy)
+    if queueing_policy is None:
+        supported_policies = " , ".join([p.name for p in Policy])
+        raise ValueError(
+            "Please specify supported router policy."
+            " Supported policies are: {}".format(supported_policies))
     # Noop if global_state is no longer None
     if global_state is not None:
         return
@@ -103,9 +107,10 @@ def init(kv_store_connector=None,
 
     nursery = start_initial_state(kv_store_connector)
 
-    global_state = GlobalState(nursery,router_policy=router_policy)
+    global_state = GlobalState(nursery)
     global_state.init_or_get_http_server(host=http_host, port=http_port)
-    global_state.init_or_get_router()
+    global_state.init_or_get_router(
+        queueing_policy=queueing_policy, policy_kwargs=policy_kwargs)
     global_state.init_or_get_metric_monitor(
         gc_window_seconds=gc_window_seconds)
 

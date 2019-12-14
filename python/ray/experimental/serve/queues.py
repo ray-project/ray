@@ -8,6 +8,7 @@ import itertools
 from blist import sortedlist
 import time
 
+
 class Query:
     def __init__(self,
                  request_args,
@@ -194,12 +195,24 @@ class CentralizedQueues:
     # selects the backend and puts the service queue query to the buffer
     # different policies will implement different backend selection policies
     def _flush_service_queue(self):
+        """
+            Expected Implementation:
+                The implementer is expected to access and manipulate
+                self.queues        : dict[str,Deque]
+                self.buffer_queues : dict[str,sortedlist]
+            For registering the implemented policies refister at policy.py!
+            Expected Behavior:
+                the Deque of all services in self.queues linked with
+                atleast one backend must be empty irrespective of whatever
+                backend policy is implemented.
+        """
         pass
 
-    # _flush function has to flush the service and buffer queues. 
+    # _flush function has to flush the service and buffer queues.
     def _flush(self):
-       self._flush_service_queue()
-       self._flush_buffer()
+        self._flush_service_queue()
+        self._flush_buffer()
+
 
 class CentralizedQueuesActor(CentralizedQueues):
     """
@@ -217,11 +230,15 @@ class CentralizedQueuesActor(CentralizedQueues):
         else:
             self._flush()
 
+
 class RandomPolicyQueue(CentralizedQueues):
     """
-    A wrapper class for Random policy in backend selection. 
+    A wrapper class for Random policy.
+    This backend selection policy is `Stateless` meaning
+    the current decisions of selecting backend are not
+    dependent on previous decisions.
     """
-    
+
     def _flush_service_queue(self):
         # perform traffic splitting for requests
         for service, queue in self.queues.items():
@@ -229,33 +246,150 @@ class RandomPolicyQueue(CentralizedQueues):
             while len(queue) and len(self.traffic[service]):
                 backend_names = list(self.traffic[service].keys())
                 backend_weights = list(self.traffic[service].values())
+                # randomly choose a backend for every query
                 chosen_backend = np.random.choice(
                     backend_names, p=backend_weights).squeeze()
 
                 request = queue.popleft()
-                self.buffer_queues[chosen_backend].append(request)
-                
+                self.buffer_queues[chosen_backend].add(request)
+
+
 @ray.remote
-class RandomPolicyQueueActor(RandomPolicyQueue,CentralizedQueuesActor):
+class RandomPolicyQueueActor(RandomPolicyQueue, CentralizedQueuesActor):
     pass
+
 
 class RoundRobinPolicyQueue(CentralizedQueues):
     """
-    A wrapper class for round robin policy in backend selection. 
+    A wrapper class for RoundRobin policy.
+    This backend selection policy is `Stateful` meaning
+    the current decisions of selecting backend are
+    dependent on previous decisions.
     """
+
+    # Saves the information about last assigned
+    # backend for every service
+    round_robin_iter = {}
+
+    def set_traffic(self, service, traffic_dict):
+        logger.debug("Setting traffic for service %s to %s", service,
+                     traffic_dict)
+        self.traffic[service] = traffic_dict
+        backend_names = list(self.traffic[service].keys())
+        self.round_robin_iter[service] = itertools.cycle(backend_names)
+        self.flush()
 
     def _flush_service_queue(self):
         # perform traffic splitting for requests
         for service, queue in self.queues.items():
             # if there are incoming requests and there are backends
             if len(queue) and len(self.traffic[service]):
-                backend_names = list(self.traffic[service].keys())
-                round_robin_backend = itertools.cycle(backend_names)
+                if service not in self.round_robin_iter:
+                    backend_names = list(self.traffic[service].keys())
+                    self.round_robin_iter[service] = itertools.cycle(
+                        backend_names)
+
                 while len(queue):
-                    chosen_backend = next(round_robin_backend)
+                    # choose the next backend available from persistent
+                    # information
+                    chosen_backend = next(self.round_robin_iter[service])
                     request = queue.popleft()
-                    self.buffer_queues[chosen_backend].append(request)
-        
+                    self.buffer_queues[chosen_backend].add(request)
+
+
 @ray.remote
-class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue,CentralizedQueuesActor):
+class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue,
+                                 CentralizedQueuesActor):
+    pass
+
+
+class PowerOfTwoPolicyQueue(CentralizedQueues):
+    """
+    A wrapper class for powerOfTwo policy.
+    This backend selection policy is `Stateless` meaning
+    the current decisions of selecting backend are
+    dependent on previous decisions.
+    """
+
+    def _flush_service_queue(self):
+        # perform traffic splitting for requests
+        for service, queue in self.queues.items():
+            # while there are incoming requests and there are backends
+            while len(queue) and len(self.traffic[service]):
+                backend_names = list(self.traffic[service].keys())
+                backend_weights = list(self.traffic[service].values())
+                if len(self.traffic[service]) >= 2:
+                    # randomly pick 2 backends
+                    backend1, backend2 = np.random.choice(
+                        backend_names, 2, p=backend_weights)
+                    backend1, backend2 = backend1.squeeze(), backend2.squeeze()
+                    # see the length of buffer queues of the two backends
+                    # and pick the one which has less no. of queries
+                    # in the buffer
+                    if (len(self.buffer_queues[backend1]) <= len(
+                            self.buffer_queues[backend2])):
+                        chosen_backend = backend1
+                    else:
+                        chosen_backend = backend2
+                else:
+                    chosen_backend = np.random.choice(
+                        backend_names, p=backend_weights).squeeze()
+                request = queue.popleft()
+                self.buffer_queues[chosen_backend].add(request)
+
+
+@ray.remote
+class PowerOfTwoPolicyQueueActor(PowerOfTwoPolicyQueue,
+                                 CentralizedQueuesActor):
+    pass
+
+
+class FixedPackingPolicyQueue(CentralizedQueues):
+    """
+    A wrapper class for FixedPacking policy.
+    This backend selection policy is `Stateful` meaning
+    the current decisions of selecting backend are
+    dependent on previous decisions.
+    """
+
+    def __init__(self, packing_num=3):
+        # Saves the information about last assigned
+        # backend for every service
+        self.fixed_packing_iter = {}
+        self.packing_num = packing_num
+        super().__init__()
+
+    def set_traffic(self, service, traffic_dict):
+        logger.debug("Setting traffic for service %s to %s", service,
+                     traffic_dict)
+        self.traffic[service] = traffic_dict
+        backend_names = list(self.traffic[service].keys())
+        self.fixed_packing_iter[service] = itertools.cycle(
+            itertools.chain.from_iterable(
+                itertools.repeat(x, self.packing_num) for x in backend_names))
+        self.flush()
+
+    def _flush_service_queue(self):
+        # perform traffic splitting for requests
+        for service, queue in self.queues.items():
+            # if there are incoming requests and there are backends
+            if len(queue) and len(self.traffic[service]):
+                if service not in self.fixed_packing_iter:
+                    backend_names = list(self.traffic[service].keys())
+                    self.fixed_packing_iter[service] = itertools.cycle(
+                        itertools.chain.from_iterable(
+                            itertools.repeat(x, self.packing_num)
+                            for x in backend_names))
+
+                while len(queue):
+                    # choose the next backend available from persistent
+                    # information
+                    chosen_backend = next(self.fixed_packing_iter[service])
+                    request = queue.popleft()
+                    self.buffer_queues[chosen_backend].add(request)
+
+
+@ray.remote
+class FixedPackingPolicyQueueActor(FixedPackingPolicyQueue,
+                                   CentralizedQueuesActor):
     pass

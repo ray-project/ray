@@ -2,7 +2,8 @@ import pytest
 
 import ray
 import ray.experimental.serve.context as context
-from ray.experimental.serve.queues import CentralizedQueuesActor
+from ray.experimental.serve.queues import (RoundRobinPolicyQueueActor as
+                                           CentralizedQueuesActor)
 from ray.experimental.serve.task_runner import (
     RayServeMixin, TaskRunner, TaskRunnerActor, wrap_to_ray_error)
 
