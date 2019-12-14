@@ -64,7 +64,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
         data_creator,
         multi_optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        train=custom_train,
+        train_function=custom_train,
         num_replicas=num_replicas)
     trainer1.train()
 
