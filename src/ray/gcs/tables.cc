@@ -503,18 +503,6 @@ std::string ProfileTable::DebugString() const {
   return Log<UniqueID, ProfileTableData>::DebugString();
 }
 
-Status JobTable::AppendJobData(const JobID &job_id, bool is_dead, int64_t timestamp,
-                               const std::string &node_manager_address,
-                               int64_t driver_pid) {
-  auto data = std::make_shared<JobTableData>();
-  data->set_job_id(job_id.Binary());
-  data->set_is_dead(is_dead);
-  data->set_timestamp(timestamp);
-  data->set_node_manager_address(node_manager_address);
-  data->set_driver_pid(driver_pid);
-  return Append(JobID(job_id), job_id, data, /*done_callback=*/nullptr);
-}
-
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.

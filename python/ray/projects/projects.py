@@ -92,20 +92,22 @@ class ProjectDefinition:
         # with them, save it in the following dictionary.
         choices = {}
         for param in params:
-            name = param.pop("name")
+            # Construct arguments to pass into argparse's parser.add_argument.
+            argparse_kwargs = copy.deepcopy(param)
+            name = argparse_kwargs.pop("name")
             if wildcards and "choices" in param:
-                choices[name] = copy.deepcopy(param["choices"])
-                param["choices"] = param["choices"] + ["*"]
+                choices[name] = param["choices"]
+                argparse_kwargs["choices"] = param["choices"] + ["*"]
             if "type" in param:
                 types = {"int": int, "str": str, "float": float}
                 if param["type"] in types:
-                    param["type"] = types[param["type"]]
+                    argparse_kwargs["type"] = types[param["type"]]
                 else:
                     raise ValueError(
                         "Parameter {} has type {} which is not supported. "
                         "Type must be one of {}".format(
                             name, param["type"], list(types.keys())))
-            parser.add_argument("--" + name, dest=name, **param)
+            parser.add_argument("--" + name, dest=name, **argparse_kwargs)
 
         parsed_args = vars(parser.parse_args(list(args)))
 

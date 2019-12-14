@@ -36,7 +36,7 @@ message AssignTaskRequest {
   // The ID of the worker this message is intended for. This is used to
   // ensure that workers don't try to execute tasks assigned to workers
   // that used to be bound to the same port.
-  bytes worker_id = 1;
+  bytes intended_worker_id = 1;
 
   // The task to be pushed.
   Task task = 2;
@@ -63,22 +63,24 @@ message ReturnObject {
 }
 
 message PushTaskRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
   // The task to be pushed.
-  TaskSpec task_spec = 1;
+  TaskSpec task_spec = 2;
   // The sequence number of the task for this client. This must increase
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
   // If set to -1, ordering is disabled and the task executes immediately.
   // This mode of behaviour is used for direct task submission only.
-  int64 sequence_number = 2;
+  int64 sequence_number = 3;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
   // to cancel any PushTaskRequests with seqno <= this value, rather than
   // waiting for the server to time out waiting for missing messages.
-  int64 client_processed_up_to = 3;
+  int64 client_processed_up_to = 4;
   // Resource mapping ids assigned to the worker executing the task.
-  repeated ResourceMapEntry resource_mapping = 4;
+  repeated ResourceMapEntry resource_mapping = 5;
 }
 
 message PushTaskReply {
@@ -87,16 +89,22 @@ message PushTaskReply {
 }
 
 message DirectActorCallArgWaitCompleteRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
   // Id used to uniquely identify this request. This is sent back to the core
   // worker to notify the wait has completed.
-  int64 tag = 1;
+  int64 tag = 2;
 }
 
 message DirectActorCallArgWaitCompleteReply {
 }
 
 message GetObjectStatusRequest {
+  // The owner of the object. Note that we do not need to include
+  // intended_worker_id since the new worker can service this request too by
+  // inspecting the owner_id field.
   bytes owner_id = 1;
+  // Wait for this object's status.
   bytes object_id = 2;
 }
 

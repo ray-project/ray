@@ -67,49 +67,7 @@ If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard 
     :scale: 20%
     :align: center
 
-Distributed Quick Start
------------------------
-
-1. Import and initialize Ray by appending the following to your example script.
-
-.. code-block:: python
-
-    # Append to top of your script
-    import ray
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ray-address")
-    args = parser.parse_args()
-    ray.init(address=args.ray_address)
-
-Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
-
-2. Download the following example Ray cluster configuration as ``tune-local-default.yaml`` and replace the appropriate fields:
-
-.. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
-   :language: yaml
-
-Alternatively, download it here: :download:`tune-local-default.yaml <../../python/ray/tune/examples/tune-local-default.yaml>`. See `Ray cluster docs here <autoscaling.html>`_.
-
-3. Run ``ray submit`` like the following.
-
-.. code-block:: bash
-
-    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
-
-This will start Ray on all of your machines and run a distributed hyperparameter search across them.
-
-To summarize, here are the full set of commands:
-
-.. code-block:: bash
-
-    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch.py
-    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-local-default.yaml
-    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
-
-
-Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including:
+Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for:
 
  1. Setting up distributed experiments on your local cluster
  2. Using AWS and GCP
@@ -124,7 +82,8 @@ Below are some blog posts and talks about Tune:
  - [blog] `Cutting edge hyperparameter tuning with Ray Tune <https://medium.com/riselab/cutting-edge-hyperparameter-tuning-with-ray-tune-be6c0447afdf>`_
  - [blog] `Simple hyperparameter and architecture search in tensorflow with Ray Tune <http://louiskirsch.com/ai/ray-tune>`_
  - [slides] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
- - [Talk] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
+ - [video] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
+ - [slides] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://speakerdeck.com/richardliaw/a-modern-guide-to-hyperparameter-optimization>`_
 
 Open Source Projects using Tune
 -------------------------------

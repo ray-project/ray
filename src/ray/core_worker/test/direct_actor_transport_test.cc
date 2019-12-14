@@ -40,8 +40,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
  public:
   MockTaskFinisher() {}
 
-  MOCK_METHOD2(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &));
-  MOCK_METHOD2(PendingTaskFailed, void(const TaskID &task_id, rpc::ErrorType error_type));
+  MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
+                                         const rpc::Address *addr));
+  MOCK_METHOD3(PendingTaskFailed,
+               void(const TaskID &task_id, rpc::ErrorType error_type, Status *status));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
@@ -59,7 +61,7 @@ class DirectActorTransportTest : public ::testing::Test {
       : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
-        submitter_([&](const rpc::WorkerAddress &addr) { return worker_client_; }, store_,
+        submitter_([&](const std::string ip, int port) { return worker_client_; }, store_,
                    task_finisher_, [](const ObjectID &object_id) { return; }) {}
 
   std::shared_ptr<MockWorkerClient> worker_client_;
@@ -69,32 +71,32 @@ class DirectActorTransportTest : public ::testing::Test {
 };
 
 TEST_F(DirectActorTransportTest, TestSubmitTask) {
+  rpc::Address addr;
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
 
   auto task = CreateActorTaskHelper(actor_id, 0);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
-  gcs::ActorTableData actor_data;
-  submitter_.HandleActorUpdate(actor_id, actor_data);
+  submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   task = CreateActorTaskHelper(actor_id, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _))
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _, _))
       .Times(worker_client_->callbacks.size());
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
 }
 
 TEST_F(DirectActorTransportTest, TestDependencies) {
+  rpc::Address addr;
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  gcs::ActorTableData actor_data;
-  submitter_.HandleActorUpdate(actor_id, actor_data);
+  submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create two tasks for the actor with different arguments.
@@ -120,9 +122,9 @@ TEST_F(DirectActorTransportTest, TestDependencies) {
 }
 
 TEST_F(DirectActorTransportTest, TestOutOfOrderDependencies) {
+  rpc::Address addr;
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  gcs::ActorTableData actor_data;
-  submitter_.HandleActorUpdate(actor_id, actor_data);
+  submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create two tasks for the actor with different arguments.
@@ -149,9 +151,10 @@ TEST_F(DirectActorTransportTest, TestOutOfOrderDependencies) {
 }
 
 TEST_F(DirectActorTransportTest, TestActorFailure) {
+  rpc::Address addr;
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   gcs::ActorTableData actor_data;
-  submitter_.HandleActorUpdate(actor_id, actor_data);
+  submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Create two tasks for the actor.
@@ -162,8 +165,8 @@ TEST_F(DirectActorTransportTest, TestActorFailure) {
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
   // Simulate the actor dying. All submitted tasks should get failed.
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _)).Times(2);
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _)).Times(2);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
   }

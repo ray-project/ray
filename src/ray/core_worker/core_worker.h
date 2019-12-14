@@ -1,9 +1,11 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
@@ -15,6 +17,7 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/subscription_executor.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -415,6 +418,9 @@ class CoreWorker {
   /// Send the list of active object IDs to the raylet.
   void ReportActiveObjectIDs();
 
+  /// Heartbeat for internal bookkeeping.
+  void InternalHeartbeat();
+
   ///
   /// Private methods related to task submission.
   ///
@@ -480,6 +486,27 @@ class CoreWorker {
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
 
+
+  /// Returns whether the message was sent to the wrong worker. The right error reply
+  /// is sent automatically. Messages end up on the wrong worker when a worker dies
+  /// and a new one takes its place with the same place. In this situation, we want
+  /// the new worker to reject messages meant for the old one.
+  bool HandleWrongRecipient(const WorkerID &intended_worker_id,
+                            rpc::SendReplyCallback send_reply_callback) {
+    if (intended_worker_id != worker_context_.GetWorkerID()) {
+      std::ostringstream stream;
+      stream << "Mismatched WorkerID: ignoring RPC for previous worker "
+             << intended_worker_id
+             << ", current worker ID: " << worker_context_.GetWorkerID();
+      auto msg = stream.str();
+      RAY_LOG(ERROR) << msg;
+      send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+      return true;
+    } else {
+      return false;
+    }
+  }
+
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
 
@@ -523,6 +550,9 @@ class CoreWorker {
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
+  /// Timer for internal book-keeping.
+  boost::asio::steady_timer internal_timer_;
+
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;
 
@@ -531,6 +561,11 @@ class CoreWorker {
 
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+
+  // Client to listen to direct actor events.
+  std::unique_ptr<
+      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>
+      direct_actor_table_subscriber_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
@@ -562,6 +597,9 @@ class CoreWorker {
 
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
+
+  // Interface for publishing actor creation.
+  std::shared_ptr<ActorManager> actor_manager_;
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
@@ -612,6 +650,9 @@ class CoreWorker {
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+
+  // Queue of tasks to resubmit when the specified time passes.
+  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_;
 
   friend class CoreWorkerTest;
 };

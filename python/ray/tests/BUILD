@@ -7,14 +7,6 @@ py_test(
 )
 
 py_test(
-    name = "test_actor_direct",
-    size = "medium",
-    srcs = ["test_actor_direct.py", "test_actor.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_actor_resources",
     size = "medium",
     srcs = ["test_actor_resources.py"],
@@ -23,18 +15,11 @@ py_test(
 )
 
 py_test(
-    name = "test_actor_resources_direct",
-    size = "medium",
-    srcs = ["test_actor_resources_direct.py", "test_actor_resources.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_actor_failures",
     size = "medium",
     srcs = ["test_actor_failures.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) enable this once we support actor reconstruction again
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -42,14 +27,6 @@ py_test(
     name = "test_basic",
     size = "medium",
     srcs = ["test_basic.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_basic_direct",
-    size = "medium",
-    srcs = ["test_basic_direct.py", "test_basic.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -127,14 +104,6 @@ py_test(
 )
 
 py_test(
-    name = "test_stress_direct",
-    size = "medium",
-    srcs = ["test_stress_direct.py", "test_stress.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_stress_sharded",
     size = "medium",
     srcs = ["test_stress_sharded.py"],
@@ -143,18 +112,11 @@ py_test(
 )
 
 py_test(
-    name = "test_stress_sharded_direct",
-    size = "medium",
-    srcs = ["test_stress_sharded_direct.py", "test_stress_sharded.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_stress_failure",
     size = "large",
     srcs = ["test_stress_failure.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) enable again once we support direct call reconstruction
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -205,14 +167,6 @@ py_test(
     name = "test_failure",
     size = "medium",
     srcs = ["test_failure.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_failure_direct",
-    size = "medium",
-    srcs = ["test_failure_direct.py", "test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -276,7 +230,8 @@ py_test(
     name = "test_monitors",
     size = "small",
     srcs = ["test_monitors.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) tasks() and objects() are different in direct call mode.
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
