@@ -6,6 +6,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_manager.h"
 
 namespace ray {
 
@@ -13,8 +14,8 @@ namespace ray {
 class LocalDependencyResolver {
  public:
   LocalDependencyResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                          const std::function<void(const ObjectID &)> &on_object_inlined)
-      : in_memory_store_(store), on_object_inlined_(on_object_inlined), num_pending_(0) {}
+			  std::shared_ptr<TaskFinisherInterface> task_finisher)
+      : in_memory_store_(store), task_finisher_(task_finisher), num_pending_(0) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -34,8 +35,8 @@ class LocalDependencyResolver {
   /// The in-memory store.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
-  /// Callback to be called each time an object is inlined into a task spec.
-  std::function<void(const ObjectID &)> on_object_inlined_;
+  /// Used to complete tasks.
+  std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;

@@ -37,10 +37,9 @@ class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
       rpc::ClientFactoryFn client_factory, std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher,
-      const std::function<void(const ObjectID &)> &on_object_inlined)
+      std::shared_ptr<TaskFinisherInterface> task_finisher)
       : client_factory_(client_factory),
-        resolver_(store, on_object_inlined),
+        resolver_(store, task_finisher), 
         task_finisher_(task_finisher) {}
 
   /// Submit a task to an actor for execution.

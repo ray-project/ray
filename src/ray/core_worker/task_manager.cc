@@ -9,11 +9,32 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries) {
+void TaskManager::AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address, const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
+
+  // Add references for the dependencies to the task.
+  std::vector<ObjectID> task_deps;
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    if (spec.ArgByRef(i)) {
+      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+        task_deps.push_back(spec.ArgId(i, j));
+      }
+    }
+  }
+  reference_counter_->AddSubmittedTaskReferences(task_deps);
+
+  // Add new owned objects for the return values of the task.
+  size_t num_returns = spec.NumReturns();
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+    num_returns--;
+  }
+  for (size_t i = 0; i < num_returns; i++) {
+    reference_counter_->AddOwnedObject(spec.ReturnId(i, TaskTransportType::DIRECT),
+                                       caller_id, caller_address);
+  }
 }
 
 bool TaskManager::IsTaskPending(const TaskID &task_id) const {
@@ -35,6 +56,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     pending_tasks_.erase(it);
   }
 
+  // XXX: remove refs
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
@@ -123,6 +145,15 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   }
 }
 
+void TaskManager::OnTaskDependencyInlined(const ObjectID &object_id) {
+  std::vector<ObjectID> deleted;
+  reference_counter_->RemoveSubmittedTaskReference(object_id, &deleted);
+  // TODO(edoakes): move callback in now?
+  // if (ref_counting_enabled_) {
+    in_memory_store_->Delete(deleted);
+  // }
+}
+
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
                                         const TaskSpecification &spec,
                                         rpc::ErrorType error_type) {
@@ -138,6 +169,7 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
   if (spec.IsActorCreationTask()) {
     actor_manager_->PublishTerminatedActor(spec);
   }
+  // XXX: remove refs
 }
 
 TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {

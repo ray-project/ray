@@ -86,7 +86,7 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
             }
           }
           if (inlined) {
-            on_object_inlined_(obj_id);
+	    task_finisher_->OnTaskDependencyInlined(obj_id);
           }
           if (complete) {
             on_complete();

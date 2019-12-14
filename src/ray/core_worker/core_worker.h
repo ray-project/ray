@@ -425,12 +425,6 @@ class CoreWorker {
   /// Private methods related to task submission.
   ///
 
-  /// Add task dependencies to the reference counter. This prevents the argument
-  /// objects from early eviction, and also adds the return object.
-  /// XXX: rename this
-  void PinObjectReferences(const TaskSpecification &task_spec,
-                           const TaskTransportType transport_type);
-
   /// Remove a task dependency from the reference counter.
   void RemoveSubmittedTaskReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
@@ -614,9 +608,6 @@ class CoreWorker {
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(actor_handles_mutex_);
-
-  /// Resolve local and remote dependencies for actor creation.
-  std::unique_ptr<LocalDependencyResolver> resolver_;
 
   ///
   /// Fields related to task execution.

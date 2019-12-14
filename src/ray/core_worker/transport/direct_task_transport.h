@@ -36,12 +36,11 @@ class CoreWorkerDirectTaskSubmitter {
       rpc::ClientFactoryFn client_factory, LeaseClientFactoryFn lease_client_factory,
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher,
-      const std::function<void(const ObjectID &)> &on_object_inlined,
       ClientID local_raylet_id, int64_t lease_timeout_ms)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
-        resolver_(store, on_object_inlined),
+        resolver_(store, task_finisher), 
         task_finisher_(task_finisher),
         local_raylet_id_(local_raylet_id),
         lease_timeout_ms_(lease_timeout_ms) {}

@@ -44,6 +44,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                          const rpc::Address *addr));
   MOCK_METHOD3(PendingTaskFailed,
                void(const TaskID &task_id, rpc::ErrorType error_type, Status *status));
+
+  MOCK_METHOD3(OnTaskDependencyInlined, void(const ObjectID &));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
@@ -62,7 +64,7 @@ class DirectActorTransportTest : public ::testing::Test {
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
         submitter_([&](const std::string ip, int port) { return worker_client_; }, store_,
-                   task_finisher_, [](const ObjectID &object_id) { return; }) {}
+                   task_finisher_) {}
 
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;

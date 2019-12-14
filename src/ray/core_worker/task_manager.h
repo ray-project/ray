@@ -21,6 +21,8 @@ class TaskFinisherInterface {
   virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                  Status *status = nullptr) = 0;
 
+  virtual void OnTaskDependencyInlined(const ObjectID &object_id) = 0;
+
   virtual ~TaskFinisherInterface() {}
 };
 
@@ -29,19 +31,23 @@ using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
 class TaskManager : public TaskFinisherInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
+              std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
               RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
+        reference_counter_(reference_counter),
         actor_manager_(actor_manager),
         retry_task_callback_(retry_task_callback) {}
 
   /// Add a task that is pending execution.
   ///
+  /// \param[in] caller_id The TaskID of the calling task.
+  /// \param[in] caller_address The rpc address of the calling task.
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return Void.
-  void AddPendingTask(const TaskSpecification &spec, int max_retries = 0);
+  void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address, const TaskSpecification &spec, int max_retries = 0);
 
   /// Return whether the task is pending.
   ///
@@ -67,6 +73,8 @@ class TaskManager : public TaskFinisherInterface {
   void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                          Status *status = nullptr) override;
 
+  void OnTaskDependencyInlined(const ObjectID &object_id) override;
+
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
@@ -78,6 +86,11 @@ class TaskManager : public TaskFinisherInterface {
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+
+  /// Used for reference counting objects.
+  /// The task manager is responsible for managing all references related to
+  /// submitted tasks (dependencies and return objects).
+  std::shared_ptr<ReferenceCounter> reference_counter_;
 
   // Interface for publishing actor creation.
   std::shared_ptr<ActorManagerInterface> actor_manager_;

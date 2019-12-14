@@ -51,6 +51,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_failed++;
   }
 
+  void OnTaskDependencyInlined(const ObjectID &object_id) { return; }
+
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
 };
