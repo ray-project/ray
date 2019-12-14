@@ -9,7 +9,7 @@ import numpy as np
 
 try:
     from dm_env import specs
-except ModuleNotFoundError:
+except ImportError:
     specs = None
 
 
