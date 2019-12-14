@@ -480,9 +480,10 @@ class SerializationContext(object):
             return RawSerializedObject(value)
 
         if self.worker.use_pickle:
-            assert hasattr(np.ndarray, "__reduce_ex__"), "Need "
-            "numpy >= 1.16.0 for use_pickle=True support. Use "
-            "ray.init(use_pickle=False) for older numpy versions."
+            assert not hasattr(np, "pkgload"), ("numpy "
+            ">= 1.16.0 required for use_pickle=True support. You can "
+            "use ray.init(use_pickle=False) for older numpy versions, "
+            "but this may be removed in future versions.")
             writer = Pickle5Writer()
             if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
                 inband = pickle.dumps(
