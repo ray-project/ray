@@ -115,8 +115,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes)
-        void AddObjectIDReference(const CObjectID &object_id)
-        void RemoveObjectIDReference(const CObjectID &object_id)
+        void AddLocalReference(const CObjectID &object_id)
+        void RemoveLocalReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_id,
                                                 CTaskID *owner_id,

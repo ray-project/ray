@@ -3,7 +3,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
@@ -26,27 +25,24 @@ class ReferenceCounter {
   /// \param[in] object_id The object to to increment the count for.
   void AddLocalReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Decrease the reference count for the ObjectID by one. If the reference count reaches
-  /// zero, it will be erased from the map and the reference count for all of its
-  /// dependencies will be decreased be one.
+  /// Decrease the local reference count for the ObjectID by one.
   ///
   /// \param[in] object_id The object to decrement the count for.
   /// \param[out] deleted List to store objects that hit zero ref count.
   void RemoveLocalReference(const ObjectID &object_id, std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Remove any references to dependencies that this object may have. This does *not*
-  /// decrease the object's own local reference count.
-  ///
-  /// \param[in] object_id The object whose dependencies should be removed.
-  /// \param[out] deleted List to store objects that hit zero ref count.
-  void RemoveDependencies(const ObjectID &object_id, std::vector<ObjectID> *deleted)
-      LOCKS_EXCLUDED(mutex_);
+  /// TODO
+  void AddSubmittedTaskReferences(const std::vector<ObjectID> &object_ids);
+
+  /// TODO
+  void RemoveSubmittedTaskReference(const ObjectID &object_id,
+                                            std::vector<ObjectID> *deleted);
 
   /// Add an object that we own. The object may depend on other objects.
-  /// Dependencies for each ObjectID must be set at most once. The direct
-  /// reference count for the ObjectID is set to zero and the reference count
-  /// for each dependency is incremented.
+  /// Dependencies for each ObjectID must be set at most once. The local
+  /// reference count for the ObjectID is set to zero, which assumes that an
+  /// ObjectID for it will be created in the language frontend after this call.
   ///
   /// TODO(swang): We could avoid copying the owner_id and owner_address since
   /// we are the owner, but it is easier to store a copy for now, since the
@@ -58,8 +54,7 @@ class ReferenceCounter {
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] dependencies The objects that the object depends on.
   void AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
-                      const rpc::Address &owner_address,
-                      absl::flat_hash_set<ObjectID> &&dependencies)
+                      const rpc::Address &owner_address)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
@@ -92,19 +87,13 @@ class ReferenceCounter {
     /// Constructor for a reference whose origin is unknown.
     Reference() : owned_by_us(false) {}
     /// Constructor for a reference that we created.
-    Reference(const TaskID &owner_id, const rpc::Address &owner_address,
-              absl::flat_hash_set<ObjectID> &&deps)
-        : dependencies(std::move(deps)),
-          owned_by_us(true),
-          owner({owner_id, owner_address}) {}
-    /// Constructor for a reference that was given to us.
     Reference(const TaskID &owner_id, const rpc::Address &owner_address)
-        : owned_by_us(false), owner({owner_id, owner_address}) {}
+        : owned_by_us(true),
+          owner({owner_id, owner_address}) {}
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;
-    /// The objects that the task corresponding to this object depends on.
-    /// Tracked only by the owner of the object.
-    absl::flat_hash_set<ObjectID> dependencies;
+    /// The ref count for submitted tasks that depend on the ObjectID.
+    size_t submitted_task_ref_count = 0;
     /// Whether we own the object. If we own the object, then we are
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).

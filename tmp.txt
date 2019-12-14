@@ -1,0 +1,63 @@
+0.7.6
+	130000 at iteration 1250
+
+82f7dbc7a7b04266af23ed8b038cfb3febdcd4ce
+	118000 at iteration 500
+
+bbadde57e0c9e20b228394188c424afe03fd41a9
+	110000 at iteration 300
+
+3ac8592dcfc6e7fdc7838b6739590bab5c3cfe20
+	76000 at iteration 300
+
+eef4ad3bbaa0fb645c9c425bd3cdff276a78cc38
+	28000 at iteration 0
+	79000 at iteration 300
+
+5780ec1b62c73742ec9168944fb94a49253fc2db
+	27000 at iteration 0
+	74000 at iteration 300
+
+f3f86385d631de254c66ea910c1e086587e5429f
+	85000 at iteration 0
+	122000 at iteration 300
+
+35d177f4596edd09a9db8dd546cc317b560fbf33
+	87000 at iteration 0
+	119000 at iteration 300
+
+Single node:
+
+0.7.5 freezes around 120MiB
+
+0.7.6 freezes arond 90MiB
+
+35d177f4596edd09a9db8dd546cc317b560fbf33
+	Grows to at least 250MiB ~2500 iterations
+
+
+5780ec1b62c73742ec9168944fb94a49253fc2db
+	Grows to at least 250MiB ~1600 iterations
+
+eb41c945a1f394a4edfee916a5db5409d55ea120
+	Freezes around 90MiB ~2000 iterations
+
+eef4ad3bbaa0fb645c9c425bd3cdff276a78cc38
+	Freezes around 90MiB ~2000 iterations
+
+4a28306186ee5f8329c3949e463be02f488b68f5
+	Freezes around 90MiB ~2000 iterations
+
+afca6d3d872b6ec76631c50593ba2b0cb93d697f
+	Freezes around 90MiB ~2000 iterations
+
+ccbcc4bafa79c8de44f99d7d089c2e9640951150
+	Freezes around 90MiB ~1500 iterations
+
+(PICKLE5)
+decaa65cd6aa0b99317165e1fcd154cbf569b10d
+	Grows to at least 120MiB ~500 iterations
+
+(PRE-PICKLE5)
+01aee8d9706111684243b1ff5d09880f5c05b705
+	Freezes around 90 MiB ~2000 iterations

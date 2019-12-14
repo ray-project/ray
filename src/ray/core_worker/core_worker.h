@@ -101,17 +101,19 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  /// Increase the reference count for this object ID.
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddObjectIDReference(const ObjectID &object_id) {
+  void AddLocalReference(const ObjectID &object_id) {
     reference_counter_->AddLocalReference(object_id);
   }
 
-  /// Decrease the reference count for this object ID.
+  /// Decrease the reference count for this object ID. Should be called
+  /// by the language frontend when a reference is destroyed.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
-  void RemoveObjectIDReference(const ObjectID &object_id) {
+  void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     if (ref_counting_enabled_) {
@@ -419,8 +421,18 @@ class CoreWorker {
 
   /// Add task dependencies to the reference counter. This prevents the argument
   /// objects from early eviction, and also adds the return object.
+  /// XXX: rename this
   void PinObjectReferences(const TaskSpecification &task_spec,
                            const TaskTransportType transport_type);
+
+  /// Remove a task dependency from the reference counter.
+  void RemoveSubmittedTaskReference(const ObjectID &object_id) {
+    std::vector<ObjectID> deleted;
+    reference_counter_->RemoveSubmittedTaskReference(object_id, &deleted);
+    if (ref_counting_enabled_) {
+      memory_store_->Delete(deleted);
+    }
+  }
 
   /// Give this worker a handle to an actor.
   ///
@@ -467,17 +479,6 @@ class CoreWorker {
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
-
-  /// Remove reference counting dependencies of this object ID.
-  ///
-  /// \param[in] object_id The object whose dependencies should be removed.
-  void RemoveObjectIDDependencies(const ObjectID &object_id) {
-    std::vector<ObjectID> deleted;
-    reference_counter_->RemoveDependencies(object_id, &deleted);
-    if (ref_counting_enabled_) {
-      memory_store_->Delete(deleted);
-    }
-  }
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;

@@ -172,9 +172,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
         RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
       }));
+  auto remove_submitted_task_ref = std::bind(&CoreWorker::RemoveSubmittedTaskReference, this, std::placeholders::_1);
   resolver_.reset(new LocalDependencyResolver(
       memory_store_,
-      [this](const ObjectID &object_id) { RemoveObjectIDDependencies(object_id); }));
+      remove_submitted_task_ref));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -204,8 +205,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(
-          client_factory, memory_store_, task_manager_,
-          [this](const ObjectID &object_id) { RemoveObjectIDDependencies(object_id); }));
+          client_factory, memory_store_, task_manager_, remove_submitted_task_ref));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
@@ -216,8 +216,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<raylet::RayletClient>(
                 new raylet::RayletClient(std::move(grpc_client)));
           },
-          memory_store_, task_manager_,
-          [this](const ObjectID &object_id) { RemoveObjectIDDependencies(object_id); },
+          memory_store_, task_manager_, remove_submitted_task_ref, 
           local_raylet_id, RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
 }
@@ -337,8 +336,7 @@ Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
-  reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_,
-                                     absl::flat_hash_set<ObjectID>());
+  reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
   return Put(object, *object_id);
 }
 
@@ -443,9 +441,10 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       // If we got the result for this plasma ObjectID, the task that created it must
       // have finished. Therefore, we can safely remove its reference counting
       // dependencies.
-      if (!ids[i].IsDirectCallType()) {
-        RemoveObjectIDDependencies(ids[i]);
-      }
+      // XXX: this is now broken for raylet transport.
+      // if (!ids[i].IsDirectCallType()) {
+        // RemoveSubmittedTaskReference(ids[i]);
+      // }
     } else {
       missing_result = true;
     }
@@ -588,19 +587,21 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
     num_returns--;
   }
 
-  absl::flat_hash_set<ObjectID> task_deps;
+  // Add references for the dependencies to the task.
+  std::vector<ObjectID> task_deps;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
       for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
-        task_deps.insert(task_spec.ArgId(i, j));
+        task_deps.push_back(task_spec.ArgId(i, j));
       }
     }
   }
+  reference_counter_->AddSubmittedTaskReferences(task_deps);
 
-  // Note that we call this even if task_deps.size() == 0, in order to pin the return id.
+  // Add new owned objects for the return values of the task.
   for (size_t i = 0; i < num_returns; i++) {
     reference_counter_->AddOwnedObject(task_spec.ReturnId(i, transport_type),
-                                       GetCallerId(), rpc_address_, std::move(task_deps));
+                                       GetCallerId(), rpc_address_);
   }
 }
 
@@ -997,17 +998,18 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // Acquire a reference and retry. This prevents the object from being
     // evicted out from under us before we can start the get.
-    AddObjectIDReference(object_id);
+    // XXX: ???
+    AddLocalReference(object_id);
     if (task_manager_->IsTaskPending(object_id.TaskId())) {
       // The task is pending. Send the reply once the task finishes.
       memory_store_->GetAsync(object_id,
                               [send_reply_callback](std::shared_ptr<RayObject> obj) {
                                 send_reply_callback(Status::OK(), nullptr, nullptr);
                               });
-      RemoveObjectIDReference(object_id);
+      RemoveLocalReference(object_id);
     } else {
       // We lost the race, the task is done.
-      RemoveObjectIDReference(object_id);
+      RemoveLocalReference(object_id);
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   } else {

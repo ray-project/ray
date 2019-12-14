@@ -1073,16 +1073,12 @@ cdef class CoreWorker:
         return output
 
     def add_object_id_reference(self, ObjectID object_id):
-        cdef:
-            CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().AddObjectIDReference(c_object_id)
+        self.core_worker.get().AddLocalReference(object_id.native())
 
     def remove_object_id_reference(self, ObjectID object_id):
-        cdef:
-            CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().RemoveObjectIDReference(c_object_id)
+        self.core_worker.get().RemoveLocalReference(object_id.native())
 
     def serialize_and_promote_object_id(self, ObjectID object_id):
         cdef:
