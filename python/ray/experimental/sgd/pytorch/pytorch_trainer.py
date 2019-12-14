@@ -7,6 +7,7 @@ import os
 import torch
 import torch.distributed as dist
 import logging
+import numbers
 
 import ray
 
@@ -159,8 +160,11 @@ class PyTorchTrainer(object):
 
         train_stats = {}
         for stat_key in worker_stats[0]:
-            train_stats[stat_key] = np.nanmean(
-                [s.get(stat_key, np.nan) for s in worker_stats])
+            if isinstance(worker_stats[0], numbers.Number):
+                train_stats[stat_key] = np.nanmean(
+                    [s.get(stat_key, np.nan) for s in worker_stats])
+            else:
+                train_stats[stat_key] = worker_stats[0][stat_key]
         return train_stats
 
     def apply_all_workers(self, fn):
