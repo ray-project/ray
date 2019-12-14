@@ -76,7 +76,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         const c_vector[CObjectID] &return_ids,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     CRayStatus() nogil,
-                    void () nogil,
                     c_bool ref_counting_enabled)
         void Disconnect()
         CWorkerType &GetWorkerType()
