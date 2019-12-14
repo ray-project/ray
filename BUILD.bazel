@@ -177,8 +177,8 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        ":grpc_common_lib",
         ":gcs_service_cc_grpc",
+        ":grpc_common_lib",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
