@@ -66,7 +66,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
         self.models = [DistributedDataParallel(model) for model in self.models]
 
         logger.debug("Creating optimizer.")
-        self.optimizers = self.optimizer_creator(self.models, self.config)
+        self.optimizers = self.optimizer_creator(
+            self.given_models, self.config)
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
         self.criterion = self.loss_creator(self.config)

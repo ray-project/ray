@@ -183,7 +183,7 @@ class PyTorchTrainer(object):
         models = self.model_creator(self.config)
         state = ray.get(self.workers[0].get_state.remote())
         if len(state["models"]) == 1:
-            models.load_state_dict(state["models"])
+            models.load_state_dict(state["models"][0])
         else:
             for model, state_dict in zip(models, state["models"]):
                 model.load_state_dict(state_dict)
