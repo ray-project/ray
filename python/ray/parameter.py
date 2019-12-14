@@ -212,8 +212,8 @@ class RayParams(object):
                 "The redirect_output argument is deprecated.")
 
         if self.use_pickle:
-            assert (version.parse(np.__version__) >=
-                    version.parse("1.16.0")), (
-                "numpy >= 1.16.0 required for use_pickle=True support. "
-                "You can use ray.init(use_pickle=False) for older numpy "
-                "versions, but this may be removed in future versions.")
+            assert (version.parse(
+                np.__version__) >= version.parse("1.16.0")), (
+                    "numpy >= 1.16.0 required for use_pickle=True support. "
+                    "You can use ray.init(use_pickle=False) for older numpy "
+                    "versions, but this may be removed in future versions.")
