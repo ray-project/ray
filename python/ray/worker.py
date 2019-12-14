@@ -20,6 +20,9 @@ import time
 import traceback
 import random
 
+import numpy as np
+import packaging
+
 # Ray modules
 import ray.cloudpickle as pickle
 import ray.gcs_utils
@@ -667,6 +670,13 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
+
+    if use_pickle:
+        assert (packaging.version.parse(np.__version__) >=
+                packaging.version.parse("1.16.0")), (
+            "numpy >= 1.16.0 required for use_pickle=True support. "
+            "You can use ray.init(use_pickle=False) for older numpy "
+            "versions, but this may be removed in future versions.")
 
     if setproctitle is None:
         logger.warning(
