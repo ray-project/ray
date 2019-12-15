@@ -431,7 +431,10 @@ class CoreWorkerDirectTaskReceiver {
 
   ~CoreWorkerDirectTaskReceiver() {
     fiber_shutdown_event_.Notify();
-    fiber_runner_thread_.join();
+    // Only join the fiber thread if it was spawned in the first place.
+    if (fiber_runner_thread_.joinable()) {
+      fiber_runner_thread_.join();
+    }
   }
 
   /// Initialize this receiver. This must be called prior to use.

@@ -381,7 +381,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         redis_client = services.create_redis_client(
             redis_address, password=redis_password)
 
-        # Check that the verion information on this node matches the version
+        # Check that the version information on this node matches the version
         # information that the cluster was started with.
         services.check_version_info(redis_client)
 
