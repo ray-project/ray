@@ -13,6 +13,7 @@ from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.experimental.serve.utils import (block_until_http_ready,
                                           get_random_letters)
 from ray.experimental.serve.exceptions import RayServeException
+from ray.experimental.serve.policy import Policy
 global_state = None
 
 
@@ -21,6 +22,12 @@ def _get_global_state():
     will always reference the original None object
     """
     return global_state
+
+
+def _get_router_policy(queueing_policy_name):
+    for p in Policy:
+        if p.name == queueing_policy_name:
+            return p
 
 
 def _ensure_connected(f):
@@ -40,7 +47,9 @@ def init(kv_store_connector=None,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={"object_store_memory": int(1e8)},
-         gc_window_seconds=3600):
+         gc_window_seconds=3600,
+         queueing_policy="random",
+         **policy_kwargs):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -63,9 +72,17 @@ def init(kv_store_connector=None,
         gc_window_seconds(int): How long will we keep the metric data in
             memory. Data older than the gc_window will be deleted. The default
             is 3600 seconds, which is 1 hour.
+        queueing_policy(str): Define the queueing policy for selecting the
+            backend for a service.
+        policy_kwargs: Arguments required to instantiate a queueing policy
     """
     global global_state
-
+    queueing_policy = _get_router_policy(queueing_policy)
+    if queueing_policy is None:
+        supported_policies = " , ".join([p.name for p in Policy])
+        raise ValueError(
+            "Please specify supported router policy."
+            " Supported policies are: {}".format(supported_policies))
     # Noop if global_state is no longer None
     if global_state is not None:
         return
@@ -92,7 +109,8 @@ def init(kv_store_connector=None,
 
     global_state = GlobalState(nursery)
     global_state.init_or_get_http_server(host=http_host, port=http_port)
-    global_state.init_or_get_router()
+    global_state.init_or_get_router(
+        queueing_policy=queueing_policy, policy_kwargs=policy_kwargs)
     global_state.init_or_get_metric_monitor(
         gc_window_seconds=gc_window_seconds)
 
