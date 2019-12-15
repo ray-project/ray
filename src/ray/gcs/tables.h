@@ -671,6 +671,16 @@ class ActorTable : public Log<ActorID, ActorTableData> {
   }
 };
 
+class DirectActorTable : public Log<ActorID, ActorTableData> {
+ public:
+  DirectActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                   RedisGcsClient *client)
+      : Log(contexts, client) {
+    pubsub_channel_ = TablePubsub::DIRECT_ACTOR_PUBSUB;
+    prefix_ = TablePrefix::DIRECT_ACTOR;
+  }
+};
+
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::vector<std::shared_ptr<RedisContext>> &contexts,

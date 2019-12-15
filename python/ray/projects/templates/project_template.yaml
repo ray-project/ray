@@ -6,7 +6,8 @@ name: {{name}}
 # The URL of the repo this project is part of.
 {{repo_string}}
 
-cluster: {{cluster}}
+cluster:
+  config: {{cluster}}
 
 environment:
   # dockerfile: The dockerfile to be built and ran the commands with.
