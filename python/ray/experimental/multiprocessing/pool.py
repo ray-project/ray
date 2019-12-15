@@ -5,7 +5,6 @@ from __future__ import print_function
 from multiprocessing import TimeoutError
 import os
 import random
-import time
 
 import ray
 
@@ -163,18 +162,26 @@ class Pool(object):
             # Cluster mode.
             if "RAY_ADDRESS" in os.environ:
                 address = os.environ["RAY_ADDRESS"]
-                print("Connecting to ray cluster at address='{}'".format(address))
+                print("Connecting to ray cluster at address='{}'".format(
+                    address))
                 ray.init(address=address)
             # Local mode.
             else:
                 print("Starting local ray cluster")
                 ray.init(num_cpus=processes)
+
+        ray_cpus = int(ray.state.cluster_resources()["CPU"])
         if processes is None:
-            processes = int(ray.state.cluster_resources()["CPU"])
+            processes = ray_cpus
+        elif ray_cpus < processes:
+            raise ValueError("Tried to start a pool with {} processes on an "
+                             "existing ray cluster, but there are only {} "
+                             "CPUs in the ray cluster.".format(
+                                 processes, ray_cpus))
+
         return processes
 
     def _start_actor_pool(self, processes):
-        start = time.time()
         self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
         ray.get([actor.ping.remote() for actor, _ in self._actor_pool])
 
@@ -201,8 +208,7 @@ class Pool(object):
         # TODO(edoakes): The initializer function can't currently be used to
         # modify the global namespace (e.g., import packages or set globals)
         # due to a limitation in cloudpickle.
-        return (PoolActor._remote(
-            self._initializer, *self._initargs), 0)
+        return (PoolActor._remote(self._initializer, *self._initargs), 0)
 
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch(self, actor_index, func, batch):
