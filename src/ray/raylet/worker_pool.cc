@@ -257,10 +257,9 @@ pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_ar
     RAY_LOG(DEBUG) << stream.str();
   }
 
-  pid_t pid = spawnvp_wrapper(worker_command_args);
   // Launch the process to create the worker.
+  pid_t pid = spawnvp_wrapper(worker_command_args);
   if (pid == -1) {
-    // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start worker with error " << errno << ": "
                    << strerror(errno);
   }
