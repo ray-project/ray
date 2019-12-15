@@ -13,7 +13,6 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import TuneError
 from ray.tune.syncer import CommandBasedClient
 
 if sys.version_info >= (3, 3):
@@ -94,8 +93,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testClusterProperString(self):
         """Tests that invalid commands throw.."""
-        with self.assertRaises(TuneError):
-            # This raises TuneError because logger is init in safe zone.
+        with self.assertRaises(ValueError):
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -107,8 +105,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {target}"
                 }).trials
 
-        with self.assertRaises(TuneError):
-            # This raises TuneError because logger is init in safe zone.
+        with self.assertRaises(ValueError):
             [trial] = tune.run(
                 "__fake",
                 name="foo",

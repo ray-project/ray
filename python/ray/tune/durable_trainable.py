@@ -5,7 +5,7 @@ from __future__ import print_function
 import os
 
 from ray.tune.trainable import Trainable
-from ray.tune.syncer import get_cloud_syncer
+from ray.tune.syncer import get_cloud_sync_client
 
 
 class DurableTrainable(Trainable):
@@ -16,7 +16,7 @@ class DurableTrainable(Trainable):
 
     def __init__(self, *args, **kwargs):
         super(DurableTrainable, self).__init__(*args, **kwargs)
-        self.storage_client = get_cloud_syncer(self._root_storage_path())
+        self.storage_client = get_cloud_sync_client(self._root_storage_path())
 
     def save(self, checkpoint_dir=None):
         """Saves checkpoint to remote storage."""

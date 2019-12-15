@@ -14,13 +14,11 @@ except ImportError:  # py2
 
 from ray import services
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
-from ray.tune.sync_client import CommandBasedClient, get_sync_client, NOOP
+from ray.tune.sync_client import (CommandBasedClient, get_sync_client,
+                                  get_cloud_sync_client, NOOP)
 
 logger = logging.getLogger(__name__)
 
-S3_PREFIX = "s3://"
-GS_PREFIX = "gs://"
-ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
 SYNC_PERIOD = 300
 
 _log_sync_warned = False
@@ -238,27 +236,8 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
     if client:
         _syncers[key] = Syncer(local_dir, remote_dir, client)
         return _syncers[key]
-
-    if remote_dir.startswith(S3_PREFIX):
-        if not distutils.spawn.find_executable("aws"):
-            raise ValueError(
-                "Upload uri starting with '{}' requires awscli tool"
-                " to be installed".format(S3_PREFIX))
-        template = "aws s3 sync {source} {target}"
-        s3_client = CommandBasedClient(template, template)
-        _syncers[key] = Syncer(local_dir, remote_dir, s3_client)
-    elif remote_dir.startswith(GS_PREFIX):
-        if not distutils.spawn.find_executable("gsutil"):
-            raise ValueError(
-                "Upload uri starting with '{}' requires gsutil tool"
-                " to be installed".format(GS_PREFIX))
-        template = "gsutil rsync -r {source} {target}"
-        gs_client = CommandBasedClient(template, template)
-        _syncers[key] = Syncer(local_dir, remote_dir, gs_client)
-    else:
-        raise ValueError("Upload uri must start with one of: {}"
-                         "".format(ALLOWED_REMOTE_PREFIXES))
-
+    sync_client = get_cloud_sync_client(remote_dir)
+    _syncers[key] = Syncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
 
 
@@ -281,10 +260,9 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
     elif sync_function:
         sync_client = get_sync_client(sync_function)
     else:
-        sync_up = log_sync_template()
-        sync_down = log_sync_template(options="--remove-source-files")
-        if sync_up and sync_down:
-            sync_client = CommandBasedClient(sync_up, sync_down)
+        sync = log_sync_template()
+        if sync:
+            sync_client = CommandBasedClient(sync, sync)
             sync_client.set_logdir(local_dir)
         else:
             sync_client = NOOP
