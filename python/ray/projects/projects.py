@@ -57,7 +57,7 @@ class ProjectDefinition:
             name (str): Name of the command to parse.
             params (dict): Parameter specification used to construct
                 the argparse parser.
-            wildcards: Whether wildcards are allowed as arguments.
+            wildcards (bool): Whether wildcards are allowed as arguments.
 
         Returns:
             The argparse parser.
