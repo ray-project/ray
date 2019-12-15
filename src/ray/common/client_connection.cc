@@ -317,9 +317,9 @@ std::string ClientConnection<T>::RemoteEndpointInfo() {
 }
 
 template <>
-std::string ClientConnection<boost::asio::ip::tcp>::RemoteEndpointInfo() {
+std::string ClientConnection<remote_stream_protocol>::RemoteEndpointInfo() {
   const auto &remote_endpoint =
-      ServerConnection<boost::asio::ip::tcp>::socket_.remote_endpoint();
+      ServerConnection<remote_stream_protocol>::socket_.remote_endpoint();
   return remote_endpoint.address().to_string() + ":" +
          std::to_string(remote_endpoint.port());
 }
@@ -361,9 +361,9 @@ std::string ServerConnection<T>::DebugString() const {
   return result.str();
 }
 
-template class ServerConnection<boost::asio::local::stream_protocol>;
-template class ServerConnection<boost::asio::ip::tcp>;
-template class ClientConnection<boost::asio::local::stream_protocol>;
-template class ClientConnection<boost::asio::ip::tcp>;
+template class ServerConnection<local_stream_protocol>;
+template class ServerConnection<remote_stream_protocol>;
+template class ClientConnection<local_stream_protocol>;
+template class ClientConnection<remote_stream_protocol>;
 
 }  // namespace ray

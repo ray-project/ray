@@ -1,0 +1,32 @@
+COPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-Dssize_t=ptrdiff_t",  # no ssize_t on Windows
+        "-fcolor-diagnostics",
+        "-fansi-escape-codes",
+    ],
+    "//conditions:default": [
+    ],
+})
+
+cc_library(
+    name = "hiredis",
+    srcs = glob(
+        [
+            "deps/hiredis/*.c",
+            "deps/hiredis/*.h",
+        ],
+        exclude =
+        [
+            "deps/hiredis/test.c",
+        ],
+    ),
+    hdrs = glob([
+        "deps/hiredis/*.h",
+        "deps/hiredis/adapters/*.h",
+        "deps/hiredis/dict.c",
+    ]),
+    copts = COPTS,
+    includes = ["deps"],
+    strip_include_prefix = "deps",
+    visibility = ["//visibility:public"],
+)

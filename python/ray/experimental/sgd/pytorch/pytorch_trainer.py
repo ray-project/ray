@@ -7,6 +7,7 @@ import os
 import torch
 import torch.distributed as dist
 import logging
+import numbers
 
 import ray
 
@@ -90,13 +91,8 @@ class PyTorchTrainer(object):
                  "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
-        self.data_creator = data_creator
-        self.optimizer_creator = optimizer_creator
-        self.loss_creator = loss_creator
         self.train_function = train_function
         self.validation_function = validation_function
-        self.batch_size = batch_size
-        self.num_replicas = num_replicas
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
@@ -171,25 +167,21 @@ class PyTorchTrainer(object):
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self, retries=3):
+    def train(self):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers.
         """
         with self.optimizer_timer:
-            results = [w.step.remote() for w in self.workers]
-            for i in retries:
-                results = retry_on_fail()
-                if not results:
-                    self.shutdown()
-                    self.start_workers()
-
-        worker_stats = ray.get(results)
+            worker_stats = ray.get([w.step.remote() for w in self.workers])
 
         train_stats = {}
         for stat_key in worker_stats[0]:
-            train_stats[stat_key] = np.nanmean(
-                [s.get(stat_key, np.nan) for s in worker_stats])
+            if isinstance(worker_stats[0], numbers.Number):
+                train_stats[stat_key] = np.nanmean(
+                    [s.get(stat_key, np.nan) for s in worker_stats])
+            else:
+                train_stats[stat_key] = worker_stats[0][stat_key]
         return train_stats
 
     def apply_all_workers(self, fn):
@@ -212,7 +204,7 @@ class PyTorchTrainer(object):
         models = self.model_creator(self.config)
         state = ray.get(self.workers[0].get_state.remote())
         if len(state["models"]) == 1:
-            models.load_state_dict(state["models"])
+            models.load_state_dict(state["models"][0])
         else:
             for model, state_dict in zip(models, state["models"]):
                 model.load_state_dict(state_dict)

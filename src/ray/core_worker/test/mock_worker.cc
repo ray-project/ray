@@ -35,8 +35,37 @@ class MockWorker {
                      const std::vector<ObjectID> &return_ids,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
-    RAY_CHECK(return_ids.size() >= 0);
+    const std::vector<std::string> &function_descriptor =
+        ray_function.GetFunctionDescriptor();
+    RAY_CHECK(return_ids.size() >= 0 && 1 == function_descriptor.size());
 
+    if ("actor creation task" == function_descriptor[0]) {
+      return Status::OK();
+    } else if ("GetWorkerPid" == function_descriptor[0]) {
+      // Get mock worker pid
+      return GetWorkerPid(results);
+    } else if ("MergeInputArgsAsOutput" == function_descriptor[0]) {
+      // Merge input args and write the merged content to each of return ids
+      return MergeInputArgsAsOutput(args, return_ids, results);
+    } else {
+      return Status::TypeError("Unknown function descriptor: " + function_descriptor[0]);
+    }
+  }
+
+  Status GetWorkerPid(std::vector<std::shared_ptr<RayObject>> *results) {
+    // Save the pid of current process to the return object.
+    std::string pid_string = std::to_string(static_cast<int>(getpid()));
+    auto data =
+        const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
+    auto memory_buffer =
+        std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
+    results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
+    return Status::OK();
+  }
+
+  Status MergeInputArgsAsOutput(const std::vector<std::shared_ptr<RayObject>> &args,
+                                const std::vector<ObjectID> &return_ids,
+                                std::vector<std::shared_ptr<RayObject>> *results) {
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;
     for (const auto &arg : args) {

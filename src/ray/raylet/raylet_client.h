@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <boost/asio/detail/socket_holder.hpp>
+
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -25,7 +27,33 @@ using ray::rpc::ProfileTableData;
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
+using Socket = boost::asio::detail::socket_holder;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
+
+namespace ray {
+
+/// Interface for leasing workers. Abstract for testing.
+class WorkerLeaseInterface {
+ public:
+  /// Requests a worker from the raylet. The callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \return ray::Status
+  virtual ray::Status RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) = 0;
+
+  /// Returns a worker to the raylet.
+  /// \param worker_port The local port of the worker on the raylet node.
+  /// \param worker_id The unique worker id of the worker on the raylet node.
+  /// \param disconnect_worker Whether the raylet should disconnect the worker.
+  /// \return ray::Status
+  virtual ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                                   bool disconnect_worker) = 0;
+
+  virtual ~WorkerLeaseInterface(){};
+};
+
+namespace raylet {
 
 class RayletConnection {
  public:
@@ -40,46 +68,29 @@ class RayletConnection {
   /// \return The connection information.
   RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
 
-  ~RayletConnection() { close(conn_); }
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
   /// propagate an error message to the driver.
   ///
   /// \return ray::Status.
   ray::Status Disconnect();
+
   ray::Status ReadMessage(MessageType type, std::unique_ptr<uint8_t[]> &message);
+
   ray::Status WriteMessage(MessageType type,
                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
+
   ray::Status AtomicRequestReply(MessageType request_type, MessageType reply_type,
                                  std::unique_ptr<uint8_t[]> &reply_message,
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
  private:
-  /// File descriptor of the Unix domain socket that connects to raylet.
-  int conn_;
+  /// The Unix domain socket that connects to raylet.
+  Socket conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
   /// A mutex to protect write operations of the raylet client.
   std::mutex write_mutex_;
-};
-
-/// Interface for leasing workers. Abstract for testing.
-class WorkerLeaseInterface {
- public:
-  /// Requests a worker from the raylet. The callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be allocated for the worker.
-  /// \return ray::Status
-  virtual ray::Status RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) = 0;
-
-  /// Returns a worker to the raylet.
-  /// \param worker_port The local port of the worker on the raylet node.
-  /// \param disconnect_worker Whether the raylet should disconnect the worker.
-  /// \return ray::Status
-  virtual ray::Status ReturnWorker(int worker_port, bool disconnect_worker) = 0;
-
-  virtual ~WorkerLeaseInterface(){};
 };
 
 class RayletClient : public WorkerLeaseInterface {
@@ -234,7 +245,8 @@ class RayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) override;
 
   /// Implements WorkerLeaseInterface.
-  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override;
+  ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
+                           bool disconnect_worker) override;
 
   WorkerID GetWorkerID() const { return worker_id_; }
 
@@ -255,5 +267,9 @@ class RayletClient : public WorkerLeaseInterface {
   /// The connection to the raylet server.
   std::unique_ptr<RayletConnection> conn_;
 };
+
+}  // namespace raylet
+
+}  // namespace ray
 
 #endif

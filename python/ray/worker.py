@@ -431,6 +431,7 @@ class Worker(object):
 
         signal.signal(signal.SIGTERM, sigterm_handler)
         self.core_worker.run_task_loop()
+        sys.exit(0)
 
 
 def get_gpu_ids():
@@ -795,7 +796,9 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id)
+        job_id=job_id,
+        internal_config=json.loads(_internal_config)
+        if _internal_config else {})
 
     for hook in _post_init_hooks:
         hook()
@@ -832,6 +835,12 @@ def shutdown(exiting_interpreter=False):
 
     disconnect(exiting_interpreter)
 
+    # We need to destruct the core worker here because after this function,
+    # we will tear down any processes spawned by ray.init() and the background
+    # IO thread in the core worker doesn't currently handle that gracefully.
+    if hasattr(global_worker, "core_worker"):
+        del global_worker.core_worker
+
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
 
@@ -841,7 +850,7 @@ def shutdown(exiting_interpreter=False):
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
-    # TODO(rkn): Instead of manually reseting some of the worker fields, we
+    # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker._post_get_hooks = []
@@ -1064,7 +1073,8 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None):
+            job_id=None,
+            internal_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1077,6 +1087,8 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
+        internal_config: Dictionary of (str,str) containing internal config
+            options to override the defaults.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1086,6 +1098,8 @@ def connect(node,
     # Enable nice stack traces on SIGSEGV etc.
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
+
+    ray._raylet.set_internal_config(internal_config)
 
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
@@ -1104,9 +1118,8 @@ def connect(node,
         if setproctitle:
             setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
-        # Code path of local mode
         if job_id is None:
-            job_id = JobID.from_int(random.randint(1, 100000))
+            job_id = JobID.from_int(random.randint(1, 65535))
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
     else:
@@ -1325,12 +1338,6 @@ def disconnect(exiting_interpreter=False):
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
-
-    # We need to destruct the core worker here because after this function,
-    # we will tear down any processes spawned by ray.init() and the background
-    # threads in the core worker don't currently handle that gracefully.
-    if hasattr(worker, "core_worker"):
-        del worker.core_worker
 
 
 @contextmanager
@@ -1621,6 +1628,7 @@ def make_decorator(num_return_vals=None,
                    object_store_memory=None,
                    resources=None,
                    max_calls=None,
+                   max_retries=None,
                    max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
@@ -1633,7 +1641,8 @@ def make_decorator(num_return_vals=None,
 
             return ray.remote_function.RemoteFunction(
                 function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls)
+                object_store_memory, resources, num_return_vals, max_calls,
+                max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1732,6 +1741,7 @@ def remote(*args, **kwargs):
             "resources",
             "max_calls",
             "max_reconstructions",
+            "max_retries",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -1751,6 +1761,7 @@ def remote(*args, **kwargs):
     max_reconstructions = kwargs.get("max_reconstructions")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
+    max_retries = kwargs.get("max_retries")
 
     return make_decorator(
         num_return_vals=num_return_vals,
@@ -1761,4 +1772,5 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
+        max_retries=max_retries,
         worker=worker)

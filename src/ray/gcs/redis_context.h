@@ -16,14 +16,12 @@
 #include "ray/protobuf/gcs.pb.h"
 
 extern "C" {
-#include "ray/thirdparty/hiredis/adapters/ae.h"
-#include "ray/thirdparty/hiredis/async.h"
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 }
 
 struct redisContext;
 struct redisAsyncContext;
-struct aeEventLoop;
 
 namespace ray {
 
@@ -91,19 +89,19 @@ class RedisCallbackManager {
         : callback_(callback),
           is_subscription_(is_subscription),
           start_time_(start_time),
-          io_service_(io_service) {}
+          io_service_(&io_service) {}
 
     void Dispatch(std::shared_ptr<CallbackReply> &reply) {
       std::shared_ptr<CallbackItem> self = shared_from_this();
       if (callback_ != nullptr) {
-        io_service_.post([self, reply]() { self->callback_(std::move(reply)); });
+        io_service_->post([self, reply]() { self->callback_(std::move(reply)); });
       }
     }
 
     RedisCallback callback_;
     bool is_subscription_;
     int64_t start_time_;
-    boost::asio::io_service &io_service_;
+    boost::asio::io_service *io_service_;
   };
 
   int64_t add(const RedisCallback &function, bool is_subscription,

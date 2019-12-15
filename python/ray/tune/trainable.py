@@ -76,8 +76,8 @@ class Trainable(object):
             self._logdir = self._result_logger.logdir
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
+            ray.utils.try_to_create_directory(
+                DEFAULT_RESULTS_DIR, warn_if_exist=False)
             self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(
@@ -396,7 +396,8 @@ class Trainable(object):
 
         This method is optional, but can be implemented to speed up algorithms
         such as PBT, and to allow performance optimizations such as running
-        experiments with reuse_actors=True.
+        experiments with reuse_actors=True. Note that self.config need to
+        be updated to reflect the latest parameter information in Ray logs.
 
         Args:
             new_config (dir): Updated hyperparameter configuration

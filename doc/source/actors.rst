@@ -121,9 +121,9 @@ requirements, you can do so as follows.
           self.value += 1
           return self.value
 
-  a1 = Counter._remote(num_cpus=1, resources={"Custom1": 1})
-  a2 = Counter._remote(num_cpus=2, resources={"Custom2": 1})
-  a3 = Counter._remote(num_cpus=3, resources={"Custom3": 1})
+  a1 = Counter.options(num_cpus=1, resources={"Custom1": 1}).remote()
+  a2 = Counter.options(num_cpus=2, resources={"Custom2": 1}).remote()
+  a3 = Counter.options(num_cpus=3, resources={"Custom3": 1}).remote()
 
 Note that to create these actors successfully, Ray will need to be started with
 sufficient CPU resources and the relevant custom resources.

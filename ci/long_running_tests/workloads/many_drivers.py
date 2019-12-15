@@ -7,7 +7,7 @@ from __future__ import print_function
 import time
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.test_utils import run_string_as_driver
 
 num_redis_shards = 5
