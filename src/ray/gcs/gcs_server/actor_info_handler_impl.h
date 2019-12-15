@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_GCS_SERVER_ACTOR_INFO_HANDLER_IMPL_H
-#define RAY_GCS_GCS_SERVER_ACTOR_INFO_HANDLER_IMPL_H
+#ifndef RAY_GCS_ACTOR_INFO_HANDLER_IMPL_H
+#define RAY_GCS_ACTOR_INFO_HANDLER_IMPL_H
 
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"

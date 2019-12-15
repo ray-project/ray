@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RAY_RPC_GCS_RPC_SERVER_H
+#define RAY_RPC_GCS_RPC_SERVER_H
 
 #include "src/ray/rpc/grpc_server.h"
 #include "src/ray/rpc/server_call.h"
@@ -129,3 +130,5 @@ class ActorInfoGrpcService : public GrpcService {
 
 }  // namespace rpc
 }  // namespace ray
+
+#endif // RAY_RPC_GCS_RPC_SERVER_H

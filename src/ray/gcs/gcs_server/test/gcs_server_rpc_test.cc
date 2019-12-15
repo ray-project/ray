@@ -1,88 +1,189 @@
-#include <boost/asio/basic_socket.hpp>
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
+#include "gtest/gtest.h"
+#include "ray/gcs/gcs_server/actor_info_handler_impl.h"
+#include "ray/gcs/gcs_server/job_info_handler_impl.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 namespace ray {
-class GcsServerRpcTest : public ::testing::Test {
- protected:
-  template <typename T>
-  class MockedGcsServer : public gcs::GcsServer {
-   public:
-    explicit MockedGcsServer(const gcs::GcsServerConfig &config)
-        : gcs::GcsServer(config) {}
+class GcsServerTest : public ::testing::Test {
+ public:
+  GcsServerTest() : options_("127.0.0.1", 6379, "", true) {}
 
-   protected:
-    void InitBackendClient() override {}
+  void SetUp() override {
+    thread_.reset(new std::thread([this] {
+      std::unique_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(io_service_));
+      io_service_.run();
+    }));
 
-    std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler() override {
-      return std::unique_ptr<rpc::JobInfoHandler>(new T);
-    }
-  };
-};
+    // create redis gcs client
+    redis_gcs_client_ = std::make_shared<gcs::RedisGcsClient>(options_);
+    RAY_CHECK_OK(redis_gcs_client_->Connect(io_service_));
 
-TEST_F(GcsServerRpcTest, JobInfo) {
-  class MockedJobInfoHandler : public rpc::JobInfoHandler {
-   public:
-    void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override {
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    }
+    // create gcs rpc server
+    server_.reset(new rpc::GrpcServer("gcs_server", 0));
+    job_info_handler_.reset(new rpc::DefaultJobInfoHandler(*redis_gcs_client_));
+    job_info_service_.reset(new rpc::JobInfoGrpcService(io_service_, *job_info_handler_));
+    actor_info_handler_.reset(new rpc::DefaultActorInfoHandler(*redis_gcs_client_));
+    actor_info_service_.reset(
+        new rpc::ActorInfoGrpcService(io_service_, *actor_info_handler_));
+    server_->RegisterService(*job_info_service_);
+    server_->RegisterService(*actor_info_service_);
+    server_->Run();
 
-    void HandleMarkJobFinished(const rpc::MarkJobFinishedRequest &request,
-                               rpc::MarkJobFinishedReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override {
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    }
-  };
-
-  gcs::GcsServerConfig config;
-  config.grpc_server_port = 0;
-  config.grpc_server_name = "MockedGcsServer";
-  config.grpc_server_thread_num = 1;
-  MockedGcsServer<MockedJobInfoHandler> server(config);
-  std::thread([&server] { server.Start(); }).detach();
-
-  // Wait until server starts listening.
-  while (server.GetPort() == 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    // create gcs rpc client
+    client_call_manager_.reset(new rpc::ClientCallManager(io_service_));
+    client_.reset(
+        new rpc::GcsRpcClient("0.0.0.0", server_->GetPort(), *client_call_manager_));
   }
 
-  boost::asio::io_context client_io_context;
-  boost::asio::io_context::work worker(client_io_context);
-  rpc::ClientCallManager client_call_manager(client_io_context);
-  rpc::GcsRpcClient client("0.0.0.0", server.GetPort(), client_call_manager);
-  std::thread([&client_io_context] { client_io_context.run(); }).detach();
+  void TearDown() override {
+    redis_gcs_client_->Disconnect();
 
-  rpc::AddJobRequest add_job_request;
-  std::promise<rpc::AddJobReply> add_job_reply_promise;
-  auto add_job_reply_future = add_job_reply_promise.get_future();
-  client.AddJob(add_job_request, [&add_job_reply_promise](const Status &status,
-                                                          const rpc::AddJobReply &reply) {
-    if (status.ok()) {
-      add_job_reply_promise.set_value(reply);
+    io_service_.stop();
+    thread_->join();
+
+    server_->Shutdown();
+  }
+
+  void TestAsyncRegister(const rpc::ActorAsyncRegisterRequest &request) {
+    uint64_t count = actor_info_handler_->GetAsyncRegisterCount();
+    client_->AsyncRegister(
+        request, [](const Status &status, const rpc::ActorAsyncRegisterReply &reply) {
+          RAY_LOG(INFO) << "Received GcsServer AsyncRegister response.";
+        });
+    while (actor_info_handler_->GetAsyncRegisterCount() <= count) {
+      sleep(1);
     }
-  });
-  auto future_status = add_job_reply_future.wait_for(std::chrono::milliseconds(200));
-  ASSERT_EQ(future_status, std::future_status::ready);
 
-  rpc::MarkJobFinishedRequest mark_job_finished_request;
-  std::promise<rpc::MarkJobFinishedReply> mark_job_finished_reply_promise;
-  auto mark_job_finished_reply_future = mark_job_finished_reply_promise.get_future();
-  client.MarkJobFinished(
-      mark_job_finished_request,
-      [&mark_job_finished_reply_promise](const Status &status,
-                                         const rpc::MarkJobFinishedReply &reply) {
-        if (status.ok()) {
-          mark_job_finished_reply_promise.set_value(reply);
-        }
+    // Async get actor
+    count = actor_info_handler_->GetAsyncGetCount();
+    rpc::ActorAsyncGetRequest asyncGetRequest;
+    asyncGetRequest.set_actor_id(request.actor_table_data().actor_id());
+    client_->AsyncGet(asyncGetRequest, [request](const Status &status,
+                                                 const rpc::ActorAsyncGetReply &reply) {
+      RAY_LOG(INFO) << "Received GcsServer AsyncGet response.";
+      const rpc::ActorTableData &reply_actor_data = reply.actor_table_data();
+      RAY_LOG(INFO) << "Actor state is:" << reply_actor_data.state();
+      ASSERT_TRUE(reply_actor_data.state() == request.actor_table_data().state());
+    });
+    while (actor_info_handler_->GetAsyncGetCount() <= count) {
+      sleep(1);
+    }
+  }
+
+  void TestAsyncUpdateAndGet(const rpc::ActorAsyncUpdateRequest &request) {
+    uint64_t count = actor_info_handler_->GetAsyncUpdateCount();
+    client_->AsyncUpdate(request, [](const Status &status,
+                                     const rpc::ActorAsyncUpdateReply &reply) {
+      RAY_LOG(INFO) << "Received GcsServer AsyncUpdate response." << reply.DebugString();
+    });
+    while (actor_info_handler_->GetAsyncUpdateCount() <= count) {
+      sleep(1);
+    }
+
+    // Async get actor
+    count = actor_info_handler_->GetAsyncGetCount();
+    rpc::ActorAsyncGetRequest asyncGetRequest;
+    asyncGetRequest.set_actor_id(request.actor_table_data().actor_id());
+    client_->AsyncGet(asyncGetRequest, [request](const Status &status,
+                                                 const rpc::ActorAsyncGetReply &reply) {
+      RAY_LOG(INFO) << "Received GcsServer AsyncGet response." << reply.DebugString();
+      const rpc::ActorTableData &reply_actor_data = reply.actor_table_data();
+      RAY_LOG(INFO) << "Actor state is:" << reply_actor_data.state();
+      ASSERT_TRUE(reply_actor_data.state() == request.actor_table_data().state());
+    });
+    while (actor_info_handler_->GetAsyncGetCount() <= count) {
+      sleep(1);
+    }
+  }
+
+  rpc::JobTableData genJobTableData(JobID job_id) {
+    rpc::JobTableData job_table_data;
+    job_table_data.set_job_id(job_id.Binary());
+    job_table_data.set_is_dead(false);
+    job_table_data.set_timestamp(std::time(nullptr));
+    job_table_data.set_node_manager_address("127.0.0.1");
+    job_table_data.set_driver_pid(5667L);
+    return job_table_data;
+  }
+
+  rpc::ActorTableData genActorTableData(const JobID &job_id) {
+    rpc::ActorTableData actor_table_data;
+    TaskID task_id = TaskID::ForDriverTask(job_id);
+    ActorID actor_id = ActorID::Of(job_id, task_id, 0);
+    actor_table_data.set_actor_id(actor_id.Binary());
+    actor_table_data.set_job_id(job_id.Binary());
+    actor_table_data.set_state(
+        rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+    actor_table_data.set_max_reconstructions(2);
+    actor_table_data.set_remaining_reconstructions(2);
+    return actor_table_data;
+  }
+
+ protected:
+  // gcs server
+  std::unique_ptr<std::thread> thread_;
+  std::unique_ptr<rpc::GrpcServer> server_;
+  std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
+  std::unique_ptr<rpc::DefaultJobInfoHandler> job_info_handler_;
+  std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
+  std::unique_ptr<rpc::DefaultActorInfoHandler> actor_info_handler_;
+  gcs::GcsClientOptions options_;
+  std::shared_ptr<gcs::RedisGcsClient> redis_gcs_client_;
+  boost::asio::io_service io_service_;
+
+  // gcs client
+  std::unique_ptr<rpc::GcsRpcClient> client_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+};
+
+TEST_F(GcsServerTest, TestActorInfo) {
+  // create actor_table_data
+  JobID job_id = JobID::FromInt(1);
+  rpc::ActorTableData actor_table_data = genActorTableData(job_id);
+
+  // Async register actor
+  rpc::ActorAsyncRegisterRequest asyncRegisterRequest;
+  asyncRegisterRequest.mutable_actor_table_data()->CopyFrom(actor_table_data);
+  TestAsyncRegister(asyncRegisterRequest);
+
+  // Async update actor state and get
+  rpc::ActorAsyncUpdateRequest asyncUpdateRequest;
+  asyncUpdateRequest.set_actor_id(actor_table_data.actor_id());
+  asyncUpdateRequest.mutable_actor_table_data()->CopyFrom(actor_table_data);
+  TestAsyncUpdateAndGet(asyncUpdateRequest);
+}
+
+TEST_F(GcsServerTest, TestJobInfo) {
+  // create job_table_data
+  JobID job_id = JobID::FromInt(1);
+  rpc::JobTableData job_table_data = genJobTableData(job_id);
+  rpc::AddJobRequest add_job_request;
+  add_job_request.mutable_data()->CopyFrom(job_table_data);
+  uint64_t count = job_info_handler_->GetAddJobCount();
+  client_->AddJob(
+      add_job_request, [](const Status &status, const rpc::AddJobReply &reply) {
+        RAY_LOG(INFO) << "Received GcsServer AddJob response." << reply.DebugString();
+        ASSERT_TRUE(reply.success());
       });
-  future_status = mark_job_finished_reply_future.wait_for(std::chrono::milliseconds(200));
-  ASSERT_EQ(future_status, std::future_status::ready);
+  while (job_info_handler_->GetAddJobCount() <= count) {
+    sleep(1);
+  }
 
-  client_io_context.stop();
-  server.Stop();
+  count = job_info_handler_->GetMarkJobFinishedCount();
+  rpc::MarkJobFinishedRequest mark_job_finished_request;
+  mark_job_finished_request.set_job_id(job_table_data.job_id());
+  client_->MarkJobFinished(
+      mark_job_finished_request,
+      [](const Status &status, const rpc::MarkJobFinishedReply &reply) {
+        RAY_LOG(INFO) << "Received GcsServer MarkJobFinished response."
+                      << reply.DebugString();
+        ASSERT_TRUE(reply.success());
+      });
+  while (job_info_handler_->GetMarkJobFinishedCount() <= count) {
+    sleep(1);
+  }
 }
 
 }  // namespace ray

@@ -1,4 +1,6 @@
-#pragma once
+#ifndef RAY_GCS_JOB_INFO_HANDLER_IMPL_H
+#define RAY_GCS_JOB_INFO_HANDLER_IMPL_H
+
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -33,3 +35,5 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
 
 }  // namespace rpc
 }  // namespace ray
+
+#endif // RAY_GCS_JOB_INFO_HANDLER_IMPL_H
