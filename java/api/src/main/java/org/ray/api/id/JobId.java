@@ -10,10 +10,7 @@ import java.util.Arrays;
  */
 public class JobId extends BaseId implements Serializable {
 
-  // Note that the max value of a job id is NIL which value is (2^32 - 1).
-  public static final Long MAX_VALUE = (long) Math.pow(2, 32) - 1;
-
-  public static final int LENGTH = 4;
+  public static final int LENGTH = 2;
 
   public static final JobId NIL = genNil();
 
@@ -39,11 +36,17 @@ public class JobId extends BaseId implements Serializable {
   }
 
   public static JobId fromInt(int value) {
-    byte[] bytes = new byte[JobId.LENGTH];
+    if (value > Math.pow(256, JobId.LENGTH)) {
+      throw new IllegalArgumentException(
+          "The integer value is invalid for a JobId. Value: " + value);
+    }
+    byte[] bytes = new byte[Integer.BYTES];
     ByteBuffer wbb = ByteBuffer.wrap(bytes);
     wbb.order(ByteOrder.LITTLE_ENDIAN);
     wbb.putInt(value);
-    return new JobId(bytes);
+    wbb.flip();
+    wbb.limit(JobId.LENGTH);
+    return JobId.fromByteBuffer(wbb);
   }
 
   /**
