@@ -13,7 +13,7 @@ message AddJobReply {
 }
 
 message MarkJobFinishedRequest {
-  bytes job_id = 1;
+  JobTableData data = 1;
 }
 
 message MarkJobFinishedReply {
