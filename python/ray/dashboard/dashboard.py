@@ -21,7 +21,6 @@ import time
 import traceback
 import yaml
 
-from collections import Counter
 from collections import defaultdict
 from operator import itemgetter
 from typing import Dict
