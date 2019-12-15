@@ -4,4 +4,4 @@ environment:
   requirements: "requirements.txt"
 
 cluster:
-  config: "cluster.yaml"
+  config: cluster.yaml
