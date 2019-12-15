@@ -95,6 +95,17 @@ python_grpc_compile(
 )
 
 proto_library(
+    name = "gcs_service_proto",
+    srcs = ["src/ray/protobuf/gcs_service.proto"],
+    deps = [":gcs_proto"],
+)
+
+cc_proto_library(
+    name = "gcs_service_cc_proto",
+    deps = [":gcs_service_proto"],
+)
+
+proto_library(
     name = "object_manager_proto",
     srcs = ["src/ray/protobuf/object_manager.proto"],
 )
@@ -165,6 +176,31 @@ cc_library(
     deps = [
         ":grpc_common_lib",
         ":node_manager_cc_grpc",
+        ":ray_common",
+        "@boost//:asio",
+        "@com_github_grpc_grpc//:grpc++",
+    ],
+)
+
+# gcs_service gRPC lib.
+cc_grpc_library(
+    name = "gcs_service_cc_grpc",
+    srcs = [":gcs_service_proto"],
+    grpc_only = True,
+    deps = [":gcs_service_cc_proto"],
+)
+
+# gcs rpc server and client.
+cc_library(
+    name = "gcs_service_rpc",
+    hdrs = glob([
+        "src/ray/rpc/gcs_server/gcs_rpc_server.h",
+        "src/ray/rpc/gcs_server/gcs_rpc_client.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":gcs_service_cc_grpc",
+        ":grpc_common_lib",
         ":ray_common",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -279,6 +315,41 @@ cc_binary(
     deps = [
         ":gcs",
         ":ray_util",
+    ],
+)
+
+cc_library(
+    name = "gcs_server_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/gcs_server/*.cc",
+        ],
+        exclude = [
+            "src/ray/gcs/gcs_server/gcs_server_main.cc",
+            "src/ray/gcs/gcs_server/test/*.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/gcs/gcs_server/*.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        ":gcs_service_rpc",
+    ],
+)
+
+cc_binary(
+    name = "gcs_server",
+    srcs = [
+        "src/ray/gcs/gcs_server/gcs_server_main.cc",
+    ],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+        "@com_github_gflags_gflags//:gflags",
     ],
 )
 
@@ -618,6 +689,16 @@ cc_test(
     copts = COPTS,
     deps = [
         ":stats_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "gcs_server_rpc_test",
+    srcs = ["src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
