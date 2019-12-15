@@ -6,7 +6,8 @@ description: "A simple news reader example that uses ray actors to serve request
 tags: ["ray-example", "flask", "rss", "newsreader"]
 documentation: https://ray.readthedocs.io/en/latest/auto_examples/plot_newsreader.html
 
-cluster: ray-project/cluster.yaml
+cluster:
+  config: ray-project/cluster.yaml
 
 environment:
   requirements: ray-project/requirements.txt

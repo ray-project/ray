@@ -4,4 +4,5 @@ description: "Test project for docker environment"
 environment:
   docker: "Dockerfile"
 
-cluster: "cluster.yaml"
+cluster:
+  config: cluster.yaml
