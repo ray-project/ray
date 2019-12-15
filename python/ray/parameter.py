@@ -4,6 +4,9 @@ from __future__ import print_function
 
 import logging
 
+import numpy as np
+from packaging import version
+
 import ray.ray_constants as ray_constants
 
 
@@ -207,3 +210,10 @@ class RayParams(object):
         if self.redirect_output is not None:
             raise DeprecationWarning(
                 "The redirect_output argument is deprecated.")
+
+        if self.use_pickle:
+            assert (version.parse(
+                np.__version__) >= version.parse("1.16.0")), (
+                    "numpy >= 1.16.0 required for use_pickle=True support. "
+                    "You can use ray.init(use_pickle=False) for older numpy "
+                    "versions, but this may be removed in future versions.")
