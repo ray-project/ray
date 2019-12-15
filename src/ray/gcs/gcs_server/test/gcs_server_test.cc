@@ -173,7 +173,7 @@ TEST_F(GcsServerTest, TestJobInfo) {
 
   count = job_info_handler_->GetMarkJobFinishedCount();
   rpc::MarkJobFinishedRequest mark_job_finished_request;
-  mark_job_finished_request.mutable_data()->CopyFrom(job_table_data);
+  mark_job_finished_request.set_job_id(job_table_data.job_id());
   client_->MarkJobFinished(
       mark_job_finished_request,
       [](const Status &status, const rpc::MarkJobFinishedReply &reply) {
