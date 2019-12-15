@@ -118,7 +118,7 @@ class RayTrialExecutor(TrialExecutor):
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
         trial.set_location(Location())
-        logger.info("Trial %s: Setting up new remote runner.", trial)
+        logger.debug("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         return cls.remote(config=trial.config, logger_creator=logger_creator)
@@ -552,15 +552,17 @@ class RayTrialExecutor(TrialExecutor):
         """Before step() called, update the available resources."""
         self._update_avail_resources()
 
-    def save(self, trial, storage=Checkpoint.DISK):
+    def save(self, trial, storage=Checkpoint.DISK, result=None):
         """Saves the trial's state to a checkpoint."""
+        result = result or trial.last_result
+
         if storage == Checkpoint.MEMORY:
             value = trial.runner.save_to_object.remote()
-            checkpoint = Checkpoint(storage, value, trial.last_result)
+            checkpoint = Checkpoint(storage, value, result)
         else:
             with warn_if_slow("save_checkpoint_to_disk"):
                 value = ray.get(trial.runner.save.remote())
-                checkpoint = Checkpoint(storage, value, trial.last_result)
+                checkpoint = Checkpoint(storage, value, result)
 
         with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
             try:

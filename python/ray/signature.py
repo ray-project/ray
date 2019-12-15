@@ -37,7 +37,9 @@ Attributes:
         by 'functools.partial'.
 """
 
-DUMMY_TYPE = "__RAY_DUMMY__"
+# This dummy type is also defined in ArgumentsBuilder.java. Please keep it
+# synced.
+DUMMY_TYPE = b"__RAY_DUMMY__"
 
 
 def get_signature(func):

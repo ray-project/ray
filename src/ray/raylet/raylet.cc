@@ -51,7 +51,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
                     object_directory_),
       socket_name_(socket_name),
-      acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
+      acceptor_(main_service, local_stream_protocol::endpoint(socket_name)),
       socket_(main_service) {
   // Start listening for clients.
   DoAccept();
@@ -118,9 +118,9 @@ void Raylet::DoAccept() {
 void Raylet::HandleAccept(const boost::system::error_code &error) {
   if (!error) {
     // TODO: typedef these handlers.
-    ClientHandler<boost::asio::local::stream_protocol> client_handler =
+    ClientHandler<local_stream_protocol> client_handler =
         [this](LocalClientConnection &client) { node_manager_.ProcessNewClient(client); };
-    MessageHandler<boost::asio::local::stream_protocol> message_handler =
+    MessageHandler<local_stream_protocol> message_handler =
         [this](std::shared_ptr<LocalClientConnection> client, int64_t message_type,
                const uint8_t *message) {
           node_manager_.ProcessClientMessage(client, message_type, message);

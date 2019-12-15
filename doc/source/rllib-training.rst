@@ -518,7 +518,7 @@ Custom metrics can be accessed and visualized like any other training result:
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+Note that in the ``on_postprocess_traj`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
 
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).

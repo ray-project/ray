@@ -8,6 +8,7 @@ import org.ray.api.id.ObjectId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.AbstractRayRuntime;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
+import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.ObjectSerializer;
 
@@ -23,9 +24,15 @@ public class ArgumentsBuilder {
   private static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
 
   /**
+   * This dummy type is also defined in signature.py. Please keep it synced.
+   */
+  private static final NativeRayObject PYTHON_DUMMY_TYPE = ObjectSerializer
+      .serialize("__RAY_DUMMY__".getBytes());
+
+  /**
    * Convert real function arguments to task spec arguments.
    */
-  public static List<FunctionArg> wrap(Object[] args, boolean isDirectCall) {
+  public static List<FunctionArg> wrap(Object[] args, Language language, boolean isDirectCall) {
     List<FunctionArg> ret = new ArrayList<>();
     for (Object arg : args) {
       ObjectId id = null;
@@ -47,6 +54,9 @@ public class ArgumentsBuilder {
               .putRaw(value);
           value = null;
         }
+      }
+      if (language == Language.PYTHON) {
+        ret.add(FunctionArg.passByValue(PYTHON_DUMMY_TYPE));
       }
       if (id != null) {
         ret.add(FunctionArg.passByReference(id));

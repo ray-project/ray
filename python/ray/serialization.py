@@ -1,12 +1,15 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 import hashlib
 import io
 import logging
 import time
+
 import pyarrow
 import pyarrow.plasma as plasma
+
 import ray.cloudpickle as pickle
 from ray import ray_constants, JobID
 import ray.utils
@@ -177,9 +180,11 @@ class SerializationContext(object):
 
             def object_id_deserializer(serialized_obj):
                 obj_id, owner_id, owner_address = pickle.loads(serialized_obj)
-                # Must deserialize the object in the core worker before we
-                # create the ObjectID to ensure that the reference is added
-                # before we increment its count to 1.
+                # NOTE(swang): Must deserialize the object first before asking
+                # the core worker to resolve the value. This is to make sure
+                # that the ref count for the ObjectID is greater than 0 by the
+                # time the core worker resolves the value of the object.
+                deserialized_object_id = obj_id[0](obj_id[1][0])
                 if owner_id:
                     worker = ray.worker.get_global_worker()
                     worker.check_connected()
@@ -187,8 +192,7 @@ class SerializationContext(object):
                     # (class name, (unique bytes,)).
                     worker.core_worker.deserialize_and_register_object_id(
                         obj_id[1][0], owner_id[1][0], owner_address)
-                obj_id = obj_id[0](obj_id[1][0])
-                return obj_id
+                return deserialized_object_id
 
             for id_type in ray._raylet._ID_TYPES:
                 if id_type == ray._raylet.ObjectID:
@@ -241,9 +245,11 @@ class SerializationContext(object):
 
             def object_id_deserializer(serialized_obj):
                 obj_id, owner_id, owner_address = serialized_obj
-                # Must deserialize the object in the core worker before we
-                # create the ObjectID to ensure that the reference is added
-                # before we increment its count to 1.
+                # NOTE(swang): Must deserialize the object first before asking
+                # the core worker to resolve the value. This is to make sure
+                # that the ref count for the ObjectID is greater than 0 by the
+                # time the core worker resolves the value of the object.
+                deserialized_object_id = id_deserializer(obj_id)
                 if owner_id:
                     worker = ray.worker.get_global_worker()
                     worker.check_connected()
@@ -251,8 +257,7 @@ class SerializationContext(object):
                     # (class name, (unique bytes,)).
                     worker.core_worker.deserialize_and_register_object_id(
                         obj_id[1][0], owner_id[1][0], owner_address)
-                obj_id = id_deserializer(obj_id)
-                return obj_id
+                return deserialized_object_id
 
             for id_type in ray._raylet._ID_TYPES:
                 if id_type == ray._raylet.ObjectID:

@@ -1,4 +1,4 @@
-FROM ray-project/base-deps
+FROM rayproject/base-deps
 ARG WHEEL_PATH
 ARG WHEEL_NAME
 
