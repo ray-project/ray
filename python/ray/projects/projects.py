@@ -42,8 +42,8 @@ def make_argument_parser(name, params, wildcards):
             else:
                 raise ValueError(
                     "Parameter {} has type {} which is not supported. "
-                    "Type must be one of {}".format(
-                        name, param["type"], list(types.keys())))
+                    "Type must be one of {}".format(name, param["type"],
+                                                    list(types.keys())))
         parser.add_argument("--" + name, dest=name, **argparse_kwargs)
 
     return parser, choices
@@ -125,8 +125,7 @@ class ProjectDefinition:
                 "Cannot find the command named '{}' in commmands section "
                 "of the project file.".format(command_name))
 
-        parser, choices = make_argument_parser(command_name, params,
-                                               wildcards)
+        parser, choices = make_argument_parser(command_name, params, wildcards)
         parsed_args = vars(parser.parse_args(list(args)))
 
         if wildcards:
