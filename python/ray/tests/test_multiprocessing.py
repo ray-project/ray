@@ -71,7 +71,7 @@ def test_initialize_ray(shutdown_only):
         ["ray", "start", "--head", "--num-cpus={}".format(start_cpus)])
 
     # Check that starting a pool still starts ray if RAY_ADDRESS not set.
-    pool = Pool()
+    pool = Pool(processes=init_cpus)
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == init_cpus
     check_pool_size(pool, init_cpus)
@@ -100,27 +100,17 @@ def test_initialize_ray(shutdown_only):
 
 
 def test_initializer(shutdown_only):
-    test_path = os.path.join(tempfile.gettempdir(), "initializer_test")
+    def init(dirname):
+        with open(os.path.join(dirname, str(os.getpid())), "w") as f:
+            print("hello", file=f)
 
-    def init(test_path, index):
-        with open(test_path, "wb") as f:
-            print(os.urandom(64), file=f)
+    with tempfile.TemporaryDirectory() as dirname:
+        num_processes = 4
+        pool = Pool(
+            processes=num_processes, initializer=init, initargs=(dirname, ))
 
-    num_processes = 4
-    pool = Pool(
-        processes=num_processes, initializer=init, initargs=(test_path, ))
-
-    def get(test_path):
-        with open(test_path, "rb") as f:
-            return f.readline()
-
-    # Check that the initializer ran once on each process in the pool.
-    results = set()
-    for result in pool.map(get, []):
-        results.add(result)
-
-    assert len(results) == num_processes
-    pool.terminate()
+        assert len(os.listdir(dirname)) == 4
+        pool.terminate()
 
 
 @pytest.mark.skip(reason="Modifying globals in initializer not working.")

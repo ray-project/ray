@@ -123,8 +123,10 @@ class UnorderedIMapIterator(IMapIterator):
 
 @ray.remote
 class PoolActor(object):
-    def __init__(self, initializer=None, *initargs):
+    def __init__(self, initializer=None, initargs=None):
         if initializer:
+            if initargs is None:
+                initargs = ()
             initializer(*initargs)
 
     def ping(self):
@@ -150,7 +152,7 @@ class Pool(object):
                  maxtasksperchild=None):
         self._closed = False
         self._initializer = initializer
-        self._initargs = initargs if initargs else ()
+        self._initargs = initargs
         self._maxtasksperchild = maxtasksperchild if maxtasksperchild else -1
         self._actor_deletion_ids = []
 
@@ -208,7 +210,7 @@ class Pool(object):
         # TODO(edoakes): The initializer function can't currently be used to
         # modify the global namespace (e.g., import packages or set globals)
         # due to a limitation in cloudpickle.
-        return (PoolActor._remote(self._initializer, *self._initargs), 0)
+        return (PoolActor.remote(self._initializer, self._initargs), 0)
 
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch(self, actor_index, func, batch):
