@@ -59,7 +59,7 @@
             "required": [
               "name"
             ],
-            "additionalProperties": true
+            "additionalProperties": false
           }
         }
       },
