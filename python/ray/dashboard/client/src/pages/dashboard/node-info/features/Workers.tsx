@@ -14,18 +14,23 @@ export const ClusterWorkers: ClusterFeatureComponent = ({ nodes }) => {
   }
   return (
     <React.Fragment>
-      {totalWorkers.toLocaleString()} workers / {totalCpus.toLocaleString()}{" "}
-      cores
+      {totalWorkers.toLocaleString()}{" "}
+      {totalWorkers === 1 ? "worker" : "workers"} / {totalCpus.toLocaleString()}{" "}
+      {totalCpus === 1 ? "core" : "cores"}
     </React.Fragment>
   );
 };
 
-export const NodeWorkers: NodeFeatureComponent = ({ node }) => (
-  <React.Fragment>
-    {node.workers.length.toLocaleString()} workers /{" "}
-    {node.cpus[0].toLocaleString()} cores
-  </React.Fragment>
-);
+export const NodeWorkers: NodeFeatureComponent = ({ node }) => {
+  const workers = node.workers.length;
+  const cpus = node.cpus[0];
+  return (
+    <React.Fragment>
+      {workers.toLocaleString()} {workers === 1 ? "worker" : "workers"} /{" "}
+      {cpus.toLocaleString()} {cpus === 1 ? "core" : "cores"}
+    </React.Fragment>
+  );
+};
 
 // Ray worker process titles have one of the following forms: `ray::IDLE`,
 // `ray::function()`, `ray::Class`, or `ray::Class.method()`. We extract the
