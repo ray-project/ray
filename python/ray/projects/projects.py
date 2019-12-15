@@ -124,7 +124,8 @@ class ProjectDefinition:
                 "Cannot find the command named '{}' in commmands section "
                 "of the project file.".format(command_name))
 
-        parser, choices = self.make_argument_parser(command_name, params, wildcards)
+        parser, choices = self.make_argument_parser(command_name, params,
+                                                    wildcards)
         parsed_args = vars(parser.parse_args(list(args)))
 
         if wildcards:
@@ -192,8 +193,8 @@ def check_project_config(project_root, project_config):
     # Make sure the cluster yaml file exists
     if "cluster" in project_config:
         if "config" in project_config["cluster"]:
-            cluster_file = os.path.join(
-                project_root, project_config["cluster"]["config"])
+            cluster_file = os.path.join(project_root,
+                                        project_config["cluster"]["config"])
             if not os.path.exists(cluster_file):
                 raise ValueError("'cluster' file does not exist "
                                  "in {}".format(project_root))
