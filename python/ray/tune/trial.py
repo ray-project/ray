@@ -6,6 +6,7 @@ import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
 import logging
+import shutil
 import uuid
 import time
 import tempfile
@@ -85,16 +86,9 @@ class Trial(object):
 
     PENDING = "PENDING"
     RUNNING = "RUNNING"
-    CHECKPOINTING = "CHECKPOINTING"
-    RESTORING = "RESTORING"
     PAUSED = "PAUSED"
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
-
-    # States in which the trial is actively doing some work.
-    ACTIVE_STATES = [RUNNING, CHECKPOINTING, RESTORING]
-    # Terminal states (states that cannot be transitioned out of).
-    TERMINAL_STATES = [ERROR, TERMINATED]
 
     def __init__(self,
                  trainable_name,
@@ -161,11 +155,18 @@ class Trial(object):
         # stores in memory max/min/last result for each metric by trial
         self.metric_analysis = {}
 
+        # Checkpointing fields
         self.sync_on_checkpoint = sync_on_checkpoint
-        newest_checkpoint = Checkpoint(Checkpoint.DISK, restore_path)
+        newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
         self.checkpoint_manager = CheckpointManager(keep_checkpoints_num,
-                                                    checkpoint_score_attr)
+                                                    checkpoint_score_attr,
+                                                    self.delete_checkpoint)
         self.checkpoint_manager.newest_checkpoint = newest_checkpoint
+
+        # Restoration fields
+        self.restoring_from = None
+        self.num_failures = 0
+        self.num_failures_between_results = 0  # Name this something better...
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
@@ -176,7 +177,6 @@ class Trial(object):
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
-        self.num_failures = 0
         self.custom_trial_name = None
 
         # AutoML fields
@@ -261,9 +261,10 @@ class Trial(object):
 
     def set_status(self, status):
         """Sets the status of the trial."""
-        if status == Trial.RUNNING and self.start_time is None:
-            self.start_time = time.time()
         self.status = status
+        if status == Trial.RUNNING:
+            if self.start_time is None:
+                self.start_time = time.time()
 
     def close_logger(self):
         """Closes logger."""
@@ -273,7 +274,8 @@ class Trial(object):
 
     def write_error_log(self, error_msg):
         if error_msg and self.logdir:
-            self.num_failures += 1  # may be moved to outer scope?
+            self.num_failures += 1
+            self.num_failures_between_results += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
             with open(self.error_file, "a+") as f:
                 f.write("Failure # {} (occurred at {})\n".format(
@@ -314,8 +316,23 @@ class Trial(object):
     def has_checkpoint(self):
         return self.checkpoint.value is not None
 
+    def delete_checkpoint(self, checkpoint):
+        """Requests checkpoint deletion asynchronously.
+
+        Args:
+            checkpoint (Checkpoint): Checkpoint to delete.
+        """
+        if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+            checkpoint_dir = checkpoint.value
+            # Delete local copy, if any exists.
+            if os.path.exists(checkpoint_dir):
+                shutil.rmtree(checkpoint_dir)
+            # TODO(ujvl): Batch remote deletes?
+            self.runner.delete_checkpoint.remote(checkpoint.value)
+
     def clear_checkpoint(self):
         self.checkpoint.value = None
+        self.restoring_from = None
 
     def on_checkpoint(self, checkpoint):
         """Hook for handling checkpoints taken by the Trainable.
@@ -323,19 +340,27 @@ class Trial(object):
         Args:
             checkpoint (Checkpoint): Checkpoint taken.
         """
-        if self.sync_on_checkpoint and checkpoint.storage == Checkpoint.DISK:
-            # Wait for any other syncs to finish. We need to sync again after
-            # this to handle checkpoints taken mid-sync.
-            self.result_logger.wait()
-            # Force sync down and wait before tracking the new checkpoint. This
-            # prevents attempts to restore from partially synced checkpoints.
-            if self.result_logger.sync_down():
-                self.result_logger.wait()
-            else:
-                logger.error(
-                    "Trial %s: Checkpoint sync skipped. "
-                    "This should not happen.", self)
+        if checkpoint.storage == Checkpoint.PERSISTENT:
+            self.result_logger.sync_down_if_needed()
         self.checkpoint_manager.on_checkpoint(checkpoint)
+
+    def on_begin_restore(self, checkpoint):
+        """Handles newly dispatched restore.
+
+        This can be called multiple times without subsequently calling
+        `on_restore` since a restoration attempt can fail.
+
+        Args:
+            checkpoint: The checkpoint Tune is attempting to restore from.
+        """
+        assert self.status == Trial.RUNNING
+        self.restoring_from = checkpoint
+
+    def on_restore(self):
+        """Handles restoration completion."""
+        assert self.status == Trial.RUNNING and self.is_restoring
+        self.last_result = self.restoring_from.result
+        self.restoring_from = None
 
     def should_recover(self):
         """Returns whether the trial qualifies for retrying.
@@ -357,6 +382,7 @@ class Trial(object):
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
+        self.num_failures_between_results = 0
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
@@ -383,11 +409,11 @@ class Trial(object):
 
     @property
     def is_finished(self):
-        return self.status in Trial.TERMINAL_STATES
+        return self.status in [Trial.ERROR, Trial.TERMINATED]
 
     @property
-    def is_active(self):
-        return self.status in Trial.ACTIVE_STATES
+    def is_restoring(self):
+        return self.restoring_from is not None
 
     def __repr__(self):
         return str(self)
@@ -414,9 +440,9 @@ class Trial(object):
         """Memento generator for Trial.
 
         Sets RUNNING trials to PENDING, and flushes the result logger.
-        Note this can only occur if the trial holds a DISK checkpoint.
+        Note this can only occur if the trial holds a FS checkpoint.
         """
-        assert self.checkpoint.storage == Checkpoint.DISK, (
+        assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)

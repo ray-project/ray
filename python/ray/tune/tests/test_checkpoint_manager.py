@@ -28,7 +28,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
         checkpoints = [
-            Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
+            Checkpoint(Checkpoint.PERSISTENT, {i}, self.mock_result(i))
             for i in range(3)
         ]
 
@@ -53,7 +53,7 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
         checkpoints = [
-            Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
+            Checkpoint(Checkpoint.PERSISTENT, {i}, self.mock_result(i))
             for i in range(3, -1, -1)
         ]
 

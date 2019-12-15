@@ -38,8 +38,11 @@ class TrialExecutor(object):
             trial (Trial): Trial to checkpoint.
             status (Trial.status): Status to set trial to.
         """
-        logger.debug("Trial %s: Changing status from %s to %s.", trial,
-                     trial.status, status)
+        if trial.status == status:
+            logger.debug("Trial %s: Status %s unchanged.", trial, trial.status)
+        else:
+            logger.debug("Trial %s: Changing status from %s to %s.", trial,
+                         trial.status, status)
         trial.set_status(status)
         if status in [Trial.TERMINATED, Trial.ERROR]:
             self.try_checkpoint_metadata(trial)
@@ -140,7 +143,7 @@ class TrialExecutor(object):
         """
         raise NotImplementedError
 
-    def get_active_trials(self):
+    def get_running_trials(self):
         """Returns all active trials."""
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "get_active_trials() method")
@@ -225,14 +228,15 @@ class TrialExecutor(object):
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "restore() method")
 
-    def save(self, trial, storage=Checkpoint.DISK, result=None):
+    def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
         """Saves training state of this trial to a checkpoint.
 
         If result is None, this trial's last result will be used.
 
         Args:
             trial (Trial): The state of this trial to be saved.
-            storage (str): Where to store the checkpoint. Defaults to DISK.
+            storage (str): Where to store the checkpoint. Defaults to
+                PERSISTENT.
             result (dict): The state of this trial as a dictionary to be saved.
 
         Return:

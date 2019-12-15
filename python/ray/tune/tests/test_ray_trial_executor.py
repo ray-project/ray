@@ -37,7 +37,7 @@ class RayTrialExecutorTest(unittest.TestCase):
     def testStartStop(self):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
-        running = self.trial_executor.get_active_trials()
+        running = self.trial_executor.get_running_trials()
         self.assertEqual(1, len(running))
         self.trial_executor.stop_trial(trial)
 
@@ -45,7 +45,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.save(trial, Checkpoint.DISK)
+        self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
@@ -54,7 +54,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.save(trial, Checkpoint.DISK)
+        self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.trial_executor.set_status(trial, Trial.PAUSED)
 
         ray_get = ray.get

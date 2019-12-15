@@ -30,12 +30,6 @@ MAX_DEBUG_TRIALS = 20
 logger = logging.getLogger(__name__)
 
 
-def _naturalize(string):
-    """Provides a natural representation for string for nice sorting."""
-    splits = re.split("([0-9]+)", string)
-    return [int(text) if text.isdigit() else text.lower() for text in splits]
-
-
 def _find_newest_ckpt(ckpt_dir):
     """Returns path to most recently modified checkpoint."""
     full_paths = [
@@ -330,7 +324,7 @@ class TrialRunner(object):
         if next_trial is not None:
             with warn_if_slow("start_trial"):
                 self.trial_executor.start_trial(next_trial)
-        elif self.trial_executor.get_active_trials():
+        elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
             self.trial_executor.on_no_available_trials(self)
@@ -414,41 +408,28 @@ class TrialRunner(object):
             # TODO(ujvl): Consider combining get_next_available_trial and
             #  fetch_result functionality so that we don't timeout on fetch.
             trial = self.trial_executor.get_next_available_trial()  # blocking
-            if trial.status == Trial.RUNNING:
+            if trial.is_restoring:
+                with warn_if_slow("process_trial_restore"):
+                    self._process_trial_restore(trial)
+            else:
                 with warn_if_slow("process_trial"):
-                    self._process_running_trial(trial)
-            elif trial.status == Trial.CHECKPOINTING:
-                with warn_if_slow("process_checkpointing_trial"):
-                    self._process_checkpointed_trial(trial)
-            elif trial.status == Trial.RESTORING:
-                with warn_if_slow("process_restoring_trial"):
-                    self._process_restored_trial(trial)
+                    self._process_trial(trial)
 
-    def _process_checkpointed_trial(self, trial):
-        """Processes a trial's persisted checkpoint."""
-        value = None
-        try:
-            value = self.trial_executor.fetch_result(trial)
-            checkpoint = Checkpoint(Checkpoint.DISK, value, trial.last_result)
-            trial.on_checkpoint(checkpoint)
-            # notify trial_executor according to cached decision.
-        except Exception:
-            error_msg = "Trial {}: Error processing checkpoint".format(trial)
-            error_msg += "{}.".format(value) if value else ""
-            logger.exception(error_msg)
+    # def _process_trial_checkpoint(self, trial):
+    #     """Processes a trial's persisted checkpoint."""
+    #     value = None
+    #     try:
+    #         value = self.trial_executor.fetch_result(trial)
+    #     except Exception:
+    #         error_msg = "Trial {}: Error processing checkpoint".format(trial)
+    #         error_msg += "{}.".format(value) if value else ""
+    #         logger.exception(error_msg)
+    #     else:
+    #         checkpoint = Checkpoint(Checkpoint.PERSISTENT, value, trial.last_result)
+    #         trial.on_checkpoint(checkpoint)
+    #         # notify trial_executor according to cached decision.
 
-    def _process_restored_trial(self, trial):
-        """Processes a trial restore."""
-        try:
-            self.trial_executor.fetch_result(trial)
-            self.trial_executor.set_status(trial, Trial.RUNNING)
-        except Exception:
-            logger.exception("Trial %s: Error processing restoration.", trial)
-            # Need to keep track of restore attempt state and call something
-            # like _process_trial_restore_failure(...)
-            self._process_trial_failure(trial, traceback.format_exc())
-
-    def _process_running_trial(self, trial):
+    def _process_trial(self, trial):
         """Processes a trial result."""
         try:
             result = self.trial_executor.fetch_result(trial)
@@ -496,7 +477,6 @@ class TrialRunner(object):
             self._checkpoint_trial_if_needed(
                 trial, force=result.get(SHOULD_CHECKPOINT, False))
 
-            # For on-disk checkpointing trials, cache decision...
             if decision == TrialScheduler.CONTINUE:
                 self.trial_executor.continue_training(trial)
             elif decision == TrialScheduler.PAUSE:
@@ -510,6 +490,17 @@ class TrialRunner(object):
         except Exception:
             logger.exception("Trial %s: Error processing event.", trial)
             self._process_trial_failure(trial, traceback.format_exc())
+
+    def _process_trial_restore(self, trial):
+        """Processes a trial restore."""
+        try:
+            self.trial_executor.fetch_result(trial)
+            trial.on_restore()
+            self.trial_executor.continue_training(trial)
+        except Exception:
+            logger.exception("Trial %s: Error processing restore.", trial)
+            self._process_trial_failure(trial, traceback.format_exc())
+            return
 
     def _process_trial_failure(self, trial, error_msg):
         """Handle trial failure.
@@ -533,8 +524,8 @@ class TrialRunner(object):
         """Checkpoints trial based off trial.last_result."""
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible
-            if hasattr(trial, "runner") and trial.runner:
-                self.trial_executor.save(trial, storage=Checkpoint.DISK)
+            if trial.runner:
+                self.trial_executor.save(trial, storage=Checkpoint.PERSISTENT)
             self.trial_executor.try_checkpoint_metadata(trial)
 
     def _try_recover(self, trial, error_msg):
@@ -546,6 +537,9 @@ class TrialRunner(object):
             trial (Trial): Trial to recover.
             error_msg (str): Error message from prior to invoking this method.
         """
+        if trial.is_restoring:
+            # Restore was unsuccessful, try again without checkpoint.
+            trial.clear_checkpoint()
         self.trial_executor.stop_trial(
             trial,
             error=error_msg is not None,
@@ -554,18 +548,18 @@ class TrialRunner(object):
         trial.result_logger.flush()
         if self.trial_executor.has_resources(trial.resources):
             logger.info(
-                "Trial %s: Attempting to recover "
+                "Trial %s: Attempting to restore"
                 "trial state from last checkpoint.", trial)
             # This is asynchronous now, refactor
             self.trial_executor.start_trial(trial)
             if trial.status == Trial.ERROR:
                 logger.exception(
-                    "Trial %s: Error recovering trial from "
-                    "checkpoint, abort.", trial)
+                    "Trial %s: Error restoring trial from checkpoint, abort.",
+                    trial)
                 self._scheduler_alg.on_trial_error(self, trial)
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
             else:
-                logger.debug("Trial %s: Recovery dispatched correctly.", trial)
+                logger.debug("Trial %s: Restore dispatched correctly.", trial)
         else:
             logger.debug("Trial %s: Notifying Scheduler and requeueing.",
                          trial)

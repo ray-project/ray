@@ -119,13 +119,11 @@ class Trainable(object):
             >>>         extra_cpu=config["workers"],
             >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
         """
-
         return None
 
     @classmethod
     def resource_help(cls, config):
         """Returns a help string for configuring this trainable's resources."""
-
         return ""
 
     def current_ip(self):
@@ -373,6 +371,10 @@ class Trainable(object):
 
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
+
+    def delete_checkpoint(self, checkpoint_path):
+        if os.path.exists(checkpoint_path):
+            os.rmdir(checkpoint_path)
 
     def export_model(self, export_formats, export_dir=None):
         """Exports model based on export_formats.
