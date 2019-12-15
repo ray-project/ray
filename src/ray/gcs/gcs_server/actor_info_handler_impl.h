@@ -7,6 +7,7 @@
 namespace ray {
 namespace rpc {
 
+/// This implementation class of `ActorInfoHandler`.
 class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
  public:
   explicit DefaultActorInfoHandler(gcs::RedisGcsClient &gcs_client)
@@ -40,4 +41,4 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
 }  // namespace rpc
 }  // namespace ray
 
-#endif  // RAY_GCS_GCS_SERVER_ACTOR_INFO_HANDLER_IMPL_H
+#endif  // RAY_GCS_ACTOR_INFO_HANDLER_IMPL_H

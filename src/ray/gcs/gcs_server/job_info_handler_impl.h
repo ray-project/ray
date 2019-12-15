@@ -7,8 +7,7 @@
 namespace ray {
 namespace rpc {
 
-/// This class is used to implement `JobInfoHandler`, but only two logs have been printed.
-/// The detailed implementation is reflected in the following PR.
+/// This implementation class of `JobInfoHandler`.
 class DefaultJobInfoHandler : public rpc::JobInfoHandler {
  public:
   explicit DefaultJobInfoHandler(gcs::RedisGcsClient &gcs_client)
@@ -36,4 +35,4 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
 }  // namespace rpc
 }  // namespace ray
 
-#endif // RAY_GCS_JOB_INFO_HANDLER_IMPL_H
+#endif  // RAY_GCS_JOB_INFO_HANDLER_IMPL_H

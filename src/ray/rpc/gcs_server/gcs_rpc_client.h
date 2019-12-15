@@ -97,4 +97,4 @@ class GcsRpcClient {
 }  // namespace rpc
 }  // namespace ray
 
-#endif // RAY_RPC_GCS_RPC_CLIENT_H
+#endif  // RAY_RPC_GCS_RPC_CLIENT_H

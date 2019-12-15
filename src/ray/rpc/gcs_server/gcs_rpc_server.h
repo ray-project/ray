@@ -131,4 +131,4 @@ class ActorInfoGrpcService : public GrpcService {
 }  // namespace rpc
 }  // namespace ray
 
-#endif // RAY_RPC_GCS_RPC_SERVER_H
+#endif  // RAY_RPC_GCS_RPC_SERVER_H

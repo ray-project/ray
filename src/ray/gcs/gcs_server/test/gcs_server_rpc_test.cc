@@ -1,6 +1,6 @@
-#include "ray/gcs/gcs_server/gcs_server.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/actor_info_handler_impl.h"
+#include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/gcs/gcs_server/job_info_handler_impl.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
