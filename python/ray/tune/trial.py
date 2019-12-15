@@ -74,6 +74,28 @@ class ExportFormat(object):
                                 export_formats[i])
 
 
+def checkpoint_deleter(runner):
+    """Returns a checkpoint deleter callback for a runner."""
+    if not runner:
+        return lambda checkpoint: None
+
+    def delete(checkpoint):
+        """Requests checkpoint deletion asynchronously.
+
+        Args:
+            checkpoint (Checkpoint): Checkpoint to delete.
+        """
+        if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+            checkpoint_dir = checkpoint.value
+            # Delete local copy, if any exists.
+            if os.path.exists(checkpoint_dir):
+                shutil.rmtree(checkpoint_dir)
+            # TODO(ujvl): Batch remote deletes?
+            runner.delete_checkpoint.remote(checkpoint.value)
+
+    return delete
+
+
 class Trial(object):
     """A trial object holds the state for one model training run.
 
@@ -138,7 +160,7 @@ class Trial(object):
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources
-        self.address = Location()
+        self.location = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
@@ -149,24 +171,9 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = {}
         self.last_update_time = -float("inf")
-        self.checkpoint_freq = checkpoint_freq
-        self.checkpoint_at_end = checkpoint_at_end
 
         # stores in memory max/min/last result for each metric by trial
         self.metric_analysis = {}
-
-        # Checkpointing fields
-        self.sync_on_checkpoint = sync_on_checkpoint
-        newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
-        self.checkpoint_manager = CheckpointManager(keep_checkpoints_num,
-                                                    checkpoint_score_attr,
-                                                    self.delete_checkpoint)
-        self.checkpoint_manager.newest_checkpoint = newest_checkpoint
-
-        # Restoration fields
-        self.restoring_from = None
-        self.num_failures = 0
-        self.num_failures_between_results = 0  # Name this something better...
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
@@ -179,6 +186,21 @@ class Trial(object):
         self.error_msg = None
         self.custom_trial_name = None
 
+        # Checkpointing fields
+        self.checkpoint_freq = checkpoint_freq
+        self.checkpoint_at_end = checkpoint_at_end
+        self.sync_on_checkpoint = sync_on_checkpoint
+        newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
+        self.checkpoint_manager = CheckpointManager(
+            keep_checkpoints_num, checkpoint_score_attr,
+            checkpoint_deleter(self.runner))
+        self.checkpoint_manager.newest_checkpoint = newest_checkpoint
+
+        # Restoration fields
+        self.restoring_from = None
+        self.num_failures = 0
+        self.num_failures_between_results = 0  # Name this something better...
+
         # AutoML fields
         self.results = None
         self.best_result = None
@@ -186,7 +208,7 @@ class Trial(object):
         self.extra_arg = None
 
         self._nonjson_fields = [
-            "checkpoint",
+            "checkpoint_manager",
             "loggers",
             "sync_to_driver_fn",
             "results",
@@ -199,7 +221,7 @@ class Trial(object):
 
     @property
     def node_ip(self):
-        return self.address.hostname
+        return self.location.hostname
 
     @property
     def checkpoint(self):
@@ -246,18 +268,14 @@ class Trial(object):
             raise ValueError("Cannot update resources while Trial is running.")
         self.resources = Resources(cpu, gpu, **kwargs)
 
-    def sync_logger_to_new_location(self, worker_ip):
-        """Updates the logger location.
-
-        Also pushes logdir to worker_ip, allowing for cross-node recovery.
-        """
-        if self.result_logger:
-            self.result_logger.sync_results_to_new_location(worker_ip)
-            self.set_location(Location(worker_ip))
+    def set_runner(self, runner):
+        self.runner = runner
+        if self.runner:
+            self.checkpoint_manager.delete = checkpoint_deleter(runner)
 
     def set_location(self, location):
         """Sets the location of the trial."""
-        self.address = location
+        self.location = location
 
     def set_status(self, status):
         """Sets the status of the trial."""
@@ -316,20 +334,6 @@ class Trial(object):
     def has_checkpoint(self):
         return self.checkpoint.value is not None
 
-    def delete_checkpoint(self, checkpoint):
-        """Requests checkpoint deletion asynchronously.
-
-        Args:
-            checkpoint (Checkpoint): Checkpoint to delete.
-        """
-        if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
-            checkpoint_dir = checkpoint.value
-            # Delete local copy, if any exists.
-            if os.path.exists(checkpoint_dir):
-                shutil.rmtree(checkpoint_dir)
-            # TODO(ujvl): Batch remote deletes?
-            self.runner.delete_checkpoint.remote(checkpoint.value)
-
     def clear_checkpoint(self):
         self.checkpoint.value = None
         self.restoring_from = None
@@ -341,7 +345,19 @@ class Trial(object):
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if checkpoint.storage == Checkpoint.PERSISTENT:
-            self.result_logger.sync_down_if_needed()
+            if self.sync_on_checkpoint:
+                # Wait for any other syncs to finish. We need to sync again
+                # after this to handle checkpoints taken mid-sync.
+                self.result_logger.wait()
+                # Force sync down and wait before tracking the new checkpoint.
+                # This prevents attempts to restore from partially synced
+                # checkpoints.
+                if self.result_logger.sync_down():
+                    self.result_logger.wait()
+                else:
+                    logger.error(
+                        "Trial %s: Checkpoint sync skipped. "
+                        "This should not happen.", self)
         self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def on_begin_restore(self, checkpoint):
@@ -407,7 +423,6 @@ class Trial(object):
     def set_verbose(self, verbose):
         self.verbose = verbose
 
-    @property
     def is_finished(self):
         return self.status in [Trial.ERROR, Trial.TERMINATED]
 
@@ -440,7 +455,7 @@ class Trial(object):
         """Memento generator for Trial.
 
         Sets RUNNING trials to PENDING, and flushes the result logger.
-        Note this can only occur if the trial holds a FS checkpoint.
+        Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
         assert self.checkpoint.storage == Checkpoint.PERSISTENT, (
             "Checkpoint must not be in-memory.")

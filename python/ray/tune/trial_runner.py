@@ -387,7 +387,7 @@ class TrialRunner(object):
         Blocks if all trials queued have finished, but search algorithm is
         still not finished.
         """
-        trials_done = all(trial.is_finished for trial in self._trials)
+        trials_done = all(trial.is_finished() for trial in self._trials)
         wait_for_trial = trials_done and not self._search_alg.is_finished()
         self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):

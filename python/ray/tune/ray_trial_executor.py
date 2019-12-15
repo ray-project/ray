@@ -85,7 +85,7 @@ class RayTrialExecutor(TrialExecutor):
                          self._cached_actor)
             existing_runner = self._cached_actor
             self._cached_actor = None
-            trial.runner = existing_runner
+            trial.set_runner(existing_runner)
             if not self.reset_trial(trial, trial.config, trial.experiment_tag):
                 raise AbortTrialExecution(
                     "Trainable runner reuse requires reset_config() to be "
@@ -148,9 +148,9 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         self.set_status(trial, Trial.RUNNING)
-        trial.runner = runner or self._setup_remote_runner(
+        trial.set_runner(runner or self._setup_remote_runner(
             trial,
-            reuse_allowed=checkpoint is not None or trial.has_checkpoint())
+            reuse_allowed=checkpoint is not None or trial.has_checkpoint()))
         self.restore(trial, checkpoint)
 
         previous_run = self._find_item(self._paused, trial)
@@ -196,7 +196,7 @@ class RayTrialExecutor(TrialExecutor):
             logger.exception("Trial %s: Error stopping runner.", trial)
             self.set_status(trial, Trial.ERROR)
         finally:
-            trial.runner = None
+            trial.set_runner(None)
 
     def start_trial(self, trial, checkpoint=None):
         """Starts the trial.

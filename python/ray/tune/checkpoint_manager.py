@@ -64,7 +64,8 @@ class CheckpointManager(object):
             keep_checkpoints_num (int): Keep at least this many checkpoints.
             checkpoint_score_attr (str): Attribute to use to determine which
                 checkpoints to keep.
-            delete_fn (function): Function that deletes checkpoints.
+            delete_fn (function): Function that deletes checkpoints. Must be
+                idempotent.
         """
         self.keep_checkpoints_num = keep_checkpoints_num or float("inf")
         assert self.keep_checkpoints_num > 0, (
@@ -74,7 +75,7 @@ class CheckpointManager(object):
             self._checkpoint_score_attr = checkpoint_score_attr[4:]
         else:
             self._checkpoint_score_attr = checkpoint_score_attr
-        self.delete_checkpoint = delete_fn
+        self.delete = delete_fn
         self.newest_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
@@ -97,7 +98,7 @@ class CheckpointManager(object):
             queue_item = QueueItem(self._priority(checkpoint), checkpoint)
         except KeyError:
             if old_checkpoint not in self._membership:
-                self.delete_checkpoint(old_checkpoint)
+                self.delete(old_checkpoint)
             logger.error("Result dict has no key: {}. "
                          "checkpoint_score_attr must be set to a key in the "
                          "result dict.".format(self._checkpoint_score_attr))
@@ -111,11 +112,11 @@ class CheckpointManager(object):
             self._membership.add(checkpoint)
             if worst in self._membership:
                 self._membership.remove(worst)
-            self.delete_checkpoint(worst)
+            self.delete(worst)
 
         # Remove the old checkpoint if it isn't one of the best ones.
-        if old_checkpoint not in self._membership:
-            self.delete_checkpoint(old_checkpoint)
+        if old_checkpoint.value and old_checkpoint not in self._membership:
+            self.delete(old_checkpoint)
 
     def best_checkpoints(self):
         """Returns best checkpoints, sorted by score."""

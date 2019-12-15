@@ -69,7 +69,7 @@ def run(run_or_experiment,
         sync_to_driver=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
-        sync_on_checkpoint=True,
+        sync_on_checkpoint=False,
         keep_checkpoints_num=None,
         checkpoint_score_attr=None,
         global_checkpoint_period=10,
@@ -139,11 +139,9 @@ def run(run_or_experiment,
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
-        sync_on_checkpoint (bool): Force sync-down of trial checkpoint, to
-            guarantee recoverability. If set to False, checkpoint syncing from
-            worker to driver is asynchronous. Set this to False only if
-            synchronous checkpointing is too slow and trial restoration
-            failures can be tolerated. Defaults to True.
+        sync_on_checkpoint (bool): Force sync-down of trial checkpoint. If set
+            to False, checkpoint syncing from worker to driver is asynchronous.
+            Defaults to False. This does not affect persistent storage syncing.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
