@@ -43,7 +43,7 @@ interface Props {
   lines: string[];
 }
 
-class Component extends React.Component<Props & WithStyles<typeof styles>> {
+class NumberedLines extends React.Component<Props & WithStyles<typeof styles>> {
   render() {
     const { classes, lines } = this.props;
     return (
@@ -66,4 +66,4 @@ class Component extends React.Component<Props & WithStyles<typeof styles>> {
   }
 }
 
-export default withStyles(styles)(Component);
+export default withStyles(styles)(NumberedLines);

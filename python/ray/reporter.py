@@ -112,7 +112,7 @@ class Reporter(object):
     def get_workers():
         return [
             x.as_dict(attrs=[
-                "pid", "create_time", "cpu_percent", "cpu_times", "name",
+                "pid", "create_time", "cpu_percent", "cpu_times",
                 "cmdline", "memory_info", "memory_full_info"
             ]) for x in psutil.process_iter(attrs=["cmdline"])
             if is_worker(x.info["cmdline"])

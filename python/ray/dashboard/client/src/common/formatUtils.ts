@@ -17,17 +17,16 @@ export const formatUsage = (
   return `${usedFormatted} / ${totalFormatted} (${percent.toFixed(0)}%)`;
 };
 
-export const formatUptime = (bootTime: number) => {
-  const uptimeSecondsTotal = Date.now() / 1000 - bootTime;
-  const uptimeSeconds = Math.floor(uptimeSecondsTotal) % 60;
-  const uptimeMinutes = Math.floor(uptimeSecondsTotal / 60) % 60;
-  const uptimeHours = Math.floor(uptimeSecondsTotal / 60 / 60) % 24;
-  const uptimeDays = Math.floor(uptimeSecondsTotal / 60 / 60 / 24);
+export const formatDuration = (durationInSeconds: number) => {
+  const durationSeconds = Math.floor(durationInSeconds) % 60;
+  const durationMinutes = Math.floor(durationInSeconds / 60) % 60;
+  const durationHours = Math.floor(durationInSeconds / 60 / 60) % 24;
+  const durationDays = Math.floor(durationInSeconds / 60 / 60 / 24);
   const pad = (value: number) => value.toString().padStart(2, "0");
   return [
-    uptimeDays ? `${uptimeDays}d` : "",
-    `${pad(uptimeHours)}h`,
-    `${pad(uptimeMinutes)}m`,
-    `${pad(uptimeSeconds)}s`
+    durationDays ? `${durationDays}d` : "",
+    `${pad(durationHours)}h`,
+    `${pad(durationMinutes)}m`,
+    `${pad(durationSeconds)}s`
   ].join(" ");
 };

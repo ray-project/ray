@@ -1,5 +1,16 @@
 import React from "react";
-import { NodeFeatureComponent, WorkerFeatureComponent } from "./types";
+import {
+  ClusterFeatureComponent,
+  NodeFeatureComponent,
+  WorkerFeatureComponent
+} from "./types";
+
+export const ClusterHost: ClusterFeatureComponent = ({ nodes }) => (
+  <React.Fragment>
+    Totals ({nodes.length.toLocaleString()}{" "}
+    {nodes.length === 1 ? "host" : "hosts"})
+  </React.Fragment>
+);
 
 export const NodeHost: NodeFeatureComponent = ({ node }) => (
   <React.Fragment>
