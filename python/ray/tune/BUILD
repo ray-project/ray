@@ -73,6 +73,13 @@ py_test(
 )
 
 py_test(
+    name = "test_progress_reporter",
+    size = "small",
+    srcs = ["tests/test_progress_reporter.py"],
+    deps = [":tune_lib"],
+)
+
+py_test(
     name = "test_ray_trial_executor",
     size = "medium",
     srcs = ["tests/test_ray_trial_executor.py"],

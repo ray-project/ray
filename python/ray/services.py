@@ -1070,10 +1070,11 @@ def start_dashboard(host,
         import aiohttp  # noqa: F401
         import psutil  # noqa: F401
         import setproctitle  # noqa: F401
+        import grpc  # noqa: F401
     except ImportError:
         raise ImportError(
             "Failed to start the dashboard. The dashboard requires Python 3 "
-            "as well as 'pip install aiohttp psutil setproctitle'.")
+            "as well as 'pip install aiohttp psutil setproctitle grpcio'.")
 
     process_info = start_ray_process(
         command,
@@ -1200,10 +1201,12 @@ def start_raylet(redis_address,
                             "--object-store-name={} "
                             "--raylet-name={} "
                             "--redis-address={} "
+                            "--config-list={} "
                             "--temp-dir={}".format(
                                 sys.executable, worker_path, node_ip_address,
                                 node_manager_port, plasma_store_name,
-                                raylet_name, redis_address, temp_dir))
+                                raylet_name, redis_address, config_str,
+                                temp_dir))
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 

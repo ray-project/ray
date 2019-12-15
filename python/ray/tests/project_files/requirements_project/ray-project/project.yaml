@@ -3,4 +3,5 @@ name: testproject2
 environment:
   requirements: "requirements.txt"
 
-cluster: "cluster.yaml"
+cluster:
+  config: cluster.yaml

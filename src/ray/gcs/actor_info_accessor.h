@@ -3,7 +3,7 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/subscription_executor.h"
+#include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -23,7 +23,7 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   virtual Status AsyncGet(const ActorID &actor_id,
-                          const OptionalItemCallback<ActorTableData> &callback) = 0;
+                          const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
   /// Register an actor to GCS asynchronously.
   ///
@@ -31,7 +31,7 @@ class ActorInfoAccessor {
   /// \param callback Callback that will be called after actor has been registered
   /// to the GCS.
   /// \return Status
-  virtual Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
+  virtual Status AsyncRegister(const std::shared_ptr<rpc::ActorTableData> &data_ptr,
                                const StatusCallback &callback) = 0;
 
   /// Update dynamic states of actor in GCS asynchronously.
@@ -43,7 +43,7 @@ class ActorInfoAccessor {
   /// TODO(micafan) Don't expose the whole `ActorTableData` and only allow
   /// updating dynamic states.
   virtual Status AsyncUpdate(const ActorID &actor_id,
-                             const std::shared_ptr<ActorTableData> &data_ptr,
+                             const std::shared_ptr<rpc::ActorTableData> &data_ptr,
                              const StatusCallback &callback) = 0;
 
   /// Subscribe to any register or update operations of actors.
@@ -54,7 +54,7 @@ class ActorInfoAccessor {
   /// are ready to receive notification.
   /// \return Status
   virtual Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Subscribe to any update operations of an actor.
@@ -65,7 +65,7 @@ class ActorInfoAccessor {
   /// \return Status
   virtual Status AsyncSubscribe(
       const ActorID &actor_id,
-      const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Cancel subscription to an actor.

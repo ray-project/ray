@@ -4,10 +4,10 @@
 #include <fstream>
 #include <memory>
 
-#include "ray/common/status.h"
-
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
+#include "ray/common/status.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
 #include "ray/util/sample.h"
@@ -235,13 +235,13 @@ ray::Status NodeManager::RegisterGcs() {
       /*subscribe_callback=*/nullptr,
       /*done_callback=*/nullptr));
 
-  // Subscribe to driver table updates.
-  const auto job_table_handler = [this](gcs::RedisGcsClient *client, const JobID &job_id,
-                                        const std::vector<JobTableData> &job_data) {
-    HandleJobTableUpdate(job_id, job_data);
+  // Subscribe to job updates.
+  const auto job_subscribe_handler = [this](const JobID &job_id,
+                                            const JobTableData &job_data) {
+    HandleJobFinished(job_id, job_data);
   };
-  RAY_RETURN_NOT_OK(gcs_client_->job_table().Subscribe(JobID::Nil(), ClientID::Nil(),
-                                                       job_table_handler, nullptr));
+  RAY_RETURN_NOT_OK(
+      gcs_client_->Jobs().AsyncSubscribeToFinishedJobs(job_subscribe_handler, nullptr));
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
@@ -272,40 +272,33 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   });
 }
 
-void NodeManager::HandleJobTableUpdate(const JobID &id,
-                                       const std::vector<JobTableData> &job_data) {
-  for (const auto &entry : job_data) {
-    RAY_LOG(DEBUG) << "HandleJobTableUpdate " << JobID::FromBinary(entry.job_id()) << " "
-                   << entry.is_dead();
-    if (entry.is_dead()) {
-      auto job_id = JobID::FromBinary(entry.job_id());
-      auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
-
-      // Kill all the workers. The actual cleanup for these workers is done
-      // later when we receive the DisconnectClient message from them.
-      for (const auto &worker : workers) {
-        if (!worker->IsDetachedActor()) {
-          // Clean up any open ray.wait calls that the worker made.
-          task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
-          // Mark the worker as dead so further messages from it are ignored
-          // (except DisconnectClient).
-          worker->MarkDead();
-          // Then kill the worker process.
-          KillWorker(worker);
-        }
-      }
-
-      // Remove all tasks for this job from the scheduling queues, mark
-      // the results for these tasks as not required, cancel any attempts
-      // at reconstruction. Note that at this time the workers are likely
-      // alive because of the delay in killing workers.
-      auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
-      task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
-      // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
-      // call it last.
-      local_queues_.RemoveTasks(tasks_to_remove);
+void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
+  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
+  RAY_CHECK(job_data.is_dead());
+  auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
+  // Kill all the workers. The actual cleanup for these workers is done
+  // later when we receive the DisconnectClient message from them.
+  for (const auto &worker : workers) {
+    if (!worker->IsDetachedActor()) {
+      // Clean up any open ray.wait calls that the worker made.
+      task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+      // Mark the worker as dead so further messages from it are ignored
+      // (except DisconnectClient).
+      worker->MarkDead();
+      // Then kill the worker process.
+      KillWorker(worker);
     }
   }
+
+  // Remove all tasks for this job from the scheduling queues, mark
+  // the results for these tasks as not required, cancel any attempts
+  // at reconstruction. Note that at this time the workers are likely
+  // alive because of the delay in killing workers.
+  auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
+  task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
+  // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
+  // call it last.
+  local_queues_.RemoveTasks(tasks_to_remove);
 }
 
 void NodeManager::Heartbeat() {
@@ -1048,9 +1041,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     status = worker_pool_.RegisterDriver(std::move(worker));
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
-      RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-          job_id, /*is_dead=*/false, std::time(nullptr),
-          initial_config_.node_manager_address, message->worker_pid()));
+      auto job_data_ptr = gcs::CreateJobTableData(
+          job_id, /*is_dead*/ false, std::time(nullptr),
+          initial_config_.node_manager_address, message->worker_pid());
+      RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
   }
 }
@@ -1177,7 +1171,7 @@ void NodeManager::ProcessDisconnectClientMessage(
       task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
     }
     // Erase any lease metadata.
-    leased_workers_.erase(worker->Port());
+    leased_workers_.erase(worker->WorkerId());
   }
 
   if (is_worker) {
@@ -1255,11 +1249,9 @@ void NodeManager::ProcessDisconnectClientMessage(
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
-    const auto driver_id = ComputeDriverIdFromJob(job_id);
     RAY_CHECK(!job_id.IsNil());
-    RAY_CHECK_OK(gcs_client_->job_table().AppendJobData(
-        job_id, /*is_dead=*/true, std::time(nullptr),
-        initial_config_.node_manager_address, worker->Pid()));
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(job_id, nullptr));
+    const auto driver_id = ComputeDriverIdFromJob(job_id);
     local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
     worker_pool_.DisconnectDriver(worker);
 
@@ -1562,11 +1554,12 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
             reply->mutable_worker_address()->set_ip_address(
                 initial_config_.node_manager_address);
             reply->mutable_worker_address()->set_port(worker->Port());
+            reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
             reply->mutable_worker_address()->set_raylet_id(
                 gcs_client_->client_table().GetLocalClientId().Binary());
-            RAY_CHECK(leased_workers_.find(worker->Port()) == leased_workers_.end());
-            leased_workers_[worker->Port()] = worker;
-            leased_worker_resources_[worker->Port()] = request_resources;
+            RAY_CHECK(leased_workers_.find(worker->WorkerId()) == leased_workers_.end());
+            leased_workers_[worker->WorkerId()] = worker;
+            leased_worker_resources_[worker->WorkerId()] = request_resources;
           } else {
             reply->mutable_retry_at_raylet_address()->set_ip_address(address);
             reply->mutable_retry_at_raylet_address()->set_port(port);
@@ -1586,12 +1579,13 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
-                                                  const std::string &address, int port,
-                                                  const ResourceIdSet &resource_ids) {
+      [this, task_id, reply, send_reply_callback](
+          const std::shared_ptr<void> granted, const std::string &address, int port,
+          const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
+        reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
         reply->mutable_worker_address()->set_raylet_id(
             gcs_client_->client_table().GetLocalClientId().Binary());
         for (const auto &mapping : resource_ids.AvailableResources()) {
@@ -1613,8 +1607,9 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         // TODO(swang): Kill worker if other end hangs up.
         // TODO(swang): Implement a lease term by which the owner needs to return the
         // worker.
-        RAY_CHECK(leased_workers_.find(port) == leased_workers_.end());
-        leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
+        RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
+            << "Worker is already leased out " << worker_id;
+        leased_workers_[worker_id] = std::static_pointer_cast<Worker>(granted);
       });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
@@ -1632,18 +1627,18 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::ReturnWorkerReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
-  auto worker_port = request.worker_port();
-  std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_port]);
+  auto worker_id = WorkerID::FromBinary(request.worker_id());
+  std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_id]);
 
   if (new_scheduler_enabled_) {
-    auto it = leased_worker_resources_.find(worker_port);
+    auto it = leased_worker_resources_.find(worker_id);
     RAY_CHECK(it != leased_worker_resources_.end());
     new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), it->second);
     leased_worker_resources_.erase(it);
     NewSchedulerSchedulePendingTasks();
   }
 
-  leased_workers_.erase(worker_port);
+  leased_workers_.erase(worker_id);
   Status status;
   if (worker) {
     if (request.disconnect_worker()) {
@@ -2280,6 +2275,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
       worker->MarkDetachedActor();
     }
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
+                      worker->WorkerId(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
                                                  : worker->GetTaskResourceIds());
     post_assign_callbacks->push_back([this, worker, task_id]() {
@@ -2326,7 +2322,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   worker.ResetTaskResourceIds();
 
   const auto &spec = task.GetTaskSpecification();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  if ((spec.IsActorCreationTask() || spec.IsActorTask()) && !spec.IsDirectCall()) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
     FinishAssignedActorTask(worker, task);
@@ -2411,6 +2407,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
 }
 
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
+  RAY_LOG(INFO) << "Finishing assigned actor task";
   ActorID actor_id;
   TaskID caller_id;
   const TaskSpecification task_spec = task.GetTaskSpecification();
@@ -2513,7 +2510,7 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
   auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, port);
-  new_actor_info->set_parent_actor_id(parent_actor_id.Binary());
+  new_actor_info->set_parent_id(parent_actor_id.Binary());
   auto update_callback = [actor_id](Status status) {
     if (!status.ok()) {
       // Only one node at a time should succeed at creating or updating the actor.

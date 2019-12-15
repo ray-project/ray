@@ -162,6 +162,7 @@ class Trial(object):
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
+        self.start_time = None
         self.logdir = None
         self.runner = None
         self.result_logger = None
@@ -250,6 +251,12 @@ class Trial(object):
     def set_location(self, location):
         """Sets the location of the trial."""
         self.address = location
+
+    def set_status(self, status):
+        """Sets the status of the trial."""
+        if status == Trial.RUNNING and self.start_time is None:
+            self.start_time = time.time()
+        self.status = status
 
     def close_logger(self):
         """Closes logger."""

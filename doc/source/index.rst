@@ -159,7 +159,6 @@ Blog and Press
 
   - `Modern Parallel and Distributed Python: A Quick Tutorial on Ray <https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8>`_
   - `Why Every Python Developer Will Love Ray <https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/>`_
-  - `Meet Ray, the Real-Time Machine-Learning Replacement for Spark <https://www.datanami.com/2017/03/28/meet-ray-real-time-machine-learning-replacement-spark/>`_
   - `Ray: A Distributed System for AI (BAIR) <http://bair.berkeley.edu/blog/2018/01/09/ray/>`_
   - `10x Faster Parallel Python Without Python Multiprocessing <https://towardsdatascience.com/10x-faster-parallel-python-without-python-multiprocessing-e5017c93cce1>`_
   - `Implementing A Parameter Server in 15 Lines of Python with Ray <https://ray-project.github.io/2018/07/15/parameter-server-in-fifteen-lines.html>`_
@@ -235,20 +234,11 @@ Getting Involved
    :caption: Ray Core
 
    using-ray.rst
+   configure.rst
+   cluster-index.rst
    Tutorials <https://github.com/ray-project/tutorial>
    Examples <auto_examples/overview.rst>
    package-ref.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Deploying Ray (Cluster Setup)
-
-   autoscaling.rst
-   using-ray-on-a-cluster.rst
-   deploy-on-yarn.rst
-   deploy-on-kubernetes.rst
-   deploying-on-slurm.rst
-
 
 .. toctree::
    :maxdepth: -1
@@ -256,6 +246,7 @@ Getting Involved
 
    tune.rst
    tune-tutorial.rst
+   tune-advanced-tutorial.rst
    tune-usage.rst
    tune-distributed.rst
    tune-schedulers.rst
