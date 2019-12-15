@@ -210,3 +210,18 @@ def test_map(pool_4_processes):
     def f(args):
         index = args[0]
         return index, os.getpid()
+
+def test_map_async(pool_4_processes):
+    pass
+
+def test_starmap(pool_4_processes):
+    pass
+
+def test_starmap_async(pool_4_processes):
+    pass
+
+def imap(pool_4_processes):
+    pass
+
+def imap_unordered(pool_4_processes):
+    pass
