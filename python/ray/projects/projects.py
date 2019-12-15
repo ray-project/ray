@@ -41,7 +41,7 @@ class ProjectDefinition:
 
     def cluster_yaml(self):
         """Return the project's cluster configuration filename."""
-        return self.config["cluster"]
+        return self.config["cluster"]["config"]
 
     def working_directory(self):
         """Return the project's working directory on a cluster session."""
@@ -49,6 +49,44 @@ class ProjectDefinition:
         # directory to the correct target.
         directory = os.path.join("~", self.config["name"], "")
         return directory
+
+    def make_argument_parser(self, name, params, wildcards):
+        """Build argument parser dynamically to parse parameter arguments.
+
+        Args:
+            name (str): Name of the command to parse.
+            params (dict): Parameter specification used to construct
+                the argparse parser.
+            wildcards: Whether wildcards are allowed as arguments.
+
+        Returns:
+            The argparse parser.
+            A dictionary from argument name to list of valid choices.
+        """
+
+        parser = argparse.ArgumentParser(prog=name)
+        # For argparse arguments that have a 'choices' list associated
+        # with them, save it in the following dictionary.
+        choices = {}
+        for param in params:
+            # Construct arguments to pass into argparse's parser.add_argument.
+            argparse_kwargs = copy.deepcopy(param)
+            name = argparse_kwargs.pop("name")
+            if wildcards and "choices" in param:
+                choices[name] = param["choices"]
+                argparse_kwargs["choices"] = param["choices"] + ["*"]
+            if "type" in param:
+                types = {"int": int, "str": str, "float": float}
+                if param["type"] in types:
+                    argparse_kwargs["type"] = types[param["type"]]
+                else:
+                    raise ValueError(
+                        "Parameter {} has type {} which is not supported. "
+                        "Type must be one of {}".format(
+                            name, param["type"], list(types.keys())))
+            parser.add_argument("--" + name, dest=name, **argparse_kwargs)
+
+        return parser, choices
 
     def get_command_info(self, command_name, args, shell, wildcards=False):
         """Get the shell command, parsed arguments and config for a command.
@@ -86,29 +124,7 @@ class ProjectDefinition:
                 "Cannot find the command named '{}' in commmands section "
                 "of the project file.".format(command_name))
 
-        # Build argument parser dynamically to parse parameter arguments.
-        parser = argparse.ArgumentParser(prog=command_name)
-        # For argparse arguments that have a 'choices' list associated
-        # with them, save it in the following dictionary.
-        choices = {}
-        for param in params:
-            # Construct arguments to pass into argparse's parser.add_argument.
-            argparse_kwargs = copy.deepcopy(param)
-            name = argparse_kwargs.pop("name")
-            if wildcards and "choices" in param:
-                choices[name] = param["choices"]
-                argparse_kwargs["choices"] = param["choices"] + ["*"]
-            if "type" in param:
-                types = {"int": int, "str": str, "float": float}
-                if param["type"] in types:
-                    argparse_kwargs["type"] = types[param["type"]]
-                else:
-                    raise ValueError(
-                        "Parameter {} has type {} which is not supported. "
-                        "Type must be one of {}".format(
-                            name, param["type"], list(types.keys())))
-            parser.add_argument("--" + name, dest=name, **argparse_kwargs)
-
+        parser, choices = self.make_argument_parser(command_name, params, wildcards)
         parsed_args = vars(parser.parse_args(list(args)))
 
         if wildcards:
@@ -175,10 +191,12 @@ def check_project_config(project_root, project_config):
 
     # Make sure the cluster yaml file exists
     if "cluster" in project_config:
-        cluster_file = os.path.join(project_root, project_config["cluster"])
-        if not os.path.exists(cluster_file):
-            raise ValueError("'cluster' file does not exist "
-                             "in {}".format(project_root))
+        if "config" in project_config["cluster"]:
+            cluster_file = os.path.join(
+                project_root, project_config["cluster"]["config"])
+            if not os.path.exists(cluster_file):
+                raise ValueError("'cluster' file does not exist "
+                                 "in {}".format(project_root))
 
     if "environment" in project_config:
         env = project_config["environment"]

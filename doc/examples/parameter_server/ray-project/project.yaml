@@ -6,7 +6,8 @@ description: "A simple parameter server example implemented with ray actors"
 tags: ["ray-example", "parameter-server", "machine-learning"]
 documentation: https://ray.readthedocs.io/en/latest/auto_examples/plot_parameter_server.html
 
-cluster: ray-project/cluster.yaml
+cluster:
+  config: ray-project/cluster.yaml
 
 environment:
   requirements: ray-project/requirements.txt
