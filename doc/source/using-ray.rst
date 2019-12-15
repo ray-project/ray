@@ -15,7 +15,6 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
    using-ray-with-gpus.rst
    serialization.rst
    memory-management.rst
-   configure.rst
    troubleshooting.rst
    advanced.rst
    using-ray-with-tensorflow.rst
