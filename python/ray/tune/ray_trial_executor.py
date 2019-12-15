@@ -125,7 +125,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
-        assert trial.status == Trial.RUNNING,  trial.status
+        assert trial.status == Trial.RUNNING, trial.status
         remote = trial.runner.train.remote()
         # Local Mode
         if isinstance(remote, dict):
@@ -556,6 +556,7 @@ class RayTrialExecutor(TrialExecutor):
             checkpoint = Checkpoint(storage, value, result)
         else:
             with warn_if_slow("save_checkpoint_to_disk"):
+                # TODO(ujvl): Make this asynchronous.
                 value = ray.get(trial.runner.save.remote())
                 checkpoint = Checkpoint(storage, value, result)
         with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
@@ -589,7 +590,7 @@ class RayTrialExecutor(TrialExecutor):
         value = checkpoint.value
         if checkpoint.storage == Checkpoint.MEMORY:
             # Note that we don't store the remote since in-memory checkpoints
-            # aren't fault tolerant and don't need to be waited on.
+            # don't guarantee fault tolerance and don't need to be waited on.
             trial.runner.restore_from_object.remote(value)
         else:
             logger.info("Trial %s: Attempting restore from %s", trial, value)

@@ -5,8 +5,6 @@ from __future__ import print_function
 
 import heapq
 import logging
-import os
-import shutil
 
 try:
     FileNotFoundError
@@ -23,8 +21,8 @@ class Checkpoint(object):
 
     Attributes:
         storage (str): Storage type.
-        value (str): If storage==MEMORY, this is a Python object.
-            If storage==PERSISTENT, it is a path to a persistent storage system.
+        value (str): If storage==MEMORY, it is a Python object.
+            If storage==PERSISTENT, it is a path to persistent storage.
     """
 
     MEMORY = "memory"
