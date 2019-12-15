@@ -35,6 +35,30 @@
           "type": "array",
           "items": {
             "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "help": {
+                "type": "string"
+              },
+              "choices": {
+                "type": "array"
+              },
+              "default": {
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "int",
+                  "float",
+                  "str"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
             "additionalProperties": true
           }
         }
