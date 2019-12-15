@@ -46,6 +46,6 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   private JobId nextJobId() {
-    return JobId.fromShort((short) jobCounter.getAndIncrement());
+    return JobId.fromInt(jobCounter.getAndIncrement());
   }
 }

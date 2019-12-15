@@ -35,12 +35,18 @@ public class JobId extends BaseId implements Serializable {
     return new JobId(byteBuffer2Bytes(bb));
   }
 
-  public static JobId fromShort(short value) {
-    byte[] bytes = new byte[JobId.LENGTH];
+  public static JobId fromInt(int value) {
+    if (value > Math.pow(256, JobId.LENGTH)) {
+      throw new IllegalArgumentException(
+          "The integer value is invalid for a JobId. Value: " + value);
+    }
+    byte[] bytes = new byte[Integer.BYTES];
     ByteBuffer wbb = ByteBuffer.wrap(bytes);
     wbb.order(ByteOrder.LITTLE_ENDIAN);
-    wbb.putShort(value);
-    return new JobId(bytes);
+    wbb.putInt(value);
+    wbb.flip();
+    wbb.limit(JobId.LENGTH);
+    return JobId.fromByteBuffer(wbb);
   }
 
   /**
