@@ -8,4 +8,4 @@ environment:
     - third command
 
 cluster:
-  config: "cluster.yaml"
+  config: cluster.yaml

@@ -5,4 +5,4 @@ environment:
   docker: "Dockerfile"
 
 cluster:
-  config: "cluster.yaml"
+  config: cluster.yaml

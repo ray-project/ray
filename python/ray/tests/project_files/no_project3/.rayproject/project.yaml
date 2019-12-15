@@ -6,4 +6,4 @@ environment:
   dockerimage: "some docker image"
 
 cluster:
-  config: "cluster.yaml"
+  config: cluster.yaml
