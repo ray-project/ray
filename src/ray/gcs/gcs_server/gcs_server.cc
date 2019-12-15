@@ -53,7 +53,8 @@ void GcsServer::InitBackendClient() {
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
-  return std::unique_ptr<rpc::DefaultJobInfoHandler>(new rpc::DefaultJobInfoHandler());
+  return std::unique_ptr<rpc::DefaultJobInfoHandler>(
+      new rpc::DefaultJobInfoHandler(*redis_gcs_client_));
 }
 
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
