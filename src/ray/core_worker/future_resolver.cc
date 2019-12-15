@@ -9,7 +9,7 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
   auto it = owner_clients_.find(owner_id);
   if (it == owner_clients_.end()) {
     auto client = std::shared_ptr<rpc::CoreWorkerClientInterface>(
-        client_factory_({owner_address.ip_address(), owner_address.port()}));
+        client_factory_(owner_address.ip_address(), owner_address.port()));
     it = owner_clients_.emplace(owner_id, std::move(client)).first;
   }
 

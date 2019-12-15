@@ -53,12 +53,23 @@ void TaskSpecification::ComputeResources() {
 
 // Task specification getter methods.
 TaskID TaskSpecification::TaskId() const {
+  if (message_->task_id().empty() /* e.g., empty proto default */) {
+    return TaskID::Nil();
+  }
   return TaskID::FromBinary(message_->task_id());
 }
 
-JobID TaskSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
+JobID TaskSpecification::JobId() const {
+  if (message_->job_id().empty() /* e.g., empty proto default */) {
+    return JobID::Nil();
+  }
+  return JobID::FromBinary(message_->job_id());
+}
 
 TaskID TaskSpecification::ParentTaskId() const {
+  if (message_->parent_task_id().empty() /* e.g., empty proto default */) {
+    return TaskID::Nil();
+  }
   return TaskID::FromBinary(message_->parent_task_id());
 }
 
