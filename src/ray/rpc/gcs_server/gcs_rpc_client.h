@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RAY_RPC_GCS_RPC_CLIENT_H
+#define RAY_RPC_GCS_RPC_CLIENT_H
 
 #include <thread>
 
