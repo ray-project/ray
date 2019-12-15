@@ -9,19 +9,19 @@ import time
 
 import ray
 
-RAY_ADDRESS_ENV = "RAY_ADDRESS"
 
-
-# TODO: implement callbacks
 class AsyncResult(object):
     def __init__(self,
                  chunk_object_ids,
                  callback=None,
-                 result_callback=None,
+                 error_callback=None,
                  single_result=False):
+        if callback is not None or error_callback is not None:
+            raise NotImplementedError(
+                "Callbacks are not currently implemented.")
         self._chunk_object_ids = chunk_object_ids
         self._callback = callback
-        self._result_callback = result_callback
+        self._error_callback = error_callback
         self._single_result = single_result
 
     def get(self, timeout=None):
@@ -144,13 +144,11 @@ class PoolActor(object):
 
 # https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 class Pool(object):
-    # TODO: what about context argument?
     def __init__(self,
                  processes=None,
                  initializer=None,
                  initargs=None,
-                 maxtasksperchild=None,
-                 context=None):
+                 maxtasksperchild=None):
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs if initargs else ()
@@ -161,25 +159,24 @@ class Pool(object):
         self._start_actor_pool(processes)
 
     def _init_ray(self, processes=None):
-        # Cluster mode.
-        if RAY_ADDRESS_ENV in os.environ:
-            address = os.environ[RAY_ADDRESS_ENV]
-            print("Connecting to ray cluster at address='{}'".format(address))
-            ray.init(address=address)
-        # Local mode.
-        else:
-            print("Starting local ray cluster")
-            ray.init(num_cpus=processes)
+        if not ray.is_initialized():
+            # Cluster mode.
+            if "RAY_ADDRESS" in os.environ:
+                address = os.environ["RAY_ADDRESS"]
+                print("Connecting to ray cluster at address='{}'".format(address))
+                ray.init(address=address)
+            # Local mode.
+            else:
+                print("Starting local ray cluster")
+                ray.init(num_cpus=processes)
         if processes is None:
             processes = int(ray.state.cluster_resources()["CPU"])
         return processes
 
     def _start_actor_pool(self, processes):
-        print("Starting {} actors...".format(processes))
         start = time.time()
         self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
         ray.get([actor.ping.remote() for actor, _ in self._actor_pool])
-        print("Actors ready in {0:.2f}s".format(time.time()-start))
 
     def _wait_for_stopping_actors(self, timeout=None):
         if len(self._actor_deletion_ids) == 0:
@@ -194,18 +191,16 @@ class Pool(object):
         self._actor_deletion_ids = deleting
 
     def _stop_actor(self, actor):
-        # Remove finished deletion IDs so.
+        # Check and clean up any outstanding IDs corresponding to deletions.
+        self._wait_for_stopping_actors(timeout=0.0)
         # The deletion task will block until the actor has finished executing
         # all pending tasks.
-        self._wait_for_stopping_actors(timeout=0.0)
         self._actor_deletion_ids.append(actor.__ray_terminate__.remote())
 
-    def _check_running(self):
-        if self._closed:
-            raise ValueError("Pool not running")
-
     def _new_actor_entry(self):
-        # TODO(edoakes): initializer can't be used to import or set globals.
+        # TODO(edoakes): The initializer function can't currently be used to
+        # modify the global namespace (e.g., import packages or set globals)
+        # due to a limitation in cloudpickle.
         return (PoolActor._remote(
             self._initializer, *self._initargs), 0)
 
@@ -304,19 +299,22 @@ class Pool(object):
 
         return chunk_object_ids
 
-    # TODO: shouldn't actually submit everything at once for memory
-    # considerations.
-    def imap(self, func, iterable, chunksize=None):
+    # TODO(edoakes): imap and imap_unordered shouldn't submit the full iterable
+    # at once, but rather submit a new batch as each one finishes. This is
+    # important for very long (or even infinite) iterables.
+    def imap(self, func, iterable, chunksize=1):
         self._check_running()
         return OrderedIMapIterator(
             self._chunk_and_run(func, iterable, chunksize=chunksize))
 
-    # TODO: shouldn't actually submit everything at once for memory
-    # considerations.
     def imap_unordered(self, func, iterable, chunksize=1):
         self._check_running()
         return UnorderedIMapIterator(
             self._chunk_and_run(func, iterable, chunksize=chunksize))
+
+    def _check_running(self):
+        if self._closed:
+            raise ValueError("Pool not running")
 
     def __enter__(self):
         self._check_running()
@@ -330,7 +328,9 @@ class Pool(object):
             self._stop_actor(actor)
         self._closed = True
 
-    # TODO: shouldn't complete outstanding work.
+    # TODO(edoakes): Terminating a multiprocessing pool doesn't complete
+    # oustanding work, but there isn't currently any clean way to do this
+    # using the ray API.
     def terminate(self):
         return self.close()
 
