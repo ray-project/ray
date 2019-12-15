@@ -140,11 +140,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   google::InitGoogleLogging(app_name_.c_str());
   if (log_dir_.empty()) {
     google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
-    for (int i = static_cast<int>(severity_threshold_);
-         i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
-      int level = GetMappedSeverity(static_cast<RayLogLevel>(i));
-      google::base::SetLogger(level, &stdout_logger_singleton);
-    }
+    int level = GetMappedSeverity(severity_threshold_);
+    google::base::SetLogger(level, &stdout_logger_singleton);
   } else {
     // Enable log file if log_dir_ is not empty.
     auto dir_ends_with_slash = log_dir_;
