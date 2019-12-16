@@ -1,6 +1,6 @@
 const base =
   process.env.NODE_ENV === "development"
-    ? "http://localhost:8080"
+    ? "http://localhost:8265"
     : window.location.origin;
 
 // TODO(mitchellstern): Add JSON schema validation for the responses.
