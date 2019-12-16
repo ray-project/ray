@@ -38,6 +38,12 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
 
  private:
   RedisGcsClient *client_impl_{nullptr};
+  // Use a random ClientID for task subscription. Because:
+  // If we use ClientID::Nil, GCS will still send all tasks' updates to this GCS Client.
+  // Even we can filter out irrelevant updates, but there will be extra overhead.
+  // And because the new GCS Client will no longer hold the local ClientID, so we use
+  // random ClientID instead.
+  // TODO(micafan): Remove this random id, once GCS becomes a service.
   ClientID subscribe_id_{ClientID::FromRandom()};
 
   typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>

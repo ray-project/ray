@@ -10,8 +10,6 @@ namespace ray {
 
 namespace gcs {
 
-class RedisGcsClient;
-
 /// \class TaskInfoAccessor
 /// `TaskInfoAccessor` is a sub-interface of `GcsClient`.
 /// This class includes all the methods that are related to accessing
