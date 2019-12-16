@@ -117,7 +117,7 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 		}
 	}
 
-	log.Info("Build pods according ray cluster instance", "size", len(expectedPods), "podNames", expectedPodNameList)
+	log.Info("Build pods according to the ray cluster instance", "size", len(expectedPods), "podNames", expectedPodNameList)
 
 	runtimePods := corev1.PodList{}
 	if err = r.List(context.TODO(), &runtimePods, client.InNamespace(instance.Namespace), client.MatchingLabels{common.RayClusterOwnerKey: request.Name}); err != nil {
