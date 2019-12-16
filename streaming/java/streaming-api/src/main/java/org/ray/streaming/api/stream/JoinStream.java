@@ -9,9 +9,9 @@ import org.ray.streaming.operator.StreamOperator;
 /**
  * Represents a DataStream of two joined DataStream.
  *
- * @param <L> Lype of the data in the left stream.
- * @param <R> Lype of the data in the right stream.
- * @param <J> Lype of the data in the joined stream.
+ * @param <L> Type of the data in the left stream.
+ * @param <R> Type of the data in the right stream.
+ * @param <J> Type of the data in the joined stream.
  */
 public class JoinStream<L, R, J> extends DataStream<L> {
 
@@ -33,10 +33,10 @@ public class JoinStream<L, R, J> extends DataStream<L> {
   /**
    * Where clause of the join transformation.
    *
-   * @param <L> Lype of the data in the left stream.
-   * @param <R> Lype of the data in the right stream.
-   * @param <J> Lype of the data in the joined stream.
-   * @param <K> Lype of the join key.
+   * @param <L> Type of the data in the left stream.
+   * @param <R> Type of the data in the right stream.
+   * @param <J> Type of the data in the joined stream.
+   * @param <K> Type of the join key.
    */
   class Where<L, R, J, K> implements Serializable {
 
@@ -56,10 +56,10 @@ public class JoinStream<L, R, J> extends DataStream<L> {
   /**
    * Equal clause of the join transformation.
    *
-   * @param <L> Lype of the data in the left stream.
-   * @param <R> Lype of the data in the right stream.
-   * @param <J> Lype of the data in the joined stream.
-   * @param <K> Lype of the join key.
+   * @param <L> Type of the data in the left stream.
+   * @param <R> Type of the data in the right stream.
+   * @param <J> Type of the data in the joined stream.
+   * @param <K> Type of the join key.
    */
   class Equal<L, R, J, K> implements Serializable {
 
