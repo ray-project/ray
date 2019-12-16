@@ -186,6 +186,10 @@ class TrialRunner(object):
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
 
+    @property
+    def scheduler_alg(self):
+        return self._scheduler_alg
+
     def _validate_resume(self, resume_type):
         """Checks whether to resume experiment.
 
