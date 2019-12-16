@@ -21,8 +21,8 @@ class CheckpointManagerTest(unittest.TestCase):
         return {"i": i}
 
     def checkpoint_manager(self, keep_checkpoints_num):
-        return CheckpointManager(keep_checkpoints_num, "i",
-                                 delete_fn=lambda c: None)
+        return CheckpointManager(
+            keep_checkpoints_num, "i", delete_fn=lambda c: None)
 
     def testOnCheckpointOrdered(self):
         """

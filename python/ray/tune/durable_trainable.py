@@ -12,6 +12,11 @@ class DurableTrainable(Trainable):
     """A fault-tolerant Trainable.
 
     Supports checkpointing to and restoring from remote storage.
+
+    The storage client must provide durability for restoration to work. That
+    is, once ``storage.client.wait()`` returns after a checkpoint `sync up`,
+    the checkpoint is considered committed and can be used to restore the
+    trainable.
     """
 
     def __init__(self, *args, **kwargs):
@@ -34,6 +39,7 @@ class DurableTrainable(Trainable):
         if not os.path.exists(local_dirpath):
             os.makedirs(local_dirpath)
         self.storage_client.sync_down(storage_dirpath, local_dirpath)
+        self.storage_client.wait()
         super(DurableTrainable, self).restore(checkpoint_path)
 
     def delete_checkpoint(self, checkpoint_path):
@@ -43,9 +49,13 @@ class DurableTrainable(Trainable):
         self.storage_client.delete(self._storage_path(local_dirpath))
 
     def _storage_path(self, local_path):
-        rel_local_path = os.path.relpath(local_path, self.logdir)
+        logdir_parent = os.path.dirname(self.logdir)
+        rel_local_path = os.path.relpath(local_path, logdir_parent)
         return os.path.join(self._root_storage_path(), rel_local_path)
 
     def _root_storage_path(self):
-        """Path to directory in which checkpoints and logs are stored."""
+        """Path to directory in which checkpoints are stored.
+
+        You can also use `self.storage_client` to store logs here.
+        """
         raise NotImplementedError("Storage path must be provided by subclass.")

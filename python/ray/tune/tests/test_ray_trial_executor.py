@@ -4,11 +4,9 @@ from __future__ import division
 from __future__ import print_function
 
 import json
-import sys
 import unittest
 
 import ray
-from ray.exceptions import RayTimeoutError
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -17,11 +15,6 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch
-else:
-    from mock import patch
 
 
 class RayTrialExecutorTest(unittest.TestCase):

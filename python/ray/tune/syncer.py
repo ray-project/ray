@@ -221,6 +221,9 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
             remote_dir. If string, then it must be a string template for
             syncer to run. If not provided, it defaults
             to standard S3 or gsutil sync commands.
+
+    Raises:
+        ValueError if malformed remote_dir.
     """
     key = (local_dir, remote_dir)
 

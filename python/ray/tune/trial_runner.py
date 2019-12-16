@@ -416,20 +416,6 @@ class TrialRunner(object):
                 with warn_if_slow("process_trial"):
                     self._process_trial(trial)
 
-    # def _process_trial_checkpoint(self, trial):
-    #     """Processes a trial's persisted checkpoint."""
-    #     value = None
-    #     try:
-    #         value = self.trial_executor.fetch_result(trial)
-    #     except Exception:
-    #         error_msg = "Trial {}: Error processing checkpoint".format(trial)
-    #         error_msg += "{}.".format(value) if value else ""
-    #         logger.exception(error_msg)
-    #     else:
-    #         checkpoint = Checkpoint(Checkpoint.PERSISTENT, value, trial.last_result)
-    #         trial.on_checkpoint(checkpoint)
-    #         # notify trial_executor according to cached decision.
-
     def _process_trial(self, trial):
         """Processes a trial result."""
         try:
@@ -501,7 +487,6 @@ class TrialRunner(object):
         except Exception:
             logger.exception("Trial %s: Error processing restore.", trial)
             self._process_trial_failure(trial, traceback.format_exc())
-            return
 
     def _process_trial_failure(self, trial, error_msg):
         """Handle trial failure.

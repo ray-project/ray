@@ -29,7 +29,16 @@ def noop(*args):
 
 
 def get_sync_client(sync_function, delete_function=None):
-    """Gets sync client."""
+    """Returns a sync client.
+
+    Args:
+        sync_function (str|function): Sync function.
+        delete_function (Optional[str|function]): Delete function. Must be
+            the same type as sync_function if it is provided.
+
+    Raises:
+        ValueError if sync_function or delete_function are malformed.
+    """
     if delete_function and type(sync_function) != type(delete_function):
         raise ValueError("Sync and delete functions must be of same type.")
     if isinstance(sync_function, types.FunctionType):
@@ -45,6 +54,14 @@ def get_sync_client(sync_function, delete_function=None):
 
 
 def get_cloud_sync_client(remote_path):
+    """Returns a CommandBasedClient that can sync to/from remote storage.
+
+    Args:
+        remote_path (str): Path to remote storage (S3 or GS).
+
+    Raises:
+        ValueError if malformed remote_dir.
+    """
     if remote_path.startswith(S3_PREFIX):
         if not distutils.spawn.find_executable("aws"):
             raise ValueError(
@@ -67,20 +84,24 @@ def get_cloud_sync_client(remote_path):
 
 class SyncClient(object):
     def sync_up(self, source, target):
-        """Sync up from source to target.
+        """Syncs up from source to target.
+
         Args:
             source (str): Source path.
             target (str): Target path.
+
         Returns:
             True if sync initiation successful, False otherwise.
         """
         raise NotImplementedError
 
     def sync_down(self, source, target):
-        """Sync down from source to target.
+        """Syncs down from source to target.
+
         Args:
             source (str): Source path.
             target (str): Target path.
+
         Returns:
             True if sync initiation successful, False otherwise.
         """
@@ -98,7 +119,7 @@ class SyncClient(object):
         raise NotImplementedError
 
     def wait(self):
-        """Wait for current sync to complete, if asynchronously started."""
+        """Waits for current sync to complete, if asynchronously started."""
         pass
 
     def reset(self):

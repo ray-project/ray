@@ -373,9 +373,14 @@ class Trainable(object):
         shutil.rmtree(tmpdir)
 
     def delete_checkpoint(self, checkpoint_path):
+        """Deletes local copy of checkpoint.
+
+        Args:
+            checkpoint_path (str): Path to checkpoint.
+        """
         checkpoint_dir = os.path.dirname(checkpoint_path)
         if os.path.exists(checkpoint_dir):
-            os.rmdir(checkpoint_dir)
+            shutil.rmtree(checkpoint_dir)
 
     def export_model(self, export_formats, export_dir=None):
         """Exports model based on export_formats.

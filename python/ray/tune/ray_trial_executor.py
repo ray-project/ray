@@ -148,9 +148,11 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         self.set_status(trial, Trial.RUNNING)
-        trial.set_runner(runner or self._setup_remote_runner(
-            trial,
-            reuse_allowed=checkpoint is not None or trial.has_checkpoint()))
+        trial.set_runner(
+            runner or self._setup_remote_runner(
+                trial,
+                reuse_allowed=checkpoint is not None
+                or trial.has_checkpoint()))
         self.restore(trial, checkpoint)
 
         previous_run = self._find_item(self._paused, trial)
@@ -208,7 +210,7 @@ class RayTrialExecutor(TrialExecutor):
             checkpoint (Checkpoint): A Python object or path storing the state
                 of trial.
         """
-        attempts = trial.num_failures_between_results
+        attempts = trial.num_failures_since_result
         if attempts >= TRIAL_START_ATTEMPTS:
             return  # Exceeded restoration attempts.
         self._commit_resources(trial.resources)

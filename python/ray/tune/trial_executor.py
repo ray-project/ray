@@ -144,9 +144,9 @@ class TrialExecutor(object):
         raise NotImplementedError
 
     def get_running_trials(self):
-        """Returns all active trials."""
+        """Returns all running trials."""
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
-                                  "get_active_trials() method")
+                                  "get_running_trials() method")
 
     def on_step_begin(self, trial_runner):
         """A hook called before running one step of the trial event loop."""

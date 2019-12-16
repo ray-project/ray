@@ -199,7 +199,7 @@ class Trial(object):
         # Restoration fields
         self.restoring_from = None
         self.num_failures = 0
-        self.num_failures_between_results = 0  # Name this something better...
+        self.num_failures_since_result = 0
 
         # AutoML fields
         self.results = None
@@ -293,7 +293,7 @@ class Trial(object):
     def write_error_log(self, error_msg):
         if error_msg and self.logdir:
             self.num_failures += 1
-            self.num_failures_between_results += 1
+            self.num_failures_since_result += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
             with open(self.error_file, "a+") as f:
                 f.write("Failure # {} (occurred at {})\n".format(
@@ -350,8 +350,6 @@ class Trial(object):
                 # after this to handle checkpoints taken mid-sync.
                 self.result_logger.wait()
                 # Force sync down and wait before tracking the new checkpoint.
-                # This prevents attempts to restore from partially synced
-                # checkpoints.
                 if self.result_logger.sync_down():
                     self.result_logger.wait()
                 else:
@@ -361,7 +359,7 @@ class Trial(object):
         self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def on_begin_restore(self, checkpoint):
-        """Handles newly dispatched restore.
+        """Handles dispatched async restore.
 
         This can be called multiple times without subsequently calling
         `on_restore` since a restoration attempt can fail.
@@ -398,7 +396,7 @@ class Trial(object):
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
-        self.num_failures_between_results = 0
+        self.num_failures_since_result = 0
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
