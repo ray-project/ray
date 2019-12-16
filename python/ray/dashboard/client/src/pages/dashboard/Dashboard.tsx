@@ -148,6 +148,7 @@ class Dashboard extends React.Component<
               <NodeRowGroup
                 key={client.ip}
                 node={client}
+                numNodes={nodeInfo.clients.length}
                 logCounts={logCounts[client.ip]}
                 errorCounts={errorCounts[client.ip]}
               />

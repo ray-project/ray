@@ -45,6 +45,7 @@ interface Props {
     perWorker: { [pid: string]: number };
     total: number;
   };
+  numNodes: number;
   errorCounts: {
     perWorker: { [pid: string]: number };
     total: number;
@@ -60,7 +61,7 @@ class NodeRowGroup extends React.Component<
   State
 > {
   state: State = {
-    expanded: false
+    expanded: (this.props.numNodes > 5 ? false : true) 
   };
 
   toggleExpand = () => {
