@@ -1,9 +1,5 @@
 #include "streaming_jni_common.h"
 
-jclass java_direct_buffer_class;
-jfieldID java_direct_buffer_address;
-jfieldID java_direct_buffer_capacity;
-
 std::vector<ray::ObjectID>
 jarray_to_object_id_vec(JNIEnv *env, jobjectArray jarr) {
   int stringCount = env->GetArrayLength(jarr);
@@ -71,7 +67,6 @@ jclass LoadClass(JNIEnv *env, const char *class_name) {
   return ret;
 }
 
-/// Convert a Java List to C++ std::vector.
 template <typename NativeT>
 void JavaListToNativeVector(
     JNIEnv *env, jobject java_list, std::vector<NativeT> *native_vector,

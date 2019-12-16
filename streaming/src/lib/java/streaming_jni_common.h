@@ -6,21 +6,6 @@
 #include "ray/core_worker/common.h"
 #include "util/streaming_logging.h"
 
-/// DirectByteBuffer class. Global reference can be used in multi-threads
-extern jclass java_direct_buffer_class;
-/// address field of DirectByteBuffer
-extern jfieldID java_direct_buffer_address;
-/// capacity field of DirectByteBuffer
-extern jfieldID java_direct_buffer_capacity;
-
-static inline jclass FindClass(JNIEnv *env, const char *class_name) {
-  jclass local = env->FindClass(class_name);
-  STREAMING_CHECK(local) << "Can't find java class " << class_name;
-  auto ret = (jclass)env->NewGlobalRef(local);
-  env->DeleteLocalRef(local);
-  return ret;
-}
-
 class UniqueIdFromJByteArray {
  private:
   JNIEnv *_env;
@@ -122,19 +107,4 @@ jint throwRuntimeException(JNIEnv *env, const char *message);
 jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector<ray::ObjectID> &abnormal_queues);
 jint throwQueueInterruptException(JNIEnv *env, const char *message);
 ray::RayFunction FunctionDescriptorToRayFunction(JNIEnv *env, jobject functionDescriptor);
-
-#define GET_JCLASS(env, classname, clazz)                    \
-  static jclass clazz = nullptr;                             \
-  if (!clazz) {                                              \
-    jclass local = env->FindClass(classname);                \
-    clazz = (jclass)env->NewGlobalRef(local);                \
-    env->DeleteLocalRef(local);                              \
-  }
-
-#define GET_JMETHOD(env, clazz, method_id, methodname, sig)  \
-  static jmethodID method_id = nullptr;                      \
-  if (!method_id) {                                          \
-    method_id = env->GetMethodID(clazz, methodname, sig);    \
-  }
-
 #endif //RAY_STREAMING_JNI_COMMON_H
