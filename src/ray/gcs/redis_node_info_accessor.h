@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_NODE_STATE_ACCESSOR_H
-#define RAY_GCS_NODE_STATE_ACCESSOR_H
+#ifndef RAY_GCS_REDIS_NODE_INFO_ACCESSOR_H
+#define RAY_GCS_REDIS_NODE_INFO_ACCESSOR_H
 
 #include <boost/optional.hpp>
 #include <map>
@@ -9,6 +9,7 @@
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
+#include "ray/gcs/node_info_accessor.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -16,57 +17,56 @@ namespace ray {
 namespace gcs {
 
 class RedisGcsClient;
-class NodeStateCache;
 
-/// \class NodeStateAccessor
-/// NodeStateAccessor class encapsulates the implementation details of
-/// reading, writing and subscribing of node's information (immutable fields like id,
-/// and mutable fields like runtime state).
-class NodeStateAccessor {
+/// \class RedisNodeInfoAccessor
+/// RedisNodeInfoAccessor is an implementation of `NodeInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisNodeInfoAccessor : public NodeInfoAccessor {
  public:
-  explicit NodeStateAccessor(RedisGcsClient *client_impl);
+  explicit RedisNodeInfoAccessor(RedisGcsClient *client_impl);
 
-  ~NodeStateAccessor() {}
+  virtual ~RedisNodeInfoAccessor() {}
 
   /// Register local node to GCS synchronously.
   ///
   /// \param node_info The information of node to register to GCS.
   /// \return Status
-  Status RegisterSelf(const GcsNodeInfo &local_node_info);
+  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
 
   /// Cancel registration of local node to GCS synchronously.
   ///
   /// \return Status
-  Status UnregisterSelf();
+  Status UnregisterSelf() override;
 
   /// Whether local node has been unregistered to GCS.
   /// Non-thread safe.
   ///
   /// \return bool
-  bool IsSelfUnregistered() const;
+  bool IsSelfUnregistered() const override;
 
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
   /// \return ClientID
-  const ClientID &GetSelfId() const;
+  const ClientID &GetSelfId() const override;
 
   /// Get information of local node which was registered by 'RegisterSelf'.
   ///
   /// \return GcsNodeInfo
-  const GcsNodeInfo &GetSelfInfo() const;
+  const GcsNodeInfo &GetSelfInfo() const override;
 
   /// Cancel registration of a node to GCS asynchronously.
   ///
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
-  Status AsyncUnregister(const ClientID &node_id, const StatusCallback &callback);
+  Status AsyncUnregister(const ClientID &node_id,
+                         const StatusCallback &callback) override;
 
   /// Get information of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback);
+  Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -76,27 +76,7 @@ class NodeStateAccessor {
   /// \return Status
   Status AsyncSubscribeToNodeChange(
       const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
-      const StatusCallback &done);
-
-  /// Get nodes cache. The cache stores node information subscribed from GCS.
-  /// NodeInfoCahce provides read-only interfaces such as `Get`.
-  /// AsyncSubscribeToNodeChange() must be called successfully before you call this
-  /// method.
-  ///
-  /// \return NodeStateCache
-  NodeStateCache &Cache() const;
-
- private:
-  RedisGcsClient *client_impl_{nullptr};
-  std::unique_ptr<NodeStateCache> cache_{nullptr};
-};
-
-/// \class NodeStateCache
-/// NodeStateCache stores node information subscribed from GCS.
-/// It provides read-only interfaces such as `Get`, `GetAll`...
-class NodeStateCache {
- public:
-  explicit NodeStateCache(ClientTable *client_table);
+      const StatusCallback &done) override;
 
   /// Get node information from local cache.
   /// Non-thread safe.
@@ -104,27 +84,27 @@ class NodeStateCache {
   /// \param node_id The ID of node to look up in local cache.
   /// \return The item returned by GCS. If the item to read doesn't exist,
   /// this optional object is empty.
-  boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const;
+  boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const override;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
   ///
   /// \return All nodes in cache.
-  const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const;
+  const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
   ///
   /// \param node_id The id of the node to check.
   /// \return Whether the node is removed.
-  bool IsRemoved(const ClientID &node_id) const;
+  bool IsRemoved(const ClientID &node_id) const override;
 
  private:
-  ClientTable *client_table_{nullptr};
+  RedisGcsClient *client_impl_{nullptr};
 };
 
 }  // namespace gcs
 
 }  // namespace ray
 
-#endif  // RAY_GCS_NODE_STATE_ACCESSOR_H
+#endif  // RAY_GCS_REDIS_NODE_INFO_ACCESSOR_H

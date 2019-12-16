@@ -662,8 +662,8 @@ class LogSubscribeTestHelper {
     auto subscribe_callback = [job_id, job_id1, job_id2, job_ids1,
                                job_ids2](gcs::RedisGcsClient *client) {
       // Request notifications for one of the keys.
-      RAY_CHECK_OK(client->job_table().RequestNotifications(
-          job_id, job_id2, client->client_table().GetLocalClientId(), nullptr));
+      RAY_CHECK_OK(client->job_table().RequestNotifications(job_id, job_id2,
+                                                            local_client_id, nullptr));
       // Write both keys. We should only receive notifications for the key that
       // we requested them for.
       auto remaining = std::vector<std::string>(++job_ids1.begin(), job_ids1.end());
@@ -682,9 +682,8 @@ class LogSubscribeTestHelper {
 
     // Subscribe to notifications for this client. This allows us to request and
     // receive notifications for specific keys.
-    RAY_CHECK_OK(
-        client->job_table().Subscribe(job_id, client->client_table().GetLocalClientId(),
-                                      notification_callback, subscribe_callback));
+    RAY_CHECK_OK(client->job_table().Subscribe(
+        job_id, local_client_id, notification_callback, subscribe_callback));
     // Run the event loop. The loop will only stop if the registered subscription
     // callback is called for the requested key.
     test->Start();
@@ -728,10 +727,10 @@ class LogSubscribeTestHelper {
                                job_ids](gcs::RedisGcsClient *client) {
       // Request notifications, then cancel immediately. We should receive a
       // notification for the current value at the key.
-      RAY_CHECK_OK(client->job_table().RequestNotifications(
-          job_id, random_job_id, client->client_table().GetLocalClientId(), nullptr));
-      RAY_CHECK_OK(client->job_table().CancelNotifications(
-          job_id, random_job_id, client->client_table().GetLocalClientId(), nullptr));
+      RAY_CHECK_OK(client->job_table().RequestNotifications(job_id, random_job_id,
+                                                            local_client_id, nullptr));
+      RAY_CHECK_OK(client->job_table().CancelNotifications(job_id, random_job_id,
+                                                           local_client_id, nullptr));
       // Append to the key. Since we canceled notifications, we should not
       // receive a notification for these writes.
       auto remaining = std::vector<std::string>(++job_ids.begin(), job_ids.end());
@@ -742,15 +741,14 @@ class LogSubscribeTestHelper {
       }
       // Request notifications again. We should receive a notification for the
       // current values at the key.
-      RAY_CHECK_OK(client->job_table().RequestNotifications(
-          job_id, random_job_id, client->client_table().GetLocalClientId(), nullptr));
+      RAY_CHECK_OK(client->job_table().RequestNotifications(job_id, random_job_id,
+                                                            local_client_id, nullptr));
     };
 
     // Subscribe to notifications for this client. This allows us to request and
     // receive notifications for specific keys.
-    RAY_CHECK_OK(
-        client->job_table().Subscribe(job_id, client->client_table().GetLocalClientId(),
-                                      notification_callback, subscribe_callback));
+    RAY_CHECK_OK(client->job_table().Subscribe(
+        job_id, local_client_id, notification_callback, subscribe_callback));
     // Run the event loop. The loop will only stop if the registered subscription
     // callback is called for the requested key.
     test->Start();

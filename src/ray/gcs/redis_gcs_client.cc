@@ -5,6 +5,7 @@
 #include "ray/gcs/redis_actor_info_accessor.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/redis_job_info_accessor.h"
+#include "ray/gcs/redis_node_info_accessor.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -150,7 +151,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
   job_accessor_.reset(new RedisJobInfoAccessor(this));
-  node_accessor_.reset(new NodeStateAccessor(this));
+  node_accessor_.reset(new RedisNodeInfoAccessor(this));
 
   is_connected_ = true;
 

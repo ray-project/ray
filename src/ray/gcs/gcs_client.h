@@ -8,7 +8,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/actor_info_accessor.h"
 #include "ray/gcs/job_info_accessor.h"
-#include "ray/gcs/node_state_accessor.h"
+#include "ray/gcs/node_info_accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -78,7 +78,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Get the sub-interface for accessing node information in GCS.
   /// This function is thread safe.
-  NodeStateAccessor &Nodes() {
+  NodeInfoAccessor &Nodes() {
     RAY_CHECK(node_accessor_ != nullptr);
     return *node_accessor_;
   }
@@ -96,7 +96,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
-  std::unique_ptr<NodeStateAccessor> node_accessor_;
+  std::unique_ptr<NodeInfoAccessor> node_accessor_;
 };
 
 }  // namespace gcs

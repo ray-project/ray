@@ -22,7 +22,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   // with interface class GcsClient in raylet.
   friend class RedisActorInfoAccessor;
   friend class RedisJobInfoAccessor;
-  friend class NodeStateAccessor;
+  friend class RedisNodeInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
   friend class ClientTableTestHelper;
