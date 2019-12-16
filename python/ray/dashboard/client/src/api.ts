@@ -22,6 +22,18 @@ const get = async <T>(path: string, params: { [key: string]: any }) => {
   return result as T;
 };
 
+export interface RayConfigResponse {
+  min_workers: number;
+  max_workers: number;
+  initial_workers: number;
+  autoscaling_mode: string;
+  idle_timeout_minutes: number;
+  head_type: string;
+  worker_type: string;
+}
+
+export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
+
 export interface NodeInfoResponse {
   clients: Array<{
     now: number;
@@ -44,7 +56,6 @@ export interface NodeInfoResponse {
     workers: Array<{
       pid: number;
       create_time: number;
-      name: string;
       cmdline: string[];
       cpu_percent: number;
       cpu_times: {
