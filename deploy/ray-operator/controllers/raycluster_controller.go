@@ -149,7 +149,6 @@ func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.R
 	// create service for head
 	if needServicePodMap.Cardinality() > 0 {
 		for elem := range needServicePodMap.Iterator().C {
-			// create head and clusterApiServer service
 			podName := elem.(string)
 			svcConf := common.DefaultServiceConfig(*instance, podName)
 			rayPodSvc := common.ServiceForPod(svcConf)
