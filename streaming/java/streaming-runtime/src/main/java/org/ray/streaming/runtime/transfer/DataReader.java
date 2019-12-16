@@ -107,7 +107,8 @@ public class DataReader {
             buf.offer(getDataMessage(bundleData, channelID, timestamp));
           }
         } else if (bundleMeta.getBundleType() == DataBundleType.EMPTY) {
-          buf.offer(new DataMessage(null, bundleMeta.getBundleTs(), bundleMeta.getChannelID()));
+          long messageId = bundleMeta.getLastMessageId();
+          buf.offer(new DataMessage(null, bundleMeta.getBundleTs(), messageId, bundleMeta.getChannelID()));
         }
       }
     }
@@ -120,7 +121,7 @@ public class DataReader {
   private DataMessage getDataMessage(ByteBuffer bundleData, String channelID, long timestamp) {
     int dataSize = bundleData.getInt();
     // msgId
-    bundleData.getLong();
+    long msgId = bundleData.getLong();
     // msgType
     bundleData.getInt();
     // make `data.capacity() == data.remaining()`, because some code used `capacity()`
@@ -131,7 +132,7 @@ public class DataReader {
     ByteBuffer data = bundleData.slice();
     bundleData.limit(limit);
     bundleData.position(position + dataSize);
-    return new DataMessage(data, timestamp, channelID);
+    return new DataMessage(data, timestamp, msgId, channelID);
   }
 
   private void getBundle(long timeoutMillis) {
