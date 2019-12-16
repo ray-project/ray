@@ -72,7 +72,7 @@ func buildContainer(conf *PodConfig) corev1.Container {
 	httpServerPort, _ := strconv.ParseInt(defaultHTTPServerPort, 10, 64)
 	jobManagerPort, _ := strconv.ParseInt(defaultRedisPort, 10, 64)
 
-	// get pod file path to check pod container if ready or not
+	// get pod file path to check if the pod container ready or not
 	var podReadyFilepath string
 	for _, env := range conf.Extension.ContainerEnv {
 		if strings.EqualFold(env.Name, PodReadyFilepath) {
