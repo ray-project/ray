@@ -150,4 +150,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
         void GetAsync(const CObjectID &object_id,
-                      ray_callback_function callback, void* python_future)
+                      ray_callback_function successs_callback,
+                      ray_callback_function fallback_callback,
+                      void* python_future)

@@ -411,8 +411,8 @@ class CoreWorker {
   /// object_id.IsDirectCallType() \param[in] callback The callback to use the result
   /// object. \param[in] python_future the void* object to be passed to SetResultCallback
   /// \return void
-  void GetAsync(const ObjectID &object_id, SetResultCallback callback,
-                void *python_future);
+  void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+                SetResultCallback fallback_callback, void *python_future);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
