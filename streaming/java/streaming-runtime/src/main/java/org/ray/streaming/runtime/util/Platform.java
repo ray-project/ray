@@ -63,6 +63,9 @@ public final class Platform {
         throw new IllegalStateException("unreachable");
       });
 
+  /**
+   * Wrap a buffer [address, address + size) as a DirectByteBuffer.
+   */
   public static ByteBuffer wrapDirectBuffer(long address, int size) {
     ByteBuffer buffer = localEmptyBuffer.get().duplicate();
     UNSAFE.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
@@ -80,6 +83,10 @@ public final class Platform {
     buffer.clear();
   }
 
+  /**
+   * @param buffer a DirectBuffer backed by off-heap memory
+   * @return address of off-heap memory
+   */
   public static long getAddress(ByteBuffer buffer) {
     return ((DirectBuffer) buffer).address();
   }

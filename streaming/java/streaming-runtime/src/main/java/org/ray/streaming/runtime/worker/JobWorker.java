@@ -114,20 +114,31 @@ public class JobWorker implements Serializable {
   }
 
   /**
-   * Send message to DataReader of the actor
-   **/
+   * Used by upstream streaming queue to send data to this actor
+   */
   public void onReaderMessage(byte[] buffer) {
     transferHandler.onReaderMessage(buffer);
   }
 
+  /**
+   * Used by upstream streaming queue to send data to this actor
+   * and receive result from this actor
+   */
   public byte[] onReaderMessageSync(byte[] buffer) {
     return transferHandler.onReaderMessageSync(buffer);
   }
 
+  /**
+   * Used by downstream streaming queue to send data to this actor
+   */
   public void onWriterMessage(byte[] buffer) {
     transferHandler.onWriterMessage(buffer);
   }
 
+  /**
+   * Used by downstream streaming queue to send data to this actor
+   * and receive result from this actor
+   */
   public byte[] onWriterMessageSync(byte[] buffer) {
     return transferHandler.onWriterMessageSync(buffer);
   }

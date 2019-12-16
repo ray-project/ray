@@ -101,10 +101,16 @@ public class ChannelID {
 
   private static native void destroyNativeID(long nativeIDPtr);
 
+  /**
+   * @param id hex string representation of channel id
+   */
   public static ChannelID from(String id) {
     return from(id, ChannelID.idStrToBytes(id));
   }
 
+  /**
+   * @param idBytes bytes representation of channel id
+   */
   public static ChannelID from(byte[] idBytes) {
     return from(idBytesToStr(idBytes), idBytes);
   }
@@ -168,12 +174,20 @@ public class ChannelID {
     return ChannelID.idBytesToStr(queueName);
   }
 
+  /**
+   * @param id hex string representation of channel id
+   * @return bytes representation of channel id
+   */
   static byte[] idStrToBytes(String id) {
     byte[] qidBytes = DatatypeConverter.parseHexBinary(id.toUpperCase());
     assert qidBytes.length == ChannelID.ID_LENGTH;
     return qidBytes;
   }
 
+  /**
+   * @param qid bytes representation of channel id
+   * @return hex string representation of channel id
+   */
   static String idBytesToStr(byte[] qid) {
     assert qid.length == ChannelID.ID_LENGTH;
     return DatatypeConverter.printHexBinary(qid).toLowerCase();

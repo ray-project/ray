@@ -6,6 +6,10 @@ import org.ray.runtime.functionmanager.FunctionDescriptor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.util.JniUtils;
 
+/**
+ * TransferHandler is used for handle direct call based data transfer between workers.
+ * TransferHandler is used by streaming queue for data transfer.
+ */
 public class TransferHandler {
 
   static {

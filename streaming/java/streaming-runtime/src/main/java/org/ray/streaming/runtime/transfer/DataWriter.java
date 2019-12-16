@@ -77,7 +77,7 @@ public class DataWriter {
   }
 
   /**
-   * produce msg into the specified queue
+   * Write msg into the specified channel
    *
    * @param id   channel id
    * @param item message item data section is specified by [position, limit).
@@ -91,7 +91,7 @@ public class DataWriter {
   }
 
   /**
-   * produce msg into the specified queues
+   * Write msg into the specified channels
    *
    * @param ids  channel ids
    * @param item message item data section is specified by [position, limit).
@@ -123,7 +123,7 @@ public class DataWriter {
   }
 
   /**
-   * close writer to release resource
+   * close writer to release resources
    */
   public void close() {
     if (nativeWriterPtr == 0) {

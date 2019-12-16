@@ -119,7 +119,7 @@ public class DataReader {
 
   private DataMessage getDataMessage(ByteBuffer bundleData, String channelID, long timestamp) {
     int dataSize = bundleData.getInt();
-    // seqId
+    // msgId
     bundleData.getLong();
     // msgType
     bundleData.getInt();

@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
 public class ChannelUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(ChannelUtils.class);
 
-  public static byte[] toNativeConf(Map<String, String> conf) {
+  static byte[] toNativeConf(Map<String, String> conf) {
     Streaming.StreamingConfig.Builder builder = Streaming.StreamingConfig.newBuilder();
     if (conf.containsKey(Config.STREAMING_JOB_NAME)) {
       builder.setJobName(conf.get(Config.STREAMING_JOB_NAME));
