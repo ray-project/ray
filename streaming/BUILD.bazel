@@ -225,6 +225,7 @@ genrule(
         GENERATED_DIR=$$WORK_DIR/streaming/python/generated
         rm -rf $$GENERATED_DIR
         mkdir -p $$GENERATED_DIR
+        touch $$GENERATED_DIR/__init__.py
         for f in $(locations //streaming:streaming_py_proto); do
             cp $$f $$GENERATED_DIR
         done
