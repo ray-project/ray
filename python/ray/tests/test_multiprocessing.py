@@ -6,9 +6,19 @@ import os
 import pytest
 import tempfile
 import subprocess
+from collections import defaultdict
 
 import ray
 from ray.experimental.multiprocessing import Pool, TimeoutError
+
+
+@pytest.fixture
+def cleanup_only():
+    yield None
+    ray.shutdown()
+    subprocess.check_output(["ray", "stop"])
+    if "RAY_ADDRESS" in os.environ:
+        del os.environ["RAY_ADDRESS"]
 
 
 @pytest.fixture
@@ -27,7 +37,7 @@ def pool_4_processes():
     ray.shutdown()
 
 
-def test_initialize_ray(shutdown_only):
+def test_initialize_ray(cleanup_only):
     def getpid(args):
         import os
         return os.getpid()
@@ -99,7 +109,7 @@ def test_initialize_ray(shutdown_only):
     subprocess.check_output(["ray", "stop"])
 
 
-def test_initializer(shutdown_only):
+def test_initializer(cleanup_only):
     def init(dirname):
         with open(os.path.join(dirname, str(os.getpid())), "w") as f:
             print("hello", file=f)
@@ -114,7 +124,7 @@ def test_initializer(shutdown_only):
 
 
 @pytest.mark.skip(reason="Modifying globals in initializer not working.")
-def test_initializer_globals(shutdown_only):
+def test_initializer_globals(cleanup_only):
     def init(arg1, arg2):
         global x
         x = arg1 + arg2
@@ -182,7 +192,7 @@ def test_apply_async(pool):
     result.wait(timeout=0.01)
     assert not result.ready()
     with pytest.raises(TimeoutError):
-        result.get(timeout=0.1)
+        result.get(timeout=0.01)
 
     # Fulfill the ObjectID.
     ray.worker.global_worker.put_object(10, object_id=object_id)
@@ -207,21 +217,87 @@ def test_apply_async(pool):
 
 
 def test_map(pool_4_processes):
-    def f(args):
-        index = args[0]
+    def f(index):
+        import os
         return index, os.getpid()
 
+    results = pool_4_processes.map(f, range(1000))
+    assert len(results) == 1000
+
+    pid_counts = defaultdict(int)
+    for i, (index, pid) in enumerate(results):
+        assert i == index
+        pid_counts[pid] += 1
+
+    # Check that the functions are spread somewhat evenly.
+    for count in pid_counts.values():
+        assert count > 100
+
+    def bad_func(args):
+        raise Exception("test_map failure")
+
+    with pytest.raises(Exception, match="test_map failure"):
+        pool_4_processes.map(bad_func, range(100))
+
+
 def test_map_async(pool_4_processes):
-    pass
+    def f(args):
+        import os
+        index = args[0]
+        ray.get(args[1])
+        return index, os.getpid()
+
+    # Generate a random ObjectID that will be fulfilled later.
+    object_id = ray.ObjectID.from_random()
+    async_result = pool_4_processes.map_async(
+        f, [(i, object_id) for i in range(1000)])
+    assert not async_result.ready()
+    with pytest.raises(TimeoutError):
+        async_result.get(timeout=0.01)
+    async_result.wait(timeout=0.01)
+
+    # Fulfill the object ID, finishing the tasks.
+    ray.worker.global_worker.put_object(0, object_id=object_id)
+    async_result.wait(timeout=10)
+    assert async_result.ready()
+    assert async_result.successful()
+
+    results = async_result.get()
+    assert len(results) == 1000
+
+    pid_counts = defaultdict(int)
+    for i, (index, pid) in enumerate(results):
+        assert i == index
+        pid_counts[pid] += 1
+
+    # Check that the functions are spread somewhat evenly.
+    for count in pid_counts.values():
+        assert count > 100
+
+    def bad_func(index):
+        if index == 50:
+            raise Exception("test_map_async failure")
+
+    async_result = pool_4_processes.map_async(bad_func, range(100))
+    async_result.wait(10)
+    assert async_result.ready()
+    assert not async_result.successful()
+
+    with pytest.raises(Exception, match="test_map_async failure"):
+        async_result.get()
+
 
 def test_starmap(pool_4_processes):
     pass
 
+
 def test_starmap_async(pool_4_processes):
     pass
 
+
 def imap(pool_4_processes):
     pass
+
 
 def imap_unordered(pool_4_processes):
     pass
