@@ -121,6 +121,7 @@ class Trial(object):
                  experiment_tag="",
                  resources=None,
                  stopping_criterion=None,
+                 upload_dir=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -187,6 +188,7 @@ class Trial(object):
         self.custom_trial_name = None
 
         # Checkpointing fields
+        self.upload_dir = upload_dir
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.sync_on_checkpoint = sync_on_checkpoint

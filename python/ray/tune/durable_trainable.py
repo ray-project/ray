@@ -19,9 +19,10 @@ class DurableTrainable(Trainable):
     trainable.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, upload_dir, *args, **kwargs):
         super(DurableTrainable, self).__init__(*args, **kwargs)
-        self.storage_client = get_cloud_sync_client(self._root_storage_path())
+        self.upload_dir = upload_dir
+        self.storage_client = get_cloud_sync_client(self.upload_dir)
 
     def save(self, checkpoint_dir=None):
         """Saves checkpoint to remote storage."""
@@ -51,11 +52,4 @@ class DurableTrainable(Trainable):
     def _storage_path(self, local_path):
         logdir_parent = os.path.dirname(self.logdir)
         rel_local_path = os.path.relpath(local_path, logdir_parent)
-        return os.path.join(self._root_storage_path(), rel_local_path)
-
-    def _root_storage_path(self):
-        """Path to directory in which checkpoints are stored.
-
-        You can also use `self.storage_client` to store logs here.
-        """
-        raise NotImplementedError("Storage path must be provided by subclass.")
+        return os.path.join(self.upload_dir, rel_local_path)

@@ -4,6 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import pickle
 import os
 import random
 import time
@@ -596,7 +597,14 @@ class RayTrialExecutor(TrialExecutor):
             trial.runner.restore_from_object.remote(value)
         else:
             logger.info("Trial %s: Attempting restore from %s", trial, value)
-            remote = trial.runner.restore.remote(value)
+            if trial.upload_dir is None and trial.sync_on_checkpoint:
+                # This provides FT backwards compatibility in the case where
+                # an upload directory is not provided. Not great since it
+                # makes assumptions on how Trainable does restoration.
+                value = pickle.load(value)
+                remote = trial.runner.restore_from_object(value)
+            else:
+                remote = trial.runner.restore.remote(value)
             self._running[remote] = trial
             trial.on_begin_restore(checkpoint)
 

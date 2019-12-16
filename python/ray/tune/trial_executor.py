@@ -32,7 +32,8 @@ class TrialExecutor(object):
         """Sets status and checkpoints metadata if needed.
 
         Only checkpoints metadata if trial status is a terminal condition.
-        All other switches have checkpoints taken care of in the TrialRunner.
+        PENDING, PAUSED, and RUNNING switches have checkpoints taken care of
+        in the TrialRunner.
 
         Args:
             trial (Trial): Trial to checkpoint.
