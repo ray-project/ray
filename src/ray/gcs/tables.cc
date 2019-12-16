@@ -577,7 +577,10 @@ void ClientTable::HandleNotification(RedisGcsClient *client,
   }
 }
 
-const ClientID &ClientTable::GetLocalClientId() const { return local_node_id_; }
+const ClientID &ClientTable::GetLocalClientId() const {
+  RAY_CHECK(!local_node_id_.IsNil());
+  return local_node_id_;
+}
 
 const GcsNodeInfo &ClientTable::GetLocalClient() const { return local_node_info_; }
 

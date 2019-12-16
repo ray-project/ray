@@ -602,6 +602,14 @@ class CoreWorker {
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
 
+  /// Use a random ClientID for direct actor subscription. Because:
+  // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
+  // Even we can filter out irrelevant updates, but there will be extra overhead.
+  // And because the new GCS Client will no longer hold the local ClientID, so we use
+  // random ClientID instead.
+  // TODO(micafan) Remove this random id, once the new direct actor interface is used.
+  ClientID subscribe_id_{ClientID::FromRandom()};
+
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
 
