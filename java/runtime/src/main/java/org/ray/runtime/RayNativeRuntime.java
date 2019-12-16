@@ -149,12 +149,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @Override
   public Object getAsyncContext() {
-    throw new UnsupportedOperationException();
+    return null;
   }
 
   @Override
   public void setAsyncContext(Object asyncContext) {
-    throw new UnsupportedOperationException();
   }
 
   public void run() {
