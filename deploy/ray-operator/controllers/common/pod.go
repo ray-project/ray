@@ -68,7 +68,6 @@ func BuildPod(conf *PodConfig) *corev1.Pod {
 
 func buildContainer(conf *PodConfig) corev1.Container {
 
-	//var redisPort = defaultRedisPort, httpServerPort, jobManagerPort int64
 	redisPort, _ := strconv.ParseInt(defaultRedisPort, 10, 64)
 	httpServerPort, _ := strconv.ParseInt(defaultHTTPServerPort, 10, 64)
 	jobManagerPort, _ := strconv.ParseInt(defaultRedisPort, 10, 64)
