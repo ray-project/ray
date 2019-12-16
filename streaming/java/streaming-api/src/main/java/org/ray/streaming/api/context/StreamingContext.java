@@ -1,5 +1,6 @@
 package org.ray.streaming.api.context;
 
+import com.google.common.base.Preconditions;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -8,8 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import com.google.common.base.Preconditions;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.plan.Plan;
 import org.ray.streaming.plan.PlanBuilder;

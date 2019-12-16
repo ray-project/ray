@@ -1,5 +1,11 @@
 package org.ray.streaming.runtime.transfer;
 
+import com.google.common.base.Preconditions;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import org.ray.api.id.ActorId;
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.streaming.runtime.util.JniUtils;
@@ -7,14 +13,6 @@ import org.ray.streaming.runtime.util.Platform;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import com.google.common.base.Preconditions;
 
 /**
  * Data Writer is a wrapper of streaming c++ DataWriter, which sends data
@@ -87,7 +85,7 @@ public class DataWriter {
     ensureBuffer(size);
     buffer.clear();
     buffer.put(item);
-    writeMessageNative(nativeWriterPtr, id.getNativeIDPtr(), bufferAddress, size);
+    writeMessageNative(nativeWriterPtr, id.getNativeIdPtr(), bufferAddress, size);
   }
 
   /**
@@ -103,7 +101,7 @@ public class DataWriter {
     for (ChannelID id : ids) {
       buffer.clear();
       buffer.put(item.duplicate());
-      writeMessageNative(nativeWriterPtr, id.getNativeIDPtr(), bufferAddress, size);
+      writeMessageNative(nativeWriterPtr, id.getNativeIdPtr(), bufferAddress, size);
     }
   }
 
@@ -143,7 +141,8 @@ public class DataWriter {
       byte[] confBytes,
       boolean isMock);
 
-  private native long writeMessageNative(long nativeQueueProducerPtr, long nativeIDPtr, long address, int size);
+  private native long writeMessageNative(
+      long nativeQueueProducerPtr, long nativeIdPtr, long address, int size);
 
   private native void stopWriterNative(long nativeQueueProducerPtr);
 

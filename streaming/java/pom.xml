@@ -136,8 +136,8 @@
                         </execution>
                     </executions>
                     <configuration>
-                        <configLocation>../java/checkstyle.xml</configLocation>
-                        <suppressionsLocation>../java/checkstyle-suppressions.xml</suppressionsLocation>
+                        <configLocation>../../java/checkstyle.xml</configLocation>
+                        <suppressionsLocation>checkstyle-suppressions.xml</suppressionsLocation>
                         <encoding>UTF-8</encoding>
                         <consoleOutput>true</consoleOutput>
                         <failsOnError>true</failsOnError>

@@ -1,20 +1,16 @@
 package org.ray.streaming.runtime.transfer;
 
+import com.google.common.base.FinalizablePhantomReference;
+import com.google.common.base.FinalizableReferenceQueue;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Sets;
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.Set;
-
 import javax.xml.bind.DatatypeConverter;
-
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.streaming.runtime.util.JniUtils;
-
-import com.google.common.base.FinalizablePhantomReference;
-import com.google.common.base.FinalizableReferenceQueue;
-import com.google.common.collect.Sets;
-
 import sun.nio.ch.DirectBuffer;
 
 /**
@@ -38,22 +34,22 @@ public class ChannelID {
   }
 
   private final byte[] bytes;
-  private final String strID;
+  private final String strId;
   private final ByteBuffer buffer;
   private final long address;
-  private final long nativeIDPtr;
+  private final long nativeIdPtr;
 
-  private ChannelID(String strID, byte[] idBytes) {
-    this.strID = strID;
+  private ChannelID(String strId, byte[] idBytes) {
+    this.strId = strId;
     this.bytes = idBytes;
     ByteBuffer directBuffer = ByteBuffer.allocateDirect(ID_LENGTH);
     directBuffer.put(bytes);
     directBuffer.rewind();
     this.buffer = directBuffer;
     this.address = ((DirectBuffer) (buffer)).address();
-    long nativeIDPtr = 0;
-    nativeIDPtr = createNativeID(address);
-    this.nativeIDPtr = nativeIDPtr;
+    long nativeIdPtr = 0;
+    nativeIdPtr = createNativeID(address);
+    this.nativeIdPtr = nativeIdPtr;
   }
 
   public byte[] getBytes() {
@@ -68,16 +64,16 @@ public class ChannelID {
     return address;
   }
 
-  public long getNativeIDPtr() {
-    if (nativeIDPtr == 0) {
+  public long getNativeIdPtr() {
+    if (nativeIdPtr == 0) {
       throw new IllegalStateException("native ID not available");
     }
-    return nativeIDPtr;
+    return nativeIdPtr;
   }
 
   @Override
   public String toString() {
-    return strID;
+    return strId;
   }
 
   @Override
@@ -89,17 +85,17 @@ public class ChannelID {
       return false;
     }
     ChannelID that = (ChannelID) o;
-    return strID.equals(that.strID);
+    return strId.equals(that.strId);
   }
 
   @Override
   public int hashCode() {
-    return strID.hashCode();
+    return strId.hashCode();
   }
 
   private static native long createNativeID(long idAddress);
 
-  private static native void destroyNativeID(long nativeIDPtr);
+  private static native void destroyNativeID(long nativeIdPtr);
 
   /**
    * @param id hex string representation of channel id
@@ -117,15 +113,16 @@ public class ChannelID {
 
   private static ChannelID from(String strID, byte[] idBytes) {
     ChannelID id = new ChannelID(strID, idBytes);
-    long nativeIDPtr = id.nativeIDPtr;
-    if (nativeIDPtr != 0) {
-      Reference<ChannelID> reference = new FinalizablePhantomReference<ChannelID>(id, REFERENCE_QUEUE) {
-        @Override
-        public void finalizeReferent() {
-          destroyNativeID(nativeIDPtr);
-          references.remove(this);
-        }
-      };
+    long nativeIdPtr = id.nativeIdPtr;
+    if (nativeIdPtr != 0) {
+      Reference<ChannelID> reference =
+          new FinalizablePhantomReference<ChannelID>(id, REFERENCE_QUEUE) {
+            @Override
+            public void finalizeReferent() {
+              destroyNativeID(nativeIdPtr);
+              references.remove(this);
+            }
+          };
       references.add(reference);
     }
     return id;

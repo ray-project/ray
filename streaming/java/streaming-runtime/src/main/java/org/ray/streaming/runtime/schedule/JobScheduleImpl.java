@@ -3,19 +3,18 @@ package org.ray.streaming.runtime.schedule;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.streaming.plan.Plan;
+import org.ray.streaming.plan.PlanVertex;
 import org.ray.streaming.runtime.cluster.ResourceManager;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanVertex;
-import org.ray.streaming.schedule.IJobSchedule;
 import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.runtime.worker.context.WorkerContext;
+import org.ray.streaming.schedule.IJobSchedule;
 
 public class JobScheduleImpl implements IJobSchedule {
   private Plan plan;

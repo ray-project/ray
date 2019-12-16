@@ -54,13 +54,13 @@ public class TransferHandler {
 
   private native long createWriterClientNative(
       long coreWorkerNative,
-      FunctionDescriptor async_func,
-      FunctionDescriptor sync_func);
+      FunctionDescriptor asyncFunc,
+      FunctionDescriptor syncFunc);
 
   private native long createReaderClientNative(
       long coreWorkerNative,
-      FunctionDescriptor async_func,
-      FunctionDescriptor sync_func);
+      FunctionDescriptor asyncFunc,
+      FunctionDescriptor syncFunc);
 
   private native void handleWriterMessageNative(long handler, byte[] buffer);
 

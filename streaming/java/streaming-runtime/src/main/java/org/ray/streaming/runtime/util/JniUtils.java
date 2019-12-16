@@ -1,13 +1,11 @@
 package org.ray.streaming.runtime.util;
 
+import com.google.common.base.Strings;
 import java.lang.reflect.Field;
-
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.util.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.google.common.base.Strings;
 
 public class JniUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(JniUtils.class);

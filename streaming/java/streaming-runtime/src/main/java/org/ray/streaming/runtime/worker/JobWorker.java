@@ -54,7 +54,7 @@ public class JobWorker implements Serializable {
 
     String channelType = (String) this.config.getOrDefault(
         Config.CHANNEL_TYPE, Config.DEFAULT_CHANNEL_TYPE);
-    if(channelType.equals(Config.NATIVE_CHANNEL)) {
+    if (channelType.equals(Config.NATIVE_CHANNEL)) {
       transferHandler = new TransferHandler(
           getNativeCoreWorker(),
           new JavaFunctionDescriptor(JobWorker.class.getName(), "onWriterMessage", "([B)V"),

@@ -1,12 +1,12 @@
 package org.ray.streaming.runtime.transfer;
 
+import com.google.common.base.Preconditions;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
-
 import org.ray.api.id.ActorId;
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.streaming.runtime.util.JniUtils;
@@ -15,14 +15,12 @@ import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Preconditions;
-
 /**
  * Data Reader is wrapper of streaming c++ DataReader, which read data
  * from channels of upstream workers
  */
 public class DataReader {
-  private final static Logger LOGGER = LoggerFactory.getLogger(DataReader.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(DataReader.class);
 
   static {
     try {
@@ -99,7 +97,8 @@ public class DataReader {
         BundleMeta bundleMeta = new BundleMeta(this.bundleMeta);
         // barrier
         if (bundleMeta.getBundleType() == DataBundleType.BARRIER) {
-          throw new UnsupportedOperationException("Unsupported bundle type " + bundleMeta.getBundleType());
+          throw new UnsupportedOperationException(
+              "Unsupported bundle type " + bundleMeta.getBundleType());
         } else if (bundleMeta.getBundleType() == DataBundleType.BUNDLE) {
           String channelID = bundleMeta.getChannelID();
           long timestamp = bundleMeta.getBundleTs();
@@ -108,7 +107,8 @@ public class DataReader {
           }
         } else if (bundleMeta.getBundleType() == DataBundleType.EMPTY) {
           long messageId = bundleMeta.getLastMessageId();
-          buf.offer(new DataMessage(null, bundleMeta.getBundleTs(), messageId, bundleMeta.getChannelID()));
+          buf.offer(new DataMessage(null, bundleMeta.getBundleTs(),
+              messageId, bundleMeta.getChannelID()));
         }
       }
     }
@@ -175,92 +175,95 @@ public class DataReader {
       byte[] configBytes,
       boolean isMock);
 
-  private native void getBundleNative(long nativeReaderPtr, long timeoutMillis, long params, long metaAddress);
+  private native void getBundleNative(long nativeReaderPtr,
+                                      long timeoutMillis,
+                                      long params,
+                                      long metaAddress);
 
   private native void stopReaderNative(long nativeReaderPtr);
 
   private native void closeReaderNative(long nativeReaderPtr);
 
-}
+  enum DataBundleType {
+    EMPTY(1),
+    BARRIER(2),
+    BUNDLE(3);
 
-enum DataBundleType {
-  EMPTY(1),
-  BARRIER(2),
-  BUNDLE(3);
+    int code;
 
-  int code;
-
-  DataBundleType(int code) {
-    this.code = code;
-  }
-}
-
-class BundleMeta {
-  // kMessageBundleHeaderSize + kUniqueIDSize:
-  // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
-  // + bundleType(4b) + rawBundleSize(4b) + channelID(20b)
-  static final int LENGTH = 4 + 8 + 8 + 4 + 4 + 4 + 20;
-  private int magicNum;
-  private long bundleTs;
-  private long lastMessageId;
-  private int messageListSize;
-  private DataBundleType bundleType;
-  private String channelID;
-  private int rawBundleSize;
-
-  BundleMeta(ByteBuffer buffer) {
-    // StreamingMessageBundleMeta Deserialization
-    // magicNum
-    magicNum = buffer.getInt();
-    // messageBundleTs
-    bundleTs = buffer.getLong();
-    // lastOffsetSeqId
-    lastMessageId = buffer.getLong();
-    messageListSize = buffer.getInt();
-    int bTypeInt = buffer.getInt();
-    if (DataBundleType.BUNDLE.code == bTypeInt) {
-      bundleType = DataBundleType.BUNDLE;
-    } else if (DataBundleType.BARRIER.code == bTypeInt) {
-      bundleType = DataBundleType.BARRIER;
-    } else {
-      bundleType = DataBundleType.EMPTY;
+    DataBundleType(int code) {
+      this.code = code;
     }
-    // rawBundleSize
-    rawBundleSize = buffer.getInt();
-    channelID = getQidString(buffer);
   }
 
-  private String getQidString(ByteBuffer buffer) {
-    byte[] bytes = new byte[ChannelID.ID_LENGTH];
-    buffer.get(bytes);
-    return ChannelID.idBytesToStr(bytes);
+  static class BundleMeta {
+    // kMessageBundleHeaderSize + kUniqueIDSize:
+    // magicNum(4b) + bundleTs(8b) + lastMessageId(8b) + messageListSize(4b)
+    // + bundleType(4b) + rawBundleSize(4b) + channelID(20b)
+    static final int LENGTH = 4 + 8 + 8 + 4 + 4 + 4 + 20;
+    private int magicNum;
+    private long bundleTs;
+    private long lastMessageId;
+    private int messageListSize;
+    private DataBundleType bundleType;
+    private String channelID;
+    private int rawBundleSize;
+
+    BundleMeta(ByteBuffer buffer) {
+      // StreamingMessageBundleMeta Deserialization
+      // magicNum
+      magicNum = buffer.getInt();
+      // messageBundleTs
+      bundleTs = buffer.getLong();
+      // lastOffsetSeqId
+      lastMessageId = buffer.getLong();
+      messageListSize = buffer.getInt();
+      int typeInt = buffer.getInt();
+      if (DataBundleType.BUNDLE.code == typeInt) {
+        bundleType = DataBundleType.BUNDLE;
+      } else if (DataBundleType.BARRIER.code == typeInt) {
+        bundleType = DataBundleType.BARRIER;
+      } else {
+        bundleType = DataBundleType.EMPTY;
+      }
+      // rawBundleSize
+      rawBundleSize = buffer.getInt();
+      channelID = getQidString(buffer);
+    }
+
+    private String getQidString(ByteBuffer buffer) {
+      byte[] bytes = new byte[ChannelID.ID_LENGTH];
+      buffer.get(bytes);
+      return ChannelID.idBytesToStr(bytes);
+    }
+
+    public int getMagicNum() {
+      return magicNum;
+    }
+
+    public long getBundleTs() {
+      return bundleTs;
+    }
+
+    public long getLastMessageId() {
+      return lastMessageId;
+    }
+
+    public int getMessageListSize() {
+      return messageListSize;
+    }
+
+    public DataBundleType getBundleType() {
+      return bundleType;
+    }
+
+    public String getChannelID() {
+      return channelID;
+    }
+
+    public int getRawBundleSize() {
+      return rawBundleSize;
+    }
   }
 
-  public int getMagicNum() {
-    return magicNum;
-  }
-
-  public long getBundleTs() {
-    return bundleTs;
-  }
-
-  public long getLastMessageId() {
-    return lastMessageId;
-  }
-
-  public int getMessageListSize() {
-    return messageListSize;
-  }
-
-  public DataBundleType getBundleType() {
-    return bundleType;
-  }
-
-  public String getChannelID() {
-    return channelID;
-  }
-
-  public int getRawBundleSize() {
-    return rawBundleSize;
-  }
 }

@@ -31,7 +31,7 @@ public abstract class StreamTask implements Runnable {
   protected JobWorker worker;
   protected DataReader reader;
   private Map<ExecutionEdge, DataWriter> writers;
-  private Thread t;
+  private Thread thread;
 
   public StreamTask(int taskId, Processor processor, JobWorker worker) {
     this.taskId = taskId;
@@ -39,7 +39,7 @@ public abstract class StreamTask implements Runnable {
     this.worker = worker;
     prepareTask();
 
-    this.t = new Thread(Ray.wrapRunnable(this), this.getClass().getName()
+    this.thread = new Thread(Ray.wrapRunnable(this), this.getClass().getName()
         + "-" + System.currentTimeMillis());
   }
 
@@ -50,7 +50,8 @@ public abstract class StreamTask implements Runnable {
         .getOrDefault(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT);
     queueConf.put(Config.CHANNEL_SIZE, queueSize);
     queueConf.put(Config.TASK_JOB_ID, Ray.getRuntimeContext().getCurrentJobId().toString());
-    String channelType = (String) worker.getConfig().getOrDefault(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
+    String channelType = (String) worker.getConfig()
+        .getOrDefault(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
     queueConf.put(Config.CHANNEL_TYPE, channelType);
 
     ExecutionGraph executionGraph = worker.getExecutionGraph();
@@ -117,7 +118,7 @@ public abstract class StreamTask implements Runnable {
   protected abstract void cancelTask() throws Exception;
 
   public void start() {
-    this.t.start();
+    this.thread.start();
     LOG.info("started {}-{}", this.getClass().getSimpleName(), taskId);
   }
 

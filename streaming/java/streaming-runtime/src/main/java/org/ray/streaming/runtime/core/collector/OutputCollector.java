@@ -1,5 +1,7 @@
 package org.ray.streaming.runtime.core.collector;
 
+import java.nio.ByteBuffer;
+import java.util.Collection;
 import org.ray.runtime.util.Serializer;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.partition.Partition;
@@ -9,9 +11,6 @@ import org.ray.streaming.runtime.transfer.DataWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.ByteBuffer;
-import java.util.Collection;
-
 public class OutputCollector implements Collector<Record> {
   private static final Logger LOGGER = LoggerFactory.getLogger(OutputCollector.class);
 
@@ -19,11 +18,14 @@ public class OutputCollector implements Collector<Record> {
   private DataWriter writer;
   private ChannelID[] outputQueues;
 
-  public OutputCollector(Collection<String> outputQueueIds, DataWriter writer, Partition partition) {
+  public OutputCollector(Collection<String> outputQueueIds,
+                         DataWriter writer,
+                         Partition partition) {
     this.outputQueues = outputQueueIds.stream().map(ChannelID::from).toArray(ChannelID[]::new);
     this.writer = writer;
     this.partition = partition;
-    LOGGER.debug("OutputCollector constructed, outputQueueIds:{}, partition:{}.", outputQueueIds, this.partition);
+    LOGGER.debug("OutputCollector constructed, outputQueueIds:{}, partition:{}.",
+        outputQueueIds, this.partition);
   }
 
   @Override

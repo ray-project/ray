@@ -9,13 +9,13 @@ public class DataMessage implements Message {
   private final ByteBuffer body;
   private final long msgId;
   private final long timestamp;
-  private final String channelID;
+  private final String channelId;
 
-  public DataMessage(ByteBuffer body, long timestamp, long msgId, String channelID) {
+  public DataMessage(ByteBuffer body, long timestamp, long msgId, String channelId) {
     this.body = body;
     this.timestamp = timestamp;
     this.msgId = msgId;
-    this.channelID = channelID;
+    this.channelId = channelId;
   }
 
   @Override
@@ -38,8 +38,8 @@ public class DataMessage implements Message {
   /**
    * @return string id of channel where data is coming from
    */
-  public String channelID() {
-    return channelID;
+  public String channelId() {
+    return channelId;
   }
 
   @Override
@@ -48,7 +48,7 @@ public class DataMessage implements Message {
         "body=" + body +
         ", msgId=" + msgId +
         ", timestamp=" + timestamp +
-        ", channelID='" + channelID + '\'' +
+        ", channelId='" + channelId + '\'' +
         '}';
   }
 }

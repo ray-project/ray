@@ -5,8 +5,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
 import org.ray.api.RayActor;
+import org.ray.streaming.plan.Plan;
+import org.ray.streaming.plan.PlanEdge;
+import org.ray.streaming.plan.PlanVertex;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -14,9 +16,6 @@ import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.core.processor.ProcessBuilder;
 import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanEdge;
-import org.ray.streaming.plan.PlanVertex;
 
 public class TaskAssignImpl implements ITaskAssign {
 
