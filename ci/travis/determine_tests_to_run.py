@@ -40,6 +40,7 @@ if __name__ == "__main__":
     RAY_CI_MACOS_WHEELS_AFFECTED = 0
     RAY_CI_STREAMING_CPP_AFFECTED = 0
     RAY_CI_STREAMING_PYTHON_AFFECTED = 0
+    RAY_CI_STREAMING_JAVA_AFFECTED = 0
 
     if os.environ["TRAVIS_EVENT_TYPE"] == "pull_request":
 
@@ -76,6 +77,7 @@ if __name__ == "__main__":
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
             elif any(
                     changed_file.startswith(prefix)
                     for prefix in skip_prefix_list):
@@ -91,11 +93,15 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_STREAMING_CPP_AFFECTED = 1
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
             elif changed_file.startswith("streaming/src"):
                 RAY_CI_STREAMING_CPP_AFFECTED = 1
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
             elif changed_file.startswith("streaming/python"):
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
+            elif changed_file.startsWith("streaming/java"):
+                RAY_CI_STREAMING_JAVA_AFFECTED = 1
             else:
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
@@ -132,3 +138,5 @@ if __name__ == "__main__":
                .format(RAY_CI_STREAMING_CPP_AFFECTED))
         _print("export RAY_CI_STREAMING_PYTHON_AFFECTED={}"
                .format(RAY_CI_STREAMING_PYTHON_AFFECTED))
+        _print("export RAY_CI_STREAMING_JAVA_AFFECTED={}"
+               .format(RAY_CI_STREAMING_JAVA_AFFECTED))
