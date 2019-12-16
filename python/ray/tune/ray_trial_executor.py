@@ -13,6 +13,7 @@ import traceback
 import ray
 from ray.exceptions import RayTimeoutError
 from ray import ray_constants
+from ray.tune.durable_trainable import DurableTrainable
 from ray.resource_spec import ResourceSpec
 from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
@@ -122,7 +123,13 @@ class RayTrialExecutor(TrialExecutor):
         logger.debug("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
-        return cls.remote(config=trial.config, logger_creator=logger_creator)
+        kwargs = {
+            "config": trial.config,
+            "logger_creator": logger_creator,
+        }
+        if issubclass(cls, DurableTrainable):
+            kwargs["upload_dir"] = trial.upload_dir
+        return cls.remote(kwargs)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
@@ -600,7 +607,7 @@ class RayTrialExecutor(TrialExecutor):
             if trial.upload_dir is None and trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the case where
                 # an upload directory is not provided. Not great since it
-                # makes assumptions on how Trainable does restoration.
+                # makes assumptions on how Trainable does serialization.
                 value = pickle.load(value)
                 remote = trial.runner.restore_from_object(value)
             else:
