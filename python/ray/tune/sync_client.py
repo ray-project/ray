@@ -83,6 +83,8 @@ def get_cloud_sync_client(remote_path):
 
 
 class SyncClient(object):
+    """Client interface for interacting with remote storage options."""
+
     def sync_up(self, source, target):
         """Syncs up from source to target.
 
@@ -155,6 +157,7 @@ class CommandBasedClient(SyncClient):
                  sync_down_template,
                  delete_template=noop_template):
         """Syncs between two directories with the given command.
+
         Arguments:
             sync_up_template (str): A runnable string template; needs to
                 include replacement fields '{source}' and '{target}'.
@@ -173,6 +176,7 @@ class CommandBasedClient(SyncClient):
 
     def set_logdir(self, logdir):
         """Sets the directory to log sync execution output in.
+
         Args:
             logdir (str): Log directory.
         """
@@ -211,6 +215,7 @@ class CommandBasedClient(SyncClient):
 
     @property
     def is_running(self):
+        """Returns whether a sync or delete process is running."""
         if self.cmd_process:
             self.cmd_process.poll()
             return self.cmd_process.returncode is None

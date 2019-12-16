@@ -244,8 +244,8 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
     return _syncers[key]
 
 
-def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
-    """Returns a log NodeSyncer.
+def get_syncer(local_dir, remote_dir=None, sync_function=None):
+    """Returns a NodeSyncer.
 
     Args:
         local_dir (str): Source directory for syncing.
@@ -263,9 +263,10 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
     elif sync_function:
         sync_client = get_sync_client(sync_function)
     else:
-        sync = log_sync_template()
-        if sync:
-            sync_client = CommandBasedClient(sync, sync)
+        sync_up = log_sync_template()
+        sync_down = log_sync_template(options="--remove-source-files")
+        if sync_up and sync_down:
+            sync_client = CommandBasedClient(sync_up, sync_down)
             sync_client.set_logdir(local_dir)
         else:
             sync_client = NOOP
