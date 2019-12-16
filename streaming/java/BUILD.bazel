@@ -57,6 +57,7 @@ define_java_module(
     additional_resources = [
             ":java_native_deps",
         ],
+    resource_strip_prefix = "streaming",
     deps = [
         "//java:org_ray_ray_api",
         "//java:org_ray_ray_runtime",
