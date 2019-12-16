@@ -56,7 +56,7 @@ public class ClassLoaderTest extends BaseTest {
         + "import java.lang.management.ManagementFactory;\n"
         + "import java.lang.management.RuntimeMXBean;\n"
         + "\n"
-        + "class ClassLoaderTester {\n"
+        + "public class ClassLoaderTester {\n"
         + "\n"
         + "  static volatile int value;\n"
         + "\n"
