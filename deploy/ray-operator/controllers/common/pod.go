@@ -26,9 +26,7 @@ func DefaultPodConfig(instance *rayiov1alpha1.RayCluster, podTypeName string, po
 // build a pod for the cluster instance.
 func BuildPod(conf *PodConfig) *corev1.Pod {
 	// build label for cluster
-	rayLabels := labelsForCluster(*conf.RayCluster, conf.PodName, conf.Extension.Labels)
-	// add pod type to label
-	rayLabels[ClusterPodType] = conf.PodTypeName
+	rayLabels := labelsForCluster(*conf.RayCluster, conf.PodName, conf.PodTypeName, conf.Extension.Labels)
 
 	// build container for pod, now only handle one container for each pod
 	var containers []corev1.Container

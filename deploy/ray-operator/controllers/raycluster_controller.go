@@ -29,17 +29,17 @@ import (
 var log = logf.Log.WithName("RayCluster-Controller")
 
 // Add creates a new RayCluster Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
-// and Start it when the Manager is Started.
+// and start it when the Manager Started.
 func Add(mgr manager.Manager) error {
 	return add(mgr, newReconciler(mgr))
 }
 
-// RayClusterReconciler returns a new reconcile.Reconciler
+// newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &RayClusterReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}
 }
 
-// The function add adds a new Controller to mgr with r as the reconcile.Reconciler
+// add creates a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
 	// Create a new controller
 	c, err := controller.New("ray-operator-RayCluster-controller", mgr, controller.Options{Reconciler: r})
@@ -65,7 +65,7 @@ type RayClusterReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// Reconcile reads that state of the cluster for a RayCluster object and makes changes based on the state read
+// Reconcile reads that state of the cluster for a RayCluster object and makes changes based on it
 // and what is in the RayCluster.Spec
 // Automatically generate RBAC rules to allow the Controller to read and write workloads
 // +kubebuilder:rbac:groups=ray.io,resources=RayClusters,verbs=get;list;watch;create;update;patch;delete
@@ -84,7 +84,7 @@ type RayClusterReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get;update;patch
 func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	_ = r.Log.WithValues("raycluster", request.NamespacedName)
-	log.Info("Reconciling RayCluster")
+	log.Info("Reconciling RayCluster", "cluster name", request.Name)
 
 	// Fetch the RayCluster instance
 	instance := &rayiov1alpha1.RayCluster{}

@@ -18,7 +18,7 @@ const (
 	defaultHTTPServerPort = "30021"
 	defaultRedisPort      = "6379"
 
-	// check node ready
+	// check node if ready by checking the path exists or not
 	PodReadyFilepath = "POD_READY_FILEPATH"
 
 	// use as container env variable
