@@ -25,11 +25,14 @@ Create them at https://github.com/settings/tokens/new
     help="Last commit SHA of the current release.")
 def run(access_token, prev_release_commit, curr_release_commit):
     print("Writing commit descriptions to 'commits.txt'...")
-    check_output(f'git log {prev_release_commit}..{curr_release_commit} --pretty=format:"%s" > commits.txt', shell=True)
+    check_output(
+        f'git log {prev_release_commit}..{curr_release_commit} --pretty=format:"%s" > commits.txt',
+        shell=True)
     # Generate command
     cmd = []
-    cmd.append(f'git log {prev_release_commit}..{curr_release_commit} --pretty=format:"%s" '
-               ' | grep -Eo "#(\d+)"')
+    cmd.append(
+        f'git log {prev_release_commit}..{curr_release_commit} --pretty=format:"%s" '
+        ' | grep -Eo "#(\d+)"')
     joined = " && ".join(cmd)
     cmd = f"bash -c '{joined}'"
     cmd = shlex.split(cmd)
