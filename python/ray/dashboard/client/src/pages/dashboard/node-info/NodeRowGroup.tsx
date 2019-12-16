@@ -7,13 +7,15 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
-import { NodeInfoResponse } from "../../api";
+import { NodeInfoResponse } from "../../../api";
 import { NodeCPU, WorkerCPU } from "./features/CPU";
 import { NodeDisk, WorkerDisk } from "./features/Disk";
 import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
 import { NodeHost, WorkerHost } from "./features/Host";
 import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
 import { NodeRAM, WorkerRAM } from "./features/RAM";
+import { NodeReceived, WorkerReceived } from "./features/Received";
+import { NodeSent, WorkerSent } from "./features/Sent";
 import { NodeUptime, WorkerUptime } from "./features/Uptime";
 import { NodeWorkers, WorkerWorkers } from "./features/Workers";
 
@@ -80,6 +82,8 @@ class NodeRowGroup extends React.Component<
       { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
       { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
       { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
+      { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
+      { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
       {
         NodeFeature: makeNodeLogs(logCounts),
         WorkerFeature: makeWorkerLogs(logCounts)
@@ -103,8 +107,8 @@ class NodeRowGroup extends React.Component<
               <RemoveIcon className={classes.expandCollapseIcon} />
             )}
           </TableCell>
-          {features.map(({ NodeFeature }) => (
-            <TableCell className={classes.cell}>
+          {features.map(({ NodeFeature }, index) => (
+            <TableCell className={classes.cell} key={index}>
               <NodeFeature node={node} />
             </TableCell>
           ))}
@@ -113,8 +117,8 @@ class NodeRowGroup extends React.Component<
           node.workers.map((worker, index: number) => (
             <TableRow hover key={index}>
               <TableCell className={classes.cell} />
-              {features.map(({ WorkerFeature }) => (
-                <TableCell className={classes.cell}>
+              {features.map(({ WorkerFeature }, index) => (
+                <TableCell className={classes.cell} key={index}>
                   <WorkerFeature node={node} worker={worker} />
                 </TableCell>
               ))}

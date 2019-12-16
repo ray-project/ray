@@ -5,9 +5,9 @@ import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { RouteComponentProps } from "react-router";
-import { ErrorsResponse, getErrors } from "../../api";
-import DialogWithTitle from "../../common/DialogWithTitle";
-import NumberedLines from "../../common/NumberedLines";
+import { ErrorsResponse, getErrors } from "../../../../api";
+import DialogWithTitle from "../../../../common/DialogWithTitle";
+import NumberedLines from "../../../../common/NumberedLines";
 
 const styles = (theme: Theme) =>
   createStyles({
