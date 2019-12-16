@@ -385,7 +385,7 @@ class UnifiedLogger(Logger):
         loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
             and JSON loggers.
         sync_function (func|str): Optional function for syncer to run.
-            See ray/python/ray/tune/log_sync.py
+            See ray/python/ray/tune/syncer.py
     """
 
     def __init__(self,
