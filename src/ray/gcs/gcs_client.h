@@ -6,9 +6,7 @@
 #include <string>
 #include <vector>
 #include "ray/common/status.h"
-#include "ray/gcs/actor_info_accessor.h"
-#include "ray/gcs/job_info_accessor.h"
-#include "ray/gcs/task_info_accessor.h"
+#include "ray/gcs/accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {

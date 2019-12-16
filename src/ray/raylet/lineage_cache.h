@@ -12,7 +12,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task.h"
-#include "ray/gcs/task_info_accessor.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
