@@ -144,6 +144,7 @@ class PoolActor(object):
 
 
 # https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
+# TODO(edoakes): cloudpickle can't pickle generator objects.
 class Pool(object):
     def __init__(self,
                  processes=None,
@@ -280,7 +281,8 @@ class Pool(object):
                    unpack_args=False,
                    callback=None,
                    error_callback=None):
-        object_ids = self._chunk_and_run(func, iterable, chunksize=chunksize)
+        object_ids = self._chunk_and_run(
+            func, iterable, chunksize=chunksize, unpack_args=unpack_args)
         return AsyncResult(object_ids, callback, error_callback)
 
     def _chunk_and_run(self, func, iterable, chunksize=None,
