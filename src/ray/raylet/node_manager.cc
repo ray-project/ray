@@ -142,7 +142,7 @@ ray::Status NodeManager::RegisterGcs() {
                                                        const TaskID &task_id,
                                                        const TaskLeaseData &task_lease) {
     const ClientID node_manager_id = ClientID::FromBinary(task_lease.node_manager_id());
-    if (gcs_client_->Nodes().Cache().IsRemoved(node_manager_id)) {
+    if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
       // The node manager that added the task lease is already removed. The
       // lease is considered inactive.
       reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
