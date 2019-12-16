@@ -61,7 +61,7 @@ class NodeRowGroup extends React.Component<
   State
 > {
   state: State = {
-    expanded: (this.props.numNodes > 5 ? false : true) 
+    expanded: this.props.numNodes <= 4
   };
 
   toggleExpand = () => {
