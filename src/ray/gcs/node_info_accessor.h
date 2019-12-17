@@ -49,7 +49,8 @@ class NodeInfoAccessor {
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
-  virtual Status AsyncUnregister(const ClientID &node_id, const StatusCallback &callback) = 0;
+  virtual Status AsyncUnregister(const ClientID &node_id,
+                                 const StatusCallback &callback) = 0;
 
   /// Get information of all nodes from GCS asynchronously.
   ///
