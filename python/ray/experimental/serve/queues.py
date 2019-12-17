@@ -292,7 +292,8 @@ class RoundRobinPolicyQueue(CentralizedQueues):
                 while len(queue):
                     # choose the next backend available from persistent
                     # information
-                    chosen_backend = next(self.round_robin_iterator_map[service])
+                    chosen_backend = next(
+                        self.round_robin_iterator_map[service])
                     request = queue.popleft()
                     self.buffer_queues[chosen_backend].add(request)
 
@@ -322,7 +323,7 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
                     # randomly pick 2 backends
                     backend1, backend2 = np.random.choice(
                         backend_names, 2, p=backend_weights)
-                    
+
                     # see the length of buffer queues of the two backends
                     # and pick the one which has less no. of queries
                     # in the buffer
@@ -376,7 +377,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
             if len(queue) and len(self.traffic[service]):
                 if service not in self.fixed_packing_iterator_map:
                     backend_names = list(self.traffic[service].keys())
-                    self.fixed_packing_iterator_map[service] =itertools.cycle(
+                    self.fixed_packing_iterator_map[service] = itertools.cycle(
                         itertools.chain.from_iterable(
                             itertools.repeat(x, self.packing_num)
                             for x in backend_names))
@@ -384,7 +385,8 @@ class FixedPackingPolicyQueue(CentralizedQueues):
                 while len(queue):
                     # choose the next backend available from persistent
                     # information
-                    chosen_backend = next(self.fixed_packing_iterator_map[service])
+                    chosen_backend = next(
+                        self.fixed_packing_iterator_map[service])
                     request = queue.popleft()
                     self.buffer_queues[chosen_backend].add(request)
 
