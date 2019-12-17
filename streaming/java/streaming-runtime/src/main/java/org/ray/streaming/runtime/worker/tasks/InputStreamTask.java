@@ -7,6 +7,7 @@ import org.ray.streaming.runtime.worker.JobWorker;
 
 public abstract class InputStreamTask extends StreamTask {
   private volatile boolean running = true;
+  private volatile boolean stopped = false;
 
   public InputStreamTask(int taskId, Processor processor, JobWorker streamWorker) {
     super(taskId, processor, streamWorker);
@@ -19,7 +20,7 @@ public abstract class InputStreamTask extends StreamTask {
   @Override
   public void run() {
     while (running) {
-      Message item = reader.pull(1000);
+      Message item = reader.pull(10);
       if (item != null) {
         byte[] bytes = new byte[item.body().remaining()];
         item.body().get(bytes);
@@ -27,11 +28,14 @@ public abstract class InputStreamTask extends StreamTask {
         processor.process(obj);
       }
     }
+    stopped = true;
   }
 
   @Override
   protected void cancelTask() throws Exception {
     running = false;
+    while (!stopped) {
+    }
   }
 
   @Override

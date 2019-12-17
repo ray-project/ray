@@ -41,6 +41,7 @@ public abstract class StreamTask implements Runnable {
 
     this.thread = new Thread(Ray.wrapRunnable(this), this.getClass().getName()
         + "-" + System.currentTimeMillis());
+    this.thread.setDaemon(true);
   }
 
   private void prepareTask() {
@@ -111,6 +112,14 @@ public abstract class StreamTask implements Runnable {
 
     processor.open(collectors, runtimeContext);
 
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+      try {
+        // Make DataReader stop read data when MockQueue destructor gets called to avoid crash
+        StreamTask.this.cancelTask();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }));
   }
 
   protected abstract void init() throws Exception;
