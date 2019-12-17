@@ -11,7 +11,7 @@ import logging
 import os
 import subprocess
 import sys
-import time
+import timeit
 
 from threading import Thread
 from getpass import getuser
@@ -190,7 +190,7 @@ class SSHCommandRunner(object):
             return self.provider.external_ip(self.node_id)
 
     def wait_for_ip(self, deadline):
-        while time.time() < deadline and \
+        while timeit.default_timer() < deadline and \
                 not self.provider.is_terminated(self.node_id):
             logger.info(self.log_prefix + "Waiting for IP...")
             ip = self.get_node_ip()
@@ -206,7 +206,7 @@ class SSHCommandRunner(object):
 
         # We assume that this never changes.
         #   I think that's reasonable.
-        deadline = time.time() + NODE_START_WAIT_S
+        deadline = timeit.default_timer() + NODE_START_WAIT_S
         with LogTimer(self.log_prefix + "Got IP"):
             ip = self.wait_for_ip(deadline)
             assert ip is not None, "Unable to find IP of node"
@@ -372,7 +372,7 @@ class NodeUpdater(object):
         with LogTimer(self.log_prefix + "Got remote shell"):
             logger.info(self.log_prefix + "Waiting for remote shell...")
 
-            while time.time() < deadline and \
+            while timeit.default_timer() < deadline and \
                     not self.provider.is_terminated(self.node_id):
                 try:
                     logger.debug(self.log_prefix +
@@ -397,7 +397,7 @@ class NodeUpdater(object):
         self.provider.set_node_tags(
             self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
 
-        deadline = time.time() + NODE_START_WAIT_S
+        deadline = timeit.default_timer() + NODE_START_WAIT_S
         self.wait_ready(deadline)
 
         node_tags = self.provider.node_tags(self.node_id)

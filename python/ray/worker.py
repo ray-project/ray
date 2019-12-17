@@ -16,7 +16,7 @@ import signal
 from six.moves import queue
 import sys
 import threading
-import time
+import timeit
 import traceback
 import random
 
@@ -983,7 +983,7 @@ def print_error_messages_raylet(task_error_queue, threads_stopped):
             continue
         # Delay errors a little bit of time to attempt to suppress redundant
         # messages originating from the worker.
-        while t + UNCAUGHT_ERROR_GRACE_PERIOD > time.time():
+        while t + UNCAUGHT_ERROR_GRACE_PERIOD > timeit.default_timer():
             threads_stopped.wait(timeout=1)
             if threads_stopped.is_set():
                 break
@@ -1049,7 +1049,7 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
             error_message = error_data.error_message
             if (error_data.type == ray_constants.TASK_PUSH_ERROR):
                 # Delay it a bit to see if we can suppress it
-                task_error_queue.put((error_message, time.time()))
+                task_error_queue.put((error_message, timeit.default_timer()))
             else:
                 logger.warning(error_message)
     except (OSError, redis.exceptions.ConnectionError) as e:
@@ -1178,7 +1178,7 @@ def connect(node,
         driver_info = {
             "node_ip_address": node.node_ip_address,
             "driver_id": worker.worker_id,
-            "start_time": time.time(),
+            "start_time": timeit.default_timer(),
             "plasma_store_socket": node.plasma_store_socket_name,
             "raylet_socket": node.raylet_socket_name,
             "name": (main.__file__
@@ -1450,7 +1450,7 @@ def get(object_ids, timeout=None):
         values = worker.get_objects(object_ids, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
-                last_task_error_raise_time = time.time()
+                last_task_error_raise_time = timeit.default_timer()
                 if isinstance(value, ray.exceptions.UnreconstructableError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):

@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import deque
-import time
+import timeit
 
 import ray
 
@@ -69,11 +69,11 @@ class Queue(object):
         elif timeout < 0:
             raise ValueError("'timeout' must be a non-negative number")
         else:
-            endtime = time.time() + timeout
+            endtime = timeit.default_timer() + timeout
             # Polling
             # Use a condition variable or switch to promise?
             success = False
-            while not success and time.time() < endtime:
+            while not success and timeit.default_timer() < endtime:
                 success = ray.get(self.actor.put.remote(item))
             if not success:
                 raise Full
@@ -104,11 +104,11 @@ class Queue(object):
         elif timeout < 0:
             raise ValueError("'timeout' must be a non-negative number")
         else:
-            endtime = time.time() + timeout
+            endtime = timeit.default_timer() + timeout
             # Polling
             # Use a not_full condition variable or return a promise?
             success = False
-            while not success and time.time() < endtime:
+            while not success and timeit.default_timer() < endtime:
                 success, item = ray.get(self.actor.get.remote())
             if not success:
                 raise Empty

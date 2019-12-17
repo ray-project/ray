@@ -4,7 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import timeit
 
 import ray
 from ray.cluster_utils import Cluster
@@ -80,7 +80,7 @@ running_ids = [
         args=[], kwargs={}, num_cpus=0, resources={str(i): 0.01})
     for i in range(num_nodes)
 ]
-start_time = time.time()
+start_time = timeit.default_timer()
 previous_time = start_time
 while True:
     # Wait for a driver to finish and start a new driver.
@@ -94,7 +94,7 @@ while True:
             num_cpus=0,
             resources={str(iteration % num_nodes): 0.01}))
 
-    new_time = time.time()
+    new_time = timeit.default_timer()
     print("Iteration {}:\n"
           "  - Iteration time: {}.\n"
           "  - Absolute time: {}.\n"

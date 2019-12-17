@@ -9,7 +9,7 @@ from __future__ import print_function
 import collections
 import os
 import random
-import time
+import timeit
 import threading
 
 import numpy as np
@@ -138,9 +138,9 @@ class AsyncReplayOptimizer(PolicyOptimizer):
     def step(self):
         assert self.learner.is_alive()
         assert len(self.workers.remote_workers()) > 0
-        start = time.time()
+        start = timeit.default_timer()
         sample_timesteps, train_timesteps = self._step()
-        time_delta = time.time() - start
+        time_delta = timeit.default_timer() - start
         self.timers["sample"].push(time_delta)
         self.timers["sample"].push_units_processed(sample_timesteps)
         if train_timesteps > 0:

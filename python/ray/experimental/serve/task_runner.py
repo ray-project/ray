@@ -1,4 +1,4 @@
-import time
+import timeit
 import traceback
 
 import ray
@@ -108,7 +108,7 @@ class RayServeMixin:
 
         result_object_id = work_item.result_object_id
 
-        start_timestamp = time.time()
+        start_timestamp = timeit.default_timer()
         try:
             result = self.__call__(*args, **kwargs)
             ray.worker.global_worker.put_object(result, result_object_id)
@@ -117,7 +117,7 @@ class RayServeMixin:
             self._serve_metric_error_counter += 1
             ray.worker.global_worker.put_object(wrapped_exception,
                                                 result_object_id)
-        self._serve_metric_latency_list.append(time.time() - start_timestamp)
+        self._serve_metric_latency_list.append(timeit.default_timer() - start_timestamp)
 
         serve_context.web = False
 

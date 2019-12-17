@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import time
+import timeit
 
 import ray
 import ray.cloudpickle as pickle
@@ -56,10 +56,10 @@ class SimpleGcsFlushPolicy(GcsFlushPolicy):
         self.flush_when_at_least_bytes = flush_when_at_least_bytes
         self.flush_period_secs = flush_period_secs
         self.flush_num_entries_each_time = flush_num_entries_each_time
-        self.last_flush_timestamp = time.time()
+        self.last_flush_timestamp = timeit.default_timer()
 
     def should_flush(self, redis_client):
-        if time.time() - self.last_flush_timestamp < self.flush_period_secs:
+        if timeit.default_timer() - self.last_flush_timestamp < self.flush_period_secs:
             return False
 
         used_memory = redis_client.info("memory")["used_memory"]
@@ -71,7 +71,7 @@ class SimpleGcsFlushPolicy(GcsFlushPolicy):
         return self.flush_num_entries_each_time
 
     def record_flush(self):
-        self.last_flush_timestamp = time.time()
+        self.last_flush_timestamp = timeit.default_timer()
 
     def serialize(self):
         return pickle.dumps(self)

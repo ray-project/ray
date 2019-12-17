@@ -10,14 +10,14 @@ import gym
 import os
 import subprocess
 import tempfile
-import time
+import timeit
 
 import ray
 from ray.tune import run_experiments
 from ray.tune.registry import register_env
 
 # Dummy command to run as a subprocess with a unique name
-UNIQUE_CMD = "sleep {}".format(str(time.time()))
+UNIQUE_CMD = "sleep {}".format(str(timeit.default_timer()))
 _, UNIQUE_FILE_0 = tempfile.mkstemp("test_env_with_subprocess")
 _, UNIQUE_FILE_1 = tempfile.mkstemp("test_env_with_subprocess")
 _, UNIQUE_FILE_2 = tempfile.mkstemp("test_env_with_subprocess")

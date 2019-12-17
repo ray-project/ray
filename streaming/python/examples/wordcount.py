@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import argparse
 import logging
-import time
+import timeit
 
 import ray
 import wikipedia
@@ -100,10 +100,10 @@ if __name__ == "__main__":
                 .sum(attribute_selector) \
                 .inspect(print)     # Prints the contents of the
     # stream to stdout
-    start = time.time()
+    start = timeit.default_timer()
     env_handle = env.execute()  # Deploys and executes the dataflow
     ray.get(env_handle)  # Stay alive until execution finishes
     env.wait_finish()
-    end = time.time()
+    end = timeit.default_timer()
     logger.info("Elapsed time: {} secs".format(end - start))
     logger.debug("Output stream id: {}".format(stream.id))

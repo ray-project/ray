@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import timeit
 import copy
 import logging
 
@@ -106,7 +106,7 @@ class AutoMLSearcher(SearchAlgorithm):
         self._iteration += 1
         self._unfinished_count = ntrial
         self._total_trial_num += ntrial
-        self._start_ts = time.time()
+        self._start_ts = timeit.default_timer()
         logger.info(
             "=========== BEGIN Experiment-Round: %(round)s "
             "[%(new)s NEW | %(total)s TOTAL] ===========", {
@@ -150,7 +150,7 @@ class AutoMLSearcher(SearchAlgorithm):
             if this_trial.status == Trial.RUNNING and not error:
                 succ += 1
 
-            elapsed = time.time() - self._start_ts
+            elapsed = timeit.default_timer() - self._start_ts
             logger.info(
                 "=========== END Experiment-Round: %(round)s "
                 "[%(succ)s SUCC | %(fail)s FAIL] this round, "

@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import asyncio
-import time
+import timeit
 
 import pytest
 
@@ -60,19 +60,19 @@ def test_gather_benchmark(init):
         sum_time = 0.
         for _ in range(50):
             tasks = [f.remote(n) for n in range(20)]
-            start = time.time()
+            start = timeit.default_timer()
             futures = [async_api.as_future(obj_id) for obj_id in tasks]
             await asyncio.gather(*futures)
-            sum_time += time.time() - start
+            sum_time += timeit.default_timer() - start
         return sum_time
 
     def baseline():
         sum_time = 0.
         for _ in range(50):
             tasks = [f.remote(n) for n in range(20)]
-            start = time.time()
+            start = timeit.default_timer()
             ray.get(tasks)
-            sum_time += time.time() - start
+            sum_time += timeit.default_timer() - start
         return sum_time
 
     # warm up

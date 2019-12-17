@@ -10,7 +10,7 @@ import math
 import os
 import subprocess
 import threading
-import time
+import timeit
 from collections import defaultdict
 
 import numpy as np
@@ -186,7 +186,7 @@ class LoadMetrics(object):
                 dynamic_resources_update[resource_name] = 0.0
         self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
-        now = time.time()
+        now = timeit.default_timer()
         if ip not in self.last_used_time_by_ip or \
                 static_resources != dynamic_resources:
             self.last_used_time_by_ip[ip] = now
@@ -195,7 +195,7 @@ class LoadMetrics(object):
     def mark_active(self, ip):
         assert ip is not None, "IP should be known at this time"
         logger.info("Node {} is newly setup, treating as active".format(ip))
-        self.last_heartbeat_time_by_ip[ip] = time.time()
+        self.last_heartbeat_time_by_ip[ip] = timeit.default_timer()
 
     def prune_active_ips(self, active_ips):
         active_ips = set(active_ips)
@@ -273,7 +273,7 @@ class LoadMetrics(object):
     def _info(self):
         nodes_used, resources_used, resources_total = self.get_resource_usage()
 
-        now = time.time()
+        now = timeit.default_timer()
         idle_times = [now - t for t in self.last_used_time_by_ip.values()]
         heartbeat_times = [
             now - t for t in self.last_heartbeat_time_by_ip.values()
@@ -466,7 +466,7 @@ class StandardAutoscaler(object):
                 raise e
 
     def _update(self):
-        now = time.time()
+        now = timeit.default_timer()
 
         # Throttle autoscaling updates to this interval to avoid exceeding
         # rate limits on API calls.

@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import timeit
 
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
@@ -124,12 +124,12 @@ def build_trainer(name,
                 before_train_step(self)
             prev_steps = self.optimizer.num_steps_sampled
 
-            start = time.time()
+            start = timeit.default_timer()
             while True:
                 fetches = self.optimizer.step()
                 if after_optimizer_step:
                     after_optimizer_step(self, fetches)
-                if (time.time() - start >= self.config["min_iter_time_s"]
+                if (timeit.default_timer() - start >= self.config["min_iter_time_s"]
                         and self.optimizer.num_steps_sampled - prev_steps >=
                         self.config["timesteps_per_iteration"]):
                     break

@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import numpy as np
 import logging
-import time
+import timeit
 
 import ray
 
@@ -49,47 +49,47 @@ class Actor(object):
 
 # Stage 1: Launch a bunch of tasks.
 stage_1_iterations = []
-start_time = time.time()
+start_time = timeit.default_timer()
 logger.info("Submitting many tasks.")
 for i in range(10):
-    iteration_start = time.time()
+    iteration_start = timeit.default_timer()
     logger.info("Iteration %s", i)
     ray.get([f.remote(0) for _ in range(100000)])
-    stage_1_iterations.append(time.time() - iteration_start)
+    stage_1_iterations.append(timeit.default_timer() - iteration_start)
 
-stage_1_time = time.time() - start_time
+stage_1_time = timeit.default_timer() - start_time
 logger.info("Finished stage 1 after %s seconds.", stage_1_time)
 
 # Launch a bunch of tasks, each with a bunch of dependencies. TODO(rkn): This
 # test starts to fail if we increase the number of tasks in the inner loop from
 # 500 to 1000. (approximately 615 seconds)
 stage_2_iterations = []
-start_time = time.time()
+start_time = timeit.default_timer()
 logger.info("Submitting tasks with many dependencies.")
 x_ids = []
 for _ in range(5):
-    iteration_start = time.time()
+    iteration_start = timeit.default_timer()
     for i in range(20):
         logger.info("Iteration %s. Cumulative time %s seconds", i,
-                    time.time() - start_time)
+                    timeit.default_timer() - start_time)
         x_ids = [f.remote(0, *x_ids) for _ in range(500)]
     ray.get(x_ids)
-    stage_2_iterations.append(time.time() - iteration_start)
-    logger.info("Finished after %s seconds.", time.time() - start_time)
+    stage_2_iterations.append(timeit.default_timer() - iteration_start)
+    logger.info("Finished after %s seconds.", timeit.default_timer() - start_time)
 
-stage_2_time = time.time() - start_time
+stage_2_time = timeit.default_timer() - start_time
 logger.info("Finished stage 2 after %s seconds.", stage_2_time)
 
 # Create a bunch of actors.
-start_time = time.time()
+start_time = timeit.default_timer()
 logger.info("Creating %s actors.", num_remote_cpus)
 actors = [Actor.remote() for _ in range(num_remote_cpus)]
-stage_3_creation_time = time.time() - start_time
+stage_3_creation_time = timeit.default_timer() - start_time
 logger.info("Finished stage 3 actor creation in %s seconds.",
             stage_3_creation_time)
 
 # Submit a bunch of small tasks to each actor. (approximately 1070 seconds)
-start_time = time.time()
+start_time = timeit.default_timer()
 logger.info("Submitting many small actor tasks.")
 for N in [1000, 100000]:
     x_ids = []
@@ -98,7 +98,7 @@ for N in [1000, 100000]:
         if i % 100 == 0:
             logger.info("Submitted {}".format(i * len(actors)))
     ray.get(x_ids)
-stage_3_time = time.time() - start_time
+stage_3_time = timeit.default_timer() - start_time
 logger.info("Finished stage 3 in %s seconds.", stage_3_time)
 
 print("Stage 1 results:")
@@ -122,11 +122,11 @@ print("\tTotal time: {}".format(stage_3_time))
 # TODO(rkn): The test below is commented out because it currently does not
 # pass.
 # # Submit a bunch of actor tasks with all-to-all communication.
-# start_time = time.time()
+# start_time = timeit.default_timer()
 # logger.info("Submitting actor tasks with all-to-all communication.")
 # x_ids = []
 # for _ in range(50):
 #     for size_exponent in [0, 1, 2, 3, 4, 5, 6]:
 #         x_ids = [a.method.remote(10**size_exponent, *x_ids) for a in actors]
 # ray.get(x_ids)
-# logger.info("Finished after %s seconds.", time.time() - start_time)
+# logger.info("Finished after %s seconds.", timeit.default_timer() - start_time)

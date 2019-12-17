@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 import tempfile
-import time
+import timeit
 
 import psutil
 
@@ -37,8 +37,8 @@ def _pid_alive(pid):
 
 
 def wait_for_pid_to_exit(pid, timeout=20):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() - start_time < timeout:
         if not _pid_alive(pid):
             return
         time.sleep(0.1)
@@ -48,8 +48,8 @@ def wait_for_pid_to_exit(pid, timeout=20):
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
     p = psutil.Process(pid)
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() - start_time < timeout:
         num_alive = len(p.children(recursive=False))
         if num_alive >= num_children:
             return
@@ -130,8 +130,8 @@ def relevant_errors(error_type):
 
 
 def wait_for_errors(error_type, num_errors, timeout=20):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() - start_time < timeout:
         if len(relevant_errors(error_type)) >= num_errors:
             return
         time.sleep(0.1)

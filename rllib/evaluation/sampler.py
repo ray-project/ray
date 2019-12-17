@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import six.moves.queue as queue
 import threading
-import time
+import timeit
 
 from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
@@ -299,11 +299,11 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
 
     while True:
         perf_stats.iters += 1
-        t0 = time.time()
+        t0 = timeit.default_timer()
         # Get observations from all ready agents
         unfiltered_obs, rewards, dones, infos, off_policy_actions = \
             base_env.poll()
-        perf_stats.env_wait_time += time.time() - t0
+        perf_stats.env_wait_time += timeit.default_timer() - t0
 
         if log_once("env_returns"):
             logger.info("Raw obs from env: {}".format(
@@ -311,34 +311,34 @@ def _env_runner(base_env, extra_batch_callback, policies, policy_mapping_fn,
             logger.info("Info return from env: {}".format(summarize(infos)))
 
         # Process observations and prepare for policy evaluation
-        t1 = time.time()
+        t1 = timeit.default_timer()
         active_envs, to_eval, outputs = _process_observations(
             base_env, policies, batch_builder_pool, active_episodes,
             unfiltered_obs, rewards, dones, infos, off_policy_actions, horizon,
             preprocessors, obs_filters, unroll_length, pack, callbacks,
             soft_horizon, no_done_at_end)
-        perf_stats.processing_time += time.time() - t1
+        perf_stats.processing_time += timeit.default_timer() - t1
         for o in outputs:
             yield o
 
         # Do batched policy eval
-        t2 = time.time()
+        t2 = timeit.default_timer()
         eval_results = _do_policy_eval(tf_sess, to_eval, policies,
                                        active_episodes)
-        perf_stats.inference_time += time.time() - t2
+        perf_stats.inference_time += timeit.default_timer() - t2
 
         # Process results and update episode state
-        t3 = time.time()
+        t3 = timeit.default_timer()
         actions_to_send = _process_policy_eval_results(
             to_eval, eval_results, active_episodes, active_envs,
             off_policy_actions, policies, clip_actions)
-        perf_stats.processing_time += time.time() - t3
+        perf_stats.processing_time += timeit.default_timer() - t3
 
         # Return computed actions to ready envs. We also send to envs that have
         # taken off-policy actions; those envs are free to ignore the action.
-        t4 = time.time()
+        t4 = timeit.default_timer()
         base_env.send_actions(actions_to_send)
-        perf_stats.env_wait_time += time.time() - t4
+        perf_stats.env_wait_time += timeit.default_timer() - t4
 
 
 def _process_observations(base_env, policies, batch_builder_pool,

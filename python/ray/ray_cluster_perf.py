@@ -1,6 +1,6 @@
 """This is the script for `ray clusterbenchmark`."""
 
-import time
+import timeit
 import numpy as np
 import ray
 
@@ -27,9 +27,9 @@ def main():
     def f(object_id_list):
         diffs = []
         for object_id in object_id_list:
-            before = time.time()
+            before = timeit.default_timer()
             ray.get(object_id)
-            after = time.time()
+            after = timeit.default_timer()
             diffs.append(after - before)
             time.sleep(1)
         return np.mean(diffs), np.std(diffs)

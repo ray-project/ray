@@ -7,7 +7,7 @@ import logging
 import os
 import subprocess
 import tempfile
-import time
+import timeit
 import types
 
 try:  # py3
@@ -174,11 +174,11 @@ class Syncer(object):
         self.sync_client = sync_client
 
     def sync_up_if_needed(self):
-        if time.time() - self.last_sync_up_time > SYNC_PERIOD:
+        if timeit.default_timer() - self.last_sync_up_time > SYNC_PERIOD:
             self.sync_up()
 
     def sync_down_if_needed(self):
-        if time.time() - self.last_sync_down_time > SYNC_PERIOD:
+        if timeit.default_timer() - self.last_sync_down_time > SYNC_PERIOD:
             self.sync_down()
 
     def sync_up(self):
@@ -192,7 +192,7 @@ class Syncer(object):
             try:
                 result = self.sync_client.sync_up(self._local_dir,
                                                   self._remote_path)
-                self.last_sync_up_time = time.time()
+                self.last_sync_up_time = timeit.default_timer()
             except Exception:
                 logger.exception("Sync execution failed.")
         return result
@@ -208,7 +208,7 @@ class Syncer(object):
             try:
                 result = self.sync_client.sync_down(self._remote_path,
                                                     self._local_dir)
-                self.last_sync_down_time = time.time()
+                self.last_sync_down_time = timeit.default_timer()
             except Exception:
                 logger.exception("Sync execution failed.")
         return result

@@ -5,7 +5,7 @@ import numpy as np
 import ray
 from ray.experimental.serve.utils import logger
 from blist import sortedlist
-import time
+import timeit
 
 
 class Query:
@@ -121,7 +121,7 @@ class CentralizedQueues:
 
         # add wall clock time to specify the deadline for completion of query
         # this also assures FIFO behaviour if request_slo_ms is not specified
-        request_slo_ms += (time.time() * 1000)
+        request_slo_ms += (timeit.default_timer() * 1000)
         query = Query(request_args, request_kwargs, request_context,
                       request_slo_ms)
         self.queues[service].append(query)

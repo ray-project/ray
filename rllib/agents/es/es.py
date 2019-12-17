@@ -8,7 +8,7 @@ from __future__ import print_function
 from collections import namedtuple
 import logging
 import numpy as np
-import time
+import timeit
 
 import ray
 from ray.rllib.agents import Trainer, with_common_config
@@ -123,9 +123,9 @@ class Worker(object):
         eval_returns, eval_lengths = [], []
 
         # Perform some rollouts with noise.
-        task_tstart = time.time()
+        task_tstart = timeit.default_timer()
         while (len(noise_indices) == 0
-               or time.time() - task_tstart < self.min_task_runtime):
+               or timeit.default_timer() - task_tstart < self.min_task_runtime):
 
             if np.random.uniform() < self.config["eval_prob"]:
                 # Do an evaluation run with no perturbation.
@@ -199,7 +199,7 @@ class ESTrainer(Trainer):
 
         self.episodes_so_far = 0
         self.reward_list = []
-        self.tstart = time.time()
+        self.tstart = timeit.default_timer()
 
     @override(Trainer)
     def _train(self):

@@ -5,7 +5,7 @@ from __future__ import print_function
 import os
 import pytest
 import subprocess
-import time
+import timeit
 
 import ray
 from ray import ray_constants
@@ -52,7 +52,7 @@ def test_error_isolation(call_ray_start):
     # receives that error.
     driver_script = """
 import ray
-import time
+import timeit
 
 ray.init(address="{}")
 
@@ -99,7 +99,7 @@ def test_remote_function_isolation(call_ray_start):
     # own commands with the same names.
     driver_script = """
 import ray
-import time
+import timeit
 ray.init(address="{}")
 @ray.remote
 def f():
@@ -182,7 +182,7 @@ def test_drivers_named_actors(call_ray_start):
     # Define a driver that creates a named actor then sleeps for a while.
     driver_script1 = """
 import ray
-import time
+import timeit
 ray.init(address="{}")
 @ray.remote
 class Counter(object):
@@ -199,7 +199,7 @@ time.sleep(100)
     # Define a driver that submits to the named actor and exits.
     driver_script2 = """
 import ray
-import time
+import timeit
 ray.init(address="{}")
 while True:
     try:
@@ -231,7 +231,7 @@ def test_receive_late_worker_logs():
     driver_script = """
 import ray
 import random
-import time
+import timeit
 
 log_message = "{}"
 
@@ -264,7 +264,7 @@ def test_drivers_release_resources(call_ray_start):
 
     # Define a driver that creates an actor and exits.
     driver_script1 = """
-import time
+import timeit
 import ray
 
 ray.init(address="{}")
@@ -299,8 +299,8 @@ print("success")
 
     def wait_for_success_output(process_handle, timeout=10):
         # Wait until the process prints "success" and then return.
-        start_time = time.time()
-        while time.time() - start_time < timeout:
+        start_time = timeit.default_timer()
+        while timeit.default_timer() - start_time < timeout:
             output_line = ray.utils.decode(
                 process_handle.stdout.readline()).strip()
             print(output_line)
@@ -452,7 +452,7 @@ def test_run_driver_twice(ray_start_regular):
 import ray
 import ray.tune as tune
 import os
-import time
+import timeit
 
 def train_func(config, reporter):  # add a reporter arg
     for i in range(2):
@@ -497,7 +497,7 @@ def test_driver_exiting_when_worker_blocked(call_ray_start):
     # Define a driver that creates two tasks, one that runs forever and the
     # other blocked on the first in a `ray.get`.
     driver_script = """
-import time
+import timeit
 import ray
 ray.init(address="{}")
 @ray.remote
@@ -521,7 +521,7 @@ print("success")
     # Define a driver that creates two tasks, one that runs forever and the
     # other blocked on the first in a `ray.wait`.
     driver_script = """
-import time
+import timeit
 import ray
 ray.init(address="{}")
 @ray.remote
@@ -545,7 +545,7 @@ print("success")
     # Define a driver that creates one task that depends on a nonexistent
     # object. This task will be queued as waiting to execute.
     driver_script_template = """
-import time
+import timeit
 import ray
 ray.init(address="{}")
 @ray.remote
@@ -570,7 +570,7 @@ print("success")
 
     # Define a driver that calls `ray.wait` on a nonexistent object.
     driver_script_template = """
-import time
+import timeit
 import ray
 ray.init(address="{}")
 @ray.remote

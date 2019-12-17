@@ -1,4 +1,4 @@
-import time
+import timeit
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ class MetricMonitor:
         self.data_entries = []
 
         self.gc_window_seconds = gc_window_seconds
-        self.latest_gc_time = time.time()
+        self.latest_gc_time = timeit.default_timer()
 
     def is_ready(self):
         return True
@@ -38,11 +38,11 @@ class MetricMonitor:
     def scrape(self):
         # If expected gc time has passed, we will perform metric value GC.
         expected_gc_time = self.latest_gc_time + self.gc_window_seconds
-        if expected_gc_time < time.time():
+        if expected_gc_time < timeit.default_timer():
             self._perform_gc()
-            self.latest_gc_time = time.time()
+            self.latest_gc_time = timeit.default_timer()
 
-        curr_time = time.time()
+        curr_time = timeit.default_timer()
         result = [
             handle._serve_metric.remote()
             for handle in self.actor_handles.values()
@@ -67,7 +67,7 @@ class MetricMonitor:
                         self.data_entries.append(new_entry)
 
     def _perform_gc(self):
-        curr_time = time.time()
+        curr_time = timeit.default_timer()
         earliest_time_allowed = curr_time - self.gc_window_seconds
 
         # If we don"t have any data at hand, no need to gc.
@@ -123,7 +123,7 @@ class MetricMonitor:
             "Aggregation window exceeds gc window. You should set a longer gc "
             "window or shorter aggregation window.")
 
-        curr_time = time.time()
+        curr_time = timeit.default_timer()
         df = pd.DataFrame(self.data_entries)
         filtered_df = df[df["name"] == metric_name]
         if len(filtered_df) == 0:

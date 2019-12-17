@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gym
-import time
+import timeit
 import unittest
 
 import ray
@@ -21,13 +21,13 @@ class TestPerf(unittest.TestCase):
                 env_creator=lambda _: gym.make("CartPole-v0"),
                 policy=MockPolicy,
                 batch_steps=100)
-            start = time.time()
+            start = timeit.default_timer()
             count = 0
-            while time.time() - start < 1:
+            while timeit.default_timer() - start < 1:
                 count += ev.sample().count
             print()
             print("Samples per second {}".format(
-                count / (time.time() - start)))
+                count / (timeit.default_timer() - start)))
             print()
 
 

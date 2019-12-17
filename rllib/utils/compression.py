@@ -5,7 +5,7 @@ from __future__ import print_function
 from ray.rllib.utils.annotations import DeveloperAPI
 
 import logging
-import time
+import timeit
 import base64
 import numpy as np
 import pyarrow
@@ -76,8 +76,8 @@ if __name__ == "__main__":
     data = np.ones(size).reshape((32, 80, 80, 4))
 
     count = 0
-    start = time.time()
-    while time.time() - start < 1:
+    start = timeit.default_timer()
+    while timeit.default_timer() - start < 1:
         pack(data)
         count += 1
     compressed = pack(data)
@@ -85,8 +85,8 @@ if __name__ == "__main__":
     print("Compression ratio: {}".format(round(size * 4 / len(compressed), 2)))
 
     count = 0
-    start = time.time()
-    while time.time() - start < 1:
+    start = timeit.default_timer()
+    while timeit.default_timer() - start < 1:
         unpack(compressed)
         count += 1
     print("Decompression speed: {} MB/s".format(count * size * 4 / 1e6))

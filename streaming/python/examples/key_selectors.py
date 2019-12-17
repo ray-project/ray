@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import argparse
 import logging
-import time
+import timeit
 
 import ray
 from ray.streaming.streaming import Environment
@@ -63,9 +63,9 @@ if __name__ == "__main__":
                 .sum(1) \
                 .inspect(print)     # Prints the content of the
     # stream to stdout
-    start = time.time()
+    start = timeit.default_timer()
     env_handle = env.execute()  # Deploys and executes the dataflow
     ray.get(env_handle)  # Stay alive until execution finishes
-    end = time.time()
+    end = timeit.default_timer()
     logger.info("Elapsed time: {} secs".format(end - start))
     logger.debug("Output stream id: {}".format(stream.id))

@@ -12,9 +12,9 @@ def f():
 
 @ray.remote
 def g():
-    import time
-    start = time.time()
-    while time.time() < start + 1:
+    import timeit
+    start = timeit.default_timer()
+    while timeit.default_timer() < start + 1:
         ray.get([f.remote() for _ in range(10)])
 
 

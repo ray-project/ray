@@ -6,7 +6,7 @@ from collections import defaultdict
 import json
 import logging
 import sys
-import time
+import timeit
 
 import ray
 from ray.function_manager import FunctionDescriptor
@@ -176,12 +176,12 @@ class GlobalState(object):
         """
         self.redis_client = services.create_redis_client(
             redis_address, redis_password)
-        start_time = time.time()
+        start_time = timeit.default_timer()
 
         num_redis_shards = None
         redis_shard_addresses = []
 
-        while time.time() - start_time < timeout:
+        while timeit.default_timer() - start_time < timeout:
             # Attempt to get the number of Redis shards.
             num_redis_shards = self.redis_client.get("NumRedisShards")
             if num_redis_shards is None:
@@ -205,7 +205,7 @@ class GlobalState(object):
             break
 
         # Check to see if we timed out.
-        if time.time() - start_time >= timeout:
+        if timeit.default_timer() - start_time >= timeout:
             raise Exception("Timed out while attempting to initialize the "
                             "global state. num_redis_shards = {}, "
                             "redis_shard_addresses = {}".format(
@@ -809,7 +809,7 @@ class GlobalState(object):
             overall_largest = max(overall_largest, rev_range[0][1])
 
             num_tasks += self.redis_client.zcount(
-                event_log_set, min=0, max=time.time())
+                event_log_set, min=0, max=timeit.default_timer())
         if num_tasks == 0:
             return 0, 0, 0
         return overall_smallest, overall_largest, num_tasks

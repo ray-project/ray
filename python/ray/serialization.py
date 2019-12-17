@@ -5,7 +5,7 @@ from __future__ import print_function
 import hashlib
 import io
 import logging
-import time
+import timeit
 
 import pyarrow
 import pyarrow.plasma as plasma
@@ -432,7 +432,7 @@ class SerializationContext(object):
         pass
         assert len(data_metadata_pairs) == len(object_ids)
 
-        start_time = time.time()
+        start_time = timeit.default_timer()
         results = []
         warning_sent = False
         i = 0
@@ -450,7 +450,7 @@ class SerializationContext(object):
                 # so that the import thread can acquire it.
                 time.sleep(0.01)
 
-                if time.time() - start_time > error_timeout:
+                if timeit.default_timer() - start_time > error_timeout:
                     warning_message = ("This worker or driver is waiting to "
                                        "receive a class definition so that it "
                                        "can deserialize an object from the "

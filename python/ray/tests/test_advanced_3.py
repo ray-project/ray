@@ -12,7 +12,7 @@ import sys
 import socket
 import subprocess
 import tempfile
-import time
+import timeit
 
 import numpy as np
 import pickle
@@ -90,8 +90,8 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
 
 
 def wait_for_num_tasks(num_tasks, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() - start_time < timeout:
         if len(ray.tasks()) >= num_tasks:
             return
         time.sleep(0.1)
@@ -99,8 +99,8 @@ def wait_for_num_tasks(num_tasks, timeout=10):
 
 
 def wait_for_num_objects(num_objects, timeout=10):
-    start_time = time.time()
-    while time.time() - start_time < timeout:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() - start_time < timeout:
         if len(ray.objects()) >= num_objects:
             return
         time.sleep(0.1)
@@ -194,8 +194,8 @@ def test_global_state_api(shutdown_only):
 
     def wait_for_object_table():
         timeout = 10
-        start_time = time.time()
-        while time.time() - start_time < timeout:
+        start_time = timeit.default_timer()
+        while timeit.default_timer() - start_time < timeout:
             object_table = ray.objects()
             tables_ready = (object_table[x_id]["ManagerIDs"] is not None and
                             object_table[result_id]["ManagerIDs"] is not None)
@@ -461,8 +461,8 @@ def test_ray_stack(ray_start_2_cpus):
     unique_name_3.remote()
 
     success = False
-    start_time = time.time()
-    while time.time() - start_time < 30:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() - start_time < 30:
         # Attempt to parse the "ray stack" call.
         output = ray.utils.decode(subprocess.check_output(["ray", "stack"]))
         if ("unique_name_1" in output and "unique_name_2" in output
@@ -584,8 +584,8 @@ def test_redis_lru_with_set(ray_start_object_store_memory):
 
     # Remove the object from the object table to simulate Redis LRU eviction.
     removed = False
-    start_time = time.time()
-    while time.time() < start_time + 10:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() < start_time + 10:
         if ray.state.state.redis_clients[0].delete(b"OBJECT" +
                                                    x_id.binary()) == 1:
             removed = True

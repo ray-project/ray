@@ -9,7 +9,7 @@ from __future__ import print_function
 from collections import namedtuple
 import logging
 import numpy as np
-import time
+import timeit
 
 import ray
 from ray.rllib.agents import Trainer, with_common_config
@@ -194,7 +194,7 @@ class ARSTrainer(Trainer):
 
         self.episodes_so_far = 0
         self.reward_list = []
-        self.tstart = time.time()
+        self.tstart = timeit.default_timer()
 
     @override(Trainer)
     def _train(self):

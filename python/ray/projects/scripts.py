@@ -10,7 +10,7 @@ import os
 from shutil import copyfile
 import subprocess
 import sys
-import time
+import timeit
 
 import ray
 from ray.autoscaler.commands import (
@@ -204,7 +204,7 @@ class SessionRunner(object):
             # Create a temporary requirements_txt in the head node.
             remote_requirements_txt = (
                 "/tmp/" + "ray_project_requirements_txt_{}".format(
-                    time.time()))
+                    timeit.default_timer()))
 
             rsync(
                 self.project_definition.cluster_yaml(),

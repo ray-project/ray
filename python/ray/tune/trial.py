@@ -7,7 +7,7 @@ import copy
 from datetime import datetime
 import logging
 import uuid
-import time
+import timeit
 import tempfile
 import os
 from numbers import Number
@@ -255,7 +255,7 @@ class Trial(object):
     def set_status(self, status):
         """Sets the status of the trial."""
         if status == Trial.RUNNING and self.start_time is None:
-            self.start_time = time.time()
+            self.start_time = timeit.default_timer()
         self.status = status
 
     def close_logger(self):
@@ -344,14 +344,14 @@ class Trial(object):
         result.update(trial_id=self.trial_id, done=terminate)
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
-        if self.verbose and (terminate or time.time() - self.last_debug >
+        if self.verbose and (terminate or timeit.default_timer() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
-            self.last_debug = time.time()
+            self.last_debug = timeit.default_timer()
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
         self.last_result = result
-        self.last_update_time = time.time()
+        self.last_update_time = timeit.default_timer()
         self.result_logger.on_result(self.last_result)
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):

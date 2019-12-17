@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import time
+import timeit
 
 import redis
 
@@ -151,8 +151,8 @@ class Cluster(object):
         redis_client = redis.StrictRedis(
             host=ip_address, port=int(port), password=self.redis_password)
 
-        start_time = time.time()
-        while time.time() - start_time < timeout:
+        start_time = timeit.default_timer()
+        while timeit.default_timer() - start_time < timeout:
             clients = ray.state._parse_client_table(redis_client)
             object_store_socket_names = [
                 client["ObjectStoreSocketName"] for client in clients
@@ -184,8 +184,8 @@ class Cluster(object):
         redis_client = redis.StrictRedis(
             host=ip_address, port=int(port), password=self.redis_password)
 
-        start_time = time.time()
-        while time.time() - start_time < timeout:
+        start_time = timeit.default_timer()
+        while timeit.default_timer() - start_time < timeout:
             clients = ray.state._parse_client_table(redis_client)
             live_clients = [client for client in clients if client["Alive"]]
 

@@ -7,7 +7,7 @@ import os
 import pytest
 import subprocess
 import sys
-import time
+import timeit
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -57,9 +57,9 @@ def test_time(start_ray, tmpdir):
     })
     times = []
     for i in range(5):
-        start = time.time()
+        start = timeit.default_timer()
         subprocess.check_call(["tune", "ls", experiment_path])
-        times += [time.time() - start]
+        times += [timeit.default_timer() - start]
 
     assert sum(times) / len(times) < 2.0, "CLI is taking too long!"
 

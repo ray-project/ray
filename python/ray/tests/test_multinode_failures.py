@@ -6,7 +6,7 @@ import json
 import os
 import signal
 import sys
-import time
+import timeit
 
 import pytest
 
@@ -42,7 +42,7 @@ def test_worker_failed(ray_start_workers_separate_multinode):
         time.sleep(0.25)
         return os.getpid()
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     pids = set()
     while len(pids) < num_nodes * num_initial_workers:
         new_pids = ray.get([
@@ -51,7 +51,7 @@ def test_worker_failed(ray_start_workers_separate_multinode):
         ])
         for pid in new_pids:
             pids.add(pid)
-        if time.time() - start_time > 60:
+        if timeit.default_timer() - start_time > 60:
             raise RayTestTimeoutException(
                 "Timed out while waiting to get worker PIDs.")
 

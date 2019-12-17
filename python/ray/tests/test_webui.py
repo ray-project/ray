@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import re
 import sys
-import time
+import timeit
 
 import pytest
 import requests
@@ -21,13 +21,13 @@ def test_get_webui(shutdown_only):
 
     assert re.match(r"^http://\d+\.\d+\.\d+\.\d+:8265$", webui_url)
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     while True:
         try:
             node_info = requests.get(webui_url + "/api/node_info").json()
             break
         except requests.exceptions.ConnectionError:
-            if time.time() > start_time + 30:
+            if timeit.default_timer() > start_time + 30:
                 raise Exception(
                     "Timed out while waiting for dashboard to start.")
     assert node_info["error"] is None

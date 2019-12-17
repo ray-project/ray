@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import time
+import timeit
 
 import ray
 import ray.cluster_utils
@@ -165,9 +165,9 @@ def test_dynamic_res_creation_clientid_multiple(ray_start_cluster):
     ray.get(results)
 
     success = False
-    start_time = time.time()
+    start_time = timeit.default_timer()
 
-    while time.time() - start_time < TIMEOUT and not success:
+    while timeit.default_timer() - start_time < TIMEOUT and not success:
         resources_created = []
         for nid in target_node_ids:
             target_node = next(
@@ -560,9 +560,9 @@ def test_dynamic_res_creation_stress(ray_start_cluster):
     ray.get(results)
 
     success = False
-    start_time = time.time()
+    start_time = timeit.default_timer()
 
-    while time.time() - start_time < TIMEOUT and not success:
+    while timeit.default_timer() - start_time < TIMEOUT and not success:
         resources = ray.cluster_resources()
         all_resources_created = []
         for i in range(0, NUM_RES_TO_CREATE):

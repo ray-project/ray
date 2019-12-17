@@ -7,7 +7,7 @@ from __future__ import print_function
 import logging
 import numpy as np
 import sys
-import time
+import timeit
 
 import ray
 
@@ -80,10 +80,10 @@ parents = [
     Parent.remote(num_children, death_probability) for _ in range(num_parents)
 ]
 
-start = time.time()
+start = timeit.default_timer()
 loop_times = []
 for i in range(100):
-    loop_start = time.time()
+    loop_start = timeit.default_timer()
     ray.get([parent.ping.remote(10) for parent in parents])
 
     # Kill a parent actor with some probability.
@@ -94,9 +94,9 @@ for i in range(100):
         parents[parent_index] = Parent.remote(num_children, death_probability)
 
     logger.info("Finished trial %s", i)
-    loop_times.append(time.time() - loop_start)
+    loop_times.append(timeit.default_timer() - loop_start)
 
-print("Finished in: {}s".format(time.time() - start))
+print("Finished in: {}s".format(timeit.default_timer() - start))
 print("Average iteration time: {}s".format(sum(loop_times) / len(loop_times)))
 print("Max iteration time: {}s".format(max(loop_times)))
 print("Min iteration time: {}s".format(min(loop_times)))

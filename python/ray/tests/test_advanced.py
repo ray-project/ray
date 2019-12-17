@@ -10,7 +10,7 @@ import random
 import six
 import sys
 import threading
-import time
+import timeit
 
 import numpy as np
 import pytest
@@ -163,7 +163,7 @@ def test_profiling_api(ray_start_2_cpus):
     # Wait until all of the profiling information appears in the profile
     # table.
     timeout_seconds = 20
-    start_time = time.time()
+    start_time = timeit.default_timer()
     while True:
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
@@ -186,7 +186,7 @@ def test_profiling_api(ray_start_2_cpus):
                for expected_type in expected_types):
             break
 
-        if time.time() - start_time > timeout_seconds:
+        if timeit.default_timer() - start_time > timeout_seconds:
             raise RayTestTimeoutException(
                 "Timed out while waiting for information in "
                 "profile table. Missing events: {}.".format(
@@ -209,9 +209,9 @@ def test_wait_cluster(ray_start_cluster):
     # Make sure we have enough workers on the remote nodes to execute some
     # tasks.
     tasks = [f.remote() for _ in range(10)]
-    start = time.time()
+    start = timeit.default_timer()
     ray.get(tasks)
-    end = time.time()
+    end = timeit.default_timer()
 
     # Submit some more tasks that can only be executed on the remote nodes.
     tasks = [f.remote() for _ in range(10)]

@@ -6,7 +6,7 @@ from __future__ import print_function
 import logging
 import os
 import sys
-import time
+import timeit
 
 import numpy as np
 import pytest
@@ -45,15 +45,15 @@ def test_resource_constraints(shutdown_only):
     def f(n):
         time.sleep(n)
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5) for _ in range(10)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 0.5 + time_buffer
     assert duration > 0.5
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5) for _ in range(11)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
@@ -61,15 +61,15 @@ def test_resource_constraints(shutdown_only):
     def f(n):
         time.sleep(n)
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5) for _ in range(3)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 0.5 + time_buffer
     assert duration > 0.5
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5) for _ in range(4)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
@@ -77,21 +77,21 @@ def test_resource_constraints(shutdown_only):
     def f(n):
         time.sleep(n)
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5) for _ in range(2)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 0.5 + time_buffer
     assert duration > 0.5
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5) for _ in range(3)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5) for _ in range(4)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
@@ -124,27 +124,27 @@ def test_multi_resource_constraints(shutdown_only):
 
     time_buffer = 2
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 0.5 + time_buffer
     assert duration > 0.5
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5), f.remote(0.5)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([g.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ray.get([f.remote(0.5), f.remote(0.5), g.remote(0.5), g.remote(0.5)])
-    duration = time.time() - start_time
+    duration = timeit.default_timer() - start_time
     assert duration < 1 + time_buffer
     assert duration > 1
 
@@ -175,11 +175,11 @@ def test_gpu_ids(shutdown_only):
         time.sleep(0.1)
         return os.getpid()
 
-    start_time = time.time()
+    start_time = timeit.default_timer()
     while True:
         if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
             break
-        if time.time() > start_time + 10:
+        if timeit.default_timer() > start_time + 10:
             raise RayTestTimeoutException(
                 "Timed out while waiting for workers to start "
                 "up.")
@@ -197,9 +197,9 @@ def test_gpu_ids(shutdown_only):
 
     # There are only 10 GPUs, and each task uses 5 GPUs, so there should only
     # be 2 tasks scheduled at a given time.
-    t1 = time.time()
+    t1 = timeit.default_timer()
     ray.get([f5.remote() for _ in range(20)])
-    assert time.time() - t1 >= 10 * 0.1
+    assert timeit.default_timer() - t1 >= 10 * 0.1
 
     # Test that actors have CUDA_VISIBLE_DEVICES set properly.
 

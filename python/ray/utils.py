@@ -13,7 +13,7 @@ import six
 import subprocess
 import sys
 import threading
-import time
+import timeit
 import uuid
 
 import ray.gcs_utils
@@ -64,7 +64,7 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    worker.raylet_client.push_error(job_id, error_type, message, time.time())
+    worker.raylet_client.push_error(job_id, error_type, message, timeit.default_timer())
 
 
 def push_error_to_driver_through_redis(redis_client,
@@ -92,7 +92,7 @@ def push_error_to_driver_through_redis(redis_client,
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
     error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
-                                                       message, time.time())
+                                                       message, timeit.default_timer())
     redis_client.execute_command(
         "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
         ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),

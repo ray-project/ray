@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import time
+import timeit
 import torch
 
 from ray.experimental.sgd.utils import TimerStat
@@ -26,11 +26,11 @@ def train(model, train_iterator, criterion, optimizer, config):
     # switch to train mode
     model.train()
 
-    end = time.time()
+    end = timeit.default_timer()
 
     for i, (features, target) in enumerate(train_iterator):
         # measure data loading time
-        data_time.update(time.time() - end)
+        data_time.update(timeit.default_timer() - end)
 
         # Create non_blocking tensors for distributed training
         with timers["d2h"]:
@@ -56,8 +56,8 @@ def train(model, train_iterator, criterion, optimizer, config):
             optimizer.step()
 
         # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
+        batch_time.update(timeit.default_timer() - end)
+        end = timeit.default_timer()
 
     stats = {
         "batch_time": batch_time.avg,
@@ -82,7 +82,7 @@ def validate(model, val_iterator, criterion, config):
     correct = 0
     total = 0
     with torch.no_grad():
-        end = time.time()
+        end = timeit.default_timer()
         for i, (features, target) in enumerate(val_iterator):
 
             if torch.cuda.is_available():
@@ -100,8 +100,8 @@ def validate(model, val_iterator, criterion, config):
             losses.update(loss.item(), features.size(0))
 
             # measure elapsed time
-            batch_time.update(time.time() - end)
-            end = time.time()
+            batch_time.update(timeit.default_timer() - end)
+            end = timeit.default_timer()
 
     stats = {"batch_time": batch_time.avg, "validation_loss": losses.avg}
     stats.update(mean_accuracy=correct / total)

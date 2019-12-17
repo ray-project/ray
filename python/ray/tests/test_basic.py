@@ -11,7 +11,7 @@ import re
 import string
 import sys
 import threading
-import time
+import timeit
 
 import numpy as np
 import pytest
@@ -982,7 +982,7 @@ def test_defining_remote_functions(shutdown_only):
 
     @ray.remote
     def j():
-        return time.time()
+        return timeit.default_timer()
 
     ray.get(j.remote())
 
@@ -1170,9 +1170,9 @@ def test_many_fractional_resources(shutdown_only):
 
     # Check that the available resources at the end are the same as the
     # beginning.
-    stop_time = time.time() + 10
+    stop_time = timeit.default_timer() + 10
     correct_available_resources = False
-    while time.time() < stop_time:
+    while timeit.default_timer() < stop_time:
         if (ray.available_resources()["CPU"] == 2.0
                 and ray.available_resources()["GPU"] == 2.0
                 and ray.available_resources()["Custom"] == 2.0):
@@ -1524,9 +1524,9 @@ def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
     runner.remote(slow_value)
     time.sleep(1)
     x2 = runner.remote(fast_value)
-    start = time.time()
+    start = timeit.default_timer()
     ray.get(x2)
-    delta = time.time() - start
+    delta = timeit.default_timer() - start
     assert delta < 10, "did not skip slow value"
 
 
@@ -1594,16 +1594,16 @@ def test_wait(ray_start_regular):
     assert remaining_ids == []
 
     objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ready_ids, remaining_ids = ray.wait(objectids, timeout=1.75, num_returns=4)
-    assert time.time() - start_time < 2
+    assert timeit.default_timer() - start_time < 2
     assert len(ready_ids) == 3
     assert len(remaining_ids) == 1
     ray.wait(objectids)
     objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
-    start_time = time.time()
+    start_time = timeit.default_timer()
     ready_ids, remaining_ids = ray.wait(objectids, timeout=5.0)
-    assert time.time() - start_time < 5
+    assert timeit.default_timer() - start_time < 5
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
 

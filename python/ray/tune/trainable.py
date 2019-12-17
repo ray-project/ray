@@ -12,7 +12,7 @@ import pickle
 from six import string_types
 import shutil
 import tempfile
-import time
+import timeit
 import uuid
 
 import ray
@@ -92,9 +92,9 @@ class Trainable(object):
         self._iterations_since_restore = 0
         self._restored = False
 
-        start_time = time.time()
+        start_time = timeit.default_timer()
         self._setup(copy.deepcopy(self.config))
-        setup_time = time.time() - start_time
+        setup_time = timeit.default_timer() - start_time
         if setup_time > SETUP_TIME_THRESHOLD:
             logger.info("_setup took {:.3f} seconds. If your trainable is "
                         "slow to initialize, consider setting "
@@ -172,7 +172,7 @@ class Trainable(object):
         Returns:
             A dict that describes training progress.
         """
-        start = time.time()
+        start = timeit.default_timer()
         result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
 
@@ -188,7 +188,7 @@ class Trainable(object):
         if result.get(TIME_THIS_ITER_S) is not None:
             time_this_iter = result[TIME_THIS_ITER_S]
         else:
-            time_this_iter = time.time() - start
+            time_this_iter = timeit.default_timer() - start
         self._time_total += time_this_iter
         self._time_since_restore += time_this_iter
 

@@ -5,7 +5,7 @@ from __future__ import print_function
 import logging
 import pickle
 import sys
-import time
+import timeit
 
 import networkx as nx
 import ray
@@ -225,7 +225,7 @@ class ExecutionGraph:
                 self.actor_handles.extend(handles)
 
     def build_channels(self):
-        self.build_time = int(time.time() * 1000)
+        self.build_time = int(timeit.default_timer() * 1000)
         # gen auto-incremented unique task id for every operator instance
         for node in nx.topological_sort(self.env.logical_topo):
             operator = self.env.operators[node]

@@ -5,7 +5,7 @@ from __future__ import print_function
 import logging
 import os
 import sys
-import time
+import timeit
 
 try:
     import psutil
@@ -112,11 +112,11 @@ class MemoryMonitor(object):
         if psutil is None:
             return  # nothing we can do
 
-        if time.time() - self.last_checked > self.check_interval:
+        if timeit.default_timer() - self.last_checked > self.check_interval:
             if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
                 return  # escape hatch, not intended for user use
 
-            self.last_checked = time.time()
+            self.last_checked = timeit.default_timer()
             total_gb = psutil.virtual_memory().total / (1024**3)
             used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
             if self.cgroup_memory_limit_gb < total_gb:

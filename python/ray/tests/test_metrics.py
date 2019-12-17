@@ -5,7 +5,7 @@ from __future__ import print_function
 import os
 import grpc
 import psutil
-import time
+import timeit
 
 import ray
 from ray.core.generated import node_manager_pb2
@@ -28,9 +28,9 @@ def test_worker_stats(ray_start_regular):
     assert os.getpid() == drivers[0].pid
 
     timeout_seconds = 20
-    start_time = time.time()
+    start_time = timeit.default_timer()
     while True:
-        if time.time() - start_time > timeout_seconds:
+        if timeit.default_timer() - start_time > timeout_seconds:
             raise RayTestTimeoutException(
                 "Timed out while waiting for worker processes")
 

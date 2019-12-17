@@ -11,7 +11,7 @@ try:
 except ImportError:
     pytest_timeout = None
 import sys
-import time
+import timeit
 
 import ray
 import ray.test_utils
@@ -576,8 +576,8 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Make sure that the actor method calls succeeded.
     ray.get(actor_results)
 
-    start_time = time.time()
-    while time.time() - start_time < 30:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() - start_time < 30:
         seen_gpu_ids, num_calls = ray.get(
             record_gpu_actor.get_gpu_ids_and_calls.remote())
         if num_calls == num_gpus:

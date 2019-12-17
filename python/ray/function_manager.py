@@ -9,7 +9,7 @@ import inspect
 import json
 import logging
 import sys
-import time
+import timeit
 import threading
 import traceback
 from collections import (
@@ -515,7 +515,7 @@ class FunctionActorManager(object):
             job_id (str): The ID of the job to push the error message to
                 if this times out.
         """
-        start_time = time.time()
+        start_time = timeit.default_timer()
         # Only send the warning once.
         warning_sent = False
         while True:
@@ -527,7 +527,7 @@ class FunctionActorManager(object):
                 elif not self._worker.actor_id.is_nil() and (
                         self._worker.actor_id in self._worker.actors):
                     break
-            if time.time() - start_time > timeout:
+            if timeit.default_timer() - start_time > timeout:
                 warning_message = ("This worker was asked to execute a "
                                    "function that it does not have "
                                    "registered. You may have to restart "
@@ -812,7 +812,7 @@ class FunctionActorManager(object):
         actor_id = self._worker.actor_id
         checkpoint_info = self._worker.actor_checkpoint_info[actor_id]
         checkpoint_info.num_tasks_since_last_checkpoint += 1
-        now = int(1000 * time.time())
+        now = int(1000 * timeit.default_timer())
         checkpoint_context = ray.actor.CheckpointContext(
             actor_id, checkpoint_info.num_tasks_since_last_checkpoint,
             now - checkpoint_info.last_checkpoint_timestamp)
@@ -820,7 +820,7 @@ class FunctionActorManager(object):
         # and then call `save_checkpoint`.
         if actor.should_checkpoint(checkpoint_context):
             try:
-                now = int(1000 * time.time())
+                now = int(1000 * timeit.default_timer())
                 checkpoint_id = (self._worker.raylet_client.
                                  prepare_actor_checkpoint(actor_id))
                 checkpoint_info.checkpoint_ids.append(checkpoint_id)

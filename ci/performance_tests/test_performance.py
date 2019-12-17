@@ -5,7 +5,7 @@ from __future__ import print_function
 import argparse
 import logging
 import numpy as np
-import time
+import timeit
 
 import ray
 from ray.tests.cluster_utils import Cluster
@@ -159,9 +159,9 @@ def warm_up_cluster(num_nodes, object_store_memory):
 def run_multiple_trials(f, num_trials):
     durations = []
     for _ in range(num_trials):
-        start = time.time()
+        start = timeit.default_timer()
         f()
-        durations.append(time.time() - start)
+        durations.append(timeit.default_timer() - start)
     return durations
 
 

@@ -6,7 +6,7 @@ from __future__ import print_function
 
 import numpy as np
 import sys
-import time
+import timeit
 
 import ray
 from ray.cluster_utils import Cluster
@@ -84,7 +84,7 @@ parents = [
 ]
 
 iteration = 0
-start_time = time.time()
+start_time = timeit.default_timer()
 previous_time = start_time
 while True:
     ray.get([parent.ping.remote(10) for parent in parents])
@@ -96,7 +96,7 @@ while True:
         parents[parent_index].kill.remote()
         parents[parent_index] = Parent.remote(num_children, death_probability)
 
-    new_time = time.time()
+    new_time = timeit.default_timer()
     print("Iteration {}:\n"
           "  - Iteration time: {}.\n"
           "  - Absolute time: {}.\n"

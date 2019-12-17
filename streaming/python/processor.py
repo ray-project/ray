@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import logging
 import sys
-import time
+import timeit
 import types
 
 logger = logging.getLogger(__name__)
@@ -214,13 +214,13 @@ class Source:
 
     # Starts the source by calling get_next() repeatedly
     def run(self, input_gate, output_gate):
-        start = time.time()
+        start = timeit.default_timer()
         elements = 0
         while True:
             record = self.source.get_next()
             if not record:
                 logger.debug("[writer] puts per second: {}".format(
-                    elements / (time.time() - start)))
+                    elements / (timeit.default_timer() - start)))
                 return
             output_gate.push(record)
             elements += 1

@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import collections
 import sys
-import time
+import timeit
 import unittest
 
 from ray.tune.trial import Trial
@@ -37,11 +37,11 @@ class ProgressReporterTest(unittest.TestCase):
         for state in states_under:
             for _ in range(num_trials_under):
                 trials_by_state[state].append(
-                    self.mock_trial(state, time.time()))
+                    self.mock_trial(state, timeit.default_timer()))
         for state in states_over:
             for _ in range(num_trials_over):
                 trials_by_state[state].append(
-                    self.mock_trial(state, time.time()))
+                    self.mock_trial(state, timeit.default_timer()))
 
         filtered_trials_by_state = _fair_filter_trials(
             trials_by_state, max_trials=max_trials)

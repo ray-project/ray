@@ -1,7 +1,7 @@
 """This is the script for `ray microbenchmark`."""
 
 import os
-import time
+import timeit
 import numpy as np
 import multiprocessing
 import ray
@@ -59,18 +59,18 @@ def timeit(name, fn, multiplier=1):
     if filter_pattern not in name:
         return
     # warmup
-    start = time.time()
-    while time.time() - start < 1:
+    start = timeit.default_timer()
+    while timeit.default_timer() - start < 1:
         fn()
     # real run
     stats = []
     for _ in range(4):
-        start = time.time()
+        start = timeit.default_timer()
         count = 0
-        while time.time() - start < 2:
+        while timeit.default_timer() - start < 2:
             fn()
             count += 1
-        end = time.time()
+        end = timeit.default_timer()
         stats.append(multiplier * count / (end - start))
     print(name, "per second", round(np.mean(stats), 2), "+-",
           round(np.std(stats), 2))

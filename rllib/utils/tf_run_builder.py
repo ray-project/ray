@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import logging
 import os
-import time
+import timeit
 
 from ray.rllib.utils.debug import log_once
 from ray.rllib.utils import try_import_tf
@@ -70,7 +70,7 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
 
         run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
-        start = time.time()
+        start = timeit.default_timer()
         fetches = sess.run(
             ops,
             options=run_options,
@@ -84,7 +84,7 @@ def run_timeline(sess, ops, debug_name, feed_dict={}, timeline_dir=None):
         _count += 1
         trace_file = open(outf, "w")
         logger.info("Wrote tf timeline ({} s) to {}".format(
-            time.time() - start, os.path.abspath(outf)))
+            timeit.default_timer() - start, os.path.abspath(outf)))
         trace_file.write(trace.generate_chrome_trace_format())
     else:
         if log_once("tf_timeline"):

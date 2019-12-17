@@ -6,7 +6,7 @@ from __future__ import print_function
 import logging
 import os
 import random
-import time
+import timeit
 import traceback
 
 import ray
@@ -63,7 +63,7 @@ class RayTrialExecutor(TrialExecutor):
         self._resources_initialized = False
         self._refresh_period = refresh_period
         self._last_resource_refresh = float("-inf")
-        self._last_nontrivial_wait = time.time()
+        self._last_nontrivial_wait = timeit.default_timer()
         if not ray.is_initialized() and ray_auto_init:
             logger.info("Initializing Ray automatically."
                         "For cluster usage or custom Ray initialization, "
@@ -350,19 +350,19 @@ class RayTrialExecutor(TrialExecutor):
         # the first available result, and we want to guarantee that slower
         # trials (i.e. trials that run remotely) also get fairly reported.
         # See https://github.com/ray-project/ray/issues/4211 for details.
-        start = time.time()
+        start = timeit.default_timer()
         [result_id], _ = ray.wait(shuffled_results)
-        wait_time = time.time() - start
+        wait_time = timeit.default_timer() - start
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
-            self._last_nontrivial_wait = time.time()
-        if time.time() - self._last_nontrivial_wait > BOTTLENECK_WARN_PERIOD_S:
+            self._last_nontrivial_wait = timeit.default_timer()
+        if timeit.default_timer() - self._last_nontrivial_wait > BOTTLENECK_WARN_PERIOD_S:
             logger.warning(
                 "Over the last {} seconds, the Tune event loop has been "
                 "backlogged processing new results. Consider increasing your "
                 "period of result reporting to improve performance.".format(
                     BOTTLENECK_WARN_PERIOD_S))
 
-            self._last_nontrivial_wait = time.time()
+            self._last_nontrivial_wait = timeit.default_timer()
         return self._running[result_id]
 
     def fetch_result(self, trial):
@@ -455,7 +455,7 @@ class RayTrialExecutor(TrialExecutor):
             memory=int(memory),
             object_store_memory=int(object_store_memory),
             custom_resources=custom_resources)
-        self._last_resource_refresh = time.time()
+        self._last_resource_refresh = timeit.default_timer()
         self._resources_initialized = True
 
     def has_resources(self, resources):
@@ -465,7 +465,7 @@ class RayTrialExecutor(TrialExecutor):
         has exceeded self._refresh_period. This also assumes that the
         cluster is not resizing very frequently.
         """
-        if time.time() - self._last_resource_refresh > self._refresh_period:
+        if timeit.default_timer() - self._last_resource_refresh > self._refresh_period:
             self._update_avail_resources()
 
         currently_available = Resources.subtract(self._avail_resources,

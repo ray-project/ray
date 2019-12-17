@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import re
-import time
+import timeit
 import traceback
 import types
 
@@ -175,7 +175,7 @@ class TrialRunner(object):
         else:
             logger.debug("Starting a new experiment.")
 
-        self._start_time = time.time()
+        self._start_time = timeit.default_timer()
         self._last_checkpoint_time = -float("inf")
         self._checkpoint_period = checkpoint_period
         self._session_str = datetime.fromtimestamp(
@@ -254,7 +254,7 @@ class TrialRunner(object):
         """
         if not self._local_checkpoint_dir:
             return
-        now = time.time()
+        now = timeit.default_timer()
         if now - self._last_checkpoint_time < self._checkpoint_period and (
                 not force):
             return
@@ -576,12 +576,12 @@ class TrialRunner(object):
         """
         trials = self._search_alg.next_trials()
         if blocking and not trials:
-            start = time.time()
+            start = timeit.default_timer()
             # Checking `is_finished` instead of _search_alg.is_finished
             # is fine because blocking only occurs if all trials are
             # finished and search_algorithm is not yet finished
             while (not trials and not self.is_finished()
-                   and time.time() - start < timeout):
+                   and timeit.default_timer() - start < timeout):
                 logger.info("Blocking for next trial...")
                 trials = self._search_alg.next_trials()
                 time.sleep(1)

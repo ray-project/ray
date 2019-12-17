@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 import pprint
-import time
+import timeit
 
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
@@ -31,11 +31,11 @@ def log_once(key):
         return False
     elif key not in _logged:
         _logged.add(key)
-        _last_logged = time.time()
+        _last_logged = timeit.default_timer()
         return True
-    elif _periodic_log and time.time() - _last_logged > 60.0:
+    elif _periodic_log and timeit.default_timer() - _last_logged > 60.0:
         _logged.clear()
-        _last_logged = time.time()
+        _last_logged = timeit.default_timer()
         return False
     else:
         return False

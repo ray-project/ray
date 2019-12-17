@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import time
+import timeit
 import six
 
 from ray.tune.error import TuneError
@@ -302,10 +302,10 @@ def run(run_or_experiment,
     last_debug = 0
     while not runner.is_finished():
         runner.step()
-        if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
+        if timeit.default_timer() - last_debug > DEBUG_PRINT_INTERVAL:
             if verbose:
                 reporter.report(runner)
-            last_debug = time.time()
+            last_debug = timeit.default_timer()
 
     try:
         runner.checkpoint(force=True)

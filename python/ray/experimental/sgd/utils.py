@@ -5,7 +5,7 @@ from __future__ import print_function
 from contextlib import closing
 import numpy as np
 import socket
-import time
+import timeit
 
 
 class TimerStat(object):
@@ -16,7 +16,7 @@ class TimerStat(object):
     Examples:
         Time a call to 'time.sleep'.
 
-        >>> import time
+        >>> import timeit
         >>> sleep_timer = TimerStat()
         >>> with sleep_timer:
         ...     time.sleep(1)
@@ -34,11 +34,11 @@ class TimerStat(object):
 
     def __enter__(self):
         assert self._start_time is None, "concurrent updates not supported"
-        self._start_time = time.time()
+        self._start_time = timeit.default_timer()
 
     def __exit__(self, type, value, tb):
         assert self._start_time is not None
-        time_delta = time.time() - self._start_time
+        time_delta = timeit.default_timer() - self._start_time
         self.push(time_delta)
         self._start_time = None
 

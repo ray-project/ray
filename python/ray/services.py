@@ -13,7 +13,7 @@ import socket
 import subprocess
 import sys
 import textwrap
-import time
+import timeit
 import redis
 
 import pyarrow
@@ -413,7 +413,7 @@ def start_ray_process(command,
 
         # TODO(suquark): Any better temp file creation here?
         gdb_init_path = "/tmp/ray/gdb_init_{}_{}".format(
-            process_type, time.time())
+            process_type, timeit.default_timer())
         ray_process_path = command[0]
         ray_process_args = command[1:]
         run_args = " ".join(["'{}'".format(arg) for arg in ray_process_args])
@@ -937,7 +937,7 @@ def _start_redis_instance(executable,
     redis_client.config_set("client-output-buffer-limit",
                             " ".join(cur_config_list))
     # Put a time stamp in Redis to indicate when it was started.
-    redis_client.set("redis_start_time", time.time())
+    redis_client.set("redis_start_time", timeit.default_timer())
     return port, process_info
 
 

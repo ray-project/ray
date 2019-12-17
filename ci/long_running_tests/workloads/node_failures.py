@@ -4,7 +4,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import timeit
 
 import ray
 from ray.cluster_utils import Cluster
@@ -43,7 +43,7 @@ def f(*xs):
 
 iteration = 0
 previous_ids = [1 for _ in range(100)]
-start_time = time.time()
+start_time = timeit.default_timer()
 previous_time = start_time
 while True:
     for _ in range(100):
@@ -59,7 +59,7 @@ while True:
     cluster.remove_node(node_to_kill)
     cluster.add_node()
 
-    new_time = time.time()
+    new_time = timeit.default_timer()
     print("Iteration {}:\n"
           "  - Iteration time: {}.\n"
           "  - Absolute time: {}.\n"

@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
+import timeit
 
 import numpy as np
 
@@ -28,11 +28,11 @@ class TimerStat(object):
 
     def __enter__(self):
         assert self._start_time is None, "concurrent updates not supported"
-        self._start_time = time.time()
+        self._start_time = timeit.default_timer()
 
     def __exit__(self, type, value, tb):
         assert self._start_time is not None
-        time_delta = time.time() - self._start_time
+        time_delta = timeit.default_timer() - self._start_time
         self.push(time_delta)
         self._start_time = None
 

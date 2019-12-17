@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pytest
-import time
+import timeit
 import numpy as np
 
 import ray
@@ -21,9 +21,9 @@ def test_timing(ray_start_regular):
     # Measure the time required to submit a remote task to the scheduler.
     elapsed_times = []
     for _ in range(1000):
-        start_time = time.time()
+        start_time = timeit.default_timer()
         empty_function.remote()
-        end_time = time.time()
+        end_time = timeit.default_timer()
         elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
@@ -38,9 +38,9 @@ def test_timing(ray_start_regular):
     # (where the remote task returns one value).
     elapsed_times = []
     for _ in range(1000):
-        start_time = time.time()
+        start_time = timeit.default_timer()
         trivial_function.remote()
-        end_time = time.time()
+        end_time = timeit.default_timer()
         elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
@@ -55,10 +55,10 @@ def test_timing(ray_start_regular):
     # and get the result.
     elapsed_times = []
     for _ in range(1000):
-        start_time = time.time()
+        start_time = timeit.default_timer()
         x = trivial_function.remote()
         ray.get(x)
-        end_time = time.time()
+        end_time = timeit.default_timer()
         elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
@@ -73,9 +73,9 @@ def test_timing(ray_start_regular):
     # Measure the time required to do do a put.
     elapsed_times = []
     for _ in range(1000):
-        start_time = time.time()
+        start_time = timeit.default_timer()
         ray.put(1)
-        end_time = time.time()
+        end_time = timeit.default_timer()
         elapsed_times.append(end_time - start_time)
     elapsed_times = np.sort(elapsed_times)
     average_elapsed_time = sum(elapsed_times) / 1000
@@ -93,14 +93,14 @@ def test_cache(ray_start_regular):
     v = np.random.rand(1000000)
     A_id = ray.put(A)
     v_id = ray.put(v)
-    a = time.time()
+    a = timeit.default_timer()
     for i in range(100):
         A.dot(v)
-    b = time.time() - a
-    c = time.time()
+    b = timeit.default_timer() - a
+    c = timeit.default_timer()
     for i in range(100):
         ray.get(A_id).dot(ray.get(v_id))
-    d = time.time() - c
+    d = timeit.default_timer() - c
 
     if d > 1.5 * b:
         print("WARNING: The caching test was too slow. "

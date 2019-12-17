@@ -8,7 +8,7 @@ import os
 import sys
 import tempfile
 import threading
-import time
+import timeit
 
 import numpy as np
 import pytest
@@ -671,8 +671,8 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
 
     ray.get(create_remote_function.remote())
 
-    start_time = time.time()
-    while time.time() < start_time + 10:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() < start_time + 10:
         log_contents = log_capture_string.getvalue()
         if len(log_contents) > 0:
             break
@@ -707,8 +707,8 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
 
     ray.get(create_actor_class.remote())
 
-    start_time = time.time()
-    while time.time() < start_time + 10:
+    start_time = timeit.default_timer()
+    while timeit.default_timer() < start_time + 10:
         log_contents = log_capture_string.getvalue()
         if len(log_contents) > 0:
             break

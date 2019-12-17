@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import gym
 import numpy as np
-import time
+import timeit
 import unittest
 
 import ray
@@ -258,8 +258,8 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
         return local, remotes
 
     def _wait_for(self, optimizer, num_steps_sampled, num_steps_trained):
-        start = time.time()
-        while time.time() - start < 30:
+        start = timeit.default_timer()
+        while timeit.default_timer() - start < 30:
             optimizer.step()
             if optimizer.num_steps_sampled > num_steps_sampled and \
                     optimizer.num_steps_trained > num_steps_trained:

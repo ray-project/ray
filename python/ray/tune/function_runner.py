@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import time
+import timeit
 import inspect
 import threading
 import traceback
@@ -62,7 +62,7 @@ class StatusReporter(object):
 
         # time per iteration is recorded directly in the reporter to ensure
         # any delays in logging results aren't counted
-        report_time = time.time()
+        report_time = timeit.default_timer()
         if TIME_THIS_ITER_S not in kwargs:
             kwargs[TIME_THIS_ITER_S] = report_time - self._last_report_time
         self._last_report_time = report_time
@@ -76,7 +76,7 @@ class StatusReporter(object):
         self._continue_semaphore.acquire()
 
     def _start(self):
-        self._last_report_time = time.time()
+        self._last_report_time = timeit.default_timer()
 
     @property
     def logdir(self):
