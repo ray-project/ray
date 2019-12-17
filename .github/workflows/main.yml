@@ -8,9 +8,19 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v1
-    - name: build-ray
+    - name: Install Bazel
+      run: choco install --no-progress bazel
+    - name: Install LLVM and Clang
+      run: choco install --no-progress llvm
+    - name: Install MSYS2
+      run: choco install --no-progress msys2 --params "/NoUpdate"
+    - name: Checkout repository
+      uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
+    - name: Perform build
       run: |
-        $client = New-Object System.Net.WebClient
-        $client.DownloadFile("https://github.com/bazelbuild/bazel/releases/download/1.2.1/bazel-1.2.1-windows-x86_64.exe", "bazel.exe")
-        .\bazel --batch build //:ray_pkg --verbose_failures
+        $latest_python_path = Join-Path -Path ((Get-ItemProperty -Path HKLM:\Software\Python\PythonCore\*\InstallPath).'(default)' | Select-Object -Last 1) -ChildPath 'python.exe'
+        $Env:PYTHON2_BIN_PATH = $latest_python_path
+        $Env:PYTHON3_BIN_PATH = $latest_python_path
+        bazel --batch --output_user_root="$HOME/bazel" build --show_progress_rate_limit=5 --show_timestamps --verbose_failures //:ray_pkg
