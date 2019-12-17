@@ -1072,6 +1072,24 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   }
 }
 
+void CoreWorker::HandleForceKillActor(const rpc::ForceKillActorRequest &request,
+                                      rpc::ForceKillActorReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
+  ActorID intended_actor_id = ActorID::FromBinary(request.intended_actor_id());
+  if (intended_actor_id != worker_context_.GetCurrentActorID()) {
+    std::ostringstream stream;
+    stream << "Mismatched ActorID: ignoring ForceKillActor for previous actor "
+           << intended_actor_id
+           << ", current actor ID: " << worker_context_.GetCurrentActorID();
+    auto msg = stream.str();
+    RAY_LOG(ERROR) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return;
+  }
+  RAY_LOG(INFO) << "Got ForceKillActor, shutting down...";
+  Shutdown();
+}
+
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();

@@ -32,7 +32,8 @@
   RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
+  RAY_CORE_WORKER_RPC_HANDLER(ForceKillActor, 9999)
 
 namespace ray {
 
@@ -312,6 +313,12 @@ class CoreWorker {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
+  /// Tell an actor to exit immediately, without completing outstanding work.
+  ///
+  /// \param[in] actor_id ID of the actor to kill.
+  /// \param[out] Status
+  Status ForceKillActor(const ActorID &actor_id);
+
   /// Add an actor handle from a serialized string.
   ///
   /// This should be called when an actor handle is given to us by another task
@@ -394,6 +401,10 @@ class CoreWorker {
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback);
 
+  /// Implements gRPC server handler.
+  void HandleForceKillActor(const rpc::ForceKillActorRequest &request,
+                            rpc::ForceKillActorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback);
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.

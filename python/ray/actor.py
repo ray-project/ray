@@ -673,6 +673,7 @@ class ActorHandle(object):
 
     def force_kill(self):
         worker = ray.worker.get_global_worker()
+        worker.core_worker.force_kill_actor(self._ray_actor_id)
 
     @property
     def _actor_id(self):
