@@ -3,6 +3,7 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
+#include <sstream>
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
@@ -2983,6 +2984,21 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
     auto worker_stats = reply->add_workers_stats();
     worker_stats->set_pid(driver->Pid());
     worker_stats->set_is_driver(true);
+  }
+  // Record available resources of this node.
+  const auto &available_resources =
+      cluster_resource_map_.at(client_id_).GetAvailableResources().GetResourceMap();
+  // Record total resources of this node.
+  const auto &total_resources =
+      cluster_resource_map_.at(client_id_).GetTotalResources().GetResourceMap();
+  auto available_resources_map = reply->mutable_available_resources();
+  auto total_resources_map = reply->mutable_total_resources();
+  for (const auto &pair : available_resources) {
+    auto it = total_resources.find(pair.first);
+    if (it != total_resources.end()) {
+      (*available_resources_map)[pair.first] = pair.second;
+      (*total_resources_map)[pair.first] = it->second;
+    }
   }
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {
