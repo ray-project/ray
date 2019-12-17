@@ -61,25 +61,7 @@ To run a set of single-node Ray microbenchmarks, use:
 
   ray microbenchmark
 
-The following are the results for the 0.7.6 release on a m4.16xl instance running
-Ubuntu 18.04 and Python 3.6:
-
-.. code-block:: text
-
-  single client get calls per second 28595.02 +- 580.33
-  single client put calls per second 6313.62 +- 66.88
-  single client put gigabytes per second 11.6 +- 6.86
-  multi client put calls per second 16800.89 +- 381.69
-  multi client put gigabytes per second 23.33 +- 0.96
-  single client tasks sync per second 1963.72 +- 48.48
-  single client tasks async per second 5181.29 +- 30.0
-  multi client tasks async per second 5566.7 +- 280.72
-  1:1 actor calls sync per second 1595.47 +- 38.32
-  1:1 actor calls async per second 2496.26 +- 37.62
-  1:1 direct actor calls async per second 7233.63 +- 205.75
-  n:n actor calls async per second 5357.63 +- 116.9
-  n:n direct actor calls async per second 90703.32 +- 805.56
-  n:n direct actor calls with arg async per second 13300.47 +- 532.66
+You can find the microbenchmark results for Ray releases in the `GitHub release logs <https://github.com/ray-project/ray/tree/master/doc/dev/release_logs>`__.
 
 References
 ----------

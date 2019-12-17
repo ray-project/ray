@@ -47,6 +47,20 @@ class Actor(object):
         return np.ones(size, dtype=np.uint8)
 
 
+# Stage 0: Submit a bunch of small tasks with large returns.
+stage_0_iterations = []
+start_time = time.time()
+logger.info("Submitting many tasks with large returns.")
+for i in range(10):
+    iteration_start = time.time()
+    logger.info("Iteration %s", i)
+    ray.get([f.remote(1000000) for _ in range(1000)])
+    stage_0_iterations.append(time.time() - iteration_start)
+
+stage_0_time = time.time() - start_time
+logger.info("Finished stage 0 after %s seconds.", stage_0_time)
+
+
 # Stage 1: Launch a bunch of tasks.
 stage_1_iterations = []
 start_time = time.time()
@@ -100,6 +114,9 @@ for N in [1000, 100000]:
     ray.get(x_ids)
 stage_3_time = time.time() - start_time
 logger.info("Finished stage 3 in %s seconds.", stage_3_time)
+
+print("Stage 0 results:")
+print("\tTotal time: {}".format(stage_0_time))
 
 print("Stage 1 results:")
 print("\tTotal time: {}".format(stage_1_time))
