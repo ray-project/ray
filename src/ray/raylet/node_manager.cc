@@ -2993,11 +2993,13 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
       cluster_resource_map_.at(client_id_).GetTotalResources().GetResourceMap();
   auto available_resources_map = reply->mutable_available_resources();
   auto total_resources_map = reply->mutable_total_resources();
-  for (const auto &pair : available_resources) {
-    auto it = total_resources.find(pair.first);
-    if (it != total_resources.end()) {
-      (*available_resources_map)[pair.first] = pair.second;
-      (*total_resources_map)[pair.first] = it->second;
+  for (const auto &pair : total_resources) {
+    (*total_resources_map)[pair.first] = pair.second;
+    auto it = available_resources.find(pair.first);
+    if (it != available_resources.end()) {
+      (*available_resources_map)[pair.first] = it->second;
+    } else {
+      (*available_resources_map)[pair.first] = 0.0;
     }
   }
   // Ensure we never report an empty set of metrics.
