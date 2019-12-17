@@ -23,7 +23,7 @@ def echo_v2(_):
 serve.init(
     blocking=True,
     queueing_policy="fixedPacking",
-    policy_kwargs={'packing_num': 5})
+    policy_kwargs={"packing_num": 5})
 
 # create a service
 serve.create_endpoint("my_endpoint", "/echo", blocking=True)
