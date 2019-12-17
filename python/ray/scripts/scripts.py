@@ -98,6 +98,7 @@ def cli(logging_level, logging_format):
     "--redis-password",
     required=False,
     type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="If provided, secure Redis ports with this password")
 @click.option(
     "--redis-shard-ports",
