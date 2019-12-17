@@ -146,6 +146,7 @@ class NodeInfo extends React.Component<
                 node={client}
                 logCounts={logCounts[client.ip]}
                 errorCounts={errorCounts[client.ip]}
+                initialExpanded={nodeInfo.clients.length <= 4}
               />
             ))}
             <TotalRow
