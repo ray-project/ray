@@ -19,12 +19,6 @@ watchdog() {
 watchdog & 2>/dev/null
 WATCHDOG_PID=$!
 
-if [ "$1" == "--force-direct" ]; then
-    echo "Setting RAY_FORCE_DIRECT=1"
-    export RAY_FORCE_DIRECT=1
-    shift
-fi
-
 time "$@" >$TMPFILE 2>&1
 
 CODE=$?

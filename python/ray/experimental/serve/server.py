@@ -8,6 +8,7 @@ from ray.experimental.async_api import _async_init, as_future
 from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.utils import BytesEncoder
+from urllib.parse import parse_qs
 
 
 class JSONResponse:
@@ -128,13 +129,33 @@ class HTTPProxy:
         endpoint_name = self.route_table_cache[current_path]
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
+        # get slo_ms before enqueuing the query
+        query_string = scope["query_string"].decode("ascii")
+        query_kwargs = parse_qs(query_string)
+        request_slo_ms = query_kwargs.pop("slo_ms", None)
+        if request_slo_ms is not None:
+            try:
+                if len(request_slo_ms) != 1:
+                    raise ValueError(
+                        "Multiple SLO specified, please specific only one.")
+                request_slo_ms = request_slo_ms[0]
+                request_slo_ms = float(request_slo_ms)
+                if request_slo_ms < 0:
+                    raise ValueError(
+                        "Request SLO must be positive, it is {}".format(
+                            request_slo_ms))
+            except ValueError as e:
+                await JSONResponse({"error": str(e)})(scope, receive, send)
+                return
+
         result_object_id_bytes = await as_future(
             self.serve_global_state.init_or_get_router()
             .enqueue_request.remote(
                 service=endpoint_name,
                 request_args=(scope, http_body_bytes),
                 request_kwargs=dict(),
-                request_context=TaskContext.Web))
+                request_context=TaskContext.Web,
+                request_slo_ms=request_slo_ms))
 
         result = await as_future(ray.ObjectID(result_object_id_bytes))
 

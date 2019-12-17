@@ -1,17 +1,10 @@
 diff --git cpp/src/plasma/store.cc cpp/src/plasma/store.cc
-index 01aabfc7c..876cb59a6 100644
 --- cpp/src/plasma/store.cc
 +++ cpp/src/plasma/store.cc
-@@ -1182,9 +1182,11 @@ void HandleSignal(int signal) {
- 
- void StartServer(char* socket_name, std::string plasma_directory, bool hugepages_enabled,
-                  std::shared_ptr<ExternalStore> external_store) {
+@@ -1185,3 +1185,5 @@ void StartServer(char* socket_name, std::string plasma_directory, bool hugepages_enabled,
 +#ifndef _WIN32  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
    // Ignore SIGPIPE signals. If we don't do this, then when we attempt to write
    // to a client that has already died, the store could die.
    signal(SIGPIPE, SIG_IGN);
 +#endif
- 
-   g_runner.reset(new PlasmaStoreRunner());
-   signal(SIGTERM, HandleSignal);
 -- 

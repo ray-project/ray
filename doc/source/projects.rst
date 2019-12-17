@@ -54,7 +54,8 @@ Here is an example for a minimal project format:
     repo: https://github.com/ray-project/ray
 
     # Cluster to be instantiated by default when starting the project.
-    cluster: ray-project/cluster.yaml
+    cluster:
+      config: ray-project/cluster.yaml
 
     # Commands/information to build the environment, once the cluster is
     # instantiated. This can include the versions of python libraries etc.

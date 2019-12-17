@@ -24,7 +24,7 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
 
   RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
   boost::system::error_code ec;
-  socket_.assign(boost::asio::local::stream_protocol(), c_socket_, ec);
+  socket_.assign(local_stream_protocol(), c_socket_, ec);
   assert(!ec.value());
   NotificationWait();
 }

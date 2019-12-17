@@ -18,7 +18,8 @@
 
 namespace ray {
 
-typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &)>
+typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
+                                                            int port)>
     LeaseClientFactoryFn;
 
 // The task queues are keyed on resource shape & function descriptor
@@ -62,6 +63,12 @@ class CoreWorkerDirectTaskSubmitter {
   void OnWorkerIdle(
       const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key, bool was_error,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Retry a failed lease request.
+  void RetryLeaseRequest(Status status,
+                         std::shared_ptr<WorkerLeaseInterface> lease_client,
+                         const SchedulingKey &scheduling_key)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Get an existing lease client or connect a new one. If a raylet_address is

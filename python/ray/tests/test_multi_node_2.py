@@ -154,43 +154,6 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(work_handle)
 
 
-@pytest.mark.flaky(reruns=4)
-def test_heartbeats_cluster(ray_start_cluster_head):
-    """Unit test for `Cluster.wait_for_nodes`.
-
-    Test proper metrics.
-    """
-    cluster = ray_start_cluster_head
-    timeout = 8
-    num_workers_nodes = 3
-    num_nodes_total = int(num_workers_nodes + 1)
-    [cluster.add_node() for i in range(num_workers_nodes)]
-    cluster.wait_for_nodes()
-    monitor = setup_monitor(cluster.address)
-
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
-
-    @ray.remote
-    class Actor(object):
-        def work(self, timeout):
-            time.sleep(timeout)
-            return True
-
-    test_actors = [Actor.remote() for i in range(num_nodes_total)]
-
-    work_handles = [actor.work.remote(timeout * 2) for actor in test_actors]
-
-    verify_load_metrics(monitor, (num_nodes_total, {
-        "CPU": num_nodes_total
-    }, {
-        "CPU": num_nodes_total
-    }))
-
-    ray.get(work_handles)
-    verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
-    ray.shutdown()
-
-
 def test_wait_for_nodes(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 

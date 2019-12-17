@@ -32,6 +32,8 @@ message Address {
   bytes raylet_id = 1;
   string ip_address = 2;
   int32 port = 3;
+  // Optional unique id for the worker.
+  bytes worker_id = 4;
 }
 
 /// The task specification encapsulates all immutable information about the

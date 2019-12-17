@@ -6,6 +6,8 @@ from __future__ import print_function
 
 import time
 
+import numpy as np
+
 import ray
 from ray.cluster_utils import Cluster
 
@@ -38,7 +40,7 @@ ray.init(address=cluster.address)
 
 @ray.remote
 def f(*xs):
-    return 1
+    return np.zeros(1024, dtype=np.uint8)
 
 
 iteration = 0

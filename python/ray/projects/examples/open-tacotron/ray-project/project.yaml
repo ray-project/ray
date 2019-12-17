@@ -4,7 +4,8 @@ name: open-tacotron
 description: "A TensorFlow implementation of Google's Tacotron speech synthesis with pre-trained model (unofficial)"
 repo: https://github.com/keithito/tacotron
 
-cluster: ray-project/cluster.yaml
+cluster:
+  config: ray-project/cluster.yaml
 
 environment:
   requirements: ray-project/requirements.txt
