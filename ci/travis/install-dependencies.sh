@@ -55,7 +55,6 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
     blist
->>>>>>> Add test and makesure it pass
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip
