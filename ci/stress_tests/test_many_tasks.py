@@ -50,7 +50,7 @@ class Actor(object):
 # Stage 0: Submit a bunch of small tasks with large returns.
 stage_0_iterations = []
 start_time = time.time()
-logger.info("Submitting many tasks.")
+logger.info("Submitting many tasks with large returns.")
 for i in range(10):
     iteration_start = time.time()
     logger.info("Iteration %s", i)
