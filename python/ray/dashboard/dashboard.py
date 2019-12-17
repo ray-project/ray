@@ -43,6 +43,21 @@ def to_unix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
 
 
+def round_resource_value(quantity):
+    if quantity.is_integer():
+        return int(quantity)
+    else:
+        return round(quantity, 2)
+
+
+def format_resource(resource_name, quantity):
+    if resource_name == "object_store_memory" or resource_name == "memory":
+        # Convert to 100MiB chunks and then to GiB
+        quantity = quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)
+        return f"{round_resource_value(quantity)} GiB"
+    return f"{round_resource_value(quantity)}"
+
+
 class Dashboard(object):
     """A dashboard process for monitoring Ray nodes.
 
@@ -144,6 +159,17 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
+            for address, data in D.items():
+                available_resources = data["availableResources"]
+                total_resources = data["totalResources"]
+                extra_info = ""
+                for resource_name in sorted(available_resources.keys()):
+                    total = total_resources[resource_name]
+                    occupied = total - available_resources[resource_name]
+                    total = format_resource(resource_name, total)
+                    occupied = format_resource(resource_name, occupied)
+                    extra_info += f"{resource_name}: {occupied} / {total}, "
+                data["extraInfo"] = extra_info[:-2]
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:

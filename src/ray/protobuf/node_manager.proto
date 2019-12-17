@@ -82,6 +82,8 @@ message ViewData {
 message NodeStatsReply {
   repeated WorkerStats workers_stats = 1;
   repeated ViewData view_data = 2;
+  map<string, double> available_resources = 3;
+  map<string, double> total_resources = 4;
 }
 
 // Service for inter-node-manager communication.
