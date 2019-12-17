@@ -774,7 +774,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Counter(object):
         def __init__(self):
             self.x = 0

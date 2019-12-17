@@ -77,7 +77,7 @@ def test(model, device, test_loader):
     }
 
 
-def dataset_creators(use_cuda):
+def dataset_creator(use_cuda):
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
     with FileLock("./data.lock"):
         train_loader = torch.utils.data.DataLoader(
@@ -117,7 +117,7 @@ class Network(object):
     def __init__(self, lr=0.01, momentum=0.5):
         use_cuda = torch.cuda.is_available()
         self.device = device = torch.device("cuda" if use_cuda else "cpu")
-        self.train_loader, self.test_loader = dataset_creators(use_cuda)
+        self.train_loader, self.test_loader = dataset_creator(use_cuda)
 
         self.model = Model().to(device)
         self.optimizer = optim.SGD(

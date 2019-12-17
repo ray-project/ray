@@ -147,13 +147,13 @@ script:
   - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
   # ray serve tests
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || RAY_FORCE_DIRECT=0 ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
 
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
 
   # py bazel tests, run using local strategy since PY2 breaks with sandbox
   - ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --python_version=$BAZEL_PYTHON_VERSION --nocache_test_results --test_verbose_timeout_warnings --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/...

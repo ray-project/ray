@@ -66,17 +66,20 @@ Ubuntu 18.04 and Python 3.6:
 
 .. code-block:: text
 
-  single core get calls per second 13387.15 +- 9.53
-  single core put calls per second 4569.31 +- 53.59
-  single core put gigabytes per second 12.64 +- 6.07
-  multi core put calls per second 15667.53 +- 110.85
-  multi core put gigabytes per second 22.85 +- 1.15
-  single core tasks sync per second 1822.1 +- 51.61
-  single core tasks async per second 6603.71 +- 39.5
-  multi core tasks async per second 8161.46 +- 456.28
-  single core actor calls sync per second 1374.22 +- 81.32
-  single core actor calls async per second 1786.57 +- 138.77
-  multi core actor calls async per second 6418.93 +- 128.0
+  single client get calls per second 28595.02 +- 580.33
+  single client put calls per second 6313.62 +- 66.88
+  single client put gigabytes per second 11.6 +- 6.86
+  multi client put calls per second 16800.89 +- 381.69
+  multi client put gigabytes per second 23.33 +- 0.96
+  single client tasks sync per second 1963.72 +- 48.48
+  single client tasks async per second 5181.29 +- 30.0
+  multi client tasks async per second 5566.7 +- 280.72
+  1:1 actor calls sync per second 1595.47 +- 38.32
+  1:1 actor calls async per second 2496.26 +- 37.62
+  1:1 direct actor calls async per second 7233.63 +- 205.75
+  n:n actor calls async per second 5357.63 +- 116.9
+  n:n direct actor calls async per second 90703.32 +- 805.56
+  n:n direct actor calls with arg async per second 13300.47 +- 532.66
 
 References
 ----------

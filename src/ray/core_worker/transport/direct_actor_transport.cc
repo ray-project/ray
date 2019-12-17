@@ -21,7 +21,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
   resolver_.ResolveDependencies(task_spec, [this, send_pos, task_spec]() mutable {
     const auto &actor_id = task_spec.ActorId();
-    const auto task_id = task_spec.TaskId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
     // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
@@ -31,26 +30,20 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
     absl::MutexLock lock(&mu_);
 
-    auto iter = actor_states_.find(actor_id);
-    if (iter == actor_states_.end() ||
-        iter->second.state_ == ActorTableData::RECONSTRUCTING) {
+    auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
+    RAY_CHECK(inserted.second);
+
+    auto it = rpc_clients_.find(actor_id);
+    if (it == rpc_clients_.end()) {
       // Actor is not yet created, or is being reconstructed, cache the request
       // and submit after actor is alive.
       // TODO(zhijunfu): it might be possible for a user to specify an invalid
       // actor handle (e.g. from unpickling), in that case it might be desirable
       // to have a timeout to mark it as invalid if it doesn't show up in the
       // specified time.
-      auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
-      RAY_CHECK(inserted.second);
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
-    } else if (iter->second.state_ == ActorTableData::ALIVE) {
-      auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
-      RAY_CHECK(inserted.second);
-      SendPendingTasks(actor_id);
     } else {
-      // Actor is dead, treat the task as failure.
-      RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
-      task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
+      SendPendingTasks(actor_id);
     }
   });
 
@@ -59,29 +52,32 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   return Status::OK();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
-    const ActorID &actor_id, const ActorTableData &actor_data) {
+void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
+                                                      const rpc::Address &address) {
   absl::MutexLock lock(&mu_);
-  actor_states_.erase(actor_id);
-  actor_states_.emplace(
-      actor_id, ActorStateData(actor_data.state(), actor_data.address().ip_address(),
-                               actor_data.address().port()));
+  // Update the mapping so new RPCs go out with the right intended worker id.
+  worker_ids_[actor_id] = address.worker_id();
+  // Create a new connection to the actor.
+  if (rpc_clients_.count(actor_id) == 0) {
+    rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
+        client_factory_(address.ip_address(), address.port()));
+  }
+  if (pending_requests_.count(actor_id) > 0) {
+    SendPendingTasks(actor_id);
+  }
+}
 
-  if (actor_data.state() == ActorTableData::ALIVE) {
-    // Create a new connection to the actor.
-    if (rpc_clients_.count(actor_id) == 0) {
-      rpc::WorkerAddress addr = {actor_data.address().ip_address(),
-                                 actor_data.address().port()};
-      rpc_clients_[actor_id] =
-          std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
-    }
-    if (pending_requests_.count(actor_id) > 0) {
-      SendPendingTasks(actor_id);
-    }
-  } else {
-    // Remove rpc client if it's dead or being reconstructed.
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
+                                                         bool dead) {
+  absl::MutexLock lock(&mu_);
+  if (!dead) {
+    // We're reconstructing the actor, so erase the client for now. The new client
+    // will be inserted once actor reconstruction completes. We don't erase the
+    // client when the actor is DEAD, so that all further tasks will be failed.
     rpc_clients_.erase(actor_id);
-
+    worker_ids_.erase(actor_id);
+  } else {
+    RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     // If there are pending requests, treat the pending tasks as failed.
     auto pending_it = pending_requests_.find(actor_id);
     if (pending_it != pending_requests_.end()) {
@@ -90,16 +86,15 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
         auto request = std::move(head->second);
         head = pending_it->second.erase(head);
         auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-        task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
+        auto status = Status::IOError("cancelling all pending tasks of dead actor");
+        task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
       }
       pending_requests_.erase(pending_it);
     }
-
-    next_send_position_.erase(actor_id);
-    next_send_position_to_assign_.erase(actor_id);
-
     // No need to clean up tasks that have been sent and are waiting for
     // replies. They will be treated as failed once the connection dies.
+    // We retain the sequencing information so that we can properly fail
+    // any tasks submitted after the actor death.
   }
 }
 
@@ -124,14 +119,16 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   next_send_position_[actor_id]++;
-
+  auto it = worker_ids_.find(actor_id);
+  RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
+  request->set_intended_worker_id(it->second);
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
-          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
+          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply);
+          task_finisher_->CompletePendingTask(task_id, reply, nullptr);
         }
       }));
 }
@@ -139,20 +136,16 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
 
-  auto iter = actor_states_.find(actor_id);
-  return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
+  auto iter = rpc_clients_.find(actor_id);
+  return (iter != rpc_clients_.end());
 }
 
-CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
-    WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
-    : worker_context_(worker_context),
-      task_handler_(task_handler),
-      exit_handler_(exit_handler),
-      task_main_io_service_(main_io_service) {}
-
-void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client) {
+void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
+                                        rpc::ClientFactoryFn client_factory,
+                                        rpc::Address rpc_address) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
+  rpc_address_ = rpc_address;
+  client_factory_ = client_factory;
 }
 
 void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
@@ -192,7 +185,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Received task " << task_spec.DebugString();
   if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
@@ -209,15 +202,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     for (int j = 0; j < count; j++) {
       dependencies.push_back(task_spec.ArgId(i, j));
     }
-  }
-
-  auto it = scheduling_queue_.find(task_spec.CallerId());
-  if (it == scheduling_queue_.end()) {
-    auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
-    it = result.first;
   }
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
@@ -289,10 +273,25 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   };
 
+  // Run actor creation task immediately on the main thread, without going
+  // through a scheduling queue.
+  if (task_spec.IsActorCreationTask()) {
+    accept_callback();
+    return;
+  }
+
   auto reject_callback = [send_reply_callback]() {
     send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
   };
 
+  auto it = scheduling_queue_.find(task_spec.CallerId());
+  if (it == scheduling_queue_.end()) {
+    auto result = scheduling_queue_.emplace(
+        task_spec.CallerId(),
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
+    it = result.first;
+  }
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                   accept_callback, reject_callback, dependencies);
 }
