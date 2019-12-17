@@ -21,8 +21,6 @@ import time
 import traceback
 import yaml
 
-from pathlib import Path
-from collections import Counter
 from collections import defaultdict
 from operator import itemgetter
 from typing import Dict
@@ -113,8 +111,8 @@ class Dashboard(object):
 
         async def ray_config(_) -> aiohttp.web.Response:
             try:
-                with open(
-                        Path("~/ray_bootstrap_config.yaml").expanduser()) as f:
+                config_path = os.path.expanduser("~/ray_bootstrap_config.yaml")
+                with open(config_path) as f:
                     cfg = yaml.safe_load(f)
             except Exception:
                 return await json_response(error="No config")
@@ -213,51 +211,6 @@ class NodeStats(threading.Thread):
 
         super().__init__()
 
-    def calculate_totals(self) -> Dict:
-        total_boot_time = 0
-        total_cpus = 0
-        total_workers = 0
-        total_load = [0.0, 0.0, 0.0]
-        total_storage_avail = 0
-        total_storage_total = 0
-        total_ram_avail = 0
-        total_ram_total = 0
-        total_sent = 0
-        total_recv = 0
-
-        for v in self._node_stats.values():
-            total_boot_time += v["boot_time"]
-            total_cpus += v["cpus"][0]
-            total_workers += len(v["workers"])
-            total_load[0] += v["load_avg"][0][0]
-            total_load[1] += v["load_avg"][0][1]
-            total_load[2] += v["load_avg"][0][2]
-            total_storage_avail += v["disk"]["/"]["free"]
-            total_storage_total += v["disk"]["/"]["total"]
-            total_ram_avail += v["mem"][1]
-            total_ram_total += v["mem"][0]
-            total_sent += v["net"][0]
-            total_recv += v["net"][1]
-
-        return {
-            "boot_time": total_boot_time,
-            "n_workers": total_workers,
-            "n_cores": total_cpus,
-            "m_avail": total_ram_avail,
-            "m_total": total_ram_total,
-            "d_avail": total_storage_avail,
-            "d_total": total_storage_total,
-            "load": total_load,
-            "n_sent": total_sent,
-            "n_recv": total_recv,
-        }
-
-    def calculate_tasks(self) -> Counter:
-        return Counter(
-            (x["name"]
-             for y in (v["workers"] for v in self._node_stats.values())
-             for x in y))
-
     def calculate_log_counts(self):
         return {
             ip: {
@@ -296,8 +249,6 @@ class NodeStats(threading.Thread):
                 (v for v in self._node_stats.values()),
                 key=itemgetter("boot_time"))
             return {
-                "totals": self.calculate_totals(),
-                "tasks": self.calculate_tasks(),
                 "clients": node_stats,
                 "log_counts": self.calculate_log_counts(),
                 "error_counts": self.calculate_error_counts(),

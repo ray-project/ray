@@ -35,11 +35,11 @@ const int kMaxReorderWaitSeconds = 30;
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(
-      rpc::ClientFactoryFn client_factory, std::shared_ptr<CoreWorkerMemoryStore> store,
-      std::shared_ptr<TaskFinisherInterface> task_finisher)
+  CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
+                                     std::shared_ptr<CoreWorkerMemoryStore> store,
+                                     std::shared_ptr<TaskFinisherInterface> task_finisher)
       : client_factory_(client_factory),
-        resolver_(store, task_finisher), 
+        resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
   /// Submit a task to an actor for execution.
@@ -430,7 +430,10 @@ class CoreWorkerDirectTaskReceiver {
 
   ~CoreWorkerDirectTaskReceiver() {
     fiber_shutdown_event_.Notify();
-    fiber_runner_thread_.join();
+    // Only join the fiber thread if it was spawned in the first place.
+    if (fiber_runner_thread_.joinable()) {
+      fiber_runner_thread_.join();
+    }
   }
 
   /// Initialize this receiver. This must be called prior to use.

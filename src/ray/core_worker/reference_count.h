@@ -36,8 +36,8 @@ class ReferenceCounter {
   void AddSubmittedTaskReferences(const std::vector<ObjectID> &object_ids);
 
   /// TODO
-  void RemoveSubmittedTaskReference(const ObjectID &object_id,
-                                            std::vector<ObjectID> *deleted);
+  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
+                                     std::vector<ObjectID> *deleted);
 
   /// Add an object that we own. The object may depend on other objects.
   /// Dependencies for each ObjectID must be set at most once. The local
@@ -54,8 +54,7 @@ class ReferenceCounter {
   /// \param[in] owner_address The address of the object's owner.
   /// \param[in] dependencies The objects that the object depends on.
   void AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
-                      const rpc::Address &owner_address)
-      LOCKS_EXCLUDED(mutex_);
+                      const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we are borrowing.
   ///
@@ -88,8 +87,7 @@ class ReferenceCounter {
     Reference() : owned_by_us(false) {}
     /// Constructor for a reference that we created.
     Reference(const TaskID &owner_id, const rpc::Address &owner_address)
-        : owned_by_us(true),
-          owner({owner_id, owner_address}) {}
+        : owned_by_us(true), owner({owner_id, owner_address}) {}
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;
     /// The ref count for submitted tasks that depend on the ObjectID.

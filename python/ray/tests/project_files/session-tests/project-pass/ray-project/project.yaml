@@ -5,7 +5,8 @@ name: project-pass
 # description: A short description of the project.
 # repo: The URL of the repo this project is part of.
 
-cluster: ray-project/cluster.yaml
+cluster:
+  config: ray-project/cluster.yaml
 
 environment:
   # dockerfile: The dockerfile to be built and ran the commands with.

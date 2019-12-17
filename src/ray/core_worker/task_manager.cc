@@ -1,4 +1,5 @@
 #include "ray/core_worker/task_manager.h"
+
 #include "ray/util/util.h"
 
 namespace ray {
@@ -9,7 +10,9 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-void TaskManager::AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address, const TaskSpecification &spec, int max_retries) {
+void TaskManager::AddPendingTask(const TaskID &caller_id,
+                                 const rpc::Address &caller_address,
+                                 const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
@@ -145,12 +148,12 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   }
 }
 
-void TaskManager::OnTaskDependencyInlined(const ObjectID &object_id) {
+void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) {
   std::vector<ObjectID> deleted;
-  reference_counter_->RemoveSubmittedTaskReference(object_id, &deleted);
-  // TODO(edoakes): move callback in now?
+  reference_counter_->RemoveSubmittedTaskReferences(object_ids, &deleted);
+  // XXX(edoakes): need this check?
   // if (ref_counting_enabled_) {
-    in_memory_store_->Delete(deleted);
+  in_memory_store_->Delete(deleted);
   // }
 }
 

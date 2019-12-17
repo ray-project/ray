@@ -14,7 +14,7 @@ namespace ray {
 class LocalDependencyResolver {
  public:
   LocalDependencyResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-			  std::shared_ptr<TaskFinisherInterface> task_finisher)
+                          std::shared_ptr<TaskFinisherInterface> task_finisher)
       : in_memory_store_(store), task_finisher_(task_finisher), num_pending_(0) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified

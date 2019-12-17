@@ -67,8 +67,6 @@ class CoreWorker {
   /// \param[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
-  /// \param[in] exit_handler Language worker function to orderly shutdown the worker.
-  ///            We guarantee this will be run on the main thread of the worker.
   /// \param[in] ref_counting_enabled Whether to enable object ref counting.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
@@ -78,7 +76,6 @@ class CoreWorker {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
-             std::function<void()> exit_handler = nullptr,
              bool ref_counting_enabled = false);
 
   ~CoreWorker();
@@ -425,15 +422,6 @@ class CoreWorker {
   /// Private methods related to task submission.
   ///
 
-  /// Remove a task dependency from the reference counter.
-  void RemoveSubmittedTaskReference(const ObjectID &object_id) {
-    std::vector<ObjectID> deleted;
-    reference_counter_->RemoveSubmittedTaskReference(object_id, &deleted);
-    if (ref_counting_enabled_) {
-      memory_store_->Delete(deleted);
-    }
-  }
-
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -479,7 +467,6 @@ class CoreWorker {
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
-
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies

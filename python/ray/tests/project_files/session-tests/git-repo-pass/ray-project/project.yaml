@@ -5,7 +5,8 @@ name: git-repo-pass
 # description: A short description of the project.
 repo: https://github.com/ray-project/not-exist
 
-cluster: ray-project/cluster.yaml
+cluster:
+  config: ray-project/cluster.yaml
 
 environment:
   # dockerfile: The dockerfile to be built and ran the commands with.

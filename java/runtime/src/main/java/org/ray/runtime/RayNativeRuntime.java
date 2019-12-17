@@ -12,6 +12,7 @@ import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.NativeWorkerContext;
+import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.gcs.GcsClientOptions;
 import org.ray.runtime.gcs.RedisClient;
@@ -90,8 +91,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
   }
 
-  public RayNativeRuntime(RayConfig rayConfig) {
-    super(rayConfig);
+  public RayNativeRuntime(RayConfig rayConfig, FunctionManager functionManager) {
+    super(rayConfig, functionManager);
 
     // Reset library path at runtime.
     resetLibraryPath(rayConfig);
@@ -136,6 +137,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager.cleanup();
       manager = null;
     }
+
+    LOGGER.info("RayNativeRuntime shutdown");
   }
 
   @Override

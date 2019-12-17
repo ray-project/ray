@@ -128,6 +128,9 @@ class RayLog : public RayLogBase {
   /// The directory where the log files are stored.
   /// If this is empty, logs are printed to stdout.
   static std::string log_dir_;
+  /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
+  /// InstallFailureSignalHandler was not called.
+  static bool is_failure_signal_handler_installed_;
 
  protected:
   virtual std::ostream &Stream();

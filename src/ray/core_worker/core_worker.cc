@@ -70,9 +70,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &log_dir, const std::string &node_ip_address,
                        int node_manager_port,
                        const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals,
-                       const std::function<void()> exit_handler,
-                       bool ref_counting_enabled)
+                       std::function<Status()> check_signals, bool ref_counting_enabled)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
@@ -119,13 +117,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RAY_CHECK(task_execution_callback_ != nullptr);
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
+    auto exit = std::bind(&CoreWorker::Shutdown, this);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_.GetWorkerID(), local_raylet_client_, execute_task,
-            exit_handler));
+            worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
     direct_task_receiver_ =
         std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
-            worker_context_, task_execution_service_, execute_task, exit_handler));
+            worker_context_, task_execution_service_, execute_task, exit));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -181,7 +179,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(new TaskManager(
-      memory_store_, reference_counter_, actor_manager_, [this](const TaskSpecification &spec) {
+      memory_store_, reference_counter_, actor_manager_,
+      [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
@@ -216,8 +215,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(
-          client_factory, memory_store_, task_manager_));
+      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
+                                             task_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
@@ -228,8 +227,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<raylet::RayletClient>(
                 new raylet::RayletClient(std::move(grpc_client)));
           },
-          memory_store_, task_manager_, 
-          local_raylet_id, RayConfig::instance().worker_lease_timeout_milliseconds()));
+          memory_store_, task_manager_, local_raylet_id,
+          RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -238,38 +237,41 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 }
 
 CoreWorker::~CoreWorker() {
-  Shutdown();
+  io_service_.stop();
   io_thread_.join();
+  if (log_dir_ != "") {
+    RayLog::ShutDownRayLog();
+  }
 }
 
 void CoreWorker::Shutdown() {
-  if (!shutdown_) {
-    shutdown_ = true;
-    io_service_.stop();
-    if (worker_type_ == WorkerType::WORKER) {
-      task_execution_service_.stop();
-    }
-    if (log_dir_ != "") {
-      RayLog::ShutDownRayLog();
-    }
+  io_service_.stop();
+  if (worker_type_ == WorkerType::WORKER) {
+    task_execution_service_.stop();
   }
 }
 
 void CoreWorker::Disconnect() {
   io_service_.stop();
-  gcs_client_->Disconnect();
+  if (gcs_client_) {
+    gcs_client_->Disconnect();
+  }
   if (local_raylet_client_) {
     RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
   }
 }
 
 void CoreWorker::RunIOService() {
+#ifdef _WIN32
+  // TODO(mehrdadn): Is there an equivalent for Windows we need here?
+#else
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
+#endif
 
   io_service_.run();
 }
@@ -470,7 +472,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       // dependencies.
       // XXX: this is now broken for raylet transport.
       // if (!ids[i].IsDirectCallType()) {
-        // RemoveSubmittedTaskReference(ids[i]);
+      // RemoveSubmittedTaskReference(ids[i]);
       // }
     } else {
       missing_result = true;
@@ -669,7 +671,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   if (actor_creation_options.is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, actor_creation_options.max_reconstructions);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  actor_creation_options.max_reconstructions);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
