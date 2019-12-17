@@ -161,11 +161,11 @@ class Dashboard(object):
                 total_resources = data["totalResources"]
                 extra_info = ""
                 for resource_name in sorted(available_resources.keys()):
-                    _total = total_resources[resource_name]
-                    _occupied = _total - available_resources[resource_name]
-                    _total = format_resource(resource_name, _total)
-                    _occupied = format_resource(resource_name, _occupied)
-                    extra_info += f"{resource_name}: {_occupied} / {_total}, "
+                    total = total_resources[resource_name]
+                    occupied = total - available_resources[resource_name]
+                    total = format_resource(resource_name, total)
+                    occupied = format_resource(resource_name, occupied)
+                    extra_info += f"{resource_name}: {occupied} / {total}, "
                 data["extraInfo"] = extra_info[:-2]
             return await json_response(result=D)
 
