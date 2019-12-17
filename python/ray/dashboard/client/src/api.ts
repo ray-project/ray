@@ -87,6 +87,19 @@ export interface NodeInfoResponse {
 
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
+export interface RayletInfoResponse {
+  [ip: string]: {
+    extraInfo?: string;
+    workersStats: {
+      isDriver?: boolean;
+      pid: number;
+    }[];
+  };
+}
+
+export const getRayletInfo = () =>
+  get<RayletInfoResponse>("/api/raylet_info", {});
+
 export interface ErrorsResponse {
   [pid: string]: Array<{
     message: string;
