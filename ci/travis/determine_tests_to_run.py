@@ -100,7 +100,7 @@ if __name__ == "__main__":
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
             elif changed_file.startswith("streaming/python"):
                 RAY_CI_STREAMING_PYTHON_AFFECTED = 1
-            elif changed_file.startsWith("streaming/java"):
+            elif changed_file.startswith("streaming/java"):
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
             else:
                 RAY_CI_TUNE_AFFECTED = 1
