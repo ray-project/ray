@@ -52,11 +52,11 @@ class PytorchTrainble(tune.Trainable):
         self.model.load_state_dict(torch.load(checkpoint_path))
 
     def reset_config(self, new_config):
-        del self.optimizer
-        self.optimizer = optim.SGD(
-            self.model.parameters(),
-            lr=new_config.get("lr", 0.01),
-            momentum=new_config.get("momentum", 0.9))
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = new_config.get("lr")
+            param_group["momentum"] = new_config.get("momentum")
+
+        self.config = new_config
         return True
 
 
