@@ -188,6 +188,7 @@ deploy:
 
   - provider: script
     script: bash $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh || true
+    skip_cleanup: true
     on:
       repo: ray-project/ray
       all_branches: true
