@@ -169,6 +169,7 @@ requires = [
     "funcsigs",
     "click",
     "colorama",
+    "packaging",
     "pytest",
     "pyyaml",
     "redis>=3.3.2",
