@@ -88,6 +88,7 @@ java_binary(
     data = ["testng.xml"],
     args = ["streaming/java/testng.xml"],
     runtime_deps = [
+        "@ray_streaming_maven//:org_testng_testng",
         ":org_ray_ray_streaming-api_test",
         ":org_ray_ray_streaming-runtime_test",
     ],
