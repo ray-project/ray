@@ -1,7 +1,6 @@
 import pytest
 import ray
-from ray.experimental.serve.queues import (RandomPolicyQueue as
-                                           CentralizedQueues)
+from ray.experimental.serve.queues import RandomPolicyQueue
 from ray.experimental.serve.queues import (RoundRobinPolicyQueue,
                                            FixedPackingPolicyQueue)
 
@@ -24,7 +23,7 @@ def task_runner_mock_actor():
 
 
 def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
-    q = CentralizedQueues()
+    q = RandomPolicyQueue()
     q.link("svc", "backend")
 
     result_object_id = q.enqueue_request("svc", 1, "kwargs", None)
@@ -38,7 +37,7 @@ def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
 
 
 def test_slo(serve_instance, task_runner_mock_actor):
-    q = CentralizedQueues()
+    q = RandomPolicyQueue()
     q.link("svc", "backend")
 
     for i in range(10):
@@ -51,7 +50,7 @@ def test_slo(serve_instance, task_runner_mock_actor):
 
 
 def test_alter_backend(serve_instance, task_runner_mock_actor):
-    q = CentralizedQueues()
+    q = RandomPolicyQueue()
 
     q.set_traffic("svc", {"backend-1": 1})
     result_object_id = q.enqueue_request("svc", 1, "kwargs", None)
@@ -71,7 +70,7 @@ def test_alter_backend(serve_instance, task_runner_mock_actor):
 
 
 def test_split_traffic(serve_instance, task_runner_mock_actor):
-    q = CentralizedQueues()
+    q = RandomPolicyQueue()
 
     q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})
     # assume 50% split, the probability of all 20 requests goes to a
@@ -130,7 +129,7 @@ def test_split_traffic_fixedPacking(serve_instance, task_runner_mock_actor):
 
 
 def test_queue_remove_replicas(serve_instance, task_runner_mock_actor):
-    q = CentralizedQueues()
+    q = RandomPolicyQueue()
     q.dequeue_request("backend", task_runner_mock_actor)
     q.remove_and_destory_replica("backend", task_runner_mock_actor)
     assert len(q.workers["backend"]) == 0

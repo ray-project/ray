@@ -37,15 +37,9 @@ class ActorNursery:
 
         self.bootstrap_state = dict()
 
-    def start_actor(self, actor_cls, init_args, tag):
+    def start_actor(self, actor_cls, init_args, init_kwargs, tag):
         """Start an actor and add it to the nursery"""
-        handle = actor_cls.remote(*init_args)
-        self.actor_handles[handle] = tag
-        return [handle]
-
-    def start_actor_kwargs(self, actor_cls, init_kwargs, tag):
-        """Start an actor and add it to the nursery"""
-        handle = actor_cls.remote(**init_kwargs)
+        handle = actor_cls.remote(*init_args, **init_kwargs)
         self.actor_handles[handle] = tag
         return [handle]
 
@@ -107,13 +101,17 @@ class GlobalState:
         if "http_server" not in self.actor_handle_cache:
             [handle] = ray.get(
                 self.actor_nursery_handle.start_actor.remote(
-                    HTTPActor, init_args=(), tag="http_server"))
+                    HTTPActor, init_args=(), init_kwargs = {},
+                    tag="http_server"))
             handle.run.remote(host=host, port=port)
             self.refresh_actor_handle_cache()
         return self.actor_handle_cache["http_server"]
 
     def _get_queueing_policy(self, default_policy):
         return_policy = default_policy
+        # check if there is already a queue_actor running
+        # with policy as p.name for the case where
+        # serve nursery exists: ray.experimental.get_actor(SERVE_NURSERY_NAME)
         for p in Policy:
             queue_actor_tag = "queue_actor::" + p.name
             if queue_actor_tag in self.actor_handle_cache:
@@ -130,8 +128,9 @@ class GlobalState:
         queue_actor_tag = "queue_actor::" + self.queueing_policy.name
         if queue_actor_tag not in self.actor_handle_cache:
             [handle] = ray.get(
-                self.actor_nursery_handle.start_actor_kwargs.remote(
+                self.actor_nursery_handle.start_actor.remote(
                     self.queueing_policy.value,
+                    init_args=(),
                     init_kwargs=policy_kwargs,
                     tag=queue_actor_tag))
             handle.register_self_handle.remote(handle)
@@ -145,6 +144,7 @@ class GlobalState:
                 self.actor_nursery_handle.start_actor.remote(
                     MetricMonitor,
                     init_args=(gc_window_seconds, ),
+                    init_kwargs={},
                     tag="metric_monitor"))
 
             start_metric_monitor_loop.remote(handle)

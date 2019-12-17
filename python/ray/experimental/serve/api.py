@@ -48,8 +48,8 @@ def init(kv_store_connector=None,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={"object_store_memory": int(1e8)},
          gc_window_seconds=3600,
-         queueing_policy="random",
-         **policy_kwargs):
+         queueing_policy="Random",
+         policy_kwargs={}):
     """Initialize a serve cluster.
 
     If serve cluster has already initialized, this function will just return.
@@ -79,7 +79,7 @@ def init(kv_store_connector=None,
     global global_state
     queueing_policy = _get_router_policy(queueing_policy)
     if queueing_policy is None:
-        supported_policies = " , ".join([p.name for p in Policy])
+        supported_policies = ",".join([p.name for p in Policy])
         raise ValueError(
             "Please specify supported router policy."
             " Supported policies are: {}".format(supported_policies))

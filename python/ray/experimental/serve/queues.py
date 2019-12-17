@@ -269,14 +269,14 @@ class RoundRobinPolicyQueue(CentralizedQueues):
 
     # Saves the information about last assigned
     # backend for every service
-    round_robin_iter = {}
+    round_robin_iterator_map = {}
 
     def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,
                      traffic_dict)
         self.traffic[service] = traffic_dict
         backend_names = list(self.traffic[service].keys())
-        self.round_robin_iter[service] = itertools.cycle(backend_names)
+        self.round_robin_iterator_map[service] = itertools.cycle(backend_names)
         self.flush()
 
     def _flush_service_queue(self):
@@ -284,15 +284,15 @@ class RoundRobinPolicyQueue(CentralizedQueues):
         for service, queue in self.queues.items():
             # if there are incoming requests and there are backends
             if len(queue) and len(self.traffic[service]):
-                if service not in self.round_robin_iter:
+                if service not in self.round_robin_iterator_map:
                     backend_names = list(self.traffic[service].keys())
-                    self.round_robin_iter[service] = itertools.cycle(
+                    self.round_robin_iterator_map[service] = itertools.cycle(
                         backend_names)
 
                 while len(queue):
                     # choose the next backend available from persistent
                     # information
-                    chosen_backend = next(self.round_robin_iter[service])
+                    chosen_backend = next(self.round_robin_iterator_map[service])
                     request = queue.popleft()
                     self.buffer_queues[chosen_backend].add(request)
 
@@ -322,7 +322,7 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
                     # randomly pick 2 backends
                     backend1, backend2 = np.random.choice(
                         backend_names, 2, p=backend_weights)
-                    backend1, backend2 = backend1.squeeze(), backend2.squeeze()
+                    
                     # see the length of buffer queues of the two backends
                     # and pick the one which has less no. of queries
                     # in the buffer
@@ -355,7 +355,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
     def __init__(self, packing_num=3):
         # Saves the information about last assigned
         # backend for every service
-        self.fixed_packing_iter = {}
+        self.fixed_packing_iterator_map = {}
         self.packing_num = packing_num
         super().__init__()
 
@@ -364,7 +364,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
                      traffic_dict)
         self.traffic[service] = traffic_dict
         backend_names = list(self.traffic[service].keys())
-        self.fixed_packing_iter[service] = itertools.cycle(
+        self.fixed_packing_iterator_map[service] = itertools.cycle(
             itertools.chain.from_iterable(
                 itertools.repeat(x, self.packing_num) for x in backend_names))
         self.flush()
@@ -374,9 +374,9 @@ class FixedPackingPolicyQueue(CentralizedQueues):
         for service, queue in self.queues.items():
             # if there are incoming requests and there are backends
             if len(queue) and len(self.traffic[service]):
-                if service not in self.fixed_packing_iter:
+                if service not in self.fixed_packing_iterator_map:
                     backend_names = list(self.traffic[service].keys())
-                    self.fixed_packing_iter[service] = itertools.cycle(
+                    self.fixed_packing_iterator_map[service] =itertools.cycle(
                         itertools.chain.from_iterable(
                             itertools.repeat(x, self.packing_num)
                             for x in backend_names))
@@ -384,7 +384,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
                 while len(queue):
                     # choose the next backend available from persistent
                     # information
-                    chosen_backend = next(self.fixed_packing_iter[service])
+                    chosen_backend = next(self.fixed_packing_iterator_map[service])
                     request = queue.popleft()
                     self.buffer_queues[chosen_backend].add(request)
 

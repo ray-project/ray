@@ -11,7 +11,7 @@ class Policy(Enum):
     Serve will support the added policy and policy can be accessed
     in `serve.init` method through name provided here.
     """
-    random = RandomPolicyQueueActor
-    roundRobin = RoundRobinPolicyQueueActor
-    powerOfTwo = PowerOfTwoPolicyQueueActor
-    fixedPacking = FixedPackingPolicyQueueActor
+    Random = RandomPolicyQueueActor
+    RoundRobin = RoundRobinPolicyQueueActor
+    PowerOfTwo = PowerOfTwoPolicyQueueActor
+    FixedPacking = FixedPackingPolicyQueueActor
