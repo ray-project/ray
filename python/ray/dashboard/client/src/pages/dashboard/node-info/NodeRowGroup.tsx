@@ -7,13 +7,15 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
-import { NodeInfoResponse } from "../../api";
+import { NodeInfoResponse, RayletInfoResponse } from "../../../api";
 import { NodeCPU, WorkerCPU } from "./features/CPU";
 import { NodeDisk, WorkerDisk } from "./features/Disk";
 import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
 import { NodeHost, WorkerHost } from "./features/Host";
 import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
 import { NodeRAM, WorkerRAM } from "./features/RAM";
+import { NodeReceived, WorkerReceived } from "./features/Received";
+import { NodeSent, WorkerSent } from "./features/Sent";
 import { NodeUptime, WorkerUptime } from "./features/Uptime";
 import { NodeWorkers, WorkerWorkers } from "./features/Workers";
 
@@ -33,6 +35,10 @@ const styles = (theme: Theme) =>
       color: theme.palette.text.secondary,
       fontSize: "1.5em",
       verticalAlign: "middle"
+    },
+    extraInfo: {
+      fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
+      whiteSpace: "pre-wrap"
     }
   });
 
@@ -41,6 +47,7 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 interface Props {
   node: Node;
+  raylet: RayletInfoResponse[keyof RayletInfoResponse] | null;
   logCounts: {
     perWorker: { [pid: string]: number };
     total: number;
@@ -49,6 +56,7 @@ interface Props {
     perWorker: { [pid: string]: number };
     total: number;
   };
+  initialExpanded: boolean;
 }
 
 interface State {
@@ -60,7 +68,7 @@ class NodeRowGroup extends React.Component<
   State
 > {
   state: State = {
-    expanded: false
+    expanded: this.props.initialExpanded
   };
 
   toggleExpand = () => {
@@ -70,7 +78,7 @@ class NodeRowGroup extends React.Component<
   };
 
   render() {
-    const { classes, node, logCounts, errorCounts } = this.props;
+    const { classes, node, raylet, logCounts, errorCounts } = this.props;
     const { expanded } = this.state;
 
     const features = [
@@ -80,6 +88,8 @@ class NodeRowGroup extends React.Component<
       { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
       { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
       { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
+      { NodeFeature: NodeSent, WorkerFeature: WorkerSent },
+      { NodeFeature: NodeReceived, WorkerFeature: WorkerReceived },
       {
         NodeFeature: makeNodeLogs(logCounts),
         WorkerFeature: makeWorkerLogs(logCounts)
@@ -103,23 +113,37 @@ class NodeRowGroup extends React.Component<
               <RemoveIcon className={classes.expandCollapseIcon} />
             )}
           </TableCell>
-          {features.map(({ NodeFeature }) => (
-            <TableCell className={classes.cell}>
+          {features.map(({ NodeFeature }, index) => (
+            <TableCell className={classes.cell} key={index}>
               <NodeFeature node={node} />
             </TableCell>
           ))}
         </TableRow>
-        {expanded &&
-          node.workers.map((worker, index: number) => (
-            <TableRow hover key={index}>
-              <TableCell className={classes.cell} />
-              {features.map(({ WorkerFeature }) => (
-                <TableCell className={classes.cell}>
-                  <WorkerFeature node={node} worker={worker} />
+        {expanded && (
+          <React.Fragment>
+            {raylet !== null && raylet.extraInfo !== undefined && (
+              <TableRow hover>
+                <TableCell className={classes.cell} />
+                <TableCell
+                  className={classNames(classes.cell, classes.extraInfo)}
+                  colSpan={features.length}
+                >
+                  {raylet.extraInfo}
                 </TableCell>
-              ))}
-            </TableRow>
-          ))}
+              </TableRow>
+            )}
+            {node.workers.map((worker, index: number) => (
+              <TableRow hover key={index}>
+                <TableCell className={classes.cell} />
+                {features.map(({ WorkerFeature }, index) => (
+                  <TableCell className={classes.cell} key={index}>
+                    <WorkerFeature node={node} worker={worker} />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </React.Fragment>
+        )}
       </React.Fragment>
     );
   }

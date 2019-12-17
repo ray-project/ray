@@ -52,7 +52,8 @@ class JupyterNotebookReporter(ProgressReporter):
         messages = [
             "== Status ==",
             memory_debug_str(),
-            trial_runner.debug_string(delim=delim),
+            trial_runner.scheduler_alg.debug_string(),
+            trial_runner.trial_executor.debug_string(),
             trial_progress_str(trial_runner.get_trials(), fmt="html"),
             trial_errors_str(trial_runner.get_trials(), fmt="html"),
         ]
@@ -68,7 +69,8 @@ class CLIReporter(ProgressReporter):
         messages = [
             "== Status ==",
             memory_debug_str(),
-            trial_runner.debug_string(),
+            trial_runner.scheduler_alg.debug_string(),
+            trial_runner.trial_executor.debug_string(),
             trial_progress_str(trial_runner.get_trials()),
             trial_errors_str(trial_runner.get_trials()),
         ]
