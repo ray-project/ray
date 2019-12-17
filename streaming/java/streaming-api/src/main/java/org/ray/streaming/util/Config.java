@@ -28,6 +28,9 @@ public class Config {
   public static final String IS_RECREATE = "streaming.is_recreate";
   // return from DataReader.getBundle if only empty message read in this interval.
   public static final String TIMER_INTERVAL_MS = "timer_interval_ms";
+  public static final String READ_TIMEOUT_MS = "read_timeout_ms";
+  public static final String DEFAULT_READ_TIMEOUT_MS = "10";
+
 
   public static final String STREAMING_RING_BUFFER_CAPACITY = "streaming.ring_buffer_capacity";
   // write an empty message if there is no data to be written in this

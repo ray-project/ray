@@ -4,13 +4,17 @@ import org.ray.runtime.util.Serializer;
 import org.ray.streaming.runtime.core.processor.Processor;
 import org.ray.streaming.runtime.transfer.Message;
 import org.ray.streaming.runtime.worker.JobWorker;
+import org.ray.streaming.util.Config;
 
 public abstract class InputStreamTask extends StreamTask {
   private volatile boolean running = true;
   private volatile boolean stopped = false;
+  private long readTimeoutMillis;
 
   public InputStreamTask(int taskId, Processor processor, JobWorker streamWorker) {
     super(taskId, processor, streamWorker);
+    readTimeoutMillis = Long.parseLong((String) streamWorker.getConfig()
+        .getOrDefault(Config.READ_TIMEOUT_MS, Config.DEFAULT_READ_TIMEOUT_MS));
   }
 
   @Override
@@ -20,7 +24,7 @@ public abstract class InputStreamTask extends StreamTask {
   @Override
   public void run() {
     while (running) {
-      Message item = reader.pull(10);
+      Message item = reader.read(readTimeoutMillis);
       if (item != null) {
         byte[] bytes = new byte[item.body().remaining()];
         item.body().get(bytes);

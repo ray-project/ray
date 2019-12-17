@@ -84,12 +84,12 @@ public class DataReader {
   }
 
   /**
-   * Pull message from input channels, if timeout, return null.
+   * Read message from input channels, if timeout, return null.
    *
    * @param timeoutMillis timeout
    * @return message or null
    */
-  public DataMessage pull(long timeoutMillis) {
+  public DataMessage read(long timeoutMillis) {
     if (buf.isEmpty()) {
       getBundle(timeoutMillis);
       // if bundle not empty. empty message still has data size + seqId + msgId

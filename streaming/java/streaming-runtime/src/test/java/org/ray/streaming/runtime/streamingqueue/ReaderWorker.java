@@ -88,7 +88,7 @@ public class ReaderWorker extends Worker {
 
     int checkPointId = 1;
     for (int i = 0; i < msgCount * inputQueueList.size(); ++i) {
-      DataMessage dataMessage = dataReader.pull(100);
+      DataMessage dataMessage = dataReader.read(100);
 
       if (dataMessage == null) {
         LOGGER.error("dataMessage is null");
