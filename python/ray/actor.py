@@ -760,6 +760,12 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
             max_reconstructions = 3
         else:
             max_reconstructions = 0
+    else:
+        logger.warning(
+            "Warning: with direct call actors, `max_reconstructions` "
+            "currently only applies to the actor creation task. If you need "
+            "this behaviour, consider downgrading to Ray 0.7.7, or setting "
+            "the RAY_FORCE_DIRECT=0 env var.")
 
     if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
             ray_constants.INFINITE_RECONSTRUCTION):
