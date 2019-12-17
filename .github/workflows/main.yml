@@ -11,6 +11,6 @@ jobs:
     - uses: actions/checkout@v1
     - name: build-ray
       run: |
-        $client = new-object System.Net.WebClient
-        $client.DownloadFile("https://github.com/bazelbuild/bazel/releases/download/1.2.1/bazel-1.2.1-windows-x86_64.exe","%SystemRoot%\bazel.exe")
-        bazel build //:ray_pkg --verbose_failures
+        $client = New-Object System.Net.WebClient
+        $client.DownloadFile("https://github.com/bazelbuild/bazel/releases/download/1.2.1/bazel-1.2.1-windows-x86_64.exe", "bazel.exe")
+        .\bazel --batch build //:ray_pkg --verbose_failures
