@@ -120,7 +120,7 @@ class GlobalState:
         return return_policy
 
     def init_or_get_router(self,
-                           queueing_policy=Policy.random,
+                           queueing_policy=Policy.Random,
                            policy_kwargs={}):
         # get queueing policy
         self.queueing_policy = self._get_queueing_policy(
