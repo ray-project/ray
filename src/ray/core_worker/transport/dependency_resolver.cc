@@ -48,7 +48,8 @@ void InlineDependencies(
       }
     }
   }
-  RAY_CHECK(found == dependencies.size());
+  // Each dependency could be inlined more than once.
+  RAY_CHECK(found >= dependencies.size());
 }
 
 void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
