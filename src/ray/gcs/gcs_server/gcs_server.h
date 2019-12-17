@@ -17,6 +17,7 @@ struct GcsServerConfig {
   std::string redis_address;
   uint16_t redis_port = 6379;
   bool retry_redis = true;
+  bool is_test = false;
 };
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent

@@ -24,18 +24,8 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
                          ActorAsyncUpdateReply *reply,
                          SendReplyCallback send_reply_callback) override;
 
-  uint64_t GetAsyncGetCount() { return metrics_[ASYNC_GET]; }
-
-  uint64_t GetAsyncRegisterCount() { return metrics_[ASYNC_REGISTER]; }
-
-  uint64_t GetAsyncUpdateCount() { return metrics_[ASYNC_UPDATE]; }
-
  private:
   gcs::RedisGcsClient &gcs_client_;
-
-  enum { ASYNC_GET = 0, ASYNC_REGISTER = 1, ASYNC_UPDATE = 2, COMMAND_TYPE_END = 3 };
-  /// metrics
-  uint64_t metrics_[COMMAND_TYPE_END] = {0};
 };
 
 }  // namespace rpc

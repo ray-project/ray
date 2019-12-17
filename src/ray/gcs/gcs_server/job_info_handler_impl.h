@@ -20,16 +20,8 @@ class DefaultJobInfoHandler : public rpc::JobInfoHandler {
                              MarkJobFinishedReply *reply,
                              SendReplyCallback send_reply_callback) override;
 
-  uint64_t GetAddJobCount() { return metrics_[ADD_JOB]; }
-
-  uint64_t GetMarkJobFinishedCount() { return metrics_[MARK_JOB_FINISHED]; }
-
  private:
   gcs::RedisGcsClient &gcs_client_;
-
-  enum { ADD_JOB = 0, MARK_JOB_FINISHED = 1, COMMAND_TYPE_END = 2 };
-  /// metrics
-  uint64_t metrics_[COMMAND_TYPE_END] = {0};
 };
 
 }  // namespace rpc

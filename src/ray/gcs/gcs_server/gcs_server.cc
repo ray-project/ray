@@ -46,7 +46,7 @@ void GcsServer::Stop() {
 
 void GcsServer::InitBackendClient() {
   GcsClientOptions options(config_.redis_address, config_.redis_port,
-                           config_.redis_password);
+                           config_.redis_password, config_.is_test);
   redis_gcs_client_ = std::make_shared<RedisGcsClient>(options);
   auto status = redis_gcs_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
