@@ -34,7 +34,8 @@ jint throwRuntimeException(JNIEnv *env, const char *message) {
   return env->ThrowNew(exClass, message);
 }
 
-jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector<ray::ObjectID> &abnormal_queues) {
+jint throwChannelInitException(JNIEnv *env, const char *message,
+                               const std::vector<ray::ObjectID> &abnormal_queues) {
   jclass array_list_class = env->FindClass("java/util/ArrayList");
   jmethodID array_list_constructor = env->GetMethodID(array_list_class, "<init>", "()V");
   jmethodID array_list_add = env->GetMethodID(array_list_class, "add", "(Ljava/lang/Object;)Z");
@@ -46,7 +47,7 @@ jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector
     env->CallBooleanMethod(array_list, array_list_add, jbyte_array);
   }
 
-  jclass ex_class = env->FindClass("org/ray/streaming/queue/impl/QueueInitException");
+  jclass ex_class = env->FindClass("org/ray/streaming/runtime/transfer/ChannelInitException");
   jmethodID ex_constructor = env->GetMethodID(ex_class, "<init>", "(Ljava/lang/String;Ljava/util/List;)V");
   jstring message_jstr = env->NewStringUTF(message);
   jobject ex_obj = env->NewObject(ex_class, ex_constructor, message_jstr, array_list);
@@ -54,8 +55,8 @@ jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector
   return env->Throw((jthrowable)ex_obj);
 }
 
-jint throwQueueInterruptException(JNIEnv *env, const char *message) {
-  jclass ex_class = env->FindClass("org/ray/streaming/queue/impl/QueueInterruptException");
+jint throwChannelInterruptException(JNIEnv *env, const char *message) {
+  jclass ex_class = env->FindClass("org/ray/streaming/runtime/transfer/ChannelInterruptException");
   return env->ThrowNew(ex_class, message);
 }
 

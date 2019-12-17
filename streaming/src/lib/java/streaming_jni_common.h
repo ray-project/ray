@@ -104,7 +104,8 @@ std::vector<ray::ActorID>
 jarray_to_actor_id_vec(JNIEnv *env, jobjectArray jarr);
 
 jint throwRuntimeException(JNIEnv *env, const char *message);
-jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector<ray::ObjectID> &abnormal_queues);
-jint throwQueueInterruptException(JNIEnv *env, const char *message);
+jint throwChannelInitException(JNIEnv *env, const char *message,
+                               const std::vector<ray::ObjectID> &abnormal_queues);
+jint throwChannelInterruptException(JNIEnv *env, const char *message);
 ray::RayFunction FunctionDescriptorToRayFunction(JNIEnv *env, jobject functionDescriptor);
 #endif //RAY_STREAMING_JNI_COMMON_H

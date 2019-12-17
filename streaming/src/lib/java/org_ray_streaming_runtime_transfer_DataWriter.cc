@@ -58,8 +58,8 @@ Java_org_ray_streaming_runtime_transfer_DataWriter_writeMessageNative(
                                                        StreamingMessageType::Message);
 
   if (result == 0) {
-    STREAMING_LOG(INFO) << "producer interrupted, return 0.";
-    throwQueueInterruptException(env, "producer interrupted.");
+    STREAMING_LOG(INFO) << "writer interrupted, return 0.";
+    throwChannelInterruptException(env, "writer interrupted.");
   }
   return result;
 }
@@ -68,7 +68,7 @@ JNIEXPORT void JNICALL
 Java_org_ray_streaming_runtime_transfer_DataWriter_stopWriterNative(JNIEnv *env,
                                                                     jobject thisObj,
                                                                     jlong ptr) {
-  STREAMING_LOG(INFO) << "jni: stop producer.";
+  STREAMING_LOG(INFO) << "jni: stop writer.";
   auto *data_writer = reinterpret_cast<DataWriter *>(ptr);
   data_writer->Stop();
 }

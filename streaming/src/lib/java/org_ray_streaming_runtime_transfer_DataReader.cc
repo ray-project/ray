@@ -43,12 +43,12 @@ JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_transfer_DataReader_getBun
 
   // over timeout, return empty array.
   if (StreamingStatus::Interrupted == status) {
-    throwQueueInterruptException(env, "consumer interrupted.");
+    throwChannelInterruptException(env, "reader interrupted.");
   } else if (StreamingStatus::GetBundleTimeOut == status) {
   } else if (StreamingStatus::InitQueueFailed == status) {
-    throwRuntimeException(env, "init queue failed");
+    throwRuntimeException(env, "init channel failed");
   } else if (StreamingStatus::WaitQueueTimeOut == status) {
-    throwRuntimeException(env, "wait queue object timeout");
+    throwRuntimeException(env, "wait channel object timeout");
   }
 
   if (StreamingStatus::OK != status) {
