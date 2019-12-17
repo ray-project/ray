@@ -27,6 +27,7 @@ void InlineDependencies(
       const auto &id = task.ArgId(i, 0);
       const auto &it = dependencies.find(id);
       if (it != dependencies.end()) {
+        RAY_CHECK(it->second);
         auto *mutable_arg = msg.mutable_args(i);
         mutable_arg->clear_object_ids();
         if (it->second->IsInPlasmaError()) {
@@ -45,6 +46,8 @@ void InlineDependencies(
           }
         }
         found++;
+      } else {
+        RAY_CHECK(!id.IsDirectCallType());
       }
     }
   }
