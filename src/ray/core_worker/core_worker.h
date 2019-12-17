@@ -1,6 +1,7 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
@@ -66,8 +67,6 @@ class CoreWorker {
   /// \param[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
-  /// \param[in] exit_handler Language worker function to orderly shutdown the worker.
-  ///            We guarantee this will be run on the main thread of the worker.
   /// \param[in] ref_counting_enabled Whether to enable object ref counting.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
@@ -77,7 +76,6 @@ class CoreWorker {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
-             std::function<void()> exit_handler = nullptr,
              bool ref_counting_enabled = false);
 
   ~CoreWorker();
@@ -481,6 +479,26 @@ class CoreWorker {
     reference_counter_->RemoveDependencies(object_id, &deleted);
     if (ref_counting_enabled_) {
       memory_store_->Delete(deleted);
+    }
+  }
+
+  /// Returns whether the message was sent to the wrong worker. The right error reply
+  /// is sent automatically. Messages end up on the wrong worker when a worker dies
+  /// and a new one takes its place with the same place. In this situation, we want
+  /// the new worker to reject messages meant for the old one.
+  bool HandleWrongRecipient(const WorkerID &intended_worker_id,
+                            rpc::SendReplyCallback send_reply_callback) {
+    if (intended_worker_id != worker_context_.GetWorkerID()) {
+      std::ostringstream stream;
+      stream << "Mismatched WorkerID: ignoring RPC for previous worker "
+             << intended_worker_id
+             << ", current worker ID: " << worker_context_.GetWorkerID();
+      auto msg = stream.str();
+      RAY_LOG(ERROR) << msg;
+      send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+      return true;
+    } else {
+      return false;
     }
   }
 
