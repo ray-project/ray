@@ -145,3 +145,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
+
+        unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()

@@ -160,13 +160,17 @@ void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_
   RemoveSubmittedTaskReferences(object_ids);
 }
 
-void TaskManager::RemovePlasmaSubmittedTaskReferences(const TaskSpecification &spec) {
+void TaskManager::RemovePlasmaSubmittedTaskReferences(TaskSpecification &spec) {
   std::vector<ObjectID> plasma_dependencies;
+  auto &msg = spec.GetMutableMessage();
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     auto count = spec.ArgIdCount(i);
     if (count > 0) {
       const auto &id = spec.ArgId(i, 0);
       if (!id.IsDirectCallType()) {
+        plasma_dependencies.push_back(id);
+      } else if (msg.mutable_args(i)->object_ids_size() > 0) {
+        RAY_CHECK(msg.mutable_args(i)->object_ids_size() == 1) << "Multi-args not implemented";
         plasma_dependencies.push_back(id);
       }
     }

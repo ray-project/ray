@@ -1168,3 +1168,21 @@ cdef class CoreWorker:
 
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
+
+    def get_all_reference_counts(self):
+        cdef:
+            unordered_map[CObjectID, pair[size_t, size_t]] c_ref_counts
+            unordered_map[CObjectID, pair[size_t, size_t]].iterator it
+
+        c_ref_counts = self.core_worker.get().GetAllReferenceCounts()
+        it = c_ref_counts.begin()
+
+        ref_counts = {}
+        while it != c_ref_counts.end():
+            object_id = ObjectID(dereference(it).first.Binary())
+            # local_count = int(it[0].first.first)
+            # submiitted_count = int(it[0].first.first)
+            ref_counts[object_id] = {"local": dereference(it).second.first, "submitted": dereference(it).second.second}
+            postincrement(it)
+
+        return ref_counts

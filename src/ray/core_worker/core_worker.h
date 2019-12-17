@@ -121,6 +121,12 @@ class CoreWorker {
     }
   }
 
+  /// Returns a map of all ObjectIDs currently in scope with a pair of their
+  /// (local, submitted_task) reference counts. For debugging purposes.
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const {
+    return reference_counter_->GetAllReferenceCounts();
+  }
+
   /// Promote an object to plasma and get its owner information. This should be
   /// called when serializing an object ID, and the returned information should
   /// be stored with the serialized object ID. For plasma promotion, if the

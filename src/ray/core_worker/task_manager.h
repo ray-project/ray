@@ -89,7 +89,7 @@ class TaskManager : public TaskFinisherInterface {
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids);
 
   /// TODO
-  void RemovePlasmaSubmittedTaskReferences(const TaskSpecification &spec);
+  void RemovePlasmaSubmittedTaskReferences(TaskSpecification &spec);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
