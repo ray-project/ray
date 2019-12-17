@@ -59,7 +59,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     pending_tasks_.erase(it);
   }
 
-  // XXX: remove refs
+  RemovePlasmaSubmittedTaskReferences(spec);
+
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
@@ -144,17 +145,33 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
         }
       }
     }
+    RemovePlasmaSubmittedTaskReferences(spec);
     MarkPendingTaskFailed(task_id, spec, error_type);
   }
 }
 
-void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) {
+void TaskManager::RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids) {
   std::vector<ObjectID> deleted;
   reference_counter_->RemoveSubmittedTaskReferences(object_ids, &deleted);
-  // XXX(edoakes): need this check?
-  // if (ref_counting_enabled_) {
   in_memory_store_->Delete(deleted);
-  // }
+}
+
+void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) {
+  RemoveSubmittedTaskReferences(object_ids);
+}
+
+void TaskManager::RemovePlasmaSubmittedTaskReferences(const TaskSpecification &spec) {
+  std::vector<ObjectID> plasma_dependencies;
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    auto count = spec.ArgIdCount(i);
+    if (count > 0) {
+      const auto &id = spec.ArgId(i, 0);
+      if (!id.IsDirectCallType()) {
+        plasma_dependencies.push_back(id);
+      }
+    }
+  }
+  RemoveSubmittedTaskReferences(plasma_dependencies);
 }
 
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
@@ -172,7 +189,6 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
   if (spec.IsActorCreationTask()) {
     actor_manager_->PublishTerminatedActor(spec);
   }
-  // XXX: remove refs
 }
 
 TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {

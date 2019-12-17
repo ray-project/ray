@@ -85,6 +85,12 @@ class TaskManager : public TaskFinisherInterface {
   void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
                              rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
 
+  /// TODO
+  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids);
+
+  /// TODO
+  void RemovePlasmaSubmittedTaskReferences(const TaskSpecification &spec);
+
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
