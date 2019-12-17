@@ -244,7 +244,7 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
     return _syncers[key]
 
 
-def get_syncer(local_dir, remote_dir=None, sync_function=None):
+def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
     """Returns a NodeSyncer.
 
     Args:
