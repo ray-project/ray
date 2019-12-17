@@ -749,6 +749,31 @@ cc_binary(
 )
 
 cc_library(
+    name = "platform_shims",
+    srcs = [] + select({
+        "@bazel_tools//src/conditions:windows": glob([
+            "src/shims/windows/**/*.c",
+            "src/shims/windows/**/*.cc",
+        ]),
+        "//conditions:default": [],
+    }),
+    hdrs = [] + select({
+        "@bazel_tools//src/conditions:windows": glob([
+            "src/shims/windows/**/*.h",
+        ]),
+        "//conditions:default": [],
+    }),
+    copts = COPTS,
+    includes = [] + select({
+        "@bazel_tools//src/conditions:windows": [
+            "src/shims/windows",
+        ],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "ray_util",
     srcs = glob(
         [

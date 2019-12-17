@@ -116,6 +116,7 @@ cc_library(
         ":common_fbs",
         ":plasma_fbs",
         "@com_github_google_glog//:glog",
+        "@com_github_ray_project_ray//:platform_shims",
     ],
 )
 
@@ -210,6 +211,7 @@ cc_library(
         ":ae",
         ":plasma_client",
         "@com_github_google_glog//:glog",
+        "@com_github_ray_project_ray//:platform_shims",
     ],
 )
 
