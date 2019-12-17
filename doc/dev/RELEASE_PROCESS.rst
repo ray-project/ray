@@ -14,23 +14,15 @@ This document describes the process for creating new releases.
    python/ray/__init__.py and src/ray/raylet/main.cc. See this
    `sample commit for bumping the release branch version`_.
 
-3. **Update the master branch version:** Create a pull request to
+3. **Update the master branch version:**
+
+   For a new minor release (e.g., 0.7.0): Create a pull request to
    increment the dev version in of the master branch. See this
    `sample PR for bumping a minor release version`_. **NOTE:** Not all of
    the version numbers should be replaced. For example, ``0.7.0`` appears in
    this file but should not be updated.
 
-   This should be merged soon after cutting the release branch (step 1) to
-   closely track the development version.
-
-   For a new micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the
-   number after ``dev`` equals the micro version. For example, if the version
-   of the new release is 0.7.1, the master branch needs to be updated to
-   0.8.0.dev1.
-
-   For a new minor release (e.g., 0.7.0): Increment the minor version and append
-   ``.dev0`` to the version. For example, if the new release is 0.7.0,
-   the master branch should be updated to 0.8.0.dev0.
+   For a new micro release (e.g., 0.7.1): No action is required.
 
 4. **Testing:** Before releasing, the following sets of tests should be run. The results
    of each of these tests for previous releases are checked in under ``doc/dev/release_tests``,
