@@ -18,13 +18,10 @@ This document describes the process for creating new releases.
    The format of the new version is as follows:
 
    New minor release (e.g., 0.7.0): Increment the minor version and append
-   ``.dev0`` to the version. For example, if the version of the new release is
-   0.7.0, the master branch needs to be updated to 0.8.0.dev0.
+   ``.dev`` to the version. For example, if the version of the new release is
+   0.7.0, the master branch needs to be updated to 0.8.0.dev.
 
-   New micro release (e.g., 0.7.1): Increment the ``dev`` number, such that the
-   number after ``dev`` equals the micro version. For example, if the version
-   of the new release is 0.7.1, the master branch needs to be updated to
-   0.8.0.dev1.
+   New micro release (e.g., 0.7.1): No action required.
 
    After the wheels for the new version are built, create and merge a
    `PR like this`_.
