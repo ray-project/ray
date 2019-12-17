@@ -7,6 +7,13 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
+Status CoreWorkerDirectActorTaskSubmitter::ForceKillActor(const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+  auto &client = rpc_clients_[actor_id];
+  RAY_CHECK(client);
+  client.ForceKillActor();
+}
+
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   RAY_CHECK(task_spec.IsActorTask());

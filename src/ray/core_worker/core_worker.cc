@@ -755,6 +755,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
+Status CoreWorker::ForceKillActor(const ActorID &actor_id) {
+  ActorHandle *actor_handle = nullptr;
+  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  RAY_CHECK(actor_handle->IsDirectCallActor());
+  return direct_actor_submitter_->ForceKillActor(actor_id);
+}
+
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const ActorID actor_id = actor_handle->GetActorID();

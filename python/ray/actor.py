@@ -671,6 +671,9 @@ class ActorHandle(object):
             finally:
                 self.__ray_terminate__._actor_hard_ref = None
 
+    def force_kill(self):
+        worker = ray.worker.get_global_worker()
+
     @property
     def _actor_id(self):
         return self._ray_actor_id
