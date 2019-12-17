@@ -4,6 +4,7 @@ def gen_streaming_java_deps():
     maven_install(
         name = "ray_streaming_maven",
         artifacts = [
+            "com.beust:jcommander:1.72",
             "com.google.guava:guava:27.0.1-jre",
             "com.github.davidmoten:flatbuffers-java:1.9.0.1",
             "com.google.protobuf:protobuf-java:3.8.0",

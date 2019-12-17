@@ -269,24 +269,8 @@ cc_binary(
     ],
     linkshared = 1,
     linkstatic = 1,
+    visibility = ["//visibility:public"],
     deps = [
         ":streaming_lib",
     ],
-)
-
-genrule(
-    name = "streaming-jni-darwin-compat",
-    srcs = [":libstreaming_java.so"],
-    outs = ["libstreaming_java.dylib"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
-)
-
-filegroup(
-    name = "streaming_java",
-    srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":libstreaming_java.dylib"],
-        "//conditions:default": [":libstreaming_java.so"],
-    }),
-    visibility = ["//visibility:public"],
 )
