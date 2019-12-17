@@ -18,8 +18,8 @@ def echo_v2(_):
     return "v2"
 
 
-# specify the router policy as roundRobin
-serve.init(blocking=True, queueing_policy="roundRobin")
+# specify the router policy as RoundRobin
+serve.init(blocking=True, queueing_policy="RoundRobin")
 
 # create a service
 serve.create_endpoint("my_endpoint", "/echo", blocking=True)

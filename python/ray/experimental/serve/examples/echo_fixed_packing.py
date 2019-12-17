@@ -19,10 +19,10 @@ def echo_v2(_):
     return "v2"
 
 
-# specify the router policy as fixedPacking with packing num as 5
+# specify the router policy as FixedPacking with packing num as 5
 serve.init(
     blocking=True,
-    queueing_policy="fixedPacking",
+    queueing_policy="FixedPacking",
     policy_kwargs={"packing_num": 5})
 
 # create a service
