@@ -11,4 +11,4 @@ jobs:
     - uses: actions/checkout@v1
     - name: build-ray
       run: |
-        echo "This is a test"
+        wget https://github.com/bazelbuild/bazel/releases/download/1.2.1/bazel-1.2.1-windows-x86_64.exe
