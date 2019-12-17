@@ -56,6 +56,7 @@ interface Props {
     perWorker: { [pid: string]: number };
     total: number;
   };
+  initialExpanded: boolean;
 }
 
 interface State {
@@ -67,7 +68,7 @@ class NodeRowGroup extends React.Component<
   State
 > {
   state: State = {
-    expanded: false
+    expanded: this.props.initialExpanded
   };
 
   toggleExpand = () => {

@@ -262,12 +262,16 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::RunIOService() {
+#ifdef _WIN32
+  // TODO(mehrdadn): Is there an equivalent for Windows we need here?
+#else
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
+#endif
 
   io_service_.run();
 }

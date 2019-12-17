@@ -151,6 +151,7 @@ class NodeInfo extends React.Component<
                 raylet={client.ip in rayletInfo ? rayletInfo[client.ip] : null}
                 logCounts={logCounts[client.ip]}
                 errorCounts={errorCounts[client.ip]}
+                initialExpanded={nodeInfo.clients.length <= 4}
               />
             ))}
             <TotalRow
