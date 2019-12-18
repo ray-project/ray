@@ -160,6 +160,7 @@ class Dashboard(object):
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
             for address, data in D.items():
+                print(data.get("webuiDisplay", "KEY NOT EXISTS"))
                 available_resources = data["availableResources"]
                 total_resources = data["totalResources"]
                 extra_info = ""
@@ -387,7 +388,10 @@ class RayletStats(threading.Thread):
             for node in self.nodes:
                 node_id = node["NodeID"]
                 stub = self.stubs[node_id]
+                print("requesting reply from {}".format(node_id))
                 reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
+                # reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest(), timeout=2)
+                print("XXX reply: {}".format(reply))
                 replies[node["NodeManagerAddress"]] = reply
             with self._raylet_stats_lock:
                 for address, reply in replies.items():

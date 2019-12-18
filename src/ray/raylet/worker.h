@@ -68,6 +68,10 @@ class Worker {
   void DirectActorCallArgWaitComplete(int64_t tag);
   void WorkerLeaseGranted(const std::string &address, int port);
 
+  rpc::CoreWorkerClient* rpc_client() {
+         return rpc_client_.get();
+  }
+
  private:
   /// The worker's ID.
   WorkerID worker_id_;
