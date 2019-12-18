@@ -86,10 +86,10 @@ def checkpoint_deleter(runner):
             checkpoint (Checkpoint): Checkpoint to delete.
         """
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
-            checkpoint_dir = checkpoint.value
+            checkpoint_path = checkpoint.value
             # Delete local copy, if any exists.
-            if os.path.exists(checkpoint_dir):
-                shutil.rmtree(checkpoint_dir)
+            if os.path.exists(checkpoint_path):
+                shutil.rmtree(checkpoint_path)
             # TODO(ujvl): Batch remote deletes?
             runner.delete_checkpoint.remote(checkpoint.value)
 

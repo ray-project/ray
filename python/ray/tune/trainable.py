@@ -30,6 +30,50 @@ logger = logging.getLogger(__name__)
 SETUP_TIME_THRESHOLD = 10
 
 
+class TrainableUtil(object):
+
+    @staticmethod
+    def pickle_checkpoint(checkpoint_path):
+        """Pickles checkpoint data."""
+        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        data = {}
+        for basedir, _, file_names in os.walk(checkpoint_dir):
+            for file_name in file_names:
+                path = os.path.join(basedir, file_name)
+
+                with open(path, "rb") as f:
+                    data[os.path.relpath(path, checkpoint_dir)] = f.read()
+        data_dict = pickle.dumps({
+            "checkpoint_name": os.path.basename(checkpoint_path),
+            "data": data,
+        })
+        return data_dict
+
+    @staticmethod
+    def find_checkpoint_dir(checkpoint_path):
+        """Returns the directory containing the checkpoint path.
+
+        Raises:
+            FileNotFoundError if the directory is not found.
+        """
+        checkpoint_dir = os.path.dirname(checkpoint_path)
+        while checkpoint_dir != os.path.dirname(checkpoint_dir):
+            if glob.glob(os.path.join(checkpoint_dir, ".is_checkpoint")):
+                break
+            checkpoint_dir = os.path.dirname(checkpoint_dir)
+        else:
+            raise FileNotFoundError("Checkpoint directory not found.")
+        return checkpoint_dir
+
+    @staticmethod
+    def make_checkpoint_dir(checkpoint_dir):
+        """Creates a checkpoint directory at the provided path."""
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+        # Drop marker in directory to identify it as a checkpoint dir.
+        open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+
 class Trainable(object):
     """Abstract class for trainable models, functions, etc.
 
@@ -252,11 +296,7 @@ class Trainable(object):
         """
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
-            # Drop marker in directory to identify it as a checkpoint dir.
-            open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
-
+        TrainableUtil.make_checkpoint_dir(checkpoint_dir)
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
@@ -298,37 +338,13 @@ class Trainable(object):
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
         # Save all files in subtree.
-        data_dict = Trainable._pickle_checkpoint(checkpoint_path)
+        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
         out = io.BytesIO()
         if len(data_dict) > 10e6:  # getting pretty large
             logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
         out.write(data_dict)
         shutil.rmtree(tmpdir)
         return out.getvalue()
-
-    @staticmethod
-    def _pickle_checkpoint(checkpoint_path):
-        # Find checkpoint directory from path.
-        checkpoint_dir = os.path.dirname(checkpoint_path)
-        while checkpoint_dir != os.path.dirname(checkpoint_dir):
-            if glob.glob(os.path.join(checkpoint_dir, ".is_checkpoint")):
-                break
-            checkpoint_dir = os.path.dirname(checkpoint_dir)
-        else:
-            raise FileNotFoundError("Checkpoint directory not found.")
-        # Pickle files in directory.
-        data = {}
-        for basedir, _, file_names in os.walk(checkpoint_dir):
-            for file_name in file_names:
-                path = os.path.join(basedir, file_name)
-
-                with open(path, "rb") as f:
-                    data[os.path.relpath(path, checkpoint_dir)] = f.read()
-        data_dict = pickle.dumps({
-            "checkpoint_name": os.path.basename(checkpoint_path),
-            "data": data,
-        })
-        return data_dict
 
     def restore(self, checkpoint_path):
         """Restores training state from a given model checkpoint.
@@ -394,7 +410,7 @@ class Trainable(object):
         Args:
             checkpoint_path (str): Path to checkpoint.
         """
-        checkpoint_dir = os.path.dirname(checkpoint_path)
+        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
 

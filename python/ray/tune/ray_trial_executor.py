@@ -12,12 +12,13 @@ import traceback
 import ray
 from ray.exceptions import RayTimeoutError
 from ray import ray_constants
-from ray.tune.durable_trainable import DurableTrainable
 from ray.resource_spec import ResourceSpec
+from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
-from ray.tune.trial import Trial, Checkpoint, Location
 from ray.tune.resources import Resources
+from ray.tune.trainable import TrainableUtil
+from ray.tune.trial import Trial, Checkpoint, Location
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.util import warn_if_slow
 
@@ -606,7 +607,8 @@ class RayTrialExecutor(TrialExecutor):
             if trial.upload_dir is None and trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where an upload directory is not provided.
-                data_dict = trial.get_trainable_cls()._pickle_checkpoint(value)
+                logger.warning("Trial %s: Reading checkpoint into memory.")
+                data_dict = TrainableUtil.pickle_checkpoint(value)
                 remote = trial.runner.restore_from_object.remote(data_dict)
             else:
                 remote = trial.runner.restore.remote(value)
