@@ -199,7 +199,7 @@ class CentralizedQueues:
                 The implementer is expected to access and manipulate
                 self.queues        : dict[str,Deque]
                 self.buffer_queues : dict[str,sortedlist]
-            For registering the implemented policies refister at policy.py!
+            For registering the implemented policies register at policy.py!
             Expected Behavior:
                 the Deque of all services in self.queues linked with
                 atleast one backend must be empty irrespective of whatever
@@ -236,6 +236,9 @@ class RandomPolicyQueue(CentralizedQueues):
     This backend selection policy is `Stateless` meaning
     the current decisions of selecting backend are not
     dependent on previous decisions.
+    Random policy (randomly) samples backends based on backend weights
+    for every query. 
+    This policy uses the weights assigned to backends.
     """
 
     def _flush_service_queue(self):
@@ -264,6 +267,12 @@ class RoundRobinPolicyQueue(CentralizedQueues):
     This backend selection policy is `Stateful` meaning
     the current decisions of selecting backend are
     dependent on previous decisions.
+    RundRobinPolicy assigns queries in an interleaved manner to
+    every backend serving for a service. Consider backend A,B linked
+    to a service. Now queries will be assigned to backends
+    in the following order - 
+    A, B, A, B ...
+    This policy doesn't use the weights assigned to backends.
     """
 
     # Saves the information about last assigned
@@ -304,6 +313,10 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
     This backend selection policy is `Stateless` meaning
     the current decisions of selecting backend are
     dependent on previous decisions.
+    PowerOfTwo policy (randomly) samples two backends 
+    (say Backend A,B among A,B,C) based on the backend weights
+    specified and chooses the backend which is less loaded.
+    This policy uses the weights assigned to backends.
     """
 
     def _flush_service_queue(self):
@@ -349,6 +362,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
     queries are handled by 'backend-1' and next k queries are handled by
     'backend-2' and so on ... where 'backend-1' and 'backend-2' are served
     by the same service.
+    This policy doesn't use the weights assigned to backends.
 
     """
 
