@@ -14,6 +14,11 @@ void DefaultJobInfoHandler::HandleAddJob(const rpc::AddJobRequest &request,
         reply->set_success(status.ok());
         send_reply_callback(status, nullptr, nullptr);
       });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to add job, job id is:" << request.data().job_id()
+                   << ",driver id is:" << request.data().driver_pid();
+    send_reply_callback(status, nullptr, nullptr);
+  }
   RAY_LOG(DEBUG) << "Finish add job, job id is:" << request.data().job_id()
                  << ",driver id is:" << request.data().driver_pid();
 }
@@ -28,6 +33,10 @@ void DefaultJobInfoHandler::HandleMarkJobFinished(
         reply->set_success(status.ok());
         send_reply_callback(status, nullptr, nullptr);
       });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to mark job finished, job id is:" << request.job_id();
+    send_reply_callback(status, nullptr, nullptr);
+  }
   RAY_LOG(DEBUG) << "Finish mark job finished, job id is:" << request.job_id();
 }
 }  // namespace rpc
