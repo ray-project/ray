@@ -123,6 +123,15 @@ matrix:
 
         - ./ci/travis/test-wheels.sh
 
+  allow_failures:
+    - env:
+        - JDK='Oracle JDK 8'
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
+    - env: BAZEL_PYTHON_VERSION=PY3 PYTHON=3.5 PYTHONWARNINGS=ignore TESTSUITE=streaming
+
+  fast_finish: true
+
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
   - if [ $RAY_CI_SERVE_AFFECTED != "1" ] && [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
