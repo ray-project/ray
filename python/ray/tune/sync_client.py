@@ -32,13 +32,15 @@ def get_sync_client(sync_function, delete_function=None):
     """Returns a sync client.
 
     Args:
-        sync_function (str|function): Sync function.
+        sync_function (Optional[str|function]): Sync function.
         delete_function (Optional[str|function]): Delete function. Must be
             the same type as sync_function if it is provided.
 
     Raises:
         ValueError if sync_function or delete_function are malformed.
     """
+    if sync_function is None:
+        return None
     if delete_function and type(sync_function) != type(delete_function):
         raise ValueError("Sync and delete functions must be of same type.")
     if isinstance(sync_function, types.FunctionType):
