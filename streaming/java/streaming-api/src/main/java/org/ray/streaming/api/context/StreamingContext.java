@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.plan.Plan;
 import org.ray.streaming.plan.PlanBuilder;
-import org.ray.streaming.schedule.IJobSchedule;
+import org.ray.streaming.schedule.JobScheduler;
 
 /**
  * Encapsulate the context information of a streaming Job.
@@ -33,7 +33,7 @@ public class StreamingContext implements Serializable {
   private StreamingContext() {
     this.idGenerator = new AtomicInteger(0);
     this.streamSinks = new ArrayList<>();
-    this.jobConfig = new HashMap();
+    this.jobConfig = new HashMap<>();
   }
 
   public static StreamingContext buildContext() {
@@ -48,11 +48,11 @@ public class StreamingContext implements Serializable {
     this.plan = planBuilder.buildPlan();
     plan.printPlan();
 
-    ServiceLoader<IJobSchedule> serviceLoader = ServiceLoader.load(IJobSchedule.class);
-    Iterator<IJobSchedule> iterator = serviceLoader.iterator();
+    ServiceLoader<JobScheduler> serviceLoader = ServiceLoader.load(JobScheduler.class);
+    Iterator<JobScheduler> iterator = serviceLoader.iterator();
     Preconditions.checkArgument(iterator.hasNext());
-    // IJobSchedule jobSchedule = new JobScheduleImpl(jobConfig);
-    IJobSchedule jobSchedule = iterator.next();
+    // JobScheduler jobSchedule = new JobScheduleImpl(jobConfig);
+    JobScheduler jobSchedule = iterator.next();
     jobSchedule.schedule(plan, jobConfig);
   }
 

@@ -14,15 +14,15 @@ import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.runtime.worker.context.WorkerContext;
-import org.ray.streaming.schedule.IJobSchedule;
+import org.ray.streaming.schedule.JobScheduler;
 
-public class JobScheduleImpl implements IJobSchedule {
+public class JobSchedulerImpl implements JobScheduler {
   private Plan plan;
   private Map<String, Object> jobConfig;
   private ResourceManager resourceManager;
   private ITaskAssign taskAssign;
 
-  public JobScheduleImpl() {
+  public JobSchedulerImpl() {
     this.resourceManager = new ResourceManager();
     this.taskAssign = new TaskAssignImpl();
   }

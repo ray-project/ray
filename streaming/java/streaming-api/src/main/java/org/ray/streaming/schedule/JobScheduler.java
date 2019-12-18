@@ -8,7 +8,7 @@ import org.ray.streaming.plan.Plan;
 /**
  * Interface of the job scheduler.
  */
-public interface IJobSchedule {
+public interface JobScheduler {
 
   /**
    * Assign logical plan to physical execution graph, and schedule job to run.
