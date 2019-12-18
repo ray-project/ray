@@ -149,8 +149,7 @@ class CentralizedQueues:
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
-        self.traffic[service][backend] = 1.0
-        self.flush()
+        self.set_traffic(service, {backend : 1.0})
 
     def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,
@@ -284,11 +283,6 @@ class RoundRobinPolicyQueue(CentralizedQueues):
         for service, queue in self.queues.items():
             # if there are incoming requests and there are backends
             if len(queue) and len(self.traffic[service]):
-                if service not in self.round_robin_iterator_map:
-                    backend_names = list(self.traffic[service].keys())
-                    self.round_robin_iterator_map[service] = itertools.cycle(
-                        backend_names)
-
                 while len(queue):
                     # choose the next backend available from persistent
                     # information
@@ -380,13 +374,6 @@ class FixedPackingPolicyQueue(CentralizedQueues):
         for service, queue in self.queues.items():
             # if there are incoming requests and there are backends
             if len(queue) and len(self.traffic[service]):
-                if service not in self.fixed_packing_iterator_map:
-                    backend_names = list(self.traffic[service].keys())
-                    self.fixed_packing_iterator_map[service] = itertools.cycle(
-                        itertools.chain.from_iterable(
-                            itertools.repeat(x, self.packing_num)
-                            for x in backend_names))
-
                 while len(queue):
                     # choose the next backend available from persistent
                     # information
