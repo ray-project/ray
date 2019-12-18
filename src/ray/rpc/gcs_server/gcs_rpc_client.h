@@ -85,27 +85,27 @@ class GcsRpcClient {
             request, callback);
   }
 
-  /// Register an actor to gcs server asynchronously.
+  /// Register an actor to gcs server.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  void AsyncRegister(const ActorAsyncRegisterRequest &request,
-                     const ClientCallback<ActorAsyncRegisterReply> &callback) {
-    client_call_manager_.CreateCall<ActorInfoGcsService, ActorAsyncRegisterRequest,
-                                    ActorAsyncRegisterReply>(
-        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAsyncRegister, request,
-        callback);
+  void RegisterActor(const RegisterActorRequest &request,
+                     const ClientCallback<RegisterActorReply> &callback) {
+    client_call_manager_
+        .CreateCall<ActorInfoGcsService, RegisterActorRequest, RegisterActorReply>(
+            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncRegisterActor,
+            request, callback);
   }
 
-  ///  Update dynamic states of actor in gcs server asynchronously.
+  ///  Update dynamic states of actor in gcs server.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  void AsyncUpdate(const ActorAsyncUpdateRequest &request,
-                   const ClientCallback<ActorAsyncUpdateReply> &callback) {
+  void UpdateActor(const UpdateActorRequest &request,
+                   const ClientCallback<UpdateActorReply> &callback) {
     client_call_manager_
-        .CreateCall<ActorInfoGcsService, ActorAsyncUpdateRequest, ActorAsyncUpdateReply>(
-            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAsyncUpdate,
+        .CreateCall<ActorInfoGcsService, UpdateActorRequest, UpdateActorReply>(
+            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncUpdateActor,
             request, callback);
   }
 
