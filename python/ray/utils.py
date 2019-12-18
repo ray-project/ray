@@ -552,7 +552,6 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
         directory_path: The path of the directory to create.
         warn_if_exist (bool): Warn if the directory already exists.
     """
-    logger = logging.getLogger("ray")
     directory_path = os.path.expanduser(directory_path)
     if not os.path.exists(directory_path):
         try:
@@ -561,6 +560,7 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
             if e.errno != errno.EEXIST:
                 raise e
             if warn_if_exist:
+                logger = logging.getLogger("ray")
                 logger.warning(
                     "Attempted to create '{}', but the directory already "
                     "exists.".format(directory_path))

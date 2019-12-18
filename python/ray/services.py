@@ -1040,7 +1040,7 @@ def start_dashboard(host,
     Returns:
         ProcessInfo for the process that was started.
     """
-    port = 8080
+    port = 8265  # Note: list(map(ord, "RAY")) == [82, 65, 89]
     while True:
         try:
             port_test_socket = socket.socket()
@@ -1070,10 +1070,11 @@ def start_dashboard(host,
         import aiohttp  # noqa: F401
         import psutil  # noqa: F401
         import setproctitle  # noqa: F401
+        import grpc  # noqa: F401
     except ImportError:
         raise ImportError(
             "Failed to start the dashboard. The dashboard requires Python 3 "
-            "as well as 'pip install aiohttp psutil setproctitle'.")
+            "as well as 'pip install aiohttp psutil setproctitle grpcio'.")
 
     process_info = start_ray_process(
         command,

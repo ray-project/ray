@@ -12,6 +12,8 @@ namespace raylet {
 int NUM_WORKERS_PER_PROCESS = 3;
 int MAXIMUM_STARTUP_CONCURRENCY = 5;
 
+std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
+
 class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
@@ -52,6 +54,16 @@ class WorkerPoolMock : public WorkerPool {
 
   const std::vector<std::string> &GetWorkerCommand(int pid) {
     return worker_commands_by_pid[pid];
+  }
+
+  int NumWorkersStarting() const {
+    int total = 0;
+    for (auto &state_entry : states_by_lang_) {
+      for (auto &process_entry : state_entry.second.starting_worker_processes) {
+        total += process_entry.second;
+      }
+    }
+    return total;
   }
 
   int NumWorkerProcessesStarting() const {
@@ -156,19 +168,23 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
   }
 }
 
-TEST_F(WorkerPoolTest, StartupWorkerCount) {
+TEST_F(WorkerPoolTest, StartupWorkerProcessCount) {
   std::string num_workers_arg =
       std::string("--foo=") + std::to_string(NUM_WORKERS_PER_PROCESS);
-  std::vector<Language> languages = {Language::PYTHON, Language::JAVA};
   std::vector<std::vector<std::string>> worker_commands = {
       {{"dummy_py_worker_command", num_workers_arg},
        {"dummy_java_worker_command", num_workers_arg}}};
-  int desired_initial_worker_process_count_per_language = MAXIMUM_STARTUP_CONCURRENCY + 1;
-  int expected_worker_process_count = MAXIMUM_STARTUP_CONCURRENCY * languages.size();
+  int desired_initial_worker_process_count_per_language = 100;
+  int expected_worker_process_count =
+      static_cast<int>(std::ceil(static_cast<double>(MAXIMUM_STARTUP_CONCURRENCY) /
+                                 NUM_WORKERS_PER_PROCESS * LANGUAGES.size()));
+  ASSERT_TRUE(expected_worker_process_count <
+              static_cast<int>(desired_initial_worker_process_count_per_language *
+                               LANGUAGES.size()));
   pid_t last_started_worker_process = 0;
   for (int i = 0; i < desired_initial_worker_process_count_per_language; i++) {
-    for (size_t j = 0; j < languages.size(); j++) {
-      worker_pool_.StartWorkerProcess(languages[j]);
+    for (size_t j = 0; j < LANGUAGES.size(); j++) {
+      worker_pool_.StartWorkerProcess(LANGUAGES[j]);
       ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
       if (last_started_worker_process != worker_pool_.LastStartedWorkerProcess()) {
@@ -179,16 +195,24 @@ TEST_F(WorkerPoolTest, StartupWorkerCount) {
       } else {
         ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() ==
                     expected_worker_process_count);
-        ASSERT_TRUE(static_cast<int>(i * languages.size() + j) >=
+        ASSERT_TRUE(static_cast<int>(i * LANGUAGES.size() + j) >=
                     expected_worker_process_count);
       }
     }
   }
-  // Check number of starting worker processes
+  // Check number of starting workers
   ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), expected_worker_process_count);
-  ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() <
-              static_cast<int>(desired_initial_worker_process_count_per_language *
-                               languages.size()));
+}
+
+TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
+  worker_pool_.Start(1);
+  // Here we try to start only 1 worker for each worker language. But since each worker
+  // process contains exactly NUM_WORKERS_PER_PROCESS (3) workers here, it's expected to
+  // see 3 workers for each worker language, instead of 1.
+  ASSERT_NE(worker_pool_.NumWorkersStarting(), 1 * LANGUAGES.size());
+  ASSERT_EQ(worker_pool_.NumWorkersStarting(),
+            NUM_WORKERS_PER_PROCESS * LANGUAGES.size());
+  ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), LANGUAGES.size());
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
