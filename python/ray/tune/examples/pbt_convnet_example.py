@@ -18,6 +18,7 @@ import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.util import validate_save_restore
+from ray.tune.trial import ExportFormat
 
 # __tutorial_imports_end__
 
@@ -50,6 +51,14 @@ class PytorchTrainble(tune.Trainable):
 
     def _restore(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
+
+    def _export_model(self, export_formats, export_dir):
+        if export_formats == [ExportFormat.MODEL]:
+            path = export_dir + "/exported_convnet.pt"
+            torch.save(self.model.state_dict(), path)
+            return {export_formats[0]: path}
+        else:
+            raise ValueError('unexpected formats: ' + str(export_formats))
 
     def reset_config(self, new_config):
         del self.optimizer
@@ -100,6 +109,7 @@ if __name__ == "__main__":
         stop={
             "training_iteration": 5 if args.smoke_test else 100,
         },
+        export_formats=[ExportFormat.MODEL],
         num_samples=4,
         config={
             "lr": tune.uniform(0.001, 1),
