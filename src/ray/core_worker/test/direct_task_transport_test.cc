@@ -1,9 +1,9 @@
-#include "gtest/gtest.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 
+#include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/util/test_util.h"
@@ -168,8 +168,8 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
-  // Checks that the object id was promoted to a plasma type id.
-  ASSERT_FALSE(task.ArgId(0, 0).IsDirectCallType());
+  // Checks that the object id is still a direct call id.
+  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
