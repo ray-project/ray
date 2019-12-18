@@ -688,10 +688,11 @@ cdef execute_task(
         # If we've reached the max number of executions for this worker, exit.
         task_counter = manager.get_task_counter(job_id, function_descriptor)
         if task_counter == execution_info.max_calls:
-            # Intentionally disconnect so the raylet doesn't print an error.
-            # TODO(edoakes): we should handle max_calls in the core worker.
-            worker.core_worker.disconnect()
-            sys.exit(0)
+            # TODO(ekl) how do we suppress the worker died error without
+            # destroying the core worker also?
+            exit = SystemExit(0)
+            exit.is_ray_terminate = True
+            raise exit
 
 
 cdef CRayStatus task_execution_handler(

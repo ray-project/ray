@@ -11,9 +11,22 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
+  RAY_CHECK(shutdown_hook_ == nullptr);
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
+}
+
+void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
+  absl::MutexLock lock(&mu_);
+  if (pending_tasks_.empty()) {
+    shutdown();
+  } else {
+    RAY_LOG(ERROR)
+        << "This worker is still waiting for " << pending_tasks_.size()
+        << " background tasks, waiting for them to finish before shutting down.";
+  }
+  shutdown_hook_ = shutdown;
 }
 
 bool TaskManager::IsTaskPending(const TaskID &task_id) const {
@@ -67,6 +80,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_CHECK(actor_addr != nullptr);
     actor_manager_->PublishCreatedActor(spec, *actor_addr);
   }
+
+  ShutdownIfNeeded();
 }
 
 void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
@@ -120,6 +135,16 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
       }
     }
     MarkPendingTaskFailed(task_id, spec, error_type);
+  }
+
+  ShutdownIfNeeded();
+}
+
+void TaskManager::ShutdownIfNeeded() {
+  absl::MutexLock lock(&mu_);
+  if (shutdown_hook_ && pending_tasks_.empty()) {
+    RAY_LOG(ERROR) << "All background tasks finished, shutting down worker.";
+    shutdown_hook_();
   }
 }
 

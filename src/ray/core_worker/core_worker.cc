@@ -117,7 +117,15 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RAY_CHECK(task_execution_callback_ != nullptr);
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
-    auto exit = std::bind(&CoreWorker::Shutdown, this);
+    auto exit = [this]() {
+      // Release the resources early in case draining takes a long time.
+      RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
+      task_manager_->DrainAndShutdown([this]() {
+        // To avoid problems, make sure shutdown is always called from the same
+        // event loop each time.
+        task_execution_service_.post([this]() { Shutdown(); });
+      });
+    };
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
@@ -1032,6 +1040,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "handle object status";
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   TaskID owner_id = TaskID::FromBinary(request.owner_id());
   if (owner_id != GetCallerId()) {
