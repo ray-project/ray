@@ -67,7 +67,7 @@ def init(kv_store_connector=None,
             memory. Data older than the gc_window will be deleted. The default
             is 3600 seconds, which is 1 hour.
         queueing_policy(Policy): Define the queueing policy for selecting the
-            backend for a service.
+            backend for a service. (Default: Policy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
     """
     global global_state
