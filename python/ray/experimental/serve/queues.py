@@ -351,6 +351,11 @@ class FixedPackingPolicyQueue(CentralizedQueues):
     This backend selection policy is `Stateful` meaning
     the current decisions of selecting backend are
     dependent on previous decisions.
+    FixedPackingPolicy is k RoundRobin policy where first packing_num
+    queries are handled by 'backend-1' and next k queries are handled by
+    'backend-2' and so on ... where 'backend-1' and 'backend-2' are served
+    by the same service.
+
     """
 
     def __init__(self, packing_num=3):

@@ -23,13 +23,6 @@ def _get_global_state():
     """
     return global_state
 
-
-def _get_router_policy(queueing_policy_name):
-    for p in Policy:
-        if p.name == queueing_policy_name:
-            return p
-
-
 def _ensure_connected(f):
     @wraps(f)
     def check(*args, **kwargs):
@@ -48,7 +41,7 @@ def init(kv_store_connector=None,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={"object_store_memory": int(1e8)},
          gc_window_seconds=3600,
-         queueing_policy="Random",
+         queueing_policy=Policy.Random,
          policy_kwargs={}):
     """Initialize a serve cluster.
 
@@ -77,12 +70,6 @@ def init(kv_store_connector=None,
         policy_kwargs: Arguments required to instantiate a queueing policy
     """
     global global_state
-    queueing_policy = _get_router_policy(queueing_policy)
-    if queueing_policy is None:
-        supported_policies = ",".join([p.name for p in Policy])
-        raise ValueError(
-            "Please specify supported router policy."
-            " Supported policies are: {}".format(supported_policies))
     # Noop if global_state is no longer None
     if global_state is not None:
         return
