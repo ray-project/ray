@@ -98,6 +98,7 @@ def cli(logging_level, logging_format):
     "--redis-password",
     required=False,
     type=str,
+    default=ray_constants.REDIS_DEFAULT_PASSWORD,
     help="If provided, secure Redis ports with this password")
 @click.option(
     "--redis-shard-ports",
@@ -381,7 +382,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         redis_client = services.create_redis_client(
             redis_address, password=redis_password)
 
-        # Check that the verion information on this node matches the version
+        # Check that the version information on this node matches the version
         # information that the cluster was started with.
         services.check_version_info(redis_client)
 

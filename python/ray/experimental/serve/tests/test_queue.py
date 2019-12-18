@@ -34,6 +34,19 @@ def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     assert ray.get(ray.ObjectID(result_object_id)) == 2
 
 
+def test_slo(serve_instance, task_runner_mock_actor):
+    q = CentralizedQueues()
+    q.link("svc", "backend")
+
+    for i in range(10):
+        slo_ms = 1000 - 100 * i
+        q.enqueue_request("svc", i, "kwargs", None, request_slo_ms=slo_ms)
+    for i in range(10):
+        q.dequeue_request("backend", task_runner_mock_actor)
+        got_work = ray.get(task_runner_mock_actor.get_recent_call.remote())
+        assert got_work.request_args == (9 - i)
+
+
 def test_alter_backend(serve_instance, task_runner_mock_actor):
     q = CentralizedQueues()
 

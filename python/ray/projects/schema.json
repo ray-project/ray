@@ -25,8 +25,48 @@
       "type": "string"
     },
     "cluster": {
-      "description": "Path to a .yaml cluster configuration file (relative to the project root)",
-      "type": "string"
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "string",
+          "description": "Path to a .yaml cluster configuration file (relative to the project root)"
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "help": {
+                "type": "string"
+              },
+              "choices": {
+                "type": "array"
+              },
+              "default": {
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "int",
+                  "float",
+                  "str"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "config"
+      ],
+      "additionalProperties": false
     },
     "environment": {
       "description": "The environment that needs to be set up to run the project",

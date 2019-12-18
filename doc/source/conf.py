@@ -23,6 +23,7 @@ from custom_directives import CustomGalleryItemDirective
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
 MOCK_MODULES = [
+    "blist",
     "gym",
     "gym.spaces",
     "ray._raylet",
@@ -48,6 +49,7 @@ MOCK_MODULES = [
     "torch",
     "torch.distributed",
     "torch.nn",
+    "torch.nn.parallel",
     "torch.utils.data",
 ]
 for mod_name in MOCK_MODULES:

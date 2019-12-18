@@ -6,6 +6,8 @@ from __future__ import print_function
 
 import time
 
+import numpy as np
+
 import ray
 from ray.cluster_utils import Cluster
 
@@ -43,6 +45,7 @@ class Actor(object):
 
     def method(self):
         self.value += 1
+        return np.zeros(1024, dtype=np.uint8)
 
 
 actors = [

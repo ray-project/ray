@@ -342,7 +342,7 @@ def test_actor_worker_dying(ray_start_regular):
 
 
 def test_actor_worker_dying_future_tasks(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def getpid(self):
             return os.getpid()
@@ -364,7 +364,7 @@ def test_actor_worker_dying_future_tasks(ray_start_regular):
 
 
 def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def getpid(self):
             return os.getpid()
@@ -729,11 +729,17 @@ def test_redis_module_failure(ray_start_regular):
     def run_failure_test(expecting_message, *command):
         with pytest.raises(
                 Exception, match=".*{}.*".format(expecting_message)):
-            client = redis.StrictRedis(host=address[0], port=int(address[1]))
+            client = redis.StrictRedis(
+                host=address[0],
+                port=int(address[1]),
+                password=ray_constants.REDIS_DEFAULT_PASSWORD)
             client.execute_command(*command)
 
     def run_one_command(*command):
-        client = redis.StrictRedis(host=address[0], port=int(address[1]))
+        client = redis.StrictRedis(
+            host=address[0],
+            port=int(address[1]),
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
         client.execute_command(*command)
 
     run_failure_test("wrong number of arguments", "RAY.TABLE_ADD", 13)

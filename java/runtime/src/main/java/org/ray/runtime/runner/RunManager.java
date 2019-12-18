@@ -308,6 +308,10 @@ public class RunManager {
       cmd.add("-Dray.logging.file.path=" + logFile);
     }
 
+    if (!Strings.isNullOrEmpty(rayConfig.jobResourcePath)) {
+      cmd.add("-Dray.job.resource-path=" + rayConfig.jobResourcePath);
+    }
+
     // socket names
     cmd.add("-Dray.raylet.socket-name=" + rayConfig.rayletSocketName);
     cmd.add("-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName);
