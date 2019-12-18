@@ -23,5 +23,14 @@ run_testng java -cp $ROOT_DIR/../../bazel-bin/streaming/java/all_streaming_tests
  org.testng.TestNG -d /tmp/ray_streaming_java_test_output $ROOT_DIR/testng.xml
 
 echo "Testing maven install."
+cd $ROOT_DIR/../../java
+echo "build ray maven deps"
+bazel build gen_maven_deps
+echo "maven install ray"
+mvn clean install -DskipTests
+cd $ROOT_DIR
+echo "build ray streaming maven deps"
+bazel build gen_maven_deps
+echo "maven install ray streaming"
 mvn clean install -DskipTests
 popd
