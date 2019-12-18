@@ -66,16 +66,15 @@ class ActorInfoHandler {
  public:
   virtual ~ActorInfoHandler() = default;
 
-  virtual void HandleAsyncGet(const ActorAsyncGetRequest &request,
-                              ActorAsyncGetReply *reply,
+  virtual void HandleGetActor(const GetActorRequest &request, GetActorReply *reply,
                               SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAsyncRegister(const ActorAsyncRegisterRequest &request,
-                                   ActorAsyncRegisterReply *reply,
+  virtual void HandleRegisterActor(const RegisterActorRequest &request,
+                                   RegisterActorReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAsyncUpdate(const ActorAsyncUpdateRequest &request,
-                                 ActorAsyncUpdateReply *reply,
+  virtual void HandleUpdateActor(const UpdateActorRequest &request,
+                                 UpdateActorReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -97,26 +96,26 @@ class ActorInfoGrpcService : public GrpcService {
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
     std::unique_ptr<ServerCallFactory> async_get_call_factory(
-        new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler,
-                                  ActorAsyncGetRequest, ActorAsyncGetReply>(
-            service_, &ActorInfoGcsService::AsyncService::RequestAsyncGet,
-            service_handler_, &ActorInfoHandler::HandleAsyncGet, cq, main_service_));
+        new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler, GetActorRequest,
+                                  GetActorReply>(
+            service_, &ActorInfoGcsService::AsyncService::RequestGetActor,
+            service_handler_, &ActorInfoHandler::HandleGetActor, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(async_get_call_factory), 1);
 
     std::unique_ptr<ServerCallFactory> async_register_finished_call_factory(
         new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler,
-                                  ActorAsyncRegisterRequest, ActorAsyncRegisterReply>(
-            service_, &ActorInfoGcsService::AsyncService::RequestAsyncRegister,
-            service_handler_, &ActorInfoHandler::HandleAsyncRegister, cq, main_service_));
+                                  RegisterActorRequest, RegisterActorReply>(
+            service_, &ActorInfoGcsService::AsyncService::RequestRegisterActor,
+            service_handler_, &ActorInfoHandler::HandleRegisterActor, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(async_register_finished_call_factory), 1);
 
     std::unique_ptr<ServerCallFactory> async_update_finished_call_factory(
         new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler,
-                                  ActorAsyncUpdateRequest, ActorAsyncUpdateReply>(
-            service_, &ActorInfoGcsService::AsyncService::RequestAsyncUpdate,
-            service_handler_, &ActorInfoHandler::HandleAsyncUpdate, cq, main_service_));
+                                  UpdateActorRequest, UpdateActorReply>(
+            service_, &ActorInfoGcsService::AsyncService::RequestUpdateActor,
+            service_handler_, &ActorInfoHandler::HandleUpdateActor, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(async_update_finished_call_factory), 1);
   }

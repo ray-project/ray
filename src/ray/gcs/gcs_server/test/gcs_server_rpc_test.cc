@@ -43,67 +43,74 @@ class GcsServerTest : public ::testing::Test {
     thread_gcs_server_->join();
   }
 
-  void TestAsyncRegister(const rpc::ActorAsyncRegisterRequest &request) {
-    std::promise<rpc::ActorAsyncRegisterReply> register_actor_reply_promise;
-    auto register_actor_reply_future = register_actor_reply_promise.get_future();
-    client_->AsyncRegister(
-        request, [&register_actor_reply_promise](
-                     const Status &status, const rpc::ActorAsyncRegisterReply &reply) {
+  void TestAddJob(const rpc::AddJobRequest &request) {
+    std::promise<rpc::AddJobReply> reply_promise;
+    auto reply_future = reply_promise.get_future();
+    client_->AddJob(
+        request, [&reply_promise](const Status &status, const rpc::AddJobReply &reply) {
           if (status.ok()) {
-            register_actor_reply_promise.set_value(reply);
+            reply_promise.set_value(reply);
           }
         });
-    auto future_status =
-        register_actor_reply_future.wait_for(std::chrono::milliseconds(200));
-    ASSERT_EQ(future_status, std::future_status::ready);
-
-    // Async get actor
-    rpc::ActorAsyncGetRequest asyncGetRequest;
-    asyncGetRequest.set_actor_id(request.actor_table_data().actor_id());
-    std::promise<rpc::ActorAsyncGetReply> get_actor_reply_promise;
-    auto get_actor_reply_future = get_actor_reply_promise.get_future();
-    client_->AsyncGet(asyncGetRequest,
-                      [request, &get_actor_reply_promise](
-                          const Status &status, const rpc::ActorAsyncGetReply &reply) {
-                        if (status.ok()) {
-                          get_actor_reply_promise.set_value(reply);
-                          ASSERT_TRUE(reply.actor_table_data().state() ==
-                                      request.actor_table_data().state());
-                        }
-                      });
-    future_status = get_actor_reply_future.wait_for(std::chrono::milliseconds(200));
+    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
     ASSERT_EQ(future_status, std::future_status::ready);
   }
 
-  void TestAsyncUpdateAndGet(const rpc::ActorAsyncUpdateRequest &request) {
-    std::promise<rpc::ActorAsyncUpdateReply> update_actor_reply_promise;
-    auto update_actor_reply_future = update_actor_reply_promise.get_future();
-    client_->AsyncUpdate(
-        request, [&update_actor_reply_promise](const Status &status,
-                                               const rpc::ActorAsyncUpdateReply &reply) {
+  void TestMarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
+    std::promise<rpc::MarkJobFinishedReply> reply_promise;
+    auto reply_future = reply_promise.get_future();
+    client_->MarkJobFinished(
+        request,
+        [&reply_promise](const Status &status, const rpc::MarkJobFinishedReply &reply) {
           if (status.ok()) {
-            update_actor_reply_promise.set_value(reply);
+            reply_promise.set_value(reply);
           }
         });
-    auto future_status =
-        update_actor_reply_future.wait_for(std::chrono::milliseconds(200));
+    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
     ASSERT_EQ(future_status, std::future_status::ready);
+  }
 
-    // Async get actor
-    rpc::ActorAsyncGetRequest asyncGetRequest;
-    asyncGetRequest.set_actor_id(request.actor_table_data().actor_id());
-    std::promise<rpc::ActorAsyncGetReply> get_actor_reply_promise;
-    auto get_actor_reply_future = get_actor_reply_promise.get_future();
-    client_->AsyncGet(asyncGetRequest,
-                      [request, &get_actor_reply_promise](
-                          const Status &status, const rpc::ActorAsyncGetReply &reply) {
-                        if (status.ok()) {
-                          get_actor_reply_promise.set_value(reply);
-                          ASSERT_TRUE(reply.actor_table_data().state() ==
-                                      request.actor_table_data().state());
-                        }
-                      });
-    future_status = get_actor_reply_future.wait_for(std::chrono::milliseconds(200));
+  void TestRegisterActor(const rpc::RegisterActorRequest &request) {
+    std::promise<rpc::RegisterActorReply> reply_promise;
+    auto reply_future = reply_promise.get_future();
+    client_->RegisterActor(
+        request,
+        [&reply_promise](const Status &status, const rpc::RegisterActorReply &reply) {
+          if (status.ok()) {
+            reply_promise.set_value(reply);
+          }
+        });
+    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
+    ASSERT_EQ(future_status, std::future_status::ready);
+  }
+
+  void TestUpdateActor(const rpc::UpdateActorRequest &request) {
+    std::promise<rpc::UpdateActorReply> reply_promise;
+    auto reply_future = reply_promise.get_future();
+    client_->UpdateActor(request, [&reply_promise](const Status &status,
+                                                   const rpc::UpdateActorReply &reply) {
+      if (status.ok()) {
+        reply_promise.set_value(reply);
+      }
+    });
+    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
+    ASSERT_EQ(future_status, std::future_status::ready);
+  }
+
+  void TestGetActor(const rpc::ActorTableData &expected) {
+    rpc::GetActorRequest request;
+    request.set_actor_id(expected.actor_id());
+    std::promise<rpc::GetActorReply> reply_promise;
+    auto reply_future = reply_promise.get_future();
+    client_->GetActor(
+        request, [expected, &reply_promise](const Status &status,
+                                            const rpc::GetActorReply &reply) {
+          if (status.ok()) {
+            reply_promise.set_value(reply);
+            ASSERT_TRUE(reply.actor_table_data().state() == expected.state());
+          }
+        });
+    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
     ASSERT_EQ(future_status, std::future_status::ready);
   }
 
@@ -142,57 +149,42 @@ class GcsServerTest : public ::testing::Test {
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {
-  // create actor_table_data
+  // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
   rpc::ActorTableData actor_table_data = genActorTableData(job_id);
 
-  // Async register actor
-  rpc::ActorAsyncRegisterRequest asyncRegisterRequest;
-  asyncRegisterRequest.mutable_actor_table_data()->CopyFrom(actor_table_data);
-  TestAsyncRegister(asyncRegisterRequest);
+  // Register actor
+  rpc::RegisterActorRequest register_actor_request;
+  register_actor_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
+  TestRegisterActor(register_actor_request);
+  TestGetActor(actor_table_data);
 
-  // Async update actor state and get
-  rpc::ActorAsyncUpdateRequest asyncUpdateRequest;
+  // Update actor state
+  rpc::UpdateActorRequest update_actor_request;
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  asyncUpdateRequest.set_actor_id(actor_table_data.actor_id());
-  asyncUpdateRequest.mutable_actor_table_data()->CopyFrom(actor_table_data);
-  TestAsyncUpdateAndGet(asyncUpdateRequest);
+  update_actor_request.set_actor_id(actor_table_data.actor_id());
+  update_actor_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
+  TestUpdateActor(update_actor_request);
+
+  // Get actor and check actor state
+  TestGetActor(actor_table_data);
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {
-  // create job_table_data
+  // Create job_table_data
   JobID job_id = JobID::FromInt(1);
   rpc::JobTableData job_table_data = genJobTableData(job_id);
 
+  // Add job
   rpc::AddJobRequest add_job_request;
   add_job_request.mutable_data()->CopyFrom(job_table_data);
-  std::promise<rpc::AddJobReply> add_job_reply_promise;
-  auto add_job_reply_future = add_job_reply_promise.get_future();
-  client_->AddJob(
-      add_job_request,
-      [&add_job_reply_promise](const Status &status, const rpc::AddJobReply &reply) {
-        if (status.ok()) {
-          add_job_reply_promise.set_value(reply);
-        }
-      });
-  auto future_status = add_job_reply_future.wait_for(std::chrono::milliseconds(200));
-  ASSERT_EQ(future_status, std::future_status::ready);
+  TestAddJob(add_job_request);
 
+  // Mark job finished
   rpc::MarkJobFinishedRequest mark_job_finished_request;
   mark_job_finished_request.set_job_id(job_table_data.job_id());
-  std::promise<rpc::MarkJobFinishedReply> mark_job_finished_reply_promise;
-  auto mark_job_finished_reply_future = mark_job_finished_reply_promise.get_future();
-  client_->MarkJobFinished(
-      mark_job_finished_request,
-      [&mark_job_finished_reply_promise](const Status &status,
-                                         const rpc::MarkJobFinishedReply &reply) {
-        if (status.ok()) {
-          mark_job_finished_reply_promise.set_value(reply);
-        }
-      });
-  future_status = mark_job_finished_reply_future.wait_for(std::chrono::milliseconds(200));
-  ASSERT_EQ(future_status, std::future_status::ready);
+  TestMarkJobFinished(mark_job_finished_request);
 }
 
 }  // namespace ray

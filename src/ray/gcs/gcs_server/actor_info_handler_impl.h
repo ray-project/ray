@@ -13,15 +13,13 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
   explicit DefaultActorInfoHandler(gcs::RedisGcsClient &gcs_client)
       : gcs_client_(gcs_client) {}
 
-  void HandleAsyncGet(const ActorAsyncGetRequest &request, ActorAsyncGetReply *reply,
+  void HandleGetActor(const GetActorRequest &request, GetActorReply *reply,
                       SendReplyCallback send_reply_callback) override;
 
-  void HandleAsyncRegister(const ActorAsyncRegisterRequest &request,
-                           ActorAsyncRegisterReply *reply,
+  void HandleRegisterActor(const RegisterActorRequest &request, RegisterActorReply *reply,
                            SendReplyCallback send_reply_callback) override;
 
-  void HandleAsyncUpdate(const ActorAsyncUpdateRequest &request,
-                         ActorAsyncUpdateReply *reply,
+  void HandleUpdateActor(const UpdateActorRequest &request, UpdateActorReply *reply,
                          SendReplyCallback send_reply_callback) override;
 
  private:

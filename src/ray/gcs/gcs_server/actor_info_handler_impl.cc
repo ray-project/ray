@@ -4,8 +4,8 @@
 namespace ray {
 namespace rpc {
 
-void DefaultActorInfoHandler::HandleAsyncGet(const rpc::ActorAsyncGetRequest &request,
-                                             rpc::ActorAsyncGetReply *reply,
+void DefaultActorInfoHandler::HandleGetActor(const rpc::GetActorRequest &request,
+                                             rpc::GetActorReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Begin get actor info, actor id is:" << request.actor_id();
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
@@ -29,8 +29,8 @@ void DefaultActorInfoHandler::HandleAsyncGet(const rpc::ActorAsyncGetRequest &re
   RAY_LOG(DEBUG) << "Finish get actor info, actor id is:" << request.actor_id();
 }
 
-void DefaultActorInfoHandler::HandleAsyncRegister(
-    const rpc::ActorAsyncRegisterRequest &request, rpc::ActorAsyncRegisterReply *reply,
+void DefaultActorInfoHandler::HandleRegisterActor(
+    const rpc::RegisterActorRequest &request, rpc::RegisterActorReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Begin register actor info, actor id is:"
                  << request.actor_table_data().actor_id();
@@ -55,8 +55,8 @@ void DefaultActorInfoHandler::HandleAsyncRegister(
                  << request.actor_table_data().actor_id();
 }
 
-void DefaultActorInfoHandler::HandleAsyncUpdate(
-    const rpc::ActorAsyncUpdateRequest &request, rpc::ActorAsyncUpdateReply *reply,
+void DefaultActorInfoHandler::HandleUpdateActor(
+    const rpc::UpdateActorRequest &request, rpc::UpdateActorReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Begin update actor info, actor id is:" << request.actor_id();
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
