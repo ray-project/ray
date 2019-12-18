@@ -15,6 +15,9 @@ run_testng() {
     fi
 }
 
+echo "build ray streaming"
+bazel build //streaming/java:all
+
 echo "Linting Java code with checkstyle."
 bazel test //streaming/java:all --test_tag_filters="checkstyle" --build_tests_only
 
@@ -29,8 +32,6 @@ bazel build gen_maven_deps
 echo "maven install ray"
 mvn clean install -DskipTests
 cd $ROOT_DIR
-echo "build ray streaming maven deps"
-bazel build gen_maven_deps
 echo "maven install ray streaming"
 mvn clean install -DskipTests
 popd
