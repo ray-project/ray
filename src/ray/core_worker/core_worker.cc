@@ -331,7 +331,7 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
     RAY_CHECK_OK(
-        plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType()));
+        plasma_store_provider_->Put(*value, object_id));
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
@@ -425,8 +425,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     for (const auto &pair : result_map) {
       if (pair.second->IsInPlasmaError()) {
         RAY_LOG(DEBUG) << pair.first << " in plasma, doing fetch-and-get";
-        promoted_plasma_ids.insert(
-            pair.first.WithTransportType(TaskTransportType::RAYLET));
+        promoted_plasma_ids.insert(pair.first);
       }
     }
     if (!promoted_plasma_ids.empty()) {
@@ -442,9 +441,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       for (const auto &id : promoted_plasma_ids) {
         auto it = result_map.find(id);
         if (it == result_map.end()) {
-          result_map.erase(id.WithTransportType(TaskTransportType::DIRECT));
+          result_map.erase(id);
         } else {
-          result_map[id.WithTransportType(TaskTransportType::DIRECT)] = it->second;
+          result_map[id] = it->second;
         }
         result_map.erase(id);
       }
@@ -473,7 +472,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   }
   // If no timeout was set and none of the results will throw an exception,
   // then check that we fetched all results before returning.
-  if (timeout_ms >= 0 && !will_throw_exception) {
+  if (timeout_ms <= 0 && !will_throw_exception) {
     RAY_CHECK(!missing_result);
   }
 
@@ -490,8 +489,7 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   if (!found) {
     // We check plasma as a fallback in all cases, since a direct call object
     // may have been spilled to plasma.
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(
-        object_id.WithTransportType(TaskTransportType::RAYLET), &found));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
   }
   *has_object = found;
   return Status::OK();
@@ -814,8 +812,7 @@ Status CoreWorker::AllocateReturnObjects(
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(Create(
-            metadatas[i], data_sizes[i],
-            object_ids[i].WithTransportType(TaskTransportType::RAYLET), &data_buffer));
+            metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -876,7 +873,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       continue;
     }
     if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i].WithTransportType(TaskTransportType::RAYLET)).ok()) {
+      if (!Seal(return_ids[i]).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }

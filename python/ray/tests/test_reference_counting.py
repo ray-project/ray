@@ -3,12 +3,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import copy
+import tempfile
 import json
 import numpy as np
 import time
 import logging
 import pytest
+import uuid
 
 import ray
 import ray.cluster_utils
@@ -24,7 +27,7 @@ def _check_refcounts(expected):
         assert local == actual[object_id]["local"]
         assert submitted == actual[object_id]["submitted"]
 
-def check_refcounts(expected, timeout=0.1):
+def check_refcounts(expected, timeout=1):
     start = time.time()
     while True:
         try:
@@ -47,34 +50,99 @@ def test_local_refcounts(ray_start_regular):
     check_refcounts({})
 
 def test_dependency_refcounts(ray_start_regular):
-    @ray.remote
-    def one_dep(dep):
-        pass
-
-    @ray.remote
-    def one_dep_large(dep):
-        # Return a 10MiB object - this should be spilled to plasma.
+    # Return a large object that will be spilled to plasma.
+    def large_object():
         return np.zeros(10*1024*1024, dtype=np.uint8)
 
-    @ray.remote
-    def two_deps(dep1, dep2):
-        pass
+    # TODO: Clean up tmpfiles?
+    def random_path():
+        return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
 
-    dep = one_dep.remote(None)
+    def touch(path):
+        with open(path, "w") as f:
+            pass
+        
+    def wait_for_file(path):
+        while True:
+            if os.path.exists(path):
+                break
+            time.sleep(0.1)
+
+    @ray.remote
+    def one_dep(dep, path=None):
+        print("WE IN HERE")
+        if path is not None:
+            wait_for_file(path)
+
+    @ray.remote
+    def one_dep_large(dep, path=None):
+        if path is not None:
+            wait_for_file(path)
+        # This should be spilled to plasma.
+        return large_object()
+
+    # Test that regular plasma dependency refcounts are decremented once the
+    # task finishes.
+    f = random_path()
+    large_dep = ray.put(large_object())
+    result = one_dep.remote(large_dep, path=f)
+    check_refcounts({large_dep: (1, 1), result: (1, 0)})
+    touch(f)
+    # Reference count should be removed once the task finishes.
+    check_refcounts({large_dep: (1, 0), result: (1, 0)})
+    del large_dep, result
+    check_refcounts({})
+
+    # Test that inlined dependency refcounts are decremented once they are
+    # inlined.
+    f = random_path()
+    dep = one_dep.remote(None, path=f)
     check_refcounts({dep: (1, 0)})
-    ray.get(dep)
     result = one_dep.remote(dep)
-    # Should be inlined immediately, so no submitted refcount should be seen.
+    check_refcounts({dep: (1, 1), result: (1, 0)})
+    touch(f)
+    # Reference count should be removed as soon as the dependency is inlined.
+    check_refcounts({dep: (1, 0), result: (1, 0)}, timeout=1)
+    del dep, result
+    check_refcounts({})
+
+    # Test that spilled plasma dependency refcounts are decremented once they
+    # the task finishes.
+    f1, f2 = random_path(), random_path()
+    dep = one_dep_large.remote(None, path=f1)
+    check_refcounts({dep: (1, 0)})
+    result = one_dep.remote(dep, path=f2)
+    check_refcounts({dep: (1, 1), result: (1, 0)})
+    touch(f1)
+    ray.get(dep, timeout=5.0)
+    # Reference count should remain because the dependency is in plasma.
+    check_refcounts({dep: (1, 1), result: (1, 0)})
+    touch(f2)
+    ray.get(result, timeout=5.0)
+    # Reference count should be removed because the task finished.
     check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result
+    check_refcounts({})
+
+"""
+    random_id = ray.put(None)
+    dep = one_dep.remote(random_id)
+    check_refcounts({random_id: (1, 0), dep: (1, 0)})
+    del random_id, dep
 
     check_refcounts({})
     random_id = ray.ObjectID.from_random()
-    dep = one_dep.remote(random_id)
-    check_refcounts({random_id: (1, 1), dep: (1, 0)})
+    large_dep = one_dep_large.remote(None)
+    check_refcounts({random_id: (1, 0), large_dep: (1, 0)})
+    result = two_deps.remote(random_id, large_dep)
+    check_refcounts({random_id: (1, 1), large_dep: (1, 1), result: (1, 0)})
+    print("put ", random_id)
     ray.worker.global_worker.put_object(None, object_id=random_id)
-    check_refcounts({random_id: (1, 0), dep: (1, 0)})
-    del random_id, dep
+    print(random_id)
+    print(large_dep)
+    ray.get(result)
+    check_refcounts({random_id: (1, 0), large_dep: (1, 0), result: (1, 0)},timeout=1)
+    del random_id, large_dep, result
 
     check_refcounts({})
     random_id_1 = ray.ObjectID.from_random()
@@ -89,6 +157,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({random_id_1: (1, 0), random_id_2: (1, 0), large_dep: (1, 0), result: (1, 0)})
     del random_id_1, random_id_2, large_dep, result
     check_refcounts({})
+"""
 
 if __name__ == "__main__":
     import pytest

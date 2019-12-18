@@ -48,7 +48,6 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              std::shared_ptr<Buffer> *data) {
-  RAY_CHECK(!object_id.IsDirectCallType());
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
