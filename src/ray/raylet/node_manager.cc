@@ -3,7 +3,6 @@
 #include <cctype>
 #include <fstream>
 #include <memory>
-#include <sstream>
 
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
