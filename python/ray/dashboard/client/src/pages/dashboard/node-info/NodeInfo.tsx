@@ -9,7 +9,7 @@ import TableRow from "@material-ui/core/TableRow";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { connect } from "react-redux";
-import { getNodeInfo } from "../../../api";
+import { getNodeInfo, getRayletInfo } from "../../../api";
 import { StoreState } from "../../../store";
 import { dashboardActions } from "../state";
 import LastUpdated from "./LastUpdated";
@@ -38,7 +38,8 @@ const styles = (theme: Theme) =>
   });
 
 const mapStateToProps = (state: StoreState) => ({
-  nodeInfo: state.dashboard.nodeInfo
+  nodeInfo: state.dashboard.nodeInfo,
+  rayletInfo: state.dashboard.rayletInfo
 });
 
 const mapDispatchToProps = dashboardActions;
@@ -50,8 +51,11 @@ class NodeInfo extends React.Component<
 > {
   refreshNodeInfo = async () => {
     try {
-      const nodeInfo = await getNodeInfo();
-      this.props.setNodeInfo(nodeInfo);
+      const [nodeInfo, rayletInfo] = await Promise.all([
+        getNodeInfo(),
+        getRayletInfo()
+      ]);
+      this.props.setNodeInfoAndRayletInfo({ nodeInfo, rayletInfo });
       this.props.setError(null);
     } catch (error) {
       this.props.setError(error.toString());
@@ -65,9 +69,9 @@ class NodeInfo extends React.Component<
   }
 
   render() {
-    const { classes, nodeInfo } = this.props;
+    const { classes, nodeInfo, rayletInfo } = this.props;
 
-    if (nodeInfo === null) {
+    if (nodeInfo === null || rayletInfo === null) {
       return (
         <Typography className={classes.root} color="textSecondary">
           Loading...
@@ -144,6 +148,7 @@ class NodeInfo extends React.Component<
               <NodeRowGroup
                 key={client.ip}
                 node={client}
+                raylet={client.ip in rayletInfo ? rayletInfo[client.ip] : null}
                 logCounts={logCounts[client.ip]}
                 errorCounts={errorCounts[client.ip]}
                 initialExpanded={nodeInfo.clients.length <= 4}

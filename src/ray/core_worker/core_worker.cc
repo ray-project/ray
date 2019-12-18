@@ -1071,4 +1071,17 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   event.Wait();
 }
 
+void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+                          SetResultCallback fallback_callback, void *python_future) {
+  RAY_CHECK(object_id.IsDirectCallType());
+  memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
+                                      object_id](std::shared_ptr<RayObject> ray_object) {
+    if (ray_object->IsInPlasmaError()) {
+      fallback_callback(ray_object, object_id.WithPlasmaTransportType(), python_future);
+    } else {
+      success_callback(ray_object, object_id, python_future);
+    }
+  });
+}
+
 }  // namespace ray
