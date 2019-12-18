@@ -28,40 +28,40 @@ service JobInfoGcsService {
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
 }
 
-message GetActorRequest {
+message GetActorInfoRequest {
   // ID of this actor.
   bytes actor_id = 1;
 }
 
-message GetActorReply {
+message GetActorInfoReply {
   // Data of actor.
   ActorTableData actor_table_data = 1;
 }
 
-message RegisterActorRequest {
+message RegisterActorInfoRequest {
   // Data of actor.
   ActorTableData actor_table_data = 1;
 }
 
-message RegisterActorReply {
+message RegisterActorInfoReply {
 }
 
-message UpdateActorRequest {
+message UpdateActorInfoRequest {
   // ID of this actor.
   bytes actor_id = 1;
   // Data of actor.
   ActorTableData actor_table_data = 2;
 }
 
-message UpdateActorReply {
+message UpdateActorInfoReply {
 }
 
 // Service for actor info access.
 service ActorInfoGcsService {
-  // Get actor specification from GCS Service asynchronously.
-  rpc GetActor(GetActorRequest) returns (GetActorReply);
-  // Register an actor to GCS Service asynchronously.
-  rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
-  // Update dynamic states of actor in GCS Service asynchronously.
-  rpc UpdateActor(UpdateActorRequest) returns (UpdateActorReply);
+  // Get actor specification from GCS Service.
+  rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
+  // Register an actor to GCS Service.
+  rpc RegisterActorInfo(RegisterActorInfoRequest) returns (RegisterActorInfoReply);
+  // Update dynamic states of actor in GCS Service.
+  rpc UpdateActorInfo(UpdateActorInfoRequest) returns (UpdateActorInfoReply);
 }

@@ -70,12 +70,12 @@ class GcsServerTest : public ::testing::Test {
     ASSERT_EQ(future_status, std::future_status::ready);
   }
 
-  void TestRegisterActor(const rpc::RegisterActorRequest &request) {
-    std::promise<rpc::RegisterActorReply> reply_promise;
+  void TestRegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
+    std::promise<rpc::RegisterActorInfoReply> reply_promise;
     auto reply_future = reply_promise.get_future();
-    client_->RegisterActor(
+    client_->RegisterActorInfo(
         request,
-        [&reply_promise](const Status &status, const rpc::RegisterActorReply &reply) {
+        [&reply_promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
           if (status.ok()) {
             reply_promise.set_value(reply);
           }
@@ -84,27 +84,28 @@ class GcsServerTest : public ::testing::Test {
     ASSERT_EQ(future_status, std::future_status::ready);
   }
 
-  void TestUpdateActor(const rpc::UpdateActorRequest &request) {
-    std::promise<rpc::UpdateActorReply> reply_promise;
+  void TestUpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
+    std::promise<rpc::UpdateActorInfoReply> reply_promise;
     auto reply_future = reply_promise.get_future();
-    client_->UpdateActor(request, [&reply_promise](const Status &status,
-                                                   const rpc::UpdateActorReply &reply) {
-      if (status.ok()) {
-        reply_promise.set_value(reply);
-      }
-    });
+    client_->UpdateActorInfo(
+        request,
+        [&reply_promise](const Status &status, const rpc::UpdateActorInfoReply &reply) {
+          if (status.ok()) {
+            reply_promise.set_value(reply);
+          }
+        });
     auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
     ASSERT_EQ(future_status, std::future_status::ready);
   }
 
-  void TestGetActor(const rpc::ActorTableData &expected) {
-    rpc::GetActorRequest request;
+  void TestGetActorInfo(const rpc::ActorTableData &expected) {
+    rpc::GetActorInfoRequest request;
     request.set_actor_id(expected.actor_id());
-    std::promise<rpc::GetActorReply> reply_promise;
+    std::promise<rpc::GetActorInfoReply> reply_promise;
     auto reply_future = reply_promise.get_future();
-    client_->GetActor(
+    client_->GetActorInfo(
         request, [expected, &reply_promise](const Status &status,
-                                            const rpc::GetActorReply &reply) {
+                                            const rpc::GetActorInfoReply &reply) {
           if (status.ok()) {
             reply_promise.set_value(reply);
             ASSERT_TRUE(reply.actor_table_data().state() == expected.state());
@@ -154,21 +155,19 @@ TEST_F(GcsServerTest, TestActorInfo) {
   rpc::ActorTableData actor_table_data = genActorTableData(job_id);
 
   // Register actor
-  rpc::RegisterActorRequest register_actor_request;
-  register_actor_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
-  TestRegisterActor(register_actor_request);
-  TestGetActor(actor_table_data);
+  rpc::RegisterActorInfoRequest register_actor_info_request;
+  register_actor_info_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
+  TestRegisterActorInfo(register_actor_info_request);
+  TestGetActorInfo(actor_table_data);
 
   // Update actor state
-  rpc::UpdateActorRequest update_actor_request;
+  rpc::UpdateActorInfoRequest update_actor_info_request;
   actor_table_data.set_state(
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
-  update_actor_request.set_actor_id(actor_table_data.actor_id());
-  update_actor_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
-  TestUpdateActor(update_actor_request);
-
-  // Get actor and check actor state
-  TestGetActor(actor_table_data);
+  update_actor_info_request.set_actor_id(actor_table_data.actor_id());
+  update_actor_info_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
+  TestUpdateActorInfo(update_actor_info_request);
+  TestGetActorInfo(actor_table_data);
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {

@@ -53,34 +53,35 @@ class GcsRpcClient {
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  void GetActor(const GetActorRequest &request,
-                const ClientCallback<GetActorReply> &callback) {
-    client_call_manager_.CreateCall<ActorInfoGcsService, GetActorRequest, GetActorReply>(
-        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncGetActor, request,
-        callback);
+  void GetActorInfo(const GetActorInfoRequest &request,
+                    const ClientCallback<GetActorInfoReply> &callback) {
+    client_call_manager_
+        .CreateCall<ActorInfoGcsService, GetActorInfoRequest, GetActorInfoReply>(
+            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncGetActorInfo,
+            request, callback);
   }
 
   /// Register an actor to gcs server.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  void RegisterActor(const RegisterActorRequest &request,
-                     const ClientCallback<RegisterActorReply> &callback) {
-    client_call_manager_
-        .CreateCall<ActorInfoGcsService, RegisterActorRequest, RegisterActorReply>(
-            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncRegisterActor,
-            request, callback);
+  void RegisterActorInfo(const RegisterActorInfoRequest &request,
+                         const ClientCallback<RegisterActorInfoReply> &callback) {
+    client_call_manager_.CreateCall<ActorInfoGcsService, RegisterActorInfoRequest,
+                                    RegisterActorInfoReply>(
+        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncRegisterActorInfo,
+        request, callback);
   }
 
   ///  Update dynamic states of actor in gcs server.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  void UpdateActor(const UpdateActorRequest &request,
-                   const ClientCallback<UpdateActorReply> &callback) {
+  void UpdateActorInfo(const UpdateActorInfoRequest &request,
+                       const ClientCallback<UpdateActorInfoReply> &callback) {
     client_call_manager_
-        .CreateCall<ActorInfoGcsService, UpdateActorRequest, UpdateActorReply>(
-            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncUpdateActor,
+        .CreateCall<ActorInfoGcsService, UpdateActorInfoRequest, UpdateActorInfoReply>(
+            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncUpdateActorInfo,
             request, callback);
   }
 

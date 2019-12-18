@@ -4,9 +4,9 @@
 namespace ray {
 namespace rpc {
 
-void DefaultActorInfoHandler::HandleGetActor(const rpc::GetActorRequest &request,
-                                             rpc::GetActorReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
+void DefaultActorInfoHandler::HandleGetActorInfo(
+    const rpc::GetActorInfoRequest &request, rpc::GetActorInfoReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Begin get actor info, actor id is:" << request.actor_id();
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   auto on_done = [request, reply, send_reply_callback](
@@ -24,13 +24,13 @@ void DefaultActorInfoHandler::HandleGetActor(const rpc::GetActorRequest &request
 
   Status status = gcs_client_.Actors().AsyncGet(actor_id, on_done);
   if (!status.ok()) {
-    on_done(status, boost::optional<ActorTableData>());
+    on_done(status, boost::none);
   }
   RAY_LOG(DEBUG) << "Finish get actor info, actor id is:" << request.actor_id();
 }
 
-void DefaultActorInfoHandler::HandleRegisterActor(
-    const rpc::RegisterActorRequest &request, rpc::RegisterActorReply *reply,
+void DefaultActorInfoHandler::HandleRegisterActorInfo(
+    const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Begin register actor info, actor id is:"
                  << request.actor_table_data().actor_id();
@@ -55,8 +55,8 @@ void DefaultActorInfoHandler::HandleRegisterActor(
                  << request.actor_table_data().actor_id();
 }
 
-void DefaultActorInfoHandler::HandleUpdateActor(
-    const rpc::UpdateActorRequest &request, rpc::UpdateActorReply *reply,
+void DefaultActorInfoHandler::HandleUpdateActorInfo(
+    const rpc::UpdateActorInfoRequest &request, rpc::UpdateActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Begin update actor info, actor id is:" << request.actor_id();
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
