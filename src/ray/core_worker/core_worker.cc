@@ -851,8 +851,8 @@ Status CoreWorker::AllocateReturnObjects(
               RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
-        RAY_RETURN_NOT_OK(Create(
-            metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
+        RAY_RETURN_NOT_OK(
+            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
