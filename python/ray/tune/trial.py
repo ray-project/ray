@@ -188,7 +188,10 @@ class Trial(object):
         self.custom_trial_name = None
 
         # Checkpointing fields
-        self.upload_dir = upload_dir
+        if upload_dir:
+            self.upload_dir = os.path.join(upload_dir, str(self))
+        else:
+            self.upload_dir = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.sync_on_checkpoint = sync_on_checkpoint

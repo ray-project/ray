@@ -258,12 +258,6 @@ def run(run_or_experiment,
         for exp in experiments:
             assert exp.remote_checkpoint_dir, (
                 "Need `upload_dir` if `sync_to_cloud` given.")
-    for exp in experiments:
-        if exp.spec["sync_on_checkpoint"]:
-            assert exp.spec["sync_to_driver"], (
-                "Need `sync_to_driver` if `sync_to_driver=True`"
-            )
-
 
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),

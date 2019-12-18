@@ -20,12 +20,29 @@ class DurableTrainable(Trainable):
     """
 
     def __init__(self, upload_dir, *args, **kwargs):
+        """Initializes a DurableTrainable.
+
+        Args:
+            upload_dir (str): Upload directory (S3 or GS path).
+        """
         super(DurableTrainable, self).__init__(*args, **kwargs)
         self.upload_dir = upload_dir
         self.storage_client = get_cloud_sync_client(self.upload_dir)
 
     def save(self, checkpoint_dir=None):
-        """Saves checkpoint to remote storage."""
+        """Saves the current model state to a checkpoint, persisted remotely.
+
+        Args:
+            checkpoint_dir (Optional[str]): Optional dir to place the
+                checkpoint. Must be ``logdir`` or a sub-directory.
+
+        Returns:
+            Checkpoint path or prefix that may be passed to restore().
+        """
+        if checkpoint_dir:
+            if checkpoint_dir.starts_with(os.path.abspath(self.logdir)):
+                raise ValueError("checkpoint_dir must be self.logdir, or a "
+                                 "sub-directory.")
         checkpoint_path = super(DurableTrainable, self).save(checkpoint_dir)
         local_dirpath = os.path.join(os.path.dirname(checkpoint_path), "")
         storage_dirpath = self._storage_path(local_dirpath)
@@ -34,7 +51,13 @@ class DurableTrainable(Trainable):
         return checkpoint_path
 
     def restore(self, checkpoint_path):
-        """Restores checkpoint from remote storage."""
+        """Restores training state from a given checkpoint persisted remotely.
+
+        These checkpoints are returned from calls to save().
+
+        Args:
+            checkpoint_path (str): Local path to checkpoint.
+        """
         local_dirpath = os.path.join(os.path.dirname(checkpoint_path), "")
         storage_dirpath = self._storage_path(local_dirpath)
         if not os.path.exists(local_dirpath):
@@ -44,7 +67,11 @@ class DurableTrainable(Trainable):
         super(DurableTrainable, self).restore(checkpoint_path)
 
     def delete_checkpoint(self, checkpoint_path):
-        """Deletes checkpoint from both local and remote storage."""
+        """Deletes checkpoint from both local and remote storage.
+
+        Args:
+            checkpoint_path (str): Local path to checkpoint.
+        """
         super(DurableTrainable, self).delete_checkpoint(checkpoint_path)
         local_dirpath = os.path.join(os.path.dirname(checkpoint_path), "")
         self.storage_client.delete(self._storage_path(local_dirpath))

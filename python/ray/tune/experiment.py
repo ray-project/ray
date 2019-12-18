@@ -109,6 +109,12 @@ class Experiment(object):
 
         config = config or {}
         self._run_identifier = Experiment.register_if_needed(run)
+        self.name = name or self._run_identifier
+        if upload_dir:
+            trial_upload_dir = os.path.join(upload_dir, self.name)
+        else:
+            trial_upload_dir = None
+
         spec = {
             "run": self._run_identifier,
             "stop": stop,
@@ -117,7 +123,7 @@ class Experiment(object):
             "num_samples": num_samples,
             "local_dir": os.path.abspath(
                 os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
-            "upload_dir": upload_dir,
+            "upload_dir": trial_upload_dir,
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
             "sync_to_driver": sync_to_driver,
@@ -131,8 +137,6 @@ class Experiment(object):
             "restore": os.path.abspath(os.path.expanduser(restore))
             if restore else None
         }
-
-        self.name = name or self._run_identifier
         self.spec = spec
 
     @classmethod

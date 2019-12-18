@@ -4,7 +4,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import pickle
 import os
 import random
 import time
@@ -127,9 +126,9 @@ class RayTrialExecutor(TrialExecutor):
             "config": trial.config,
             "logger_creator": logger_creator,
         }
-        if issubclass(cls, DurableTrainable):
+        if issubclass(trial.get_trainable_cls(), DurableTrainable):
             kwargs["upload_dir"] = trial.upload_dir
-        return cls.remote(kwargs)
+        return cls.remote(**kwargs)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
@@ -605,11 +604,10 @@ class RayTrialExecutor(TrialExecutor):
         else:
             logger.info("Trial %s: Attempting restore from %s", trial, value)
             if trial.upload_dir is None and trial.sync_on_checkpoint:
-                # This provides FT backwards compatibility in the case where
-                # an upload directory is not provided. Not great since it
-                # makes assumptions on how Trainable does serialization.
-                value = pickle.load(value)
-                remote = trial.runner.restore_from_object(value)
+                # This provides FT backwards compatibility in the
+                # case where an upload directory is not provided.
+                data_dict = trial.get_trainable_cls()._pickle_checkpoint(value)
+                remote = trial.runner.restore_from_object.remote(data_dict)
             else:
                 remote = trial.runner.restore.remote(value)
             self._running[remote] = trial
