@@ -159,7 +159,8 @@ LineageCache::LineageCache(std::shared_ptr<gcs::RedisGcsClient> gcs_client,
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage) {
-  RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id;
+  RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id
+                 << gcs_client_->client_table().GetLocalClientId();
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = uncommitted_lineage.GetEntry(task_id);
