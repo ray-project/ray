@@ -1065,6 +1065,13 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   }
 }
 
+void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
+                                          rpc::GetCoreWorkerStatsReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  reply->set_webui_display("XXX webui string: " + actor_id_.Hex());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
