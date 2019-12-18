@@ -58,7 +58,7 @@ class PytorchTrainble(tune.Trainable):
             torch.save(self.model.state_dict(), path)
             return {export_formats[0]: path}
         else:
-            raise ValueError('unexpected formats: ' + str(export_formats))
+            raise ValueError("unexpected formats: " + str(export_formats))
 
     def reset_config(self, new_config):
         del self.optimizer

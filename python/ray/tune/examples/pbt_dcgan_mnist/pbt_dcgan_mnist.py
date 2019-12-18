@@ -298,7 +298,7 @@ class PytorchTrainable(tune.Trainable):
             }, path)
             return {ExportFormat.MODEL: path}
         else:
-            raise ValueError('unexpected formats: ' + str(export_formats))
+            raise ValueError("unexpected formats: " + str(export_formats))
 
 
 # __Trainable_end__
