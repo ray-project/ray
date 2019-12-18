@@ -10,15 +10,13 @@ Hence we block Windows from defining pollfd (which this project doesn't use).
  1 file changed, 1 insertion(+)
 
 diff --git bazel/civetweb.BUILD bazel/civetweb.BUILD
-index e8d6024..162f234 100644
 --- bazel/civetweb.BUILD
 +++ bazel/civetweb.BUILD
-@@ -34,6 +34,7 @@ cc_library(
+@@ -34,5 +34,6 @@ cc_library(
          "-DNO_CACHING",
          "-DNO_SSL",
          "-DNO_FILES",
 +        "-D_WIN32_WINNT=0x0502",
          "-UDEBUG",
      ],
-     includes = [
 -- 
