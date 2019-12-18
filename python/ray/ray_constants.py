@@ -196,7 +196,7 @@ PICKLE5_BUFFER_METADATA = b"PICKLE5"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
-# The default password to prevent redis port scanning attach.
+# The default password to prevent redis port scanning attack.
 # Hex for ray.
 REDIS_DEFAULT_PASSWORD = "5241590000000000"
 
