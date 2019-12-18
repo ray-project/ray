@@ -23,6 +23,7 @@ def _get_global_state():
     """
     return global_state
 
+
 def _ensure_connected(f):
     @wraps(f)
     def check(*args, **kwargs):

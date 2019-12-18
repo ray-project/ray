@@ -149,7 +149,7 @@ class CentralizedQueues:
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
-        self.set_traffic(service, {backend : 1.0})
+        self.set_traffic(service, {backend: 1.0})
 
     def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,

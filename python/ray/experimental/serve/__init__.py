@@ -9,5 +9,5 @@ from ray.experimental.serve.api import (init, create_backend, create_endpoint,
 
 __all__ = [
     "init", "create_backend", "create_endpoint", "link", "split", "get_handle",
-    "stat", "scale","Policy"
+    "stat", "scale", "Policy"
 ]
