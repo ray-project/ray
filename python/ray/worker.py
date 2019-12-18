@@ -1439,7 +1439,9 @@ def get(object_ids, timeout=None):
     worker = global_worker
     worker.check_connected()
 
-    if PY3 and worker.core_worker.current_actor_is_asyncio():
+    if PY3 and hasattr(
+            worker,
+            "core_worker") and worker.core_worker.current_actor_is_asyncio():
         raise RayError("Using blocking ray.get inside async actor. "
                        "This blocks the event loop. Please "
                        "use `await` on object id with asyncio.gather.")
@@ -1556,7 +1558,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     """
     worker = global_worker
 
-    if PY3 and worker.core_worker.current_actor_is_asyncio():
+    if PY3 and hasattr(
+            worker,
+            "core_worker") and worker.core_worker.current_actor_is_asyncio():
         raise RayError("Using blocking ray.wait inside async method. "
                        "This blocks the event loop. Please use `await` "
                        "on object id with asyncio.wait. ")
