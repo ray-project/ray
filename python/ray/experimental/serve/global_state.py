@@ -101,8 +101,8 @@ class GlobalState:
         if "http_server" not in self.actor_handle_cache:
             [handle] = ray.get(
                 self.actor_nursery_handle.start_actor.remote(
-                    HTTPActor,tag="http_server"))
-                    
+                    HTTPActor, tag="http_server"))
+
             handle.run.remote(host=host, port=port)
             self.refresh_actor_handle_cache()
         return self.actor_handle_cache["http_server"]
