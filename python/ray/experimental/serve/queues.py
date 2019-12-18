@@ -237,7 +237,7 @@ class RandomPolicyQueue(CentralizedQueues):
     the current decisions of selecting backend are not
     dependent on previous decisions.
     Random policy (randomly) samples backends based on backend weights
-    for every query. 
+    for every query.
     This policy uses the weights assigned to backends.
     """
 
@@ -270,7 +270,7 @@ class RoundRobinPolicyQueue(CentralizedQueues):
     RundRobinPolicy assigns queries in an interleaved manner to
     every backend serving for a service. Consider backend A,B linked
     to a service. Now queries will be assigned to backends
-    in the following order - 
+    in the following order -
     A, B, A, B ...
     This policy doesn't use the weights assigned to backends.
     """
@@ -313,7 +313,7 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
     This backend selection policy is `Stateless` meaning
     the current decisions of selecting backend are
     dependent on previous decisions.
-    PowerOfTwo policy (randomly) samples two backends 
+    PowerOfTwo policy (randomly) samples two backends
     (say Backend A,B among A,B,C) based on the backend weights
     specified and chooses the backend which is less loaded.
     This policy uses the weights assigned to backends.
