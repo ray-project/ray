@@ -42,11 +42,13 @@ logger = logging.getLogger(__name__)
 def to_unix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
 
+
 def round_resource_value(quantity):
     if quantity.is_integer():
         return int(quantity)
     else:
         return round(quantity, 2)
+
 
 def format_resource(resource_name, quantity):
     if resource_name == "object_store_memory" or resource_name == "memory":
@@ -54,20 +56,6 @@ def format_resource(resource_name, quantity):
         quantity = quantity * (50 * 1024 * 1024) // (1024 * 1024 * 1024)
         return "{} GiB".format(round_resource_value(quantity))
     return "{}".format(round_resource_value(quantity))
-
-def round_resource_value(quantity):
-    if quantity.is_integer():
-        return int(quantity)
-    else:
-        return round(quantity, 2)
-
-
-def format_resource(resource_name, quantity):
-    if resource_name == "object_store_memory" or resource_name == "memory":
-        # Convert to 100MiB chunks and then to GiB
-        quantity = quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)
-        return f"{round_resource_value(quantity)} GiB"
-    return f"{round_resource_value(quantity)}"
 
 
 class Dashboard(object):
