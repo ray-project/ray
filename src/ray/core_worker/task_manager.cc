@@ -21,7 +21,7 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
   if (pending_tasks_.empty()) {
     shutdown();
   } else {
-    RAY_LOG(ERROR)
+    RAY_LOG(WARNING)
         << "This worker is still managing " << pending_tasks_.size()
         << " in flight tasks, waiting for them to finish before shutting down.";
   }
@@ -142,7 +142,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
 void TaskManager::ShutdownIfNeeded() {
   absl::MutexLock lock(&mu_);
   if (shutdown_hook_ && pending_tasks_.empty()) {
-    RAY_LOG(ERROR) << "All in flight tasks finished, shutting down worker.";
+    RAY_LOG(WARNING) << "All in flight tasks finished, shutting down worker.";
     shutdown_hook_();
   }
 }
