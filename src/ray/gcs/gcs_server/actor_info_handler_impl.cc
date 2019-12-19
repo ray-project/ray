@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "actor_info_handler_impl.h"
 #include "ray/util/logging.h"
 
@@ -7,17 +8,17 @@ namespace rpc {
 void DefaultActorInfoHandler::HandleGetActorInfo(
     const rpc::GetActorInfoRequest &request, rpc::GetActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Begin get actor info, actor id is:" << request.actor_id();
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  auto on_done = [request, reply, send_reply_callback](
+  RAY_LOG(DEBUG) << "Getting actor info, actor id = " << actor_id;
+
+  auto on_done = [actor_id, reply, send_reply_callback](
                      Status status, const boost::optional<ActorTableData> &result) {
     if (status.ok()) {
-      if (result) {
-        reply->mutable_actor_table_data()->CopyFrom(*result);
-      }
+      assert(result);
+      reply->mutable_actor_table_data()->CopyFrom(*result);
     } else {
-      RAY_LOG(ERROR) << "Failed to get actor info:" << status.ToString()
-                     << ",actor id is:" << request.actor_id();
+      RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
+                     << ", actor id = " << actor_id;
     }
     send_reply_callback(status, nullptr, nullptr);
   };
@@ -26,20 +27,20 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
   if (!status.ok()) {
     on_done(status, boost::none);
   }
-  RAY_LOG(DEBUG) << "Finish get actor info, actor id is:" << request.actor_id();
+  RAY_LOG(DEBUG) << "Finished getting actor info, actor id = " << actor_id;
 }
 
 void DefaultActorInfoHandler::HandleRegisterActorInfo(
     const rpc::RegisterActorInfoRequest &request, rpc::RegisterActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Begin register actor info, actor id is:"
-                 << request.actor_table_data().actor_id();
+  ActorID actor_id = ActorID::FromBinary(request.actor_table_data().actor_id());
+  RAY_LOG(DEBUG) << "Registering actor info, actor id = " << actor_id;
   auto actor_table_data = std::make_shared<ActorTableData>();
   actor_table_data->CopyFrom(request.actor_table_data());
-  auto on_done = [request, send_reply_callback](Status status) {
+  auto on_done = [actor_id, send_reply_callback](Status status) {
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to register actor info:" << status.ToString()
-                     << ",actor id is:" << request.actor_table_data().actor_id();
+      RAY_LOG(ERROR) << "Failed to register actor info: " << status.ToString()
+                     << ", actor id = " << actor_id;
     }
     send_reply_callback(status, nullptr, nullptr);
   };
@@ -51,21 +52,20 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finish register actor info, actor id is:"
-                 << request.actor_table_data().actor_id();
+  RAY_LOG(DEBUG) << "Finished registering actor info, actor id = " << actor_id;
 }
 
 void DefaultActorInfoHandler::HandleUpdateActorInfo(
     const rpc::UpdateActorInfoRequest &request, rpc::UpdateActorInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Begin update actor info, actor id is:" << request.actor_id();
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
+  RAY_LOG(DEBUG) << "Updating actor info, actor id = " << actor_id;
   auto actor_table_data = std::make_shared<ActorTableData>();
   actor_table_data->CopyFrom(request.actor_table_data());
-  auto on_done = [request, send_reply_callback](Status status) {
+  auto on_done = [actor_id, send_reply_callback](Status status) {
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to update actor info:" << status.ToString()
-                     << ",actor id is:" << request.actor_id();
+      RAY_LOG(ERROR) << "Failed to update actor info: " << status.ToString()
+                     << ", actor id = " << actor_id;
     }
     send_reply_callback(status, nullptr, nullptr);
   };
@@ -77,7 +77,7 @@ void DefaultActorInfoHandler::HandleUpdateActorInfo(
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finish update actor info, actor id is:" << request.actor_id();
+  RAY_LOG(DEBUG) << "Finished updating actor info, actor id = " << actor_id;
 }
 
 }  // namespace rpc

@@ -13,18 +13,20 @@ static std::string libray_redis_module_path;
 
 class GcsServerTest : public ::testing::Test {
  public:
+  using CallFunction = std::function<void(std::promise<bool> &promise)>;
+
   static void SetUpTestCase() {
     std::string start_redis_command = redis_server_executable +
                                       " --loglevel warning --loadmodule " +
                                       libray_redis_module_path + " --port 6379 &";
-    RAY_LOG(INFO) << "Start redis command is:" << start_redis_command;
+    RAY_LOG(INFO) << "Start redis command is: " << start_redis_command;
     RAY_CHECK(system(start_redis_command.c_str()) == 0);
     usleep(200 * 1000);
   }
 
   static void TearDownTestCase() {
     std::string stop_redis_command = redis_client_executable + " -p 6379 shutdown";
-    RAY_LOG(INFO) << "Stop redis command is:" << stop_redis_command;
+    RAY_LOG(INFO) << "Stop redis command is: " << stop_redis_command;
     RAY_CHECK(system(stop_redis_command.c_str()) == 0);
   }
 
@@ -50,7 +52,7 @@ class GcsServerTest : public ::testing::Test {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    // create gcs rpc client
+    // Create gcs rpc client
     client_call_manager_.reset(new rpc::ClientCallManager(io_service_));
     client_.reset(
         new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
@@ -64,78 +66,76 @@ class GcsServerTest : public ::testing::Test {
   }
 
   void TestAddJob(const rpc::AddJobRequest &request) {
-    std::promise<rpc::AddJobReply> reply_promise;
-    auto reply_future = reply_promise.get_future();
-    client_->AddJob(
-        request, [&reply_promise](const Status &status, const rpc::AddJobReply &reply) {
-          if (status.ok()) {
-            reply_promise.set_value(reply);
-          }
-        });
-    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
-    ASSERT_EQ(future_status, std::future_status::ready);
+    auto call_function = [this, request](std::promise<bool> &promise) {
+      client_->AddJob(request,
+                      [&promise](const Status &status, const rpc::AddJobReply &reply) {
+                        RAY_CHECK_OK(status);
+                        promise.set_value(true);
+                      });
+    };
+    AsyncCall(call_function, timeout_ms_);
   }
 
   void TestMarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
-    std::promise<rpc::MarkJobFinishedReply> reply_promise;
-    auto reply_future = reply_promise.get_future();
-    client_->MarkJobFinished(
-        request,
-        [&reply_promise](const Status &status, const rpc::MarkJobFinishedReply &reply) {
-          if (status.ok()) {
-            reply_promise.set_value(reply);
-          }
-        });
-    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
-    ASSERT_EQ(future_status, std::future_status::ready);
+    auto call_function = [this, request](std::promise<bool> &promise) {
+      client_->MarkJobFinished(
+          request,
+          [&promise](const Status &status, const rpc::MarkJobFinishedReply &reply) {
+            RAY_CHECK_OK(status);
+            promise.set_value(true);
+          });
+    };
+    AsyncCall(call_function, timeout_ms_);
   }
 
   void TestRegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
-    std::promise<rpc::RegisterActorInfoReply> reply_promise;
-    auto reply_future = reply_promise.get_future();
-    client_->RegisterActorInfo(
-        request,
-        [&reply_promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
-          if (status.ok()) {
-            reply_promise.set_value(reply);
-          }
-        });
-    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
-    ASSERT_EQ(future_status, std::future_status::ready);
+    auto call_function = [this, request](std::promise<bool> &promise) {
+      client_->RegisterActorInfo(
+          request,
+          [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
+            RAY_CHECK_OK(status);
+            promise.set_value(true);
+          });
+    };
+    AsyncCall(call_function, timeout_ms_);
   }
 
   void TestUpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
-    std::promise<rpc::UpdateActorInfoReply> reply_promise;
-    auto reply_future = reply_promise.get_future();
-    client_->UpdateActorInfo(
-        request,
-        [&reply_promise](const Status &status, const rpc::UpdateActorInfoReply &reply) {
-          if (status.ok()) {
-            reply_promise.set_value(reply);
-          }
-        });
-    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
-    ASSERT_EQ(future_status, std::future_status::ready);
+    auto call_function = [this, request](std::promise<bool> &promise) {
+      client_->UpdateActorInfo(
+          request,
+          [&promise](const Status &status, const rpc::UpdateActorInfoReply &reply) {
+            RAY_CHECK_OK(status);
+            promise.set_value(true);
+          });
+    };
+    AsyncCall(call_function, timeout_ms_);
   }
 
   void TestGetActorInfo(const rpc::ActorTableData &expected) {
     rpc::GetActorInfoRequest request;
     request.set_actor_id(expected.actor_id());
-    std::promise<rpc::GetActorInfoReply> reply_promise;
-    auto reply_future = reply_promise.get_future();
-    client_->GetActorInfo(
-        request, [expected, &reply_promise](const Status &status,
-                                            const rpc::GetActorInfoReply &reply) {
-          if (status.ok()) {
-            reply_promise.set_value(reply);
+    auto call_function = [this, request, expected](std::promise<bool> &promise) {
+      client_->GetActorInfo(
+          request, [&promise, &expected](const Status &status,
+                                         const rpc::GetActorInfoReply &reply) {
+            RAY_CHECK_OK(status);
+            promise.set_value(true);
             ASSERT_TRUE(reply.actor_table_data().state() == expected.state());
-          }
-        });
-    auto future_status = reply_future.wait_for(std::chrono::milliseconds(200));
-    ASSERT_EQ(future_status, std::future_status::ready);
+          });
+    };
+    AsyncCall(call_function, timeout_ms_);
   }
 
-  rpc::JobTableData genJobTableData(JobID job_id) {
+  void AsyncCall(const CallFunction &function, uint64_t timeout_ms) {
+    std::promise<bool> promise_;
+    auto future = promise_.get_future();
+    function(promise_);
+    auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
+    ASSERT_EQ(status, std::future_status::ready);
+  }
+
+  rpc::JobTableData GenJobTableData(JobID job_id) {
     rpc::JobTableData job_table_data;
     job_table_data.set_job_id(job_id.Binary());
     job_table_data.set_is_dead(false);
@@ -145,7 +145,7 @@ class GcsServerTest : public ::testing::Test {
     return job_table_data;
   }
 
-  rpc::ActorTableData genActorTableData(const JobID &job_id) {
+  rpc::ActorTableData GenActorTableData(const JobID &job_id) {
     rpc::ActorTableData actor_table_data;
     ActorID actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
     actor_table_data.set_actor_id(actor_id.Binary());
@@ -158,21 +158,24 @@ class GcsServerTest : public ::testing::Test {
   }
 
  protected:
-  // gcs server
+  // Gcs server
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<std::thread> thread_gcs_server_;
   boost::asio::io_service io_service_;
 
-  // gcs client
+  // Gcs client
   std::unique_ptr<rpc::GcsRpcClient> client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  // Timeout waiting for gcs server reply
+  const uint64_t timeout_ms_ = 2000;
 };
 
 TEST_F(GcsServerTest, TestActorInfo) {
   // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
-  rpc::ActorTableData actor_table_data = genActorTableData(job_id);
+  rpc::ActorTableData actor_table_data = GenActorTableData(job_id);
 
   // Register actor
   rpc::RegisterActorInfoRequest register_actor_info_request;
@@ -193,7 +196,7 @@ TEST_F(GcsServerTest, TestActorInfo) {
 TEST_F(GcsServerTest, TestJobInfo) {
   // Create job_table_data
   JobID job_id = JobID::FromInt(1);
-  rpc::JobTableData job_table_data = genJobTableData(job_id);
+  rpc::JobTableData job_table_data = GenJobTableData(job_id);
 
   // Add job
   rpc::AddJobRequest add_job_request;

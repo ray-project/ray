@@ -9,6 +9,24 @@
 namespace ray {
 namespace rpc {
 
+#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                           \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                         \
+      new ServerCallFactoryImpl<JobInfoGcsService, JobInfoHandler, HANDLER##Request, \
+                                HANDLER##Reply>(                                     \
+          service_, &JobInfoGcsService::AsyncService::Request##HANDLER,              \
+          service_handler_, &JobInfoHandler::Handle##HANDLER, cq, main_service_));   \
+  server_call_factories_and_concurrencies->emplace_back(                             \
+      std::move(HANDLER##_call_factory), CONCURRENCY);
+
+#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                             \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                             \
+      new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler, HANDLER##Request, \
+                                HANDLER##Reply>(                                         \
+          service_, &ActorInfoGcsService::AsyncService::Request##HANDLER,                \
+          service_handler_, &ActorInfoHandler::Handle##HANDLER, cq, main_service_));     \
+  server_call_factories_and_concurrencies->emplace_back(                                 \
+      std::move(HANDLER##_call_factory), CONCURRENCY);
+
 class JobInfoHandler {
  public:
   virtual ~JobInfoHandler() = default;
@@ -38,21 +56,8 @@ class JobInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    std::unique_ptr<ServerCallFactory> add_job_call_factory(
-        new ServerCallFactoryImpl<JobInfoGcsService, JobInfoHandler, AddJobRequest,
-                                  AddJobReply>(
-            service_, &JobInfoGcsService::AsyncService::RequestAddJob, service_handler_,
-            &JobInfoHandler::HandleAddJob, cq, main_service_));
-    server_call_factories_and_concurrencies->emplace_back(std::move(add_job_call_factory),
-                                                          1);
-
-    std::unique_ptr<ServerCallFactory> mark_job_finished_call_factory(
-        new ServerCallFactoryImpl<JobInfoGcsService, JobInfoHandler,
-                                  MarkJobFinishedRequest, MarkJobFinishedReply>(
-            service_, &JobInfoGcsService::AsyncService::RequestMarkJobFinished,
-            service_handler_, &JobInfoHandler::HandleMarkJobFinished, cq, main_service_));
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(mark_job_finished_call_factory), 1);
+    JOB_INFO_SERVICE_RPC_HANDLER(AddJob, 1);
+    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished, 1);
   }
 
  private:
@@ -96,31 +101,9 @@ class ActorInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    std::unique_ptr<ServerCallFactory> get_actor_info_call_factory(
-        new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler,
-                                  GetActorInfoRequest, GetActorInfoReply>(
-            service_, &ActorInfoGcsService::AsyncService::RequestGetActorInfo,
-            service_handler_, &ActorInfoHandler::HandleGetActorInfo, cq, main_service_));
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(get_actor_info_call_factory), 1);
-
-    std::unique_ptr<ServerCallFactory> register_actor_info_call_factory(
-        new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler,
-                                  RegisterActorInfoRequest, RegisterActorInfoReply>(
-            service_, &ActorInfoGcsService::AsyncService::RequestRegisterActorInfo,
-            service_handler_, &ActorInfoHandler::HandleRegisterActorInfo, cq,
-            main_service_));
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(register_actor_info_call_factory), 1);
-
-    std::unique_ptr<ServerCallFactory> update_actor_info_call_factory(
-        new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler,
-                                  UpdateActorInfoRequest, UpdateActorInfoReply>(
-            service_, &ActorInfoGcsService::AsyncService::RequestUpdateActorInfo,
-            service_handler_, &ActorInfoHandler::HandleUpdateActorInfo, cq,
-            main_service_));
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(update_actor_info_call_factory), 1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo, 1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo, 1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo, 1);
   }
 
  private:

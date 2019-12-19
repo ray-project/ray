@@ -58,10 +58,10 @@ message UpdateActorInfoReply {
 
 // Service for actor info access.
 service ActorInfoGcsService {
-  // Get actor specification from GCS Service.
+  // Get actor data from GCS Service.
   rpc GetActorInfo(GetActorInfoRequest) returns (GetActorInfoReply);
   // Register an actor to GCS Service.
   rpc RegisterActorInfo(RegisterActorInfoRequest) returns (RegisterActorInfoReply);
-  // Update dynamic states of actor in GCS Service.
+  // Update actor info in GCS Service.
   rpc UpdateActorInfo(UpdateActorInfoRequest) returns (UpdateActorInfoReply);
 }
