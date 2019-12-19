@@ -1,5 +1,4 @@
 diff --git cpp/src/plasma/thirdparty/ae/ae.c cpp/src/plasma/thirdparty/ae/ae.c
-index dfb722444..96d9e537a 100644
 --- cpp/src/plasma/thirdparty/ae/ae.c
 +++ cpp/src/plasma/thirdparty/ae/ae.c
 @@ -428,19 +428,33 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)

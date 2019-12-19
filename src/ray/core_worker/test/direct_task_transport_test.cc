@@ -173,8 +173,8 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
-  // Checks that the object id was promoted to a plasma type id.
-  ASSERT_FALSE(task.ArgId(0, 0).IsDirectCallType());
+  // Checks that the object id is still a direct call id.
+  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
