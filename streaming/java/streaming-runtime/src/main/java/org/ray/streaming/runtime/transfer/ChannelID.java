@@ -4,11 +4,11 @@ import com.google.common.base.FinalizablePhantomReference;
 import com.google.common.base.FinalizableReferenceQueue;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Sets;
+import com.google.common.io.BaseEncoding;
 import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.Set;
-import javax.xml.bind.DatatypeConverter;
 import org.ray.runtime.RayNativeRuntime;
 import org.ray.streaming.runtime.util.JniUtils;
 import sun.nio.ch.DirectBuffer;
@@ -149,26 +149,26 @@ public class ChannelID {
    */
   public static String genIdStr(int fromTaskId, int toTaskId, long ts) {
     /*
-      | Queue Head | Timestamp | Empty | From  |  To    |
+      |    Head    | Timestamp | Empty | From  |  To    |
       | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |
     */
     Preconditions.checkArgument(fromTaskId < Short.MAX_VALUE,
         "fromTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
     Preconditions.checkArgument(toTaskId < Short.MAX_VALUE,
         "toTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
-    byte[] queueName = new byte[20];
+    byte[] channelName = new byte[20];
 
     for (int i = 11; i >= 8; i--) {
-      queueName[i] = (byte) (ts & 0xff);
+      channelName[i] = (byte) (ts & 0xff);
       ts >>= 8;
     }
 
-    queueName[16] = (byte) ((fromTaskId & 0xffff) >> 8);
-    queueName[17] = (byte) (fromTaskId & 0xff);
-    queueName[18] = (byte) ((toTaskId & 0xffff) >> 8);
-    queueName[19] = (byte) (toTaskId & 0xff);
+    channelName[16] = (byte) ((fromTaskId & 0xffff) >> 8);
+    channelName[17] = (byte) (fromTaskId & 0xff);
+    channelName[18] = (byte) ((toTaskId & 0xffff) >> 8);
+    channelName[19] = (byte) (toTaskId & 0xff);
 
-    return ChannelID.idBytesToStr(queueName);
+    return ChannelID.idBytesToStr(channelName);
   }
 
   /**
@@ -176,18 +176,18 @@ public class ChannelID {
    * @return bytes representation of channel id
    */
   static byte[] idStrToBytes(String id) {
-    byte[] qidBytes = DatatypeConverter.parseHexBinary(id.toUpperCase());
-    assert qidBytes.length == ChannelID.ID_LENGTH;
-    return qidBytes;
+    byte[] idBytes = BaseEncoding.base16().decode(id.toUpperCase());
+    assert idBytes.length == ChannelID.ID_LENGTH;
+    return idBytes;
   }
 
   /**
-   * @param qid bytes representation of channel id
+   * @param id bytes representation of channel id
    * @return hex string representation of channel id
    */
-  static String idBytesToStr(byte[] qid) {
-    assert qid.length == ChannelID.ID_LENGTH;
-    return DatatypeConverter.printHexBinary(qid).toLowerCase();
+  static String idBytesToStr(byte[] id) {
+    assert id.length == ChannelID.ID_LENGTH;
+    return BaseEncoding.base16().encode(id).toLowerCase();
   }
 
 }
