@@ -136,16 +136,25 @@ class RayServeMixin:
             # where n (current batch size) <= max_batch_size of a backend
             kwargs_list = defaultdict(list)
             result_object_ids = []
-            for item in work_item:
-                for k, v in item.request_kwargs.items():
-                    kwargs_list[k].append(v)
-                # get result_object_id for each query in a batch
-                result_object_ids.append(item.result_object_id)
-            args = (FakeFlaskQuest(), )
-            # set the current batch size (n) for serve_context
-            serve_context.batch_size = len(result_object_ids)
-            start_timestamp = time.time()
+            # flag for making sure request come from 
+            # Python context 
+            flag = False
             try:
+                for item in work_item:
+                    # make sure the request doesn't have Web context
+                    if item.request_context == TaskContext.Web:
+                        flag = True
+                    for k, v in item.request_kwargs.items():
+                        kwargs_list[k].append(v)
+                    # get result_object_id for each query in a batch
+                    result_object_ids.append(item.result_object_id)
+                if flag:
+                    raise Exception(
+                            "Batching not supported for HTTP Flask request")
+                args = (FakeFlaskQuest(), )
+                # set the current batch size (n) for serve_context
+                serve_context.batch_size = len(result_object_ids)
+                start_timestamp = time.time()
                 result_list = self.__call__(*args, **kwargs_list)
                 if len(result_list) != len(result_object_ids):
                     raise Exception("__call__ function "
@@ -160,8 +169,9 @@ class RayServeMixin:
                 for result_object_id in result_object_ids:
                     ray.worker.global_worker.put_object(
                         wrapped_exception, result_object_id)
-            self._serve_metric_latency_list.append(time.time() -
-                                                   start_timestamp)
+            if not flag:
+                self._serve_metric_latency_list.append(time.time() -
+                                                       start_timestamp)
 
         serve_context.web = False
         serve_context.batch_size = None
