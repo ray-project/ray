@@ -128,24 +128,24 @@ class RayServeMixin:
             # TODO(alind) : create no-http services. The enqueues
             # from such services will always be TaskContext.Python.
 
-            # Assumption : all the requests in a bacth 
+            # Assumption : all the requests in a bacth
             # have same serve context.
 
             # For batching kwargs are modified as follows -
             # kwargs [Python Context] : key,val
             # kwargs_list             : key, [val1,val2, ... , valn]
-            # or 
+            # or
             # args[Web Context]       : val
-            # args_list               : [val1,val2, ...... , valn] 
+            # args_list               : [val1,val2, ...... , valn]
             # where n (current batch size) <= max_batch_size of a backend
             kwargs_list = defaultdict(list)
             result_object_ids, context_list, arg_list = [], [], []
-            
+
             for item in work_item:
                 if item.request_context == TaskContext.Web:
                     asgi_scope, body_bytes = item.request_args
-                    flask_request = build_flask_request(asgi_scope,
-                                                        io.BytesIO(body_bytes))
+                    flask_request = build_flask_request(
+                        asgi_scope, io.BytesIO(body_bytes))
                     arg_list.append(flask_request)
                     context_list.append(True)
                 else:
@@ -182,7 +182,6 @@ class RayServeMixin:
                 for result_object_id in result_object_ids:
                     ray.worker.global_worker.put_object(
                         wrapped_exception, result_object_id)
-
 
         serve_context.web = False
         serve_context.batch_size = None

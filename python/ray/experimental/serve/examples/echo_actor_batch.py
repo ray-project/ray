@@ -26,7 +26,7 @@ class MagicCounter:
             for flask_request in flask_request_list:
                 base_number = int(flask_request.args.get("base_number", "0"))
                 result.append(base_number)
-            return list(map(lambda x: x+self.increment, result))
+            return list(map(lambda x: x + self.increment, result))
         else:
             result = []
             for b in base_number:
@@ -38,8 +38,8 @@ class MagicCounter:
 serve.init(blocking=True)
 serve.create_endpoint("magic_counter", "/counter", blocking=True)
 b_config = BackendConfig(max_batch_size=5)
-serve.create_backend(MagicCounter, "counter:v1", 42,
-                     backend_config=b_config)  # increment=42
+serve.create_backend(
+    MagicCounter, "counter:v1", 42, backend_config=b_config)  # increment=42
 serve.link("magic_counter", "counter:v1")
 
 print("Sending ten queries via HTTP")
