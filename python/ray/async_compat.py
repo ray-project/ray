@@ -92,5 +92,7 @@ def get_async(object_id):
     inner_future.add_done_callback(done_callback)
     # A hack to keep reference to inner_future so it doesn't get GC.
     user_future.inner_future = inner_future
+    # A hack to keep a reference to the object ID for ref counting.
+    user_future.object_id = object_id
 
     return user_future

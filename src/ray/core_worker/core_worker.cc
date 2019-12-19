@@ -462,13 +462,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
   if (object_id.IsDirectCallType()) {
-    // Note that the memory store returns false if the object value is
-    // ErrorType::OBJECT_IN_PLASMA.
-    found = memory_store_->Contains(object_id);
-  }
-  if (!found) {
-    // We check plasma as a fallback in all cases, since a direct call object
-    // may have been spilled to plasma.
+    bool in_plasma = false;
+    found = memory_store_->Contains(object_id, &in_plasma);
+    if (in_plasma) {
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
+    }
+  } else {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
   }
   *has_object = found;
@@ -1029,7 +1028,7 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
                                       object_id](std::shared_ptr<RayObject> ray_object) {
     if (ray_object->IsInPlasmaError()) {
-      fallback_callback(ray_object, object_id.WithPlasmaTransportType(), python_future);
+      fallback_callback(ray_object, object_id, python_future);
     } else {
       success_callback(ray_object, object_id, python_future);
     }

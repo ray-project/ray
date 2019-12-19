@@ -47,6 +47,15 @@ public class RayDevRuntime extends AbstractRayRuntime {
     LOGGER.error("Not implemented under SINGLE_PROCESS mode.");
   }
 
+  @Override
+  public Object getAsyncContext() {
+    return null;
+  }
+
+  @Override
+  public void setAsyncContext(Object asyncContext) {
+  }
+
   private JobId nextJobId() {
     return JobId.fromInt(jobCounter.getAndIncrement());
   }
