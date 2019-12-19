@@ -51,7 +51,13 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       node_manager_(main_service, node_manager_config, object_manager_, gcs_client_,
                     object_directory_),
       socket_name_(socket_name),
-      acceptor_(main_service, local_stream_protocol::endpoint(socket_name)),
+      acceptor_(main_service, local_stream_protocol::endpoint(
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+                                  socket_name
+#else  // TODO(mehrdadn): HACK: FIXME: This is just to get things compiling!
+                                  socket_name.data(), socket_name.size()
+#endif
+                                  )),
       socket_(main_service) {
   // Start listening for clients.
   DoAccept();
