@@ -45,7 +45,14 @@ message ForwardTaskRequest {
 message ForwardTaskReply {
 }
 
-message NodeStatsRequest {
+message PinObjectIDsRequest {
+  // Address of the owner to ask when to unpin the objects.
+  Address owner_address = 1;
+  // ObjectIDs to pin.
+  repeated bytes object_ids = 2;
+}
+
+message PinObjectIDsReply {
 }
 
 message WorkerStats {
@@ -79,6 +86,9 @@ message ViewData {
   repeated Measure measures = 2;
 }
 
+message NodeStatsRequest {
+}
+
 message NodeStatsReply {
   repeated WorkerStats workers_stats = 1;
   repeated ViewData view_data = 2;
@@ -96,4 +106,6 @@ service NodeManagerService {
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Get the current node stats.
   rpc GetNodeStats(NodeStatsRequest) returns (NodeStatsReply);
+  // Pin the provided object IDs.
+  rpc GetPinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
 }

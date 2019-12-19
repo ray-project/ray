@@ -1,9 +1,9 @@
 #ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
 #define RAY_RPC_NODE_MANAGER_CLIENT_H
 
-#include <thread>
-
 #include <grpcpp/grpcpp.h>
+
+#include <thread>
 
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
@@ -31,14 +31,20 @@ class NodeManagerClient {
   };
 
   /// Forward a task and its uncommitted lineage.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
   void ForwardTask(const ForwardTaskRequest &request,
                    const ClientCallback<ForwardTaskReply> &callback) {
     client_call_manager_
         .CreateCall<NodeManagerService, ForwardTaskRequest, ForwardTaskReply>(
             *stub_, &NodeManagerService::Stub::PrepareAsyncForwardTask, request,
+            callback);
+  }
+
+  /// Notify the raylet to pin the provided object IDs.
+  void GetPinObjectIDs(const ClientCallback<PinObjectIDsReply> &callback) {
+    PinObjectIDsRequest request;
+    client_call_manager_
+        .CreateCall<NodeManagerService, PinObjectIDsRequest, PinObjectIDsReply>(
+            *stub_, &NodeManagerService::Stub::PrepareAsyncGetPinObjectIDs, request,
             callback);
   }
 

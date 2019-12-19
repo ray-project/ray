@@ -1028,6 +1028,12 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   }
 }
 
+void CoreWorker::HandleNotifyObjectPinned(const rpc::NotifyObjectPinnedRequest &request,
+                                          rpc::NotifyObjectPinnedReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  return;
+}
+
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();

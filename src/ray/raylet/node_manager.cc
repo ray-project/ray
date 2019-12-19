@@ -2971,6 +2971,13 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
+void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &request,
+                                            rpc::PinObjectIDsReply *reply,
+                                            rpc::SendReplyCallback send_reply_callback) {
+  // TODO.
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
                                          rpc::NodeStatsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
