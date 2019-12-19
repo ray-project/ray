@@ -383,13 +383,17 @@ void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   }
 }
 
-bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
+bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma) {
   absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
-  if (it != objects_.end() && it->second->IsInPlasmaError()) {
-    return false;
+  if (it != objects_.end()) {
+    if (it->second->IsInPlasmaError()) {
+      *in_plasma = true;
+      return false;
+    }
+    return true;
   }
-  return it != objects_.end();
+  return false;
 }
 
 }  // namespace ray
