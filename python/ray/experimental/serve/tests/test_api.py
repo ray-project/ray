@@ -3,6 +3,8 @@ import time
 import requests
 
 from ray.experimental import serve
+from ray.experimental.serve import BackendConfig
+import ray
 
 
 def test_e2e(serve_instance):
@@ -50,10 +52,9 @@ def test_scaling_replicas(serve_instance):
     while "/increment" not in requests.get("http://127.0.0.1:8000/").json():
         time.sleep(0.2)
 
-    serve.create_backend(Counter, "counter:v1")
+    b_config = BackendConfig(num_replicas=2)
+    serve.create_backend(Counter, "counter:v1", backend_config=b_config)
     serve.link("counter", "counter:v1")
-
-    serve.scale("counter:v1", 2)
 
     counter_result = []
     for _ in range(10):
@@ -63,7 +64,9 @@ def test_scaling_replicas(serve_instance):
     # If the load is shared among two replicas. The max result cannot be 10.
     assert max(counter_result) < 10
 
-    serve.scale("counter:v1", 1)
+    b_config = serve.get_backend_config("counter:v1")
+    b_config.num_replicas = 1
+    serve.set_backend_config("counter:v1", b_config)
 
     counter_result = []
     for _ in range(10):
@@ -72,3 +75,94 @@ def test_scaling_replicas(serve_instance):
     # Give some time for a replica to spin down. But majority of the request
     # should be served by the only remaining replica.
     assert max(counter_result) - min(counter_result) > 6
+
+
+def test_batching(serve_instance):
+    class BatchingExample:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, flask_request, temp=None):
+            self.count += 1
+            batch_size = serve.context.batch_size
+            return [self.count] * batch_size
+
+    serve.create_endpoint("counter1", "/increment")
+
+    # Keep checking the routing table until /increment is populated
+    while "/increment" not in requests.get("http://127.0.0.1:8000/").json():
+        time.sleep(0.2)
+
+    # set the max batch size
+    b_config = BackendConfig(max_batch_size=5)
+    serve.create_backend(
+        BatchingExample, "counter:v11", backend_config=b_config)
+    serve.link("counter1", "counter:v11")
+
+    future_list = []
+    handle = serve.get_handle("counter1")
+    for _ in range(20):
+        f = handle.remote(temp=1)
+        future_list.append(f)
+
+    counter_result = ray.get(future_list)
+    assert max(counter_result) < 20
+
+
+def test_killing_replicas(serve_instance):
+    class Simple:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, flask_request, temp=None):
+            return temp
+
+    serve.create_endpoint("simple", "/simple")
+    b_config = BackendConfig(num_replicas=3, num_cpus=2)
+    serve.create_backend(Simple, "simple:v1", backend_config=b_config)
+    global_state = serve.api._get_global_state()
+    old_replica_tag_list = global_state.backend_table.list_replicas(
+        "simple:v1")
+
+    bnew_config = serve.get_backend_config("simple:v1")
+    # change the config
+    bnew_config.num_cpus = 1
+    # set the config
+    serve.set_backend_config("simple:v1", bnew_config)
+    new_replica_tag_list = global_state.backend_table.list_replicas(
+        "simple:v1")
+    global_state.refresh_actor_handle_cache()
+    new_all_tag_list = list(global_state.actor_handle_cache.keys())
+
+    assert set(new_replica_tag_list) <= set(new_all_tag_list)
+    assert not set(old_replica_tag_list) <= set(new_all_tag_list)
+
+
+def test_not_killing_replicas(serve_instance):
+    class BatchSimple:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, flask_request, temp=None):
+            batch_size = serve.context.batch_size
+            return [1] * batch_size
+
+    serve.create_endpoint("bsimple", "/bsimple")
+    b_config = BackendConfig(num_replicas=3, max_batch_size=2)
+    serve.create_backend(BatchSimple, "bsimple:v1", backend_config=b_config)
+    global_state = serve.api._get_global_state()
+    old_replica_tag_list = global_state.backend_table.list_replicas(
+        "bsimple:v1")
+
+    bnew_config = serve.get_backend_config("bsimple:v1")
+    # change the config
+    bnew_config.max_batch_size = 5
+    # set the config
+    serve.set_backend_config("bsimple:v1", bnew_config)
+    new_replica_tag_list = global_state.backend_table.list_replicas(
+        "bsimple:v1")
+    global_state.refresh_actor_handle_cache()
+    new_all_tag_list = list(global_state.actor_handle_cache.keys())
+
+    assert set(old_replica_tag_list) <= set(new_all_tag_list)
+    assert set(old_replica_tag_list) == set(new_replica_tag_list)

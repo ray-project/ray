@@ -48,6 +48,11 @@ class ActorNursery:
         self.actor_handles[handle] = tag
         return [handle]
 
+    def start_actor_with_creator_kwargs(self, creator, kwargs, tag):
+        handle = creator(kwargs)
+        self.actor_handles[handle] = tag
+        return [handle]
+
     def get_all_handles(self):
         return {tag: handle for handle, tag in self.actor_handles.items()}
 

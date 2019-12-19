@@ -14,6 +14,10 @@ class TaskContext(IntEnum):
 # web == False: currently processing a request from python
 web = False
 
+# batching information in serve context
+# batch_size == None : the backend doesn't support batching
+# batch_size == `intval`  : the batch size of input list is equal to `intval`
+batch_size = None
 _not_in_web_context_error = """
 Accessing the request object outside of the web context. Please use
 "serve.context.web" to determine when the function is called within

@@ -14,6 +14,7 @@ from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.experimental.serve.utils import (block_until_http_ready,
                                           get_random_letters)
 from ray.experimental.serve.exceptions import RayServeException
+from ray.experimental.serve.backend_config import BackendConfig
 from ray.experimental.serve.policy import RoutePolicy
 global_state = None
 
@@ -126,7 +127,67 @@ def create_endpoint(endpoint_name, route, blocking=True):
 
 
 @_ensure_connected
-def create_backend(func_or_class, backend_tag, *actor_init_args):
+def set_backend_config(backend_tag, backend_config=None):
+    """Set a backend configuration for a backend tag
+
+    Args:
+        backend_tag(str): A registered backend.
+        backend_config(BackendConfig) : Desired backend configuration.
+    """
+    assert backend_tag in global_state.backend_table.list_backends(), (
+        "Backend {} is not registered.".format(backend_tag))
+
+    if backend_config is None:
+        raise RayServeException("Specify configuration"
+                                "for backend: {}".format(backend_tag))
+    backend_config_d = vars(backend_config)
+    assert backend_config_d["num_replicas"] > 0, ("Number of replicas"
+                                                  "must be greater than 1.")
+    old_backend_config_d = global_state.backend_table.get_info(backend_tag)
+    global_state.backend_table.register_info(backend_tag, backend_config_d)
+
+    # inform the router about change in configuration
+    # particularly for setting max_batch_size
+    ray.get(global_state.init_or_get_router().set_backend_config.remote(
+        backend_tag, backend_config_d))
+
+    # checking if replicas need to be restarted
+    # Replicas are restarted if there is any change in the backend config
+    # related to restart_configs
+    # TODO(alind) : have replica restarting policies selected by the user
+    flag_restart_replicas = False
+    for k in old_backend_config_d.keys():
+        if k in BackendConfig.restart_configs:
+            # if old and new configs are not equal
+            if old_backend_config_d[k] != backend_config_d[k]:
+                flag_restart_replicas = True
+                break
+    if flag_restart_replicas:
+        # kill all the replicas for restarting with new configurations
+        scale(backend_tag, 0)
+
+    # scale the replicas with new configuration
+    scale(backend_tag, backend_config_d["num_replicas"])
+
+
+@_ensure_connected
+def get_backend_config(backend_tag):
+    """get the backend configuration for a backend tag
+
+    Args:
+        backend_tag(str): A registered backend.
+    """
+    assert backend_tag in global_state.backend_table.list_backends(), (
+        "Backend {} is not registered.".format(backend_tag))
+    backend_config_d = global_state.backend_table.get_info(backend_tag)
+    return BackendConfig(**backend_config_d)
+
+
+@_ensure_connected
+def create_backend(func_or_class,
+                   backend_tag,
+                   *actor_init_args,
+                   backend_config=BackendConfig()):
     """Create a backend using func_or_class and assign backend_tag.
 
     Args:
@@ -134,12 +195,19 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
             __call__ protocol.
         backend_tag (str): a unique tag assign to this backend. It will be used
             to associate services in traffic policy.
+        backend_config (BackendConfig): An object defining backend properties
+        for starting a backend.
         *actor_init_args (optional): the argument to pass to the class
             initialization method.
     """
+    backend_config_d = vars(backend_config)
+
+    arg_list = []
     if inspect.isfunction(func_or_class):
+        # arg list for a fn is function itself
+        arg_list = [func_or_class]
         # ignore lint on lambda expression
-        creator = lambda: TaskRunnerActor.remote(func_or_class)  # noqa: E731
+        creator = lambda x: TaskRunnerActor._remote(**x)  # noqa: E731
     elif inspect.isclass(func_or_class):
         # Python inheritance order is right-to-left. We put RayServeMixin
         # on the left to make sure its methods are not overriden.
@@ -147,15 +215,28 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
         class CustomActor(RayServeMixin, func_or_class):
             pass
 
+        arg_list = actor_init_args
         # ignore lint on lambda expression
-        creator = lambda: CustomActor.remote(*actor_init_args)  # noqa: E731
+        creator = lambda x: CustomActor._remote(**x)  # noqa: E731
     else:
         raise TypeError(
             "Backend must be a function or class, it is {}.".format(
                 type(func_or_class)))
 
+    # save creator which starts replicas
     global_state.backend_table.register_backend(backend_tag, creator)
-    scale(backend_tag, 1)
+
+    # save information about configurations needed to start the replicas
+    global_state.backend_table.register_info(backend_tag, backend_config_d)
+
+    # save the initial arguments needed by replicas
+    global_state.backend_table.save_init_args(backend_tag, arg_list)
+
+    # set the backend config inside the router
+    # particularly for max-batch-size
+    ray.get(global_state.init_or_get_router().set_backend_config.remote(
+        backend_tag, backend_config_d))
+    scale(backend_tag, backend_config_d["num_replicas"])
 
 
 def _start_replica(backend_tag):
@@ -163,12 +244,23 @@ def _start_replica(backend_tag):
         "Backend {} is not registered.".format(backend_tag))
 
     replica_tag = "{}#{}".format(backend_tag, get_random_letters(length=6))
+
+    # get the info which starts the replicas
     creator = global_state.backend_table.get_backend_creator(backend_tag)
+    backend_config_d = global_state.backend_table.get_info(backend_tag)
+    init_args = global_state.backend_table.get_init_args(backend_tag)
+
+    # pop arguments not needed for actor creation
+    for serve_cfg in BackendConfig.serve_configs:
+        backend_config_d.pop(serve_cfg)
+
+    # add arguments needed for actor creation
+    backend_config_d["args"] = init_args
 
     # Create the runner in the nursery
     [runner_handle] = ray.get(
-        global_state.actor_nursery_handle.start_actor_with_creator.remote(
-            creator, replica_tag))
+        global_state.actor_nursery_handle.start_actor_with_creator_kwargs.
+        remote(creator, backend_config_d, replica_tag))
 
     # Setup the worker
     ray.get(
@@ -216,7 +308,7 @@ def scale(backend_tag, num_replicas):
     """
     assert backend_tag in global_state.backend_table.list_backends(), (
         "Backend {} is not registered.".format(backend_tag))
-    assert num_replicas > 0, "Number of replicas must be greater than 1."
+    assert num_replicas >= 0, "Number of replicas must be greater than 1."
 
     replicas = global_state.backend_table.list_replicas(backend_tag)
     current_num_replicas = len(replicas)

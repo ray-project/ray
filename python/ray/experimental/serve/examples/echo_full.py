@@ -27,7 +27,9 @@ def echo_v1(flask_request, response="hello from python!"):
 
 
 serve.create_backend(echo_v1, "echo:v1")
-
+b1_config = serve.get_backend_config("echo:v1")
+print("Config for Backend: 'echo:v1'")
+print(b1_config)
 # We can link an endpoint to a backend, the means all the traffic
 # goes to my_endpoint will now goes to echo:v1 backend.
 serve.link("my_endpoint", "echo:v1")
@@ -47,7 +49,9 @@ def echo_v2(flask_request):
 
 
 serve.create_backend(echo_v2, "echo:v2")
-
+b2_config = serve.get_backend_config("echo:v2")
+print("Config for Backend: 'echo:v2'")
+print(b2_config)
 # The two backend will now split the traffic 50%-50%.
 serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 
@@ -56,9 +60,12 @@ for _ in range(10):
     print(requests.get("http://127.0.0.1:8000/echo").json())
     time.sleep(0.5)
 
-# You can also scale each backend independently.
-serve.scale("echo:v1", 2)
-serve.scale("echo:v2", 2)
+# You can also change number of replicas
+# for each backend independently.
+b1_config.num_replicas = 2
+serve.set_backend_config("echo:v1", b1_config)
+b2_config.num_replicas = 2
+serve.set_backend_config("echo:v2", b2_config)
 
 # As well as retrieving relevant system metrics
 print(pformat_color_json(serve.stat()))
