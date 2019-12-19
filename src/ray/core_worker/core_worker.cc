@@ -117,7 +117,20 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RAY_CHECK(task_execution_callback_ != nullptr);
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
-    auto exit = std::bind(&CoreWorker::Shutdown, this);
+    auto exit = [this](bool intentional) {
+      // Release the resources early in case draining takes a long time.
+      RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
+      task_manager_->DrainAndShutdown([this, intentional]() {
+        // To avoid problems, make sure shutdown is always called from the same
+        // event loop each time.
+        task_execution_service_.post([this, intentional]() {
+          if (intentional) {
+            Disconnect();  // Notify the raylet this is an intentional exit.
+          }
+          Shutdown();
+        });
+      });
+    };
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
