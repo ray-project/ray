@@ -9,7 +9,7 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.schema import NODE_CREATION_COMMANDS, RAY_START_COMMAND
+from ray.autoscaler.schema import SETUP_COMMANDS, RAY_START_COMMAND
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ def dockerize_if_needed(config):
 
     if docker_pull:
         docker_pull_cmd = "docker pull {}".format(docker_image)
-        common_setup_cmds = config.setdefault(NODE_CREATION_COMMANDS, [])
+        common_setup_cmds = config.setdefault(SETUP_COMMANDS, [])
         common_setup_cmds.append(docker_pull_cmd)
 
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,

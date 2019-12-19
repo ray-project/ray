@@ -124,7 +124,7 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-node_creation_commands:
+setup_commands:
     # Wait until nvidia drivers are installed
     - >-
       timeout 300 bash -c "

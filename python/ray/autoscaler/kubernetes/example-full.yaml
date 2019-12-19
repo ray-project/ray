@@ -221,7 +221,7 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-node_creation_commands: []
+setup_commands: []
 
 # Commands to start Ray on the nodes. You do not need to change this.
 start_ray_commands:

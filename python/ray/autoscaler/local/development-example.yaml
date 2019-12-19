@@ -17,9 +17,9 @@ head_node: {}
 worker_nodes: {}
 file_mounts:
      "/tmp/ray_sha": "/YOUR/LOCAL/RAY/REPO/.git/refs/heads/YOUR_BRANCH"
-node_creation_commands: []
-head_node_creation_commands: []
-worker_node_creation_commands: []
+setup_commands: []
+head_setup_commands: []
+worker_setup_commands: []
 start_ray_commands:
     - ON_NODE_START_ONLY source activate ray && test -e ray || git clone https://github.com/YOUR_GITHUB/ray.git
     - ON_NODE_START_ONLY source activate ray && cd ray && git fetch && git reset --hard `cat /tmp/ray_sha`

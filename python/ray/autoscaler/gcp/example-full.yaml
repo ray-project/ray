@@ -110,7 +110,7 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-node_creation_commands:
+setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
@@ -128,8 +128,8 @@ node_creation_commands:
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp27-cp27mu-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp35-cp35m-manylinux1_x86_64.whl
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp36-cp36m-manylinux1_x86_64.whl
-# List of commands run on the head node after `node_creation_commands`.
-head_node_creation_commands:
+# List of commands run on the head node after `setup_commands:`.
+head_setup_commands:
     - pip install google-api-python-client==1.7.8
 
 # Commands to start Ray on the nodes. You do not need to change this.

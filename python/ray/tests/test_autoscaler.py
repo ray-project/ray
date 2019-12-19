@@ -14,7 +14,7 @@ import ray
 import ray.services as services
 from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
     fillout_defaults, validate_config
-from ray.autoscaler.schema import NODE_CREATION_COMMANDS, RAY_START_COMMAND
+from ray.autoscaler.schema import SETUP_COMMANDS, RAY_START_COMMAND
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
@@ -179,9 +179,9 @@ SMALL_CLUSTER = {
         "TestProp": 2,
     },
     "file_mounts": {},
-    NODE_CREATION_COMMANDS: ["setup_cmd"],
-    "head_" + NODE_CREATION_COMMANDS: ["head_setup_cmd"],
-    "worker_" + NODE_CREATION_COMMANDS: ["worker_setup_cmd"],
+    SETUP_COMMANDS: ["setup_cmd"],
+    "head_" + SETUP_COMMANDS: ["head_setup_cmd"],
+    "worker_" + SETUP_COMMANDS: ["worker_setup_cmd"],
     RAY_START_COMMAND: ["start_ray"],
     "head_" + RAY_START_COMMAND: ["head_start_ray"],
     "worker_" + RAY_START_COMMAND: ["worker_start_ray"],
@@ -796,7 +796,7 @@ class AutoscalingTest(unittest.TestCase):
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         runner.calls = []
         new_config = SMALL_CLUSTER.copy()
-        new_config["worker_" + NODE_CREATION_COMMANDS] = ["cmdX", "cmdY"]
+        new_config["worker_" + SETUP_COMMANDS] = ["cmdX", "cmdY"]
         self.write_config(new_config)
         autoscaler.update()
         autoscaler.update()

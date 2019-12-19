@@ -84,7 +84,7 @@ file_mounts: {
 }
 
 # List of shell commands to run to set up nodes.
-node_creation_commands:
+setup_commands:
     # Consider uncommenting these if you run into dpkg locking issues
     - sudo pkill -9 apt-get || true
     - sudo pkill -9 dpkg || true
@@ -104,10 +104,10 @@ node_creation_commands:
     - pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<<<RAY_VERSION>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-cp36-cp36m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
-head_node_creation_commands: []
+head_setup_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
-worker_node_creation_commands: []
+worker_setup_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
