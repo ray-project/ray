@@ -126,32 +126,43 @@ class RayServeMixin:
                                                    start_timestamp)
         else:
             # TODO(alind) : create no-http services. The enqueues
-            # from such services will always be TaskContext.Python
-            # context hence making that assumption for batching here
+            # from such services will always be TaskContext.Python.
 
-            serve_context.web = False
+            # Assumption : all the requests in a bacth 
+            # have same serve context.
+
             # For batching kwargs are modified as follows -
-            # kwargs       : key,val
-            # kwargs_list  : key, [val1,val2, ... , valn]
+            # kwargs [Python Context] : key,val
+            # kwargs_list             : key, [val1,val2, ... , valn]
+            # or 
+            # args[Web Context]       : val
+            # args_list               : [val1,val2, ...... , valn] 
             # where n (current batch size) <= max_batch_size of a backend
             kwargs_list = defaultdict(list)
-            result_object_ids = []
-            # flag for making sure request come from
-            # Python context
-            flag = False
-            try:
-                for item in work_item:
-                    # make sure the request doesn't have Web context
-                    if item.request_context == TaskContext.Web:
-                        flag = True
+            result_object_ids, context_list, arg_list = [], [], []
+            
+            for item in work_item:
+                if item.request_context == TaskContext.Web:
+                    asgi_scope, body_bytes = item.request_args
+                    flask_request = build_flask_request(asgi_scope,
+                                                        io.BytesIO(body_bytes))
+                    arg_list.append(flask_request)
+                    context_list.append(True)
+                else:
                     for k, v in item.request_kwargs.items():
                         kwargs_list[k].append(v)
-                    # get result_object_id for each query in a batch
-                    result_object_ids.append(item.result_object_id)
-                if flag:
-                    raise Exception(
-                        "Batching not supported for HTTP Flask request")
-                args = (FakeFlaskQuest(), )
+                    context_list.append(False)
+                # get result_object_id for each query in a batch
+                result_object_ids.append(item.result_object_id)
+            try:
+                # check mixing of query context
+                if not (all(context_list) or not any(context_list)):
+                    raise Exception("Batched queries contain mixed context.")
+                serve_context.web = all(context_list)
+                if serve_context.web:
+                    args = (arg_list, )
+                else:
+                    args = (FakeFlaskQuest(), )
                 # set the current batch size (n) for serve_context
                 serve_context.batch_size = len(result_object_ids)
                 start_timestamp = time.time()
@@ -163,15 +174,15 @@ class RayServeMixin:
                                                     result_object_ids):
                     ray.worker.global_worker.put_object(
                         result, result_object_id)
+                self._serve_metric_latency_list.append(time.time() -
+                                                       start_timestamp)
             except Exception as e:
                 wrapped_exception = wrap_to_ray_error(e)
                 self._serve_metric_error_counter += len(result_object_ids)
                 for result_object_id in result_object_ids:
                     ray.worker.global_worker.put_object(
                         wrapped_exception, result_object_id)
-            if not flag:
-                self._serve_metric_latency_list.append(time.time() -
-                                                       start_timestamp)
+
 
         serve_context.web = False
         serve_context.batch_size = None
