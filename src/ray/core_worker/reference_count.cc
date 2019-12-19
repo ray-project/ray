@@ -121,12 +121,15 @@ std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
   return in_scope_object_ids;
 }
 
-std::unordered_map<ObjectID, std::pair<size_t, size_t>> ReferenceCounter::GetAllReferenceCounts() const {
+std::unordered_map<ObjectID, std::pair<size_t, size_t>>
+ReferenceCounter::GetAllReferenceCounts() const {
   absl::MutexLock lock(&mutex_);
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> all_ref_counts;
   all_ref_counts.reserve(object_id_refs_.size());
   for (auto it : object_id_refs_) {
-    all_ref_counts.emplace(it.first, std::pair<size_t, size_t>(it.second.local_ref_count, it.second.submitted_task_ref_count));
+    all_ref_counts.emplace(it.first,
+                           std::pair<size_t, size_t>(it.second.local_ref_count,
+                                                     it.second.submitted_task_ref_count));
   }
   return all_ref_counts;
 }

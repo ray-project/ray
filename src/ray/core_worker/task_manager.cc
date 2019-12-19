@@ -162,19 +162,11 @@ void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_
 
 void TaskManager::RemovePlasmaSubmittedTaskReferences(TaskSpecification &spec) {
   std::vector<ObjectID> plasma_dependencies;
-  //auto &msg = spec.GetMutableMessage();
-  RAY_LOG(ERROR) << "RemovePlasmaSubmittedTaskReferences";
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     auto count = spec.ArgIdCount(i);
     if (count > 0) {
       const auto &id = spec.ArgId(i, 0);
-      RAY_LOG(ERROR) << id;
-      if (!id.IsDirectCallType()) {
-	      RAY_LOG(ERROR) << "Remove non-direct call type ref";
-        plasma_dependencies.push_back(id);
-      } else {
-	      RAY_LOG(ERROR) << "Remove promoted ref?";
-      }
+      plasma_dependencies.push_back(id);
     }
   }
   RemoveSubmittedTaskReferences(plasma_dependencies);

@@ -79,7 +79,8 @@ class ReferenceCounter {
 
   /// Returns a map of all ObjectIDs currently in scope with a pair of their
   /// (local, submitted_task) reference counts. For debugging purposes.
-  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const LOCKS_EXCLUDED(mutex_);
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const
+      LOCKS_EXCLUDED(mutex_);
 
   /// Dumps information about all currently tracked references to RAY_LOG(DEBUG).
   void LogDebugString() const LOCKS_EXCLUDED(mutex_);

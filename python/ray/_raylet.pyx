@@ -1182,7 +1182,9 @@ cdef class CoreWorker:
             object_id = ObjectID(dereference(it).first.Binary())
             # local_count = int(it[0].first.first)
             # submiitted_count = int(it[0].first.first)
-            ref_counts[object_id] = {"local": dereference(it).second.first, "submitted": dereference(it).second.second}
+            ref_counts[object_id] = {
+                "local": dereference(it).second.first,
+                "submitted": dereference(it).second.second}
             postincrement(it)
 
         return ref_counts

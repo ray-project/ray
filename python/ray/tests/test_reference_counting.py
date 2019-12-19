@@ -6,11 +6,9 @@ from __future__ import print_function
 import os
 import copy
 import tempfile
-import json
 import numpy as np
 import time
 import logging
-import pytest
 import uuid
 
 import ray
@@ -19,6 +17,7 @@ import ray.test_utils
 
 logger = logging.getLogger(__name__)
 
+
 def _check_refcounts(expected):
     actual = ray.worker.global_worker.core_worker.get_all_reference_counts()
     assert len(expected) == len(actual)
@@ -26,6 +25,7 @@ def _check_refcounts(expected):
         assert object_id in actual
         assert local == actual[object_id]["local"]
         assert submitted == actual[object_id]["submitted"]
+
 
 def check_refcounts(expected, timeout=1):
     start = time.time()
@@ -39,6 +39,7 @@ def check_refcounts(expected, timeout=1):
             else:
                 time.sleep(0.1)
 
+
 def test_local_refcounts(ray_start_regular):
     oid1 = ray.put(None)
     check_refcounts({oid1: (1, 0)})
@@ -49,19 +50,20 @@ def test_local_refcounts(ray_start_regular):
     del oid1_copy
     check_refcounts({})
 
+
 def test_dependency_refcounts(ray_start_regular):
     # Return a large object that will be spilled to plasma.
     def large_object():
-        return np.zeros(10*1024*1024, dtype=np.uint8)
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     # TODO: Clean up tmpfiles?
     def random_path():
         return os.path.join(tempfile.gettempdir(), uuid.uuid4().hex)
 
     def touch(path):
-        with open(path, "w") as f:
+        with open(path, "w"):
             pass
-        
+
     def wait_for_file(path):
         while True:
             if os.path.exists(path):
@@ -70,7 +72,6 @@ def test_dependency_refcounts(ray_start_regular):
 
     @ray.remote
     def one_dep(dep, path=None):
-        print("WE IN HERE")
         if path is not None:
             wait_for_file(path)
 
@@ -106,7 +107,7 @@ def test_dependency_refcounts(ray_start_regular):
     del dep, result
     check_refcounts({})
 
-    # Test that spilled plasma dependency refcounts are decremented once they
+    # Test that spilled plasma dependency refcounts are decremented once
     # the task finishes.
     f1, f2 = random_path(), random_path()
     dep = one_dep_large.remote(None, path=f1)
@@ -118,46 +119,11 @@ def test_dependency_refcounts(ray_start_regular):
     # Reference count should remain because the dependency is in plasma.
     check_refcounts({dep: (1, 1), result: (1, 0)})
     touch(f2)
-    ray.get(result, timeout=5.0)
     # Reference count should be removed because the task finished.
     check_refcounts({dep: (1, 0), result: (1, 0)})
     del dep, result
     check_refcounts({})
 
-"""
-    random_id = ray.put(None)
-    dep = one_dep.remote(random_id)
-    check_refcounts({random_id: (1, 0), dep: (1, 0)})
-    del random_id, dep
-
-    check_refcounts({})
-    random_id = ray.ObjectID.from_random()
-    large_dep = one_dep_large.remote(None)
-    check_refcounts({random_id: (1, 0), large_dep: (1, 0)})
-    result = two_deps.remote(random_id, large_dep)
-    check_refcounts({random_id: (1, 1), large_dep: (1, 1), result: (1, 0)})
-    print("put ", random_id)
-    ray.worker.global_worker.put_object(None, object_id=random_id)
-    print(random_id)
-    print(large_dep)
-    ray.get(result)
-    check_refcounts({random_id: (1, 0), large_dep: (1, 0), result: (1, 0)},timeout=1)
-    del random_id, large_dep, result
-
-    check_refcounts({})
-    random_id_1 = ray.ObjectID.from_random()
-    large_dep = one_dep_large.remote(random_id_1)
-    check_refcounts({random_id_1: (1, 1), large_dep: (1, 0)})
-    random_id_2 = ray.ObjectID.from_random()
-    result = two_deps.remote(large_dep, random_id_2)
-    check_refcounts({random_id_1: (1, 1), random_id_2: (1, 1), large_dep: (1, 1), result: (1, 0)})
-    ray.worker.global_worker.put_object(None, object_id=random_id_1)
-    check_refcounts({random_id_1: (1, 0), random_id_2: (1, 1), large_dep: (1, 1), result: (1, 0)})
-    ray.worker.global_worker.put_object(None, object_id=random_id_2)
-    check_refcounts({random_id_1: (1, 0), random_id_2: (1, 0), large_dep: (1, 0), result: (1, 0)})
-    del random_id_1, random_id_2, large_dep, result
-    check_refcounts({})
-"""
 
 if __name__ == "__main__":
     import pytest
