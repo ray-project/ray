@@ -124,6 +124,9 @@ def test_dependency_refcounts(ray_start_regular):
     del dep, result
     check_refcounts({})
 
+def test_dependency_refcount_failures(ray_start_regular):
+    # TODO
+    pass
 
 if __name__ == "__main__":
     import pytest
