@@ -196,11 +196,10 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     }
     // Don't put it in the store, since we won't get a callback for deletion.
     if (ref_counter_ != nullptr && !ref_counter_->HasReference(object_id)) {
-      // XXX problematic bit
       should_add_entry = false;
     }
 
-    if (should_add_entry || true) {
+    if (should_add_entry) {
       // If there is no existing get request, then add the `RayObject` to map.
       objects_.emplace(object_id, object_entry);
     }
