@@ -4,7 +4,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/actor_manager.h"

@@ -329,9 +329,8 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     rpc::Address *owner_address) {
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
-  if (value != nullptr) {
-    RAY_CHECK_OK(
-        plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType()));
+  if (value) {
+    RAY_CHECK_OK(plasma_store_provider_->Put(*value, object_id));
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
@@ -405,51 +404,31 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
-      plasma_object_ids, timeout_ms, worker_context_, &result_map, &got_exception));
 
-  if (!got_exception) {
-    int64_t local_timeout_ms = timeout_ms;
-    if (timeout_ms >= 0) {
-      local_timeout_ms = std::max(static_cast<int64_t>(0),
-                                  timeout_ms - (current_time_ms() - start_time));
-    }
-    RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, local_timeout_ms,
-                                         worker_context_, &result_map, &got_exception));
+  if (!memory_object_ids.empty()) {
+    RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
+                                         &result_map, &got_exception));
   }
 
   if (!got_exception) {
     // If any of the objects have been promoted to plasma, then we retry their
     // gets at the provider plasma. Once we get the objects from plasma, we flip
     // the transport type again and return them for the original direct call ids.
-    absl::flat_hash_set<ObjectID> promoted_plasma_ids;
     for (const auto &pair : result_map) {
       if (pair.second->IsInPlasmaError()) {
-        RAY_LOG(DEBUG) << pair.first << " in plasma, doing fetch-and-get";
-        promoted_plasma_ids.insert(
-            pair.first.WithTransportType(TaskTransportType::RAYLET));
+        RAY_LOG(INFO) << pair.first << " in plasma, doing fetch-and-get";
+        plasma_object_ids.insert(pair.first);
       }
     }
-    if (!promoted_plasma_ids.empty()) {
-      int64_t local_timeout_ms = timeout_ms;
-      if (timeout_ms >= 0) {
-        local_timeout_ms = std::max(static_cast<int64_t>(0),
-                                    timeout_ms - (current_time_ms() - start_time));
-      }
-      RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
-      RAY_RETURN_NOT_OK(plasma_store_provider_->Get(promoted_plasma_ids, local_timeout_ms,
-                                                    worker_context_, &result_map,
-                                                    &got_exception));
-      for (const auto &id : promoted_plasma_ids) {
-        auto it = result_map.find(id);
-        if (it == result_map.end()) {
-          result_map.erase(id.WithTransportType(TaskTransportType::DIRECT));
-        } else {
-          result_map[id.WithTransportType(TaskTransportType::DIRECT)] = it->second;
-        }
-        result_map.erase(id);
-      }
+    int64_t local_timeout_ms = timeout_ms;
+    if (timeout_ms >= 0) {
+      local_timeout_ms = std::max(static_cast<int64_t>(0),
+                                  timeout_ms - (current_time_ms() - start_time));
     }
+    RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, local_timeout_ms,
+                                                  worker_context_, &result_map,
+                                                  &got_exception));
   }
 
   // Loop through `ids` and fill each entry for the `results` vector,
@@ -478,7 +457,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   }
   // If no timeout was set and none of the results will throw an exception,
   // then check that we fetched all results before returning.
-  if (timeout_ms >= 0 && !will_throw_exception) {
+  if (timeout_ms < 0 && !will_throw_exception) {
     RAY_CHECK(!missing_result);
   }
 
@@ -488,15 +467,13 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
   if (object_id.IsDirectCallType()) {
-    // Note that the memory store returns false if the object value is
-    // ErrorType::OBJECT_IN_PLASMA.
-    found = memory_store_->Contains(object_id);
-  }
-  if (!found) {
-    // We check plasma as a fallback in all cases, since a direct call object
-    // may have been spilled to plasma.
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(
-        object_id.WithTransportType(TaskTransportType::RAYLET), &found));
+    bool in_plasma = false;
+    found = memory_store_->Contains(object_id, &in_plasma);
+    if (in_plasma) {
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
+    }
+  } else {
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(object_id, &found));
   }
   *has_object = found;
   return Status::OK();
@@ -847,9 +824,8 @@ Status CoreWorker::AllocateReturnObjects(
               RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
-        RAY_RETURN_NOT_OK(Create(
-            metadatas[i], data_sizes[i],
-            object_ids[i].WithTransportType(TaskTransportType::RAYLET), &data_buffer));
+        RAY_RETURN_NOT_OK(
+            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -910,7 +886,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       continue;
     }
     if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i].WithTransportType(TaskTransportType::RAYLET)).ok()) {
+      if (!Seal(return_ids[i]).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
@@ -943,16 +919,23 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   args->resize(num_args);
   arg_reference_ids->resize(num_args);
 
-  std::vector<ObjectID> object_ids_to_fetch;
-  std::vector<int> indices;
+  absl::flat_hash_set<ObjectID> by_ref_ids;
+  absl::flat_hash_map<ObjectID, int> by_ref_indices;
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     int count = task.ArgIdCount(i);
     if (count > 0) {
       // pass by reference.
       RAY_CHECK(count == 1);
-      object_ids_to_fetch.push_back(task.ArgId(i, 0));
-      indices.push_back(i);
+      // Direct call type objects that weren't inlined have been promoted to plasma.
+      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
+      // properly redirects to the plasma store.
+      if (task.ArgId(i, 0).IsDirectCallType()) {
+        RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                        task.ArgId(i, 0)));
+      }
+      by_ref_ids.insert(task.ArgId(i, 0));
+      by_ref_indices.emplace(task.ArgId(i, 0), i);
       arg_reference_ids->at(i) = task.ArgId(i, 0);
     } else {
       // pass by value.
@@ -971,15 +954,16 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
     }
   }
 
-  std::vector<std::shared_ptr<RayObject>> results;
-  auto status = Get(object_ids_to_fetch, -1, &results);
-  if (status.ok()) {
-    for (size_t i = 0; i < results.size(); i++) {
-      args->at(indices[i]) = results[i];
-    }
+  // Fetch by-reference arguments directly from the plasma store.
+  bool got_exception = false;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(by_ref_ids, -1, worker_context_,
+                                                &result_map, &got_exception));
+  for (const auto &it : result_map) {
+    args->at(by_ref_indices[it.first]) = it.second;
   }
 
-  return status;
+  return Status::OK();
 }
 
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
@@ -1077,7 +1061,7 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
                                       object_id](std::shared_ptr<RayObject> ray_object) {
     if (ray_object->IsInPlasmaError()) {
-      fallback_callback(ray_object, object_id.WithPlasmaTransportType(), python_future);
+      fallback_callback(ray_object, object_id, python_future);
     } else {
       success_callback(ray_object, object_id, python_future);
     }

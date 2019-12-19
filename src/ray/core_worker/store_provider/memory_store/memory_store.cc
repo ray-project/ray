@@ -1,4 +1,5 @@
 #include <condition_variable>
+
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
@@ -176,7 +177,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
       if (!object.IsInPlasmaError()) {
         // Only need to promote to plasma if it wasn't already put into plasma
         // by the task that created the object.
-        store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+        store_in_plasma_(object, object_id);
       }
       promoted_to_plasma_.erase(promoted_it);
     }
@@ -367,8 +368,7 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
     auto it = objects_.find(object_id);
     if (it != objects_.end()) {
       if (it->second->IsInPlasmaError()) {
-        plasma_ids_to_delete->insert(
-            object_id.WithTransportType(TaskTransportType::RAYLET));
+        plasma_ids_to_delete->insert(object_id);
       } else {
         objects_.erase(it);
       }
@@ -383,13 +383,17 @@ void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   }
 }
 
-bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
+bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma) {
   absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
-  if (it != objects_.end() && it->second->IsInPlasmaError()) {
-    return false;
+  if (it != objects_.end()) {
+    if (it->second->IsInPlasmaError()) {
+      *in_plasma = true;
+      return false;
+    }
+    return true;
   }
-  return it != objects_.end();
+  return false;
 }
 
 }  // namespace ray
