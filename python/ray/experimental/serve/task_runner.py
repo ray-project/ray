@@ -136,8 +136,8 @@ class RayServeMixin:
             # where n (current batch size) <= max_batch_size of a backend
             kwargs_list = defaultdict(list)
             result_object_ids = []
-            # flag for making sure request come from 
-            # Python context 
+            # flag for making sure request come from
+            # Python context
             flag = False
             try:
                 for item in work_item:
@@ -150,7 +150,7 @@ class RayServeMixin:
                     result_object_ids.append(item.result_object_id)
                 if flag:
                     raise Exception(
-                            "Batching not supported for HTTP Flask request")
+                        "Batching not supported for HTTP Flask request")
                 args = (FakeFlaskQuest(), )
                 # set the current batch size (n) for serve_context
                 serve_context.batch_size = len(result_object_ids)
