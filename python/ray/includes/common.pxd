@@ -83,7 +83,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus IntentionalSystemExit()
 
         @staticmethod
-        CRayStatus UnintentionalSystemExit()
+        CRayStatus UnexpectedSystemExit()
 
         c_bool ok()
         c_bool IsOutOfMemory()

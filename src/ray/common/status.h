@@ -82,7 +82,7 @@ enum class StatusCode : char {
   TimedOut = 12,
   Interrupted = 13,
   IntentionalSystemExit = 14,
-  UnintentionalSystemExit = 15,
+  UnexpectedSystemExit = 15,
 };
 
 #if defined(__clang__)
@@ -158,8 +158,8 @@ class RAY_EXPORT Status {
     return Status(StatusCode::IntentionalSystemExit, "intentional system exit");
   }
 
-  static Status UnintentionalSystemExit() {
-    return Status(StatusCode::UnintentionalSystemExit, "user code caused exit");
+  static Status UnexpectedSystemExit() {
+    return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
   }
 
   // Returns true iff the status indicates success.
@@ -179,7 +179,7 @@ class RAY_EXPORT Status {
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
   bool IsSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit ||
-           code() == StatusCode::UnintentionalSystemExit;
+           code() == StatusCode::UnexpectedSystemExit;
   }
   bool IsIntentionalSystemExit() const {
     return code() == StatusCode::IntentionalSystemExit;

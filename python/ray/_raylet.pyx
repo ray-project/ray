@@ -726,7 +726,7 @@ cdef CRayStatus task_execution_handler(
                 return CRayStatus.IntentionalSystemExit()
             else:
                 logger.exception("SystemExit was raised from the worker")
-                return CRayStatus.UnintentionalSystemExit()
+                return CRayStatus.UnexpectedSystemExit()
 
     return CRayStatus.OK()
 
