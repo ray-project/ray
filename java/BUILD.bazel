@@ -5,7 +5,6 @@ exports_files([
     "testng.xml",
     "checkstyle.xml",
     "checkstyle-suppressions.xml",
-    "streaming/testng.xml",
 ])
 
 all_modules = [
