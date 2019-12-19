@@ -34,9 +34,6 @@ public class FileUtil {
 
     @Override
     public void close() {
-      if (!file.delete()) {
-        LOGGER.warn("Couldn't delete temp file {}", file.getAbsolutePath());
-      }
     }
   }
 
