@@ -148,7 +148,8 @@ class HTTPProxy:
                 await JSONResponse({"error": str(e)})(scope, receive, send)
                 return
 
-        result_object_id_bytes = await (self.serve_global_state.init_or_get_router()
+        result_object_id_bytes = await (
+            self.serve_global_state.init_or_get_router()
             .enqueue_request.remote(
                 service=endpoint_name,
                 request_args=(scope, http_body_bytes),
