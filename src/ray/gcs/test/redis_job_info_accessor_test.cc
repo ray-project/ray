@@ -1,3 +1,4 @@
+#include "ray/gcs/redis_job_info_accessor.h"
 #include <memory>
 #include "gtest/gtest.h"
 #include "ray/gcs/pb_util.h"
