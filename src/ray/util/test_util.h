@@ -1,6 +1,8 @@
 #ifndef RAY_UTIL_TEST_UTIL_H
 #define RAY_UTIL_TEST_UTIL_H
 
+#include <unistd.h>
+
 #include <string>
 
 #include "ray/common/buffer.h"
