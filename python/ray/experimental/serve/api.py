@@ -66,8 +66,8 @@ def init(kv_store_connector=None,
         gc_window_seconds(int): How long will we keep the metric data in
             memory. Data older than the gc_window will be deleted. The default
             is 3600 seconds, which is 1 hour.
-        queueing_policy(RoutePolicy): Define the queueing policy for selecting the
-            backend for a service. (Default: RoutePolicy.Random)
+        queueing_policy(RoutePolicy): Define the queueing policy for selecting
+            the backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
     """
     global global_state
