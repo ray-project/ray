@@ -92,13 +92,6 @@ def maybe_docker_exec(cmds, container_name, env_vars=None):
     return res
 
 
-def aptwait_cmd():
-    return ("while sudo fuser"
-            " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
-            " >/dev/null 2>&1; "
-            "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
-
-
 def docker_start_cmds(user, image, mount, cname, user_options):
     cmds = []
 
