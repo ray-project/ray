@@ -71,9 +71,11 @@ def test_dependency_refcounts(ray_start_regular):
             time.sleep(0.1)
 
     @ray.remote
-    def one_dep(dep, path=None):
+    def one_dep(dep, path=None, fail=False):
         if path is not None:
             wait_for_file(path)
+        if fail:
+            raise Exception("failed on purpose")
 
     @ray.remote
     def one_dep_large(dep, path=None):
@@ -124,9 +126,35 @@ def test_dependency_refcounts(ray_start_regular):
     del dep, result
     check_refcounts({})
 
-def test_dependency_refcount_failures(ray_start_regular):
-    # TODO
-    pass
+    # Test that regular plasma dependency refcounts are decremented if a task
+    # fails.
+    f = random_path()
+    large_dep = ray.put(large_object())
+    result = one_dep.remote(large_dep, path=f, fail=True)
+    check_refcounts({large_dep: (1, 1), result: (1, 0)})
+    touch(f)
+    # Reference count should be removed once the task finishes.
+    check_refcounts({large_dep: (1, 0), result: (1, 0)})
+    del large_dep, result
+    check_refcounts({})
+
+    # Test that spilled plasma dependency refcounts are decremented if a task
+    # fails.
+    f1, f2 = random_path(), random_path()
+    dep = one_dep_large.remote(None, path=f1)
+    check_refcounts({dep: (1, 0)})
+    result = one_dep.remote(dep, path=f2, fail=True)
+    check_refcounts({dep: (1, 1), result: (1, 0)})
+    touch(f1)
+    ray.get(dep, timeout=5.0)
+    # Reference count should remain because the dependency is in plasma.
+    check_refcounts({dep: (1, 1), result: (1, 0)})
+    touch(f2)
+    # Reference count should be removed because the task finished.
+    check_refcounts({dep: (1, 0), result: (1, 0)})
+    del dep, result
+    check_refcounts({})
+
 
 if __name__ == "__main__":
     import pytest
