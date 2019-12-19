@@ -920,8 +920,8 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   args->resize(num_args);
   arg_reference_ids->resize(num_args);
 
-  std::vector<ObjectID> object_ids_to_fetch;
-  std::vector<int> indices;
+  absl::flat_hash_set<ObjectID> by_ref_ids;
+  absl::flat_hash_map<ObjectID, int> by_ref_indices;
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     int count = task.ArgIdCount(i);
@@ -935,8 +935,8 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
         RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         task.ArgId(i, 0)));
       }
-      object_ids_to_fetch.push_back(task.ArgId(i, 0));
-      indices.push_back(i);
+      by_ref_ids.insert(task.ArgId(i, 0));
+      by_ref_indices.emplace(task.ArgId(i, 0), i);
       arg_reference_ids->at(i) = task.ArgId(i, 0);
     } else {
       // pass by value.
@@ -955,15 +955,16 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
     }
   }
 
-  std::vector<std::shared_ptr<RayObject>> results;
-  auto status = Get(object_ids_to_fetch, -1, &results);
-  if (status.ok()) {
-    for (size_t i = 0; i < results.size(); i++) {
-      args->at(indices[i]) = results[i];
-    }
+  // Fetch by-reference arguments directly from the plasma store.
+  bool got_exception = false;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(by_ref_ids, -1, worker_context_,
+                                                &result_map, &got_exception));
+  for (const auto &it : result_map) {
+    args->at(by_ref_indices[it.first]) = it.second;
   }
 
-  return status;
+  return Status::OK();
 }
 
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
