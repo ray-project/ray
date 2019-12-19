@@ -1,5 +1,5 @@
-#include <assert.h>
 #include "actor_info_handler_impl.h"
+#include <assert.h>
 #include "ray/util/logging.h"
 
 namespace ray {
