@@ -11,7 +11,6 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
-  RAY_CHECK(shutdown_hook_ == nullptr);
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
