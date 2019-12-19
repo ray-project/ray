@@ -24,7 +24,12 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
 
   RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
   boost::system::error_code ec;
-  socket_.assign(local_stream_protocol(), c_socket_, ec);
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+  local_stream_protocol sp;
+#else  // TODO(mehrdadn): HACK: FIXME: This is just to get things compiling!
+  local_stream_protocol sp(AF_UNIX, 0);
+#endif
+  socket_.assign(sp, c_socket_, ec);
   assert(!ec.value());
   NotificationWait();
 }
