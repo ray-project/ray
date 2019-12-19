@@ -13,7 +13,7 @@ from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.experimental.serve.utils import (block_until_http_ready,
                                           get_random_letters)
 from ray.experimental.serve.exceptions import RayServeException
-from ray.experimental.serve.policy import Policy
+from ray.experimental.serve.policy import RoutePolicy
 global_state = None
 
 
@@ -42,7 +42,7 @@ def init(kv_store_connector=None,
          http_port=DEFAULT_HTTP_PORT,
          ray_init_kwargs={"object_store_memory": int(1e8)},
          gc_window_seconds=3600,
-         queueing_policy=Policy.Random,
+         queueing_policy=RoutePolicy.Random,
          policy_kwargs={}):
     """Initialize a serve cluster.
 
@@ -66,8 +66,8 @@ def init(kv_store_connector=None,
         gc_window_seconds(int): How long will we keep the metric data in
             memory. Data older than the gc_window will be deleted. The default
             is 3600 seconds, which is 1 hour.
-        queueing_policy(Policy): Define the queueing policy for selecting the
-            backend for a service. (Default: Policy.Random)
+        queueing_policy(RoutePolicy): Define the queueing policy for selecting the
+            backend for a service. (Default: RoutePolicy.Random)
         policy_kwargs: Arguments required to instantiate a queueing policy
     """
     global global_state

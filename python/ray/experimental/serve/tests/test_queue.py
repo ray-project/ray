@@ -86,7 +86,7 @@ def test_split_traffic(serve_instance, task_runner_mock_actor):
     assert [g.request_args for g in got_work] == [1, 1]
 
 
-def test_split_traffic_roundRobin(serve_instance, task_runner_mock_actor):
+def test_split_traffic_round_robin(serve_instance, task_runner_mock_actor):
     q = RoundRobinPolicyQueue()
     q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})
     # since round robin policy is stateful firing two queries consecutively
@@ -102,7 +102,7 @@ def test_split_traffic_roundRobin(serve_instance, task_runner_mock_actor):
     assert [g.request_args for g in got_work] == [1, 1]
 
 
-def test_split_traffic_fixedPacking(serve_instance, task_runner_mock_actor):
+def test_split_traffic_fixed_packing(serve_instance, task_runner_mock_actor):
     packing_num = 4
     q = FixedPackingPolicyQueue(packing_num=packing_num)
     q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})

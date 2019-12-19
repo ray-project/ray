@@ -7,7 +7,7 @@ from ray.experimental.serve.kv_store_service import (
 from ray.experimental.serve.metric import (MetricMonitor,
                                            start_metric_monitor_loop)
 
-from ray.experimental.serve.policy import Policy
+from ray.experimental.serve.policy import RoutePolicy
 from ray.experimental.serve.server import HTTPActor
 
 
@@ -112,7 +112,7 @@ class GlobalState:
         # check if there is already a queue_actor running
         # with policy as p.name for the case where
         # serve nursery exists: ray.experimental.get_actor(SERVE_NURSERY_NAME)
-        for p in Policy:
+        for p in RoutePolicy:
             queue_actor_tag = "queue_actor::" + p.name
             if queue_actor_tag in self.actor_handle_cache:
                 return_policy = p
@@ -120,7 +120,7 @@ class GlobalState:
         return return_policy
 
     def init_or_get_router(self,
-                           queueing_policy=Policy.Random,
+                           queueing_policy=RoutePolicy.Random,
                            policy_kwargs={}):
         # get queueing policy
         self.queueing_policy = self._get_queueing_policy(

@@ -4,7 +4,7 @@ from ray.experimental.serve.queues import (
     PowerOfTwoPolicyQueueActor, FixedPackingPolicyQueueActor)
 
 
-class Policy(Enum):
+class RoutePolicy(Enum):
     """
     A class for registering the backend selection policy.
     Add a name and the corresponding class.
