@@ -50,8 +50,8 @@ public class StreamingContext implements Serializable {
 
     ServiceLoader<JobScheduler> serviceLoader = ServiceLoader.load(JobScheduler.class);
     Iterator<JobScheduler> iterator = serviceLoader.iterator();
-    Preconditions.checkArgument(iterator.hasNext());
-    // JobScheduler jobSchedule = new JobScheduleImpl(jobConfig);
+    Preconditions.checkArgument(iterator.hasNext(),
+        "No JobScheduler implementation has been provided.");
     JobScheduler jobSchedule = iterator.next();
     jobSchedule.schedule(plan, jobConfig);
   }

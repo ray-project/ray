@@ -16,6 +16,10 @@ import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.runtime.worker.context.WorkerContext;
 import org.ray.streaming.schedule.JobScheduler;
 
+/**
+ * JobSchedulerImpl schedules workers by the Plan and the resource information
+ * from ResourceManager.
+ */
 public class JobSchedulerImpl implements JobScheduler {
   private Plan plan;
   private Map<String, Object> jobConfig;

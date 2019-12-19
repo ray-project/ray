@@ -49,7 +49,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     for (String library : libraries) {
       String fileName = System.mapLibraryName(library);
       try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
-        // Expose ray ABI symbols which may be dependent by other shared
+        // Expose ray ABI symbols which may be depended by other shared
         // libraries such as libstreaming_java.so.
         // See BUILD.bazel:libcore_worker_library_java.so
         NativeLibrary.getInstance(libFile.getFile().getAbsolutePath());
