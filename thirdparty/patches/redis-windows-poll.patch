@@ -1,7 +1,7 @@
-diff --git cpp/src/plasma/thirdparty/ae/ae.c cpp/src/plasma/thirdparty/ae/ae.c
---- cpp/src/plasma/thirdparty/ae/ae.c
-+++ cpp/src/plasma/thirdparty/ae/ae.c
-@@ -428,20 +428,43 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
+diff --git src/ae.c src/ae.c
+--- src/ae.c
++++ src/ae.c
+@@ -474,21 +474,44 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
  /* Wait for milliseconds until the given file descriptor becomes
   * writable/readable/exception */
  int aeWait(int fd, int mask, long long milliseconds) {
@@ -39,7 +39,7 @@ diff --git cpp/src/plasma/thirdparty/ae/ae.c cpp/src/plasma/thirdparty/ae/ae.c
 -    if ((retval = poll(&pfd, 1, milliseconds))== 1) {
 -        if (pfd.revents & POLLIN) retmask |= AE_READABLE;
 -        if (pfd.revents & POLLOUT) retmask |= AE_WRITABLE;
--	if (pfd.revents & POLLERR) retmask |= AE_WRITABLE;
+-        if (pfd.revents & POLLERR) retmask |= AE_WRITABLE;
 -        if (pfd.revents & POLLHUP) retmask |= AE_WRITABLE;
 +#endif
 +    if (retval== 1) {

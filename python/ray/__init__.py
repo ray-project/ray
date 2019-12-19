@@ -132,7 +132,7 @@ from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 
 # Ray version string.
-__version__ = "0.8.0.dev7"
+__version__ = "0.9.0.dev"
 
 __all__ = [
     "global_state",

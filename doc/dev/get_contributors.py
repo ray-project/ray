@@ -26,14 +26,14 @@ Create them at https://github.com/settings/tokens/new
 def run(access_token, prev_release_commit, curr_release_commit):
     print("Writing commit descriptions to 'commits.txt'...")
     check_output(
-        ("'git log {prev_release_commit}..{curr_release_commit} "
+        (f"git log {prev_release_commit}..{curr_release_commit} "
          f"--pretty=format:'%s' > commits.txt"),
         shell=True)
     # Generate command
     cmd = []
     cmd.append((f"git log {prev_release_commit}..{curr_release_commit} "
-                f"--pretty=format:'%s' "
-                f" | grep -Eo '#(\d+)'"))
+                f"--pretty=format:\"%s\" "
+                f" | grep -Eo \"#(\d+)\""))
     joined = " && ".join(cmd)
     cmd = f"bash -c '{joined}'"
     cmd = shlex.split(cmd)
