@@ -150,6 +150,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeSetResource(nativeCoreWorkerPointer, resourceName, capacity, nodeId.getBytes());
   }
 
+  @Override
+  public Object getAsyncContext() {
+    return null;
+  }
+
+  @Override
+  public void setAsyncContext(Object asyncContext) {
+  }
+
   public void run() {
     nativeRunTaskExecutor(nativeCoreWorkerPointer, taskExecutor);
   }
