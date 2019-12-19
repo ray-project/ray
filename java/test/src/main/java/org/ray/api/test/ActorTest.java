@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
 import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
@@ -50,10 +51,31 @@ public class ActorTest extends BaseTest {
     // Test creating an actor from a constructor
     RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
     Assert.assertNotEquals(actor.getId(), UniqueId.NIL);
+    // A java actor is not a python actor
+    Assert.assertFalse(actor instanceof RayPyActor);
     // Test calling an actor
     Assert.assertEquals(Integer.valueOf(1), Ray.call(Counter::getValue, actor).get());
     Ray.call(Counter::increase, actor, 1);
     Assert.assertEquals(Integer.valueOf(3), Ray.call(Counter::increaseAndGet, actor, 1).get());
+  }
+
+  /**
+   * Test getting a direct object (an object that is returned by a direct-call task) twice from the
+   * object store.
+   *
+   * Direct objects are stored in core worker's local memory. And it will be removed after the first
+   * get. To enable getting it twice, we cache the object in `RayObjectImpl`.
+   *
+   * NOTE(hchen): this test will run for non-direct actors as well, which doesn't have the above
+   * issue and should also succeed.
+   */
+  public void testGetDirectObjectTwice() {
+    RayActor<Counter> actor = Ray.createActor(Counter::new, 1);
+    RayObject<Integer> result = Ray.call(Counter::getValue, actor);
+    Assert.assertEquals(result.get(), Integer.valueOf(1));
+    Assert.assertEquals(result.get(), Integer.valueOf(1));
+    // TODO(hchen): The following code will still fail, and can be fixed by using ref counting.
+    // Assert.assertEquals(Ray.get(result.getId()), Integer.valueOf(1));
   }
 
   public void testCallActorWithLargeObject() {
@@ -128,7 +150,8 @@ public class ActorTest extends BaseTest {
 
     try {
       // Try getting the object again, this should throw an UnreconstructableException.
-      value.get();
+      // Use `Ray.get()` to bypass the cache in `RayObjectImpl`.
+      Ray.get(value.getId());
       Assert.fail("This line should not be reachable.");
     } catch (UnreconstructableException e) {
       Assert.assertEquals(value.getId(), e.objectId);

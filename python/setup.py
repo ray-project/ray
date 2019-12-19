@@ -79,7 +79,7 @@ extras = {
     ],
     "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
-    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
+    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
     "tune": ["tabulate"],
 }
 
@@ -163,12 +163,13 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.14",
+    "numpy >= 1.16",
     "filelock",
     "jsonschema",
     "funcsigs",
     "click",
     "colorama",
+    "packaging",
     "pytest",
     "pyyaml",
     "redis>=3.3.2",
@@ -177,6 +178,7 @@ requires = [
     "six >= 1.0.0",
     "faulthandler;python_version<'3.3'",
     "protobuf >= 3.8.0",
+    "cloudpickle",
 ]
 
 setup(

@@ -29,7 +29,7 @@ class CoreWorkerMemoryStore {
   CoreWorkerMemoryStore(
       std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
-      std::shared_ptr<RayletClient> raylet_client = nullptr);
+      std::shared_ptr<raylet::RayletClient> raylet_client = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -124,7 +124,7 @@ class CoreWorkerMemoryStore {
   std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<RayletClient> raylet_client_ = nullptr;
+  std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
 
   /// Protects the data structures below.
   absl::Mutex mu_;

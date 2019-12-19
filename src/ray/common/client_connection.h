@@ -213,10 +213,20 @@ class ClientConnection : public ServerConnection<T> {
   std::vector<uint8_t> read_message_;
 };
 
-using LocalServerConnection = ServerConnection<boost::asio::local::stream_protocol>;
-using TcpServerConnection = ServerConnection<boost::asio::ip::tcp>;
-using LocalClientConnection = ClientConnection<boost::asio::local::stream_protocol>;
-using TcpClientConnection = ClientConnection<boost::asio::ip::tcp>;
+typedef
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+    boost::asio::local::stream_protocol
+#else
+    boost::asio::generic::stream_protocol
+#endif
+        local_stream_protocol;
+
+typedef boost::asio::ip::tcp remote_stream_protocol;
+
+using LocalServerConnection = ServerConnection<local_stream_protocol>;
+using TcpServerConnection = ServerConnection<remote_stream_protocol>;
+using LocalClientConnection = ClientConnection<local_stream_protocol>;
+using TcpClientConnection = ClientConnection<remote_stream_protocol>;
 
 }  // namespace ray
 

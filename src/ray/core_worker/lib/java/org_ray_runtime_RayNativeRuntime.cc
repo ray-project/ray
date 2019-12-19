@@ -55,6 +55,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
         jobject java_return_objects =
             env->CallObjectMethod(local_java_task_executor, java_task_executor_execute,
                                   ray_function_array_list, args_array_list);
+        RAY_CHECK_JAVA_EXCEPTION(env);
         std::vector<std::shared_ptr<ray::RayObject>> return_objects;
         JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
             env, java_return_objects, &return_objects,
@@ -107,7 +108,10 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv 
                                                                          jstring logDir) {
   std::string log_dir = JavaStringToNativeString(env, logDir);
   ray::RayLog::StartRayLog("java_worker", ray::RayLogLevel::INFO, log_dir);
-  // TODO (kfstorm): If we add InstallFailureSignalHandler here, Java test may crash.
+  // TODO (kfstorm): We can't InstallFailureSignalHandler here, because JVM already
+  // installed its own signal handler. It's possible to fix this by chaining signal
+  // handlers. But it's not easy. See
+  // https://docs.oracle.com/javase/9/troubleshoot/handle-signals-and-exceptions.htm.
 }
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,

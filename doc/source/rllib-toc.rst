@@ -78,6 +78,8 @@ Algorithms
 
    -  `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
 
+   -  `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
+
 *  Gradient-based
 
    -  `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__

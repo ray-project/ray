@@ -360,7 +360,7 @@ ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
   return ret;
 }
 
-JobID JobID::FromInt(uint32_t value) {
+JobID JobID::FromInt(uint16_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());
   return JobID::FromBinary(

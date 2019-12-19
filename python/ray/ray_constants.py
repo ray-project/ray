@@ -16,6 +16,10 @@ def env_integer(key, default):
     return default
 
 
+def direct_call_enabled():
+    return bool(int(os.environ.get("RAY_FORCE_DIRECT", "1")))
+
+
 ID_SIZE = 20
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -191,3 +195,10 @@ PICKLE_BUFFER_METADATA = b"PICKLE"
 PICKLE5_BUFFER_METADATA = b"PICKLE5"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
+
+# The default password to prevent redis port scanning attack.
+# Hex for ray.
+REDIS_DEFAULT_PASSWORD = "5241590000000000"
+
+# The default ip address to bind to.
+NODE_DEFAULT_IP = "127.0.0.1"

@@ -41,7 +41,7 @@ class TrialExecutor(object):
         """
         logger.debug("Trial %s: Changing status from %s to %s.", trial,
                      trial.status, status)
-        trial.status = status
+        trial.set_status(status)
         if status in [Trial.TERMINATED, Trial.ERROR]:
             self.try_checkpoint_metadata(trial)
 
