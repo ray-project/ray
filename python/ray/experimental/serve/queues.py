@@ -233,7 +233,7 @@ class CentralizedQueuesActor(CentralizedQueues):
 class RandomPolicyQueue(CentralizedQueues):
     """
     A wrapper class for Random policy.This backend selection policy is
-    `Stateless` meaning the current decisions of selecting backend are 
+    `Stateless` meaning the current decisions of selecting backend are
     not dependent on previous decisions. Random policy (randomly) samples
     backends based on backend weights for every query. This policy uses the
     weights assigned to backends.
@@ -261,9 +261,9 @@ class RandomPolicyQueueActor(RandomPolicyQueue, CentralizedQueuesActor):
 
 class RoundRobinPolicyQueue(CentralizedQueues):
     """
-    A wrapper class for RoundRobin policy. This backend selection policy 
+    A wrapper class for RoundRobin policy. This backend selection policy
     is `Stateful` meaning the current decisions of selecting backend are
-    dependent on previous decisions. RoundRobinPolicy assigns queries in 
+    dependent on previous decisions. RoundRobinPolicy assigns queries in
     an interleaved manner to every backend serving for a service. Consider
     backend A,B linked to a service. Now queries will be assigned to backends
     in the following order - [ A, B, A, B ... ] . This policy doesn't use the
@@ -307,7 +307,7 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
     A wrapper class for powerOfTwo policy. This backend selection policy is
     `Stateless` meaning the current decisions of selecting backend are
     dependent on previous decisions. PowerOfTwo policy (randomly) samples two
-    backends (say Backend A,B among A,B,C) based on the backend weights 
+    backends (say Backend A,B among A,B,C) based on the backend weights
     specified and chooses the backend which is less loaded. This policy uses
     the weights assigned to backends.
     """
@@ -349,7 +349,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
     """
     A wrapper class for FixedPacking policy. This backend selection policy is
     `Stateful` meaning the current decisions of selecting backend are dependent
-    on previous decisions. FixedPackingPolicy is k RoundRobin policy where 
+    on previous decisions. FixedPackingPolicy is k RoundRobin policy where
     first packing_num queries are handled by 'backend-1' and next k queries are
     handled by 'backend-2' and so on ... where 'backend-1' and 'backend-2' are
     served by the same service. This policy doesn't use the weights assigned to
