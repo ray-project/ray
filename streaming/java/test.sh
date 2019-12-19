@@ -25,6 +25,9 @@ echo "Running streaming tests."
 run_testng java -cp $ROOT_DIR/../../bazel-bin/streaming/java/all_streaming_tests_deploy.jar\
  org.testng.TestNG -d /tmp/ray_streaming_java_test_output $ROOT_DIR/testng.xml
 
+echo "Streaming TestNG results"
+cat /tmp/ray_streaming_java_test_output/testng-results.xml
+
 echo "Testing maven install."
 cd $ROOT_DIR/../../java
 echo "build ray maven deps"
