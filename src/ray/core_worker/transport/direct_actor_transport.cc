@@ -268,9 +268,10 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         // This happens when max_calls is hit. We still need to return the objects.
         send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
-        send_reply_callback(Status::SystemExit(), nullptr, nullptr);
+        send_reply_callback(status, nullptr, nullptr);
       }
-      task_main_io_service_.post([this]() { exit_handler_(); });
+      task_main_io_service_.post(
+          [this, status]() { exit_handler_(status.IsIntentionalSystemExit()); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       send_reply_callback(status, nullptr, nullptr);
