@@ -206,7 +206,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
-    RAY_CHECK_OK(gcs_client_->raylet_task_table().Add(job_id, task_id, data, nullptr));
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
     SetCurrentTaskId(task_id);
   }
 
