@@ -297,10 +297,13 @@ def rollout(agent,
             env_name,
             num_steps,
             num_episodes=0,
-            saver=RolloutSaver(),
+            saver=None,
             no_render=True,
             monitor=False):
     policy_agent_mapping = default_policy_agent_mapping
+
+    if saver is None:
+        saver = RolloutSaver()
 
     if hasattr(agent, "workers"):
         env = agent.workers.local_worker().env
