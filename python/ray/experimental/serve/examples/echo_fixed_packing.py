@@ -1,7 +1,10 @@
 """
 Example showing fixed packing policy. The outputs from
 v1 and v2 will be coming according to packing_num specified!
-This is a packed round robin example
+This is a packed round robin example. First batch of packing_num
+(five in this example) queries would go to 'echo:v1' backend and
+then next batch of packing_num queries would go to 'echo:v2'
+backend. 
 """
 import time
 
