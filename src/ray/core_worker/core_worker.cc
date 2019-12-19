@@ -405,8 +405,10 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
 
-  RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
-                                       &result_map, &got_exception));
+  if (!memory_object_ids.empty() > 0) {
+    RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
+                                         &result_map, &got_exception));
+  }
 
   if (!got_exception) {
     // If any of the objects have been promoted to plasma, then we retry their
@@ -926,6 +928,13 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
     if (count > 0) {
       // pass by reference.
       RAY_CHECK(count == 1);
+      // Direct call type objects that weren't inlined have been promoted to plasma.
+      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
+      // properly redirects to the plasma store.
+      if (task.ArgId(i, 0).IsDirectCallType()) {
+        RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                        task.ArgId(i, 0)));
+      }
       object_ids_to_fetch.push_back(task.ArgId(i, 0));
       indices.push_back(i);
       arg_reference_ids->at(i) = task.ArgId(i, 0);
