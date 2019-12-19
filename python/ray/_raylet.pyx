@@ -138,7 +138,7 @@ else:
     import cPickle as pickle
 
 if PY3:
-    from ray.async_compat import sync_to_async
+    from ray.async_compat import sync_to_async, AsyncGetResponse
 
 
 def set_internal_config(dict options):
@@ -1172,3 +1172,41 @@ cdef class CoreWorker:
 
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
+
+    def in_memory_store_get_async(self, ObjectID object_id, future):
+        self.core_worker.get().GetAsync(
+            object_id.native(),
+            async_set_result_callback,
+            async_retry_with_plasma_callback,
+            <void*>future)
+
+cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
+                                    CObjectID object_id,
+                                    void *future) with gil:
+    cdef:
+        c_vector[shared_ptr[CRayObject]] objects_to_deserialize
+
+    py_future = <object>(future)
+    loop = py_future._loop
+
+    # Object is retrieved from in memory store.
+    # Here we go through the code path used to deserialize objects.
+    objects_to_deserialize.push_back(obj)
+    data_metadata_pairs = RayObjectsToDataMetadataPairs(
+        objects_to_deserialize)
+    ids_to_deserialize = [ObjectID(object_id.Binary())]
+    objects = ray.worker.global_worker.deserialize_objects(
+        data_metadata_pairs, ids_to_deserialize)
+    loop.call_soon_threadsafe(lambda: py_future.set_result(
+        AsyncGetResponse(
+            plasma_fallback_id=None, result=objects[0])))
+
+cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
+                                           CObjectID object_id,
+                                           void *future) with gil:
+    py_future = <object>(future)
+    loop = py_future._loop
+    loop.call_soon_threadsafe(lambda: py_future.set_result(
+                AsyncGetResponse(
+                    plasma_fallback_id=ObjectID(object_id.Binary()),
+                    result=None)))

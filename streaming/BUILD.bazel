@@ -3,6 +3,7 @@
 
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
+load("//bazel:ray.bzl", "COPTS")
 
 proto_library(
     name = "streaming_proto",
@@ -30,6 +31,7 @@ cc_proto_library(
 # be linked into streaming libs by dynamic linker. See bazel rule `//:_raylet`
 cc_binary(
     name = "ray_util.so",
+    copts = COPTS,
     linkshared = 1,
     visibility = ["//visibility:public"],
     deps = ["//:ray_util"],
@@ -37,6 +39,7 @@ cc_binary(
 
 cc_binary(
     name = "ray_common.so",
+    copts = COPTS,
     linkshared = 1,
     visibility = ["//visibility:public"],
     deps = ["//:ray_common"],
@@ -44,6 +47,7 @@ cc_binary(
 
 cc_binary(
     name = "core_worker_lib.so",
+    copts = COPTS,
     linkshared = 1,
     deps = ["//:core_worker_lib"],
 )
@@ -56,6 +60,7 @@ cc_library(
     hdrs = glob([
         "src/util/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src",
     ],
@@ -75,6 +80,7 @@ cc_library(
     hdrs = glob([
         "src/config/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "ray_common.so",
         ":streaming_cc_proto",
@@ -90,6 +96,7 @@ cc_library(
     hdrs = glob([
         "src/message/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "ray_common.so",
         ":streaming_config",
@@ -105,6 +112,7 @@ cc_library(
     hdrs = glob([
         "src/queue/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "core_worker_lib.so",
         "ray_common.so",
@@ -128,6 +136,7 @@ cc_library(
         "src/queue/*.h",
         "src/test/*.h",
     ]),
+    copts = COPTS,
     includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
@@ -154,6 +163,7 @@ cc_binary(
     srcs = glob(["src/test/*.h"]) + [
         "src/test/mock_actor.cc",
     ],
+    copts = COPTS,
     includes = [
         "streaming/src/test",
     ],
