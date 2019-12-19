@@ -17,6 +17,18 @@ void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries)
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
 }
 
+void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
+  absl::MutexLock lock(&mu_);
+  if (pending_tasks_.empty()) {
+    shutdown();
+  } else {
+    RAY_LOG(WARNING)
+        << "This worker is still managing " << pending_tasks_.size()
+        << " in flight tasks, waiting for them to finish before shutting down.";
+  }
+  shutdown_hook_ = shutdown;
+}
+
 bool TaskManager::IsTaskPending(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   return pending_tasks_.count(task_id) > 0;
@@ -68,6 +80,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_CHECK(actor_addr != nullptr);
     actor_manager_->PublishCreatedActor(spec, *actor_addr);
   }
+
+  ShutdownIfNeeded();
 }
 
 void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
@@ -121,6 +135,16 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
       }
     }
     MarkPendingTaskFailed(task_id, spec, error_type);
+  }
+
+  ShutdownIfNeeded();
+}
+
+void TaskManager::ShutdownIfNeeded() {
+  absl::MutexLock lock(&mu_);
+  if (shutdown_hook_ && pending_tasks_.empty()) {
+    RAY_LOG(WARNING) << "All in flight tasks finished, shutting down worker.";
+    shutdown_hook_();
   }
 }
 

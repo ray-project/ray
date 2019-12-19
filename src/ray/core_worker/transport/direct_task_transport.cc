@@ -175,10 +175,16 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        // Successful actor creation leases the worker indefinitely from the raylet.
-        if (!status.ok() || !is_actor_creation) {
+        if (reply.worker_exiting()) {
+          // The worker is draining and will shutdown after it is done. Don't return
+          // it to the Raylet since that will kill it early.
           absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok(), assigned_resources);
+          worker_to_lease_client_.erase(addr);
+        } else if (!status.ok() || !is_actor_creation) {
+          // Successful actor creation leases the worker indefinitely from the raylet.
+          absl::MutexLock lock(&mu_);
+          OnWorkerIdle(addr, scheduling_key,
+                       /*error=*/!status.ok(), assigned_resources);
         }
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node
