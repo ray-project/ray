@@ -22,7 +22,7 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
     shutdown();
   } else {
     RAY_LOG(ERROR)
-        << "This worker is still waiting for " << pending_tasks_.size()
+        << "This worker is still managing " << pending_tasks_.size()
         << " background tasks, waiting for them to finish before shutting down.";
   }
   shutdown_hook_ = shutdown;
