@@ -3,8 +3,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def github_repository(*, name=None, remote=None, commit=None, tag=None,
                       branch=None, build_file=None, build_file_content=None,
-                      sha256=None, shallow_since=None, strip_prefix=True,
-                      url=None, path=None, **kwargs):
+                      sha256=None, archive_suffix=".zip", shallow_since=None,
+                      strip_prefix=True, url=None, path=None, **kwargs):
     """
     Conveniently chooses between archive, git, etc. GitHub repositories.
     Prefer archives, as they're smaller and faster due to the lack of history.
@@ -24,7 +24,6 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
     If path         != None , local repository is assumed at the given path.
     """
     GIT_SUFFIX = ".git"
-    archive_suffix = ".zip"
 
     treeish = commit or tag or branch
     if not treeish: fail("Missing commit, tag, or branch argument")
