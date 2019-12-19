@@ -1,3 +1,4 @@
+import io
 import time
 import traceback
 
@@ -98,7 +99,8 @@ class RayServeMixin:
         if work_item.request_context == TaskContext.Web:
             serve_context.web = True
             asgi_scope, body_bytes = work_item.request_args
-            flask_request = build_flask_request(asgi_scope, body_bytes)
+            flask_request = build_flask_request(asgi_scope,
+                                                io.BytesIO(body_bytes))
             args = (flask_request, )
             kwargs = {}
         else:
