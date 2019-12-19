@@ -32,10 +32,18 @@ class ReferenceCounter {
   void RemoveLocalReference(const ObjectID &object_id, std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
-  /// TODO
+  /// Add references for the provided object IDs that correspond to them being
+  /// dependencies to a submitted task.
+  ///
+  /// \param[in] object_ids The object IDs to add references for.
   void AddSubmittedTaskReferences(const std::vector<ObjectID> &object_ids);
 
-  /// TODO
+  /// Remove references for the provided object IDs that correspond to them being
+  /// dependencies to a submitted task. This should be called when inlined
+  /// dependencies are inlined or when the task finishes for plasma dependencies.
+  ///
+  /// \param[in] object_ids The object IDs to remove references for.
+  /// \param[out] deleted The object IDs whos reference counts reached zero.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
                                      std::vector<ObjectID> *deleted);
 

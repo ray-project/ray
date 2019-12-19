@@ -85,10 +85,12 @@ class TaskManager : public TaskFinisherInterface {
   void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
                              rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
 
-  /// TODO
+  /// Remove submittted task references in the reference counter for the object IDs.
+  /// If their reference counts reach zero, they are deleted from the in-memory store.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids);
 
-  /// TODO
+  /// Helper function to call RemoveSubmittedTaskReferences on the plasma dependencies
+  /// of the given task spec.
   void RemovePlasmaSubmittedTaskReferences(TaskSpecification &spec);
 
   /// Used to store task results.
