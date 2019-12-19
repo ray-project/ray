@@ -20,7 +20,7 @@ class MagicCounter:
         self.increment = increment
 
     def __call__(self, flask_request_list, base_number=None):
-        batch_size = serve.context.batch_size
+        # batch_size = serve.context.batch_size
         if serve.context.web:
             result = []
             for flask_request in flask_request_list:
