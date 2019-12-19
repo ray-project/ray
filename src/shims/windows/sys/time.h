@@ -9,6 +9,7 @@ struct timezone;
 #ifdef __cplusplus
 extern "C"
 #endif
-int gettimeofday(struct timeval *tv, struct timezone *tz);
+    int
+    gettimeofday(struct timeval *tv, struct timezone *tz);
 
 #endif /* TIME_H */

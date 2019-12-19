@@ -35,12 +35,12 @@ int socketpair(int domain, int type, int protocol, int sv[2]);
 
 #ifdef __cplusplus
 namespace {
-  inline int send(SOCKET s, const void *buf, int len, int flags) {
-    // Call the const char* overload version
-    int (*psend)(SOCKET s, const char *buf, int len, int flags) = ::send;
-    return (*psend)(s, (const char *)buf, len, flags);
-  }
+inline int send(SOCKET s, const void *buf, int len, int flags) {
+  // Call the const char* overload version
+  int (*psend)(SOCKET s, const char *buf, int len, int flags) = ::send;
+  return (*psend)(s, (const char *)buf, len, flags);
 }
+}  // namespace
 #endif
 
 #endif /* SOCKET_H */

@@ -51,13 +51,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string.h>
 
 #ifdef _WIN32
-#include <ws2tcpip.h> /* socklen_t, et al (MSVC20xx) */
 #include <Windows.h>
 #include <io.h>
+#include <ws2tcpip.h> /* socklen_t, et al (MSVC20xx) */
 #else
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <errno.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #endif
 
 #ifdef WIN32
@@ -86,8 +86,7 @@ int dumb_socketpair(SOCKET socks[2]) {
   socks[0] = socks[1] = -1;
 
   listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (listener == -1)
-    return SOCKET_ERROR;
+  if (listener == -1) return SOCKET_ERROR;
 
   memset(&a, 0, sizeof(a));
   a.inaddr.sin_family = AF_INET;
@@ -95,32 +94,26 @@ int dumb_socketpair(SOCKET socks[2]) {
   a.inaddr.sin_port = 0;
 
   for (;;) {
-    if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, (char *) &reuse,
-                   (socklen_t) sizeof(reuse)) == -1)
+    if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, (char *)&reuse,
+                   (socklen_t)sizeof(reuse)) == -1)
       break;
-    if (bind(listener, &a.addr, sizeof(a.inaddr)) == SOCKET_ERROR)
-      break;
+    if (bind(listener, &a.addr, sizeof(a.inaddr)) == SOCKET_ERROR) break;
 
     memset(&a, 0, sizeof(a));
-    if (getsockname(listener, &a.addr, &addrlen) == SOCKET_ERROR)
-      break;
+    if (getsockname(listener, &a.addr, &addrlen) == SOCKET_ERROR) break;
     // win32 getsockname may only set the port number, p=0.0005.
     // ( http://msdn.microsoft.com/library/ms738543.aspx ):
     a.inaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     a.inaddr.sin_family = AF_INET;
 
-    if (listen(listener, 1) == SOCKET_ERROR)
-      break;
+    if (listen(listener, 1) == SOCKET_ERROR) break;
 
     socks[0] = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, 0);
-    if (socks[0] == -1)
-      break;
-    if (connect(socks[0], &a.addr, sizeof(a.inaddr)) == SOCKET_ERROR)
-      break;
+    if (socks[0] == -1) break;
+    if (connect(socks[0], &a.addr, sizeof(a.inaddr)) == SOCKET_ERROR) break;
 
     socks[1] = accept(listener, NULL, NULL);
-    if (socks[1] == -1)
-      break;
+    if (socks[1] == -1) break;
 
     closesocket(listener);
     return 0;
@@ -139,8 +132,7 @@ int dumb_socketpair(int socks[2], int dummy) {
     return -1;
   }
   dummy = socketpair(AF_LOCAL, SOCK_STREAM, 0, socks);
-  if (dummy)
-    socks[0] = socks[1] = -1;
+  if (dummy) socks[0] = socks[1] = -1;
   return dummy;
 }
 #endif

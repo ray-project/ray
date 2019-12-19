@@ -7,11 +7,11 @@ int gettimeofday(struct timeval *tv, struct timezone *tz) {
   GetSystemTime(&systime);
   FILETIME filetime;
   SystemTimeToFileTime(&systime, &filetime);
-  unsigned long long const
-    epoch_time_offset = 11644473600ULL * 60 * 60 * 24,
-    time_high = filetime.dwHighDateTime,
-    time = filetime.dwLowDateTime +
-      (time_high << (CHAR_BIT * sizeof(filetime.dwLowDateTime)));
+  unsigned long long const epoch_time_offset = 11644473600ULL * 60 * 60 * 24,
+                           time_high = filetime.dwHighDateTime,
+                           time =
+                               filetime.dwLowDateTime +
+                               (time_high << (CHAR_BIT * sizeof(filetime.dwLowDateTime)));
   tv->tv_sec = static_cast<int>((time - epoch_time_offset) / 10000000);
   tv->tv_usec = static_cast<int>(systime.wMilliseconds * 1000);
   return 0;
