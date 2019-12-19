@@ -6,8 +6,28 @@
 #include "ray/util/test_util.h"
 
 namespace ray {
+
+static std::string redis_server_executable;
+static std::string redis_client_executable;
+static std::string libray_redis_module_path;
+
 class GcsServerTest : public ::testing::Test {
  public:
+  static void SetUpTestCase() {
+    std::string start_redis_command = redis_server_executable +
+                                      " --loglevel warning --loadmodule " +
+                                      libray_redis_module_path + " --port 6379 &";
+    RAY_LOG(INFO) << "Start redis command is:" << start_redis_command;
+    RAY_CHECK(system(start_redis_command.c_str()) == 0);
+    usleep(200 * 1000);
+  }
+
+  static void TearDownTestCase() {
+    std::string stop_redis_command = redis_client_executable + " -p 6379 shutdown";
+    RAY_LOG(INFO) << "Stop redis command is:" << stop_redis_command;
+    RAY_CHECK(system(stop_redis_command.c_str()) == 0);
+  }
+
   void SetUp() override {
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
@@ -190,5 +210,9 @@ TEST_F(GcsServerTest, TestJobInfo) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
+  RAY_CHECK(argc == 4);
+  ray::redis_server_executable = argv[1];
+  ray::redis_client_executable = argv[2];
+  ray::libray_redis_module_path = argv[3];
   return RUN_ALL_TESTS();
 }
