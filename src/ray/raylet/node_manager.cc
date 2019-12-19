@@ -102,9 +102,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           gcs_client_->client_table().GetLocalClientId(),
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->task_lease_table()),
-      lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
-                     gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
-                     config.max_lineage_size),
+      lineage_cache_(gcs_client_, config.max_lineage_size),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -139,18 +137,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
 ray::Status NodeManager::RegisterGcs() {
   object_manager_.RegisterGcs();
-
-  // Subscribe to task entry commits in the GCS. These notifications are
-  // forwarded to the lineage cache, which requests notifications about tasks
-  // that were executed remotely.
-  const auto task_committed_callback = [this](gcs::RedisGcsClient *client,
-                                              const TaskID &task_id,
-                                              const TaskTableData &task_data) {
-    lineage_cache_.HandleEntryCommitted(task_id);
-  };
-  RAY_RETURN_NOT_OK(gcs_client_->raylet_task_table().Subscribe(
-      JobID::Nil(), gcs_client_->client_table().GetLocalClientId(),
-      task_committed_callback, nullptr, nullptr));
 
   const auto task_lease_notification_callback = [this](gcs::RedisGcsClient *client,
                                                        const TaskID &task_id,
@@ -984,7 +970,7 @@ void NodeManager::ProcessClientMessage(
       for (const auto &object_id : object_ids) {
         creating_task_ids.push_back(object_id.TaskId());
       }
-      gcs_client_->raylet_task_table().Delete(JobID::Nil(), creating_task_ids);
+      RAY_CHECK_OK(gcs_client_->Tasks().AsyncDelete(creating_task_ids, nullptr));
     }
   } break;
   case protocol::MessageType::PrepareActorCheckpointRequest: {
@@ -2437,27 +2423,26 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     auto parent_task_id = task_spec.ParentTaskId();
     int port = worker.Port();
     RAY_CHECK_OK(
-        gcs_client_->raylet_task_table().Lookup(
-            JobID::Nil(), parent_task_id,
-            /*success_callback=*/
-            [this, task_spec, resumed_from_checkpoint, port](
-                ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id,
-                const TaskTableData &parent_task_data) {
-              // The task was in the GCS task table. Use the stored task spec to
-              // get the parent actor id.
-              Task parent_task(parent_task_data.task());
-              ActorID parent_actor_id = ActorID::Nil();
-              if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
-                parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
-              } else if (parent_task.GetTaskSpecification().IsActorTask()) {
-                parent_actor_id = parent_task.GetTaskSpecification().ActorId();
+        gcs_client_->Tasks().AsyncGet(
+            parent_task_id,
+            /*callback=*/
+            [this, task_spec, resumed_from_checkpoint, port, parent_task_id](
+                Status status, const boost::optional<TaskTableData> &parent_task_data) {
+              RAY_CHECK(status.ok());
+              if (parent_task_data) {
+                // The task was in the GCS task table. Use the stored task spec to
+                // get the parent actor id.
+                Task parent_task(parent_task_data->task());
+                ActorID parent_actor_id = ActorID::Nil();
+                if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
+                  parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
+                } else if (parent_task.GetTaskSpecification().IsActorTask()) {
+                  parent_actor_id = parent_task.GetTaskSpecification().ActorId();
+                }
+                FinishAssignedActorCreationTask(parent_actor_id, task_spec,
+                                                resumed_from_checkpoint, port);
+                return;
               }
-              FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                              resumed_from_checkpoint, port);
-            },
-            /*failure_callback=*/
-            [this, task_spec, resumed_from_checkpoint, port](
-                ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id) {
               // The parent task was not in the GCS task table. It should most likely be
               // in the lineage cache.
               ActorID parent_actor_id = ActorID::Nil();
@@ -2574,18 +2559,18 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
 void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
                                            const ObjectID &required_object_id) {
   // Retrieve the task spec in order to re-execute the task.
-  RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
-      JobID::Nil(), task_id,
-      /*success_callback=*/
-      [this, required_object_id](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
-                                 const TaskTableData &task_data) {
-        // The task was in the GCS task table. Use the stored task spec to
-        // re-execute the task.
-        ResubmitTask(Task(task_data.task()), required_object_id);
-      },
-      /*failure_callback=*/
-      [this, required_object_id](ray::gcs::RedisGcsClient *client,
-                                 const TaskID &task_id) {
+  RAY_CHECK_OK(gcs_client_->Tasks().AsyncGet(
+      task_id,
+      /*callback=*/
+      [this, required_object_id, task_id](
+          Status status, const boost::optional<TaskTableData> &task_data) {
+        RAY_CHECK(status.ok());
+        if (task_data) {
+          // The task was in the GCS task table. Use the stored task spec to
+          // re-execute the task.
+          ResubmitTask(Task(task_data->task()), required_object_id);
+          return;
+        }
         // The task was not in the GCS task table. It must therefore be in the
         // lineage cache.
         if (lineage_cache_.ContainsTask(task_id)) {
