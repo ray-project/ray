@@ -123,7 +123,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       task_manager_->DrainAndShutdown([this]() {
         // To avoid problems, make sure shutdown is always called from the same
         // event loop each time.
-        task_execution_service_.post([this]() { Shutdown(); });
+        task_execution_service_.post([this]() {
+            Disconnect();  // Notify the raylet this is an intentional exit.
+            Shutdown();
+        });
       });
     };
     raylet_task_receiver_ =
