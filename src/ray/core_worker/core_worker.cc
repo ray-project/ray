@@ -262,12 +262,16 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::RunIOService() {
+#ifdef _WIN32
+  // TODO(mehrdadn): Is there an equivalent for Windows we need here?
+#else
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
+#endif
 
   io_service_.run();
 }
@@ -1065,6 +1069,19 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
   event.Wait();
+}
+
+void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+                          SetResultCallback fallback_callback, void *python_future) {
+  RAY_CHECK(object_id.IsDirectCallType());
+  memory_store_->GetAsync(object_id, [python_future, success_callback, fallback_callback,
+                                      object_id](std::shared_ptr<RayObject> ray_object) {
+    if (ray_object->IsInPlasmaError()) {
+      fallback_callback(ray_object, object_id.WithPlasmaTransportType(), python_future);
+    } else {
+      success_callback(ray_object, object_id, python_future);
+    }
+  });
 }
 
 }  // namespace ray
