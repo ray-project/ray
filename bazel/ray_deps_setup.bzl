@@ -77,12 +77,21 @@ def auto_http_archive(*, name=None, url=None, urls=True,
 
 def ray_deps_setup():
     auto_http_archive(
+        name = "bazel_skylib",
+        sha256 = "a89898b28fb596ba8df76fe361597d08659dd58b7f54cb5ece5251f522de0691",
+        url = "https://github.com/bazelbuild/bazel-skylib/archive/feb52960ebd8797421b599194ad6ac7da3fc7600.tar.gz",
+    )
+
+    auto_http_archive(
         name = "com_github_antirez_redis",
         build_file = "//bazel:BUILD.redis",
         url = "https://github.com/antirez/redis/archive/5.0.9.tar.gz",
         sha256 = "db9bf149e237126f9bb5f40fb72f33701819555d06f16e9a38b4949794214201",
         patches = [
             "//thirdparty/patches:redis-quiet.patch",
+            # This is a backport of a bugfix that can be removed when we upgrade to a release that incorporates it:
+            # https://github.com/antirez/redis/commit/70e0e49952ef40675b515a9483767be898640609
+            "//thirdparty/patches:redis-ae-resize.patch",
         ],
     )
 
@@ -102,8 +111,11 @@ def ray_deps_setup():
 
     auto_http_archive(
         name = "com_github_tporadowski_redis_bin",
-        build_file = "//bazel:BUILD.redis",
-        strip_prefix = None,
+        build_file_content = "\n".join([
+            """filegroup(name = "redis-cli", srcs = ["redis-cli.exe"], visibility = ["//visibility:public"])""",
+            """filegroup(name = "redis-server", srcs = ["redis-server.exe"], visibility = ["//visibility:public"])""",
+        ]),
+        strip_prefix = "",
         url = "https://github.com/tporadowski/redis/releases/download/v4.0.14.2/Redis-x64-4.0.14.2.zip",
         sha256 = "6fac443543244c803311de5883b714a7ae3c4fa0594cad51d75b24c4ef45b353",
     )

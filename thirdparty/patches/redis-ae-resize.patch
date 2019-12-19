@@ -1,0 +1,35 @@
+From 70e0e49952ef40675b515a9483767be898640609 Mon Sep 17 00:00:00 2001
+From: antirez <antirez@gmail.com>
+Date: Thu, 12 Mar 2020 12:59:44 +0100
+Subject: [PATCH] ae.c: fix crash when resizing the event loop.
+
+See #6964. The root cause is that the event loop may be resized from an
+event callback itself, causing the event pointer to be invalid.
+---
+ src/ae.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git src/ae.c src/ae.c
+index d2248fe5c..1bf6cbfbf 100644
+--- src/ae.c
++++ src/ae.c
+@@ -464,4 +464,5 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
+             if (!invert && fe->mask & mask & AE_READABLE) {
+                 fe->rfileProc(eventLoop,fd,fe->clientData,mask);
+                 fired++;
++                fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
+             }
+@@ -477,7 +478,10 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
+             /* If we have to invert the call, fire the readable event now
+              * after the writable one. */
+-            if (invert && fe->mask & mask & AE_READABLE) {
+-                if (!fired || fe->wfileProc != fe->rfileProc) {
++            if (invert) {
++                fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
++                if ((fe->mask & mask & AE_READABLE) &&
++                    (!fired || fe->wfileProc != fe->rfileProc))
++                {
+                     fe->rfileProc(eventLoop,fd,fe->clientData,mask);
+                     fired++;
+                 }
+-- 
