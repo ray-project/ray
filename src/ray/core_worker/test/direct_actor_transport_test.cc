@@ -45,7 +45,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   MOCK_METHOD3(PendingTaskFailed,
                void(const TaskID &task_id, rpc::ErrorType error_type, Status *status));
 
-  MOCK_METHOD3(OnTaskDependencyInlined, void(const ObjectID &));
+  MOCK_METHOD1(OnTaskDependenciesInlined, void(const std::vector<ObjectID> &object_ids));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
