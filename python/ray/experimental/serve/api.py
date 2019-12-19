@@ -1,5 +1,6 @@
 import inspect
 from functools import wraps
+from tempfile import mkstemp
 
 import numpy as np
 
@@ -36,7 +37,7 @@ def _ensure_connected(f):
 
 
 def init(kv_store_connector=None,
-         kv_store_path="/tmp/ray_serve.db",
+         kv_store_path=None,
          blocking=False,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
@@ -86,6 +87,9 @@ def init(kv_store_connector=None,
         return
     except ValueError:
         pass
+
+    if kv_store_path is None:
+        _, kv_store_path = mkstemp()
 
     # Serve has not been initialized, perform init sequence
     # Todo, move the db to session_dir
