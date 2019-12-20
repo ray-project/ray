@@ -311,6 +311,9 @@ class Table : private Log<ID, Data>,
 
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
+  /// Expose this interface for use by subscription tools class SubscriptionExecutor.
+  /// In this way TaskTable() can also reuse class SubscriptionExecutor.
+  using Log<ID, Data>::Subscribe;
 
   /// Add an entry to the table. This overwrites any existing data at the key.
   ///
@@ -355,6 +358,24 @@ class Table : private Log<ID, Data>,
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const Callback &subscribe, const FailureCallback &failure,
                    const SubscriptionCallback &done);
+
+  /// Subscribe to any Add operations to this table. The caller may choose to
+  /// subscribe to all Adds, or to subscribe only to keys that it requests
+  /// notifications for. This may only be called once per Table instance.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Add to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe Callback that is called on each received message. If the
+  /// callback is called with an empty vector, then there was no data at the key.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const Callback &subscribe, const SubscriptionCallback &done);
 
   void Delete(const JobID &job_id, const ID &id) { Log<ID, Data>::Delete(job_id, id); }
 

@@ -1,5 +1,6 @@
-#include "ray/gcs/redis_actor_info_accessor.h"
+#include "ray/gcs/redis_accessor.h"
 #include <boost/none.hpp>
+#include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/logging.h"
 
@@ -130,6 +131,100 @@ Status RedisActorInfoAccessor::AsyncSubscribe(
 Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                                 const StatusCallback &done) {
   return actor_sub_executor_.AsyncUnsubscribe(node_id_, actor_id, done);
+}
+
+RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl), job_sub_executor_(client_impl->job_table()) {}
+
+Status RedisJobInfoAccessor::AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
+                                      const StatusCallback &callback) {
+  return DoAsyncAppend(data_ptr, callback);
+}
+
+Status RedisJobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
+                                               const StatusCallback &callback) {
+  std::shared_ptr<JobTableData> data_ptr =
+      CreateJobTableData(job_id, /*is_dead*/ true, /*time_stamp*/ std::time(nullptr),
+                         /*node_manager_address*/ "", /*driver_pid*/ -1);
+  return DoAsyncAppend(data_ptr, callback);
+}
+
+Status RedisJobInfoAccessor::DoAsyncAppend(const std::shared_ptr<JobTableData> &data_ptr,
+                                           const StatusCallback &callback) {
+  JobTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const JobID &job_id,
+                         const JobTableData &data) { callback(Status::OK()); };
+  }
+
+  JobID job_id = JobID::FromBinary(data_ptr->job_id());
+  return client_impl_->job_table().Append(job_id, job_id, data_ptr, on_done);
+}
+
+Status RedisJobInfoAccessor::AsyncSubscribeToFinishedJobs(
+    const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  auto on_subscribe = [subscribe](const JobID &job_id, const JobTableData &job_data) {
+    if (job_data.is_dead()) {
+      subscribe(job_id, job_data);
+    }
+  };
+  return job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+}
+
+RedisTaskInfoAccessor::RedisTaskInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl), task_sub_executor_(client_impl->raylet_task_table()) {}
+
+Status RedisTaskInfoAccessor::AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
+                                       const StatusCallback &callback) {
+  raylet::TaskTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const TaskID &task_id,
+                         const TaskTableData &data) { callback(Status::OK()); };
+  }
+
+  TaskID task_id = TaskID::FromBinary(data_ptr->task().task_spec().task_id());
+  raylet::TaskTable &task_table = client_impl_->raylet_task_table();
+  return task_table.Add(JobID::Nil(), task_id, data_ptr, on_done);
+}
+
+Status RedisTaskInfoAccessor::AsyncGet(
+    const TaskID &task_id, const OptionalItemCallback<TaskTableData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_success = [callback](RedisGcsClient *client, const TaskID &task_id,
+                               const TaskTableData &data) {
+    boost::optional<TaskTableData> result(data);
+    callback(Status::OK(), result);
+  };
+
+  auto on_failure = [callback](RedisGcsClient *client, const TaskID &task_id) {
+    boost::optional<TaskTableData> result;
+    callback(Status::Invalid("Task not exist."), result);
+  };
+
+  raylet::TaskTable &task_table = client_impl_->raylet_task_table();
+  return task_table.Lookup(JobID::Nil(), task_id, on_success, on_failure);
+}
+
+Status RedisTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
+                                          const StatusCallback &callback) {
+  raylet::TaskTable &task_table = client_impl_->raylet_task_table();
+  task_table.Delete(JobID::Nil(), task_ids);
+  // TODO(micafan) Always return OK here.
+  // Confirm if we need to handle the deletion failure and how to handle it.
+  return Status::OK();
+}
+
+Status RedisTaskInfoAccessor::AsyncSubscribe(
+    const TaskID &task_id, const SubscribeCallback<TaskID, TaskTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+}
+
+Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
+                                               const StatusCallback &done) {
+  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
 }
 
 }  // namespace gcs
