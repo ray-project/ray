@@ -688,10 +688,9 @@ cdef execute_task(
         # If we've reached the max number of executions for this worker, exit.
         task_counter = manager.get_task_counter(job_id, function_descriptor)
         if task_counter == execution_info.max_calls:
-            # Intentionally disconnect so the raylet doesn't print an error.
-            # TODO(edoakes): we should handle max_calls in the core worker.
-            worker.core_worker.disconnect()
-            sys.exit(0)
+            exit = SystemExit(0)
+            exit.is_ray_terminate = True
+            raise exit
 
 
 cdef CRayStatus task_execution_handler(
@@ -721,11 +720,13 @@ cdef CRayStatus task_execution_handler(
                     job_id=None)
                 sys.exit(1)
         except SystemExit as e:
-            if not hasattr(e, "is_ray_terminate"):
-                logger.exception("SystemExit was raised from the worker")
             # Tell the core worker to exit as soon as the result objects
             # are processed.
-            return CRayStatus.SystemExit()
+            if hasattr(e, "is_ray_terminate"):
+                return CRayStatus.IntentionalSystemExit()
+            else:
+                logger.exception("SystemExit was raised from the worker")
+                return CRayStatus.UnexpectedSystemExit()
 
     return CRayStatus.OK()
 

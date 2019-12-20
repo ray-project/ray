@@ -423,7 +423,7 @@ class CoreWorkerDirectTaskReceiver {
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
-                               const std::function<void()> &exit_handler)
+                               const std::function<void(bool)> &exit_handler)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         exit_handler_(exit_handler),
@@ -470,7 +470,7 @@ class CoreWorkerDirectTaskReceiver {
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The callback function to exit the worker.
-  std::function<void()> exit_handler_;
+  std::function<void(bool)> exit_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
   /// Factory for producing new core worker clients.

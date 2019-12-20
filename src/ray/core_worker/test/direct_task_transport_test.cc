@@ -1,9 +1,9 @@
-#include "gtest/gtest.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 
+#include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/util/test_util.h"
@@ -24,12 +24,16 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return Status::OK();
   }
 
-  bool ReplyPushTask(Status status = Status::OK()) {
+  bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
     if (callbacks.size() == 0) {
       return false;
     }
     auto callback = callbacks.front();
-    callback(status, rpc::PushTaskReply());
+    auto reply = rpc::PushTaskReply();
+    if (exit) {
+      reply.set_worker_exiting(true);
+    }
+    callback(status, reply);
     callbacks.pop_front();
     return true;
   }
@@ -168,8 +172,8 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
-  // Checks that the object id was promoted to a plasma type id.
-  ASSERT_FALSE(task.ArgId(0, 0).IsDirectCallType());
+  // Checks that the object id is still a direct call id.
+  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
@@ -410,6 +414,33 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
+}
+
+TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  std::unordered_map<std::string, double> empty_resources;
+  std::vector<std::string> empty_descriptor;
+  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
+
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Task 1 is pushed.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+
+  // Task 1 finishes with exit status; the worker is not returned.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), /*exit=*/true));
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestSpillback) {
