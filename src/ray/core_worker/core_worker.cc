@@ -528,15 +528,26 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
-    // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
-    // consider waiting on them in plasma as well to ensure they are local.
-    // TODO(ekl) wait for https://github.com/ray-project/ray/pull/6459 to merge first
-    // before solving this
     RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids,
                                           num_objects - static_cast<int>(ready.size()),
                                           /*timeout_ms=*/0, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
+
+  // For any objects that are ErrorType::OBJECT_IN_PLASMA, we need to move them from
+  // the ready set into the plasma_object_ids set to wait on them there.
+  for (const auto &mem_id : memory_object_ids) {
+    if (ready.find(mem_id) != ready.end()) {
+      std::vector<std::shared_ptr<RayObject>> found;
+      memory_store_->Get({mem_id}, /*num_objects=*/1, /*timeout=*/0, worker_context_,
+                         /*remote_after_get=*/false, &found);
+      if (found.size() == 1 && found[0]->IsInPlasmaError()) {
+        memory_object_ids.erase(mem_id);
+        ready.erase(mem_id);
+        plasma_object_ids.insert(mem_id);
+      }
+    }
+  }
 
   if (timeout_ms != 0 && static_cast<int>(ready.size()) < num_objects) {
     // Clear the ready set and retry. We clear it so that we can compute the number of
