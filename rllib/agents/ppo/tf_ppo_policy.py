@@ -8,8 +8,8 @@ import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule, ACTION_LOGP
+from ray.rllib.policy.policy import ACTION_LOGP
+from ray.rllib.policy.tf_policy import LearningRateSchedule, EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.tf_ops import make_tf_callable
@@ -47,7 +47,7 @@ class PPOLoss(object):
         """Constructs the loss for Proximal Policy Objective.
 
         Arguments:
-            action_space: Environment observation space specification.
+            action_space: Environment action space specification.
             dist_class: action distribution class for logits.
             value_targets (Placeholder): Placeholder for target values; used
                 for GAE.
@@ -57,10 +57,10 @@ class PPOLoss(object):
                 from previous model evaluation.
             prev_logits (Placeholder): Placeholder for logits output from
                 previous model evaluation.
-            prev_actions_logp (Placeholder): Placeholder for prob output from
-                previous model evaluation.
+            prev_actions_logp (Placeholder): Placeholder for action prob output from
+                the previous (before update) Model evaluation.
             vf_preds (Placeholder): Placeholder for value function output
-                from previous model evaluation.
+                from the previous (before update) Model evaluation.
             curr_action_dist (ActionDistribution): ActionDistribution
                 of the current model.
             value_fn (Tensor): Current value function output Tensor.

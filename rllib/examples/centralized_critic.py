@@ -21,7 +21,7 @@ from gym.spaces import Discrete
 
 from ray import tune
 from ray.rllib.agents.ppo.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy, KLCoeffMixin, \
+from ray.rllib.agents.ppo.tf_ppo_policy import PPOTFPolicy, KLCoeffMixin, \
     PPOLoss, BEHAVIOUR_LOGITS
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
