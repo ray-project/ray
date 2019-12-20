@@ -127,7 +127,7 @@ def create_endpoint(endpoint_name, route, blocking=True):
 
 
 @_ensure_connected
-def set_backend_config(backend_tag, backend_config=None):
+def set_backend_config(backend_tag, backend_config):
     """Set a backend configuration for a backend tag
 
     Args:
@@ -136,13 +136,10 @@ def set_backend_config(backend_tag, backend_config=None):
     """
     assert backend_tag in global_state.backend_table.list_backends(), (
         "Backend {} is not registered.".format(backend_tag))
+    assert isinstance(backend_config, BackendConfig), ("backend_config must be"
+                                                " of instance BackendConfig")
+    backend_config_d = backend_config._asdict()
 
-    if backend_config is None:
-        raise RayServeException("Specify configuration"
-                                "for backend: {}".format(backend_tag))
-    backend_config_d = vars(backend_config)
-    assert backend_config_d["num_replicas"] > 0, ("Number of replicas"
-                                                  "must be greater than 1.")
     old_backend_config_d = global_state.backend_table.get_info(backend_tag)
     global_state.backend_table.register_info(backend_tag, backend_config_d)
 
@@ -155,14 +152,10 @@ def set_backend_config(backend_tag, backend_config=None):
     # Replicas are restarted if there is any change in the backend config
     # related to restart_configs
     # TODO(alind) : have replica restarting policies selected by the user
-    flag_restart_replicas = False
-    for k in old_backend_config_d.keys():
-        if k in BackendConfig.restart_configs:
-            # if old and new configs are not equal
-            if old_backend_config_d[k] != backend_config_d[k]:
-                flag_restart_replicas = True
-                break
-    if flag_restart_replicas:
+
+    need_to_restart_replicas = any(old_backend_config_d[k] !=
+        backend_config_d[k] for k in BackendConfig.restart_on_change_fields)
+    if need_to_restart_replicas:
         # kill all the replicas for restarting with new configurations
         scale(backend_tag, 0)
 
@@ -200,8 +193,9 @@ def create_backend(func_or_class,
         *actor_init_args (optional): the argument to pass to the class
             initialization method.
     """
-    backend_config_d = vars(backend_config)
-
+    assert isinstance(backend_config, BackendConfig), ("backend_config must be"
+                                                " of instance BackendConfig")
+    backend_config_d = backend_config._asdict()
     arg_list = []
     if inspect.isfunction(func_or_class):
         # arg list for a fn is function itself
@@ -259,7 +253,7 @@ def _start_replica(backend_tag):
 
     # Create the runner in the nursery
     [runner_handle] = ray.get(
-        global_state.actor_nursery_handle.start_actor_with_creator_kwargs.
+        global_state.actor_nursery_handle.start_actor_with_creator.
         remote(creator, backend_config_d, replica_tag))
 
     # Setup the worker
@@ -308,7 +302,8 @@ def scale(backend_tag, num_replicas):
     """
     assert backend_tag in global_state.backend_table.list_backends(), (
         "Backend {} is not registered.".format(backend_tag))
-    assert num_replicas >= 0, "Number of replicas must be greater than 1."
+    assert num_replicas >= 0, ("Number of replicas must be"
+                               " greater than or equal to 0.")
 
     replicas = global_state.backend_table.list_replicas(backend_tag)
     current_num_replicas = len(replicas)

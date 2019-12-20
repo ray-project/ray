@@ -161,8 +161,8 @@ class CentralizedQueues:
         self.flush()
 
     def set_backend_config(self, backend, config_dict):
-        logger.debug("Setting backend config for backend %s to %s", backend,
-                     config_dict)
+        logger.debug("Setting backend config for "
+                     "backend {} to {}".format(backend,config_dict))
         self.backend_info[backend] = config_dict
 
     def flush(self):

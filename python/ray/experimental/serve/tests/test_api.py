@@ -106,6 +106,9 @@ def test_batching(serve_instance):
         future_list.append(f)
 
     counter_result = ray.get(future_list)
+    # since count is only updated per batch of queries
+    # If there atleast one __call__ fn call with batch size greater than 1
+    # counter result will always be less than 20
     assert max(counter_result) < 20
 
 
@@ -134,7 +137,10 @@ def test_killing_replicas(serve_instance):
     global_state.refresh_actor_handle_cache()
     new_all_tag_list = list(global_state.actor_handle_cache.keys())
 
+    # the new_replica_tag_list must be subset of all_tag_list
     assert set(new_replica_tag_list) <= set(new_all_tag_list)
+
+    # the old_replica_tag_list must not be subset of all_tag_list
     assert not set(old_replica_tag_list) <= set(new_all_tag_list)
 
 
@@ -164,5 +170,7 @@ def test_not_killing_replicas(serve_instance):
     global_state.refresh_actor_handle_cache()
     new_all_tag_list = list(global_state.actor_handle_cache.keys())
 
+    # the old and new replica tag list should be identical
+    # and should be subset of all_tag_list
     assert set(old_replica_tag_list) <= set(new_all_tag_list)
     assert set(old_replica_tag_list) == set(new_replica_tag_list)

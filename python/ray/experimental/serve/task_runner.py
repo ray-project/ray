@@ -7,7 +7,7 @@ from ray.experimental.serve import context as serve_context
 from ray.experimental.serve.context import FakeFlaskQuest, TaskContext
 from ray.experimental.serve.http_util import build_flask_request
 from collections import defaultdict
-
+from ray.experimental.serve.exceptions import RayServeException
 
 class TaskRunner:
     """A simple class that runs a function.
@@ -94,95 +94,105 @@ class RayServeMixin:
             self._ray_serve_dequeue_requester_name,
             self._ray_serve_self_handle)
 
+    def _parse_request_item(self,request_item): 
+        if request_item.request_context == TaskContext.Web:
+            web_context = True
+            asgi_scope, body_bytes = request_item.request_args
+            flask_request = build_flask_request(asgi_scope,
+                                                io.BytesIO(body_bytes))
+            args = (flask_request, )
+            kwargs = {}
+        else:
+            web_context = False
+            args = (FakeFlaskQuest(), )
+            kwargs = request_item.request_kwargs
+
+        result_object_id = request_item.result_object_id
+        return args, kwargs, web_context, result_object_id
+    
+    def invoke_single(self,request_item):
+        args, kwargs, web_context, result_object_id = self._parse_request_item(
+            request_item)
+        serve_context.web = web_context
+        start_timestamp = time.time()
+        try:
+            result = self.__call__(*args, **kwargs)
+            ray.worker.global_worker.put_object(result, result_object_id)
+        except Exception as e:
+            wrapped_exception = wrap_to_ray_error(e)
+            self._serve_metric_error_counter += 1
+            ray.worker.global_worker.put_object(wrapped_exception,
+                                                    result_object_id)
+        self._serve_metric_latency_list.append(time.time() - start_timestamp)
+    
+    def invoke_batch(self,request_item_list):
+        # TODO(alind) : create no-http services. The enqueues
+        # from such services will always be TaskContext.Python.
+
+        # Assumption : all the requests in a bacth
+        # have same serve context.
+
+        # For batching kwargs are modified as follows -
+        # kwargs [Python Context] : key,val
+        # kwargs_list             : key, [val1,val2, ... , valn]
+        # or
+        # args[Web Context]       : val
+        # args_list               : [val1,val2, ...... , valn]
+        # where n (current batch size) <= max_batch_size of a backend
+
+        kwargs_list = defaultdict(list)
+        result_object_ids, context_list, arg_list = [], [], []
+        for item in request_item_list:
+            args, kwargs, web_context, r_object_id = self._parse_request_item(
+                item)
+            context_list.append(web_context)
+            if not web_context:
+                for k, v in kwargs.items():
+                    kwargs_list[k].append(v)
+            else:
+                arg_list.append(args[0])
+
+            result_object_ids.append(r_object_id)
+        try:
+            # check mixing of query context
+            if not (all(context_list) or not any(context_list)):
+                raise RayServeException(
+                    "Batched queries contain mixed context.")
+            serve_context.web = all(context_list)
+            if serve_context.web:
+                args = (arg_list, )
+            else:
+                args = (FakeFlaskQuest(), )
+            # set the current batch size (n) for serve_context
+            serve_context.batch_size = len(result_object_ids)
+            start_timestamp = time.time()
+            result_list = self.__call__(*args, **kwargs_list)
+            if len(result_list) != len(result_object_ids):
+                raise RayServeException("__call__ function "
+                                "doesn't preserve batch-size.")
+            for result, result_object_id in zip(result_list,
+                                                result_object_ids):
+                ray.worker.global_worker.put_object(
+                    result, result_object_id)
+            self._serve_metric_latency_list.append(time.time() -
+                                                    start_timestamp)
+        except Exception as e:
+            wrapped_exception = wrap_to_ray_error(e)
+            self._serve_metric_error_counter += len(result_object_ids)
+            for result_object_id in result_object_ids:
+                ray.worker.global_worker.put_object(
+                    wrapped_exception, result_object_id)
+
     def _ray_serve_call(self, request):
         work_item = request
         # check if work_item is a list or not
         # if it is list: then batching supported
-        if type(work_item) is not list:
-            if work_item.request_context == TaskContext.Web:
-                serve_context.web = True
-                asgi_scope, body_bytes = work_item.request_args
-                flask_request = build_flask_request(asgi_scope,
-                                                    io.BytesIO(body_bytes))
-                args = (flask_request, )
-                kwargs = {}
-            else:
-                serve_context.web = False
-                args = (FakeFlaskQuest(), )
-                kwargs = work_item.request_kwargs
-
-            result_object_id = work_item.result_object_id
-
-            start_timestamp = time.time()
-            try:
-                result = self.__call__(*args, **kwargs)
-                ray.worker.global_worker.put_object(result, result_object_id)
-            except Exception as e:
-                wrapped_exception = wrap_to_ray_error(e)
-                self._serve_metric_error_counter += 1
-                ray.worker.global_worker.put_object(wrapped_exception,
-                                                    result_object_id)
-            self._serve_metric_latency_list.append(time.time() -
-                                                   start_timestamp)
+        if not isinstance(work_item,list):
+            self.invoke_single(work_item)
         else:
-            # TODO(alind) : create no-http services. The enqueues
-            # from such services will always be TaskContext.Python.
+            self.invoke_batch(work_item)
 
-            # Assumption : all the requests in a bacth
-            # have same serve context.
-
-            # For batching kwargs are modified as follows -
-            # kwargs [Python Context] : key,val
-            # kwargs_list             : key, [val1,val2, ... , valn]
-            # or
-            # args[Web Context]       : val
-            # args_list               : [val1,val2, ...... , valn]
-            # where n (current batch size) <= max_batch_size of a backend
-            kwargs_list = defaultdict(list)
-            result_object_ids, context_list, arg_list = [], [], []
-
-            for item in work_item:
-                if item.request_context == TaskContext.Web:
-                    asgi_scope, body_bytes = item.request_args
-                    flask_request = build_flask_request(
-                        asgi_scope, io.BytesIO(body_bytes))
-                    arg_list.append(flask_request)
-                    context_list.append(True)
-                else:
-                    for k, v in item.request_kwargs.items():
-                        kwargs_list[k].append(v)
-                    context_list.append(False)
-                # get result_object_id for each query in a batch
-                result_object_ids.append(item.result_object_id)
-            try:
-                # check mixing of query context
-                if not (all(context_list) or not any(context_list)):
-                    raise Exception("Batched queries contain mixed context.")
-                serve_context.web = all(context_list)
-                if serve_context.web:
-                    args = (arg_list, )
-                else:
-                    args = (FakeFlaskQuest(), )
-                # set the current batch size (n) for serve_context
-                serve_context.batch_size = len(result_object_ids)
-                start_timestamp = time.time()
-                result_list = self.__call__(*args, **kwargs_list)
-                if len(result_list) != len(result_object_ids):
-                    raise Exception("__call__ function "
-                                    "doesn't preserve batch-size.")
-                for result, result_object_id in zip(result_list,
-                                                    result_object_ids):
-                    ray.worker.global_worker.put_object(
-                        result, result_object_id)
-                self._serve_metric_latency_list.append(time.time() -
-                                                       start_timestamp)
-            except Exception as e:
-                wrapped_exception = wrap_to_ray_error(e)
-                self._serve_metric_error_counter += len(result_object_ids)
-                for result_object_id in result_object_ids:
-                    ray.worker.global_worker.put_object(
-                        wrapped_exception, result_object_id)
-
+        # re-assign to default values
         serve_context.web = False
         serve_context.batch_size = None
         self._ray_serve_fetch()

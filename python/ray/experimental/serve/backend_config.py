@@ -9,7 +9,7 @@ class BackendConfig:
 
     # configs which when changed leads to restarting
     # the existing replicas.
-    restart_configs = ["resources", "num_cpus", "num_gpus"]
+    restart_on_change_fields = ["resources", "num_cpus", "num_gpus"]
 
     def __init__(self,
                  num_replicas=1,
@@ -22,6 +22,8 @@ class BackendConfig:
         """
         Class for defining backend configuration.
         """
+        
+
         # serve configs
         self.num_replicas = num_replicas
         self.max_batch_size = max_batch_size
@@ -33,6 +35,16 @@ class BackendConfig:
         self.memory = memory
         self.object_store_memory = object_store_memory
 
+    @property
+    def num_replicas(self):
+        return self._num_replicas
+
+    @num_replicas.setter
+    def num_replicas(self, val):
+        if not (val > 0):
+            raise Exception("num_replicas must be greater than zero")
+        self._num_replicas = val
+
     def __repr__(self):
         ret = "<{klass}({attrs})>".format(
             klass=self.__class__.__name__,
@@ -42,6 +54,9 @@ class BackendConfig:
 
     def __str__(self):
         return json.dumps(self.__dict__)
+    
+    def _asdict(self):
+        return self.__dict__
 
     @classmethod
     def from_str(cls, json_string):
