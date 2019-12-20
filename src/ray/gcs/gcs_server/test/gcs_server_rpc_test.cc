@@ -168,7 +168,7 @@ class GcsServerTest : public ::testing::Test {
   std::unique_ptr<rpc::GcsRpcClient> client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  // Timeout waiting for gcs server reply
+  // Timeout waiting for gcs server reply, default is 2s
   const uint64_t timeout_ms_ = 2000;
 };
 
