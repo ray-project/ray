@@ -141,6 +141,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     LOGGER.info("RayNativeRuntime shutdown");
   }
 
+  // For test purpose only
+  public RunManager getRunManager() {
+    return manager;
+  }
+
   @Override
   public void setResource(String resourceName, double capacity, UniqueId nodeId) {
     Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
