@@ -60,7 +60,7 @@ public class WriterWorker extends Worker {
       LOGGER.info("WriterWorker actorId: {}", this.peerActor.getId());
     }
 
-    LOGGER.info("peer isDirectActorCall: {}", ((NativeRayActor) peer).isDirectCallActor());
+    LOGGER.info("Peer isDirectActorCall: {}", ((NativeRayActor) peer).isDirectCallActor());
     int count = 3;
     while(count-- != 0) {
       Ray.call(ReaderWorker::testRayCall, peer).get();
