@@ -4,13 +4,10 @@ from __future__ import print_function
 
 import numpy as np
 
-try:
-    import torch
-except ImportError:
-    pass  # soft dep
-
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
-from ray.rllib.utils.annotations import override
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, ACTION_LOGP
+from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils import try_import_torch
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
@@ -65,16 +62,17 @@ class TorchPolicy(Policy):
                         **kwargs):
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
-                "obs": obs_batch,
+                SampleBatch.CUR_OBS: obs_batch,
             })
             if prev_action_batch:
-                input_dict["prev_actions"] = prev_action_batch
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
             if prev_reward_batch:
-                input_dict["prev_rewards"] = prev_reward_batch
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             model_out = self.model(input_dict, state_batches, [1])
             logits, state = model_out
             action_dist = self.dist_class(logits, self.model)
             actions = action_dist.sample()
+            input_dict[SampleBatch.ACTIONS] = actions
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
                     self.extra_action_out(input_dict, state_batches,
                                           self.model))

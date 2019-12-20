@@ -13,6 +13,9 @@ from ray.rllib.utils.annotations import DeveloperAPI
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
 
+ACTION_PROB = "action_prob"
+ACTION_LOGP = "action_logp"
+
 
 class TupleActions(namedtuple("TupleActions", ["batches"])):
     """Used to return tuple actions as a list of batches per tuple element."""
