@@ -1,6 +1,8 @@
 import logging
 import os
 
+from ray.rllib.utils.backend import try_import_tf, try_import_tfp, try_import_torch
+from ray.rllib.utils.deprecation import renamed_agent, renamed_class, renamed_function
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.policy_client import PolicyClient
