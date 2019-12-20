@@ -130,7 +130,7 @@ class CoreWorker {
   /// called on object IDs that were created randomly, e.g.,
   /// ObjectID::FromRandom.
   ///
-  /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
+  /// Postcondition: Get(object_id) is valid.
   ///
   /// \param[in] object_id The object ID to serialize.
   /// \param[out] owner_id The ID of the object's owner. This should be
@@ -401,6 +401,20 @@ class CoreWorker {
 
   /// Block current fiber until event is triggered.
   void YieldCurrentFiber(FiberEvent &event);
+
+  /// The callback expected to be implemented by the client.
+  using SetResultCallback =
+      std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
+
+  /// Perform async get from in-memory store.
+  ///
+  /// \param[in] object_id The id to call get on. Assumes object_id.IsDirectCallType().
+  /// \param[in] success_callback The callback to use the result object.
+  /// \param[in] fallback_callback The callback to use when failed to get result.
+  /// \param[in] python_future the void* object to be passed to SetResultCallback
+  /// \return void
+  void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+                SetResultCallback fallback_callback, void *python_future);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.

@@ -257,16 +257,21 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       }
     }
     if (status.IsSystemExit()) {
+      // Don't allow the worker to be reused, even though the reply status is OK.
+      // The worker will be shutting down shortly.
+      reply->set_worker_exiting(true);
       // In Python, SystemExit can only be raised on the main thread. To
       // work around this when we are executing tasks on worker threads,
       // we re-post the exit event explicitly on the main thread.
       exiting_ = true;
       if (objects_valid) {
+        // This happens when max_calls is hit. We still need to return the objects.
         send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
-        send_reply_callback(Status::SystemExit(), nullptr, nullptr);
+        send_reply_callback(status, nullptr, nullptr);
       }
-      task_main_io_service_.post([this]() { exit_handler_(); });
+      task_main_io_service_.post(
+          [this, status]() { exit_handler_(status.IsIntentionalSystemExit()); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       send_reply_callback(status, nullptr, nullptr);

@@ -81,7 +81,8 @@ enum class StatusCode : char {
   RedisError = 11,
   TimedOut = 12,
   Interrupted = 13,
-  SystemExit = 14,
+  IntentionalSystemExit = 14,
+  UnexpectedSystemExit = 15,
 };
 
 #if defined(__clang__)
@@ -153,8 +154,12 @@ class RAY_EXPORT Status {
     return Status(StatusCode::Interrupted, msg);
   }
 
-  static Status SystemExit() {
-    return Status(StatusCode::SystemExit, "process requested exit");
+  static Status IntentionalSystemExit() {
+    return Status(StatusCode::IntentionalSystemExit, "intentional system exit");
+  }
+
+  static Status UnexpectedSystemExit() {
+    return Status(StatusCode::UnexpectedSystemExit, "user code caused exit");
   }
 
   // Returns true iff the status indicates success.
@@ -172,7 +177,13 @@ class RAY_EXPORT Status {
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
   bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
-  bool IsSystemExit() const { return code() == StatusCode::SystemExit; }
+  bool IsSystemExit() const {
+    return code() == StatusCode::IntentionalSystemExit ||
+           code() == StatusCode::UnexpectedSystemExit;
+  }
+  bool IsIntentionalSystemExit() const {
+    return code() == StatusCode::IntentionalSystemExit;
+  }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
