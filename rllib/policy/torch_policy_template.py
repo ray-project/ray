@@ -105,13 +105,11 @@ def build_torch_policy(name,
                 return TorchPolicy.extra_grad_process(self)
 
         @override(TorchPolicy)
-        def extra_action_out(self, input_dict, state_batches, model):
+        def extra_action_out(self, input_dict, state_batches, model, action_dist=None):
             if extra_action_out_fn:
-                return extra_action_out_fn(self, input_dict, state_batches,
-                                           model)
+                return extra_action_out_fn(self, input_dict, state_batches, model, action_dist)
             else:
-                return TorchPolicy.extra_action_out(self, input_dict,
-                                                    state_batches, model)
+                return TorchPolicy.extra_action_out(self, input_dict, state_batches, model, action_dist)
 
         @override(TorchPolicy)
         def optimizer(self):
