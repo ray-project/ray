@@ -1,6 +1,6 @@
 import pprint
 import json
-
+from copy import deepcopy
 
 class BackendConfig:
     # configs not needed for actor creation when
@@ -56,7 +56,10 @@ class BackendConfig:
         return json.dumps(self.__dict__)
     
     def _asdict(self):
-        return self.__dict__
+        ret_d =  deepcopy(self.__dict__)
+        val = ret_d.pop('_num_replicas')
+        ret_d['num_replicas'] = val
+        return ret_d
 
     @classmethod
     def from_str(cls, json_string):
