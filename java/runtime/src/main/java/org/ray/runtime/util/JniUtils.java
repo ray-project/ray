@@ -1,9 +1,9 @@
-package org.ray.streaming.runtime.util;
+package org.ray.runtime.util;
 
 import com.google.common.base.Strings;
+import com.sun.jna.NativeLibrary;
 import java.lang.reflect.Field;
 import org.ray.runtime.RayNativeRuntime;
-import org.ray.runtime.util.FileUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +11,10 @@ public class JniUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(JniUtils.class);
 
   public static void loadLibrary(String libraryName) {
+    loadLibrary(libraryName, false);
+  }
+
+  public static void loadLibrary(String libraryName, boolean exportSymbols) {
     try {
       System.loadLibrary(libraryName);
     } catch (UnsatisfiedLinkError error) {
@@ -20,6 +24,11 @@ public class JniUtils {
       String libPath = null;
       try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
         libPath = libFile.getFile().getAbsolutePath();
+        if (exportSymbols) {
+          // Expose library symbols using RTLD_GLOBAL which may be depended by other shared
+          // libraries.
+          NativeLibrary.getInstance(libFile.getFile().getAbsolutePath());
+        }
         System.load(libPath);
       }
       LOGGER.debug("Native library loaded.");
@@ -30,17 +39,18 @@ public class JniUtils {
   /**
    * @see RayNativeRuntime resetLibraryPath
    */
-  private static void resetLibraryPath(String libPath) {
+  public static void resetLibraryPath(String libPath) {
     if (Strings.isNullOrEmpty(libPath)) {
       return;
     }
     String path = System.getProperty("java.library.path");
+    String separator = System.getProperty("path.separator");
     if (Strings.isNullOrEmpty(path)) {
       path = "";
     } else {
-      path += ":";
+      path += separator;
     }
-    path += String.join(":", libPath);
+    path += String.join(separator, libPath);
 
     // This is a hack to reset library path at runtime,
     // see https://stackoverflow.com/questions/15409223/.

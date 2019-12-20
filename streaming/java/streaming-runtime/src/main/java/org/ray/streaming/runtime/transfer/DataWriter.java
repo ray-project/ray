@@ -7,28 +7,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.ray.api.id.ActorId;
-import org.ray.runtime.RayNativeRuntime;
-import org.ray.streaming.runtime.util.JniUtils;
 import org.ray.streaming.runtime.util.Platform;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Data Writer is a wrapper of streaming c++ DataWriter, which sends data
+ * DataWriter is a wrapper of streaming c++ DataWriter, which sends data
  * to downstream workers
  */
 public class DataWriter {
   private static final Logger LOGGER = LoggerFactory.getLogger(DataWriter.class);
-
-  static {
-    try {
-      Class.forName(RayNativeRuntime.class.getName());
-    } catch (ClassNotFoundException e) {
-      throw new RuntimeException(e);
-    }
-    JniUtils.loadLibrary("streaming_java");
-  }
 
   private long nativeWriterPtr;
   private ByteBuffer buffer = ByteBuffer.allocateDirect(0);

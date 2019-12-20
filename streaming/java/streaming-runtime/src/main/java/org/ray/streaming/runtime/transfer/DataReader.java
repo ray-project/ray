@@ -8,28 +8,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import org.ray.api.id.ActorId;
-import org.ray.runtime.RayNativeRuntime;
-import org.ray.streaming.runtime.util.JniUtils;
 import org.ray.streaming.runtime.util.Platform;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Data Reader is wrapper of streaming c++ DataReader, which read data
+ * DataReader is wrapper of streaming c++ DataReader, which read data
  * from channels of upstream workers
  */
 public class DataReader {
   private static final Logger LOGGER = LoggerFactory.getLogger(DataReader.class);
-
-  static {
-    try {
-      Class.forName(RayNativeRuntime.class.getName());
-    } catch (ClassNotFoundException e) {
-      throw new RuntimeException(e);
-    }
-    JniUtils.loadLibrary("streaming_java");
-  }
 
   private long nativeReaderPtr;
   private Queue<DataMessage> buf = new LinkedList<>();

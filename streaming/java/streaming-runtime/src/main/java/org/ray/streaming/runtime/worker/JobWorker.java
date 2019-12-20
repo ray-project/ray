@@ -5,6 +5,7 @@ import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
+import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -14,6 +15,7 @@ import org.ray.streaming.runtime.core.processor.OneInputProcessor;
 import org.ray.streaming.runtime.core.processor.SourceProcessor;
 import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.transfer.TransferHandler;
+import org.ray.runtime.util.JniUtils;
 import org.ray.streaming.runtime.worker.context.WorkerContext;
 import org.ray.streaming.runtime.worker.tasks.OneInputStreamTask;
 import org.ray.streaming.runtime.worker.tasks.SourceStreamTask;
@@ -28,6 +30,16 @@ import org.slf4j.LoggerFactory;
 @RayRemote
 public class JobWorker implements Serializable {
   private static final Logger LOGGER = LoggerFactory.getLogger(JobWorker.class);
+
+  static {
+    // load core_worker_library_java before load streaming_java
+    try {
+      Class.forName(RayNativeRuntime.class.getName());
+    } catch (ClassNotFoundException e) {
+      throw new RuntimeException(e);
+    }
+    JniUtils.loadLibrary("streaming_java");
+  }
 
   private int taskId;
   private Map<String, Object> config;

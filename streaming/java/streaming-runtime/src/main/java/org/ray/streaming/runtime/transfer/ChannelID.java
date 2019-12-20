@@ -9,8 +9,6 @@ import java.lang.ref.Reference;
 import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.Set;
-import org.ray.runtime.RayNativeRuntime;
-import org.ray.streaming.runtime.util.JniUtils;
 import sun.nio.ch.DirectBuffer;
 
 /**
@@ -22,16 +20,6 @@ public class ChannelID {
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
   // This ensures that the FinalizablePhantomReference itself is not garbage-collected.
   private static final Set<Reference<?>> references = Sets.newConcurrentHashSet();
-
-  static {
-    // load core_worker_library_java before load streaming_java
-    try {
-      Class.forName(RayNativeRuntime.class.getName());
-    } catch (ClassNotFoundException e) {
-      throw new RuntimeException(e);
-    }
-    JniUtils.loadLibrary("streaming_java");
-  }
 
   private final byte[] bytes;
   private final String strId;

@@ -152,8 +152,7 @@ streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generat
 streaming/build/java
 .clwb
 streaming/**/.settings
-streaming/java/streaming-api/target
-streaming/java/streaming-runtime/target
+streaming/java/**/target
 streaming/java/**/.classpath
 streaming/java/**/.project
 streaming/java/**/*.log

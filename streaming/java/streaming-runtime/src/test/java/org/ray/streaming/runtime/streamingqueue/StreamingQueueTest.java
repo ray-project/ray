@@ -21,6 +21,7 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.runtime.TestHelper;
 import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.util.Config;
@@ -36,8 +37,11 @@ import com.google.common.collect.ImmutableMap;
 
 
 public class StreamingQueueTest implements Serializable {
-
   private static Logger LOGGER = LoggerFactory.getLogger(StreamingQueueTest.class);
+
+  static {
+    TestHelper.loadNativeLibraries();
+  }
 
   @org.testng.annotations.BeforeSuite
   public void suiteSetUp() throws Exception {
