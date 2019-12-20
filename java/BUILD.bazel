@@ -135,7 +135,7 @@ filegroup(
 )
 
 # plasma_store_server binary should be located in jar root path
-# and keep in sync with mvn package
+# and keep in sync with mvn resource
 genrule(
     name = "cp_plasma_store_server",
     srcs = [
