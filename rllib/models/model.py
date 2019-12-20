@@ -9,9 +9,11 @@ import gym
 from ray.rllib.models.tf.misc import linear, normc_initializer
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+torch, _ = try_import_torch()
+
 logger = logging.getLogger(__name__)
 
 
@@ -196,7 +198,7 @@ def flatten(obs, framework):
     if framework == "tf":
         return tf.layers.flatten(obs)
     elif framework == "torch":
-        import torch
+        assert torch is not None
         return torch.flatten(obs, start_dim=1)
     else:
         raise NotImplementedError("flatten", framework)
@@ -225,7 +227,7 @@ def restore_original_dimensions(obs, obs_space, tensorlib=tf):
         if tensorlib == "tf":
             tensorlib = tf
         elif tensorlib == "torch":
-            import torch
+            assert torch is not None
             tensorlib = torch
         return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
     else:
