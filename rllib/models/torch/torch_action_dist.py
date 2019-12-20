@@ -24,7 +24,7 @@ class TorchDistributionWrapper(ActionDistribution):
 
     @override(ActionDistribution)
     def kl(self, other):
-        return torch.distributions.kl.kl_divergence(self.dist, other)
+        return torch.distributions.kl.kl_divergence(self.dist, other.dist)
 
     @override(ActionDistribution)
     def sample(self):
