@@ -2428,7 +2428,6 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
             /*callback=*/
             [this, task_spec, resumed_from_checkpoint, port, parent_task_id](
                 Status status, const boost::optional<TaskTableData> &parent_task_data) {
-              RAY_CHECK(status.ok());
               if (parent_task_data) {
                 // The task was in the GCS task table. Use the stored task spec to
                 // get the parent actor id.
