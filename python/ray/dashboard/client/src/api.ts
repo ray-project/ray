@@ -70,7 +70,6 @@ export interface NodeInfoResponse {
         vms: number;
         rss: number;
       };
-      memory_full_info: null; // Currently unused as it requires superuser permission on some systems
     }>;
   }>;
   log_counts: {
