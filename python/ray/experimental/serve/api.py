@@ -136,8 +136,9 @@ def set_backend_config(backend_tag, backend_config):
     """
     assert backend_tag in global_state.backend_table.list_backends(), (
         "Backend {} is not registered.".format(backend_tag))
-    assert isinstance(backend_config, BackendConfig), ("backend_config must be"
-                                                " of instance BackendConfig")
+    assert isinstance(backend_config,
+                      BackendConfig), ("backend_config must be"
+                                       " of instance BackendConfig")
     backend_config_d = backend_config._asdict()
 
     old_backend_config_d = global_state.backend_table.get_info(backend_tag)
@@ -153,8 +154,9 @@ def set_backend_config(backend_tag, backend_config):
     # related to restart_configs
     # TODO(alind) : have replica restarting policies selected by the user
 
-    need_to_restart_replicas = any(old_backend_config_d[k] !=
-        backend_config_d[k] for k in BackendConfig.restart_on_change_fields)
+    need_to_restart_replicas = any(
+        old_backend_config_d[k] != backend_config_d[k]
+        for k in BackendConfig.restart_on_change_fields)
     if need_to_restart_replicas:
         # kill all the replicas for restarting with new configurations
         scale(backend_tag, 0)
@@ -193,8 +195,9 @@ def create_backend(func_or_class,
         *actor_init_args (optional): the argument to pass to the class
             initialization method.
     """
-    assert isinstance(backend_config, BackendConfig), ("backend_config must be"
-                                                " of instance BackendConfig")
+    assert isinstance(backend_config,
+                      BackendConfig), ("backend_config must be"
+                                       " of instance BackendConfig")
     backend_config_d = backend_config._asdict()
     arg_list = []
     if inspect.isfunction(func_or_class):
@@ -253,8 +256,8 @@ def _start_replica(backend_tag):
 
     # Create the runner in the nursery
     [runner_handle] = ray.get(
-        global_state.actor_nursery_handle.start_actor_with_creator.
-        remote(creator, backend_config_d, replica_tag))
+        global_state.actor_nursery_handle.start_actor_with_creator.remote(
+            creator, backend_config_d, replica_tag))
 
     # Setup the worker
     ray.get(

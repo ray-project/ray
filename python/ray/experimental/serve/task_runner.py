@@ -9,6 +9,7 @@ from ray.experimental.serve.http_util import build_flask_request
 from collections import defaultdict
 from ray.experimental.serve.exceptions import RayServeException
 
+
 class TaskRunner:
     """A simple class that runs a function.
 
@@ -94,7 +95,7 @@ class RayServeMixin:
             self._ray_serve_dequeue_requester_name,
             self._ray_serve_self_handle)
 
-    def _parse_request_item(self,request_item): 
+    def _parse_request_item(self, request_item):
         if request_item.request_context == TaskContext.Web:
             web_context = True
             asgi_scope, body_bytes = request_item.request_args
@@ -109,8 +110,8 @@ class RayServeMixin:
 
         result_object_id = request_item.result_object_id
         return args, kwargs, web_context, result_object_id
-    
-    def invoke_single(self,request_item):
+
+    def invoke_single(self, request_item):
         args, kwargs, web_context, result_object_id = self._parse_request_item(
             request_item)
         serve_context.web = web_context
@@ -122,10 +123,10 @@ class RayServeMixin:
             wrapped_exception = wrap_to_ray_error(e)
             self._serve_metric_error_counter += 1
             ray.worker.global_worker.put_object(wrapped_exception,
-                                                    result_object_id)
+                                                result_object_id)
         self._serve_metric_latency_list.append(time.time() - start_timestamp)
-    
-    def invoke_batch(self,request_item_list):
+
+    def invoke_batch(self, request_item_list):
         # TODO(alind) : create no-http services. The enqueues
         # from such services will always be TaskContext.Python.
 
@@ -169,25 +170,24 @@ class RayServeMixin:
             result_list = self.__call__(*args, **kwargs_list)
             if len(result_list) != len(result_object_ids):
                 raise RayServeException("__call__ function "
-                                "doesn't preserve batch-size.")
+                                        "doesn't preserve batch-size.")
             for result, result_object_id in zip(result_list,
                                                 result_object_ids):
-                ray.worker.global_worker.put_object(
-                    result, result_object_id)
+                ray.worker.global_worker.put_object(result, result_object_id)
             self._serve_metric_latency_list.append(time.time() -
-                                                    start_timestamp)
+                                                   start_timestamp)
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self._serve_metric_error_counter += len(result_object_ids)
             for result_object_id in result_object_ids:
-                ray.worker.global_worker.put_object(
-                    wrapped_exception, result_object_id)
+                ray.worker.global_worker.put_object(wrapped_exception,
+                                                    result_object_id)
 
     def _ray_serve_call(self, request):
         work_item = request
         # check if work_item is a list or not
         # if it is list: then batching supported
-        if not isinstance(work_item,list):
+        if not isinstance(work_item, list):
             self.invoke_single(work_item)
         else:
             self.invoke_batch(work_item)
