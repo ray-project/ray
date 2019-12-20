@@ -53,14 +53,14 @@ def valid_padding(in_size, filter_size, stride_size):
 
 
 def _get_activation_fn(name):
-    activation = None
     if name == "tanh":
-        activation = nn.Tanh
+        return nn.Tanh
     elif name == "relu":
-        activation = nn.ReLU
+        return nn.ReLU
+    elif name == "linear":
+        return None
     else:
         raise ValueError("Unknown activation: {}".format(name))
-    return activation
 
 
 class SlimConv2d(nn.Module):
