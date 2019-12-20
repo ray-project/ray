@@ -50,6 +50,11 @@ class TaskManager : public TaskFinisherInterface {
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
                       const TaskSpecification &spec, int max_retries = 0);
 
+  /// Wait for all pending tasks to finish, and then shutdown.
+  ///
+  /// \param shutdown The shutdown callback to call.
+  void DrainAndShutdown(std::function<void()> shutdown);
+
   /// Return whether the task is pending.
   ///
   /// \param[in] task_id ID of the task to query.
@@ -93,6 +98,9 @@ class TaskManager : public TaskFinisherInterface {
   /// of the given task spec.
   void RemovePlasmaSubmittedTaskReferences(TaskSpecification &spec);
 
+  /// Shutdown if all tasks are finished and shutdown is scheduled.
+  void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
+
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
@@ -126,6 +134,9 @@ class TaskManager : public TaskFinisherInterface {
   /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
   absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
       GUARDED_BY(mu_);
+
+  /// Optional shutdown hook to call when pending tasks all finish.
+  std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
 };
 
 }  // namespace ray

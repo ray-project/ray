@@ -80,7 +80,10 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
-        CRayStatus SystemExit()
+        CRayStatus IntentionalSystemExit()
+
+        @staticmethod
+        CRayStatus UnexpectedSystemExit()
 
         c_bool ok()
         c_bool IsOutOfMemory()
