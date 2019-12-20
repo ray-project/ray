@@ -57,8 +57,8 @@ class BackendConfig:
 
     def _asdict(self):
         ret_d = deepcopy(self.__dict__)
-        val = ret_d.pop('_num_replicas')
-        ret_d['num_replicas'] = val
+        val = ret_d.pop("_num_replicas")
+        ret_d["num_replicas"] = val
         return ret_d
 
     @classmethod
