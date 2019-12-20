@@ -241,6 +241,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const std::unordered_map<std::string, double> &task_resources,
     int64_t *total_violations) {
+
   TaskRequest task_request;
   ResourceMapToTaskRequest(task_resources, &task_request);
   int64_t node_id = GetBestSchedulableNode(task_request, total_violations);

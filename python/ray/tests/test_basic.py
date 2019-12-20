@@ -1114,8 +1114,10 @@ def test_submit_api(shutdown_only):
     a2 = Actor2._remote()
     ray.get(a2.method._remote())
 
+    print("xxxxxxxxxi-10")
     id1, id2, id3, id4 = a.method._remote(
         args=["test"], kwargs={"b": 2}, num_return_vals=4)
+    print("xxxxxxxxx")
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 

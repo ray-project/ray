@@ -1494,11 +1494,14 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
   while (!tasks_to_dispatch_.empty()) {
     auto task = tasks_to_dispatch_.front();
     auto reply = task.first;
+    auto required_resources = task.second.GetTaskSpecification();
     std::shared_ptr<Worker> worker =
-        worker_pool_.PopWorker(task.second.GetTaskSpecification());
+        worker_pool_.PopWorker(required_resources);
     if (worker == nullptr) {
       return;
     }
+    worker->AcquireTaskCpuResources(
+        ResourceIdSet(required_resources.GetRequiredResources().GetNumCpus()));
     reply(worker, ClientID::Nil(), "", -1);
     tasks_to_dispatch_.pop_front();
   }
@@ -2041,12 +2044,10 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
   if (new_scheduler_enabled_) {
     // TODO (ion): replace this hard coded # of CPUs.
     if (!worker) {
-      RAY_LOG(ERROR) << "-----------------> NULL worker in NodeManager::HandleDirectCallTaskBlocked";
+      return;
     }
-    // RAY_LOG(ERROR) << "--------------------------> " <<  worker;
-    std::unordered_map<std::string, double> task_request;
-    task_request.emplace(kCPU_ResourceLabel, 1.);
-    new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), task_request);
+    new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(),
+      worker->ReleaseTaskCpuResources().ToResourceSet().GetResourceMap());
     return;
   }
   if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked()) {
