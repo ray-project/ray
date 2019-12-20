@@ -29,9 +29,7 @@ class TorchPolicy(Policy):
         model (TorchModel): Torch model instance
         dist_class (type): Torch action distribution class
     """
-
-    def __init__(self, observation_space, action_space, model, loss,
-                 action_distribution_class):
+    def __init__(self, observation_space, action_space, model, loss, action_distribution_class):
         """Build a policy from policy and loss torch modules.
 
         Note that model will be placed on GPU device if CUDA_VISIBLE_DEVICES
@@ -48,8 +46,7 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
-        self.observation_space = observation_space
-        self.action_space = action_space
+        super(TorchPolicy, self).__init__(observation_space, action_space, config=None)
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
@@ -136,6 +133,10 @@ class TorchPolicy(Policy):
         self.model.load_state_dict(weights)
 
     @override(Policy)
+    def num_state_tensors(self):
+        return len(self.model.get_initial_state())
+
+    @override(Policy)
     def get_initial_state(self):
         return [s.numpy() for s in self.model.get_initial_state()]
 
@@ -177,3 +178,67 @@ class TorchPolicy(Policy):
 
         train_batch.set_get_interceptor(convert)
         return train_batch
+
+    @override(Policy)
+    def export_model(self, export_dir):
+        """TODO: implement for torch.
+        """
+        raise NotImplementedError
+
+    @override(Policy)
+    def export_checkpoint(self, export_dir):
+        """TODO: implement for torch.
+        """
+        raise NotImplementedError
+
+
+@DeveloperAPI
+class LearningRateSchedule(object):
+    """Mixin for TFPolicy that adds a learning rate schedule."""
+
+    @DeveloperAPI
+    def __init__(self, lr, lr_schedule):
+        self.cur_lr = lr
+        if lr_schedule is None:
+            self.lr_schedule = ConstantSchedule(lr)
+        else:
+            self.lr_schedule = PiecewiseSchedule(lr_schedule, outside_value=lr_schedule[-1][-1])
+
+    @override(Policy)
+    def on_global_var_update(self, global_vars):
+        super(LearningRateSchedule, self).on_global_var_update(global_vars)
+        self.cur_lr = self.lr_schedule.value(global_vars["timestep"])
+
+    @override(TorchPolicy)
+    def optimizer(self):
+        for p in self._optimizer.param_groups:
+            p["lr"] = self.cur_lr
+        return self._optimizer
+
+
+@DeveloperAPI
+class EntropyCoeffSchedule(object):
+    """Mixin for TorchPolicy that adds entropy coeff decay."""
+
+    @DeveloperAPI
+    def __init__(self, entropy_coeff, entropy_coeff_schedule):
+        self.entropy_coeff = entropy_coeff
+
+        if entropy_coeff_schedule is None:
+            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff)
+        else:
+            # Allows for custom schedule similar to lr_schedule format
+            if isinstance(entropy_coeff_schedule, list):
+                self.entropy_coeff_schedule = PiecewiseSchedule(
+                    entropy_coeff_schedule,
+                    outside_value=entropy_coeff_schedule[-1][-1])
+            else:
+                # Implements previous version but enforces outside_value
+                self.entropy_coeff_schedule = PiecewiseSchedule(
+                    [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
+                    outside_value=0.0)
+
+    @override(Policy)
+    def on_global_var_update(self, global_vars):
+        super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
+        self.entropy_coeff = self.entropy_coeff_schedule.value(global_vars["timestep"])

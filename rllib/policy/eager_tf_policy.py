@@ -368,6 +368,7 @@ def build_eager_tf_policy(name,
         def is_recurrent(self):
             return len(self._state_in) > 0
 
+        @override(Policy)
         def num_state_tensors(self):
             return len(self._state_in)
 

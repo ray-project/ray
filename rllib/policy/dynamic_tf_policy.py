@@ -67,8 +67,8 @@ class DynamicTFPolicy(TFPolicy):
                 TF fetches given the policy and batch input tensors
             grad_stats_fn (func): optional function that returns a dict of
                 TF fetches given the policy and loss gradient tensors
-            before_loss_init (func): optional function to run prior to loss
-                init that takes the same arguments as __init__
+            before_loss_init (Optional[callable]): Optional function to run prior to loss
+                init that takes the same arguments as __init__.
             make_model (func): optional function that returns a ModelV2 object
                 given (policy, obs_space, action_space, config).
                 All policy variables should be created in this function. If not
@@ -194,8 +194,10 @@ class DynamicTFPolicy(TFPolicy):
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req)
 
-        # Phase 2 init
-        before_loss_init(self, obs_space, action_space, config)
+        # Phase 2 init.
+        if before_loss_init is not None:
+            before_loss_init(self, obs_space, action_space, config)
+
         if not existing_inputs:
             self._initialize_loss()
 
@@ -254,6 +256,7 @@ class DynamicTFPolicy(TFPolicy):
     def is_recurrent(self):
         return len(self._state_in) > 0
 
+    @override(Policy)
     def num_state_tensors(self):
         return len(self._state_in)
 

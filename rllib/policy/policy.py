@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 import numpy as np
 import gym
@@ -24,7 +25,7 @@ class TupleActions(namedtuple("TupleActions", ["batches"])):
 
 
 @DeveloperAPI
-class Policy(object):
+class Policy(metaclass=ABCMeta):
     """An agent policy and loss, i.e., a TFPolicy or other subclass.
 
     This object defines how to act in the environment, and also losses used to
@@ -55,10 +56,10 @@ class Policy(object):
             action_space (gym.Space): Action space of the policy.
             config (dict): Policy-specific configuration data.
         """
-
         self.observation_space = observation_space
         self.action_space = action_space
 
+    @abstractmethod
     @DeveloperAPI
     def compute_actions(self,
                         obs_batch,
@@ -188,6 +189,7 @@ class Policy(object):
         self.apply_gradients(grads)
         return grad_info
 
+    @abstractmethod
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
         """Computes gradients against a batch of experiences.
@@ -200,6 +202,7 @@ class Policy(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     @DeveloperAPI
     def apply_gradients(self, gradients):
         """Applies previously computed gradients.
@@ -208,6 +211,7 @@ class Policy(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     @DeveloperAPI
     def get_weights(self):
         """Returns model weights.
@@ -217,12 +221,22 @@ class Policy(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     @DeveloperAPI
     def set_weights(self, weights):
         """Sets model weights.
 
         Arguments:
             weights (obj): Serializable copy or view of model weights
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    @DeveloperAPI
+    def num_state_tensors(self):
+        """
+        Returns:
+            int: The number of RNN hidden state tensors kept by this Policy's (RNN-based) Model.
         """
         raise NotImplementedError
 
@@ -258,6 +272,7 @@ class Policy(object):
         """
         pass
 
+    @abstractmethod
     @DeveloperAPI
     def export_model(self, export_dir):
         """Export Policy to local directory for serving.
@@ -267,6 +282,7 @@ class Policy(object):
         """
         raise NotImplementedError
 
+    @abstractmethod
     @DeveloperAPI
     def export_checkpoint(self, export_dir):
         """Export Policy checkpoint to local directory.
