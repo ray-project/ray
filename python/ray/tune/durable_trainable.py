@@ -19,15 +19,15 @@ class DurableTrainable(Trainable):
     trainable.
     """
 
-    def __init__(self, upload_dir, *args, **kwargs):
+    def __init__(self, remote_checkpoint_dir, *args, **kwargs):
         """Initializes a DurableTrainable.
 
         Args:
-            upload_dir (str): Upload directory (S3 or GS path).
+            remote_checkpoint_dir (str): Upload directory (S3 or GS path).
         """
         super(DurableTrainable, self).__init__(*args, **kwargs)
-        self.upload_dir = upload_dir
-        self.storage_client = get_cloud_sync_client(self.upload_dir)
+        self.remote_checkpoint_dir = remote_checkpoint_dir
+        self.storage_client = get_cloud_sync_client(self.remote_checkpoint_dir)
 
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint, persisted remotely.
@@ -79,4 +79,4 @@ class DurableTrainable(Trainable):
     def _storage_path(self, local_path):
         logdir_parent = os.path.dirname(self.logdir)
         rel_local_path = os.path.relpath(local_path, logdir_parent)
-        return os.path.join(self.upload_dir, rel_local_path)
+        return os.path.join(self.remote_checkpoint_dir, rel_local_path)

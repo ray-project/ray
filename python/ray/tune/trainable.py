@@ -5,7 +5,6 @@ from __future__ import print_function
 from datetime import datetime
 
 import copy
-import glob
 import io
 import logging
 import os
@@ -31,7 +30,6 @@ SETUP_TIME_THRESHOLD = 10
 
 
 class TrainableUtil(object):
-
     @staticmethod
     def pickle_checkpoint(checkpoint_path):
         """Pickles checkpoint data."""
@@ -58,7 +56,7 @@ class TrainableUtil(object):
         """
         checkpoint_dir = os.path.dirname(checkpoint_path)
         while checkpoint_dir != os.path.dirname(checkpoint_dir):
-            if glob.glob(os.path.join(checkpoint_dir, ".is_checkpoint")):
+            if os.path.isfile(os.path.join(checkpoint_dir, ".is_checkpoint")):
                 break
             checkpoint_dir = os.path.dirname(checkpoint_dir)
         else:

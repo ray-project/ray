@@ -111,9 +111,9 @@ class Experiment(object):
         self._run_identifier = Experiment.register_if_needed(run)
         self.name = name or self._run_identifier
         if upload_dir:
-            upload_dir = os.path.join(upload_dir, self.name)
+            self.remote_checkpoint_dir = os.path.join(upload_dir, self.name)
         else:
-            upload_dir = None
+            self.remote_checkpoint_dir = None
 
         spec = {
             "run": self._run_identifier,
@@ -124,6 +124,7 @@ class Experiment(object):
             "local_dir": os.path.abspath(
                 os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
             "upload_dir": upload_dir,
+            "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
             "sync_to_driver": sync_to_driver,
@@ -207,10 +208,6 @@ class Experiment(object):
     def checkpoint_dir(self):
         if self.local_dir:
             return os.path.join(self.local_dir, self.name)
-
-    @property
-    def remote_checkpoint_dir(self):
-        return self.spec["upload_dir"]
 
     @property
     def run_identifier(self):

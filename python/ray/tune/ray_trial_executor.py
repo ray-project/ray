@@ -128,7 +128,7 @@ class RayTrialExecutor(TrialExecutor):
             "logger_creator": logger_creator,
         }
         if issubclass(trial.get_trainable_cls(), DurableTrainable):
-            kwargs["upload_dir"] = trial.upload_dir
+            kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
         return cls.remote(**kwargs)
 
     def _train(self, trial):
@@ -220,35 +220,31 @@ class RayTrialExecutor(TrialExecutor):
         """
         attempts = trial.num_failures_since_result
         if attempts >= TRIAL_START_ATTEMPTS:
+            logger.error("Trial %s: Aborting trial after %s start attempts!",
+                         trial, attempts)
             return  # Exceeded restoration attempts.
+        if attempts > 0:
+            assert trial.status == Trial.ERROR, trial.status
+            logger.warning("Trial %s: Start attempt #%s...", trial,
+                           attempts + 1)
+
         self._commit_resources(trial.resources)
-        while attempts < TRIAL_START_ATTEMPTS:
-            attempts += 1
-            if attempts > 1:
-                logger.warning("Trial %s: Start attempt #%s...", trial,
-                               attempts)
-            try:
-                self._start_trial(trial, checkpoint)
-                break
-            except AbortTrialExecution:
-                logger.exception("Trial %s: Error starting runner, aborting!",
-                                 trial)
-                time.sleep(2)
-                error_msg = traceback.format_exc()
-                self._stop_trial(trial, error=True, error_msg=error_msg)
-                break  # don't retry fatal Tune errors
-            except Exception:
-                logger.exception("Trial %s: Unexpected error starting runner.",
-                                 trial)
-                time.sleep(2)
-                error_msg = traceback.format_exc()
-                self._stop_trial(trial, error=True, error_msg=error_msg)
-                # Note that we don't return the resources, since they may
-                # have been lost. TODO(ujvl): is this the right thing to do?
-        else:
-            logger.exception(
-                "Trial %s: Aborting trial after %s start "
-                "attempts!", trial, TRIAL_START_ATTEMPTS)
+        try:
+            self._start_trial(trial, checkpoint)
+        except AbortTrialExecution:
+            logger.exception("Trial %s: Error starting runner, aborting!",
+                             trial)
+            time.sleep(2)
+            error_msg = traceback.format_exc()
+            self._stop_trial(trial, error=True, error_msg=error_msg)
+        except Exception:
+            logger.exception("Trial %s: Unexpected error starting runner.",
+                             trial)
+            time.sleep(2)
+            error_msg = traceback.format_exc()
+            self._stop_trial(trial, error=True, error_msg=error_msg)
+            # Note that we don't return the resources, since they may
+            # have been lost. TODO(ujvl): is this the right thing to do?
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
@@ -363,7 +359,8 @@ class RayTrialExecutor(TrialExecutor):
         """Fetches one result of the running trials.
 
         Returns:
-            Result of the most recent trial training run."""
+            Result of the most recent trial training run.
+        """
         trial_future = self._find_item(self._running, trial)
         if not trial_future:
             raise ValueError("Trial was not running.")
@@ -497,7 +494,6 @@ class RayTrialExecutor(TrialExecutor):
 
     def debug_string(self):
         """Returns a human readable message for printing to the console."""
-
         if self._resources_initialized:
             status = ("Resources requested: {}/{} CPUs, {}/{} GPUs, "
                       "{}/{} GiB heap, {}/{} GiB objects".format(
@@ -525,7 +521,6 @@ class RayTrialExecutor(TrialExecutor):
 
     def resource_string(self):
         """Returns a string describing the total resources available."""
-
         if self._resources_initialized:
             res_str = ("{} CPUs, {} GPUs, "
                        "{} GiB heap, {} GiB objects".format(
@@ -589,6 +584,8 @@ class RayTrialExecutor(TrialExecutor):
 
         Raises:
             RuntimeError: This error is raised if no runner is found.
+            AbortTrialExecution: This error is raised if the trial is
+                ineligible for restoration, given the Tune input arguments.
         """
         if checkpoint is None or checkpoint.value is None:
             checkpoint = trial.checkpoint
@@ -604,16 +601,22 @@ class RayTrialExecutor(TrialExecutor):
             trial.runner.restore_from_object.remote(value)
         else:
             logger.info("Trial %s: Attempting restore from %s", trial, value)
-            if trial.upload_dir is None and trial.sync_on_checkpoint:
+            if issubclass(trial.get_trainable_cls(), DurableTrainable):
+                remote = trial.runner.restore.remote(value)
+            elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
-                # case where an upload directory is not provided.
+                # case where a DurableTrainable is not provided.
                 logger.warning("Trial %s: Reading checkpoint into memory.")
                 data_dict = TrainableUtil.pickle_checkpoint(value)
                 remote = trial.runner.restore_from_object.remote(data_dict)
             else:
-                remote = trial.runner.restore.remote(value)
+                raise AbortTrialExecution(
+                    "Pass in `sync_on_checkpoint=True` for driver-based trial"
+                    "restoration. Pass in an `upload_dir` and a Trainable "
+                    "extending `DurableTrainable` for remote storage-based "
+                    "restoration")
             self._running[remote] = trial
-            trial.on_begin_restore(checkpoint)
+            trial.restoring_from = checkpoint
 
     def export_trial_if_needed(self, trial):
         """Exports model of this trial based on trial.export_formats.

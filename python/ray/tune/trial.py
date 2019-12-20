@@ -121,7 +121,7 @@ class Trial(object):
                  experiment_tag="",
                  resources=None,
                  stopping_criterion=None,
-                 upload_dir=None,
+                 remote_checkpoint_dir=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -188,10 +188,11 @@ class Trial(object):
         self.custom_trial_name = None
 
         # Checkpointing fields
-        if upload_dir:
-            self.upload_dir = os.path.join(upload_dir, str(self))
+        if remote_checkpoint_dir:
+            self.remote_checkpoint_dir = os.path.join(remote_checkpoint_dir,
+                                                      str(self))
         else:
-            self.upload_dir = None
+            self.remote_checkpoint_dir = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.sync_on_checkpoint = sync_on_checkpoint
@@ -355,25 +356,20 @@ class Trial(object):
                 # after this to handle checkpoints taken mid-sync.
                 self.result_logger.wait()
                 # Force sync down and wait before tracking the new checkpoint.
-                if self.result_logger.sync_down():
-                    self.result_logger.wait()
-                else:
-                    logger.error(
-                        "Trial %s: Checkpoint sync skipped. "
-                        "This should not happen.", self)
+                try:
+                    if self.result_logger.sync_down():
+                        self.result_logger.wait()
+                    else:
+                        logger.error(
+                            "Trial %s: Checkpoint sync skipped. "
+                            "This should not happen.", self)
+                except TuneError:
+                    if not self.remote_checkpoint_dir:
+                        # If the trainable didn't have remote storage to upload
+                        # to then this checkpoint may have been lost, so we
+                        # shouldn't track it with the checkpoint_manager.
+                        raise
         self.checkpoint_manager.on_checkpoint(checkpoint)
-
-    def on_begin_restore(self, checkpoint):
-        """Handles dispatched async restore.
-
-        This can be called multiple times without subsequently calling
-        `on_restore` since a restoration attempt can fail.
-
-        Args:
-            checkpoint: The checkpoint Tune is attempting to restore from.
-        """
-        assert self.status == Trial.RUNNING
-        self.restoring_from = checkpoint
 
     def on_restore(self):
         """Handles restoration completion."""
@@ -439,7 +435,7 @@ class Trial(object):
     def __str__(self):
         """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
-        Can be overriden with a custom string creator.
+        Can be overridden with a custom string creator.
         """
         if self.custom_trial_name:
             return self.custom_trial_name
@@ -464,6 +460,8 @@ class Trial(object):
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
+        # Avoid capturing trial runner in state.
+        state["checkpoint_manager"].delete = None
 
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
@@ -480,6 +478,7 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("__logger_started__")
         state["resources"] = json_to_resources(state["resources"])
+
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
         for key in self._nonjson_fields:

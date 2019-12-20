@@ -540,7 +540,6 @@ class TrialRunner(object):
             logger.info(
                 "Trial %s: Attempting to restore"
                 "trial state from last checkpoint.", trial)
-            # This is asynchronous now, refactor
             self.trial_executor.start_trial(trial)
             if trial.status == Trial.ERROR:
                 logger.exception(
