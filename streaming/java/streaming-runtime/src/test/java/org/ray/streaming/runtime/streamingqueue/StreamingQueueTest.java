@@ -23,7 +23,6 @@ import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.runtime.TestHelper;
 import org.ray.streaming.runtime.transfer.ChannelID;
-import org.ray.streaming.runtime.transfer.ChannelUtils;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +33,6 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import com.google.common.collect.ImmutableMap;
-
 
 public class StreamingQueueTest implements Serializable {
   private static Logger LOGGER = LoggerFactory.getLogger(StreamingQueueTest.class);
@@ -84,7 +82,8 @@ public class StreamingQueueTest implements Serializable {
 
   @Test(timeOut = 3000000)
   public void testReaderWriter() {
-    LOGGER.info("StreamingQueueTest.testReaderWriter run-mode: {}", System.getProperty("ray.run-mode"));
+    LOGGER.info("StreamingQueueTest.testReaderWriter run-mode: {}",
+        System.getProperty("ray.run-mode"));
     Ray.shutdown();
     System.setProperty("ray.resources", "CPU:4,RES-A:4");
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
@@ -94,17 +93,19 @@ public class StreamingQueueTest implements Serializable {
     // ray init
     Ray.init();
 
-    ActorCreationOptions.Builder builder = new Builder(); // .setUseDirectCall(true).setMaxReconstructions(1000);
+    ActorCreationOptions.Builder builder = new Builder();
 
     RayActor<WriterWorker> writerActor = Ray.createActor(WriterWorker::new, "writer",
         builder.createActorCreationOptions());
     RayActor<ReaderWorker> readerActor = Ray.createActor(ReaderWorker::new, "reader",
         builder.createActorCreationOptions());
 
-    LOGGER.info("call getName on writerActor: {}", Ray.call(WriterWorker::getName, writerActor).get());
-    LOGGER.info("call getName on readerActor: {}", Ray.call(ReaderWorker::getName, readerActor).get());
+    LOGGER.info("call getName on writerActor: {}",
+        Ray.call(WriterWorker::getName, writerActor).get());
+    LOGGER.info("call getName on readerActor: {}",
+        Ray.call(ReaderWorker::getName, readerActor).get());
 
-//    LOGGER.info(Ray.call(WriterWorker::testCallReader, writerActor, readerActor).get());
+    // LOGGER.info(Ray.call(WriterWorker::testCallReader, writerActor, readerActor).get());
     List<String> outputQueueList = new ArrayList<>();
     List<String> inputQueueList = new ArrayList<>();
     int queueNum = 2;
@@ -127,7 +128,7 @@ public class StreamingQueueTest implements Serializable {
 
     long time = 0;
     while (time < 20000 &&
-        Ray.call(ReaderWorker::getTotalMsg, readerActor).get() < msgCount*queueNum) {
+        Ray.call(ReaderWorker::getTotalMsg, readerActor).get() < msgCount * queueNum) {
       try {
         Thread.sleep(1000);
         time += 1000;
@@ -138,12 +139,13 @@ public class StreamingQueueTest implements Serializable {
 
     Assert.assertEquals(
         Ray.call(ReaderWorker::getTotalMsg, readerActor).get().intValue(),
-        msgCount*queueNum);
+        msgCount * queueNum);
   }
 
   @Test(timeOut = 60000)
   public void testWordCount() {
-    LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}", System.getProperty("ray.run-mode"));
+    LOGGER.info("StreamingQueueTest.testWordCount run-mode: {}",
+        System.getProperty("ray.run-mode"));
     String resultFile = "/tmp/org.ray.streaming.runtime.streamingqueue.testWordCount.txt";
     deleteResultFile(resultFile);
 
@@ -166,8 +168,9 @@ public class StreamingQueueTest implements Serializable {
         })
         .keyBy(pair -> pair.word)
         .reduce((ReduceFunction<WordAndCount>) (oldValue, newValue) -> {
-            LOGGER.info("reduce: {} {}", oldValue, newValue);
-            return new WordAndCount(oldValue.word, oldValue.count + newValue.count); })
+          LOGGER.info("reduce: {} {}", oldValue, newValue);
+          return new WordAndCount(oldValue.word, oldValue.count + newValue.count);
+        })
         .sink(s -> {
           LOGGER.info("sink {} {}", s.word, s.count);
           wordCount.put(s.word, s.count);
@@ -176,7 +179,8 @@ public class StreamingQueueTest implements Serializable {
 
     streamingContext.execute();
 
-    Map<String, Integer> checkWordCount = (Map<String, Integer>) deserializeResultFromFile(resultFile);
+    Map<String, Integer> checkWordCount =
+        (Map<String, Integer>) deserializeResultFromFile(resultFile);
     // Sleep until the count for every word is computed.
     while (checkWordCount == null || checkWordCount.size() < 3) {
       LOGGER.info("sleep");
@@ -188,7 +192,8 @@ public class StreamingQueueTest implements Serializable {
       checkWordCount = (Map<String, Integer>) deserializeResultFromFile(resultFile);
     }
     LOGGER.info("check");
-    Assert.assertEquals(checkWordCount, ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
+    Assert.assertEquals(checkWordCount,
+        ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
   }
 
   private void serializeResultToFile(String fileName, Object obj) {
@@ -204,8 +209,9 @@ public class StreamingQueueTest implements Serializable {
     Map<String, Integer> checkWordCount = null;
     try {
       ObjectInputStream in = new ObjectInputStream(new FileInputStream(fileName));
-      checkWordCount = (Map<String, Integer>)in.readObject();
-      Assert.assertEquals(checkWordCount, ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
+      checkWordCount = (Map<String, Integer>) in.readObject();
+      Assert.assertEquals(checkWordCount,
+          ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
     } catch (Exception e) {
       LOGGER.error(String.valueOf(e));
     }
