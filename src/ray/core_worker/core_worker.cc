@@ -1009,7 +1009,6 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // Acquire a reference and retry. This prevents the object from being
     // evicted out from under us before we can start the get.
-    // XXX: ???
     AddLocalReference(object_id);
     if (task_manager_->IsTaskPending(object_id.TaskId())) {
       // The task is pending. Send the reply once the task finishes.
