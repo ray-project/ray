@@ -1,7 +1,8 @@
+#include "ray/core_worker/transport/direct_actor_transport.h"
+
 #include <thread>
 
 #include "ray/common/task/task.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
 
 using ray::rpc::ActorTableData;
 
@@ -140,10 +141,9 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
-                                        rpc::ClientFactoryFn client_factory,
+void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
                                         rpc::Address rpc_address) {
-  waiter_.reset(new DependencyWaiterImpl(raylet_client));
+  waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
 }
@@ -218,7 +218,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   }
 
-  auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
+  const rpc::Address &caller_address = request.caller_address();
+  auto accept_callback = [this, caller_address, reply, send_reply_callback, task_spec,
+                          resource_ids]() {
     // We have posted an exit task onto the main event loop,
     // so shouldn't bother executing any further work.
     if (exiting_) return;
@@ -234,6 +236,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     auto status = task_handler_(task_spec, resource_ids, &return_objects);
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
+      std::vector<ObjectID> plasma_return_ids;
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
         ObjectID id = ObjectID::ForTaskReturn(
@@ -245,6 +248,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         const auto &result = return_objects[i];
         if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
+          plasma_return_ids.push_back(id);
         } else {
           if (result->GetData() != nullptr) {
             return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
@@ -254,6 +258,11 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                                         result->GetMetadata()->Size());
           }
         }
+      }
+      // If we spilled any return objects to plasma, notify the raylet to pin them.
+      if (!plasma_return_ids.empty()) {
+        RAY_CHECK_OK(
+            local_raylet_client_->PinObjectIDs(caller_address, plasma_return_ids));
       }
     }
     if (status.IsSystemExit()) {

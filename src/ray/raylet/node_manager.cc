@@ -2974,7 +2974,7 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &request,
                                             rpc::PinObjectIDsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  // TODO.
+  // TODO connect to the remote worker and call WaitForObjectEviction.
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

@@ -39,15 +39,6 @@ class NodeManagerClient {
             callback);
   }
 
-  /// Notify the raylet to pin the provided object IDs.
-  void GetPinObjectIDs(const ClientCallback<PinObjectIDsReply> &callback) {
-    PinObjectIDsRequest request;
-    client_call_manager_
-        .CreateCall<NodeManagerService, PinObjectIDsRequest, PinObjectIDsReply>(
-            *stub_, &NodeManagerService::Stub::PrepareAsyncGetPinObjectIDs, request,
-            callback);
-  }
-
   /// Get current node stats.
   void GetNodeStats(const ClientCallback<NodeStatsReply> &callback) {
     NodeStatsRequest request;
@@ -94,6 +85,15 @@ class NodeManagerWorkerClient
     auto call = client_call_manager_.CreateCall<NodeManagerService, ReturnWorkerRequest,
                                                 ReturnWorkerReply>(
         *stub_, &NodeManagerService::Stub::PrepareAsyncReturnWorker, request, callback);
+    return call->GetStatus();
+  }
+
+  /// Notify the raylet to pin the provided object IDs.
+  ray::Status PinObjectIDs(const PinObjectIDsRequest &request,
+                           const ClientCallback<PinObjectIDsReply> &callback) {
+    auto call = client_call_manager_.CreateCall<NodeManagerService, PinObjectIDsRequest,
+                                                PinObjectIDsReply>(
+        *stub_, &NodeManagerService::Stub::PrepareAsyncPinObjectIDs, request, callback);
     return call->GetStatus();
   }
 

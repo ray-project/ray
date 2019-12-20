@@ -161,14 +161,14 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(raylet::RayletClient &raylet_client)
-      : raylet_client_(raylet_client) {}
+  DependencyWaiterImpl(raylet::RayletClient &local_raylet_client)
+      : local_raylet_client_(local_raylet_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
-    raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
+    local_raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
   }
 
   /// Fulfills the callback stored by Wait().
@@ -182,7 +182,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
-  raylet::RayletClient &raylet_client_;
+  raylet::RayletClient &local_raylet_client_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -420,10 +420,12 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
+                               std::shared_ptr<raylet::RayletClient> &local_raylet_client,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
                                const std::function<void(bool)> &exit_handler)
       : worker_context_(worker_context),
+        local_raylet_client_(local_raylet_client),
         task_handler_(task_handler),
         exit_handler_(exit_handler),
         task_main_io_service_(main_io_service) {}
@@ -437,8 +439,7 @@ class CoreWorkerDirectTaskReceiver {
   }
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(raylet::RayletClient &client, rpc::ClientFactoryFn client_factory,
-            rpc::Address rpc_address);
+  void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address);
 
   /// Handle a `PushTask` request.
   ///
@@ -476,6 +477,9 @@ class CoreWorkerDirectTaskReceiver {
   rpc::ClientFactoryFn client_factory_;
   /// Address of our RPC server.
   rpc::Address rpc_address_;
+  /// Reference to the core worker's raylet client. This is a pointer ref so that it
+  /// can be initialized by core worker after this class is constructed.
+  std::shared_ptr<raylet::RayletClient> &local_raylet_client_;
   /// Shared waiter for dependencies required by incoming tasks.
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.

@@ -107,5 +107,5 @@ service NodeManagerService {
   // Get the current node stats.
   rpc GetNodeStats(NodeStatsRequest) returns (NodeStatsReply);
   // Pin the provided object IDs.
-  rpc GetPinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
+  rpc PinObjectIDs(PinObjectIDsRequest) returns (PinObjectIDsReply);
 }

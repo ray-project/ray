@@ -134,9 +134,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
-    direct_task_receiver_ =
-        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
-            worker_context_, task_execution_service_, execute_task, exit));
+    direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
+        new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
+                                         task_execution_service_, execute_task, exit));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -245,7 +245,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
-    direct_task_receiver_->Init(*local_raylet_client_, client_factory, rpc_address_);
+    direct_task_receiver_->Init(client_factory, rpc_address_);
   }
 }
 
@@ -1031,6 +1031,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
 void CoreWorker::HandleWaitForObjectEviction(
     const rpc::WaitForObjectEvictionRequest &request,
     rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  // TODO: add a callback to the reference counter that replies to this callback.
   return;
 }
 

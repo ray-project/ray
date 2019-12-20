@@ -87,7 +87,7 @@ class NodeManagerGrpcService : public GrpcService {
     std::unique_ptr<ServerCallFactory> pin_object_ids_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   PinObjectIDsRequest, PinObjectIDsReply>(
-            service_, &NodeManagerService::AsyncService::RequestGetPinObjectIDs,
+            service_, &NodeManagerService::AsyncService::RequestPinObjectIDs,
             service_handler_, &NodeManagerServiceHandler::HandlePinObjectIDsRequest, cq,
             main_service_));
 
