@@ -12,6 +12,9 @@ except ImportError:
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+
+torch, _ = try_import_torch()
 
 
 class TorchPolicy(Policy):

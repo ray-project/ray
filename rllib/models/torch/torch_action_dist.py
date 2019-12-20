@@ -2,15 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-try:
-    import torch
-except ImportError:
-    pass  # soft dep
-
 import numpy as np
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils import try_import_torch
+
+torch, nn = try_import_torch()
 
 
 class TorchDistributionWrapper(ActionDistribution):
