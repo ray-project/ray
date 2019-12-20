@@ -36,6 +36,7 @@ ray_files = [
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
+    "ray/streaming/generated",
 ]
 
 optional_ray_files = []
