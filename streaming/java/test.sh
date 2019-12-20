@@ -37,4 +37,3 @@ mvn clean install -DskipTests
 cd $ROOT_DIR
 echo "maven install ray streaming"
 mvn clean install -DskipTests
-popd
