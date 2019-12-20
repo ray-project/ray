@@ -49,7 +49,7 @@ class GcsRpcClient {
             request, callback);
   }
 
-  /// Get actor specification from gcs server.
+  /// Get actor data from GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
@@ -61,7 +61,7 @@ class GcsRpcClient {
             request, callback);
   }
 
-  /// Register an actor to gcs server.
+  /// Register an actor to GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
@@ -73,7 +73,7 @@ class GcsRpcClient {
         request, callback);
   }
 
-  ///  Update dynamic states of actor in gcs server.
+  ///  Update actor info in GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
