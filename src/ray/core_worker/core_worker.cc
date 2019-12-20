@@ -1028,9 +1028,9 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   }
 }
 
-void CoreWorker::HandleNotifyObjectPinned(const rpc::NotifyObjectPinnedRequest &request,
-                                          rpc::NotifyObjectPinnedReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleWaitForObjectEviction(
+    const rpc::WaitForObjectEvictionRequest &request,
+    rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
   return;
 }
 

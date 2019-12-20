@@ -122,9 +122,9 @@ class CoreWorkerClientInterface {
   }
 
   /// Notify the owner of an object that the object has been pinned.
-  virtual ray::Status NotifyObjectPinned(
-      const NotifyObjectPinnedRequest &request,
-      const ClientCallback<NotifyObjectPinnedReply> &callback) {
+  virtual ray::Status WaitForObjectEviction(
+      const WaitForObjectEvictionRequest &request,
+      const ClientCallback<WaitForObjectEvictionReply> &callback) {
     return Status::NotImplemented("");
   }
 
@@ -204,13 +204,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     return call->GetStatus();
   }
 
-  virtual ray::Status NotifyObjectPinned(
-      const NotifyObjectPinnedRequest &request,
-      const ClientCallback<NotifyObjectPinnedReply> &callback) override {
+  virtual ray::Status WaitForObjectEviction(
+      const WaitForObjectEvictionRequest &request,
+      const ClientCallback<WaitForObjectEvictionReply> &callback) override {
     auto call =
-        client_call_manager_.CreateCall<CoreWorkerService, NotifyObjectPinnedRequest,
-                                        NotifyObjectPinnedReply>(
-            *stub_, &CoreWorkerService::Stub::PrepareAsyncNotifyObjectPinned, request,
+        client_call_manager_.CreateCall<CoreWorkerService, WaitForObjectEvictionRequest,
+                                        WaitForObjectEvictionReply>(
+            *stub_, &CoreWorkerService::Stub::PrepareAsyncWaitForObjectEviction, request,
             callback);
     return call->GetStatus();
   }

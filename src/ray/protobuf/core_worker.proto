@@ -63,10 +63,10 @@ message ReturnObject {
 }
 
 message PushTaskRequest {
-  // Address of the caller.
-  Address caller_address = 1;
   // The ID of the worker this message is intended for.
-  bytes intended_worker_id = 2;
+  bytes intended_worker_id = 1;
+  // Address of the caller.
+  Address caller_address = 2;
   // The task to be pushed.
   TaskSpec task_spec = 3;
   // The sequence number of the task for this client. This must increase
@@ -119,14 +119,14 @@ message GetObjectStatusReply {
   ObjectStatus status = 1;
 }
 
-message NotifyObjectPinnedRequest {
+message WaitForObjectEvictionRequest {
   // Raylet that has pinned the object.
   Address raylet_address = 1;
   // ObjectID of thep inned object.
   bytes object_id = 2;
 }
 
-message NotifyObjectPinnedReply {
+message WaitForObjectEvictionReply {
 }
 
 service CoreWorkerService {
@@ -141,5 +141,5 @@ service CoreWorkerService {
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
   // Notify the object's owner that it has been pinned by a raylet. Replying
   // to this message indicatest that the reference should be unpinned.
-  rpc NotifyObjectPinned(NotifyObjectPinnedRequest) returns (NotifyObjectPinnedReply);
+  rpc WaitForObjectEviction(WaitForObjectEvictionRequest) returns (WaitForObjectEvictionReply);
 }
