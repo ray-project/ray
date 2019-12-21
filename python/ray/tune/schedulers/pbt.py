@@ -187,13 +187,8 @@ class PopulationBasedTraining(FIFOScheduler):
         for value in hyperparam_mutations.values():
             if not (isinstance(value, list) or callable(value)):
                 raise TypeError(
-                    "hyperparam_mutation values must be either "
-                    "lists or functions")
-            if callable(value) and len(inspect.getfullargspec(value)[0]) != 0:
-                raise ValueError(
-                    "hyperparam_mutation function should not "
-                    "have any arguments"
-                )
+                    "`hyperparam_mutation` values must be either "
+                    "a List or callable.")
 
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
