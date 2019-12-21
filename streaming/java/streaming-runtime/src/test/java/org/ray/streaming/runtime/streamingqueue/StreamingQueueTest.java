@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.streamingqueue;
 
+import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -12,7 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.options.ActorCreationOptions;
@@ -21,8 +21,8 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.stream.StreamSource;
-import org.ray.streaming.runtime.TestHelper;
 import org.ray.streaming.runtime.transfer.ChannelID;
+import org.ray.streaming.runtime.util.EnvUtil;
 import org.ray.streaming.util.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,13 +32,11 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import com.google.common.collect.ImmutableMap;
-
 public class StreamingQueueTest implements Serializable {
   private static Logger LOGGER = LoggerFactory.getLogger(StreamingQueueTest.class);
 
   static {
-    TestHelper.loadNativeLibraries();
+    EnvUtil.loadNativeLibraries();
   }
 
   @org.testng.annotations.BeforeSuite
