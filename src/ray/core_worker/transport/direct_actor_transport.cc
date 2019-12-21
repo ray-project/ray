@@ -146,6 +146,7 @@ void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
+  local_raylet_client_ = raylet_client;
 }
 
 void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
@@ -254,6 +255,12 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                                         result->GetMetadata()->Size());
           }
         }
+      }
+
+      if (task_spec.IsActorCreationTask()) {
+        RAY_LOG(INFO) << "finish actor creation task " << task_spec.TaskId()
+                      << ", actor_id: " << task_spec.ActorCreationId();
+        RAY_CHECK_OK(local_raylet_client_->TaskDone());
       }
     }
     if (status.IsSystemExit()) {

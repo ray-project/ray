@@ -557,11 +557,6 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
-  // Client to listen to direct actor events.
-  std::unique_ptr<
-      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>
-      direct_actor_table_subscriber_;
-
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
@@ -592,9 +587,6 @@ class CoreWorker {
 
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
-
-  // Interface for publishing actor creation.
-  std::shared_ptr<ActorManager> actor_manager_;
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;

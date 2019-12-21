@@ -722,7 +722,7 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
     HeartbeatAdded(client_id, heartbeat_data);
   }
 
-  RAY_LOG(DEBUG) << "Total active object IDs received: " << active_object_ids.size();
+  // RAY_LOG(DEBUG) << "Total active object IDs received: " << active_object_ids.size();
 
   // Refresh the active object IDs in plasma to prevent them from being evicted.
   std::vector<plasma::ObjectID> plasma_ids;
@@ -1088,7 +1088,8 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
     if (was_local && !status.ok()) {
       // If the disconnected actor was local, only this node will try to update actor
       // state. So the update shouldn't fail.
-      RAY_LOG(FATAL) << "Failed to update state for actor " << actor_id;
+      RAY_LOG(FATAL) << "Failed to update state for actor " << actor_id
+                     << ", status: " << status.ToString();
     }
   };
   auto actor_notification = std::make_shared<ActorTableData>(new_actor_info);
@@ -1544,15 +1545,36 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   Task task(task_message);
+  bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
+  ActorID actor_id = ActorID::Nil();
+  if (is_actor_creation_task) {
+    actor_id = task.GetTaskSpecification().ActorCreationId();
+
+    // Save the actor creation task spec in `raylet_task_table`, which is needed to
+    // reconstruct the actor when raylet detect it dies.
+    std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
+    data->mutable_task()->mutable_task_spec()->CopyFrom(
+        task.GetTaskSpecification().GetMessage());
+    auto job_id = task.GetTaskSpecification().JobId();
+    auto task_id = task.GetTaskSpecification().TaskId();
+    RAY_CHECK_OK(gcs_client_->raylet_task_table().Add(job_id, task_id, data, nullptr));
+  }
 
   if (new_scheduler_enabled_) {
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     auto work = std::make_pair(
-        [this, request_resources, reply, send_reply_callback](
+        [this, request_resources, reply, send_reply_callback, is_actor_creation_task, actor_id](
             std::shared_ptr<Worker> worker, ClientID spillback_to, std::string address,
             int port) {
           if (worker != nullptr) {
+            if (is_actor_creation_task) {
+              // This was an actor creation task. Convert the worker to an actor.
+              // So that the actor can be reconstructed even if it fails when running
+              // actor creation task.
+              // worker->AssignActorId(actor_id);
+              RAY_LOG(INFO) << actor_id;
+            }
             reply->mutable_worker_address()->set_ip_address(
                 initial_config_.node_manager_address);
             reply->mutable_worker_address()->set_port(worker->Port());
@@ -1581,10 +1603,17 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback](
+      [this, task_id, reply, send_reply_callback, is_actor_creation_task, actor_id](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
+        auto worker = std::static_pointer_cast<Worker>(granted);
+        if (is_actor_creation_task) {
+          // This was an actor creation task. Convert the worker to an actor.
+          // worker->AssignActorId(actor_id);
+          RAY_LOG(INFO) << actor_id;
+        }
+
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -2280,7 +2309,9 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
                       worker->WorkerId(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
                                                  : worker->GetTaskResourceIds());
+    RAY_LOG(INFO) << "Finish OnDispatch for task: " << task_id;                                             
     post_assign_callbacks->push_back([this, worker, task_id]() {
+      RAY_LOG(INFO) << "post assign callback  for task: " << task_id;   
       FinishAssignTask(worker, task_id, /*success=*/true);
     });
   } else {
@@ -2324,7 +2355,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
   worker.ResetTaskResourceIds();
 
   const auto &spec = task.GetTaskSpecification();
-  if ((spec.IsActorCreationTask() || spec.IsActorTask()) && !spec.IsDirectCall()) {
+  if ((spec.IsActorCreationTask() || spec.IsActorTask())) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
     FinishAssignedActorTask(worker, task);
@@ -2353,7 +2384,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
 }
 
 std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTask(
-    const TaskSpecification &task_spec, int port) {
+    const TaskSpecification &task_spec, int port, const WorkerID &worker_id) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_entry = actor_registry_.find(actor_id);
@@ -2404,6 +2435,8 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   actor_info_ptr->mutable_address()->set_port(port);
   actor_info_ptr->mutable_address()->set_raylet_id(
       gcs_client_->client_table().GetLocalClientId().Binary());
+  actor_info_ptr->mutable_address()->set_worker_id(
+      worker_id.Binary());
   actor_info_ptr->set_state(ActorTableData::ALIVE);
   return actor_info_ptr;
 }
@@ -2436,11 +2469,12 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
     int port = worker.Port();
+    auto worker_id = worker.WorkerId();
     RAY_CHECK_OK(
         gcs_client_->raylet_task_table().Lookup(
             JobID::Nil(), parent_task_id,
             /*success_callback=*/
-            [this, task_spec, resumed_from_checkpoint, port](
+            [this, task_spec, resumed_from_checkpoint, port, worker_id](
                 ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id,
                 const TaskTableData &parent_task_data) {
               // The task was in the GCS task table. Use the stored task spec to
@@ -2453,10 +2487,10 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                 parent_actor_id = parent_task.GetTaskSpecification().ActorId();
               }
               FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                              resumed_from_checkpoint, port);
+                                              resumed_from_checkpoint, port, worker_id);
             },
             /*failure_callback=*/
-            [this, task_spec, resumed_from_checkpoint, port](
+            [this, task_spec, resumed_from_checkpoint, port, worker_id](
                 ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id) {
               // The parent task was not in the GCS task table. It should most likely be
               // in the lineage cache.
@@ -2480,7 +2514,7 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                     << "ray.init(redis_max_memory=<max_memory_bytes>).";
               }
               FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                              resumed_from_checkpoint, port);
+                                              resumed_from_checkpoint, port, worker_id);
             }));
   } else {
     auto actor_entry = actor_registry_.find(actor_id);
@@ -2508,10 +2542,10 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
 void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                                   const TaskSpecification &task_spec,
                                                   bool resumed_from_checkpoint,
-                                                  int port) {
+                                                  int port, const WorkerID &worker_id) {
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
-  auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, port);
+  auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, port, worker_id);
   new_actor_info->set_parent_id(parent_actor_id.Binary());
   auto update_callback = [actor_id](Status status) {
     if (!status.ok()) {
@@ -2608,11 +2642,6 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
 void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object_id) {
   RAY_LOG(DEBUG) << "Attempting to resubmit task "
                  << task.GetTaskSpecification().TaskId();
-
-  if (task.GetTaskSpecification().IsDirectCall()) {
-    TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE);
-    return;
-  }
 
   // Actors should only be recreated if the first initialization failed or if
   // the most recent instance of the actor failed.
@@ -2877,6 +2906,7 @@ void NodeManager::ForwardTask(
 
 void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
                                    const TaskID &task_id, bool success) {
+  RAY_LOG(DEBUG) << "FinishAssignTask: " << task_id;                                        
   // Remove the ASSIGNED task from the READY queue.
   Task assigned_task;
   TaskState state;
@@ -2884,8 +2914,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     // TODO(edoakes): should we be failing silently here?
     return;
   }
-  RAY_CHECK(state == TaskState::READY);
-
+  RAY_CHECK(state == TaskState::READY);         
   if (success) {
     auto spec = assigned_task.GetTaskSpecification();
     // We successfully assigned the task to the worker.
@@ -2897,7 +2926,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     // the actor's current execution dependency.
 
     // Mark the task as running.
-    // (See design_docs/task_states.rst for the state transition diagram.)
+    // (See design_docs/task_states.rst for the state transition diagram.) 
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.

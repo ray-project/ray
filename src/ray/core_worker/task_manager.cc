@@ -62,11 +62,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           in_memory_store_->Put(RayObject(data_buffer, metadata_buffer), object_id));
     }
   }
-
-  if (spec.IsActorCreationTask()) {
-    RAY_CHECK(actor_addr != nullptr);
-    actor_manager_->PublishCreatedActor(spec, *actor_addr);
-  }
 }
 
 void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
@@ -134,9 +129,6 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
         task_id, /*index=*/i + 1,
         /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
     RAY_CHECK_OK(in_memory_store_->Put(RayObject(error_type), object_id));
-  }
-  if (spec.IsActorCreationTask()) {
-    actor_manager_->PublishTerminatedActor(spec);
   }
 }
 

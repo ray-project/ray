@@ -125,7 +125,8 @@ bool WorkerContext::CurrentThreadIsMain() const {
 }
 
 bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
-  return !CurrentActorIsDirectCall() && CurrentThreadIsMain();
+  return worker_type_ != WorkerType::DRIVER &&
+      !CurrentActorIsDirectCall() && CurrentThreadIsMain();
 }
 
 bool WorkerContext::CurrentActorIsDirectCall() const {

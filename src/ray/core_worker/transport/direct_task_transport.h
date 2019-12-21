@@ -26,8 +26,9 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &i
 // (encapsulated in SchedulingClass) to defer resource allocation decisions to the raylet
 // and ensure fairness between different tasks, as well as plasma task dependencies as
 // a performance optimization because the raylet will fetch plasma dependencies to the
-// scheduled worker.
-using SchedulingKey = std::pair<SchedulingClass, std::vector<ObjectID>>;
+// scheduled worker. It's also keyed on actor ID to ensure the actor creation task
+// would always request a new worker lease.
+using SchedulingKey = std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID>;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
