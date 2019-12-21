@@ -836,7 +836,6 @@ def test_actor_init_fails(ray_start_cluster_head):
     assert results == [1 for actor in actors]
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no ft yet")
 def test_reconstruction_suppression(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     num_nodes = 5
