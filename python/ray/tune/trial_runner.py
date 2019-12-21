@@ -215,6 +215,9 @@ class TrialRunner(object):
 
             # Try syncing down the upload directory.
             logger.info("Downloading from %s", self._remote_checkpoint_dir)
+            # TODO(ujvl): Note that this syncs down the entire directory,
+            #  which may also contain trial checkpoints. We should selectively
+            #  sync the necessary files instead.
             self._syncer.sync_down_if_needed()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
@@ -538,7 +541,7 @@ class TrialRunner(object):
         trial.result_logger.flush()
         if self.trial_executor.has_resources(trial.resources):
             logger.info(
-                "Trial %s: Attempting to restore"
+                "Trial %s: Attempting to restore "
                 "trial state from last checkpoint.", trial)
             self.trial_executor.start_trial(trial)
             if trial.status == Trial.ERROR:

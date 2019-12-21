@@ -28,7 +28,6 @@ RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 30.0  # seconds
-TRIAL_START_ATTEMPTS = 3
 
 
 class _LocalWrapper(object):
@@ -184,7 +183,6 @@ class RayTrialExecutor(TrialExecutor):
             error_msg (str): Optional error message.
             stop_logger (bool): Whether to shut down the trial logger.
         """
-
         if stop_logger:
             trial.close_logger()
 
@@ -218,16 +216,6 @@ class RayTrialExecutor(TrialExecutor):
             checkpoint (Checkpoint): A Python object or path storing the state
                 of trial.
         """
-        attempts = trial.num_failures_since_result
-        if attempts >= TRIAL_START_ATTEMPTS:
-            logger.error("Trial %s: Aborting trial after %s start attempts!",
-                         trial, attempts)
-            return  # Exceeded restoration attempts.
-        if attempts > 0:
-            assert trial.status == Trial.ERROR, trial.status
-            logger.warning("Trial %s: Start attempt #%s...", trial,
-                           attempts + 1)
-
         self._commit_resources(trial.resources)
         try:
             self._start_trial(trial, checkpoint)
@@ -560,7 +548,7 @@ class RayTrialExecutor(TrialExecutor):
             value = trial.runner.save_to_object.remote()
             checkpoint = Checkpoint(storage, value, result)
         else:
-            with warn_if_slow("save_checkpoint_to_disk"):
+            with warn_if_slow("save_checkpoint_to_storage"):
                 # TODO(ujvl): Make this asynchronous.
                 value = ray.get(trial.runner.save.remote())
                 checkpoint = Checkpoint(storage, value, result)

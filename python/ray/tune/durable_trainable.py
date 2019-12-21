@@ -9,7 +9,7 @@ from ray.tune.syncer import get_cloud_sync_client
 
 
 class DurableTrainable(Trainable):
-    """A fault-tolerant Trainable.
+    """Experimental API for a remote-storage backed fault-tolerant Trainable.
 
     Supports checkpointing to and restoring from remote storage.
 
@@ -17,6 +17,12 @@ class DurableTrainable(Trainable):
     is, once ``storage.client.wait()`` returns after a checkpoint `sync up`,
     the checkpoint is considered committed and can be used to restore the
     trainable.
+
+    Run this with Tune as follows. Setting `sync_to_driver=False` disables
+    syncing to the driver to avoid keeping redundant checkpoints around, as
+    well as preventing the driver from syncing up the same checkpoint.
+
+    >>> tune.run(MyDurableTrainable, sync_to_driver=False)
     """
 
     def __init__(self, remote_checkpoint_dir, *args, **kwargs):
@@ -41,12 +47,11 @@ class DurableTrainable(Trainable):
         """
         if checkpoint_dir:
             if checkpoint_dir.starts_with(os.path.abspath(self.logdir)):
-                raise ValueError("checkpoint_dir must be self.logdir, or a "
-                                 "sub-directory.")
+                raise ValueError("`checkpoint_dir` must be `self.logdir`, or "
+                                 "a sub-directory.")
+
         checkpoint_path = super(DurableTrainable, self).save(checkpoint_dir)
-        local_dirpath = os.path.join(os.path.dirname(checkpoint_path), "")
-        storage_dirpath = self._storage_path(local_dirpath)
-        self.storage_client.sync_up(local_dirpath, storage_dirpath)
+        self.storage_client.sync_up(self.logdir, self.remote_checkpoint_dir)
         self.storage_client.wait()
         return checkpoint_path
 
@@ -58,11 +63,7 @@ class DurableTrainable(Trainable):
         Args:
             checkpoint_path (str): Local path to checkpoint.
         """
-        local_dirpath = os.path.join(os.path.dirname(checkpoint_path), "")
-        storage_dirpath = self._storage_path(local_dirpath)
-        if not os.path.exists(local_dirpath):
-            os.makedirs(local_dirpath)
-        self.storage_client.sync_down(storage_dirpath, local_dirpath)
+        self.storage_client.sync_down(self.remote_checkpoint_dir, self.logdir)
         self.storage_client.wait()
         super(DurableTrainable, self).restore(checkpoint_path)
 
@@ -77,6 +78,5 @@ class DurableTrainable(Trainable):
         self.storage_client.delete(self._storage_path(local_dirpath))
 
     def _storage_path(self, local_path):
-        logdir_parent = os.path.dirname(self.logdir)
-        rel_local_path = os.path.relpath(local_path, logdir_parent)
+        rel_local_path = os.path.relpath(local_path, self.logdir)
         return os.path.join(self.remote_checkpoint_dir, rel_local_path)

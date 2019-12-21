@@ -69,8 +69,8 @@ def get_cloud_sync_client(remote_path):
             raise ValueError(
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX))
-        template = "aws s3 sync {source} {target}"
-        delete_template = "aws s3 rm {target} --recursive"
+        template = "aws s3 sync {source} {target} --only-show-errors"
+        delete_template = "aws s3 rm {target} --recursive --only-show-errors"
     elif remote_path.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
             raise ValueError(
@@ -183,7 +183,7 @@ class CommandBasedClient(SyncClient):
             logdir (str): Log directory.
         """
         self.logfile = tempfile.NamedTemporaryFile(
-            prefix="log_sync", dir=logdir, suffix=".log", delete=False)
+            prefix="log_sync_out", dir=logdir, suffix=".log", delete=False)
 
     def sync_up(self, source, target):
         return self._execute(self.sync_up_template, source, target)

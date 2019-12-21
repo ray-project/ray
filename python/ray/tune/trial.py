@@ -90,7 +90,7 @@ def checkpoint_deleter(runner):
             # Delete local copy, if any exists.
             if os.path.exists(checkpoint_path):
                 shutil.rmtree(checkpoint_path)
-            # TODO(ujvl): Batch remote deletes?
+            # TODO(ujvl): Batch remote deletes.
             runner.delete_checkpoint.remote(checkpoint.value)
 
     return delete
@@ -189,10 +189,9 @@ class Trial(object):
 
         # Checkpointing fields
         if remote_checkpoint_dir:
-            self.remote_checkpoint_dir = os.path.join(remote_checkpoint_dir,
-                                                      str(self))
+            self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
-            self.remote_checkpoint_dir = None
+            self.remote_checkpoint_dir_prefix = None
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.sync_on_checkpoint = sync_on_checkpoint
@@ -205,7 +204,7 @@ class Trial(object):
         # Restoration fields
         self.restoring_from = None
         self.num_failures = 0
-        self.num_failures_since_result = 0
+        self.num_consecutive_start_attempts = 0
 
         # AutoML fields
         self.results = None
@@ -236,6 +235,12 @@ class Trial(object):
     @classmethod
     def generate_id(cls):
         return str(uuid.uuid1().hex)[:8]
+
+    @property
+    def remote_checkpoint_dir(self):
+        assert self.logdir and self.remote_checkpoint_dir_prefix
+        logdir_name = os.path.basename(self.logdir)
+        return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
     @classmethod
     def create_logdir(cls, identifier, local_dir):
@@ -299,7 +304,6 @@ class Trial(object):
     def write_error_log(self, error_msg):
         if error_msg and self.logdir:
             self.num_failures += 1
-            self.num_failures_since_result += 1
             self.error_file = os.path.join(self.logdir, "error.txt")
             with open(self.error_file, "a+") as f:
                 f.write("Failure # {} (occurred at {})\n".format(
@@ -397,7 +401,6 @@ class Trial(object):
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.set_location(Location(result.get("node_ip"), result.get("pid")))
-        self.num_failures_since_result = 0
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
@@ -460,7 +463,7 @@ class Trial(object):
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
-        # Avoid capturing trial runner in state.
+        # Avoid capturing the runner used in delete.
         state["checkpoint_manager"].delete = None
 
         for key in self._nonjson_fields:

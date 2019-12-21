@@ -711,11 +711,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertTrue(all(complete_results1))
 
     def testDurableTrainable(self):
-        state = {"hi": 1, "iter": 0}
-
         class TestTrain(DurableTrainable):
             def _setup(self, config):
-                self.state = state
+                self.state = {"hi": 1, "iter": 0}
 
             def _train(self):
                 self.state["iter"] += 1
@@ -732,8 +730,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         sync_client.sync_down = lambda s, t: shutil.move(s, t)
         mock_get_client = "ray.tune.durable_trainable.get_cloud_sync_client"
         with patch(mock_get_client) as mock_get_cloud_sync_client:
-            mock_get_cloud_sync_client.return_value = MagicMock()
-            test_trainable = TestTrain(remote_checkpoint_dir="/tmp")
+            mock_get_cloud_sync_client.return_value = sync_client
+            test_trainable = TestTrain(remote_checkpoint_dir="/tmp/tune")
             checkpoint_path = test_trainable.save()
             test_trainable.train()
             test_trainable.state["hi"] = 2

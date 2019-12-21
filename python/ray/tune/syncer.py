@@ -250,17 +250,18 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
     Args:
         local_dir (str): Source directory for syncing.
         remote_dir (str): Target directory for syncing. If not provided, a
-            no-op Syncer is returned.
-        sync_function (func|str): Function for syncing the local_dir to
+            noop Syncer is returned.
+        sync_function (func|str|bool): Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
-            syncer to run. If not provided, it defaults rsync.
+            syncer to run. If True or not provided, it defaults rsync. If
+            False, a noop Syncer is returned.
     """
     key = (local_dir, remote_dir)
     if key in _syncers:
         return _syncers[key]
-    elif not remote_dir:
+    elif not remote_dir or sync_function is False:
         sync_client = NOOP
-    elif sync_function:
+    elif sync_function and sync_function is not True:
         sync_client = get_sync_client(sync_function)
     else:
         sync_up = log_sync_template()

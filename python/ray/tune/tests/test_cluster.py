@@ -15,6 +15,7 @@ from ray import tune
 from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
 from ray.test_utils import run_string_as_driver_nonblocking
+from ray.tune import DurableTrainable, register_trainable
 from ray.tune.error import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.experiment import Experiment
@@ -24,9 +25,21 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import BasicVariantGenerator
 
 if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
+    from unittest.mock import MagicMock, patch
 else:
-    from mock import MagicMock
+    from mock import MagicMock, patch
+
+
+def get_mock_durable_trainable_cls():
+    class MockDurableTrainable(DurableTrainable):
+        def __init__(self, *args, **kwargs):
+            with patch("ray.tune.durable_trainable.get_cloud_sync_client"):
+                super(MockDurableTrainable, self).__init__(*args, **kwargs)
+            self.storage_client = MagicMock()
+            self.storage_client.sync_up = lambda s, t: shutil.move(s, t)
+            self.storage_client.sync_down = lambda s, t: shutil.move(s, t)
+
+    return MockDurableTrainable
 
 
 def _start_new_cluster():
@@ -40,6 +53,7 @@ def _start_new_cluster():
             })
         })
     # Pytest doesn't play nicely with imports
+    register_trainable("__durable_fake", get_mock_durable_trainable_cls())
     _register_all()
     return cluster
 
@@ -69,6 +83,7 @@ def start_connected_emptyhead_cluster():
         })
     # Pytest doesn't play nicely with imports
     _register_all()
+    register_trainable("__durable_fake", get_mock_durable_trainable_cls())
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -212,7 +227,8 @@ def test_queue_trials(start_connected_emptyhead_cluster):
     assert gpu_trial.status == Trial.TERMINATED
 
 
-def test_trial_migration(start_connected_emptyhead_cluster):
+@pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
+def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     """Removing a node while cluster has space should migrate trial.
 
     The trial state should also be consistent with the checkpoint.
@@ -231,7 +247,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     }
 
     # Test recovery of trial that hasn't been checkpointed
-    t = Trial("__fake", **kwargs)
+    t = Trial(trainable_id, **kwargs)
     runner.add_trial(t)
     runner.step()  # start
     runner.step()  # 1 result
@@ -251,7 +267,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     assert t.status == Trial.TERMINATED
 
     # Test recovery of trial that has been checkpointed
-    t2 = Trial("__fake", **kwargs)
+    t2 = Trial(trainable_id, **kwargs)
     runner.add_trial(t2)
     runner.step()  # start
     runner.step()  # 1 result
@@ -266,7 +282,10 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     assert t2.status == Trial.TERMINATED, runner.debug_string()
 
     # Test recovery of trial that won't be checkpointed
-    t3 = Trial("__fake", **{"stopping_criterion": {"training_iteration": 3}})
+    t3 = Trial(trainable_id,
+               **{"stopping_criterion": {
+                   "training_iteration": 3
+               }})
     runner.add_trial(t3)
     runner.step()  # start
     runner.step()  # 1 result
@@ -282,7 +301,8 @@ def test_trial_migration(start_connected_emptyhead_cluster):
         runner.step()
 
 
-def test_trial_requeue(start_connected_emptyhead_cluster):
+@pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
+def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     """Removing a node in full cluster causes Trial to be requeued."""
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
@@ -297,7 +317,7 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
         "max_failures": 1
     }
 
-    trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+    trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
@@ -313,7 +333,9 @@ def test_trial_requeue(start_connected_emptyhead_cluster):
         runner.step()
 
 
-def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
+@pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
+def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
+                                      trainable_id):
     """Test checks that trial restarts if checkpoint is lost w/ node fail."""
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
@@ -329,7 +351,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
     }
 
     # Test recovery of trial that has been checkpointed
-    t1 = Trial("__fake", **kwargs)
+    t1 = Trial(trainable_id, **kwargs)
     runner.add_trial(t1)
     runner.step()  # start
     runner.step()  # 1 result
@@ -347,7 +369,8 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
     assert t1.status == Trial.TERMINATED, runner.debug_string()
 
 
-def test_cluster_down_simple(start_connected_cluster, tmpdir):
+@pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
+def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
     """Tests that TrialRunner save/restore works on cluster shutdown."""
     cluster = start_connected_cluster
     cluster.add_node(num_cpus=1)
@@ -362,7 +385,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
         "checkpoint_freq": 1,
         "max_failures": 1
     }
-    trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+    trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
@@ -391,23 +414,24 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     cluster.shutdown()
 
 
-def test_cluster_down_full(start_connected_cluster, tmpdir):
+@pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
+def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
     """Tests that run_experiment restoring works on cluster shutdown."""
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
 
     exp1_args = dict(
-        run="__fake",
+        run=trainable_id,
         stop=dict(training_iteration=3),
         local_dir=dirpath,
         checkpoint_freq=1)
-    exp2_args = dict(run="__fake", stop=dict(training_iteration=3))
+    exp2_args = dict(run=trainable_id, stop=dict(training_iteration=3))
     exp3_args = dict(
-        run="__fake",
+        run=trainable_id,
         stop=dict(training_iteration=3),
         config=dict(mock_error=True))
     exp4_args = dict(
-        run="__fake",
+        run=trainable_id,
         stop=dict(training_iteration=3),
         config=dict(mock_error=True),
         checkpoint_freq=1)
@@ -495,7 +519,7 @@ tune.run(
     cluster.shutdown()
 
 
-def test_cluster_interrupt(start_connected_cluster, tmpdir):
+def test_cluster_interrupt(start_connected_cluster, tmpdir, trainable_id):
     """Tests run_experiment on cluster shutdown with actual interrupt.
 
     This is an end-to-end test.
