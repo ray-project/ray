@@ -6,14 +6,16 @@
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_manager.h"
 
 namespace ray {
 
 // This class is thread-safe.
 class LocalDependencyResolver {
  public:
-  LocalDependencyResolver(std::shared_ptr<CoreWorkerMemoryStore> store)
-      : in_memory_store_(store), num_pending_(0) {}
+  LocalDependencyResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
+                          std::shared_ptr<TaskFinisherInterface> task_finisher)
+      : in_memory_store_(store), task_finisher_(task_finisher), num_pending_(0) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -32,6 +34,9 @@ class LocalDependencyResolver {
  private:
   /// The in-memory store.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+
+  /// Used to complete tasks.
+  std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;

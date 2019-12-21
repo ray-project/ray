@@ -192,14 +192,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(new TaskManager(
-      memory_store_, actor_manager_, [this](const TaskSpecification &spec) {
+      memory_store_, reference_counter_, actor_manager_,
+      [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
                        << spec.DebugString();
         to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
       }));
-  resolver_.reset(new LocalDependencyResolver(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -377,8 +377,7 @@ Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
-  reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_,
-                                     std::make_shared<std::vector<ObjectID>>());
+  reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
   return Put(object, *object_id);
 }
 
@@ -460,10 +459,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
         // object.
         will_throw_exception = true;
       }
-      // If we got the result for this ObjectID, the task that created it must
-      // have finished. Therefore, we can safely remove its reference counting
-      // dependencies.
-      RemoveObjectIDDependencies(ids[i]);
     } else {
       missing_result = true;
     }
@@ -597,30 +592,6 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
-void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
-                                     const TaskTransportType transport_type) {
-  size_t num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-    num_returns--;
-  }
-
-  std::shared_ptr<std::vector<ObjectID>> task_deps =
-      std::make_shared<std::vector<ObjectID>>();
-  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    if (task_spec.ArgByRef(i)) {
-      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
-        task_deps->push_back(task_spec.ArgId(i, j));
-      }
-    }
-  }
-
-  // Note that we call this even if task_deps.size() == 0, in order to pin the return id.
-  for (size_t i = 0; i < num_returns; i++) {
-    reference_counter_->AddOwnedObject(task_spec.ReturnId(i, transport_type),
-                                       GetCallerId(), rpc_address_, task_deps);
-  }
-}
-
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
@@ -642,11 +613,9 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
-    task_manager_->AddPendingTask(task_spec, max_retries);
-    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
-    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
     return local_raylet_client_->SubmitTask(task_spec);
   }
 }
@@ -685,11 +654,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   if (actor_creation_options.is_direct_call) {
-    task_manager_->AddPendingTask(task_spec, actor_creation_options.max_reconstructions);
-    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
+                                  actor_creation_options.max_reconstructions);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
-    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
     return local_raylet_client_->SubmitTask(task_spec);
   }
 }
@@ -729,8 +697,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
-    task_manager_->AddPendingTask(task_spec);
-    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
+    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec);
     if (actor_handle->IsDead()) {
       auto status = Status::IOError("sent task to dead actor");
       task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
@@ -739,7 +706,6 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
       status = direct_actor_submitter_->SubmitTask(task_spec);
     }
   } else {
-    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
     RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));
   }
   return status;
@@ -1043,17 +1009,17 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // Acquire a reference and retry. This prevents the object from being
     // evicted out from under us before we can start the get.
-    AddObjectIDReference(object_id);
+    AddLocalReference(object_id);
     if (task_manager_->IsTaskPending(object_id.TaskId())) {
       // The task is pending. Send the reply once the task finishes.
       memory_store_->GetAsync(object_id,
                               [send_reply_callback](std::shared_ptr<RayObject> obj) {
                                 send_reply_callback(Status::OK(), nullptr, nullptr);
                               });
-      RemoveObjectIDReference(object_id);
+      RemoveLocalReference(object_id);
     } else {
       // We lost the race, the task is done.
-      RemoveObjectIDReference(object_id);
+      RemoveLocalReference(object_id);
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   } else {

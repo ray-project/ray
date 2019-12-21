@@ -8,9 +8,9 @@
 #include <queue>
 #include <set>
 #include <utility>
-#include "absl/container/flat_hash_map.h"
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -39,7 +39,7 @@ class CoreWorkerDirectActorTaskSubmitter {
                                      std::shared_ptr<CoreWorkerMemoryStore> store,
                                      std::shared_ptr<TaskFinisherInterface> task_finisher)
       : client_factory_(client_factory),
-        resolver_(store),
+        resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
   /// Submit a task to an actor for execution.

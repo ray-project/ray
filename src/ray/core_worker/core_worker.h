@@ -101,22 +101,30 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  /// Increase the reference count for this object ID.
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddObjectIDReference(const ObjectID &object_id) {
+  void AddLocalReference(const ObjectID &object_id) {
     reference_counter_->AddLocalReference(object_id);
   }
 
-  /// Decrease the reference count for this object ID.
+  /// Decrease the reference count for this object ID. Should be called
+  /// by the language frontend when a reference is destroyed.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
-  void RemoveObjectIDReference(const ObjectID &object_id) {
+  void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     if (ref_counting_enabled_) {
       memory_store_->Delete(deleted);
     }
+  }
+
+  /// Returns a map of all ObjectIDs currently in scope with a pair of their
+  /// (local, submitted_task) reference counts. For debugging purposes.
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const {
+    return reference_counter_->GetAllReferenceCounts();
   }
 
   /// Promote an object to plasma and get its owner information. This should be
@@ -434,11 +442,6 @@ class CoreWorker {
   /// Private methods related to task submission.
   ///
 
-  /// Add task dependencies to the reference counter. This prevents the argument
-  /// objects from early eviction, and also adds the return object.
-  void PinObjectReferences(const TaskSpecification &task_spec,
-                           const TaskTransportType transport_type);
-
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -484,17 +487,6 @@ class CoreWorker {
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
-
-  /// Remove reference counting dependencies of this object ID.
-  ///
-  /// \param[in] object_id The object whose dependencies should be removed.
-  void RemoveObjectIDDependencies(const ObjectID &object_id) {
-    std::vector<ObjectID> deleted;
-    reference_counter_->RemoveDependencies(object_id, &deleted);
-    if (ref_counting_enabled_) {
-      memory_store_->Delete(deleted);
-    }
-  }
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
@@ -623,9 +615,6 @@ class CoreWorker {
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(actor_handles_mutex_);
-
-  /// Resolve local and remote dependencies for actor creation.
-  std::unique_ptr<LocalDependencyResolver> resolver_;
 
   ///
   /// Fields related to task execution.
