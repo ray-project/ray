@@ -3034,6 +3034,12 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
       }
     }
   }
+  // As a result of the HandleNodeStatsRequest, we are collecting information from all workers
+  // on this node. This is done by calling GetCoreWorkerStats on each worker. In order to send 
+  // up-to-date information back, we wait until all workers have replied, and return the information
+  // from HandleNodesStatsRequest. 
+  // The caller of HandleNodeStatsRequest should set a timeout so that the rpc finishes even if
+  // not all workers have replied. 
   auto all_workers = worker_pool_.GetAllWorkers();
   for (const auto &worker : all_workers) {
     rpc::GetCoreWorkerStatsRequest request; 

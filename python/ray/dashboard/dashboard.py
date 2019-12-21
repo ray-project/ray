@@ -160,7 +160,6 @@ class Dashboard(object):
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
             for address, data in D.items():
-                # The webui string is in the worker stats
                 available_resources = data["availableResources"]
                 total_resources = data["totalResources"]
                 extra_info = ""
