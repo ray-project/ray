@@ -1073,16 +1073,12 @@ cdef class CoreWorker:
         return output
 
     def add_object_id_reference(self, ObjectID object_id):
-        cdef:
-            CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().AddObjectIDReference(c_object_id)
+        self.core_worker.get().AddLocalReference(object_id.native())
 
     def remove_object_id_reference(self, ObjectID object_id):
-        cdef:
-            CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().RemoveObjectIDReference(c_object_id)
+        self.core_worker.get().RemoveLocalReference(object_id.native())
 
     def serialize_and_promote_object_id(self, ObjectID object_id):
         cdef:
@@ -1173,6 +1169,24 @@ cdef class CoreWorker:
 
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
+
+    def get_all_reference_counts(self):
+        cdef:
+            unordered_map[CObjectID, pair[size_t, size_t]] c_ref_counts
+            unordered_map[CObjectID, pair[size_t, size_t]].iterator it
+
+        c_ref_counts = self.core_worker.get().GetAllReferenceCounts()
+        it = c_ref_counts.begin()
+
+        ref_counts = {}
+        while it != c_ref_counts.end():
+            object_id = ObjectID(dereference(it).first.Binary())
+            ref_counts[object_id] = {
+                "local": dereference(it).second.first,
+                "submitted": dereference(it).second.second}
+            postincrement(it)
+
+        return ref_counts
 
     def in_memory_store_get_async(self, ObjectID object_id, future):
         self.core_worker.get().GetAsync(

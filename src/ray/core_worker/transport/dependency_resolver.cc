@@ -18,7 +18,7 @@ struct TaskState {
 
 void InlineDependencies(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> dependencies,
-    TaskSpecification &task) {
+    TaskSpecification &task, std::vector<ObjectID> *inlined) {
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -43,6 +43,7 @@ void InlineDependencies(
             const auto &metadata = it->second->GetMetadata();
             mutable_arg->set_metadata(metadata->Data(), metadata->Size());
           }
+          inlined->push_back(id);
         }
         found++;
       } else {
@@ -83,14 +84,18 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
         obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
           bool complete = false;
+          std::vector<ObjectID> inlined;
           {
             absl::MutexLock lock(&mu_);
             state->local_dependencies[obj_id] = std::move(obj);
             if (--state->dependencies_remaining == 0) {
-              InlineDependencies(state->local_dependencies, state->task);
+              InlineDependencies(state->local_dependencies, state->task, &inlined);
               complete = true;
               num_pending_ -= 1;
             }
+          }
+          if (inlined.size() > 0) {
+            task_finisher_->OnTaskDependenciesInlined(inlined);
           }
           if (complete) {
             on_complete();
