@@ -156,6 +156,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
+  connected_ = true;
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
@@ -266,11 +267,14 @@ void CoreWorker::Shutdown() {
 
 void CoreWorker::Disconnect() {
   io_service_.stop();
-  if (gcs_client_) {
-    gcs_client_->Disconnect();
-  }
-  if (local_raylet_client_) {
-    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+  if (connected_) {
+    connected_ = false;
+    if (gcs_client_) {
+      gcs_client_->Disconnect();
+    }
+    if (local_raylet_client_) {
+      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+    }
   }
 }
 
