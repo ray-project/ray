@@ -10,7 +10,6 @@ import math
 import os
 import random
 import shutil
-import inspect
 
 from ray.tune.error import TuneError
 from ray.tune.result import TRAINING_ITERATION
