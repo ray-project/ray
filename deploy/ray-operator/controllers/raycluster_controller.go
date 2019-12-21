@@ -53,6 +53,14 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
+	err = c.Watch(&source.Kind{Type: &v1.Pod{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType: &rayiov1alpha1.RayCluster{},
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -214,6 +222,10 @@ func (r *RayClusterReconciler) buildPods(instance *rayiov1alpha1.RayCluster) []c
 				podConf := common.DefaultPodConfig(instance, podType, podName)
 				podConf.Extension = extension
 				pod := common.BuildPod(podConf)
+				// Set raycluster instance as the owner and controller
+				if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+					log.Error(err, "Failed to set controller reference for raycluster pod")
+				}
 				pods = append(pods, *pod)
 			}
 		}
