@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 
 public class JniUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(JniUtils.class);
-  private static Set<String> loadedLibs = Sets.newConcurrentHashSet();
+  private static Set<String> loadedLibs = Sets.newHashSet();
 
   /**
    * Loads the native library specified by the <code>libraryName</code> argument.
