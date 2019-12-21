@@ -1410,6 +1410,17 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
+def show_in_webui(message):
+    """Display message in dashboard. 
+
+    Args:
+        message (str): Message to be displayed. 
+    """
+    worker = global_worker
+    worker.check_connected()
+    worker.core_worker.set_webui_display(message.encode())
+
+
 def get(object_ids, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 

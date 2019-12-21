@@ -388,10 +388,7 @@ class RayletStats(threading.Thread):
             for node in self.nodes:
                 node_id = node["NodeID"]
                 stub = self.stubs[node_id]
-                print("requesting reply from {}".format(node_id))
-                reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
-                # reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest(), timeout=2)
-                print("XXX reply: {}".format(reply))
+                reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest(), timeout=2)
                 replies[node["NodeManagerAddress"]] = reply
             with self._raylet_stats_lock:
                 for address, reply in replies.items():

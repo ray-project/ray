@@ -102,6 +102,10 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
+  void SetWebuiDisplay(const std::string &message) {
+    webui_display_ = message;
+  }
+
   /// Increase the reference count for this object ID.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
@@ -625,6 +629,9 @@ class CoreWorker {
 
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
+
+  /// String to be displayed on Web UI. 
+  std::string webui_display_;
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
