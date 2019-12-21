@@ -722,8 +722,6 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
     HeartbeatAdded(client_id, heartbeat_data);
   }
 
-  // RAY_LOG(DEBUG) << "Total active object IDs received: " << active_object_ids.size();
-
   // Refresh the active object IDs in plasma to prevent them from being evicted.
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(active_object_ids.size());
@@ -1564,17 +1562,10 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     auto work = std::make_pair(
-        [this, request_resources, reply, send_reply_callback, is_actor_creation_task, actor_id](
+        [this, request_resources, reply, send_reply_callback, is_actor_creation_task](
             std::shared_ptr<Worker> worker, ClientID spillback_to, std::string address,
             int port) {
           if (worker != nullptr) {
-            if (is_actor_creation_task) {
-              // This was an actor creation task. Convert the worker to an actor.
-              // So that the actor can be reconstructed even if it fails when running
-              // actor creation task.
-              // worker->AssignActorId(actor_id);
-              RAY_LOG(INFO) << actor_id;
-            }
             reply->mutable_worker_address()->set_ip_address(
                 initial_config_.node_manager_address);
             reply->mutable_worker_address()->set_port(worker->Port());
@@ -1603,17 +1594,10 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback, is_actor_creation_task, actor_id](
+      [this, task_id, reply, send_reply_callback, is_actor_creation_task](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
-        auto worker = std::static_pointer_cast<Worker>(granted);
-        if (is_actor_creation_task) {
-          // This was an actor creation task. Convert the worker to an actor.
-          // worker->AssignActorId(actor_id);
-          RAY_LOG(INFO) << actor_id;
-        }
-
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -2308,10 +2292,10 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
                       worker->WorkerId(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
-                                                 : worker->GetTaskResourceIds());
-    RAY_LOG(INFO) << "Finish OnDispatch for task: " << task_id;                                             
+                                                 : worker->GetTaskResourceIds());                                          
     post_assign_callbacks->push_back([this, worker, task_id]() {
-      RAY_LOG(INFO) << "post assign callback  for task: " << task_id;   
+      RAY_LOG(DEBUG) << "Finished assigning task " << task_id
+                     << " to worker " << worker->WorkerId();;   
       FinishAssignTask(worker, task_id, /*success=*/true);
     });
   } else {

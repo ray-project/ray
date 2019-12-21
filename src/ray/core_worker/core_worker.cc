@@ -296,7 +296,6 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void CoreWorker::ReportActiveObjectIDs() {
-#if 0
   std::unordered_set<ObjectID> active_object_ids;
   size_t max_active = RayConfig::instance().raylet_max_active_object_ids();
   if (max_active > 0) {
@@ -318,7 +317,6 @@ void CoreWorker::ReportActiveObjectIDs() {
       boost::asio::chrono::milliseconds(
           RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
-#endif
 }
 
 void CoreWorker::InternalHeartbeat() {
