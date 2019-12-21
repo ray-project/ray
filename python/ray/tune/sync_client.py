@@ -32,11 +32,13 @@ def get_sync_client(sync_function):
     """Returns a sync client.
 
     Args:
-        sync_function (str|function): Sync function.
+        sync_function (Optional[str|function]): Sync function.
 
     Raises:
         ValueError if sync_function is malformed.
     """
+    if sync_function is None:
+        return None
     if isinstance(sync_function, types.FunctionType):
         client_cls = FunctionBasedClient
     elif isinstance(sync_function, str):

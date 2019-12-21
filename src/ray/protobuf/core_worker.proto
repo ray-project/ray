@@ -86,6 +86,8 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+  // Set to true if the worker will be exiting.
+  bool worker_exiting = 2;
 }
 
 message DirectActorCallArgWaitCompleteRequest {

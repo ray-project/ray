@@ -134,9 +134,13 @@ This will print any ``RAY_LOG(DEBUG)`` lines in the source code to the
 
 Testing locally
 ---------------
+
+Testing for Python development
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Suppose that one of the tests (e.g., ``test_basic.py``) is failing. You can run
-that test locally by running ``python -m pytest -v python/ray/tests/test_basic.py``. However, doing so will run all of the tests which can take a while. To run a specific test that is
-failing, you can do
+that test locally by running ``python -m pytest -v python/ray/tests/test_basic.py``.
+However, doing so will run all of the tests which can take a while. To run a
+specific test that is failing, you can do
 
 .. code-block:: shell
 
@@ -147,6 +151,10 @@ When running tests, usually only the first test failure matters. A single
 test failure often triggers the failure of subsequent tests in the same
 script.
 
+
+Testing for C++ development
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 To compile and run all C++ tests, you can run:
 
 .. code-block:: shell
@@ -154,9 +162,57 @@ To compile and run all C++ tests, you can run:
  cd ray
  bazel test $(bazel query 'kind(cc_test, ...)')
 
+Alternatively, you can also run one specific C++ test. You can use:
 
-Linting
--------
+.. code-block:: shell
+
+ cd ray
+ bazel test $(bazel query 'kind(cc_test, ...)') --test_filter=ClientConnectionTest --test_output=streamed
+
+
+
+Creating a pull request
+-----------------------
+
+To create a pull request (PR) for your change. First please go through the
+`PR template`_ and run through the checklist.
+
+Ray automatically runs continuous integration (CI) tests once PR is opened, it
+runs on `Travis-CI <https://travis-ci.com/ray-project/ray/>`_ with multiple CI
+test jobs.
+
+
+Understand CI test jobs
+-----------------------
+
+The `Travis CI`_ test folder contains all integration test scripts and they
+invoke other test scripts via ``pytest``, ``bazel``-based test or other bash
+scripts. Some of the examples include:
+
+* Raylet integration tests commands:
+    * ``src/ray/test/run_gcs_tests.sh``
+    * ``src/ray/test/run_core_worker_tests.sh``
+    * ``src/ray/test/run_object_manager_tests.sh``
+
+* Bazel test command:
+    * ``bazel test --build_tests_only //:all``
+
+* Ray serving test commands:
+    * ``python -m pytest python/ray/experimental/serve/tests``
+    * ``python python/ray/experimental/serve/examples/echo_full.py``
+
+* Ray test commands:
+    * ``python/ray/experimental/test/async_test.py``
+    * ``python/ray/tests/py3_test.py``
+
+If the Travis-CI exception doesn't seems to be related to your change, please
+use `this link <https://ray-travis-tracker.herokuapp.com/>`_ to check recent
+flake tests.
+
+
+Format and Linting
+------------------
+
 
 **Running linter locally:** To run the Python linter on a specific file, run
 something like ``flake8 ray/python/ray/worker.py``. You may need to first run
@@ -167,7 +223,26 @@ linting, and the config file is located at ``.style.yapf``. We recommend
 running ``scripts/yapf.sh`` prior to pushing to format changed files.
 Note that some projects such as dataframes and rllib are currently excluded.
 
+**Running CI linter:** The Travis CI linter script has multiple components to
+run. We recommend running ``ci/travis/format.sh``, which contains both linter
+for python and C++ codes. In addition, there are other formatting checkers for
+components like:
+
+* Python REAME format:
+
+.. code-block:: shell
+
+    cd ray/python
+    python setup.py check --restructuredtext --strict --metadata
+
+* Bazel format:
+
+.. code-block:: shell
+
+    ./ci/travis/bazel-format.sh
 
 
 .. _`issues`: https://github.com/ray-project/ray/issues
 .. _`Temporary Files`: http://ray.readthedocs.io/en/latest/tempfile.html
+.. _`PR template`: https://github.com/ray-project/ray/blob/master/.github/PULL_REQUEST_TEMPLATE.md>
+.. _`Travis CI`: https://github.com/ray-project/ray/tree/master/ci/travis>
