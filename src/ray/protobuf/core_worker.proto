@@ -115,12 +115,12 @@ message GetObjectStatusReply {
   ObjectStatus status = 1;
 }
 
-message ForceKillActorRequest {
+message KillActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
 }
 
-message ForceKillActorReply {}
+message KillActorReply {}
 
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
@@ -132,5 +132,6 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
-  rpc ForceKillActor(ForceKillActorRequest) returns (ForceKillActorReply);
+  // Request that the worker shut down without completing outstanding work.
+  rpc KillActor(KillActorRequest) returns (KillActorReply);
 }

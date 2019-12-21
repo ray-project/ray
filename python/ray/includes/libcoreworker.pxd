@@ -94,7 +94,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
-        CRayStatus ForceKillActor(const CActorID &actor_id)
+        CRayStatus KillActor(const CActorID &actor_id)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)

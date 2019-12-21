@@ -53,7 +53,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] actor_id The actor_id of the actor to kill.
   /// \return Status::Invalid if the actor could not be killed.
-  Status ForceKillActor(const ActorID &actor_id);
+  Status KillActor(const ActorID &actor_id);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -357,7 +357,8 @@ class SchedulingQueue {
           fiber_rate_limiter_->Acquire();
           request.Accept();
           fiber_rate_limiter_->Release();
-        }).detach();
+        })
+            .detach();
       } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {

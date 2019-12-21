@@ -8,7 +8,7 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-Status CoreWorkerDirectActorTaskSubmitter::ForceKillActor(const ActorID &actor_id) {
+Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id) {
   absl::MutexLock lock(&mu_);
   pending_force_kills_.insert(actor_id);
   auto it = rpc_clients_.find(actor_id);
@@ -120,12 +120,12 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
   RAY_CHECK(client);
-  // Check if there is a pending force kill. If there is, send it and disconnec the
+  // Check if there is a pending force kill. If there is, send it and disconnect the
   // client.
   if (pending_force_kills_.find(actor_id) != pending_force_kills_.end()) {
-    rpc::ForceKillActorRequest request;
+    rpc::KillActorRequest request;
     request.set_intended_actor_id(actor_id.Binary());
-    RAY_CHECK_OK(client->ForceKillActor(request, nullptr));
+    RAY_CHECK_OK(client->KillActor(request, nullptr));
     pending_force_kills_.erase(actor_id);
   }
 
