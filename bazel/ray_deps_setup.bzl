@@ -3,8 +3,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def github_repository(*, name=None, remote=None, commit=None, tag=None,
                       branch=None, build_file=None, build_file_content=None,
-                      sha256=None, shallow_since=None, strip_prefix=True,
-                      url=None, path=None, **kwargs):
+                      sha256=None, archive_suffix=".zip", shallow_since=None,
+                      strip_prefix=True, url=None, path=None, **kwargs):
     """
     Conveniently chooses between archive, git, etc. GitHub repositories.
     Prefer archives, as they're smaller and faster due to the lack of history.
@@ -24,7 +24,6 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
     If path         != None , local repository is assumed at the given path.
     """
     GIT_SUFFIX = ".git"
-    archive_suffix = ".zip"
 
     treeish = commit or tag or branch
     if not treeish: fail("Missing commit, tag, or branch argument")
@@ -224,6 +223,7 @@ def ray_deps_setup():
 
     github_repository(
         name = "com_github_grpc_grpc",
+        # NOTE: If you update this, also update @boringssl's hash.
         commit = "4790ab6d97e634a1ede983be393f3bb3c132b2f7",
         remote = "https://github.com/grpc/grpc",
         sha256 = "723853c36ea6d179d32a4f9f2f8691dbe0e28d5bbc521c954b34355a1c952ba5",
@@ -231,6 +231,17 @@ def ray_deps_setup():
             "//thirdparty/patches:grpc-command-quoting.patch",
             "//thirdparty/patches:grpc-cython-copts.patch",
         ],
+    )
+
+    github_repository(
+        # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
+        # provides a deterministic archive hash for caching. Explanation here:
+        # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
+        name = "boringssl",
+        # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
+        commit = "83da28a68f32023fd3b95a8ae94991a07b1f6c62",
+        remote = "https://github.com/google/boringssl",
+        sha256 = "58bdaf1fa305d42142c0c1aa7a84aa2e5df12f581c13a606b20242e1d037210c",
     )
 
     github_repository(
