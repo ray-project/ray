@@ -1,23 +1,38 @@
 package org.ray.runtime.util;
 
 import com.google.common.base.Strings;
+import com.google.common.collect.Sets;
 import com.sun.jna.NativeLibrary;
 import java.lang.reflect.Field;
-import org.ray.runtime.RayNativeRuntime;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class JniUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(JniUtils.class);
+  private static Set<String> loadedLibs = Sets.newConcurrentHashSet();
 
-  public static void loadLibrary(String libraryName) {
+  /**
+   * Loads the native library specified by the <code>libraryName</code> argument.
+   * The <code>libraryName</code> argument must not contain any platform specific
+   * prefix, file extension or path.
+   *
+   * @param libraryName the name of the library.
+   */
+  public static synchronized void loadLibrary(String libraryName) {
     loadLibrary(libraryName, false);
   }
 
-  public static void loadLibrary(String libraryName, boolean exportSymbols) {
-    try {
-      System.loadLibrary(libraryName);
-    } catch (UnsatisfiedLinkError error) {
+  /**
+   * Loads the native library specified by the <code>libraryName</code> argument.
+   * The <code>libraryName</code> argument must not contain any platform specific
+   * prefix, file extension or path.
+   *
+   * @param libraryName   the name of the library.
+   * @param exportSymbols export symbols of library so that it can be used by other libs.
+   */
+  public static synchronized void loadLibrary(String libraryName, boolean exportSymbols) {
+    if (!loadedLibs.contains(libraryName)) {
       LOGGER.debug("Loading native library {}.", libraryName);
       // Load native library.
       String fileName = System.mapLibraryName(libraryName);
@@ -33,13 +48,14 @@ public class JniUtils {
       }
       LOGGER.debug("Native library loaded.");
       resetLibraryPath(libPath);
+      loadedLibs.add(libraryName);
     }
   }
 
   /**
-   * @see RayNativeRuntime resetLibraryPath
+   * This is a hack to reset library path at runtime. Please don't use it outside of ray
    */
-  public static void resetLibraryPath(String libPath) {
+  public static synchronized void resetLibraryPath(String libPath) {
     if (Strings.isNullOrEmpty(libPath)) {
       return;
     }
