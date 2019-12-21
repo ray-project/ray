@@ -52,10 +52,10 @@ def round_resource_value(quantity):
 
 def format_resource(resource_name, quantity):
     if resource_name == "object_store_memory" or resource_name == "memory":
-        # Convert to 100MiB chunks and then to GiB
+        # Convert to 50MiB chunks and then to GiB
         quantity = quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)
-        return f"{round_resource_value(quantity)} GiB"
-    return f"{round_resource_value(quantity)}"
+        return "{} GiB".format(round_resource_value(quantity))
+    return "{}".format(round_resource_value(quantity))
 
 
 class Dashboard(object):
@@ -162,14 +162,15 @@ class Dashboard(object):
             for address, data in D.items():
                 available_resources = data["availableResources"]
                 total_resources = data["totalResources"]
-                extra_info = ""
+                extra_info = []
                 for resource_name in sorted(available_resources.keys()):
                     total = total_resources[resource_name]
                     occupied = total - available_resources[resource_name]
                     total = format_resource(resource_name, total)
                     occupied = format_resource(resource_name, occupied)
-                    extra_info += f"{resource_name}: {occupied} / {total}, "
-                data["extraInfo"] = extra_info[:-2]
+                    extra_info.append("{}: {} / {}".format(
+                        resource_name, occupied, total))
+                data["extraInfo"] = ", ".join(extra_info)
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:

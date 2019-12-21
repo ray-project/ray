@@ -64,10 +64,9 @@ This document describes the process for creating new releases.
        ray microbenchmark
 
    Run `ray microbenchmark` on an `m4.16xl` instance running `Ubuntu 18.04` with `Python 3` to get the
-   latest microbenchmark numbers and update them in `profiling.rst`.
+   latest microbenchmark numbers.
 
-   The results should be updated in ``doc/dev/profiling.rst`` and checked in under
-   ``doc/dev/release_logs/<version>``.
+   The results should be checked in under ``doc/dev/release_logs/<version>``.
 
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
