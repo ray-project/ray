@@ -2,7 +2,7 @@ import pytest
 
 import ray
 import ray.experimental.serve.context as context
-from ray.experimental.serve.queues import CentralizedQueuesActor
+from ray.experimental.serve.queues import RoundRobinPolicyQueueActor
 from ray.experimental.serve.task_runner import (
     RayServeMixin, TaskRunner, TaskRunnerActor, wrap_to_ray_error)
 
@@ -21,7 +21,7 @@ def test_runner_wraps_error():
 
 
 def test_runner_actor(serve_instance):
-    q = CentralizedQueuesActor.remote()
+    q = RoundRobinPolicyQueueActor.remote()
 
     def echo(flask_request, i=None):
         return i
@@ -48,7 +48,7 @@ def test_runner_actor(serve_instance):
 
 
 def test_ray_serve_mixin(serve_instance):
-    q = CentralizedQueuesActor.remote()
+    q = RoundRobinPolicyQueueActor.remote()
 
     CONSUMER_NAME = "runner-cls"
     PRODUCER_NAME = "prod-cls"
@@ -83,7 +83,7 @@ def test_ray_serve_mixin(serve_instance):
 
 
 def test_task_runner_check_context(serve_instance):
-    q = CentralizedQueuesActor.remote()
+    q = RoundRobinPolicyQueueActor.remote()
 
     def echo(flask_request, i=None):
         # Accessing the flask_request without web context should throw.
