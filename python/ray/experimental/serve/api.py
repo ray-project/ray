@@ -139,15 +139,15 @@ def set_backend_config(backend_tag, backend_config):
     assert isinstance(backend_config,
                       BackendConfig), ("backend_config must be"
                                        " of instance BackendConfig")
-    backend_config_d = backend_config._asdict()
+    backend_config_dict = dict(backend_config)
 
-    old_backend_config_d = global_state.backend_table.get_info(backend_tag)
-    global_state.backend_table.register_info(backend_tag, backend_config_d)
+    old_backend_config_dict = global_state.backend_table.get_info(backend_tag)
+    global_state.backend_table.register_info(backend_tag, backend_config_dict)
 
     # inform the router about change in configuration
     # particularly for setting max_batch_size
     ray.get(global_state.init_or_get_router().set_backend_config.remote(
-        backend_tag, backend_config_d))
+        backend_tag, backend_config_dict))
 
     # checking if replicas need to be restarted
     # Replicas are restarted if there is any change in the backend config
@@ -155,14 +155,14 @@ def set_backend_config(backend_tag, backend_config):
     # TODO(alind) : have replica restarting policies selected by the user
 
     need_to_restart_replicas = any(
-        old_backend_config_d[k] != backend_config_d[k]
+        old_backend_config_dict[k] != backend_config_dict[k]
         for k in BackendConfig.restart_on_change_fields)
     if need_to_restart_replicas:
         # kill all the replicas for restarting with new configurations
         scale(backend_tag, 0)
 
     # scale the replicas with new configuration
-    scale(backend_tag, backend_config_d["num_replicas"])
+    scale(backend_tag, backend_config_dict["num_replicas"])
 
 
 @_ensure_connected
@@ -174,8 +174,8 @@ def get_backend_config(backend_tag):
     """
     assert backend_tag in global_state.backend_table.list_backends(), (
         "Backend {} is not registered.".format(backend_tag))
-    backend_config_d = global_state.backend_table.get_info(backend_tag)
-    return BackendConfig(**backend_config_d)
+    backend_config_dict = global_state.backend_table.get_info(backend_tag)
+    return BackendConfig(**backend_config_dict)
 
 
 @_ensure_connected
@@ -198,13 +198,13 @@ def create_backend(func_or_class,
     assert isinstance(backend_config,
                       BackendConfig), ("backend_config must be"
                                        " of instance BackendConfig")
-    backend_config_d = backend_config._asdict()
+    backend_config_dict = dict(backend_config)
     arg_list = []
     if inspect.isfunction(func_or_class):
         # arg list for a fn is function itself
         arg_list = [func_or_class]
         # ignore lint on lambda expression
-        creator = lambda x: TaskRunnerActor._remote(**x)  # noqa: E731
+        creator = lambda kwargs: TaskRunnerActor._remote(**kwargs)  # noqa: E731
     elif inspect.isclass(func_or_class):
         # Python inheritance order is right-to-left. We put RayServeMixin
         # on the left to make sure its methods are not overriden.
@@ -214,7 +214,7 @@ def create_backend(func_or_class,
 
         arg_list = actor_init_args
         # ignore lint on lambda expression
-        creator = lambda x: CustomActor._remote(**x)  # noqa: E731
+        creator = lambda kwargs: CustomActor._remote(**kwargs)  # noqa: E731
     else:
         raise TypeError(
             "Backend must be a function or class, it is {}.".format(
@@ -224,7 +224,7 @@ def create_backend(func_or_class,
     global_state.backend_table.register_backend(backend_tag, creator)
 
     # save information about configurations needed to start the replicas
-    global_state.backend_table.register_info(backend_tag, backend_config_d)
+    global_state.backend_table.register_info(backend_tag, backend_config_dict)
 
     # save the initial arguments needed by replicas
     global_state.backend_table.save_init_args(backend_tag, arg_list)
@@ -232,8 +232,8 @@ def create_backend(func_or_class,
     # set the backend config inside the router
     # particularly for max-batch-size
     ray.get(global_state.init_or_get_router().set_backend_config.remote(
-        backend_tag, backend_config_d))
-    scale(backend_tag, backend_config_d["num_replicas"])
+        backend_tag, backend_config_dict))
+    scale(backend_tag, backend_config_dict["num_replicas"])
 
 
 def _start_replica(backend_tag):
@@ -244,20 +244,17 @@ def _start_replica(backend_tag):
 
     # get the info which starts the replicas
     creator = global_state.backend_table.get_backend_creator(backend_tag)
-    backend_config_d = global_state.backend_table.get_info(backend_tag)
+    backend_config_dict = global_state.backend_table.get_info(backend_tag)
+    backend_config = BackendConfig(**backend_config_dict)
     init_args = global_state.backend_table.get_init_args(backend_tag)
 
-    # pop arguments not needed for actor creation
-    for serve_cfg in BackendConfig.serve_configs:
-        backend_config_d.pop(serve_cfg)
-
-    # add arguments needed for actor creation
-    backend_config_d["args"] = init_args
+    # get actor creation kwargs
+    actor_kwargs = backend_config.get_actor_creation_args(init_args)
 
     # Create the runner in the nursery
     [runner_handle] = ray.get(
         global_state.actor_nursery_handle.start_actor_with_creator.remote(
-            creator, backend_config_d, replica_tag))
+            creator, actor_kwargs, replica_tag))
 
     # Setup the worker
     ray.get(

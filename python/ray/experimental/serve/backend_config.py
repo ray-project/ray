@@ -6,7 +6,7 @@ from copy import deepcopy
 class BackendConfig:
     # configs not needed for actor creation when
     # instantiating a replica
-    serve_configs = ["num_replicas", "max_batch_size"]
+    _serve_configs = ["_num_replicas", "max_batch_size"]
 
     # configs which when changed leads to restarting
     # the existing replicas.
@@ -45,22 +45,16 @@ class BackendConfig:
             raise Exception("num_replicas must be greater than zero")
         self._num_replicas = val
 
-    def __repr__(self):
-        ret = "<{klass}({attrs})>".format(
-            klass=self.__class__.__name__,
-            attrs=", ".join(
-                "{}={!r}".format(k, v) for k, v in self.__dict__.items()))
-        return pprint.pformat(ret)
+    def __iter__(self):
+        for k in self.__dict__.keys():
+            key, val = k, self.__dict__[k]
+            if key == '_num_replicas':
+                key = 'num_replicas'
+            yield key,val
 
-    def __str__(self):
-        return json.dumps(self.__dict__)
-
-    def _asdict(self):
+    def get_actor_creation_args(self,init_args):
         ret_d = deepcopy(self.__dict__)
-        val = ret_d.pop("_num_replicas")
-        ret_d["num_replicas"] = val
+        for k in self._serve_configs:
+            ret_d.pop(k)
+        ret_d['args'] = init_args
         return ret_d
-
-    @classmethod
-    def from_str(cls, json_string):
-        return cls(**json.loads(json_string))
