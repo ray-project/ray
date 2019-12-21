@@ -148,8 +148,8 @@ for the actor to exit (calling ``ray.get()`` on it will raise a ``RayActorError`
 Note that this method of termination will wait until any previously submitted
 tasks finish executing. If you want to terminate an actor immediately, you can
 call ``actor_handle.__ray_kill__()``. This will cause the actor to exit immediately
-and any pending tasks to fail, but any installed exit handlers using ``atexit`` will
-be called.
+and any pending tasks to fail. Any exit handlers installed in the actor using
+``atexit`` will be called.
 
 Passing Around Actor Handles
 ----------------------------
