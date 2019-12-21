@@ -34,14 +34,31 @@ master branch). To install these wheels, run the following command:
 ===================  ===================
 
 
-.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp37-cp37m-manylinux1_x86_64.whl
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp35-cp35m-manylinux1_x86_64.whl
-.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp27-cp27mu-manylinux1_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp37-cp37m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp36-cp36m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp35-cp35m-macosx_10_6_intel.whl
-.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev7-cp27-cp27m-macosx_10_6_intel.whl
+.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp37-cp37m-manylinux1_x86_64.whl
+.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp36-cp36m-manylinux1_x86_64.whl
+.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp35-cp35m-manylinux1_x86_64.whl
+.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp27-cp27mu-manylinux1_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp37-cp37m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp36-cp36m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp35-cp35m-macosx_10_6_intel.whl
+.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev-cp27-cp27m-macosx_10_6_intel.whl
+
+Installing Ray with Anaconda
+----------------------------
+
+If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands: 
+
+.. code-block:: bash
+
+  conda create --name ray
+  conda activate ray
+  conda install --name ray pip
+  pip install ray 
+
+Use ``pip list`` to confirm that ``ray`` is installed.
+
+.. _`Anaconda`: https://www.anaconda.com/
+
 
 Building Ray from Source
 ------------------------
@@ -56,8 +73,6 @@ Dependencies
 
 To build Ray, first install the following dependencies. We recommend using
 `Anaconda`_.
-
-.. _`Anaconda`: https://www.continuum.io/downloads
 
 For Ubuntu, run the following commands:
 

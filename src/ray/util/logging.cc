@@ -85,6 +85,7 @@ typedef ray::CerrLog LoggingProvider;
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
 std::string RayLog::log_dir_ = "";
+bool RayLog::is_failure_signal_handler_installed_ = false;
 
 #ifdef RAY_USE_GLOG
 using namespace google;
@@ -140,11 +141,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   google::InitGoogleLogging(app_name_.c_str());
   if (log_dir_.empty()) {
     google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
-    for (int i = static_cast<int>(severity_threshold_);
-         i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
-      int level = GetMappedSeverity(static_cast<RayLogLevel>(i));
-      google::base::SetLogger(level, &stdout_logger_singleton);
-    }
+    int level = GetMappedSeverity(severity_threshold_);
+    google::base::SetLogger(level, &stdout_logger_singleton);
   } else {
     // Enable log file if log_dir_ is not empty.
     auto dir_ends_with_slash = log_dir_;
@@ -170,6 +168,9 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 
 void RayLog::UninstallSignalAction() {
 #ifdef RAY_USE_GLOG
+  if (!is_failure_signal_handler_installed_) {
+    return;
+  }
   RAY_LOG(DEBUG) << "Uninstall signal handlers.";
   // This signal list comes from glog's signalhandler.cc.
   // https://github.com/google/glog/blob/master/src/signalhandler.cc#L58-L70
@@ -187,6 +188,7 @@ void RayLog::UninstallSignalAction() {
     RAY_CHECK(sigaction(signal_num, &sig_action, NULL) == 0);
   }
 #endif
+  is_failure_signal_handler_installed_ = false;
 #endif
 }
 
@@ -201,7 +203,11 @@ void RayLog::ShutDownRayLog() {
 
 void RayLog::InstallFailureSignalHandler() {
 #ifdef RAY_USE_GLOG
+  if (is_failure_signal_handler_installed_) {
+    return;
+  }
   google::InstallFailureSignalHandler();
+  is_failure_signal_handler_installed_ = true;
 #endif
 }
 

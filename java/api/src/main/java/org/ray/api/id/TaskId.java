@@ -2,16 +2,16 @@ package org.ray.api.id;
 
 import java.io.Serializable;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Arrays;
-import java.util.Random;
 
 /**
  * Represents the id of a Ray task.
  */
 public class TaskId extends BaseId implements Serializable {
 
-  public static final int LENGTH = 14;
+  private static final int UNIQUE_BYTES_LENGTH = 8;
+
+  public static final int LENGTH = ActorId.LENGTH + UNIQUE_BYTES_LENGTH;
 
   public static final TaskId NIL = genNil();
 

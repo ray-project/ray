@@ -3,8 +3,10 @@ pendulum-sac:
     run: SAC
     stop:
         episode_reward_mean: -300  # note that evaluation perf is higher
-        timesteps_total: 15000
+        timesteps_total: 10000
     config:
         evaluation_interval: 1  # logged under evaluation/* metric keys
-        soft_horizon: true
-        metrics_smoothing_episodes: 10
+        soft_horizon: True
+        clip_actions: False
+        normalize_actions: True
+        metrics_smoothing_episodes: 5

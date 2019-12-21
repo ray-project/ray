@@ -63,6 +63,13 @@ def ray_start_regular(request):
         yield res
 
 
+@pytest.fixture(scope="session")
+def ray_start_regular_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
 @pytest.fixture
 def ray_start_2_cpus(request):
     param = getattr(request, "param", {})

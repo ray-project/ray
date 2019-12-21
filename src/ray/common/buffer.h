@@ -55,7 +55,8 @@ class LocalMemoryBuffer : public Buffer {
       : has_data_copy_(copy_data) {
     if (copy_data) {
       RAY_CHECK(data != nullptr);
-      buffer_.insert(buffer_.end(), data, data + size);
+      buffer_.resize(size);
+      std::copy(data, data + size, buffer_.begin());
       data_ = buffer_.data();
       size_ = buffer_.size();
     } else {
@@ -79,7 +80,7 @@ class LocalMemoryBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  ~LocalMemoryBuffer() {}
+  ~LocalMemoryBuffer() { size_ = 0; }
 
  private:
   /// Disable copy constructor and assignment, as default copy will
