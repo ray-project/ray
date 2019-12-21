@@ -550,6 +550,7 @@ class Trainable(object):
         Args:
             result (dict): Training result returned by _train().
         """
+        ray.show_in_webui("mean accuracy: {}".format(result["mean_accuracy"]))
         self._result_logger.on_result(result)
 
     def _stop(self):
