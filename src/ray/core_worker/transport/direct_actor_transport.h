@@ -35,10 +35,12 @@ const int kMaxReorderWaitSeconds = 30;
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
+  CoreWorkerDirectActorTaskSubmitter(rpc::Address rpc_address,
+                                     rpc::ClientFactoryFn client_factory,
                                      std::shared_ptr<CoreWorkerMemoryStore> store,
                                      std::shared_ptr<TaskFinisherInterface> task_finisher)
-      : client_factory_(client_factory),
+      : rpc_address_(rpc_address),
+        client_factory_(client_factory),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
@@ -94,6 +96,9 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// Mutex to proect the various maps below.
   mutable absl::Mutex mu_;
+
+  /// Address of our RPC server.
+  rpc::Address rpc_address_;
 
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
   /// We use shared_ptr to enable shared_from_this for pending client callbacks.

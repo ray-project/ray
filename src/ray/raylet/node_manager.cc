@@ -2974,7 +2974,13 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &request,
                                             rpc::PinObjectIDsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  // TODO connect to the remote worker and call WaitForObjectEviction.
+  // TODO(edoakes): cache clients
+  /*
+  rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
+      new rpc::CoreWorkerClient(request.owner_address().ip_address(),
+  request.owner_address().port(), client_call_manager_));
+  */
+  // XXX call WaitForObjectEviction, removing from map and unpinning in callback.
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

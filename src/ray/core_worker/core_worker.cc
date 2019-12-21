@@ -152,8 +152,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       node_ip_address, node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-      std::move(grpc_client), raylet_socket,
-      WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
+      std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
 
@@ -162,6 +161,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_ip_address(node_ip_address);
   rpc_address_.set_port(core_worker_server_.GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
+  rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
@@ -228,12 +228,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
+      new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
                                              task_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          local_raylet_client_, client_factory,
+          rpc_address_, local_raylet_client_, client_factory,
           [this](const std::string ip_address, int port) {
             auto grpc_client = rpc::NodeManagerWorkerClient::make(ip_address, port,
                                                                   *client_call_manager_);

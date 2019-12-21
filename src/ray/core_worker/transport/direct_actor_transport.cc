@@ -24,6 +24,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     const auto &actor_id = task_spec.ActorId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    request->mutable_caller_address()->CopyFrom(rpc_address_);
     // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
     // fails, then the task data will be gone when the TaskManager attempts to
     // access the task.
@@ -59,6 +60,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Update the mapping so new RPCs go out with the right intended worker id.
   worker_ids_[actor_id] = address.worker_id();
   // Create a new connection to the actor.
+  // TODO(edoakes): are these clients cleaned up properly?
   if (rpc_clients_.count(actor_id) == 0) {
     rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
         client_factory_(address.ip_address(), address.port()));
@@ -119,6 +121,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
+  // XXX: set our address in the request
   next_send_position_[actor_id]++;
   auto it = worker_ids_.find(actor_id);
   RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
