@@ -1,5 +1,3 @@
-import pprint
-import json
 from copy import deepcopy
 
 
@@ -48,13 +46,13 @@ class BackendConfig:
     def __iter__(self):
         for k in self.__dict__.keys():
             key, val = k, self.__dict__[k]
-            if key == '_num_replicas':
-                key = 'num_replicas'
+            if key == "_num_replicas":
+                key = "num_replicas"
             yield key, val
 
     def get_actor_creation_args(self, init_args):
         ret_d = deepcopy(self.__dict__)
         for k in self._serve_configs:
             ret_d.pop(k)
-        ret_d['args'] = init_args
+        ret_d["args"] = init_args
         return ret_d
