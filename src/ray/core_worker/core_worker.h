@@ -560,6 +560,9 @@ class CoreWorker {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
+  /// Whether or not this worker is connected to the raylet and GCS.
+  bool connected_ = false;
+
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
