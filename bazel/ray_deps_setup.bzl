@@ -233,7 +233,7 @@ def ray_deps_setup():
     github_repository(
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
-        # https://github.com/grpc/grpc/blob/675732cb298e182ae9b4db516362fd21cee43d18/bazel/grpc_deps.bzl#L104
+        # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
         name = "boringssl",
         # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
         commit = "83da28a68f32023fd3b95a8ae94991a07b1f6c62",
