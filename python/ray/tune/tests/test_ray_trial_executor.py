@@ -4,9 +4,11 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import sys
 import unittest
 
 import ray
+from ray.exceptions import RayTimeoutError
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -15,6 +17,11 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import patch
+else:
+    from mock import patch
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -42,6 +49,28 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testSaveRestoreTimeout(self):
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.save(trial, Checkpoint.DISK)
+        self.trial_executor.set_status(trial, Trial.PAUSED)
+
+        ray_get = ray.get
+        start_trial = self.trial_executor._start_trial
+
+        # Timeout on first two attempts, then succeed on subsequent gets.
+        side_effects = [RayTimeoutError, RayTimeoutError, ray_get, ray_get]
+        with patch.object(self.trial_executor, "_start_trial") as mock_start:
+            with patch("ray.get", side_effect=side_effects):
+                mock_start.side_effect = start_trial
+                self.trial_executor.start_trial(trial, trial.checkpoint)
+
+        # Trial starts successfully on 3rd attempt.
+        assert mock_start.call_count == 3
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.stop_trial(trial)
 
     def testPauseResume(self):
         """Tests that pausing works for trials in flight."""

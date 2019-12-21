@@ -23,14 +23,14 @@ you can try adding ``--user``. You may also need to run something like ``sudo
 chown -R $USER /home/ubuntu/anaconda3`` (substituting in the appropriate
 path).
 
-If you make changes to the C++ files, you will need to recompile them.
+If you make changes to the C++ or Python files, you will need to run the build so C++ code is recompiled and/or Python files are redeployed in `ray/python`.
 However, you do not need to rerun ``pip install -e .``. Instead, you can
 recompile much more quickly by doing
 
 .. code-block:: shell
 
  cd ray
- bazel build //:ray_pkg
+ bash build.sh
 
 This command is not enough to recompile all C++ unit tests. To do so, see
 `Testing locally`_.

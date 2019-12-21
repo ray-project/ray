@@ -16,15 +16,19 @@ message WorkerLeaseReply {
   Address worker_address = 1;
   // Address of the raylet to spill back to, if any.
   Address retry_at_raylet_address = 2;
+  // Resource mapping ids acquired by the leased worker.
+  repeated ResourceMapEntry resource_mapping = 3;
 }
 
 // Release a worker back to its raylet.
 message ReturnWorkerRequest {
   // Port of the leased worker that we are now returning.
   int32 worker_port = 1;
+  // Unique id of the leased worker we are now returning.
+  bytes worker_id = 2;
   // If true, there was some unrecoverable error and the raylet should
   // disconnect the worker.
-  bool disconnect_worker = 2;
+  bool disconnect_worker = 3;
 }
 
 message ReturnWorkerReply {

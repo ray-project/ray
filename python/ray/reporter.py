@@ -49,7 +49,7 @@ def jsonify_asdict(o):
 
 
 def is_worker(cmdline):
-    return cmdline and cmdline[0].startswith("ray_")
+    return cmdline and cmdline[0].startswith("ray::")
 
 
 def to_posix_time(dt):

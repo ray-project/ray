@@ -15,7 +15,7 @@ Ray system memory: this is memory used internally by Ray
   - **Raylet**: memory used by the C++ raylet process running on each node. This cannot be controlled, but is usually quite small.
 
 Application memory: this is memory used by your application
-  - **Worker heap**: memory used by your application (e.g., in Python code or TensorFlow), best measured as the *resident set size (RSS)* of your application minus its *shared memory usage (SHR)* in commands such as ``top``.
+  - **Worker heap**: memory used by your application (e.g., in Python code or TensorFlow), best measured as the *resident set size (RSS)* of your application minus its *shared memory usage (SHR)* in commands such as ``top``. The reason you need to subtract *SHR* is that object store shared memory is reported by the OS as shared with each worker. Not subtracting *SHR* will result in double counting memory usage.
   - **Object store memory**: memory used when your application creates objects in the objects store via ``ray.put`` and when returning values from remote functions. Objects are LRU evicted when the store is full, prioritizing objects that are no longer in scope on the driver or any worker. There is an object store server running on each node.
   - **Object store shared memory**: memory used when your application reads objects via ``ray.get``. Note that if an object is already present on the node, this does not cause additional allocations. This allows large objects to be efficiently shared among many actors and tasks.
 
@@ -34,6 +34,11 @@ Heap memory quota
 
 When Ray starts, it queries the available memory on a node / container not reserved for Redis and the object store or being used by other applications. This is considered "available memory" that actors and tasks can request memory out of. You can also set ``memory=<bytes>`` on Ray init to tell Ray explicitly how much memory is available.
 
+.. note::
+
+  Setting available memory for the node does not impose any limits on memory usage
+  of tasks. To set per-task limits, see the following sections.
+
 To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the ``memory`` argument. The Ray scheduler will then reserve the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
 
 .. code-block:: python
@@ -49,15 +54,15 @@ To tell the Ray scheduler a task or actor requires a certain amount of available
       def __init__(self, a, b):
           pass
 
-In the above example, the memory quota is specified statically by the decorator, but you can also set them dynamically at runtime using ``_remote()`` as follows:
+In the above example, the memory quota is specified statically by the decorator, but you can also set them dynamically at runtime using ``.options()`` as follows:
 
 .. code-block:: python
 
   # override the memory quota to 100MiB when submitting the task
-  some_function._remote(memory=100 * 1024 * 1024, kwargs={"x": 1})
+  some_function.options(memory=100 * 1024 * 1024).remote(x=1)
 
   # override the memory quota to 1GiB when creating the actor
-  SomeActor._remote(memory=1000 * 1024 * 1024, kwargs={"a": 1, "b": 2})
+  SomeActor.options(memory=1000 * 1024 * 1024).remote(a=1, b=2)
 
 **Enforcement**: If an actor exceeds its memory quota, calls to it will throw ``RayOutOfMemoryError`` and it may be killed. Memory quota is currently enforced on a best-effort basis for actors only (but quota is taken into account during scheduling in all cases).
 

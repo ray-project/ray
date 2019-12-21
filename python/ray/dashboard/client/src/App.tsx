@@ -1,19 +1,23 @@
 import CssBaseline from "@material-ui/core/CssBaseline";
 import React from "react";
+import { Provider } from "react-redux";
 import { BrowserRouter, Route } from "react-router-dom";
-import Dashboard from "./Dashboard";
-import Errors from "./Errors";
-import Logs from "./Logs";
+import Dashboard from "./pages/dashboard/Dashboard";
+import Errors from "./pages/errors/Errors";
+import Logs from "./pages/logs/Logs";
+import { store } from "./store";
 
 class App extends React.Component {
   render() {
     return (
-      <BrowserRouter>
-        <CssBaseline />
-        <Dashboard />
-        <Route component={Logs} path="/logs/:hostname/:pid?" />
-        <Route component={Errors} path="/errors/:hostname/:pid?" />
-      </BrowserRouter>
+      <Provider store={store}>
+        <BrowserRouter>
+          <CssBaseline />
+          <Dashboard />
+          <Route component={Logs} path="/logs/:hostname/:pid?" />
+          <Route component={Errors} path="/errors/:hostname/:pid?" />
+        </BrowserRouter>
+      </Provider>
     );
   }
 }

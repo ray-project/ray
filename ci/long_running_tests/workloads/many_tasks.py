@@ -6,8 +6,10 @@ from __future__ import print_function
 
 import time
 
+import numpy as np
+
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 num_redis_shards = 5
 redis_max_memory = 10**8
@@ -38,7 +40,7 @@ ray.init(address=cluster.address)
 
 @ray.remote
 def f(*xs):
-    return 1
+    return np.zeros(1024, dtype=np.uint8)
 
 
 iteration = 0

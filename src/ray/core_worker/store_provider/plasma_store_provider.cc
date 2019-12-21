@@ -7,7 +7,8 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, const std::shared_ptr<RayletClient> raylet_client,
+    const std::string &store_socket,
+    const std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
@@ -128,7 +129,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   return Status::OK();
 }
 
-Status UnblockIfNeeded(const std::shared_ptr<RayletClient> &client,
+Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
     if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
