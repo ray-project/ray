@@ -100,7 +100,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  
+
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
                                                  io_service_, gcs_client_);
@@ -185,8 +185,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(new TaskManager(
-      memory_store_, reference_counter_, nullptr,
-      [this](const TaskSpecification &spec) {
+      memory_store_, reference_counter_, nullptr, [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "

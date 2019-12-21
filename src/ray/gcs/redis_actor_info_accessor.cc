@@ -85,7 +85,7 @@ Status RedisActorInfoAccessor::AsyncUpdate(
     log_length += 1;
   }
   RAY_LOG(DEBUG) << "AsyncUpdate actor state to " << data_ptr->state()
-                << ", actor id: " << actor_id << ", log_length:" << log_length;
+                 << ", actor id: " << actor_id << ", log_length:" << log_length;
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
     // If we successfully appended a record to the GCS table of the actor that

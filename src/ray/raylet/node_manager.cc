@@ -2292,10 +2292,11 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
                       worker->WorkerId(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
-                                                 : worker->GetTaskResourceIds());                                          
+                                                 : worker->GetTaskResourceIds());
     post_assign_callbacks->push_back([this, worker, task_id]() {
-      RAY_LOG(DEBUG) << "Finished assigning task " << task_id
-                     << " to worker " << worker->WorkerId();;   
+      RAY_LOG(DEBUG) << "Finished assigning task " << task_id << " to worker "
+                     << worker->WorkerId();
+      ;
       FinishAssignTask(worker, task_id, /*success=*/true);
     });
   } else {
@@ -2419,8 +2420,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   actor_info_ptr->mutable_address()->set_port(port);
   actor_info_ptr->mutable_address()->set_raylet_id(
       gcs_client_->client_table().GetLocalClientId().Binary());
-  actor_info_ptr->mutable_address()->set_worker_id(
-      worker_id.Binary());
+  actor_info_ptr->mutable_address()->set_worker_id(worker_id.Binary());
   actor_info_ptr->set_state(ActorTableData::ALIVE);
   return actor_info_ptr;
 }
@@ -2525,8 +2525,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
 
 void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                                   const TaskSpecification &task_spec,
-                                                  bool resumed_from_checkpoint,
-                                                  int port, const WorkerID &worker_id) {
+                                                  bool resumed_from_checkpoint, int port,
+                                                  const WorkerID &worker_id) {
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
   auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, port, worker_id);
@@ -2890,7 +2890,7 @@ void NodeManager::ForwardTask(
 
 void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
                                    const TaskID &task_id, bool success) {
-  RAY_LOG(DEBUG) << "FinishAssignTask: " << task_id;                                        
+  RAY_LOG(DEBUG) << "FinishAssignTask: " << task_id;
   // Remove the ASSIGNED task from the READY queue.
   Task assigned_task;
   TaskState state;
@@ -2898,7 +2898,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     // TODO(edoakes): should we be failing silently here?
     return;
   }
-  RAY_CHECK(state == TaskState::READY);         
+  RAY_CHECK(state == TaskState::READY);
   if (success) {
     auto spec = assigned_task.GetTaskSpecification();
     // We successfully assigned the task to the worker.
@@ -2910,7 +2910,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     // the actor's current execution dependency.
 
     // Mark the task as running.
-    // (See design_docs/task_states.rst for the state transition diagram.) 
+    // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
     // Notify the task dependency manager that we no longer need this task's
     // object dependencies.
