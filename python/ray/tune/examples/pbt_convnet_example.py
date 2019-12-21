@@ -53,8 +53,10 @@ class PytorchTrainble(tune.Trainable):
 
     def reset_config(self, new_config):
         for param_group in self.optimizer.param_groups:
-            param_group["lr"] = new_config.get("lr", 0.01)
-            param_group["momentum"] = new_config.get("momentum", 0.9)
+            if "lr" in new_config:
+                param_group["lr"] = new_config["lr"]
+            if "momentum" in new_config:
+                param_group["momentum"] = new_config["momentum"]
 
         self.config = new_config
         return True
