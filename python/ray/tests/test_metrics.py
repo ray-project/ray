@@ -56,23 +56,27 @@ def test_worker_stats(ray_start_regular):
     # Test show_in_webui for remote functions. 
     worker_pid = ray.get(f.remote())
     reply = try_get_node_stats()
+    target_worker_present = False
     for worker in reply.workers_stats:
         if worker.webui_display == "test":
-            print("{} shows test message".format(worker.pid))
+            target_worker_present = True
             assert worker.pid == worker_pid
         else:
             assert worker.webui_display == ""
+    assert target_worker_present
     
     # Test show_in_webui for remote actors. 
     a = Actor.remote()
     worker_pid = ray.get(a.f.remote())
     reply = try_get_node_stats()
+    target_worker_preset = False
     for worker in reply.workers_stats:
         if worker.webui_display == "test":
-            print("{} shows test message".format(worker.pid))
+            target_worker_present = True
             assert worker.pid == worker_pid
         else:
             assert worker.webui_display == ""
+    assert target_worker_present
     
     timeout_seconds = 20
     start_time = time.time()
@@ -84,7 +88,6 @@ def test_worker_stats(ray_start_regular):
         # Wait for the workers to start.
         if len(reply.workers_stats) < num_cpus + 1:
             time.sleep(1)
-            # reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
             reply = try_get_node_stats()
             continue
 
