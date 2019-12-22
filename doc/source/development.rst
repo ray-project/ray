@@ -216,16 +216,28 @@ Format and Linting
 
 **Running linter locally:** To run the Python linter on a specific file, run
 something like ``flake8 ray/python/ray/worker.py``. You may need to first run
-``pip install flake8``.
+``pip install flake8==3.7.7``.
 
-**Autoformatting code**. We use `yapf <https://github.com/google/yapf>`_ for
+**Autoformatting Python code**. We use `yapf <https://github.com/google/yapf>`_ for
 linting, and the config file is located at ``.style.yapf``. We recommend
-running ``scripts/yapf.sh`` prior to pushing to format changed files.
-Note that some projects such as dataframes and rllib are currently excluded.
+running ``scripts/format.sh`` prior to pushing to format changed files.
+You need to first run ``pip install yapf==0.23.0``,
+``pip install flake8==3.7.7`` and ``pip install flake8-quotes`` to install
+the required Python linters.
 
 **Running CI linter:** The Travis CI linter script has multiple components to
-run. We recommend running ``ci/travis/format.sh``, which contains both linter
-for python and C++ codes. In addition, there are other formatting checkers for
+run. We recommend running ``scripts/format.sh``, which contains both linter
+for python and C++ codes.
+
+.. note::
+
+    You need to install ``clang-format`` version 7.0.0 to run the C++ linting.
+    On Ubuntu you can install it with ``sudo apt install clang-format-7.0`` and
+    on macOS you can follow
+    `this guide <https://gist.github.com/ffeu/0460bb1349fa7e4ab4c459a6192cbb25#gistcomment-2765744>`_.
+
+
+In addition, there are other formatting checkers for
 components like:
 
 * Python REAME format:
