@@ -1,0 +1,15 @@
+diff --git BUILD.boost BUILD.boost
+--- BUILD.boost
++++ BUILD.boost
+@@ -313,1 +313,9 @@ boost_library(name = "asio",
+-    linkopts = ["-lpthread"],
++    linkopts = select({
++        ":linux": [
++            "-lpthread",
++        ],
++        ":osx_x86_64": [
++            "-lpthread",
++        ],
++        "//conditions:default": [],
++    }),
+-- 

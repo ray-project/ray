@@ -101,22 +101,30 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  /// Increase the reference count for this object ID.
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddObjectIDReference(const ObjectID &object_id) {
+  void AddLocalReference(const ObjectID &object_id) {
     reference_counter_->AddLocalReference(object_id);
   }
 
-  /// Decrease the reference count for this object ID.
+  /// Decrease the reference count for this object ID. Should be called
+  /// by the language frontend when a reference is destroyed.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
-  void RemoveObjectIDReference(const ObjectID &object_id) {
+  void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     if (ref_counting_enabled_) {
       memory_store_->Delete(deleted);
     }
+  }
+
+  /// Returns a map of all ObjectIDs currently in scope with a pair of their
+  /// (local, submitted_task) reference counts. For debugging purposes.
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const {
+    return reference_counter_->GetAllReferenceCounts();
   }
 
   /// Promote an object to plasma and get its owner information. This should be
@@ -130,7 +138,7 @@ class CoreWorker {
   /// called on object IDs that were created randomly, e.g.,
   /// ObjectID::FromRandom.
   ///
-  /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
+  /// Postcondition: Get(object_id) is valid.
   ///
   /// \param[in] object_id The object ID to serialize.
   /// \param[out] owner_id The ID of the object's owner. This should be
@@ -402,6 +410,20 @@ class CoreWorker {
   /// Block current fiber until event is triggered.
   void YieldCurrentFiber(FiberEvent &event);
 
+  /// The callback expected to be implemented by the client.
+  using SetResultCallback =
+      std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
+
+  /// Perform async get from in-memory store.
+  ///
+  /// \param[in] object_id The id to call get on. Assumes object_id.IsDirectCallType().
+  /// \param[in] success_callback The callback to use the result object.
+  /// \param[in] fallback_callback The callback to use when failed to get result.
+  /// \param[in] python_future the void* object to be passed to SetResultCallback
+  /// \return void
+  void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+                SetResultCallback fallback_callback, void *python_future);
+
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
@@ -419,11 +441,6 @@ class CoreWorker {
   ///
   /// Private methods related to task submission.
   ///
-
-  /// Add task dependencies to the reference counter. This prevents the argument
-  /// objects from early eviction, and also adds the return object.
-  void PinObjectReferences(const TaskSpecification &task_spec,
-                           const TaskTransportType transport_type);
 
   /// Give this worker a handle to an actor.
   ///
@@ -470,17 +487,6 @@ class CoreWorker {
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
-
-  /// Remove reference counting dependencies of this object ID.
-  ///
-  /// \param[in] object_id The object whose dependencies should be removed.
-  void RemoveObjectIDDependencies(const ObjectID &object_id) {
-    std::vector<ObjectID> deleted;
-    reference_counter_->RemoveDependencies(object_id, &deleted);
-    if (ref_counting_enabled_) {
-      memory_store_->Delete(deleted);
-    }
-  }
 
   /// Returns whether the message was sent to the wrong worker. The right error reply
   /// is sent automatically. Messages end up on the wrong worker when a worker dies
@@ -554,6 +560,9 @@ class CoreWorker {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
+  /// Whether or not this worker is connected to the raylet and GCS.
+  bool connected_ = false;
+
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
@@ -609,9 +618,6 @@ class CoreWorker {
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(actor_handles_mutex_);
-
-  /// Resolve local and remote dependencies for actor creation.
-  std::unique_ptr<LocalDependencyResolver> resolver_;
 
   ///
   /// Fields related to task execution.

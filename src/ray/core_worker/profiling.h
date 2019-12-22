@@ -4,7 +4,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
-
 #include "ray/core_worker/context.h"
 #include "ray/gcs/redis_gcs_client.h"
 
