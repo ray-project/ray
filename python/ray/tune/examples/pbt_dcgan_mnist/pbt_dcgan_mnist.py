@@ -346,7 +346,7 @@ if __name__ == "__main__":
             "netD_lr": lambda: np.random.uniform(1e-2, 1e-5),
         })
 
-    tune_iter = 5 if args.smoke_test else 30
+    tune_iter = 5 if args.smoke_test else 300
     analysis = tune.run(
         PytorchTrainable,
         name="pbt_dcgan_mnist",

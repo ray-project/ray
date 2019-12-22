@@ -54,7 +54,7 @@ class PytorchTrainble(tune.Trainable):
 
     def _export_model(self, export_formats, export_dir):
         if export_formats == [ExportFormat.MODEL]:
-            path = export_dir + "/exported_convnet.pt"
+            path = os.path.join(export_dir, "exported_convnet.pt")
             torch.save(self.model.state_dict(), path)
             return {export_formats[0]: path}
         else:
