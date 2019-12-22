@@ -53,7 +53,7 @@ message WorkerStats {
   uint32 pid = 1;
   // Whether this is a driver.
   bool is_driver = 2;
-  // String displayed on Web UI. 
+  // String displayed on Web UI.
   string webui_display = 3;
 }
 

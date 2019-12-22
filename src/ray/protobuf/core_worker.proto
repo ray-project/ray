@@ -123,8 +123,8 @@ message GetCoreWorkerStatsRequest {
 }
 
 message GetCoreWorkerStatsReply {
-  // String displayed on Web UI. 
-  string webui_display = 1;  
+  // String displayed on Web UI.
+  string webui_display = 1;
 }
 
 service CoreWorkerService {
@@ -137,6 +137,6 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
-  // Get metrics from core workers. 
+  // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
 }
