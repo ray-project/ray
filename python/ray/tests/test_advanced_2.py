@@ -165,7 +165,6 @@ def test_gpu_ids(shutdown_only):
     f0 = ray.remote(num_gpus=0)(lambda: get_gpu_ids(0))
     f1 = ray.remote(num_gpus=1)(lambda: get_gpu_ids(1))
     f2 = ray.remote(num_gpus=2)(lambda: get_gpu_ids(2))
-    f3 = ray.remote(num_gpus=4)(lambda: get_gpu_ids(3))
 
     # Wait for all workers to start up.
     @ray.remote
@@ -175,8 +174,9 @@ def test_gpu_ids(shutdown_only):
 
     start_time = time.time()
     while True:
-        if len(set(ray.get(
-            [f.remote() for _ in range(num_gpus)]))) == num_gpus:
+        num_workers_started = len(
+            set(ray.get([f.remote() for _ in range(num_gpus)])))
+        if num_workers_started == num_gpus:
             break
         if time.time() > start_time + 10:
             raise RayTestTimeoutException(
