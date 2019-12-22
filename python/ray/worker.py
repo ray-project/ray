@@ -1413,14 +1413,14 @@ def register_custom_serializer(cls,
 
 
 def show_in_webui(message):
-    """Display message in dashboard. 
+    """Display message in dashboard.
 
-    Display message for the current task or actor in the dashboard. 
-    For example, this can be used to display the status of a long-running 
-    computation. 
+    Display message for the current task or actor in the dashboard.
+    For example, this can be used to display the status of a long-running
+    computation.
 
     Args:
-        message (str): Message to be displayed. 
+        message (str): Message to be displayed.
     """
     worker = global_worker
     worker.check_connected()
