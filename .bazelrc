@@ -1,5 +1,5 @@
 # build config
-build --compilation_mode=opt
+build --compilation_mode=dbg
 build --action_env=BAZEL_LLVM
 build --action_env=BAZEL_SH
 build --action_env=PATH
