@@ -5,7 +5,6 @@ exports_files([
     "testng.xml",
     "checkstyle.xml",
     "checkstyle-suppressions.xml",
-    "streaming/testng.xml",
 ])
 
 all_modules = [
@@ -13,7 +12,6 @@ all_modules = [
     "runtime",
     "test",
     "tutorial",
-    "streaming",
 ]
 
 java_import(
@@ -25,14 +23,11 @@ java_import(
     ] + [
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
-        "streaming_tests_deploy.jar",
-        "streaming_tests_deploy-src.jar",
     ],
     deps = [
         ":org_ray_ray_" + module for module in all_modules
     ] + [
         ":all_tests",
-        ":streaming_tests",
     ],
 )
 
@@ -45,6 +40,7 @@ define_java_module(
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
     ],
+    visibility = ["//visibility:public"]
 )
 
 define_java_module(
@@ -79,7 +75,9 @@ define_java_module(
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_slf4j_slf4j_log4j12",
         "@maven//:redis_clients_jedis",
+        "@maven//:net_java_dev_jna_jna",
     ],
+    visibility = ["//visibility:public"]
 )
 
 define_java_module(
@@ -107,28 +105,6 @@ define_java_module(
     ],
 )
 
-define_java_module(
-    name = "streaming",
-    deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
-        "@maven//:com_google_guava_guava",
-        "@maven//:org_slf4j_slf4j_api",
-        "@maven//:org_slf4j_slf4j_log4j12",
-    ],
-    define_test_lib = True,
-    test_deps = [
-        ":org_ray_ray_api",
-        ":org_ray_ray_runtime",
-        ":org_ray_ray_streaming",
-        "@maven//:com_beust_jcommander",
-        "@maven//:com_google_guava_guava",
-        "@maven//:org_slf4j_slf4j_api",
-        "@maven//:org_slf4j_slf4j_log4j12",
-        "@maven//:org_testng_testng",
-    ],
-)
-
 java_binary(
     name = "all_tests",
     main_class = "org.testng.TestNG",
@@ -137,16 +113,6 @@ java_binary(
     runtime_deps = [
         ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
-    ],
-)
-
-java_binary(
-    name = "streaming_tests",
-    main_class = "org.testng.TestNG",
-    data = ["streaming/testng.xml"],
-    args = ["java/streaming/testng.xml"],
-    runtime_deps = [
-        ":org_ray_ray_streaming_test",
     ],
 )
 
@@ -236,7 +202,6 @@ genrule(
         cp -f $(location //java:org_ray_ray_runtime_pom) $$WORK_DIR/java/runtime/pom.xml
         cp -f $(location //java:org_ray_ray_tutorial_pom) $$WORK_DIR/java/tutorial/pom.xml
         cp -f $(location //java:org_ray_ray_test_pom) $$WORK_DIR/java/test/pom.xml
-        cp -f $(location //java:org_ray_ray_streaming_pom) $$WORK_DIR/java/streaming/pom.xml
         echo $$(date) > $@
     """,
     local = 1,
