@@ -102,9 +102,7 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  void SetWebuiDisplay(const std::string &message) {
-    webui_display_ = message;
-  }
+  void SetWebuiDisplay(const std::string &message) { webui_display_ = message; }
 
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
@@ -637,7 +635,7 @@ class CoreWorker {
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
 
-  /// String to be displayed on Web UI. 
+  /// String to be displayed on Web UI.
   std::string webui_display_;
 
   /// Event loop where tasks are processed.

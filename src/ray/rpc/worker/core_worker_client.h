@@ -122,7 +122,7 @@ class CoreWorkerClientInterface {
   }
 
   virtual ray::Status GetCoreWorkerStats(
-      const GetCoreWorkerStatsRequest &request, 
+      const GetCoreWorkerStatsRequest &request,
       const ClientCallback<GetCoreWorkerStatsReply> &callback) {
     return Status::NotImplemented("");
   }
@@ -204,12 +204,13 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   }
 
   virtual ray::Status GetCoreWorkerStats(
-      const GetCoreWorkerStatsRequest &request, 
+      const GetCoreWorkerStatsRequest &request,
       const ClientCallback<GetCoreWorkerStatsReply> &callback) override {
-    auto call = client_call_manager_.CreateCall<CoreWorkerService, 
-                                                GetCoreWorkerStatsRequest, 
-                                                GetCoreWorkerStatsReply>(
-        *stub_, &CoreWorkerService::Stub::PrepareAsyncGetCoreWorkerStats, request, callback);
+    auto call =
+        client_call_manager_.CreateCall<CoreWorkerService, GetCoreWorkerStatsRequest,
+                                        GetCoreWorkerStatsReply>(
+            *stub_, &CoreWorkerService::Stub::PrepareAsyncGetCoreWorkerStats, request,
+            callback);
     return call->GetStatus();
   }
 
