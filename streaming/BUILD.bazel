@@ -235,6 +235,7 @@ genrule(
         GENERATED_DIR=$$WORK_DIR/streaming/python/generated
         rm -rf $$GENERATED_DIR
         mkdir -p $$GENERATED_DIR
+        touch $$GENERATED_DIR/__init__.py
         for f in $(locations //streaming:streaming_py_proto); do
             cp $$f $$GENERATED_DIR
         done
@@ -242,4 +243,44 @@ genrule(
     """,
     local = 1,
     visibility = ["//visibility:public"],
+)
+
+# Streaming java
+genrule(
+    name = "copy_jni_h",
+    srcs = ["@bazel_tools//tools/jdk:jni_header"],
+    outs = ["jni.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "copy_jni_md_h",
+    srcs = select({
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
+        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
+    outs = ["jni_md.h"],
+    cmd = "cp -f $< $@",
+)
+
+cc_binary(
+    name = "libstreaming_java.so",
+    srcs = glob([
+        "src/lib/java/*.cc",
+        "src/lib/java/*.h",
+    ]) + [
+        ":jni.h",  # needed for `include "jni.h"`
+        ":jni_md.h",
+    ],
+    includes = [
+        ".",  # needed for `include <jni.h>`
+        "src",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_lib",
+    ],
 )

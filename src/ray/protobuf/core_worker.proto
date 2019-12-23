@@ -117,6 +117,16 @@ message GetObjectStatusReply {
   ObjectStatus status = 1;
 }
 
+message GetCoreWorkerStatsRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+}
+
+message GetCoreWorkerStatsReply {
+  // String displayed on Web UI.
+  string webui_display = 1;
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -127,4 +137,6 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Get metrics from core workers.
+  rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
 }
