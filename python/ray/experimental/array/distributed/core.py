@@ -63,8 +63,8 @@ class DistArray(object):
         for index in np.ndindex(*self.num_blocks):
             lower = DistArray.compute_block_lower(index, self.shape)
             upper = DistArray.compute_block_upper(index, self.shape)
-            result[[slice(l, u) for (l, u) in zip(lower, upper)]] = ray.get(
-                self.objectids[index])
+            value = ray.get(self.objectids[index])
+            result[tuple(slice(l, u) for (l, u) in zip(lower, upper))] = value
         return result
 
     def __getitem__(self, sliced):
@@ -86,8 +86,8 @@ def numpy_to_dist(a):
     for index in np.ndindex(*result.num_blocks):
         lower = DistArray.compute_block_lower(index, a.shape)
         upper = DistArray.compute_block_upper(index, a.shape)
-        result.objectids[index] = ray.put(
-            a[[slice(l, u) for (l, u) in zip(lower, upper)]])
+        idx = tuple(slice(l, u) for (l, u) in zip(lower, upper))
+        result.objectids[index] = ray.put(a[idx])
     return result
 
 

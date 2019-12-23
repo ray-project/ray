@@ -76,9 +76,9 @@ class Raylet {
   std::string socket_name_;
 
   /// An acceptor for new clients.
-  boost::asio::local::stream_protocol::acceptor acceptor_;
+  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
-  boost::asio::local::stream_protocol::socket socket_;
+  local_stream_protocol::socket socket_;
 };
 
 }  // namespace raylet

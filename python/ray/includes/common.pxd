@@ -80,7 +80,10 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
-        CRayStatus SystemExit()
+        CRayStatus IntentionalSystemExit()
+
+        @staticmethod
+        CRayStatus UnexpectedSystemExit()
 
         c_bool ok()
         c_bool IsOutOfMemory()
@@ -192,6 +195,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
         const size_t DataSize() const
         const shared_ptr[CBuffer] &GetData()
         const shared_ptr[CBuffer] &GetMetadata() const
+        c_bool IsInPlasmaError() const
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::RayFunction":
@@ -223,7 +227,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[c_string] &dynamic_worker_options,
             c_bool is_detached, c_bool is_asyncio)
 
-cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
+cdef extern from "ray/gcs/gcs_client.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,
                           const c_string &password,

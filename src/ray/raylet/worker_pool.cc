@@ -1,5 +1,10 @@
 #include "ray/raylet/worker_pool.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#include <process.h>
+#endif
+
 #include <sys/wait.h>
 
 #include <algorithm>
@@ -38,18 +43,21 @@ namespace ray {
 
 namespace raylet {
 
-/// A constructor that initializes a worker pool with
-/// (num_worker_processes * states_by_lang_[language].num_workers_per_process) workers for
+/// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
-WorkerPool::WorkerPool(int num_worker_processes, int maximum_startup_concurrency,
+WorkerPool::WorkerPool(int num_workers, int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
     : maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(maximum_startup_concurrency > 0);
+#ifdef _WIN32
+  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
+#else
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
   signal(SIGCHLD, SIG_IGN);
+#endif
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
@@ -70,12 +78,20 @@ WorkerPool::WorkerPool(int num_worker_processes, int maximum_startup_concurrency
         << "Number of workers per process of language " << Language_Name(entry.first)
         << " must be positive.";
     state.multiple_for_warning =
-        std::max(num_worker_processes, maximum_startup_concurrency) *
-        state.num_workers_per_process;
+        std::max(state.num_workers_per_process,
+                 std::max(num_workers, maximum_startup_concurrency));
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
-    // Force-start num_workers worker processes for this language.
+  }
+  Start(num_workers);
+}
+
+void WorkerPool::Start(int num_workers) {
+  for (auto &entry : states_by_lang_) {
+    auto &state = entry.second;
+    int num_worker_processes = static_cast<int>(
+        std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));
     for (int i = 0; i < num_worker_processes; i++) {
       StartWorkerProcess(entry.first);
     }
@@ -120,11 +136,14 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
-  if (static_cast<int>(state.starting_worker_processes.size()) >=
-      maximum_startup_concurrency_) {
+  int starting_workers = 0;
+  for (auto &entry : state.starting_worker_processes) {
+    starting_workers += entry.second;
+  }
+  if (starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, " << state.starting_worker_processes.size()
-                   << " worker processes of language type " << static_cast<int>(language)
+    RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
+                   << " workers of language type " << static_cast<int>(language)
                    << " pending registration";
     return -1;
   }
@@ -188,6 +207,56 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   return -1;
 }
 
+#ifdef _WIN32
+// Fork + exec combo for Windows. Returns -1 on failure.
+// TODO(mehrdadn): This is dangerous on Windows.
+// We need to keep the actual process handle alive for the PID to stay valid.
+// Make this change as soon as possible, or the PID may refer to the wrong process.
+static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
+  pid_t pid;
+  std::vector<const char *> str_args;
+  for (const auto &arg : args) {
+    str_args.push_back(arg.c_str());
+  }
+  str_args.push_back(NULL);
+  HANDLE handle = (HANDLE)spawnvp(P_NOWAIT, str_args[0], str_args.data());
+  if (handle != INVALID_HANDLE_VALUE) {
+    pid = static_cast<pid_t>(GetProcessId(handle));
+    if (pid == 0) {
+      pid = -1;
+    }
+    CloseHandle(handle);
+  } else {
+    pid = -1;
+    errno = EINVAL;
+  }
+  return pid;
+}
+#else
+// Fork + exec combo for POSIX. Returns -1 on failure.
+static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
+  pid_t pid;
+  std::vector<const char *> str_args;
+  for (const auto &arg : args) {
+    str_args.push_back(arg.c_str());
+  }
+  str_args.push_back(NULL);
+  pid = fork();
+  if (pid == 0) {
+    // Child process case.
+    // Reset the SIGCHLD handler for the worker.
+    // TODO(mehrdadn): Move any work here to the child process itself
+    //                 so that it can also be implemented on Windows.
+    signal(SIGCHLD, SIG_DFL);
+    if (execvp(str_args[0], const_cast<char *const *>(str_args.data())) == -1) {
+      pid = -1;
+      abort();  // fork() succeeded but exec() failed, so abort the child
+    }
+  }
+  return pid;
+}
+#endif
+
 pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
@@ -199,29 +268,12 @@ pid_t WorkerPool::StartProcess(const std::vector<std::string> &worker_command_ar
   }
 
   // Launch the process to create the worker.
-  pid_t pid = fork();
-
-  if (pid != 0) {
-    return pid;
+  pid_t pid = spawnvp_wrapper(worker_command_args);
+  if (pid == -1) {
+    RAY_LOG(FATAL) << "Failed to start worker with error " << errno << ": "
+                   << strerror(errno);
   }
-
-  // Child process case.
-  // Reset the SIGCHLD handler for the worker.
-  signal(SIGCHLD, SIG_DFL);
-
-  // Try to execute the worker command.
-  std::vector<const char *> worker_command_args_str;
-  for (const auto &arg : worker_command_args) {
-    worker_command_args_str.push_back(arg.c_str());
-  }
-  worker_command_args_str.push_back(nullptr);
-  int rv = execvp(worker_command_args_str[0],
-                  const_cast<char *const *>(worker_command_args_str.data()));
-
-  // The worker failed to start. This is a fatal error.
-  RAY_LOG(FATAL) << "Failed to start worker with return value " << rv << ": "
-                 << strerror(errno);
-  return 0;
+  return pid;
 }
 
 Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {

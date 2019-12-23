@@ -1,4 +1,5 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
+
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
@@ -7,7 +8,8 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, const std::shared_ptr<RayletClient> raylet_client,
+    const std::string &store_socket,
+    const std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
@@ -47,7 +49,6 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              std::shared_ptr<Buffer> *data) {
-  RAY_CHECK(!object_id.IsDirectCallType());
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
@@ -128,7 +129,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   return Status::OK();
 }
 
-Status UnblockIfNeeded(const std::shared_ptr<RayletClient> &client,
+Status UnblockIfNeeded(const std::shared_ptr<raylet::RayletClient> &client,
                        const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
     if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {

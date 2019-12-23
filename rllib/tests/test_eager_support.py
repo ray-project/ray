@@ -64,13 +64,8 @@ class TestEagerSupport(unittest.TestCase):
                 "timesteps_per_iteration": 100
             })
 
-    def testSAC(self):
-        check_support("SAC", {
-            "num_workers": 0,
-            "learning_starts": 0,
-            "timesteps_per_iteration": 100
-        })
-
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

@@ -3,8 +3,8 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def github_repository(*, name=None, remote=None, commit=None, tag=None,
                       branch=None, build_file=None, build_file_content=None,
-                      sha256=None, shallow_since=None, strip_prefix=True,
-                      url=None, path=None, **kwargs):
+                      sha256=None, archive_suffix=".zip", shallow_since=None,
+                      strip_prefix=True, url=None, path=None, **kwargs):
     """
     Conveniently chooses between archive, git, etc. GitHub repositories.
     Prefer archives, as they're smaller and faster due to the lack of history.
@@ -24,7 +24,6 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
     If path         != None , local repository is assumed at the given path.
     """
     GIT_SUFFIX = ".git"
-    archive_suffix = ".zip"
 
     treeish = commit or tag or branch
     if not treeish: fail("Missing commit, tag, or branch argument")
@@ -72,12 +71,19 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
 def ray_deps_setup():
     github_repository(
         name = "redis",
-        build_file = "@//bazel:BUILD.redis",
+        build_file = True,
         tag = "5.0.3",
         remote = "https://github.com/antirez/redis",
         sha256 = "8e5997b447b1afdd1efd33731968484d2fe71c271fa7f1cd6b2476367e964e0e",
         patches = [
             "//thirdparty/patches:hiredis-async-include-dict.patch",
+            "//thirdparty/patches:hiredis-casts.patch",
+            "//thirdparty/patches:hiredis-connect-rename.patch",
+            "//thirdparty/patches:hiredis-windows-sigpipe.patch",
+            "//thirdparty/patches:hiredis-windows-sockets.patch",
+            "//thirdparty/patches:hiredis-windows-strerror.patch",
+            "//thirdparty/patches:hiredis-windows-poll.patch",
+            "//thirdparty/patches:redis-windows-poll.patch",
         ],
     )
 
@@ -112,6 +118,8 @@ def ray_deps_setup():
         url = "https://dl.bintray.com/boostorg/release/1.68.0/source/boost_1_68_0.tar.gz",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
+            # Prefer compiler intrinsics; they're faster & avoid linker issues
+            "//thirdparty/patches:boost-interlocked-prefer-intrinsics.patch",
             # Backport Clang-Cl patch on Boost 1.69 to Boost <= 1.68:
             #   https://lists.boost.org/Archives/boost/2018/09/243420.php
             "//thirdparty/patches:boost-type_traits-trivial_move.patch",
@@ -126,6 +134,7 @@ def ray_deps_setup():
         sha256 = "3775c5ab217e0c9cc380f56e243a4d75fe6fee8eaee1447899eaa04c5d582cf1",
         patches = [
             "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
+            "//thirdparty/patches:rules_boost-windows-linkopts.patch",
         ],
     )
 
@@ -166,6 +175,13 @@ def ray_deps_setup():
         commit = "86f34aa07e611787d9cc98c6a33b0a0a536dce57",
         remote = "https://github.com/apache/arrow",
         sha256 = "4f1956e74188fa15078c8ad560bbc298624320d2aafd21fe7a2511afee7ea841",
+        patches = [
+            "//thirdparty/patches:arrow-headers-unused.patch",
+            "//thirdparty/patches:arrow-windows-export.patch",
+            "//thirdparty/patches:arrow-windows-poll.patch",
+            "//thirdparty/patches:arrow-windows-sigpipe.patch",
+            "//thirdparty/patches:arrow-windows-socket.patch",
+        ],
     )
 
     github_repository(
@@ -207,6 +223,7 @@ def ray_deps_setup():
 
     github_repository(
         name = "com_github_grpc_grpc",
+        # NOTE: If you update this, also update @boringssl's hash.
         commit = "4790ab6d97e634a1ede983be393f3bb3c132b2f7",
         remote = "https://github.com/grpc/grpc",
         sha256 = "723853c36ea6d179d32a4f9f2f8691dbe0e28d5bbc521c954b34355a1c952ba5",
@@ -214,6 +231,17 @@ def ray_deps_setup():
             "//thirdparty/patches:grpc-command-quoting.patch",
             "//thirdparty/patches:grpc-cython-copts.patch",
         ],
+    )
+
+    github_repository(
+        # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
+        # provides a deterministic archive hash for caching. Explanation here:
+        # https://github.com/grpc/grpc/blob/4790ab6d97e634a1ede983be393f3bb3c132b2f7/bazel/grpc_deps.bzl#L102
+        name = "boringssl",
+        # Ensure this matches the commit used by grpc's bazel/grpc_deps.bzl
+        commit = "83da28a68f32023fd3b95a8ae94991a07b1f6c62",
+        remote = "https://github.com/google/boringssl",
+        sha256 = "58bdaf1fa305d42142c0c1aa7a84aa2e5df12f581c13a606b20242e1d037210c",
     )
 
     github_repository(

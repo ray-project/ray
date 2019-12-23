@@ -14,6 +14,7 @@ import types
 
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
+from ray.tune.progress_reporter import trial_progress_str
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
@@ -184,6 +185,10 @@ class TrialRunner(object):
             self.checkpoint_file = os.path.join(
                 self._local_checkpoint_dir,
                 TrialRunner.CKPT_FILE_TMPL.format(self._session_str))
+
+    @property
+    def scheduler_alg(self):
+        return self._scheduler_alg
 
     def _validate_resume(self, resume_type):
         """Checks whether to resume experiment.
@@ -380,7 +385,8 @@ class TrialRunner(object):
     def debug_string(self, delim="\n"):
         messages = [
             self._scheduler_alg.debug_string(),
-            self.trial_executor.debug_string()
+            self.trial_executor.debug_string(),
+            trial_progress_str(self.get_trials()),
         ]
         return delim.join(messages)
 

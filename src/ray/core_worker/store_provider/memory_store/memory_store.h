@@ -29,7 +29,7 @@ class CoreWorkerMemoryStore {
   CoreWorkerMemoryStore(
       std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
-      std::shared_ptr<RayletClient> raylet_client = nullptr);
+      std::shared_ptr<raylet::RayletClient> raylet_client = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -104,8 +104,10 @@ class CoreWorkerMemoryStore {
   /// Check whether this store contains the object.
   ///
   /// \param[in] object_id The object to check.
+  /// \param[out] in_plasma Set to true if the object was spilled to plasma.
+  /// If this is set to true, Contains() will return false.
   /// \return Whether the store has the object.
-  bool Contains(const ObjectID &object_id);
+  bool Contains(const ObjectID &object_id, bool *in_plasma);
 
   /// Returns the number of objects in this store.
   ///
@@ -124,7 +126,7 @@ class CoreWorkerMemoryStore {
   std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
-  std::shared_ptr<RayletClient> raylet_client_ = nullptr;
+  std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;
 
   /// Protects the data structures below.
   absl::Mutex mu_;

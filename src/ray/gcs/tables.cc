@@ -307,6 +307,13 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
 }
 
 template <typename ID, typename Data>
+Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                  const Callback &subscribe,
+                                  const SubscriptionCallback &done) {
+  return Subscribe(job_id, client_id, subscribe, /*failure*/ nullptr, done);
+}
+
+template <typename ID, typename Data>
 std::string Table<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_;
@@ -501,18 +508,6 @@ Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events
 
 std::string ProfileTable::DebugString() const {
   return Log<UniqueID, ProfileTableData>::DebugString();
-}
-
-Status JobTable::AppendJobData(const JobID &job_id, bool is_dead, int64_t timestamp,
-                               const std::string &node_manager_address,
-                               int64_t driver_pid) {
-  auto data = std::make_shared<JobTableData>();
-  data->set_job_id(job_id.Binary());
-  data->set_is_dead(is_dead);
-  data->set_timestamp(timestamp);
-  data->set_node_manager_address(node_manager_address);
-  data->set_driver_pid(driver_pid);
-  return Append(JobID(job_id), job_id, data, /*done_callback=*/nullptr);
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {

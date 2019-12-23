@@ -1,17 +1,21 @@
 package org.ray.api.test;
 
-import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.lang.ProcessBuilder.Redirect;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
+
+import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import org.ray.api.Ray;
+import org.ray.runtime.util.NetworkUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -65,6 +69,8 @@ public abstract class BaseMultiLanguageTest {
       }
     }
 
+    String nodeManagerPort = String.valueOf(NetworkUtil.getUnusedPort());
+
     // Start ray cluster.
     String workerOptions =
         " -classpath " + System.getProperty("java.class.path");
@@ -75,6 +81,7 @@ public abstract class BaseMultiLanguageTest {
         "--redis-port=6379",
         String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
+        String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
         "--include-java",
         "--java-worker-options=" + workerOptions
@@ -91,9 +98,11 @@ public abstract class BaseMultiLanguageTest {
     }
 
     // Connect to the cluster.
+    Assert.assertNull(Ray.internal());
     System.setProperty("ray.redis.address", "127.0.0.1:6379");
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
+    System.setProperty("ray.raylet.node-manager-port", nodeManagerPort);
     Ray.init();
   }
 
@@ -113,6 +122,7 @@ public abstract class BaseMultiLanguageTest {
     System.clearProperty("ray.redis.address");
     System.clearProperty("ray.object-store.socket-name");
     System.clearProperty("ray.raylet.socket-name");
+    System.clearProperty("ray.raylet.node-manager-port");
 
     // Stop ray cluster.
     final List<String> stopCommand = ImmutableList.of(

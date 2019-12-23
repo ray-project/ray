@@ -1,8 +1,10 @@
 package org.ray.runtime;
 
-import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.concurrent.Callable;
+
+import com.google.common.base.Preconditions;
+
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -16,6 +18,7 @@ import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtimecontext.RuntimeContext;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
+import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +30,8 @@ import org.slf4j.LoggerFactory;
 public class RayMultiWorkerNativeRuntime implements RayRuntime {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayMultiWorkerNativeRuntime.class);
+
+  private final FunctionManager functionManager;
 
   /**
    * The number of workers per worker process.
@@ -45,7 +50,8 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
    */
   private final ThreadLocal<RayNativeRuntime> currentThreadRuntime = new ThreadLocal<>();
 
-  public RayMultiWorkerNativeRuntime(RayConfig rayConfig) {
+  public RayMultiWorkerNativeRuntime(RayConfig rayConfig, FunctionManager functionManager) {
+    this.functionManager = functionManager;
     Preconditions.checkState(
         rayConfig.runMode == RunMode.CLUSTER && rayConfig.workerMode == WorkerType.WORKER);
     Preconditions.checkState(rayConfig.numWorkersPerProcess > 0,
@@ -59,7 +65,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
     for (int i = 0; i < numWorkers; i++) {
       final int workerIndex = i;
       threads[i] = new Thread(() -> {
-        RayNativeRuntime runtime = new RayNativeRuntime(rayConfig);
+        RayNativeRuntime runtime = new RayNativeRuntime(rayConfig, functionManager);
         runtimes[workerIndex] = runtime;
         currentThreadRuntime.set(runtime);
         runtime.run();
@@ -173,19 +179,29 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
+  public Object getAsyncContext() {
+    return getCurrentRuntime();
+  }
+
+  @Override
+  public void setAsyncContext(Object asyncContext) {
+    currentThreadRuntime.set((RayNativeRuntime)asyncContext);
+  }
+
+  @Override
   public Runnable wrapRunnable(Runnable runnable) {
-    RayNativeRuntime runtime = getCurrentRuntime();
+    Object asyncContext = getAsyncContext();
     return () -> {
-      currentThreadRuntime.set(runtime);
+      setAsyncContext(asyncContext);
       runnable.run();
     };
   }
 
   @Override
   public Callable wrapCallable(Callable callable) {
-    RayNativeRuntime runtime = getCurrentRuntime();
+    Object asyncContext = getAsyncContext();
     return () -> {
-      currentThreadRuntime.set(runtime);
+      setAsyncContext(asyncContext);
       return callable.call();
     };
   }

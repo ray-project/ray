@@ -390,12 +390,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
-  /// Handles updates to job table.
+  /// Handles the event that a job is finished.
   ///
-  /// \param id An unused value. TODO(rkn): Should this be removed?
-  /// \param job_data Data associated with a job table event.
+  /// \param job_id ID of the finished job.
+  /// \param job_data Data associated with the finished job.
   /// \return Void.
-  void HandleJobTableUpdate(const JobID &id, const std::vector<JobTableData> &job_data);
+  void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
   /// Check if certain invariants associated with the task dependency manager
   /// and the local queues are satisfied. This is only used for debugging
@@ -633,7 +633,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_clients_;
 
   /// Map of workers leased out to direct call clients.
-  std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
+  std::unordered_map<WorkerID, std::shared_ptr<Worker>> leased_workers_;
 
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
@@ -641,7 +641,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   /// Map of leased workers to their current resource usage.
-  std::unordered_map<int, std::unordered_map<std::string, double>>
+  std::unordered_map<WorkerID, std::unordered_map<std::string, double>>
       leased_worker_resources_;
 
   typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
