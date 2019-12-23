@@ -69,7 +69,8 @@ class WorkerAddress {
   const ClientID raylet_id;
 };
 
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const std::string &,
+                                                                 int)>
     ClientFactoryFn;
 
 /// Abstract client interface for testing.
@@ -117,6 +118,12 @@ class CoreWorkerClientInterface {
   virtual ray::Status GetObjectStatus(
       const GetObjectStatusRequest &request,
       const ClientCallback<GetObjectStatusReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  virtual ray::Status GetCoreWorkerStats(
+      const GetCoreWorkerStatsRequest &request,
+      const ClientCallback<GetCoreWorkerStatsReply> &callback) {
     return Status::NotImplemented("");
   }
 
@@ -193,6 +200,17 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     auto call = client_call_manager_.CreateCall<CoreWorkerService, GetObjectStatusRequest,
                                                 GetObjectStatusReply>(
         *stub_, &CoreWorkerService::Stub::PrepareAsyncGetObjectStatus, request, callback);
+    return call->GetStatus();
+  }
+
+  virtual ray::Status GetCoreWorkerStats(
+      const GetCoreWorkerStatsRequest &request,
+      const ClientCallback<GetCoreWorkerStatsReply> &callback) override {
+    auto call =
+        client_call_manager_.CreateCall<CoreWorkerService, GetCoreWorkerStatsRequest,
+                                        GetCoreWorkerStatsReply>(
+            *stub_, &CoreWorkerService::Stub::PrepareAsyncGetCoreWorkerStats, request,
+            callback);
     return call->GetStatus();
   }
 

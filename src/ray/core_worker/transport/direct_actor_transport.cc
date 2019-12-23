@@ -55,11 +55,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                                                       const rpc::Address &address) {
   absl::MutexLock lock(&mu_);
+  // Update the mapping so new RPCs go out with the right intended worker id.
+  worker_ids_[actor_id] = address.worker_id();
   // Create a new connection to the actor.
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc::WorkerAddress addr = {address.ip_address(), address.port()};
-    rpc_clients_[actor_id] =
-        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+    rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
+        client_factory_(address.ip_address(), address.port()));
   }
   if (pending_requests_.count(actor_id) > 0) {
     SendPendingTasks(actor_id);
@@ -74,6 +75,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
     // will be inserted once actor reconstruction completes. We don't erase the
     // client when the actor is DEAD, so that all further tasks will be failed.
     rpc_clients_.erase(actor_id);
+    worker_ids_.erase(actor_id);
   } else {
     RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     // If there are pending requests, treat the pending tasks as failed.
@@ -117,7 +119,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   next_send_position_[actor_id]++;
-
+  auto it = worker_ids_.find(actor_id);
+  RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
+  request->set_intended_worker_id(it->second);
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {
@@ -253,16 +257,21 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       }
     }
     if (status.IsSystemExit()) {
+      // Don't allow the worker to be reused, even though the reply status is OK.
+      // The worker will be shutting down shortly.
+      reply->set_worker_exiting(true);
       // In Python, SystemExit can only be raised on the main thread. To
       // work around this when we are executing tasks on worker threads,
       // we re-post the exit event explicitly on the main thread.
       exiting_ = true;
       if (objects_valid) {
+        // This happens when max_calls is hit. We still need to return the objects.
         send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
-        send_reply_callback(Status::SystemExit(), nullptr, nullptr);
+        send_reply_callback(status, nullptr, nullptr);
       }
-      task_main_io_service_.post([this]() { exit_handler_(); });
+      task_main_io_service_.post(
+          [this, status]() { exit_handler_(status.IsIntentionalSystemExit()); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       send_reply_callback(status, nullptr, nullptr);

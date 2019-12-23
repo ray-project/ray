@@ -18,13 +18,15 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClient {
-  // TODO(micafan) Will remove those friend class after we replace RedisGcsClient
+  // TODO(micafan) Will remove those friend class / method after we replace RedisGcsClient
   // with interface class GcsClient in raylet.
   friend class RedisActorInfoAccessor;
   friend class RedisJobInfoAccessor;
+  friend class RedisTaskInfoAccessor;
   friend class RedisNodeInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
+  friend class TaskTableTestHelper;
   friend class ClientTableTestHelper;
 
  public:
@@ -57,7 +59,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   // TODO: Some API for getting the error on the driver
   ObjectTable &object_table();
-  raylet::TaskTable &raylet_task_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
   HeartbeatTable &heartbeat_table();
@@ -99,6 +100,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   JobTable &job_table();
   /// This method will be deprecated, use method Nodes() instead.
   ClientTable &client_table();
+  /// This method will be deprecated, use method Tasks() instead.
+  raylet::TaskTable &raylet_task_table();
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.

@@ -1,10 +1,8 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.common.base.Strings;
 import java.io.File;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
@@ -12,6 +10,7 @@ import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.NativeWorkerContext;
+import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.gcs.GcsClientOptions;
 import org.ray.runtime.gcs.RedisClient;
@@ -21,7 +20,7 @@ import org.ray.runtime.runner.RunManager;
 import org.ray.runtime.task.NativeTaskExecutor;
 import org.ray.runtime.task.NativeTaskSubmitter;
 import org.ray.runtime.task.TaskExecutor;
-import org.ray.runtime.util.FileUtil;
+import org.ray.runtime.util.JniUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,16 +40,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   static {
     LOGGER.debug("Loading native libraries.");
-    // Load native libraries.
-    String[] libraries = new String[]{"core_worker_library_java"};
-    for (String library : libraries) {
-      String fileName = System.mapLibraryName(library);
-      try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
-        System.load(libFile.getFile().getAbsolutePath());
-      }
-      LOGGER.debug("Native libraries loaded.");
-    }
-
+    // Expose ray ABI symbols which may be depended by other shared
+    // libraries such as libstreaming_java.so.
+    // See BUILD.bazel:libcore_worker_library_java.so
+    JniUtils.loadLibrary("core_worker_library_java", true);
+    LOGGER.debug("Native libraries loaded.");
     RayConfig globalRayConfig = RayConfig.create();
     resetLibraryPath(globalRayConfig);
 
@@ -64,34 +58,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   private static void resetLibraryPath(RayConfig rayConfig) {
-    if (rayConfig.libraryPath.isEmpty()) {
-      return;
-    }
-
-    String path = System.getProperty("java.library.path");
-    if (Strings.isNullOrEmpty(path)) {
-      path = "";
-    } else {
-      path += ":";
-    }
-    path += String.join(":", rayConfig.libraryPath);
-
-    // This is a hack to reset library path at runtime,
-    // see https://stackoverflow.com/questions/15409223/.
-    System.setProperty("java.library.path", path);
-    // Set sys_paths to null so that java.library.path will be re-evaluated next time it is needed.
-    final Field sysPathsField;
-    try {
-      sysPathsField = ClassLoader.class.getDeclaredField("sys_paths");
-      sysPathsField.setAccessible(true);
-      sysPathsField.set(null, null);
-    } catch (NoSuchFieldException | IllegalAccessException e) {
-      LOGGER.error("Failed to set library path.", e);
-    }
+    String separator = System.getProperty("path.separator");
+    String libraryPath = String.join(separator, rayConfig.libraryPath);
+    JniUtils.resetLibraryPath(libraryPath);
   }
 
-  public RayNativeRuntime(RayConfig rayConfig) {
-    super(rayConfig);
+  public RayNativeRuntime(RayConfig rayConfig, FunctionManager functionManager) {
+    super(rayConfig, functionManager);
 
     // Reset library path at runtime.
     resetLibraryPath(rayConfig);
@@ -136,6 +109,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager.cleanup();
       manager = null;
     }
+
+    LOGGER.info("RayNativeRuntime shutdown");
+  }
+
+  // For test purpose only
+  public RunManager getRunManager() {
+    return manager;
   }
 
   @Override
@@ -145,6 +125,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       nodeId = UniqueId.NIL;
     }
     nativeSetResource(nativeCoreWorkerPointer, resourceName, capacity, nodeId.getBytes());
+  }
+
+  @Override
+  public Object getAsyncContext() {
+    return null;
+  }
+
+  @Override
+  public void setAsyncContext(Object asyncContext) {
   }
 
   public void run() {

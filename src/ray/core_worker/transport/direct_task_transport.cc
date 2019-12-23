@@ -27,8 +27,8 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
   auto it = client_cache_.find(addr);
   if (it == client_cache_.end()) {
-    client_cache_[addr] =
-        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+    client_cache_[addr] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
+        client_factory_(addr.ip_address, addr.port));
     RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
   }
   int64_t expiration = current_time_ms() + lease_timeout_ms_;
@@ -76,9 +76,10 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
       RAY_LOG(DEBUG) << "Connecting to raylet " << raylet_id;
-      it =
-          remote_lease_clients_.emplace(raylet_id, lease_client_factory_(*raylet_address))
-              .first;
+      it = remote_lease_clients_
+               .emplace(raylet_id, lease_client_factory_(raylet_address->ip_address(),
+                                                         raylet_address->port()))
+               .first;
     }
     lease_client = it->second;
   } else {
@@ -169,14 +170,21 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // access the task.
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
+  request->set_intended_worker_id(addr.worker_id.Binary());
   auto status = client.PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        // Successful actor creation leases the worker indefinitely from the raylet.
-        if (!status.ok() || !is_actor_creation) {
+        if (reply.worker_exiting()) {
+          // The worker is draining and will shutdown after it is done. Don't return
+          // it to the Raylet since that will kill it early.
           absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok(), assigned_resources);
+          worker_to_lease_client_.erase(addr);
+        } else if (!status.ok() || !is_actor_creation) {
+          // Successful actor creation leases the worker indefinitely from the raylet.
+          absl::MutexLock lock(&mu_);
+          OnWorkerIdle(addr, scheduling_key,
+                       /*error=*/!status.ok(), assigned_resources);
         }
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node
