@@ -315,7 +315,7 @@ void TaskDependencyManager::TaskPending(const Task &task) {
   // For direct actor creation task:
   //   - Initially the caller leases a worker from raylet and
   //     then pushes actor creation task directly to the worker,
-  //     thus it doesn't need task lease. And actually if we 
+  //     thus it doesn't need task lease. And actually if we
   //     acquire a lease in this case and forget to cancel it,
   //     the lease would never expire which will prevent the
   //     actor from being reconstructed;
@@ -330,7 +330,7 @@ void TaskDependencyManager::TaskPending(const Task &task) {
       // This is an actor creation task, and it's being reconstructed,
       // in this case we still need the task lease.
     } else {
-     return;
+      return;
     }
   }
 
