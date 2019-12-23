@@ -10,11 +10,34 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries) {
+void TaskManager::AddPendingTask(const TaskID &caller_id,
+                                 const rpc::Address &caller_address,
+                                 const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
+
+  // Add references for the dependencies to the task.
+  std::vector<ObjectID> task_deps;
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    if (spec.ArgByRef(i)) {
+      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+        task_deps.push_back(spec.ArgId(i, j));
+      }
+    }
+  }
+  reference_counter_->AddSubmittedTaskReferences(task_deps);
+
+  // Add new owned objects for the return values of the task.
+  size_t num_returns = spec.NumReturns();
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+    num_returns--;
+  }
+  for (size_t i = 0; i < num_returns; i++) {
+    reference_counter_->AddOwnedObject(spec.ReturnId(i, TaskTransportType::DIRECT),
+                                       caller_id, caller_address);
+  }
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -47,6 +70,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     spec = it->second.first;
     pending_tasks_.erase(it);
   }
+
+  RemovePlasmaSubmittedTaskReferences(spec);
 
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
@@ -134,6 +159,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
         }
       }
     }
+    RemovePlasmaSubmittedTaskReferences(spec);
     MarkPendingTaskFailed(task_id, spec, error_type);
   }
 
@@ -146,6 +172,28 @@ void TaskManager::ShutdownIfNeeded() {
     RAY_LOG(WARNING) << "All in flight tasks finished, shutting down worker.";
     shutdown_hook_();
   }
+}
+
+void TaskManager::RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids) {
+  std::vector<ObjectID> deleted;
+  reference_counter_->RemoveSubmittedTaskReferences(object_ids, &deleted);
+  in_memory_store_->Delete(deleted);
+}
+
+void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) {
+  RemoveSubmittedTaskReferences(object_ids);
+}
+
+void TaskManager::RemovePlasmaSubmittedTaskReferences(TaskSpecification &spec) {
+  std::vector<ObjectID> plasma_dependencies;
+  for (size_t i = 0; i < spec.NumArgs(); i++) {
+    auto count = spec.ArgIdCount(i);
+    if (count > 0) {
+      const auto &id = spec.ArgId(i, 0);
+      plasma_dependencies.push_back(id);
+    }
+  }
+  RemoveSubmittedTaskReferences(plasma_dependencies);
 }
 
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,

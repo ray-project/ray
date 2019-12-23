@@ -148,6 +148,14 @@ java/runtime/native_dependencies/
 
 # streaming/python
 streaming/python/generated/
+streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/
+streaming/build/java
+.clwb
+streaming/**/.settings
+streaming/java/**/target
+streaming/java/**/.classpath
+streaming/java/**/.project
+streaming/java/**/*.log
 
 # python virtual env
 venv

@@ -29,12 +29,14 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet_monitor",
     "ray/core/src/ray/raylet/raylet",
     "ray/dashboard/dashboard.py",
+    "ray/streaming/_streaming.so",
 ]
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
+    "ray/streaming/generated",
 ]
 
 optional_ray_files = []
