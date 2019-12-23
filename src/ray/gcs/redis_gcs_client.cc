@@ -2,9 +2,8 @@
 
 #include <unistd.h>
 #include "ray/common/ray_config.h"
-#include "ray/gcs/redis_actor_info_accessor.h"
+#include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/gcs/redis_job_info_accessor.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -73,13 +72,8 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {
-#if RAY_USE_NEW_GCS
-  command_type_ = CommandType::kChain;
-#else
-  command_type_ = CommandType::kRegular;
-#endif
-}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options)
+    : GcsClient(options), command_type_(CommandType::kRegular) {}
 
 RedisGcsClient::RedisGcsClient(const GcsClientOptions &options, CommandType command_type)
     : GcsClient(options), command_type_(command_type) {}
@@ -150,6 +144,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
   job_accessor_.reset(new RedisJobInfoAccessor(this));
+  task_accessor_.reset(new RedisTaskInfoAccessor(this));
 
   is_connected_ = true;
 

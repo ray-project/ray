@@ -128,6 +128,12 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  virtual ray::Status GetCoreWorkerStats(
+      const GetCoreWorkerStatsRequest &request,
+      const ClientCallback<GetCoreWorkerStatsReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ~CoreWorkerClientInterface(){};
 };
 
@@ -211,6 +217,17 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         client_call_manager_.CreateCall<CoreWorkerService, WaitForObjectEvictionRequest,
                                         WaitForObjectEvictionReply>(
             *stub_, &CoreWorkerService::Stub::PrepareAsyncWaitForObjectEviction, request,
+            callback);
+    return call->GetStatus();
+  }
+
+  virtual ray::Status GetCoreWorkerStats(
+      const GetCoreWorkerStatsRequest &request,
+      const ClientCallback<GetCoreWorkerStatsReply> &callback) override {
+    auto call =
+        client_call_manager_.CreateCall<CoreWorkerService, GetCoreWorkerStatsRequest,
+                                        GetCoreWorkerStatsReply>(
+            *stub_, &CoreWorkerService::Stub::PrepareAsyncGetCoreWorkerStats, request,
             callback);
     return call->GetStatus();
   }

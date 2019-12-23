@@ -155,6 +155,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
+  connected_ = true;
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
@@ -219,7 +220,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
-    RAY_CHECK_OK(gcs_client_->raylet_task_table().Add(job_id, task_id, data, nullptr));
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
     SetCurrentTaskId(task_id);
   }
 
@@ -266,11 +267,14 @@ void CoreWorker::Shutdown() {
 
 void CoreWorker::Disconnect() {
   io_service_.stop();
-  if (gcs_client_) {
-    gcs_client_->Disconnect();
-  }
-  if (local_raylet_client_) {
-    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+  if (connected_) {
+    connected_ = false;
+    if (gcs_client_) {
+      gcs_client_->Disconnect();
+    }
+    if (local_raylet_client_) {
+      RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
+    }
   }
 }
 
@@ -1033,6 +1037,13 @@ void CoreWorker::HandleWaitForObjectEviction(
     rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
   // TODO: add a callback to the reference counter that replies to this callback.
   return;
+}
+
+void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
+                                          rpc::GetCoreWorkerStatsReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  reply->set_webui_display(webui_display_);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

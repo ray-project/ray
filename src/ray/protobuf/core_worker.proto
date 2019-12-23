@@ -131,6 +131,16 @@ message WaitForObjectEvictionRequest {
 message WaitForObjectEvictionReply {
 }
 
+message GetCoreWorkerStatsRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+}
+
+message GetCoreWorkerStatsReply {
+  // String displayed on Web UI.
+  string webui_display = 1;
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -144,4 +154,6 @@ service CoreWorkerService {
   // Notify the object's owner that it has been pinned by a raylet. Replying
   // to this message indicatest that the reference should be unpinned.
   rpc WaitForObjectEviction(WaitForObjectEvictionRequest) returns (WaitForObjectEvictionReply);
+  // Get metrics from core workers.
+  rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
 }

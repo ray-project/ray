@@ -33,7 +33,8 @@
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
   RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
-  RAY_CORE_WORKER_RPC_HANDLER(WaitForObjectEviction, 9999)
+  RAY_CORE_WORKER_RPC_HANDLER(WaitForObjectEviction, 9999)         \
+  RAY_CORE_WORKER_RPC_HANDLER(GetCoreWorkerStats, 100)
 
 namespace ray {
 
@@ -102,6 +103,9 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
+  void SetWebuiDisplay(const std::string &message) { webui_display_ = message; }
+
+  /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
   /// by the language frontend when a new reference is created.
   ///
@@ -408,6 +412,11 @@ class CoreWorker {
                                    rpc::WaitForObjectEvictionReply *reply,
                                    rpc::SendReplyCallback send_reply_callback);
 
+  /// Get statistics from core worker.
+  void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
+                                rpc::GetCoreWorkerStatsReply *reply,
+                                rpc::SendReplyCallback send_reply_callback);
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -566,6 +575,9 @@ class CoreWorker {
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
+  /// Whether or not this worker is connected to the raylet and GCS.
+  bool connected_ = false;
+
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
@@ -628,6 +640,9 @@ class CoreWorker {
 
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
+
+  /// String to be displayed on Web UI.
+  std::string webui_display_;
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
