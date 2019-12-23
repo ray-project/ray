@@ -8,7 +8,7 @@
 
 |
 
-**NOTE: `We are deprecating Python 2 support soon.`__**
+**NOTE: `We are deprecating Python 2 support soon.`_**
 
 .. _`We are deprecating Python 2 support soon.`: https://github.com/ray-project/ray/issues/6580
 
