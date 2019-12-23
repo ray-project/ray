@@ -7,7 +7,6 @@
 #include <vector>
 #include "ray/common/status.h"
 #include "ray/gcs/accessor.h"
-#include "ray/gcs/node_info_accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
