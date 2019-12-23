@@ -805,6 +805,9 @@ cdef class CoreWorker:
     def get_actor_id(self):
         return ActorID(self.core_worker.get().GetActorId().Binary())
 
+    def set_webui_display(self, message):
+        self.core_worker.get().SetWebuiDisplay(message)
+
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
         cdef:

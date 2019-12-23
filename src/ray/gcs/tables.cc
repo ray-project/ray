@@ -307,6 +307,13 @@ Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id
 }
 
 template <typename ID, typename Data>
+Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                  const Callback &subscribe,
+                                  const SubscriptionCallback &done) {
+  return Subscribe(job_id, client_id, subscribe, /*failure*/ nullptr, done);
+}
+
+template <typename ID, typename Data>
 std::string Table<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_;

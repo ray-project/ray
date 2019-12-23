@@ -1,6 +1,6 @@
 name: CI
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
   build:
@@ -19,12 +19,16 @@ jobs:
             os: windows-latest
             compiler: clang-cl
     steps:
-    - name: Install Bazel
+    - name: Checkout repository
+      uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
+    - name: Setup Bazel
       shell: bash
-      run: |
-        if [ "${OSTYPE}" = "msys" ]; then
-          choco install --no-progress bazel
-        fi
+      env:
+        BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./ci/travis/install-bazel.sh
     - name: Install C/C++ toolchains
       if: matrix.compiler == 'clang' || matrix.compiler == 'clang-cl'
       shell: bash
@@ -41,10 +45,6 @@ jobs:
       uses: numworks/setup-msys2@v1
       with:
         update: false
-    - name: Checkout repository
-      uses: actions/checkout@v1
-      with:
-        fetch-depth: 1
     - name: Perform build
       shell: bash
       run: |
