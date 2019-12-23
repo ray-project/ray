@@ -113,6 +113,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
         const CActorID &GetActorId()
+        void SetWebuiDisplay(const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)

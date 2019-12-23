@@ -2974,11 +2974,6 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
                                          rpc::NodeStatsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  for (const auto &worker : worker_pool_.GetAllWorkers()) {
-    auto worker_stats = reply->add_workers_stats();
-    worker_stats->set_pid(worker->Pid());
-    worker_stats->set_is_driver(false);
-  }
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
     auto worker_stats = reply->add_workers_stats();
     worker_stats->set_pid(driver->Pid());
@@ -3039,7 +3034,38 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
       }
     }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  // As a result of the HandleNodeStatsRequest, we are collecting information from all
+  // workers on this node. This is done by calling GetCoreWorkerStats on each worker. In
+  // order to send up-to-date information back, we wait until all workers have replied,
+  // and return the information from HandleNodesStatsRequest. The caller of
+  // HandleNodeStatsRequest should set a timeout so that the rpc finishes even if not all
+  // workers have replied.
+  auto all_workers = worker_pool_.GetAllWorkers();
+  for (const auto &worker : all_workers) {
+    rpc::GetCoreWorkerStatsRequest request;
+    request.set_intended_worker_id(worker->WorkerId().Binary());
+    auto status = worker->rpc_client()->GetCoreWorkerStats(
+        request, [reply, worker, all_workers, send_reply_callback](
+                     const ray::Status &status, const rpc::GetCoreWorkerStatsReply &r) {
+          if (!status.ok()) {
+            RAY_LOG(WARNING) << "Failed to send get core worker stats request: "
+                             << status.ToString();
+          } else {
+            auto worker_stats = reply->add_workers_stats();
+            worker_stats->set_pid(worker->Pid());
+            worker_stats->set_is_driver(false);
+            reply->set_num_workers(reply->num_workers() + 1);
+            worker_stats->set_webui_display(r.webui_display());
+            if (reply->num_workers() == all_workers.size()) {
+              send_reply_callback(Status::OK(), nullptr, nullptr);
+            }
+          }
+        });
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to send get core worker stats request: "
+                       << status.ToString();
+    }
+  }
 }
 
 void NodeManager::RecordMetrics() {

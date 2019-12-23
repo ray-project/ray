@@ -1412,6 +1412,21 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
+def show_in_webui(message):
+    """Display message in dashboard.
+
+    Display message for the current task or actor in the dashboard.
+    For example, this can be used to display the status of a long-running
+    computation.
+
+    Args:
+        message (str): Message to be displayed.
+    """
+    worker = global_worker
+    worker.check_connected()
+    worker.core_worker.set_webui_display(message.encode())
+
+
 def get(object_ids, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
