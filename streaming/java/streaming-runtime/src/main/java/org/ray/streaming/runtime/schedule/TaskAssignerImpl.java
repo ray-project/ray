@@ -42,10 +42,8 @@ public class TaskAssignerImpl implements TaskAssigner {
         vertexTasks.add(new ExecutionTask(taskId, taskIndex, workers.get(taskId)));
         taskId++;
       }
-      StreamProcessor streamProcessor = ProcessBuilder
-          .buildProcessor(planVertex.getStreamOperator());
       executionNode.setExecutionTasks(vertexTasks);
-      executionNode.setStreamProcessor(streamProcessor);
+      executionNode.setStreamOperator(planVertex.getStreamOperator());
       idToExecutionNode.put(executionNode.getNodeId(), executionNode);
     }
 
