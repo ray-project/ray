@@ -21,11 +21,63 @@ def test_worker_stats(ray_start_regular):
 
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
+
+    def try_get_node_stats(num_retry=5, timeout=2):
+        reply = None
+        for _ in range(num_retry):
+            try:
+                reply = stub.GetNodeStats(
+                    node_manager_pb2.NodeStatsRequest(), timeout=timeout)
+                break
+            except grpc.RpcError:
+                continue
+        assert reply is not None
+        return reply
+
+    reply = try_get_node_stats()
     # Check that there is one connected driver.
     drivers = [worker for worker in reply.workers_stats if worker.is_driver]
     assert len(drivers) == 1
     assert os.getpid() == drivers[0].pid
+
+    @ray.remote
+    def f():
+        ray.show_in_webui("test")
+        return os.getpid()
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self):
+            ray.show_in_webui("test")
+            return os.getpid()
+
+    # Test show_in_webui for remote functions.
+    worker_pid = ray.get(f.remote())
+    reply = try_get_node_stats()
+    target_worker_present = False
+    for worker in reply.workers_stats:
+        if worker.webui_display == "test":
+            target_worker_present = True
+            assert worker.pid == worker_pid
+        else:
+            assert worker.webui_display == ""
+    assert target_worker_present
+
+    # Test show_in_webui for remote actors.
+    a = Actor.remote()
+    worker_pid = ray.get(a.f.remote())
+    reply = try_get_node_stats()
+    target_worker_present = False
+    for worker in reply.workers_stats:
+        if worker.webui_display == "test":
+            target_worker_present = True
+            assert worker.pid == worker_pid
+        else:
+            assert worker.webui_display == ""
+    assert target_worker_present
 
     timeout_seconds = 20
     start_time = time.time()
@@ -37,7 +89,7 @@ def test_worker_stats(ray_start_regular):
         # Wait for the workers to start.
         if len(reply.workers_stats) < num_cpus + 1:
             time.sleep(1)
-            reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
+            reply = try_get_node_stats()
             continue
 
         # Check that the rest of the processes are workers, 1 for each CPU.
