@@ -159,6 +159,8 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
+            print("XXX")
+            actor_tree = self.node_stats.get_actor_tree()
             for address, data in D.items():
                 available_resources = data["availableResources"]
                 total_resources = data["totalResources"]
@@ -171,6 +173,8 @@ class Dashboard(object):
                     extra_info.append("{}: {} / {}".format(
                         resource_name, occupied, total))
                 data["extraInfo"] = ", ".join(extra_info)
+                # test logical view
+                data["extraInfo"] += "\n" + str(actor_tree)
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:
@@ -226,6 +230,9 @@ class NodeStats(threading.Thread):
             redis_address, password=redis_password)
 
         self._node_stats = {}
+        self._addr_to_owner_addr = {}
+        self._addr_to_actor_id = {}
+        self._addr_to_extra_info_dict = {}
         self._node_stats_lock = threading.Lock()
 
         # Mapping from IP address to PID to list of log lines
@@ -281,6 +288,23 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
+    def get_actor_tree(self) -> Dict:
+        flattened_tree = {-1: {"children": {}}}
+        child_to_parent = {}
+        with self._node_stats_lock:
+            for addr, actor_id in self._addr_to_actor_id.items():
+                flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
+                flattened_tree[actor_id]["children"] = {}
+                parent_id = self._addr_to_actor_id.get(self._addr_to_owner_addr[addr], -1)
+                child_to_parent[actor_id] = parent_id
+
+        # assume that actor with n oparent is not a key in self._addr_to_owner_addr
+        for actor_id, parent_id in child_to_parent.items():
+            flattened_tree[parent_id]["children"][actor_id] = [flattened_tree[actor_id]]
+
+        print(flattened_tree)
+        return flattened_tree[-1]["children"]
+
     def get_logs(self, hostname, pid):
         ip = self._node_stats.get(hostname, {"ip": None})["ip"]
         logs = self._logs.get(ip, {})
@@ -309,6 +333,10 @@ class NodeStats(threading.Thread):
         p.subscribe(error_channel)
         logger.info("NodeStats: subscribed to {}".format(error_channel))
 
+        actor_channel = ray.gcs_utils.TablePubsub.Value("DIRECT_ACTOR_PUBSUB")
+        p.subscribe(actor_channel)
+        logger.info("NodeStats: subscribed to {}".format(actor_channel))
+
         for x in p.listen():
             try:
                 with self._node_stats_lock:
@@ -334,6 +362,17 @@ class NodeStats(threading.Thread):
                                 "timestamp": error_data.timestamp,
                                 "type": error_data.type
                             })
+                    elif channel == str(actor_channel):
+                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
+                        print("got actor channel publish", gcs_entry)
+                        actor_data = ray.gcs_utils.ActorTableData.FromString(
+                            gcs_entry.entries[0])
+                        print("actor_data", actor_data)
+                        addr = (actor_data.address.ip_address, actor_data.address.port)
+                        owner_addr = (actor_data.owner_address.ip_address, actor_data.owner_address.port)
+                        self._addr_to_owner_addr[addr] = owner_addr
+                        self._addr_to_actor_id[addr] = actor_data.actor_id
+                        self._addr_to_extra_info_dict[addr] = {"job_id": actor_data.job_id}
                     else:
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
