@@ -1,6 +1,5 @@
 #include "ray/core_worker/actor_manager.h"
-
-#include "ray/gcs/redis_actor_info_accessor.h"
+#include "ray/gcs/redis_accessor.h"
 
 namespace ray {
 

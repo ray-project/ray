@@ -6,8 +6,7 @@
 #include <string>
 #include <vector>
 #include "ray/common/status.h"
-#include "ray/gcs/actor_info_accessor.h"
-#include "ray/gcs/job_info_accessor.h"
+#include "ray/gcs/accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -75,6 +74,13 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *job_accessor_;
   }
 
+  /// Get the sub-interface for accessing task information in GCS.
+  /// This function is thread safe.
+  TaskInfoAccessor &Tasks() {
+    RAY_CHECK(task_accessor_ != nullptr);
+    return *task_accessor_;
+  }
+
  protected:
   /// Constructor of GcsClient.
   ///
@@ -88,6 +94,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
+  std::unique_ptr<TaskInfoAccessor> task_accessor_;
 };
 
 }  // namespace gcs
