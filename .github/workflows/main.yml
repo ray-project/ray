@@ -29,8 +29,30 @@ jobs:
       if: matrix.compiler == 'clang' || matrix.compiler == 'clang-cl'
       shell: bash
       run: |
+        set -euo pipefail
         if [ "${OSTYPE}" = "msys" ]; then
-          choco install --no-progress llvm
+          export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
+          # Ideally we should be able to use the Chocolatey package manager:
+          #   choco install --no-progress llvm
+          # However, it frequently gives HTTP 503 errors, so we just download and install manually.
+          urldir="https://releases.llvm.org"
+          bits=64
+          if [ "${HOSTTYPE}" = "${HOSTTYPE%64}" ]; then bits=32; fi
+          curl -s --compressed -- "${urldir}/download.html" | sed -n "s/.*<a href=\"\([^\"]*\)\">Windows (${bits}-bit).*/\1/p" | {
+            href=""
+            while read -r href; do
+              if [ "${href}" = "${href#http://}" ] && [ "${href}" = "${href#https://}" ]; then
+                href="${urldir}/${href}"  # Relative URL, so make it absolute
+              fi
+              break  # Latest version is the first match
+            done
+            test -n "${href}"  # If this check fails, we couldn't find the download url
+            target="./LLVM.exe"
+            curl -s -L -R -o "${target}" "${href}"
+            chmod +x "${target}"
+            "${target}" /S
+            rm -f -- "${target}"
+          }
         elif 1>&- command -v pacman; then
           sudo pacman -S --needed --noconfirm --noprogressbar clang
         elif 1>&- command -v apt-get; then
