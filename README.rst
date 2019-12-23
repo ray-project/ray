@@ -8,6 +8,9 @@
 
 |
 
+**NOTE: `We are deprecating Python 2 support soon.`__**
+
+.. _`We are deprecating Python 2 support soon.`: https://github.com/ray-project/ray/issues/6580
 
 **Ray is a fast and simple framework for building and running distributed applications.**
 
