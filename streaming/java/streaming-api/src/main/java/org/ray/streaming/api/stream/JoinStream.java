@@ -15,10 +15,6 @@ import org.ray.streaming.operator.StreamOperator;
  */
 public class JoinStream<L, R, J> extends DataStream<L> {
 
-  public JoinStream(StreamingContext streamingContext, StreamOperator streamOperator) {
-    super(streamingContext, streamOperator);
-  }
-
   public JoinStream(DataStream<L> leftStream, DataStream<R> rightStream) {
     super(leftStream, null);
   }
