@@ -289,20 +289,20 @@ class NodeStats(threading.Thread):
             }
 
     def get_actor_tree(self) -> Dict:
-        flattened_tree = {-1: {"children": {}}}
+        flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
         with self._node_stats_lock:
             for addr, actor_id in self._addr_to_actor_id.items():
                 flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
                 flattened_tree[actor_id]["children"] = {}
-                parent_id = self._addr_to_actor_id.get(self._addr_to_owner_addr[addr], -1)
+                parent_id = self._addr_to_actor_id.get(self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
 
-        # assume that actor with no parent is not a key in self._addr_to_actor_id
+        actor_tree = flattened_tree
         for actor_id, parent_id in child_to_parent.items():
-            flattened_tree[parent_id]["children"][actor_id] = flattened_tree[actor_id]
+            actor_tree[parent_id]["children"][actor_id] = actor_tree[actor_id]
 
-        return flattened_tree[-1]["children"]
+        return actor_tree["root"]["children"]
 
     def get_logs(self, hostname, pid):
         ip = self._node_stats.get(hostname, {"ip": None})["ip"]
