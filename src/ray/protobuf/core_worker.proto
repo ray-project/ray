@@ -122,10 +122,8 @@ message GetObjectStatusReply {
 message WaitForObjectEvictionRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
-  // Raylet that has pinned the object.
-  Address raylet_address = 2;
-  // ObjectID of thep inned object.
-  bytes object_id = 3;
+  // ObjectID of the pinned object.
+  bytes object_id = 2;
 }
 
 message WaitForObjectEvictionReply {

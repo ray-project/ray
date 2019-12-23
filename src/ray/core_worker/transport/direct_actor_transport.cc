@@ -263,6 +263,8 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         }
       }
       // If we spilled any return objects to plasma, notify the raylet to pin them.
+      // TODO(edoakes): the plasma objects could be evicted between creating them
+      // here and when raylet pins them.
       if (!plasma_return_ids.empty()) {
         RAY_CHECK_OK(
             local_raylet_client_->PinObjectIDs(caller_address, plasma_return_ids));

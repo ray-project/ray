@@ -76,6 +76,12 @@ class ReferenceCounter {
   bool GetOwner(const ObjectID &object_id, TaskID *owner_id,
                 rpc::Address *owner_address) const LOCKS_EXCLUDED(mutex_);
 
+  /// Sets the callback that will be run when the object goes out of scope.
+  /// Returns true if the object was in scope and the callback was added, else false.
+  bool SetDeleteCallback(const ObjectID &object_id,
+                         const std::function<void(const ObjectID &)> callback)
+      LOCKS_EXCLUDED(mutex_);
+
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
 
@@ -113,21 +119,9 @@ class ReferenceCounter {
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
     absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    /// Callback that will be called when this ObjectID no longer has references.
+    std::function<void(const ObjectID &)> on_delete;
   };
-
-  /// Helper function with the same semantics as AddReference to allow adding a reference
-  /// while already holding mutex_.
-  void AddLocalReferenceInternal(const ObjectID &object_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-
-  /// Recursive helper function for decreasing reference counts. Will recursively call
-  /// itself on any dependencies whose reference count reaches zero as a result of
-  /// removing the reference.
-  ///
-  /// \param[in] object_id The object to to decrement the count for.
-  /// \param[in] deleted List to store objects that hit zero ref count.
-  void RemoveReferenceRecursive(const ObjectID &object_id, std::vector<ObjectID> *deleted)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

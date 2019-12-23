@@ -8,6 +8,7 @@
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/task/task.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -568,9 +569,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ClientID client_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
-  /// A Plasma object store client. This is used exclusively for creating new
-  /// objects in the object store (e.g., for actor tasks that can't be run
-  /// because the actor died).
+  /// A Plasma object store client. This is used for creating new objects in
+  /// the object store (e.g., for actor tasks that can't be run because the
+  /// actor died) and to pin objects that are in scope in the cluster.
   plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
@@ -658,6 +659,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
   /// Queue of lease requests that should be scheduled onto workers.
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
+
+  /// Cache of gRPC clients to workers (not necessarily running on this node).
+  /// Also includes the number of inflight requests to each worker - when this
+  /// reaches zero, the client will be deleted and a new one will need to be created
+  /// for any subsequent requests.
+  absl::flat_hash_map<WorkerID, std::pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>>
+      worker_rpc_clients_;
+
+  absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 };
 
 }  // namespace raylet

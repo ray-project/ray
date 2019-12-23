@@ -47,6 +47,9 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   }
   if (--entry->second.local_ref_count == 0 &&
       entry->second.submitted_task_ref_count == 0) {
+    if (entry->second.on_delete) {
+      entry->second.on_delete(object_id);
+    }
     object_id_refs_.erase(entry);
     deleted->push_back(object_id);
   }
@@ -78,6 +81,9 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     }
     if (--entry->second.submitted_task_ref_count == 0 &&
         entry->second.local_ref_count == 0) {
+      if (entry->second.on_delete) {
+        entry->second.on_delete(object_id);
+      }
       object_id_refs_.erase(entry);
       deleted->push_back(object_id);
     }
@@ -99,6 +105,17 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id, TaskID *owner_id,
   } else {
     return false;
   }
+}
+
+bool ReferenceCounter::SetDeleteCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  it->second.on_delete = callback;
+  return true;
 }
 
 bool ReferenceCounter::HasReference(const ObjectID &object_id) const {

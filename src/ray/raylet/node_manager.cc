@@ -4,6 +4,7 @@
 #include <fstream>
 #include <memory>
 
+#include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -2957,13 +2958,66 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &request,
                                             rpc::PinObjectIDsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  // TODO(edoakes): cache clients
-  /*
-  rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
-      new rpc::CoreWorkerClient(request.owner_address().ip_address(),
-  request.owner_address().port(), client_call_manager_));
-  */
-  // XXX call WaitForObjectEviction, removing from map and unpinning in callback.
+  WorkerID worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
+  auto it = worker_rpc_clients_.find(worker_id);
+  if (it == worker_rpc_clients_.end()) {
+    auto client = std::unique_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient(request.owner_address().ip_address(),
+                                  request.owner_address().port(), client_call_manager_));
+    worker_rpc_clients_.emplace(
+        worker_id, std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(
+                       std::move(client), 0));
+    it = worker_rpc_clients_.find(worker_id);
+  }
+  RAY_CHECK(it != worker_rpc_clients_.end());
+
+  // Pin the objects in plasma by getting them and holding a reference to
+  // the returned buffer.
+  std::vector<plasma::ObjectID> plasma_ids;
+  plasma_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_binary : request.object_ids()) {
+    plasma_ids.push_back(plasma::ObjectID::from_binary(object_id_binary));
+  }
+  std::vector<plasma::ObjectBuffer> plasma_results;
+  if (!store_client_.Get(plasma_ids, /*timeout_ms=*/100, &plasma_results).ok()) {
+    RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
+    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
+    return;
+  }
+
+  // TODO(edoakes): we should be batching these requests instead of sending one per
+  // pinned object.
+  size_t i = 0;
+  for (const auto &object_id_binary : request.object_ids()) {
+    ObjectID object_id = ObjectID::FromBinary(object_id_binary);
+
+    RAY_LOG(DEBUG) << "Pinning object " << object_id;
+    auto ray_object = std::unique_ptr<RayObject>(
+        new RayObject(std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+                      std::make_shared<PlasmaBuffer>(plasma_results[i].metadata)));
+    i++;
+    pinned_objects_.emplace(object_id, std::move(ray_object));
+
+    rpc::WaitForObjectEvictionRequest wait_request;
+    wait_request.set_object_id(object_id_binary);
+    wait_request.set_intended_worker_id(request.owner_address().worker_id());
+    worker_rpc_clients_[worker_id].second++;
+    RAY_CHECK_OK(it->second.first->WaitForObjectEviction(
+        wait_request, [this, worker_id, object_id](
+                          Status status, const rpc::WaitForObjectEvictionReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(WARNING) << "Worker " << worker_id << " failed. Unpinning object "
+                             << object_id;
+          }
+          RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+          pinned_objects_.erase(object_id);
+
+          // Remove the cached worker client if there are no more pending requests.
+          if (--worker_rpc_clients_[worker_id].second == 0) {
+            worker_rpc_clients_.erase(worker_id);
+          }
+        }));
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

@@ -382,6 +382,7 @@ Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
+  RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
   return Put(object, *object_id);
 }
 
@@ -397,6 +398,9 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
+  // TODO(edoakes): what happens if we error before the corresponding "Seal?"
+  reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
+  RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
   return Create(metadata, data_size, *object_id, data);
 }
 
@@ -1035,8 +1039,25 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
 void CoreWorker::HandleWaitForObjectEviction(
     const rpc::WaitForObjectEvictionRequest &request,
     rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  // TODO: add a callback to the reference counter that replies to this callback.
-  return;
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+
+  auto respond = [send_reply_callback](const ObjectID &object_id) {
+    RAY_LOG(DEBUG) << "Replying to HandleWaitForObjectEviction for " << object_id;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  };
+
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  // Returns true if the object was present and the callback was added. It might have
+  // already been evicted by the time we get this request, in which case we should
+  // respond immediately so the raylet unpins the object.
+  // unpin and respond to the message immediately.
+  if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
+    RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
+    respond(object_id);
+  }
 }
 
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
