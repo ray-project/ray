@@ -15,7 +15,7 @@ func Before(value string, a string) string {
 	// Get substring before a string.
 	pos := strings.Index(value, a)
 	if pos == -1 {
-		return ""
+		return nil
 	}
 	return value[0:pos]
 }
