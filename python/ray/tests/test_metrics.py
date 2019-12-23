@@ -27,6 +27,23 @@ def test_worker_stats(ray_start_regular):
     assert len(drivers) == 1
     assert os.getpid() == drivers[0].pid
 
+    @ray.remote
+    class A(object):
+        def __init__(self):
+            pass
+    
+    class B(object):
+        def __init__(self):
+            self.children = [A.remote(), A.remote()]
+
+    class C(object):
+        def __init__(self):
+            self.children = [A.remote(), B.remote()]
+
+    actor = C.remote()
+    reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
+    print(reply)
+
     timeout_seconds = 20
     start_time = time.time()
     while True:

@@ -298,11 +298,10 @@ class NodeStats(threading.Thread):
                 parent_id = self._addr_to_actor_id.get(self._addr_to_owner_addr[addr], -1)
                 child_to_parent[actor_id] = parent_id
 
-        # assume that actor with n oparent is not a key in self._addr_to_owner_addr
+        # assume that actor with no parent is not a key in self._addr_to_actor_id
         for actor_id, parent_id in child_to_parent.items():
-            flattened_tree[parent_id]["children"][actor_id] = [flattened_tree[actor_id]]
+            flattened_tree[parent_id]["children"][actor_id] = flattened_tree[actor_id]
 
-        print(flattened_tree)
         return flattened_tree[-1]["children"]
 
     def get_logs(self, hostname, pid):
