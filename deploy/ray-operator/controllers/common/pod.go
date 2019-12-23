@@ -4,7 +4,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	rayiov1alpha1 "ray-operator/api/v1alpha1"
-	"strconv"
 	"strings"
 )
 
@@ -23,7 +22,7 @@ func DefaultPodConfig(instance *rayiov1alpha1.RayCluster, podTypeName string, po
 	}
 }
 
-// build a pod for the cluster instance.
+// Build a pod for the cluster instance.
 func BuildPod(conf *PodConfig) *corev1.Pod {
 	// build label for cluster
 	rayLabels := labelsForCluster(*conf.RayCluster, conf.PodName, conf.PodTypeName, conf.Extension.Labels)
@@ -64,11 +63,12 @@ func BuildPod(conf *PodConfig) *corev1.Pod {
 	return pod
 }
 
+// Build container for pod.
 func buildContainer(conf *PodConfig) corev1.Container {
 
-	redisPort, _ := strconv.ParseInt(defaultRedisPort, 10, 64)
-	httpServerPort, _ := strconv.ParseInt(defaultHTTPServerPort, 10, 64)
-	jobManagerPort, _ := strconv.ParseInt(defaultRedisPort, 10, 64)
+	redisPort := defaultRedisPort
+	httpServerPort := defaultHTTPServerPort
+	jobManagerPort := defaultRedisPort
 
 	// get pod file path to check if the pod container ready or not
 	var podReadyFilepath string

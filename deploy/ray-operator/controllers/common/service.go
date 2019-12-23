@@ -4,7 +4,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	rayiov1alpha1 "ray-operator/api/v1alpha1"
-	"ray-operator/utils"
+	"ray-operator/controllers/utils"
 	"strings"
 )
 
@@ -20,6 +20,7 @@ func DefaultServiceConfig(instance rayiov1alpha1.RayCluster, podName string) *Se
 	}
 }
 
+// Build service for pod, for now only head pod will have service.
 func ServiceForPod(conf *ServiceConfig) *corev1.Service {
 	name := conf.PodName
 	if strings.Contains(conf.PodName, Head) {
@@ -27,10 +28,6 @@ func ServiceForPod(conf *ServiceConfig) *corev1.Service {
 	}
 
 	svc := &corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "Service",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: conf.RayCluster.Namespace,

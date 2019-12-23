@@ -1,27 +1,33 @@
 package common
 
 const (
-	// use as pod type decision
+	// Head used as pod type to decide create service or not, for now only create service for head.
 	Head = "head"
 
-	// use as label key
+	// Belows used as label key
+	//rayclusterComponent is the pod name for this pod for selecting pod by pod name.
 	rayclusterComponent = "raycluster.component"
-	rayIoComponent      = "rayclusters.ray.io/component-name"
-	rayOperator         = "ray-operator"
-	RayClusterOwnerKey  = "raycluster.instance.name"
-	ClusterPodType      = "raycluster.pod.type"
+	// rayIoComponent is the identifier for created by ray-operator for selecting pod by operator name.
+	rayIoComponent = "rayclusters.ray.io/component-name"
+	// RayClusterOwnerKey is the ray cluster instance name for selecting pod by instance name.
+	RayClusterOwnerKey = "raycluster.instance.name"
+	// ClusterPodType is the pod type label key for selecting pod by type.
+	ClusterPodType = "raycluster.pod.type"
 
-	// use as separator
+	// rayOperator is the value of ray-operator used as identifier for the pod
+	rayOperator = "ray-operator"
+
+	// Use as separator for pod name, for example, raycluster-small-size-worker-0
 	DashSymbol = "-"
 
-	// use as default port
-	defaultHTTPServerPort = "30021"
-	defaultRedisPort      = "6379"
+	// Use as default port
+	defaultHTTPServerPort = 30021
+	defaultRedisPort      = 6379
 
-	// check node if ready by checking the path exists or not
+	// Check node if ready by checking the path exists or not
 	PodReadyFilepath = "POD_READY_FILEPATH"
 
-	// use as container env variable
+	// Use as container env variable
 	namespace   = "NAMESPACE"
 	clusterName = "CLUSTER_NAME"
 )

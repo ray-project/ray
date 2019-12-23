@@ -9,7 +9,7 @@ import (
 	rayiov1alpha1 "ray-operator/api/v1alpha1"
 	"ray-operator/controllers/common"
 	_ "ray-operator/controllers/common"
-	"ray-operator/utils"
+	"ray-operator/controllers/utils"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -19,10 +19,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
@@ -54,9 +54,9 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	err = c.Watch(&source.Kind{Type: &v1.Pod{}}, &handler.EnqueueRequestForOwner{
+	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
-		OwnerType: &rayiov1alpha1.RayCluster{},
+		OwnerType:    &rayiov1alpha1.RayCluster{},
 	})
 	if err != nil {
 		return err
@@ -224,7 +224,7 @@ func (r *RayClusterReconciler) buildPods(instance *rayiov1alpha1.RayCluster) []c
 				podConf.Extension = extension
 				pod := common.BuildPod(podConf)
 				// Set raycluster instance as the owner and controller
-				if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
+				if err := controllerutil.SetControllerReference(instance, pod, r.Scheme); err != nil {
 					log.Error(err, "Failed to set controller reference for raycluster pod")
 				}
 				pods = append(pods, *pod)

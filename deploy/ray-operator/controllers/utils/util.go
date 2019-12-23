@@ -6,16 +6,16 @@ import (
 	"strings"
 )
 
-// The function isCreated returns true if pod has been created and is maintained by the API server
+// IsCreated returns true if pod has been created and is maintained by the API server
 func IsCreated(pod *corev1.Pod) bool {
 	return pod.Status.Phase != ""
 }
 
+// Get substring before a string.
 func Before(value string, a string) string {
-	// Get substring before a string.
 	pos := strings.Index(value, a)
 	if pos == -1 {
-		return nil
+		return ""
 	}
 	return value[0:pos]
 }
