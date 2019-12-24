@@ -134,7 +134,7 @@ class GcsRpcClient {
             request, callback);
   }
 
-  /// Unregister an node to gcs server.
+  /// Unregister an node from GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
@@ -146,7 +146,7 @@ class GcsRpcClient {
         request, callback);
   }
 
-  /// Get information of all nodes from gcs server.
+  /// Get information of all nodes from GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.

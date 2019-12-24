@@ -258,6 +258,26 @@ TEST_F(GcsServerTest, TestNodeInfo) {
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
 }
 
+TEST_F(GcsServerTest, TestNodeInfo) {
+  // Create gcs node info
+  std::string node_id = "666";
+  rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id);
+
+  // Register node info
+  rpc::RegisterNodeInfoRequest register_node_info_request;
+  register_node_info_request.mutable_node_info()->CopyFrom(gcs_node_info);
+  TestRegisterNodeInfo(register_node_info_request);
+
+  // Unregister node info
+  rpc::UnregisterNodeInfoRequest unregister_node_info_request;
+  unregister_node_info_request.set_node_id(node_id);
+  TestUnregisterNodeInfo(unregister_node_info_request);
+
+  // Get all nodes info
+  rpc::GetAllNodesInfoRequest get_all_nodes_info_request;
+  TestGetAllNodesInfo(get_all_nodes_info_request);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

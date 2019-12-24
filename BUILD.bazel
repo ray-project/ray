@@ -673,11 +673,6 @@ cc_test(
         ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
     ],
-    data = [
-        "//:redis-server",
-        "//:redis-cli",
-        "//:libray_redis_module.so",
-    ],
 )
 
 cc_library(
