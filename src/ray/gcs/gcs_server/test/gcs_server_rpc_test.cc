@@ -260,22 +260,27 @@ TEST_F(GcsServerTest, TestNodeInfo) {
 
 TEST_F(GcsServerTest, TestNodeInfo) {
   // Create gcs node info
-  std::string node_id = "666";
-  rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id);
+  ClientID node_id = ClientID::FromRandom();
+  rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id.Binary());
 
   // Register node info
   rpc::RegisterNodeInfoRequest register_node_info_request;
   register_node_info_request.mutable_node_info()->CopyFrom(gcs_node_info);
   TestRegisterNodeInfo(register_node_info_request);
+  std::vector<rpc::GcsNodeInfo> node_infos;
+  GetAllNodesInfo(node_infos);
+  ASSERT_TRUE(node_infos.size() == 1);
+  ASSERT_TRUE(node_infos[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 
   // Unregister node info
   rpc::UnregisterNodeInfoRequest unregister_node_info_request;
-  unregister_node_info_request.set_node_id(node_id);
+  unregister_node_info_request.set_node_id(node_id.Binary());
   TestUnregisterNodeInfo(unregister_node_info_request);
-
-  // Get all nodes info
-  rpc::GetAllNodesInfoRequest get_all_nodes_info_request;
-  TestGetAllNodesInfo(get_all_nodes_info_request);
+  GetAllNodesInfo(node_infos);
+  ASSERT_TRUE(node_infos.size() == 2);
+  ASSERT_TRUE(node_infos[1].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
 }
 
 }  // namespace ray
