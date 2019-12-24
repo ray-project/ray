@@ -169,7 +169,7 @@ def test_basic_pinning(shutdown_only):
             # Hold a long-lived reference to a ray.put object. This should not
             # be garbage collected while the actor is alive.
             self.large_object = ray.put(
-                np.zeros(25 * 1024 * 1024, dtype=np.uint8), weakref=True)
+                np.zeros(25 * 1024 * 1024, dtype=np.uint8))
 
         def get_large_object(self):
             return ray.get(self.large_object)
