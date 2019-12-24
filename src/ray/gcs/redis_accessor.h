@@ -132,6 +132,42 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
   TaskSubscriptionExecutor task_sub_executor_;
 };
 
+/// \class RedisNodeInfoAccessor
+/// RedisNodeInfoAccessor is an implementation of `NodeInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisNodeInfoAccessor : public NodeInfoAccessor {
+ public:
+  explicit RedisNodeInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisNodeInfoAccessor() {}
+
+  Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
+
+  Status UnregisterSelf() override;
+
+  const ClientID &GetSelfId() const override;
+
+  const GcsNodeInfo &GetSelfInfo() const override;
+
+  Status AsyncUnregister(const ClientID &node_id,
+                         const StatusCallback &callback) override;
+
+  Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
+
+  Status AsyncSubscribeToNodeChange(
+      const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+      const StatusCallback &done) override;
+
+  boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const override;
+
+  const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
+
+  bool IsRemoved(const ClientID &node_id) const override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+};
+
 }  // namespace gcs
 
 }  // namespace ray

@@ -126,7 +126,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   // We will use NodeID instead of ClientID.
   // For worker/driver, it might not have this field(NodeID).
   // For raylet, NodeID should be initialized in raylet layer(not here).
-  client_table_.reset(new ClientTable({primary_context_}, this, ClientID::FromRandom()));
+  client_table_.reset(new ClientTable({primary_context_}, this));
 
   error_table_.reset(new ErrorTable({primary_context_}, this));
   job_table_.reset(new JobTable({primary_context_}, this));
@@ -144,6 +144,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
   job_accessor_.reset(new RedisJobInfoAccessor(this));
+  node_accessor_.reset(new RedisNodeInfoAccessor(this));
   task_accessor_.reset(new RedisTaskInfoAccessor(this));
 
   is_connected_ = true;

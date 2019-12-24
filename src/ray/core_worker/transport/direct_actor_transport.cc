@@ -1,11 +1,30 @@
+#include "ray/core_worker/transport/direct_actor_transport.h"
+
 #include <thread>
 
 #include "ray/common/task/task.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
 
 using ray::rpc::ActorTableData;
 
 namespace ray {
+
+Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+  pending_force_kills_.insert(actor_id);
+  auto it = rpc_clients_.find(actor_id);
+  if (it == rpc_clients_.end()) {
+    // Actor is not yet created, or is being reconstructed, cache the request
+    // and submit after actor is alive.
+    // TODO(zhijunfu): it might be possible for a user to specify an invalid
+    // actor handle (e.g. from unpickling), in that case it might be desirable
+    // to have a timeout to mark it as invalid if it doesn't show up in the
+    // specified time.
+    RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
+  } else {
+    SendPendingTasks(actor_id);
+  }
+  return Status::OK();
+}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
@@ -101,6 +120,15 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
   RAY_CHECK(client);
+  // Check if there is a pending force kill. If there is, send it and disconnect the
+  // client.
+  if (pending_force_kills_.find(actor_id) != pending_force_kills_.end()) {
+    rpc::KillActorRequest request;
+    request.set_intended_actor_id(actor_id.Binary());
+    RAY_CHECK_OK(client->KillActor(request, nullptr));
+    pending_force_kills_.erase(actor_id);
+  }
+
   // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
   auto head = requests.begin();
