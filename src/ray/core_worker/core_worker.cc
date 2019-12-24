@@ -302,7 +302,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
     absl::MutexLock lock(&actor_handles_mutex_);
     for (const auto &handle : actor_handles_) {
       RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncUnsubscribe(
-          gcs_client_->client_table().GetLocalClientId(), handle.first, nullptr));
+          subscribe_id_, handle.first, nullptr));
     }
     actor_handles_.clear();
   }
@@ -773,8 +773,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
     };
 
     RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
-        gcs_client_->client_table().GetLocalClientId(), actor_id,
-        actor_notification_callback, nullptr));
+        subscribe_id_, actor_id, actor_notification_callback, nullptr));
   }
   return inserted;
 }

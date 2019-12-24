@@ -209,7 +209,8 @@ class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
-  LineageCache(std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+  LineageCache(const ClientID &self_node_id,
+               std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                uint64_t max_lineage_size);
 
   /// Asynchronously commit a task to the GCS.
@@ -302,6 +303,8 @@ class LineageCache {
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const TaskID &task_id);
 
+  /// ID of this node.
+  ClientID self_node_id_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// All tasks and objects that we are responsible for writing back to the

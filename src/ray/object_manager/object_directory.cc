@@ -13,27 +13,27 @@ using ray::rpc::GcsNodeInfo;
 using ray::rpc::ObjectTableData;
 
 /// Process a notification of the object table entries and store the result in
-/// client_ids. This assumes that client_ids already contains the result of the
+/// node_ids. This assumes that node_ids already contains the result of the
 /// object table entries up to but not including this notification.
 void UpdateObjectLocations(const GcsChangeMode change_mode,
                            const std::vector<ObjectTableData> &location_updates,
-                           const ray::gcs::ClientTable &client_table,
-                           std::unordered_set<ClientID> *client_ids) {
+                           std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                           std::unordered_set<ClientID> *node_ids) {
   // location_updates contains the updates of locations of the object.
   // with GcsChangeMode, we can determine whether the update mode is
   // addition or deletion.
   for (const auto &object_table_data : location_updates) {
-    ClientID client_id = ClientID::FromBinary(object_table_data.manager());
+    ClientID node_id = ClientID::FromBinary(object_table_data.manager());
     if (change_mode != GcsChangeMode::REMOVE) {
-      client_ids->insert(client_id);
+      node_ids->insert(node_id);
     } else {
-      client_ids->erase(client_id);
+      node_ids->erase(node_id);
     }
   }
   // Filter out the removed clients from the object locations.
-  for (auto it = client_ids->begin(); it != client_ids->end();) {
-    if (client_table.IsRemoved(*it)) {
-      it = client_ids->erase(it);
+  for (auto it = node_ids->begin(); it != node_ids->end();) {
+    if (gcs_client->Nodes().IsRemoved(*it)) {
+      it = node_ids->erase(it);
     } else {
       it++;
     }
@@ -58,7 +58,7 @@ void ObjectDirectory::RegisterBackend() {
         it->second.subscribed = true;
 
         // Update entries for this object.
-        UpdateObjectLocations(change_mode, location_updates, gcs_client_->client_table(),
+        UpdateObjectLocations(change_mode, location_updates, gcs_client_,
                               &it->second.current_object_locations);
         // Copy the callbacks so that the callbacks can unsubscribe without interrupting
         // looping over the callbacks.
@@ -74,8 +74,8 @@ void ObjectDirectory::RegisterBackend() {
         }
       };
   RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      JobID::Nil(), gcs_client_->client_table().GetLocalClientId(),
-      object_notification_callback, nullptr));
+      JobID::Nil(), gcs_client_->Nodes().GetSelfId(), object_notification_callback,
+      nullptr));
 }
 
 ray::Status ObjectDirectory::ReportObjectAdded(
@@ -106,27 +106,24 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
-  GcsNodeInfo node_info;
-  bool found =
-      gcs_client_->client_table().GetClient(connection_info.client_id, &node_info);
-  ClientID result_client_id = ClientID::FromBinary(node_info.node_id());
-  if (found) {
-    RAY_CHECK(result_client_id == connection_info.client_id);
-    if (node_info.state() == GcsNodeInfo::ALIVE) {
-      connection_info.ip = node_info.node_manager_address();
-      connection_info.port = static_cast<uint16_t>(node_info.object_manager_port());
+  auto node_info = gcs_client_->Nodes().Get(connection_info.client_id);
+  if (node_info) {
+    ClientID result_node_id = ClientID::FromBinary(node_info->node_id());
+    RAY_CHECK(result_node_id == connection_info.client_id);
+    if (node_info->state() == GcsNodeInfo::ALIVE) {
+      connection_info.ip = node_info->node_manager_address();
+      connection_info.port = static_cast<uint16_t>(node_info->object_manager_port());
     }
   }
 }
 
 std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() const {
   std::vector<RemoteConnectionInfo> remote_connections;
-  const auto &clients = gcs_client_->client_table().GetAllClients();
-  for (const auto &client_pair : clients) {
-    RemoteConnectionInfo info(client_pair.first);
+  const auto &node_map = gcs_client_->Nodes().GetAll();
+  for (const auto &item : node_map) {
+    RemoteConnectionInfo info(item.first);
     LookupRemoteConnectionInfo(info);
-    if (info.Connected() &&
-        info.client_id != gcs_client_->client_table().GetLocalClientId()) {
+    if (info.Connected() && info.client_id != gcs_client_->Nodes().GetSelfId()) {
       remote_connections.push_back(info);
     }
   }
@@ -139,7 +136,7 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
     if (listener.second.current_object_locations.count(client_id) > 0) {
       // If the subscribed object has the removed client as a location, update
       // its locations with an empty update so that the location will be removed.
-      UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, {}, gcs_client_->client_table(),
+      UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, {}, gcs_client_,
                             &listener.second.current_object_locations);
       // Re-call all the subscribed callbacks for the object, since its
       // locations have changed.
@@ -160,7 +157,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
     status = gcs_client_->object_table().RequestNotifications(
-        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId(),
+        JobID::Nil(), object_id, gcs_client_->Nodes().GetSelfId(),
         /*done*/ nullptr);
   }
   auto &listener_state = it->second;
@@ -189,8 +186,7 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
     status = gcs_client_->object_table().CancelNotifications(
-        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId(),
-        /*done*/ nullptr);
+        JobID::Nil(), object_id, gcs_client_->Nodes().GetSelfId(), /*done*/ nullptr);
     listeners_.erase(entry);
   }
   return status;
@@ -217,19 +213,15 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
         [this, callback](gcs::RedisGcsClient *client, const ObjectID &object_id,
                          const std::vector<ObjectTableData> &location_updates) {
           // Build the set of current locations based on the entries in the log.
-          std::unordered_set<ClientID> client_ids;
+          std::unordered_set<ClientID> node_ids;
           UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, location_updates,
-                                gcs_client_->client_table(), &client_ids);
+                                gcs_client_, &node_ids);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
-          callback(object_id, client_ids);
+          callback(object_id, node_ids);
         });
   }
   return status;
-}
-
-ray::ClientID ObjectDirectory::GetLocalClientID() {
-  return gcs_client_->client_table().GetLocalClientId();
 }
 
 std::string ObjectDirectory::DebugString() const {
