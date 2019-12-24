@@ -33,9 +33,7 @@ using rpc::TablePubsub;
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
-  explicit CallbackReply(redisReply *redis_reply, bool own_reply = false);
-
-  ~CallbackReply();
+  explicit CallbackReply(redisReply *redis_reply);
 
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
