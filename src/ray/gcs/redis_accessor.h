@@ -145,8 +145,6 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   Status UnregisterSelf() override;
 
-  bool IsSelfUnregistered() const override;
-
   const ClientID &GetSelfId() const override;
 
   const GcsNodeInfo &GetSelfInfo() const override;

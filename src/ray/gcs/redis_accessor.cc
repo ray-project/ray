@@ -240,11 +240,6 @@ Status RedisNodeInfoAccessor::UnregisterSelf() {
   return client_table.Disconnect();
 }
 
-bool RedisNodeInfoAccessor::IsSelfUnregistered() const {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.IsDisconnected();
-}
-
 const ClientID &RedisNodeInfoAccessor::GetSelfId() const {
   ClientTable &client_table = client_impl_->client_table();
   return client_table.GetLocalClientId();

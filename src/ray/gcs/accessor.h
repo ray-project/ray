@@ -195,12 +195,6 @@ class NodeInfoAccessor {
   /// \return Status
   virtual Status UnregisterSelf() = 0;
 
-  /// Whether local node has been unregistered to GCS.
-  /// Non-thread safe.
-  ///
-  /// \return bool
-  virtual bool IsSelfUnregistered() const = 0;
-
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
   /// \return ClientID
