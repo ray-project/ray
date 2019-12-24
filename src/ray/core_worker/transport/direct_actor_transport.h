@@ -11,6 +11,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -47,6 +48,12 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task The task spec to submit.
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
+
+  /// Tell this actor to exit immediately.
+  ///
+  /// \param[in] actor_id The actor_id of the actor to kill.
+  /// \return Status::Invalid if the actor could not be killed.
+  Status KillActor(const ActorID &actor_id);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -106,6 +113,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Map from actor ids to worker ids. TODO(ekl) consider unifying this with the
   /// rpc_clients_ map.
   absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
+
+  /// Set of actor ids that should be force killed once a client is available.
+  absl::flat_hash_set<ActorID> pending_force_kills_ GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.

@@ -96,6 +96,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
     RayLog::InstallFailureSignalHandler();
   }
+  RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
 
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
@@ -715,6 +716,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
+Status CoreWorker::KillActor(const ActorID &actor_id) {
+  ActorHandle *actor_handle = nullptr;
+  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  RAY_CHECK(actor_handle->IsDirectCallActor());
+  return direct_actor_submitter_->KillActor(actor_id);
+}
+
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const ActorID actor_id = actor_handle->GetActorID();
@@ -853,6 +861,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    RAY_LOG(INFO) << "Creating actor: " << actor_id_;
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
@@ -1030,6 +1039,24 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
     // The task is done. Send the reply immediately.
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
+}
+
+void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
+                                 rpc::KillActorReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
+  ActorID intended_actor_id = ActorID::FromBinary(request.intended_actor_id());
+  if (intended_actor_id != worker_context_.GetCurrentActorID()) {
+    std::ostringstream stream;
+    stream << "Mismatched ActorID: ignoring KillActor for previous actor "
+           << intended_actor_id
+           << ", current actor ID: " << worker_context_.GetCurrentActorID();
+    auto msg = stream.str();
+    RAY_LOG(ERROR) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return;
+  }
+  RAY_LOG(INFO) << "Got KillActor, shutting down...";
+  Shutdown();
 }
 
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
