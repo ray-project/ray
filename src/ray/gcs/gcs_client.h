@@ -74,6 +74,13 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *job_accessor_;
   }
 
+  /// Get the sub-interface for accessing node information in GCS.
+  /// This function is thread safe.
+  NodeInfoAccessor &Nodes() {
+    RAY_CHECK(node_accessor_ != nullptr);
+    return *node_accessor_;
+  }
+
   /// Get the sub-interface for accessing task information in GCS.
   /// This function is thread safe.
   TaskInfoAccessor &Tasks() {
@@ -94,6 +101,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
+  std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
 };
 

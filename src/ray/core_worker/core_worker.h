@@ -586,6 +586,12 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
+  /// This is temporary fake node id that is used only by
+  /// `direct_actor_table_subscriber_ `.
+  /// TODO(micafan): remove `direct_actor_table_subscriber_` and
+  /// use `GcsClient` for actor subscription.
+  ClientID subscribe_id_{ClientID::FromRandom()};
+
   // Client to listen to direct actor events.
   std::unique_ptr<
       gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>
