@@ -1534,14 +1534,12 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   if (is_actor_creation_task) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
 
-    // Save the actor creation task spec in `raylet_task_table`, which is needed to
+    // Save the actor creation task spec to GCS, which is needed to
     // reconstruct the actor when raylet detect it dies.
-    std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
+    std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(
         task.GetTaskSpecification().GetMessage());
-    auto job_id = task.GetTaskSpecification().JobId();
-    auto task_id = task.GetTaskSpecification().TaskId();
-    RAY_CHECK_OK(gcs_client_->raylet_task_table().Add(job_id, task_id, data, nullptr));
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
   if (new_scheduler_enabled_) {
