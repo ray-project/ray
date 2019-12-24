@@ -580,7 +580,8 @@ class CoreWorker {
   // Even we can filter out irrelevant updates, but there will be extra overhead.
   // And because the new GCS Client will no longer hold the local ClientID, so we use
   // random ClientID instead.
-  // TODO(micafan) Remove this random id, once the new direct actor interface is used.
+  // TODO(micafan) Remove this random id, once the direct actor interface is moved to
+  // ActorInfoAccessor.
   ClientID subscribe_id_{ClientID::FromRandom()};
 
   // Client to listen to direct actor events.
