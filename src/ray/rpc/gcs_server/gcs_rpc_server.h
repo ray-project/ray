@@ -27,6 +27,15 @@ namespace rpc {
   server_call_factories_and_concurrencies->emplace_back(                                 \
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
+#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                             \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                             \
+      new ServerCallFactoryImpl<NodeInfoGcsService, NodeInfoHandler, HANDLER##Request, \
+                                HANDLER##Reply>(                                         \
+          service_, &NodeInfoGcsService::AsyncService::Request##HANDLER,                \
+          service_handler_, &NodeInfoHandler::Handle##HANDLER, cq, main_service_));     \
+  server_call_factories_and_concurrencies->emplace_back(                                 \
+      std::move(HANDLER##_call_factory), CONCURRENCY);
+
 class JobInfoHandler {
  public:
   virtual ~JobInfoHandler() = default;
@@ -147,32 +156,9 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    std::unique_ptr<ServerCallFactory> register_node_info_call_factory(
-        new ServerCallFactoryImpl<NodeInfoGcsService, NodeInfoHandler,
-                                  RegisterNodeInfoRequest, RegisterNodeInfoReply>(
-            service_, &NodeInfoGcsService::AsyncService::RequestRegisterNodeInfo,
-            service_handler_, &NodeInfoHandler::HandleRegisterNodeInfo, cq,
-            main_service_));
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(register_node_info_call_factory), 1);
-
-    std::unique_ptr<ServerCallFactory> unregister_node_info_call_factory(
-        new ServerCallFactoryImpl<NodeInfoGcsService, NodeInfoHandler,
-                                  UnregisterNodeInfoRequest, UnregisterNodeInfoReply>(
-            service_, &NodeInfoGcsService::AsyncService::RequestUnregisterNodeInfo,
-            service_handler_, &NodeInfoHandler::HandleUnregisterNodeInfo, cq,
-            main_service_));
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(unregister_node_info_call_factory), 1);
-
-    std::unique_ptr<ServerCallFactory> get_all_actors_info_call_factory(
-        new ServerCallFactoryImpl<NodeInfoGcsService, NodeInfoHandler,
-                                  GetAllNodesInfoRequest, GetAllNodesInfoReply>(
-            service_, &NodeInfoGcsService::AsyncService::RequestGetAllNodesInfo,
-            service_handler_, &NodeInfoHandler::HandleGetAllNodesInfo, cq,
-            main_service_));
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(get_all_actors_info_call_factory), 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNodeInfo, 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNodeInfo, 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodesInfo, 1);
   }
 
  private:

@@ -86,31 +86,7 @@ class GcsRpcClient {
             request, callback);
   }
 
-  /// Register an actor to gcs server.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void RegisterActorInfo(const RegisterActorInfoRequest &request,
-                         const ClientCallback<RegisterActorInfoReply> &callback) {
-    client_call_manager_.CreateCall<ActorInfoGcsService, RegisterActorInfoRequest,
-                                    RegisterActorInfoReply>(
-        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncRegisterActorInfo,
-        request, callback);
-  }
-
-  ///  Update dynamic states of actor in gcs server.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void UpdateActorInfo(const UpdateActorInfoRequest &request,
-                       const ClientCallback<UpdateActorInfoReply> &callback) {
-    client_call_manager_
-        .CreateCall<ActorInfoGcsService, UpdateActorInfoRequest, UpdateActorInfoReply>(
-            *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncUpdateActorInfo,
-            request, callback);
-  }
-
-  /// Register an node to gcs server.
+  /// Register an node to GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
@@ -122,7 +98,7 @@ class GcsRpcClient {
             request, callback);
   }
 
-  /// Unregister an node to gcs server.
+  /// Unregister an node from GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
@@ -134,7 +110,7 @@ class GcsRpcClient {
         request, callback);
   }
 
-  /// Get information of all nodes from gcs server.
+  /// Get information of all nodes from GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.

@@ -25,10 +25,6 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
                              GetAllNodesInfoReply *reply,
                              SendReplyCallback send_reply_callback) override;
 
-  gcs::RedisGcsClient &Get() {
-    return gcs_client_;
-  }
-
  private:
   gcs::RedisGcsClient &gcs_client_;
 };

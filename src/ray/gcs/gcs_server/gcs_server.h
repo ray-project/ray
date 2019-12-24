@@ -52,6 +52,9 @@ class GcsServer {
   /// The actor info handler
   virtual std::unique_ptr<rpc::ActorInfoHandler> InitActorInfoHandler();
 
+  /// The node info handler
+  virtual std::unique_ptr<rpc::NodeInfoHandler> InitNodeInfoHandler();
+
  private:
   /// Gcs server configuration
   GcsServerConfig config_;
@@ -65,6 +68,9 @@ class GcsServer {
   /// Actor info handler and service
   std::unique_ptr<rpc::ActorInfoHandler> actor_info_handler_;
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
+  /// Node info handler and service
+  std::unique_ptr<rpc::NodeInfoHandler> node_info_handler_;
+  std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
 };

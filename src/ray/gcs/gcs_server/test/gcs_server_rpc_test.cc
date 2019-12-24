@@ -113,6 +113,42 @@ class GcsServerTest : public RedisServiceManagerForTest {
     AsyncCall(call_function, timeout_ms_);
   }
 
+  void TestRegisterNodeInfo(const rpc::RegisterNodeInfoRequest &request) {
+    auto call_function = [this, request](std::promise<bool> &promise) {
+      client_->RegisterNodeInfo(
+          request,
+          [&promise](const Status &status, const rpc::RegisterNodeInfoReply &reply) {
+            RAY_CHECK_OK(status);
+            promise.set_value(true);
+          });
+    };
+    AsyncCall(call_function, timeout_ms_);
+  }
+
+  void TestUnregisterNodeInfo(const rpc::UnregisterNodeInfoRequest &request) {
+    auto call_function = [this, request](std::promise<bool> &promise) {
+      client_->UnregisterNodeInfo(
+          request,
+          [&promise](const Status &status, const rpc::UnregisterNodeInfoReply &reply) {
+            RAY_CHECK_OK(status);
+            promise.set_value(true);
+          });
+    };
+    AsyncCall(call_function, timeout_ms_);
+  }
+
+  void TestGetAllNodesInfo(const rpc::GetAllNodesInfoRequest &request) {
+    auto call_function = [this, request](std::promise<bool> &promise) {
+      client_->GetAllNodesInfo(
+          request,
+          [&promise](const Status &status, const rpc::GetAllNodesInfoReply &reply) {
+            RAY_CHECK_OK(status);
+            promise.set_value(true);
+          });
+    };
+    AsyncCall(call_function, timeout_ms_);
+  }
+
   void AsyncCall(const CallFunction &function, uint64_t timeout_ms) {
     std::promise<bool> promise_;
     auto future = promise_.get_future();
@@ -141,6 +177,13 @@ class GcsServerTest : public RedisServiceManagerForTest {
     actor_table_data.set_max_reconstructions(1);
     actor_table_data.set_remaining_reconstructions(1);
     return actor_table_data;
+  }
+
+  rpc::GcsNodeInfo GenGcsNodeInfo(const std::string &node_id) {
+    rpc::GcsNodeInfo gcs_node_info;
+    gcs_node_info.set_node_id(node_id);
+    gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
+    return gcs_node_info;
   }
 
  protected:
@@ -193,6 +236,26 @@ TEST_F(GcsServerTest, TestJobInfo) {
   rpc::MarkJobFinishedRequest mark_job_finished_request;
   mark_job_finished_request.set_job_id(job_table_data.job_id());
   TestMarkJobFinished(mark_job_finished_request);
+}
+
+TEST_F(GcsServerTest, TestNodeInfo) {
+  // Create gcs node info
+  std::string node_id = "666";
+  rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id);
+
+  // Register node info
+  rpc::RegisterNodeInfoRequest register_node_info_request;
+  register_node_info_request.mutable_node_info()->CopyFrom(gcs_node_info);
+  TestRegisterNodeInfo(register_node_info_request);
+
+  // Unregister node info
+  rpc::UnregisterNodeInfoRequest unregister_node_info_request;
+  unregister_node_info_request.set_node_id(node_id);
+  TestUnregisterNodeInfo(unregister_node_info_request);
+
+  // Get all nodes info
+  rpc::GetAllNodesInfoRequest get_all_nodes_info_request;
+  TestGetAllNodesInfo(get_all_nodes_info_request);
 }
 
 }  // namespace ray
