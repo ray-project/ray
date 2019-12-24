@@ -1034,6 +1034,14 @@ cdef class CoreWorker:
 
             return VectorToObjectIDs(return_ids)
 
+    def kill_actor(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            check_status(self.core_worker.get().KillActor(
+                  c_actor_id))
+
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (

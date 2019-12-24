@@ -161,6 +161,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
       main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
       redis_password, node_manager_config, object_manager_config, gcs_client));
+  server->Start();
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
@@ -169,22 +170,9 @@ int main(int argc, char *argv[]) {
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
-    auto shutdown_callback = [&server, &main_service, &gcs_client]() {
-      server.reset();
-      gcs_client->Disconnect();
-      main_service.stop();
-    };
-    RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
-    // Give a timeout for this Disconnect operation.
-    boost::posix_time::milliseconds stop_timeout(800);
-    boost::asio::deadline_timer timer(main_service);
-    timer.expires_from_now(stop_timeout);
-    timer.async_wait([shutdown_callback](const boost::system::error_code &error) {
-      if (!error) {
-        RAY_LOG(INFO) << "Disconnect from client table timed out, forcing shutdown.";
-        shutdown_callback();
-      }
-    });
+    server->Stop();
+    gcs_client->Disconnect();
+    main_service.stop();
     remove(raylet_socket_name.c_str());
   };
   boost::asio::signal_set signals(main_service, SIGTERM);

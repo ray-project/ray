@@ -29,30 +29,33 @@ class MockServer {
   MockServer(boost::asio::io_service &main_service,
              const ObjectManagerConfig &object_manager_config,
              std::shared_ptr<gcs::RedisGcsClient> gcs_client)
-      : config_(object_manager_config),
+      : node_id_(ClientID::FromRandom()),
+        config_(object_manager_config),
         gcs_client_(gcs_client),
-        object_manager_(main_service, object_manager_config,
+        object_manager_(main_service, node_id_, object_manager_config,
                         std::make_shared<ObjectDirectory>(main_service, gcs_client_)) {
     RAY_CHECK_OK(RegisterGcs(main_service));
   }
 
-  ~MockServer() { RAY_CHECK_OK(gcs_client_->client_table().Disconnect()); }
+  ~MockServer() { RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf()); }
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
     auto object_manager_port = object_manager_.GetServerPort();
-    GcsNodeInfo node_info = gcs_client_->client_table().GetLocalClient();
+    GcsNodeInfo node_info;
+    node_info.set_node_id(node_id_.Binary());
     node_info.set_node_manager_address("127.0.0.1");
     node_info.set_node_manager_port(object_manager_port);
     node_info.set_object_manager_port(object_manager_port);
 
-    ray::Status status = gcs_client_->client_table().Connect(node_info);
+    ray::Status status = gcs_client_->Nodes().RegisterSelf(node_info);
     object_manager_.RegisterGcs();
     return status;
   }
 
   friend class TestObjectManager;
 
+  ClientID node_id_;
   ObjectManagerConfig config_;
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   ObjectManager object_manager_;
@@ -186,8 +189,8 @@ class TestObjectManager : public TestObjectManagerBase {
  public:
   int current_wait_test = -1;
   int num_connected_clients = 0;
-  ClientID client_id_1;
-  ClientID client_id_2;
+  ClientID node_id_1;
+  ClientID node_id_2;
 
   ObjectID created_object_id1;
   ObjectID created_object_id2;
@@ -195,18 +198,18 @@ class TestObjectManager : public TestObjectManagerBase {
   std::unique_ptr<boost::asio::deadline_timer> timer;
 
   void WaitConnections() {
-    client_id_1 = gcs_client_1->client_table().GetLocalClientId();
-    client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
-          ClientID parsed_id = ClientID::FromBinary(data.node_id());
-          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+    node_id_1 = gcs_client_1->Nodes().GetSelfId();
+    node_id_2 = gcs_client_2->Nodes().GetSelfId();
+    RAY_CHECK_OK(gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
+        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+          if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
           if (num_connected_clients == 2) {
             StartTests();
           }
-        });
+        },
+        nullptr));
   }
 
   void StartTests() {
@@ -233,14 +236,12 @@ class TestObjectManager : public TestObjectManagerBase {
 
     // dummy_id is not local. The push function will timeout.
     ObjectID dummy_id = ObjectID::FromRandom();
-    server1->object_manager_.Push(dummy_id,
-                                  gcs_client_2->client_table().GetLocalClientId());
+    server1->object_manager_.Push(dummy_id, gcs_client_2->Nodes().GetSelfId());
 
     created_object_id1 = ObjectID::FromRandom();
     WriteDataToClient(client1, data_size, created_object_id1);
     // Server1 holds Object1 so this Push call will success.
-    server1->object_manager_.Push(created_object_id1,
-                                  gcs_client_2->client_table().GetLocalClientId());
+    server1->object_manager_.Push(created_object_id1, gcs_client_2->Nodes().GetSelfId());
 
     // This timer is used to guarantee that the Push function for dummy_id will timeout.
     timer.reset(new boost::asio::deadline_timer(main_service));
@@ -433,21 +434,19 @@ class TestObjectManager : public TestObjectManagerBase {
 
   void TestConnections() {
     RAY_LOG(DEBUG) << "\n"
-                   << "Server client ids:"
+                   << "Server node ids:"
                    << "\n";
-    GcsNodeInfo data;
-    ASSERT_TRUE(gcs_client_1->client_table().GetClient(client_id_1, &data));
-    RAY_LOG(DEBUG) << (ClientID::FromBinary(data.node_id()).IsNil());
-    RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::FromBinary(data.node_id());
-    RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address();
-    RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port();
-    ASSERT_EQ(client_id_1, ClientID::FromBinary(data.node_id()));
-    GcsNodeInfo data2;
-    ASSERT_TRUE(gcs_client_1->client_table().GetClient(client_id_2, &data2));
-    RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::FromBinary(data2.node_id());
-    RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address();
-    RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port();
-    ASSERT_EQ(client_id_2, ClientID::FromBinary(data2.node_id()));
+    auto data = gcs_client_1->Nodes().Get(node_id_1);
+    RAY_LOG(DEBUG) << (ClientID::FromBinary(data->node_id()).IsNil());
+    RAY_LOG(DEBUG) << "Server 1 NodeID=" << ClientID::FromBinary(data->node_id());
+    RAY_LOG(DEBUG) << "Server 1 NodeIp=" << data->node_manager_address();
+    RAY_LOG(DEBUG) << "Server 1 NodePort=" << data->node_manager_port();
+    ASSERT_EQ(node_id_1, ClientID::FromBinary(data->node_id()));
+    auto data2 = gcs_client_1->Nodes().Get(node_id_2);
+    RAY_LOG(DEBUG) << "Server 2 NodeID=" << ClientID::FromBinary(data2->node_id());
+    RAY_LOG(DEBUG) << "Server 2 NodeIp=" << data2->node_manager_address();
+    RAY_LOG(DEBUG) << "Server 2 NodePort=" << data2->node_manager_port();
+    ASSERT_EQ(node_id_2, ClientID::FromBinary(data2->node_id()));
   }
 };
 

@@ -128,6 +128,12 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  /// Tell this actor to exit immediately.
+  virtual ray::Status KillActor(const KillActorRequest &request,
+                                const ClientCallback<KillActorReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ray::Status GetCoreWorkerStats(
       const GetCoreWorkerStatsRequest &request,
       const ClientCallback<GetCoreWorkerStatsReply> &callback) {
@@ -218,6 +224,15 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                                         WaitForObjectEvictionReply>(
             *stub_, &CoreWorkerService::Stub::PrepareAsyncWaitForObjectEviction, request,
             callback);
+    return call->GetStatus();
+  }
+
+  virtual ray::Status KillActor(const KillActorRequest &request,
+                                const ClientCallback<KillActorReply> &callback) override {
+    auto call = client_call_manager_
+                    .CreateCall<CoreWorkerService, KillActorRequest, KillActorReply>(
+                        *stub_, &CoreWorkerService::Stub::PrepareAsyncKillActor, request,
+                        callback);
     return call->GetStatus();
   }
 

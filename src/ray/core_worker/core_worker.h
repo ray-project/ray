@@ -34,6 +34,7 @@
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
   RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
   RAY_CORE_WORKER_RPC_HANDLER(WaitForObjectEviction, 9999)         \
+  RAY_CORE_WORKER_RPC_HANDLER(KillActor, 9999)                     \
   RAY_CORE_WORKER_RPC_HANDLER(GetCoreWorkerStats, 100)
 
 namespace ray {
@@ -325,6 +326,12 @@ class CoreWorker {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
+  /// Tell an actor to exit immediately, without completing outstanding work.
+  ///
+  /// \param[in] actor_id ID of the actor to kill.
+  /// \param[out] Status
+  Status KillActor(const ActorID &actor_id);
+
   /// Add an actor handle from a serialized string.
   ///
   /// This should be called when an actor handle is given to us by another task
@@ -411,6 +418,10 @@ class CoreWorker {
   void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
                                    rpc::WaitForObjectEvictionReply *reply,
                                    rpc::SendReplyCallback send_reply_callback);
+
+  /// Implements gRPC server handler.
+  void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
+                       rpc::SendReplyCallback send_reply_callback);
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
@@ -580,6 +591,12 @@ class CoreWorker {
 
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+
+  /// This is temporary fake node id that is used only by
+  /// `direct_actor_table_subscriber_ `.
+  /// TODO(micafan): remove `direct_actor_table_subscriber_` and
+  /// use `GcsClient` for actor subscription.
+  ClientID subscribe_id_{ClientID::FromRandom()};
 
   // Client to listen to direct actor events.
   std::unique_ptr<
