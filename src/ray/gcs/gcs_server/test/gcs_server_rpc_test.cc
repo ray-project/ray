@@ -137,13 +137,18 @@ class GcsServerTest : public RedisServiceManagerForTest {
     AsyncCall(call_function, timeout_ms_);
   }
 
-  void TestGetAllNodesInfo(const rpc::GetAllNodesInfoRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
+  void GetAllNodesInfo(std::vector<rpc::GcsNodeInfo> &node_infos) {
+    node_infos.clear();
+    rpc::GetAllNodesInfoRequest request;
+    auto call_function = [this, request, &node_infos](std::promise<bool> &promise) {
       client_->GetAllNodesInfo(
-          request,
-          [&promise](const Status &status, const rpc::GetAllNodesInfoReply &reply) {
+          request, [&promise, &node_infos](const Status &status,
+                                           const rpc::GetAllNodesInfoReply &reply) {
             RAY_CHECK_OK(status);
             promise.set_value(true);
+            for (int index = 0; index < reply.node_infos_size(); ++index) {
+              node_infos.push_back(reply.node_infos(index));
+            }
           });
     };
     AsyncCall(call_function, timeout_ms_);
@@ -240,22 +245,27 @@ TEST_F(GcsServerTest, TestJobInfo) {
 
 TEST_F(GcsServerTest, TestNodeInfo) {
   // Create gcs node info
-  std::string node_id = "666";
-  rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id);
+  ClientID node_id = ClientID::FromRandom();
+  rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id.Binary());
 
   // Register node info
   rpc::RegisterNodeInfoRequest register_node_info_request;
   register_node_info_request.mutable_node_info()->CopyFrom(gcs_node_info);
   TestRegisterNodeInfo(register_node_info_request);
+  std::vector<rpc::GcsNodeInfo> node_infos;
+  GetAllNodesInfo(node_infos);
+  ASSERT_TRUE(node_infos.size() == 1);
+  ASSERT_TRUE(node_infos[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 
   // Unregister node info
   rpc::UnregisterNodeInfoRequest unregister_node_info_request;
-  unregister_node_info_request.set_node_id(node_id);
+  unregister_node_info_request.set_node_id(node_id.Binary());
   TestUnregisterNodeInfo(unregister_node_info_request);
-
-  // Get all nodes info
-  rpc::GetAllNodesInfoRequest get_all_nodes_info_request;
-  TestGetAllNodesInfo(get_all_nodes_info_request);
+  GetAllNodesInfo(node_infos);
+  ASSERT_TRUE(node_infos.size() == 2);
+  ASSERT_TRUE(node_infos[1].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
 }
 
 }  // namespace ray

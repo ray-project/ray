@@ -86,6 +86,7 @@ message GetAllNodesInfoRequest {
 }
 
 message GetAllNodesInfoReply {
+  repeated GcsNodeInfo node_infos = 1;
 }
 
 // Service for node info access.
