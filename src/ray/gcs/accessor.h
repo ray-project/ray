@@ -237,7 +237,8 @@ class NodeInfoAccessor {
 
   /// Get node information from local cache.
   /// Non-thread safe.
-  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange` is called before.
+  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
+  /// is called before.
   ///
   /// \param node_id The ID of node to look up in local cache.
   /// \return The item returned by GCS. If the item to read doesn't exist,
@@ -246,14 +247,16 @@ class NodeInfoAccessor {
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
-  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange` is called before.
+  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
+  /// is called before.
   ///
   /// \return All nodes in cache.
   virtual const std::unordered_map<ClientID, rpc::GcsNodeInfo> &GetAll() const = 0;
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
-  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange` is called before.
+  /// Note, the local cache is only available if `AsyncSubscribeToNodeChange`
+  /// is called before.
   ///
   /// \param node_id The id of the node to check.
   /// \return Whether the node is removed.
