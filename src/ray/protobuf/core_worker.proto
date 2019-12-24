@@ -122,7 +122,8 @@ message KillActorRequest {
   bytes intended_actor_id = 1;
 }
 
-message KillActorReply {}
+message KillActorReply {
+}
 
 message GetCoreWorkerStatsRequest {
   // The ID of the worker this message is intended for.
