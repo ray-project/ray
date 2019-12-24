@@ -258,6 +258,7 @@ class Worker(object):
             value: The value to put in the object store.
             object_id (object_id.ObjectID): The object ID of the value to be
                 put. If None, one will be generated.
+            no_pin_object: If set, the object won't be pinned at the raylet.
 
         Returns:
             object_id.ObjectID: The object ID the object was put under.
