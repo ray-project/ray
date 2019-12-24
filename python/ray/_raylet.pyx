@@ -834,7 +834,6 @@ cdef class CoreWorker:
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,
-                            c_bool no_pin_object,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
         delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
         for attempt in reversed(
@@ -843,7 +842,7 @@ cdef class CoreWorker:
                 if object_id is None:
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                     metadata, data_size, no_pin_object,
+                                     metadata, data_size,
                                      c_object_id, data))
                 else:
                     c_object_id[0] = object_id.native()
@@ -870,21 +869,25 @@ cdef class CoreWorker:
 
     def put_serialized_object(self, serialized_object,
                               ObjectID object_id=None,
-                              c_bool no_pin_object=False):
+                              c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+            c_bool owns_object = object_id is None
+
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_id,
-            no_pin_object, &c_object_id, &data)
+            &c_object_id, &data)
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
                 check_status(
-                    self.core_worker.get().Seal(c_object_id))
+                    self.core_worker.get().Seal(
+                        c_object_id, owns_object, pin_object))
+
         return ObjectID(c_object_id.Binary())
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,

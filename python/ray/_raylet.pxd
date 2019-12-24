@@ -60,7 +60,6 @@ cdef class CoreWorker:
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,
-                            c_bool no_pin_object,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data)
     # TODO: handle noreturn better
     cdef store_task_outputs(

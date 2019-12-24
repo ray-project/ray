@@ -244,7 +244,7 @@ class Worker(object):
         """
         self.mode = mode
 
-    def put_object(self, value, object_id=None, no_pin_object=False):
+    def put_object(self, value, object_id=None, pin_object=True):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -279,7 +279,7 @@ class Worker(object):
 
         serialized_value = self.get_serialization_context().serialize(value)
         return self.core_worker.put_serialized_object(
-            serialized_value, object_id=object_id, no_pin_object=no_pin_object)
+            serialized_value, object_id=object_id, pin_object=pin_object)
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -1516,7 +1516,7 @@ def put(value, weakref=False):
             object_id = worker.local_mode_manager.put_object(value)
         else:
             try:
-                object_id = worker.put_object(value, no_pin_object=weakref)
+                object_id = worker.put_object(value, pin_object=not weakref)
             except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "

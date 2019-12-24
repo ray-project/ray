@@ -200,12 +200,11 @@ class CoreWorker {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
-  /// \param[in] no_pin_object If set, the object won't be pinned at the local raylet.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                bool no_pin_object, ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                ObjectID *object_id, std::shared_ptr<Buffer> *data);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -224,8 +223,14 @@ class CoreWorker {
   /// a corresponding `Create()` call and then writing into the returned buffer.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
+  /// \param[in] owns_object Whether or not this worker owns the object. If true,
+  ///            the object will be added as owned to the reference counter as an
+  ///            owned object and this worker will be responsible for managing its
+  ///            lifetime.
+  /// \param[in] pin_object Whether or not to pin the object at the local raylet. This
+  ///            only applies when owns_object is true.
   /// \return Status.
-  Status Seal(const ObjectID &object_id);
+  Status Seal(const ObjectID &object_id, bool owns_object, bool pin_object);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
