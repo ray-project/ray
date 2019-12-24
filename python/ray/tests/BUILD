@@ -172,9 +172,9 @@ py_test(
 )
 
 py_test(
-    name = "test_garbage_collection",
+    name = "test_reference_counting",
     size = "small",
-    srcs = ["test_garbage_collection.py"],
+    srcs = ["test_reference_counting.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
