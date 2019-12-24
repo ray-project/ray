@@ -200,11 +200,12 @@ class CoreWorker {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
+  /// \param[in] no_pin_object If set, the object won't be pinned at the local raylet.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                bool no_pin_object, ObjectID *object_id, std::shared_ptr<Buffer> *data);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize

@@ -244,7 +244,7 @@ class Worker(object):
         """
         self.mode = mode
 
-    def put_object(self, value, object_id=None):
+    def put_object(self, value, object_id=None, no_pin_object=False):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -278,7 +278,7 @@ class Worker(object):
 
         serialized_value = self.get_serialization_context().serialize(value)
         return self.core_worker.put_serialized_object(
-            serialized_value, object_id=object_id)
+            serialized_value, object_id=object_id, no_pin_object=no_pin_object)
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -1515,7 +1515,7 @@ def put(value, weakref=False):
             object_id = worker.local_mode_manager.put_object(value)
         else:
             try:
-                object_id = worker.put_object(value)
+                object_id = worker.put_object(value, no_pin_object=weakref)
             except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
@@ -1524,16 +1524,6 @@ def put(value, weakref=False):
                     "ray.put(value, weakref=True) to allow object data to "
                     "be evicted early.")
                 raise
-        # Pin the object buffer with the returned id. This avoids put returns
-        # from getting evicted out from under the id.
-        # TODO(edoakes): we should be able to avoid this extra IPC by holding
-        # a reference to the buffer created when putting the object, but the
-        # buffer returned by the plasma store create method doesn't prevent
-        # the object from being evicted.
-        if not weakref and not worker.mode == LOCAL_MODE:
-            object_id.set_buffer_ref(
-                worker.core_worker.get_objects([object_id],
-                                               worker.current_task_id))
         return object_id
 
 
