@@ -497,17 +497,9 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   const ClientID node_id = ClientID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from client id " << node_id;
 
-  if (!gcs_client_->Nodes().IsSelfUnregistered()) {
-    // We could receive a notification for our own death when we disconnect from client
-    // table after receiving a 'SIGTERM' signal, in that case we disconnect from gcs
-    // client table and then do some cleanup in the disconnect callback, and it's possible
-    // that we receive the notification in between, for more details refer to the SIGTERM
-    // handler in main.cc. In this case check for intentional disconnection and rule it
-    // out.
-    RAY_CHECK(node_id != self_node_id_)
-        << "Exiting because this node manager has mistakenly been marked dead by the "
-        << "monitor.";
-  }
+  RAY_CHECK(node_id != self_node_id_)
+      << "Exiting because this node manager has mistakenly been marked dead by the "
+      << "monitor.";
 
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
