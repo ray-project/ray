@@ -151,7 +151,8 @@ service CoreWorkerService {
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
   // Notify the object's owner that it has been pinned by a raylet. Replying
   // to this message indicatest that the reference should be unpinned.
-  rpc WaitForObjectEviction(WaitForObjectEvictionRequest) returns (WaitForObjectEvictionReply);
+  rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
+      returns (WaitForObjectEvictionReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
 }
