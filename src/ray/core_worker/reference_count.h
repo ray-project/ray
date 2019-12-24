@@ -36,7 +36,8 @@ class ReferenceCounter {
   /// dependencies to a submitted task.
   ///
   /// \param[in] object_ids The object IDs to add references for.
-  void AddSubmittedTaskReferences(const std::vector<ObjectID> &object_ids);
+  void AddSubmittedTaskReferences(const std::vector<ObjectID> &object_ids)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Remove references for the provided object IDs that correspond to them being
   /// dependencies to a submitted task. This should be called when inlined
@@ -45,7 +46,8 @@ class ReferenceCounter {
   /// \param[in] object_ids The object IDs to remove references for.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
-                                     std::vector<ObjectID> *deleted);
+                                     std::vector<ObjectID> *deleted)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
   /// Dependencies for each ObjectID must be set at most once. The local
@@ -73,8 +75,16 @@ class ReferenceCounter {
   void AddBorrowedObject(const ObjectID &object_id, const TaskID &owner_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
+  /// Get the owner ID and addresss of the given object.
+  ///
+  /// \param[in] object_id The ID of the object to look up.
+  /// \param[out] owner_id The TaskID of the object owner.
+  /// \param[out] owner_address The address of the object owner.
   bool GetOwner(const ObjectID &object_id, TaskID *owner_id,
                 rpc::Address *owner_address) const LOCKS_EXCLUDED(mutex_);
+
+  /// Manually delete the objects from the reference counter.
+  void DeleteReferences(const std::vector<ObjectID> &object_ids) LOCKS_EXCLUDED(mutex_);
 
   /// Sets the callback that will be run when the object goes out of scope.
   /// Returns true if the object was in scope and the callback was added, else false.
@@ -122,6 +132,12 @@ class ReferenceCounter {
     /// Callback that will be called when this ObjectID no longer has references.
     std::function<void(const ObjectID &)> on_delete;
   };
+
+  /// Helper method to delete an entry from the reference map and run any necessary
+  /// callbacks. Assumes that the entry is in object_id_refs_.
+  void DeleteReferenceInternal(absl::flat_hash_map<ObjectID, Reference>::iterator entry,
+                               std::vector<ObjectID> *deleted)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

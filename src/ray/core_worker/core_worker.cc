@@ -577,6 +577,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
 
+  reference_counter_->DeleteReferences(object_ids);
   memory_store_->Delete(memory_object_ids, &plasma_object_ids);
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
