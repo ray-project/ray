@@ -18,14 +18,16 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClient {
-  // TODO(micafan) Will remove those friend class after we replace RedisGcsClient
+  // TODO(micafan) Will remove those friend class / method after we replace RedisGcsClient
   // with interface class GcsClient in raylet.
-  friend class SubscriptionExecutorTest;
   friend class RedisActorInfoAccessor;
   friend class RedisJobInfoAccessor;
+  friend class RedisTaskInfoAccessor;
   friend class RedisObjectInfoAccessor;
-  friend class SetTestHelper;
+  friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
+  friend class TaskTableTestHelper;
+  friend class SetTestHelper;
 
  public:
   /// Constructor of RedisGcsClient.
@@ -56,7 +58,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   void Disconnect();
 
   // TODO: Some API for getting the error on the driver
-  raylet::TaskTable &raylet_task_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
   ClientTable &client_table();
@@ -67,6 +68,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
   DynamicResourceTable &resource_table();
+  /// Used only for direct calls. Tasks submitted through the raylet transport
+  /// should use Actors(), which has a requirement on the order in which
+  /// entries can be appended to the log.
+  DirectActorTable &direct_actor_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -95,6 +100,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   JobTable &job_table();
   /// This method will be deprecated, use method Objects() instead
   ObjectTable &object_table();
+  /// This method will be deprecated, use method Tasks() instead.
+  raylet::TaskTable &raylet_task_table();
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.
@@ -103,6 +110,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
+  std::unique_ptr<DirectActorTable> direct_actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;

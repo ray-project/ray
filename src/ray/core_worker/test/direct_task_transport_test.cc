@@ -1,9 +1,9 @@
-#include "gtest/gtest.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 
+#include "gtest/gtest.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/util/test_util.h"
@@ -24,12 +24,16 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return Status::OK();
   }
 
-  bool ReplyPushTask(Status status = Status::OK()) {
+  bool ReplyPushTask(Status status = Status::OK(), bool exit = false) {
     if (callbacks.size() == 0) {
       return false;
     }
     auto callback = callbacks.front();
-    callback(status, rpc::PushTaskReply());
+    auto reply = rpc::PushTaskReply();
+    if (exit) {
+      reply.set_worker_exiting(true);
+    }
+    callback(status, reply);
     callbacks.pop_front();
     return true;
   }
@@ -41,15 +45,23 @@ class MockTaskFinisher : public TaskFinisherInterface {
  public:
   MockTaskFinisher() {}
 
-  void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &) override {
+  void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &,
+                           const rpc::Address *actor_addr) override {
     num_tasks_complete++;
   }
-  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override {
+
+  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                         Status *status) override {
     num_tasks_failed++;
+  }
+
+  void OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) override {
+    num_inlined += object_ids.size();
   }
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
+  int num_inlined = 0;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
@@ -129,17 +141,20 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
   TaskSpecification task;
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
+  ASSERT_EQ(task_finisher->num_inlined, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::RAYLET);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
+  ObjectID obj1 = ObjectID::FromRandom();
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   bool ok = false;
@@ -147,11 +162,13 @@ TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
   // We ignore and don't block on plasma dependencies.
   ASSERT_TRUE(ok);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(task_finisher->num_inlined, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
@@ -165,14 +182,16 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
-  // Checks that the object id was promoted to a plasma type id.
-  ASSERT_FALSE(task.ArgId(0, 0).IsDirectCallType());
+  // Checks that the object id is still a direct call id.
+  ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(task_finisher->num_inlined, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
@@ -191,11 +210,13 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(task_finisher->num_inlined, 2);
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
@@ -216,6 +237,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(task_finisher->num_inlined, 2);
 }
 
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
@@ -232,7 +254,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
@@ -262,7 +284,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
@@ -285,7 +307,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
@@ -329,7 +351,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
@@ -376,7 +398,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
@@ -409,19 +431,45 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 }
 
+TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher, ClientID::Nil(), kLongTimeout);
+  std::unordered_map<std::string, double> empty_resources;
+  std::vector<std::string> empty_descriptor;
+  TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
+
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Task 1 is pushed.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+
+  // Task 1 finishes with exit status; the worker is not returned.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::OK(), /*exit=*/true));
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+}
+
 TEST(DirectTaskTransportTest, TestSpillback) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
 
-  std::unordered_map<ClientID, std::shared_ptr<MockRayletClient>> remote_lease_clients;
-  auto lease_client_factory = [&](const rpc::Address &addr) {
-    ClientID raylet_id = ClientID::FromBinary(addr.raylet_id());
+  std::unordered_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
+  auto lease_client_factory = [&](const std::string &ip, int port) {
     // We should not create a connection to the same raylet more than once.
-    RAY_CHECK(remote_lease_clients.count(raylet_id) == 0);
+    RAY_CHECK(remote_lease_clients.count(port) == 0);
     auto client = std::make_shared<MockRayletClient>();
-    remote_lease_clients[raylet_id] = client;
+    remote_lease_clients[port] = client;
     return client;
   };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -440,20 +488,20 @@ TEST(DirectTaskTransportTest, TestSpillback) {
 
   // Spillback to a remote node.
   auto remote_raylet_id = ClientID::FromRandom();
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, remote_raylet_id));
-  ASSERT_EQ(remote_lease_clients.count(remote_raylet_id), 1);
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
+  ASSERT_EQ(remote_lease_clients.count(7777), 1);
   // There should be no more callbacks on the local client.
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, ClientID::Nil()));
   // Trigger retry at the remote node.
-  ASSERT_TRUE(remote_lease_clients[remote_raylet_id]->GrantWorkerLease("remote", 1234,
-                                                                       ClientID::Nil()));
+  ASSERT_TRUE(
+      remote_lease_clients[7777]->GrantWorkerLease("remote", 1234, ClientID::Nil()));
 
   // The worker is returned to the remote node, not the local one.
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
-  ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_returned, 1);
+  ASSERT_EQ(remote_lease_clients[7777]->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_disconnected, 0);
+  ASSERT_EQ(remote_lease_clients[7777]->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
@@ -462,15 +510,14 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
 
-  std::unordered_map<ClientID, std::shared_ptr<MockRayletClient>> remote_lease_clients;
-  auto lease_client_factory = [&](const rpc::Address &addr) {
-    ClientID raylet_id = ClientID::FromBinary(addr.raylet_id());
+  std::unordered_map<int, std::shared_ptr<MockRayletClient>> remote_lease_clients;
+  auto lease_client_factory = [&](const std::string &ip, int port) {
     // We should not create a connection to the same raylet more than once.
-    RAY_CHECK(remote_lease_clients.count(raylet_id) == 0);
+    RAY_CHECK(remote_lease_clients.count(port) == 0);
     auto client = std::make_shared<MockRayletClient>();
-    remote_lease_clients[raylet_id] = client;
+    remote_lease_clients[port] = client;
     return client;
   };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -490,25 +537,25 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
 
   // Spillback to a remote node.
   auto remote_raylet_id = ClientID::FromRandom();
-  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, remote_raylet_id));
-  ASSERT_EQ(remote_lease_clients.count(remote_raylet_id), 1);
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 7777, remote_raylet_id));
+  ASSERT_EQ(remote_lease_clients.count(7777), 1);
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, ClientID::Nil()));
   // Trigger a spillback back to the local node.
-  ASSERT_TRUE(remote_lease_clients[remote_raylet_id]->GrantWorkerLease("local", 1234,
-                                                                       local_raylet_id));
+  ASSERT_TRUE(
+      remote_lease_clients[7777]->GrantWorkerLease("local", 1234, local_raylet_id));
   // We should not have created another lease client to the local raylet.
   ASSERT_EQ(remote_lease_clients.size(), 1);
   // There should be no more callbacks on the remote node.
-  ASSERT_FALSE(remote_lease_clients[remote_raylet_id]->GrantWorkerLease("remote", 1234,
-                                                                        ClientID::Nil()));
+  ASSERT_FALSE(
+      remote_lease_clients[7777]->GrantWorkerLease("remote", 1234, ClientID::Nil()));
 
   // The worker is returned to the local node.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("local", 1234, ClientID::Nil()));
   ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
-  ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_returned, 0);
+  ASSERT_EQ(remote_lease_clients[7777]->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_disconnected, 0);
+  ASSERT_EQ(remote_lease_clients[7777]->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 1);
   ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
@@ -520,7 +567,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
                        const TaskSpecification &different) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
@@ -619,7 +666,7 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto factory = [&](const std::string &addr, int port) { return worker_client; };
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(),

@@ -1,9 +1,11 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
+#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
@@ -15,6 +17,7 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/subscription_executor.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -29,7 +32,8 @@
   RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
+  RAY_CORE_WORKER_RPC_HANDLER(GetCoreWorkerStats, 100)
 
 namespace ray {
 
@@ -64,8 +68,6 @@ class CoreWorker {
   /// \param[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
-  /// \param[in] exit_handler Language worker function to orderly shutdown the worker.
-  ///            We guarantee this will be run on the main thread of the worker.
   /// \param[in] ref_counting_enabled Whether to enable object ref counting.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
@@ -75,7 +77,6 @@ class CoreWorker {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
-             std::function<void()> exit_handler = nullptr,
              bool ref_counting_enabled = false);
 
   ~CoreWorker();
@@ -101,22 +102,33 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
+  void SetWebuiDisplay(const std::string &message) { webui_display_ = message; }
+
   /// Increase the reference count for this object ID.
+  /// Increase the local reference count for this object ID. Should be called
+  /// by the language frontend when a new reference is created.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddObjectIDReference(const ObjectID &object_id) {
+  void AddLocalReference(const ObjectID &object_id) {
     reference_counter_->AddLocalReference(object_id);
   }
 
-  /// Decrease the reference count for this object ID.
+  /// Decrease the reference count for this object ID. Should be called
+  /// by the language frontend when a reference is destroyed.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
-  void RemoveObjectIDReference(const ObjectID &object_id) {
+  void RemoveLocalReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     if (ref_counting_enabled_) {
       memory_store_->Delete(deleted);
     }
+  }
+
+  /// Returns a map of all ObjectIDs currently in scope with a pair of their
+  /// (local, submitted_task) reference counts. For debugging purposes.
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const {
+    return reference_counter_->GetAllReferenceCounts();
   }
 
   /// Promote an object to plasma and get its owner information. This should be
@@ -130,7 +142,7 @@ class CoreWorker {
   /// called on object IDs that were created randomly, e.g.,
   /// ObjectID::FromRandom.
   ///
-  /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
+  /// Postcondition: Get(object_id) is valid.
   ///
   /// \param[in] object_id The object ID to serialize.
   /// \param[out] owner_id The ID of the object's owner. This should be
@@ -394,6 +406,11 @@ class CoreWorker {
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback);
 
+  /// Get statistics from core worker.
+  void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
+                                rpc::GetCoreWorkerStatsReply *reply,
+                                rpc::SendReplyCallback send_reply_callback);
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -401,6 +418,20 @@ class CoreWorker {
 
   /// Block current fiber until event is triggered.
   void YieldCurrentFiber(FiberEvent &event);
+
+  /// The callback expected to be implemented by the client.
+  using SetResultCallback =
+      std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
+
+  /// Perform async get from in-memory store.
+  ///
+  /// \param[in] object_id The id to call get on. Assumes object_id.IsDirectCallType().
+  /// \param[in] success_callback The callback to use the result object.
+  /// \param[in] fallback_callback The callback to use when failed to get result.
+  /// \param[in] python_future the void* object to be passed to SetResultCallback
+  /// \return void
+  void GetAsync(const ObjectID &object_id, SetResultCallback success_callback,
+                SetResultCallback fallback_callback, void *python_future);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
@@ -413,14 +444,12 @@ class CoreWorker {
   /// Send the list of active object IDs to the raylet.
   void ReportActiveObjectIDs();
 
+  /// Heartbeat for internal bookkeeping.
+  void InternalHeartbeat();
+
   ///
   /// Private methods related to task submission.
   ///
-
-  /// Add task dependencies to the reference counter. This prevents the argument
-  /// objects from early eviction, and also adds the return object.
-  void PinObjectReferences(const TaskSpecification &task_spec,
-                           const TaskTransportType transport_type);
 
   /// Give this worker a handle to an actor.
   ///
@@ -468,14 +497,23 @@ class CoreWorker {
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
 
-  /// Remove reference counting dependencies of this object ID.
-  ///
-  /// \param[in] object_id The object whose dependencies should be removed.
-  void RemoveObjectIDDependencies(const ObjectID &object_id) {
-    std::vector<ObjectID> deleted;
-    reference_counter_->RemoveDependencies(object_id, &deleted);
-    if (ref_counting_enabled_) {
-      memory_store_->Delete(deleted);
+  /// Returns whether the message was sent to the wrong worker. The right error reply
+  /// is sent automatically. Messages end up on the wrong worker when a worker dies
+  /// and a new one takes its place with the same place. In this situation, we want
+  /// the new worker to reject messages meant for the old one.
+  bool HandleWrongRecipient(const WorkerID &intended_worker_id,
+                            rpc::SendReplyCallback send_reply_callback) {
+    if (intended_worker_id != worker_context_.GetWorkerID()) {
+      std::ostringstream stream;
+      stream << "Mismatched WorkerID: ignoring RPC for previous worker "
+             << intended_worker_id
+             << ", current worker ID: " << worker_context_.GetWorkerID();
+      auto msg = stream.str();
+      RAY_LOG(ERROR) << msg;
+      send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+      return true;
+    } else {
+      return false;
     }
   }
 
@@ -522,14 +560,25 @@ class CoreWorker {
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
+  /// Timer for internal book-keeping.
+  boost::asio::steady_timer internal_timer_;
+
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
 
+  /// Whether or not this worker is connected to the raylet and GCS.
+  bool connected_ = false;
+
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+
+  // Client to listen to direct actor events.
+  std::unique_ptr<
+      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>
+      direct_actor_table_subscriber_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
@@ -562,6 +611,9 @@ class CoreWorker {
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
 
+  // Interface for publishing actor creation.
+  std::shared_ptr<ActorManager> actor_manager_;
+
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
@@ -576,15 +628,15 @@ class CoreWorker {
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
       GUARDED_BY(actor_handles_mutex_);
 
-  /// Resolve local and remote dependencies for actor creation.
-  std::unique_ptr<LocalDependencyResolver> resolver_;
-
   ///
   /// Fields related to task execution.
   ///
 
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
+
+  /// String to be displayed on Web UI.
+  std::string webui_display_;
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
@@ -611,6 +663,9 @@ class CoreWorker {
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+
+  // Queue of tasks to resubmit when the specified time passes.
+  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_;
 
   friend class CoreWorkerTest;
 };

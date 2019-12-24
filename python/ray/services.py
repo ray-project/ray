@@ -1040,7 +1040,7 @@ def start_dashboard(host,
     Returns:
         ProcessInfo for the process that was started.
     """
-    port = 8080
+    port = 8265  # Note: list(map(ord, "RAY")) == [82, 65, 89]
     while True:
         try:
             port_test_socket = socket.socket()

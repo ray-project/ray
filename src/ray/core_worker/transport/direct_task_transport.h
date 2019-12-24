@@ -5,7 +5,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
@@ -18,7 +17,8 @@
 
 namespace ray {
 
-typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &)>
+typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
+                                                            int port)>
     LeaseClientFactoryFn;
 
 // The task queues are keyed on resource shape & function descriptor
@@ -40,7 +40,7 @@ class CoreWorkerDirectTaskSubmitter {
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
-        resolver_(store),
+        resolver_(store, task_finisher),
         task_finisher_(task_finisher),
         local_raylet_id_(local_raylet_id),
         lease_timeout_ms_(lease_timeout_ms) {}

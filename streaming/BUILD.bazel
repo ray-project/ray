@@ -3,6 +3,7 @@
 
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
+load("//bazel:ray.bzl", "COPTS")
 
 proto_library(
     name = "streaming_proto",
@@ -30,6 +31,7 @@ cc_proto_library(
 # be linked into streaming libs by dynamic linker. See bazel rule `//:_raylet`
 cc_binary(
     name = "ray_util.so",
+    copts = COPTS,
     linkshared = 1,
     visibility = ["//visibility:public"],
     deps = ["//:ray_util"],
@@ -37,6 +39,7 @@ cc_binary(
 
 cc_binary(
     name = "ray_common.so",
+    copts = COPTS,
     linkshared = 1,
     visibility = ["//visibility:public"],
     deps = ["//:ray_common"],
@@ -44,6 +47,7 @@ cc_binary(
 
 cc_binary(
     name = "core_worker_lib.so",
+    copts = COPTS,
     linkshared = 1,
     deps = ["//:core_worker_lib"],
 )
@@ -56,6 +60,7 @@ cc_library(
     hdrs = glob([
         "src/util/*.h",
     ]),
+    copts = COPTS,
     includes = [
         "src",
     ],
@@ -75,6 +80,7 @@ cc_library(
     hdrs = glob([
         "src/config/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "ray_common.so",
         ":streaming_cc_proto",
@@ -90,6 +96,7 @@ cc_library(
     hdrs = glob([
         "src/message/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "ray_common.so",
         ":streaming_config",
@@ -105,6 +112,7 @@ cc_library(
     hdrs = glob([
         "src/queue/*.h",
     ]),
+    copts = COPTS,
     deps = [
         "core_worker_lib.so",
         "ray_common.so",
@@ -128,6 +136,7 @@ cc_library(
         "src/queue/*.h",
         "src/test/*.h",
     ]),
+    copts = COPTS,
     includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
@@ -154,6 +163,7 @@ cc_binary(
     srcs = glob(["src/test/*.h"]) + [
         "src/test/mock_actor.cc",
     ],
+    copts = COPTS,
     includes = [
         "streaming/src/test",
     ],
@@ -225,6 +235,7 @@ genrule(
         GENERATED_DIR=$$WORK_DIR/streaming/python/generated
         rm -rf $$GENERATED_DIR
         mkdir -p $$GENERATED_DIR
+        touch $$GENERATED_DIR/__init__.py
         for f in $(locations //streaming:streaming_py_proto); do
             cp $$f $$GENERATED_DIR
         done
@@ -232,4 +243,44 @@ genrule(
     """,
     local = 1,
     visibility = ["//visibility:public"],
+)
+
+# Streaming java
+genrule(
+    name = "copy_jni_h",
+    srcs = ["@bazel_tools//tools/jdk:jni_header"],
+    outs = ["jni.h"],
+    cmd = "cp -f $< $@",
+)
+
+genrule(
+    name = "copy_jni_md_h",
+    srcs = select({
+        "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
+        "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
+        "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
+    }),
+    outs = ["jni_md.h"],
+    cmd = "cp -f $< $@",
+)
+
+cc_binary(
+    name = "libstreaming_java.so",
+    srcs = glob([
+        "src/lib/java/*.cc",
+        "src/lib/java/*.h",
+    ]) + [
+        ":jni.h",  # needed for `include "jni.h"`
+        ":jni_md.h",
+    ],
+    includes = [
+        ".",  # needed for `include <jni.h>`
+        "src",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":streaming_lib",
+    ],
 )
