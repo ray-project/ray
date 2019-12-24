@@ -125,6 +125,13 @@ message GetCoreWorkerStatsRequest {
 message GetCoreWorkerStatsReply {
   // String displayed on Web UI.
   string webui_display = 1;
+  // Length of the task queue. 
+  int64 task_queue_length = 2;
+  string current_executed_task = 3;
+  string ip_address = 4;
+  int64 port = 5;
+  bytes actor_id = 6;
+  map<string, double> used_resources = 7;
 }
 
 service CoreWorkerService {

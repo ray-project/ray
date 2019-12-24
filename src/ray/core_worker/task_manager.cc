@@ -40,6 +40,11 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
   }
 }
 
+int64_t TaskManager::NumPendingTask() {
+  absl::MutexLock lock(&mu_);
+  return pending_tasks_.size();
+}
+
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mu_);
   if (pending_tasks_.empty()) {

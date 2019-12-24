@@ -1036,6 +1036,12 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   reply->set_webui_display(webui_display_);
+  reply->set_task_queue_length(task_manager_->NumPendingTask());
+  reply->set_current_executed_task("test");
+  reply->set_ip_address(rpc_address_.ip_address());
+  reply->set_port(rpc_address_.port());
+  reply->set_actor_id(actor_id_.Binary());
+  // reply->set_used_resources(resource_ids_);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

@@ -160,7 +160,8 @@ class Dashboard(object):
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
             print("XXX")
-            actor_tree = self.node_stats.get_actor_tree()
+            workers_info = sum([data["workersStats"] for data in D.values()], [])
+            actor_tree = self.node_stats.get_actor_tree(workers_info)
             for address, data in D.items():
                 available_resources = data["availableResources"]
                 total_resources = data["totalResources"]
@@ -288,7 +289,7 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
-    def get_actor_tree(self) -> Dict:
+    def get_actor_tree(self, workers_info) -> Dict:
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
         with self._node_stats_lock:
@@ -297,11 +298,17 @@ class NodeStats(threading.Thread):
                 flattened_tree[actor_id]["children"] = {}
                 parent_id = self._addr_to_actor_id.get(self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
+        
+            for worker_info in workers_info:
+                if not worker_info.get("isDriver", False):
+                    addr = (worker_info["ipAddress"], worker_info["port"])
+                    if addr in self._addr_to_actor_id:
+                        actor_id = self._addr_to_actor_id[addr]
+                        flattened_tree[actor_id].update(worker_info)
 
         actor_tree = flattened_tree
         for actor_id, parent_id in child_to_parent.items():
             actor_tree[parent_id]["children"][actor_id] = actor_tree[actor_id]
-
         return actor_tree["root"]["children"]
 
     def get_logs(self, hostname, pid):
@@ -367,8 +374,8 @@ class NodeStats(threading.Thread):
                         actor_data = ray.gcs_utils.ActorTableData.FromString(
                             gcs_entry.entries[0])
                         print("actor_data", actor_data)
-                        addr = (actor_data.address.ip_address, actor_data.address.port)
-                        owner_addr = (actor_data.owner_address.ip_address, actor_data.owner_address.port)
+                        addr = (str(actor_data.address.ip_address), str(actor_data.address.port))
+                        owner_addr = (str(actor_data.owner_address.ip_address), str(actor_data.owner_address.port))
                         self._addr_to_owner_addr[addr] = owner_addr
                         self._addr_to_actor_id[addr] = actor_data.actor_id
                         self._addr_to_extra_info_dict[addr] = {"job_id": actor_data.job_id}
