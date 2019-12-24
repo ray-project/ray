@@ -3040,12 +3040,14 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
             reply->set_num_workers(reply->num_workers() + 1);
             worker_stats->set_webui_display(r.webui_display());
             worker_stats->set_task_queue_length(r.task_queue_length());
+            RAY_LOG(WARNING) << "ZZZ" << r.task_queue_length();
             worker_stats->set_current_executed_task(r.current_executed_task());
             worker_stats->set_ip_address(r.ip_address());
             worker_stats->set_port(r.port());
-            // worker_stats->set_actor_id(r.actor_id());
+            worker_stats->set_actor_id(r.actor_id());
             // worker_stats->set_used_resources(r.used_resources());
-            if (reply->num_workers() == all_workers.size()) {
+            RAY_LOG(WARNING) << "XXX " << all_workers.size();
+            if (reply->num_workers() == all_worker{s.size()) {
               send_reply_callback(Status::OK(), nullptr, nullptr);
             }
           }

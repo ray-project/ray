@@ -31,7 +31,6 @@ import ray
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 import ray.ray_constants as ray_constants
-import ray.utils
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -175,7 +174,8 @@ class Dashboard(object):
                         resource_name, occupied, total))
                 data["extraInfo"] = ", ".join(extra_info)
                 # test logical view
-                data["extraInfo"] += "\n" + str(actor_tree)
+                print(actor_tree)
+                data["extraInfo"] += "\n" + json.dumps(actor_tree, indent=2)
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:
@@ -293,16 +293,20 @@ class NodeStats(threading.Thread):
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
         with self._node_stats_lock:
+            print("node stats has length", len(self._addr_to_actor_id))
             for addr, actor_id in self._addr_to_actor_id.items():
+                print(addr)
                 flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
                 flattened_tree[actor_id]["children"] = {}
                 parent_id = self._addr_to_actor_id.get(self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
         
+            print(len(workers_info))
             for worker_info in workers_info:
                 if not worker_info.get("isDriver", False):
                     addr = (worker_info["ipAddress"], worker_info["port"])
                     if addr in self._addr_to_actor_id:
+                        print("worker is not Driver", addr)
                         actor_id = self._addr_to_actor_id[addr]
                         flattened_tree[actor_id].update(worker_info)
 
@@ -370,15 +374,13 @@ class NodeStats(threading.Thread):
                             })
                     elif channel == str(actor_channel):
                         gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
-                        print("got actor channel publish", gcs_entry)
                         actor_data = ray.gcs_utils.ActorTableData.FromString(
                             gcs_entry.entries[0])
-                        print("actor_data", actor_data)
                         addr = (str(actor_data.address.ip_address), str(actor_data.address.port))
                         owner_addr = (str(actor_data.owner_address.ip_address), str(actor_data.owner_address.port))
                         self._addr_to_owner_addr[addr] = owner_addr
-                        self._addr_to_actor_id[addr] = actor_data.actor_id
-                        self._addr_to_extra_info_dict[addr] = {"job_id": actor_data.job_id}
+                        self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(actor_data.actor_id)
+                        self._addr_to_extra_info_dict[addr] = {"job_id": ray.utils.binary_to_hex(actor_data.job_id)}
                     else:
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
