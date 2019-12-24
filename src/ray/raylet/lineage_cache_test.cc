@@ -12,7 +12,6 @@
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/gcs/redis_node_info_accessor.h"
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/lineage_cache.h"
