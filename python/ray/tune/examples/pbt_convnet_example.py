@@ -83,7 +83,6 @@ if __name__ == "__main__":
     # check if PytorchTrainble will save/restore correctly before execution
     validate_save_restore(PytorchTrainble)
     validate_save_restore(PytorchTrainble, use_object_store=True)
-    print("Success!")
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
@@ -97,18 +96,29 @@ if __name__ == "__main__":
             # allow perturbations within this set of categorical values
             "momentum": [0.8, 0.9, 0.99],
         })
+
     # __pbt_end__
 
     # __tune_begin__
+    class Stopper:
+        def __init__(self):
+            self.should_stop = False
+
+        def stop(self, trial_id, result):
+            max_iter = 5 if args.smoke_test else 100
+            if not self.should_stop and result["mean_accuracy"] > 0.96:
+                self.should_stop = True
+            return self.should_stop or result["training_iteration"] >= max_iter
+
+    stopper = Stopper()
+
     analysis = tune.run(
         PytorchTrainble,
         name="pbt_test",
         scheduler=scheduler,
         reuse_actors=True,
         verbose=1,
-        stop={
-            "training_iteration": 5 if args.smoke_test else 100,
-        },
+        stop=stopper.stop,
         export_formats=[ExportFormat.MODEL],
         num_samples=4,
         config={
