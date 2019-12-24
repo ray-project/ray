@@ -597,7 +597,7 @@ bool ClientTable::IsRemoved(const ClientID &node_id) const {
 
 Status ClientTable::Connect(const GcsNodeInfo &local_node_info) {
   RAY_CHECK(!disconnected_) << "Tried to reconnect a disconnected node.";
-  RAY_CHECK(local_node_id_.IsNil()) << "Already connected.";
+  RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
 
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(local_node_info);

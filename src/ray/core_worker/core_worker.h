@@ -575,13 +575,8 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
-  /// Use a random ClientID for direct actor subscription. Because:
-  // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
-  // Even we can filter out irrelevant updates, but there will be extra overhead.
-  // And because the new GCS Client will no longer hold the local ClientID, so we use
-  // random ClientID instead.
-  // TODO(micafan) Remove this random id, once the direct actor interface is moved to
-  // ActorInfoAccessor.
+  /// This is temporary fake node id that is used only by `direct_actor_table_subscriber_ `.
+  /// TODO(micafan): remove `direct_actor_table_subscriber_` and use `GcsClient` for actor subscription.
   ClientID subscribe_id_{ClientID::FromRandom()};
 
   // Client to listen to direct actor events.

@@ -43,10 +43,10 @@ class Raylet {
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::RedisGcsClient> gcs_client);
 
-  /// Start server.
+  /// Start this raylet.
   void Start();
 
-  /// Stop server.
+  /// Stop this raylet.
   void Stop();
 
   /// Destroy the NodeServer.

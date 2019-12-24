@@ -961,8 +961,8 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   GcsNodeInfo local_node_info_;
   /// This ID is used in method `SubscribeToNodeChange(...)` to Subscribe and
   /// RequestNotification.
-  /// The reason for not using `local_node_id_` is because it may not initialized
-  /// when we call method `SubscribeToNodeChange`.
+  /// The reason for not using `local_node_id_` is because it is only initialized
+  /// for registered nodes.
   ClientID subscribe_id_{ClientID::FromRandom()};
   /// The callback to call when a new node is added or a node is removed.
   NodeChangeCallback node_change_callback_{nullptr};

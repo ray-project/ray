@@ -141,76 +141,29 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   virtual ~RedisNodeInfoAccessor() {}
 
-  /// Register local node to GCS synchronously.
-  ///
-  /// \param node_info The information of node to register to GCS.
-  /// \return Status
   Status RegisterSelf(const GcsNodeInfo &local_node_info) override;
 
-  /// Cancel registration of local node to GCS synchronously.
-  ///
-  /// \return Status
   Status UnregisterSelf() override;
 
-  /// Whether local node has been unregistered to GCS.
-  /// Non-thread safe.
-  ///
-  /// \return bool
   bool IsSelfUnregistered() const override;
 
-  /// Get id of local node which was registered by 'RegisterSelf'.
-  ///
-  /// \return ClientID
   const ClientID &GetSelfId() const override;
 
-  /// Get information of local node which was registered by 'RegisterSelf'.
-  ///
-  /// \return GcsNodeInfo
   const GcsNodeInfo &GetSelfInfo() const override;
 
-  /// Cancel registration of a node to GCS asynchronously.
-  ///
-  /// \param node_id The ID of node that to be unregistered.
-  /// \param callback Callback that will be called when unregistration is complete.
-  /// \return Status
   Status AsyncUnregister(const ClientID &node_id,
                          const StatusCallback &callback) override;
 
-  /// Get information of all nodes from GCS asynchronously.
-  ///
-  /// \param callback Callback that will be called after lookup finishes.
-  /// \return Status
   Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) override;
 
-  /// Subscribe to node addition and removal events from GCS and cache those information.
-  ///
-  /// \param subscribe Callback that will be called if a node is
-  /// added or a node is removed.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
   Status AsyncSubscribeToNodeChange(
       const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  /// Get node information from local cache.
-  /// Non-thread safe.
-  ///
-  /// \param node_id The ID of node to look up in local cache.
-  /// \return The item returned by GCS. If the item to read doesn't exist,
-  /// this optional object is empty.
   boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const override;
 
-  /// Get information of all nodes from local cache.
-  /// Non-thread safe.
-  ///
-  /// \return All nodes in cache.
   const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
 
-  /// Search the local cache to find out if the given node is removed.
-  /// Non-thread safe.
-  ///
-  /// \param node_id The id of the node to check.
-  /// \return Whether the node is removed.
   bool IsRemoved(const ClientID &node_id) const override;
 
  private:
