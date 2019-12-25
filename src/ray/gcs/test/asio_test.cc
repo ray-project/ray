@@ -34,7 +34,7 @@ void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
 class RedisAsioTest : public ManageRedisServiceForTest {};
 
 TEST_F(RedisAsioTest, TestRedisCommands) {
-  redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", 6379);
+  redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", REDIS_SERVER_PORT);
   ASSERT_TRUE(ac->err == 0);
   ray::gcs::RedisAsyncContext redis_async_context(ac);
 

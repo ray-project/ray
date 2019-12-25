@@ -17,7 +17,7 @@ namespace gcs {
 
 /* Flush redis. */
 static inline void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext *context = redisConnect("127.0.0.1", REDIS_SERVER_PORT);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);
 }
@@ -31,9 +31,12 @@ inline JobID NextJobID() {
 class TestGcs : public ManageRedisServiceForTest {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
-    GcsClientOptions options("127.0.0.1", 6379, "", true);
-    client_ = std::make_shared<gcs::RedisGcsClient>(options, command_type_);
     job_id_ = NextJobID();
+  }
+
+  virtual void SetUp() {
+    GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    client_ = std::make_shared<gcs::RedisGcsClient>(options, command_type_);
   }
 
   virtual ~TestGcs() {
