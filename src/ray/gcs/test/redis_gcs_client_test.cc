@@ -689,8 +689,8 @@ class SetTestHelper {
     auto subscribe_callback = [job_id, object_id1, object_id2, managers1,
                                managers2](gcs::RedisGcsClient *client) {
       // Request notifications for one of the keys.
-      RAY_CHECK_OK(client->object_table().RequestNotifications(
-          job_id, object_id2, local_client_id, nullptr));
+      RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id2,
+                                                               local_client_id, nullptr));
       // Write both keys. We should only receive notifications for the key that
       // we requested them for.
       auto remaining = std::vector<std::string>(++managers1.begin(), managers1.end());
@@ -710,8 +710,7 @@ class SetTestHelper {
     // Subscribe to notifications for this client. This allows us to request and
     // receive notifications for specific keys.
     RAY_CHECK_OK(client->object_table().Subscribe(
-        job_id, local_client_id, notification_callback,
-        subscribe_callback));
+        job_id, local_client_id, notification_callback, subscribe_callback));
     // Run the event loop. The loop will only stop if the registered subscription
     // callback is called for the requested key.
     test->Start();
@@ -767,10 +766,10 @@ class SetTestHelper {
     auto subscribe_callback = [job_id, object_id, managers](gcs::RedisGcsClient *client) {
       // Request notifications, then cancel immediately. We should receive a
       // notification for the current value at the key.
-      RAY_CHECK_OK(client->object_table().RequestNotifications(
-          job_id, object_id, local_client_id, nullptr));
-      RAY_CHECK_OK(client->object_table().CancelNotifications(
-          job_id, object_id, local_client_id, nullptr));
+      RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id,
+                                                               local_client_id, nullptr));
+      RAY_CHECK_OK(client->object_table().CancelNotifications(job_id, object_id,
+                                                              local_client_id, nullptr));
       // Add to the key. Since we canceled notifications, we should not
       // receive a notification for these writes.
       auto remaining = std::vector<std::string>(++managers.begin(), managers.end());
@@ -781,15 +780,14 @@ class SetTestHelper {
       }
       // Request notifications again. We should receive a notification for the
       // current values at the key.
-      RAY_CHECK_OK(client->object_table().RequestNotifications(
-          job_id, object_id, local_client_id, nullptr));
+      RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id,
+                                                               local_client_id, nullptr));
     };
 
     // Subscribe to notifications for this client. This allows us to request and
     // receive notifications for specific keys.
     RAY_CHECK_OK(client->object_table().Subscribe(
-        job_id, local_client_id, notification_callback,
-        subscribe_callback));
+        job_id, local_client_id, notification_callback, subscribe_callback));
     // Run the event loop. The loop will only stop if the registered subscription
     // callback is called for the requested key.
     test->Start();

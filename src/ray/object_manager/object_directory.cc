@@ -127,9 +127,9 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
           it->second.subscribed = true;
 
           // Update entries for this object.
-          UpdateObjectLocations(
-              object_notification.IsAdded(), object_notification.GetData(),
-              gcs_client_, &it->second.current_object_locations);
+          UpdateObjectLocations(object_notification.IsAdded(),
+                                object_notification.GetData(), gcs_client_,
+                                &it->second.current_object_locations);
           // Copy the callbacks so that the callbacks can unsubscribe without interrupting
           // looping over the callbacks.
           auto callbacks = it->second.callbacks;
@@ -203,8 +203,8 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
               << "Failed to get object location from GCS: " << status.message();
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> node_ids;
-          UpdateObjectLocations(/*is_added*/ true, location_updates,
-                                gcs_client_, &node_ids);
+          UpdateObjectLocations(/*is_added*/ true, location_updates, gcs_client_,
+                                &node_ids);
           // It is safe to call the callback directly since this is already running
           // in the GCS client's lookup callback stack.
           callback(object_id, node_ids);
