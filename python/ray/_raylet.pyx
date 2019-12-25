@@ -138,7 +138,7 @@ else:
     import cPickle as pickle
 
 if PY3:
-    from ray.async_compat import sync_to_async
+    from ray.async_compat import sync_to_async, AsyncGetResponse
 
 
 def set_internal_config(dict options):
@@ -688,10 +688,9 @@ cdef execute_task(
         # If we've reached the max number of executions for this worker, exit.
         task_counter = manager.get_task_counter(job_id, function_descriptor)
         if task_counter == execution_info.max_calls:
-            # Intentionally disconnect so the raylet doesn't print an error.
-            # TODO(edoakes): we should handle max_calls in the core worker.
-            worker.core_worker.disconnect()
-            sys.exit(0)
+            exit = SystemExit(0)
+            exit.is_ray_terminate = True
+            raise exit
 
 
 cdef CRayStatus task_execution_handler(
@@ -721,11 +720,13 @@ cdef CRayStatus task_execution_handler(
                     job_id=None)
                 sys.exit(1)
         except SystemExit as e:
-            if not hasattr(e, "is_ray_terminate"):
-                logger.exception("SystemExit was raised from the worker")
             # Tell the core worker to exit as soon as the result objects
             # are processed.
-            return CRayStatus.SystemExit()
+            if hasattr(e, "is_ray_terminate"):
+                return CRayStatus.IntentionalSystemExit()
+            else:
+                logger.exception("SystemExit was raised from the worker")
+                return CRayStatus.UnexpectedSystemExit()
 
     return CRayStatus.OK()
 
@@ -803,6 +804,9 @@ cdef class CoreWorker:
 
     def get_actor_id(self):
         return ActorID(self.core_worker.get().GetActorId().Binary())
+
+    def set_webui_display(self, message):
+        self.core_worker.get().SetWebuiDisplay(message)
 
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
@@ -1030,6 +1034,14 @@ cdef class CoreWorker:
 
             return VectorToObjectIDs(return_ids)
 
+    def kill_actor(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            check_status(self.core_worker.get().KillActor(
+                  c_actor_id))
+
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (
@@ -1072,16 +1084,12 @@ cdef class CoreWorker:
         return output
 
     def add_object_id_reference(self, ObjectID object_id):
-        cdef:
-            CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().AddObjectIDReference(c_object_id)
+        self.core_worker.get().AddLocalReference(object_id.native())
 
     def remove_object_id_reference(self, ObjectID object_id):
-        cdef:
-            CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().RemoveObjectIDReference(c_object_id)
+        self.core_worker.get().RemoveLocalReference(object_id.native())
 
     def serialize_and_promote_object_id(self, ObjectID object_id):
         cdef:
@@ -1172,3 +1180,59 @@ cdef class CoreWorker:
 
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
+
+    def get_all_reference_counts(self):
+        cdef:
+            unordered_map[CObjectID, pair[size_t, size_t]] c_ref_counts
+            unordered_map[CObjectID, pair[size_t, size_t]].iterator it
+
+        c_ref_counts = self.core_worker.get().GetAllReferenceCounts()
+        it = c_ref_counts.begin()
+
+        ref_counts = {}
+        while it != c_ref_counts.end():
+            object_id = ObjectID(dereference(it).first.Binary())
+            ref_counts[object_id] = {
+                "local": dereference(it).second.first,
+                "submitted": dereference(it).second.second}
+            postincrement(it)
+
+        return ref_counts
+
+    def in_memory_store_get_async(self, ObjectID object_id, future):
+        self.core_worker.get().GetAsync(
+            object_id.native(),
+            async_set_result_callback,
+            async_retry_with_plasma_callback,
+            <void*>future)
+
+cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
+                                    CObjectID object_id,
+                                    void *future) with gil:
+    cdef:
+        c_vector[shared_ptr[CRayObject]] objects_to_deserialize
+
+    py_future = <object>(future)
+    loop = py_future._loop
+
+    # Object is retrieved from in memory store.
+    # Here we go through the code path used to deserialize objects.
+    objects_to_deserialize.push_back(obj)
+    data_metadata_pairs = RayObjectsToDataMetadataPairs(
+        objects_to_deserialize)
+    ids_to_deserialize = [ObjectID(object_id.Binary())]
+    objects = ray.worker.global_worker.deserialize_objects(
+        data_metadata_pairs, ids_to_deserialize)
+    loop.call_soon_threadsafe(lambda: py_future.set_result(
+        AsyncGetResponse(
+            plasma_fallback_id=None, result=objects[0])))
+
+cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
+                                           CObjectID object_id,
+                                           void *future) with gil:
+    py_future = <object>(future)
+    loop = py_future._loop
+    loop.call_soon_threadsafe(lambda: py_future.set_result(
+                AsyncGetResponse(
+                    plasma_fallback_id=ObjectID(object_id.Binary()),
+                    result=None)))

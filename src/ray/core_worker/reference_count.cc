@@ -14,78 +14,73 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
   }
 }
 
-void ReferenceCounter::AddOwnedObject(
-    const ObjectID &object_id, const TaskID &owner_id, const rpc::Address &owner_address,
-    std::shared_ptr<std::vector<ObjectID>> dependencies) {
+void ReferenceCounter::AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
+                                      const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
-
-  for (const ObjectID &dependency_id : *dependencies) {
-    AddLocalReferenceInternal(dependency_id);
-  }
-
   RAY_CHECK(object_id_refs_.count(object_id) == 0)
-      << "Cannot create an object that already exists. ObjectID: " << object_id;
+      << "Tried to create an owned object that already exists: " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
-  object_id_refs_.emplace(object_id, Reference(owner_id, owner_address, dependencies));
+  object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
 }
 
-void ReferenceCounter::AddLocalReferenceInternal(const ObjectID &object_id) {
+void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
   auto entry = object_id_refs_.find(object_id);
   if (entry == object_id_refs_.end()) {
     // TODO: Once ref counting is implemented, we should always know how the
-    // ObjectID was created, so there should always ben an entry.
+    // ObjectID was created, so there should always be an entry.
     entry = object_id_refs_.emplace(object_id, Reference()).first;
   }
   entry->second.local_ref_count++;
 }
 
-void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
-  AddLocalReferenceInternal(object_id);
-}
-
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
                                             std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  RemoveReferenceRecursive(object_id, deleted);
-}
-
-void ReferenceCounter::RemoveDependencies(const ObjectID &object_id,
-                                          std::vector<ObjectID> *deleted) {
-  absl::MutexLock lock(&mutex_);
-  auto entry = object_id_refs_.find(object_id);
-  if (entry == object_id_refs_.end()) {
-    RAY_LOG(WARNING) << "Tried to remove dependencies for nonexistent object ID: "
-                     << object_id;
-    return;
-  }
-  if (entry->second.dependencies) {
-    for (const ObjectID &pending_task_object_id : *entry->second.dependencies) {
-      RemoveReferenceRecursive(pending_task_object_id, deleted);
-    }
-    entry->second.dependencies = nullptr;
-  }
-}
-
-void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id,
-                                                std::vector<ObjectID> *deleted) {
   auto entry = object_id_refs_.find(object_id);
   if (entry == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
                      << object_id;
     return;
   }
-  if (--entry->second.local_ref_count == 0) {
-    // If the reference count reached 0, decrease the reference count for each dependency.
-    if (entry->second.dependencies) {
-      for (const ObjectID &pending_task_object_id : *entry->second.dependencies) {
-        RemoveReferenceRecursive(pending_task_object_id, deleted);
-      }
-    }
+  if (--entry->second.local_ref_count == 0 &&
+      entry->second.submitted_task_ref_count == 0) {
     object_id_refs_.erase(entry);
     deleted->push_back(object_id);
+  }
+}
+
+void ReferenceCounter::AddSubmittedTaskReferences(
+    const std::vector<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mutex_);
+  for (const ObjectID &object_id : object_ids) {
+    auto entry = object_id_refs_.find(object_id);
+    if (entry == object_id_refs_.end()) {
+      // TODO: Once ref counting is implemented, we should always know how the
+      // ObjectID was created, so there should always be an entry.
+      entry = object_id_refs_.emplace(object_id, Reference()).first;
+    }
+    entry->second.submitted_task_ref_count++;
+  }
+}
+
+void ReferenceCounter::RemoveSubmittedTaskReferences(
+    const std::vector<ObjectID> &object_ids, std::vector<ObjectID> *deleted) {
+  absl::MutexLock lock(&mutex_);
+  for (const ObjectID &object_id : object_ids) {
+    auto entry = object_id_refs_.find(object_id);
+    if (entry == object_id_refs_.end()) {
+      RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
+                       << object_id;
+      return;
+    }
+    if (--entry->second.submitted_task_ref_count == 0 &&
+        entry->second.local_ref_count == 0) {
+      object_id_refs_.erase(entry);
+      deleted->push_back(object_id);
+    }
   }
 }
 
@@ -126,6 +121,19 @@ std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
   return in_scope_object_ids;
 }
 
+std::unordered_map<ObjectID, std::pair<size_t, size_t>>
+ReferenceCounter::GetAllReferenceCounts() const {
+  absl::MutexLock lock(&mutex_);
+  std::unordered_map<ObjectID, std::pair<size_t, size_t>> all_ref_counts;
+  all_ref_counts.reserve(object_id_refs_.size());
+  for (auto it : object_id_refs_) {
+    all_ref_counts.emplace(it.first,
+                           std::pair<size_t, size_t>(it.second.local_ref_count,
+                                                     it.second.submitted_task_ref_count));
+  }
+  return all_ref_counts;
+}
+
 void ReferenceCounter::LogDebugString() const {
   absl::MutexLock lock(&mutex_);
 
@@ -137,15 +145,9 @@ void ReferenceCounter::LogDebugString() const {
 
   for (const auto &entry : object_id_refs_) {
     RAY_LOG(DEBUG) << "\t" << entry.first.Hex();
-    RAY_LOG(DEBUG) << "\t\treference count: " << entry.second.local_ref_count;
-    RAY_LOG(DEBUG) << "\t\tdependencies: ";
-    if (!entry.second.dependencies) {
-      RAY_LOG(DEBUG) << "\t\t\tNULL";
-    } else {
-      for (const ObjectID &pending_task_object_id : *entry.second.dependencies) {
-        RAY_LOG(DEBUG) << "\t\t\t" << pending_task_object_id.Hex();
-      }
-    }
+    RAY_LOG(DEBUG) << "\t\tlocal refcount: " << entry.second.local_ref_count;
+    RAY_LOG(DEBUG) << "\t\tsubmitted task refcount: "
+                   << entry.second.submitted_task_ref_count;
   }
 }
 

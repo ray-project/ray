@@ -295,8 +295,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--address", type=str, default=None, help="Ray address.")
     args, _ = parser.parse_known_args()
-    ray.init()
+    ray.init(address=args.address)
 
     dataloader = get_data_loader()
     if not args.smoke_test:

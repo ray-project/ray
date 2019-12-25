@@ -35,11 +35,16 @@ matrix:
         - ./java/test.sh
 
     - os: linux
-      env: BAZEL_PYTHON_VERSION=PY3 PYTHON=3.5 PYTHONWARNINGS=ignore TESTSUITE=streaming
+      env:
+        - TESTSUITE=streaming
+        - JDK='Oracle JDK 8'
+        - RAY_INSTALL_JAVA=1
+        - BAZEL_PYTHON_VERSION=PY3
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
       install:
         - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED != "1" ]; then exit; fi
+        - if [[ $RAY_CI_STREAMING_PYTHON_AFFECTED != "1" && $RAY_CI_STREAMING_JAVA_AFFECTED != "1" ]]; then exit; fi
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
@@ -47,7 +52,8 @@ matrix:
       script:
         # Streaming cpp test.
         - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh; fi
-        - if [ RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/streaming/tests/; fi
+        - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
+        - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
@@ -145,8 +151,8 @@ script:
   - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
   # ray serve tests
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || RAY_FORCE_DIRECT=0 ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
 
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
