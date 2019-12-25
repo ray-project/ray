@@ -1431,7 +1431,9 @@ ray.get(actor.ping.remote())
 
 
 def test_kill(ray_start_regular):
-    @ray.remote
+    # Set max_reconstructions to 0 so this actor won't be
+    # reconstructed after it is killed.
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def hang(self):
             # Never returns.
