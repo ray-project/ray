@@ -1431,13 +1431,13 @@ ray.get(actor.ping.remote())
 
 
 def test_kill(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def hang(self):
             # Never returns.
             ray.get(ray.ObjectID.from_random())
 
-    actor = Actor.remote(max_reconstructions=0)
+    actor = Actor.remote()
     result = actor.hang.remote()
     ready, _ = ray.wait([result], timeout=0.1)
     assert len(ready) == 0
