@@ -72,8 +72,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
-              ObjectManager &object_manager,
+  NodeManager(boost::asio::io_service &io_service, const ClientID &self_node_id,
+              const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::RedisGcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
@@ -99,6 +99,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Status indicating whether this was done successfully or not.
   ray::Status RegisterGcs();
 
+  /// Get initial node manager configuration.
+  const NodeManagerConfig &GetInitialConfig() const;
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -113,16 +116,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
  private:
   /// Methods for handling clients.
 
-  /// Handler for the addition of a new GCS client.
+  /// Handler for the addition of a new node.
   ///
-  /// \param data Data associated with the new client.
+  /// \param data Data associated with the new node.
   /// \return Void.
-  void ClientAdded(const GcsNodeInfo &data);
+  void NodeAdded(const GcsNodeInfo &data);
 
-  /// Handler for the removal of a GCS client.
-  /// \param node_info Data associated with the removed client.
+  /// Handler for the removal of a GCS node.
+  /// \param node_info Data associated with the removed node.
   /// \return Void.
-  void ClientRemoved(const GcsNodeInfo &node_info);
+  void NodeRemoved(const GcsNodeInfo &node_info);
 
   /// Handler for the addition or updation of a resource in the GCS
   /// \param client_id ID of the node that created or updated resources.
@@ -559,8 +562,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
 
-  // GCS client ID for this node.
-  ClientID client_id_;
+  /// ID of this node.
+  ClientID self_node_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new

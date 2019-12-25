@@ -16,173 +16,63 @@ class ReferenceCountTest : public ::testing::Test {
   virtual void TearDown() {}
 };
 
-// Tests basic incrementing/decrementing of direct reference counts. An entry should only
-// be removed once its reference count reaches zero.
+// Tests basic incrementing/decrementing of direct/submitted task reference counts. An
+// entry should only be removed once both of its reference counts reach zero.
 TEST_F(ReferenceCountTest, TestBasic) {
   std::vector<ObjectID> out;
-  ObjectID id = ObjectID::FromRandom();
-  rc->AddLocalReference(id);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  rc->AddLocalReference(id);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  rc->AddLocalReference(id);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  rc->RemoveLocalReference(id, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  ASSERT_EQ(out.size(), 0);
-  rc->RemoveLocalReference(id, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  ASSERT_EQ(out.size(), 0);
-  rc->RemoveLocalReference(id, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
-  ASSERT_EQ(out.size(), 1);
-}
 
-// Tests the basic logic for dependencies - when an ObjectID with dependencies
-// goes out of scope (i.e., reference count reaches zero), all of its dependencies
-// should have their reference count decremented and be removed if it reaches zero.
-TEST_F(ReferenceCountTest, TestDependencies) {
-  std::vector<ObjectID> out;
   ObjectID id1 = ObjectID::FromRandom();
   ObjectID id2 = ObjectID::FromRandom();
-  ObjectID id3 = ObjectID::FromRandom();
 
-  std::shared_ptr<std::vector<ObjectID>> deps = std::make_shared<std::vector<ObjectID>>();
-  deps->push_back(id2);
-  deps->push_back(id3);
-  rc->AddOwnedObject(id1, TaskID::Nil(), rpc::Address(), deps);
-
+  // Local references.
   rc->AddLocalReference(id1);
-  rc->AddLocalReference(id1);
-  rc->AddLocalReference(id3);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
-
-  rc->RemoveLocalReference(id1, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
-  ASSERT_EQ(out.size(), 0);
-  rc->RemoveLocalReference(id1, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  ASSERT_EQ(out.size(), 2);
-
-  rc->RemoveLocalReference(id3, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
-  ASSERT_EQ(out.size(), 3);
-}
-
-// Tests the case where two entries share the same set of dependencies. When one
-// entry goes out of scope, it should decrease the reference count for the dependencies
-// but they should still be nonzero until the second entry goes out of scope and all
-// direct dependencies to the dependencies are removed.
-TEST_F(ReferenceCountTest, TestSharedDependencies) {
-  std::vector<ObjectID> out;
-  ObjectID id1 = ObjectID::FromRandom();
-  ObjectID id2 = ObjectID::FromRandom();
-  ObjectID id3 = ObjectID::FromRandom();
-  ObjectID id4 = ObjectID::FromRandom();
-
-  std::shared_ptr<std::vector<ObjectID>> deps = std::make_shared<std::vector<ObjectID>>();
-  deps->push_back(id3);
-  deps->push_back(id4);
-  rc->AddOwnedObject(id1, TaskID::Nil(), rpc::Address(), deps);
-  rc->AddOwnedObject(id2, TaskID::Nil(), rpc::Address(), deps);
-
   rc->AddLocalReference(id1);
   rc->AddLocalReference(id2);
-  rc->AddLocalReference(id4);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
-
-  rc->RemoveLocalReference(id1, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
-  ASSERT_EQ(out.size(), 1);
-  rc->RemoveLocalReference(id2, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  ASSERT_EQ(out.size(), 3);
-
-  rc->RemoveLocalReference(id4, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
-  ASSERT_EQ(out.size(), 4);
-}
-
-// Tests the case when an entry has a dependency that itself has a
-// dependency. In this case, when the first entry goes out of scope
-// it should decrease the reference count for its dependency, causing
-// that entry to go out of scope and decrease its dependencies' reference counts.
-TEST_F(ReferenceCountTest, TestRecursiveDependencies) {
-  std::vector<ObjectID> out;
-  ObjectID id1 = ObjectID::FromRandom();
-  ObjectID id2 = ObjectID::FromRandom();
-  ObjectID id3 = ObjectID::FromRandom();
-  ObjectID id4 = ObjectID::FromRandom();
-
-  std::shared_ptr<std::vector<ObjectID>> deps2 =
-      std::make_shared<std::vector<ObjectID>>();
-  deps2->push_back(id3);
-  deps2->push_back(id4);
-  rc->AddOwnedObject(id2, TaskID::Nil(), rpc::Address(), deps2);
-
-  std::shared_ptr<std::vector<ObjectID>> deps1 =
-      std::make_shared<std::vector<ObjectID>>();
-  deps1->push_back(id2);
-  rc->AddOwnedObject(id1, TaskID::Nil(), rpc::Address(), deps1);
-
-  rc->AddLocalReference(id1);
-  rc->AddLocalReference(id2);
-  rc->AddLocalReference(id4);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
-
-  rc->RemoveLocalReference(id2, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
-  ASSERT_EQ(out.size(), 0);
-  rc->RemoveLocalReference(id1, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  ASSERT_EQ(out.size(), 3);
-
-  rc->RemoveLocalReference(id4, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
-  ASSERT_EQ(out.size(), 4);
-}
-
-TEST_F(ReferenceCountTest, TestRemoveDependenciesOnly) {
-  std::vector<ObjectID> out;
-  ObjectID id1 = ObjectID::FromRandom();
-  ObjectID id2 = ObjectID::FromRandom();
-  ObjectID id3 = ObjectID::FromRandom();
-  ObjectID id4 = ObjectID::FromRandom();
-
-  std::shared_ptr<std::vector<ObjectID>> deps2 =
-      std::make_shared<std::vector<ObjectID>>();
-  deps2->push_back(id3);
-  deps2->push_back(id4);
-  rc->AddOwnedObject(id2, TaskID::Nil(), rpc::Address(), deps2);
-
-  std::shared_ptr<std::vector<ObjectID>> deps1 =
-      std::make_shared<std::vector<ObjectID>>();
-  deps1->push_back(id2);
-  rc->AddOwnedObject(id1, TaskID::Nil(), rpc::Address(), deps1);
-
-  rc->AddLocalReference(id1);
-  rc->AddLocalReference(id2);
-  rc->AddLocalReference(id4);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
-
-  rc->RemoveDependencies(id2, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
-  ASSERT_EQ(out.size(), 1);
-  rc->RemoveDependencies(id1, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
-  ASSERT_EQ(out.size(), 1);
-
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
-  ASSERT_EQ(out.size(), 2);
-
+  ASSERT_EQ(out.size(), 0);
   rc->RemoveLocalReference(id2, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  ASSERT_EQ(out.size(), 3);
-
-  rc->RemoveLocalReference(id4, &out);
+  ASSERT_EQ(out.size(), 1);
+  rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
-  ASSERT_EQ(out.size(), 4);
+  ASSERT_EQ(out.size(), 2);
+  out.clear();
+
+  // Submitted task references.
+  rc->AddSubmittedTaskReferences({id1});
+  rc->AddSubmittedTaskReferences({id1, id2});
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
+  rc->RemoveSubmittedTaskReferences({id1}, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
+  ASSERT_EQ(out.size(), 0);
+  rc->RemoveSubmittedTaskReferences({id2}, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
+  ASSERT_EQ(out.size(), 1);
+  rc->RemoveSubmittedTaskReferences({id1}, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+  ASSERT_EQ(out.size(), 2);
+  out.clear();
+
+  // Local & submitted task references.
+  rc->AddLocalReference(id1);
+  rc->AddSubmittedTaskReferences({id1, id2});
+  rc->AddLocalReference(id2);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
+  rc->RemoveLocalReference(id1, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
+  ASSERT_EQ(out.size(), 0);
+  rc->RemoveSubmittedTaskReferences({id2}, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
+  ASSERT_EQ(out.size(), 0);
+  rc->RemoveSubmittedTaskReferences({id1}, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
+  ASSERT_EQ(out.size(), 1);
+  rc->RemoveLocalReference(id2, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
+  ASSERT_EQ(out.size(), 2);
+  out.clear();
 }
 
 // Tests that we can get the owner address correctly for objects that we own,
@@ -193,8 +83,7 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   TaskID task_id = TaskID::ForFakeTask();
   rpc::Address address;
   address.set_ip_address("1234");
-  auto deps = std::make_shared<std::vector<ObjectID>>();
-  rc->AddOwnedObject(object_id, task_id, address, deps);
+  rc->AddOwnedObject(object_id, task_id, address);
 
   TaskID added_id;
   rpc::Address added_address;
@@ -205,7 +94,7 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   auto object_id2 = ObjectID::FromRandom();
   task_id = TaskID::ForFakeTask();
   address.set_ip_address("5678");
-  rc->AddOwnedObject(object_id2, task_id, address, deps);
+  rc->AddOwnedObject(object_id2, task_id, address);
   ASSERT_TRUE(rc->GetOwner(object_id2, &added_id, &added_address));
   ASSERT_EQ(task_id, added_id);
   ASSERT_EQ(address.ip_address(), added_address.ip_address());

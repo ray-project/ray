@@ -179,19 +179,29 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
+  public Object getAsyncContext() {
+    return getCurrentRuntime();
+  }
+
+  @Override
+  public void setAsyncContext(Object asyncContext) {
+    currentThreadRuntime.set((RayNativeRuntime)asyncContext);
+  }
+
+  @Override
   public Runnable wrapRunnable(Runnable runnable) {
-    RayNativeRuntime runtime = getCurrentRuntime();
+    Object asyncContext = getAsyncContext();
     return () -> {
-      currentThreadRuntime.set(runtime);
+      setAsyncContext(asyncContext);
       runnable.run();
     };
   }
 
   @Override
   public Callable wrapCallable(Callable callable) {
-    RayNativeRuntime runtime = getCurrentRuntime();
+    Object asyncContext = getAsyncContext();
     return () -> {
-      currentThreadRuntime.set(runtime);
+      setAsyncContext(asyncContext);
       return callable.call();
     };
   }

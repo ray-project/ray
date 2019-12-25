@@ -1431,6 +1431,22 @@ ray.get(actor.ping.remote())
     assert ray.get(detached_actor.ping.remote()) == "pong"
 
 
+def test_kill(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def hang(self):
+            # Never returns.
+            ray.get(ray.ObjectID.from_random())
+
+    actor = Actor.remote()
+    result = actor.hang.remote()
+    ready, _ = ray.wait([result], timeout=0.1)
+    assert len(ready) == 0
+    actor.__ray_kill__()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(result, timeout=1)
+
+
 if __name__ == "__main__":
     import pytest
     import sys
