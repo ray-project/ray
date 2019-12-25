@@ -150,7 +150,8 @@ class RayTrialExecutor(TrialExecutor):
             remote = _LocalWrapper(remote)
 
         self._running[remote] = trial
-        assert len(self._find_item(self._running, trial)) < 2
+        trial_item = self._find_item(self._running, trial)
+        assert len(trial_item) < 2, trial_item
 
     def _start_trial(self, trial, checkpoint=None, runner=None):
         """Starts trial and restores last result if trial was paused.
