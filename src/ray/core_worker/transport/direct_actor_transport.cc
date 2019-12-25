@@ -286,7 +286,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       }
 
       if (task_spec.IsActorCreationTask()) {
-        RAY_LOG(INFO) << "finish actor creation task " << task_spec.TaskId()
+        RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
                       << ", actor_id: " << task_spec.ActorCreationId();
         RAY_CHECK_OK(local_raylet_client_->TaskDone());
       }
