@@ -324,6 +324,10 @@ class SchedulingQueue {
     ScheduleRequests();
   }
 
+  int64_t NumPendingTasks() {
+    return pending_tasks_.size();
+  }
+
  private:
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
@@ -463,6 +467,8 @@ class CoreWorkerDirectTaskReceiver {
   void SetMaxActorConcurrency(int max_concurrency);
 
   void SetActorAsAsync();
+
+  int64_t SizeSchedulingQueue();
 
  private:
   // Worker context.

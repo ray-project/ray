@@ -1036,7 +1036,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   reply->set_webui_display(webui_display_);
-  reply->set_task_queue_length(task_manager_->NumPendingTask());
+  // RAY_LOG(DEBUG) << "YYY task queue length" << direct_task_receiver_->SizeSchedulingQueue();
+  reply->set_task_queue_length(direct_task_receiver_->SizeSchedulingQueue());
+  // reply->set_task_queue_length(task_manager_->NumPendingTask());
   reply->set_current_executed_task("test");
   reply->set_ip_address(rpc_address_.ip_address());
   reply->set_port(rpc_address_.port());

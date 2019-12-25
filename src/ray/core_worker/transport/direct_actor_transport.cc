@@ -310,4 +310,13 @@ void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+int64_t CoreWorkerDirectTaskReceiver::SizeSchedulingQueue() {
+  int64_t size_scheduling_queue = 0;
+  for (auto const& it : scheduling_queue_) {
+    size_scheduling_queue += it.second->NumPendingTasks();
+  }
+  RAY_LOG(DEBUG) << "YYY Size of Scheduling Queue" << size_scheduling_queue;
+  return size_scheduling_queue; 
+}
+
 }  // namespace ray

@@ -3046,7 +3046,6 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
             worker_stats->set_port(r.port());
             worker_stats->set_actor_id(r.actor_id());
             // worker_stats->set_used_resources(r.used_resources());
-            RAY_LOG(WARNING) << "XXX " << all_workers.size();
             if (reply->num_workers() == all_workers.size()) {
               send_reply_callback(Status::OK(), nullptr, nullptr);
             }
