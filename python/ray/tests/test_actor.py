@@ -1437,7 +1437,7 @@ def test_kill(ray_start_regular):
             # Never returns.
             ray.get(ray.ObjectID.from_random())
 
-    actor = Actor.remote()
+    actor = Actor.remote(max_reconstructions=0)
     result = actor.hang.remote()
     ready, _ = ray.wait([result], timeout=0.1)
     assert len(ready) == 0
