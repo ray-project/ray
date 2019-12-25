@@ -5,6 +5,7 @@
 
 #include <string>
 
+#include "gtest/gtest.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/util/util.h"
@@ -57,6 +58,34 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 std::shared_ptr<RayObject> GenerateRandomObject() {
   return std::shared_ptr<RayObject>(new RayObject(GenerateRandomBuffer(), nullptr));
 }
+
+/// Path to redis server executable binary.
+std::string REDIS_SERVER_EXEC_PATH;
+/// Path to redis client executable binary.
+std::string REDIS_CLIENT_EXEC_PATH;
+/// Path to redis module library.
+std::string REDIS_MODULE_LIBRARY_PATH;
+
+/// Test helper class, it will start redis server before the test runs,
+/// and stop redis server after the test is completed.
+class ManageRedisServiceForTest : public ::testing::Test {
+ public:
+  static void SetUpTestCase() {
+    std::string start_redis_command = REDIS_SERVER_EXEC_PATH +
+                                      " --loglevel warning --loadmodule " +
+                                      REDIS_MODULE_LIBRARY_PATH + " --port 6379 &";
+    RAY_LOG(INFO) << "Start redis command is: " << start_redis_command;
+    RAY_CHECK(system(start_redis_command.c_str()) == 0);
+    usleep(200 * 1000);
+  }
+
+  static void TearDownTestCase() {
+    std::string stop_redis_command = REDIS_CLIENT_EXEC_PATH + " -p 6379 shutdown";
+    RAY_LOG(INFO) << "Stop redis command is: " << stop_redis_command;
+    RAY_CHECK(system(stop_redis_command.c_str()) == 0);
+    usleep(100 * 1000);
+  }
+};
 
 }  // namespace ray
 

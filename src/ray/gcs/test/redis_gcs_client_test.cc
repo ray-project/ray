@@ -28,7 +28,7 @@ inline JobID NextJobID() {
   return JobID::FromInt(++counter);
 }
 
-class TestGcs : public ::testing::Test {
+class TestGcs : public ManageRedisServiceForTest {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
     GcsClientOptions options("127.0.0.1", 6379, "", true);
@@ -1442,3 +1442,12 @@ TEST_F(TestGcsWithAsio, TestHashTable) {
 
 }  // namespace gcs
 }  // namespace ray
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  RAY_CHECK(argc == 4);
+  ray::REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  return RUN_ALL_TESTS();
+}

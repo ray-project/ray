@@ -811,10 +811,15 @@ cc_library(
 )
 
 # TODO(micafan) Replace cc_binary with cc_test for GCS test.
-cc_binary(
+cc_test(
     name = "redis_gcs_client_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/redis_gcs_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    data = [
+        "//:redis-server",
+        "//:redis-cli",
+        "//:libray_redis_module.so",
+    ],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -822,10 +827,15 @@ cc_binary(
     ],
 )
 
-cc_binary(
+cc_test(
     name = "redis_actor_info_accessor_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/redis_actor_info_accessor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    data = [
+        "//:redis-server",
+        "//:redis-cli",
+        "//:libray_redis_module.so",
+    ],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -833,10 +843,15 @@ cc_binary(
     ],
 )
 
-cc_binary(
+cc_test(
     name = "subscription_executor_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/subscription_executor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    data = [
+        "//:redis-server",
+        "//:redis-cli",
+        "//:libray_redis_module.so",
+    ],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -844,10 +859,15 @@ cc_binary(
     ],
 )
 
-cc_binary(
+cc_test(
     name = "redis_job_info_accessor_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/redis_job_info_accessor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    data = [
+        "//:redis-server",
+        "//:redis-cli",
+        "//:libray_redis_module.so",
+    ],    
     copts = COPTS,
     deps = [
         ":gcs",

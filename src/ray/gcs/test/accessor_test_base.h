@@ -16,7 +16,7 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data>
-class AccessorTestBase : public ::testing::Test {
+class AccessorTestBase : public ManageRedisServiceForTest {
  public:
   AccessorTestBase() : options_("127.0.0.1", 6379, "", true) {}
 
