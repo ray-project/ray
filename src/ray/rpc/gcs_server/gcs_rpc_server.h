@@ -27,13 +27,13 @@ namespace rpc {
   server_call_factories_and_concurrencies->emplace_back(                                 \
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
-#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                             \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                             \
+#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                            \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                           \
       new ServerCallFactoryImpl<NodeInfoGcsService, NodeInfoHandler, HANDLER##Request, \
-                                HANDLER##Reply>(                                         \
-          service_, &NodeInfoGcsService::AsyncService::Request##HANDLER,                \
-          service_handler_, &NodeInfoHandler::Handle##HANDLER, cq, main_service_));     \
-  server_call_factories_and_concurrencies->emplace_back(                                 \
+                                HANDLER##Reply>(                                       \
+          service_, &NodeInfoGcsService::AsyncService::Request##HANDLER,               \
+          service_handler_, &NodeInfoHandler::Handle##HANDLER, cq, main_service_));    \
+  server_call_factories_and_concurrencies->emplace_back(                               \
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
 class JobInfoHandler {
