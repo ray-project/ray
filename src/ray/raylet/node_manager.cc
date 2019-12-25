@@ -2215,7 +2215,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   }
 
   RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
-                 << worker->Pid();
+                 << worker->Pid() << ", worker id: " << worker->WorkderId();
   flatbuffers::FlatBufferBuilder fbb;
 
   // Resource accounting: acquire resources for the assigned task.
@@ -2248,7 +2248,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
     post_assign_callbacks->push_back([this, worker, task_id]() {
       RAY_LOG(DEBUG) << "Finished assigning task " << task_id << " to worker "
                      << worker->WorkerId();
-      ;
+
       FinishAssignTask(worker, task_id, /*success=*/true);
     });
   } else {
