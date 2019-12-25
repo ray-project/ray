@@ -9,7 +9,7 @@ void DefaultNodeInfoHandler::HandleRegisterNodeInfo(
     rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id;
-  Status status = gcs_client_.Nodes().RegisterSelf(request.node_info());
+  Status status = gcs_client_.Nodes().Register(request.node_info());
   if (!status.ok()) {
     RAY_LOG(DEBUG) << "Failed to register node info, node id = " << node_id;
   }

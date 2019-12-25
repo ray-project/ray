@@ -251,6 +251,11 @@ const GcsNodeInfo &RedisNodeInfoAccessor::GetSelfInfo() const {
   return client_table.GetLocalClient();
 }
 
+Status RedisNodeInfoAccessor::Register(const GcsNodeInfo &node_info) {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.Register(node_info);
+}
+
 Status RedisNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
                                               const StatusCallback &callback) {
   ClientTable::WriteCallback on_done = nullptr;
