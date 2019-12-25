@@ -125,12 +125,12 @@ Status RedisActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, subscribe, done);
+  return actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
 }
 
 Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                                 const StatusCallback &done) {
-  return actor_sub_executor_.AsyncUnsubscribe(node_id_, actor_id, done);
+  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
 }
 
 RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)
@@ -283,12 +283,12 @@ Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
     const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return object_sub_executor_.AsyncSubscribe(node_id_, object_id, subscribe, done);
+  return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
 }
 
 Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id,
                                                             const StatusCallback &done) {
-  return object_sub_executor_.AsyncUnsubscribe(node_id_, object_id, done);
+  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
 }
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)

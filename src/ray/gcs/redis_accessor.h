@@ -54,7 +54,7 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
   // And because the new GCS Client will no longer hold the local ClientID, so we use
   // random ClientID instead.
   // TODO(micafan): Remove this random id, once GCS becomes a service.
-  ClientID node_id_{ClientID::FromRandom()};
+  ClientID subscribe_id_{ClientID::FromRandom()};
 
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
@@ -167,7 +167,7 @@ class RedisObjectInfoAccessor : public ObjectInfoAccessor {
   // And because the new GCS Client will no longer hold the local ClientID, so we use
   // random ClientID instead.
   // TODO(micafan): Remove this random id, once GCS becomes a service.
-  ClientID node_id_{ClientID::FromRandom()};
+  ClientID subscribe_id_{ClientID::FromRandom()};
 
   typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
       ObjectSubscriptionExecutor;
