@@ -28,7 +28,7 @@ inline JobID NextJobID() {
   return JobID::FromInt(++counter);
 }
 
-class TestGcs : public ManageRedisServiceForTest {
+class TestGcs : public RedisServiceManagerForTest {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
     job_id_ = NextJobID();

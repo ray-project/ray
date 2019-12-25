@@ -31,7 +31,7 @@ void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
   io_service.stop();
 }
 
-class RedisAsioTest : public ManageRedisServiceForTest {};
+class RedisAsioTest : public RedisServiceManagerForTest {};
 
 TEST_F(RedisAsioTest, TestRedisCommands) {
   redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", REDIS_SERVER_PORT);

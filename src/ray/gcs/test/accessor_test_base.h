@@ -16,7 +16,7 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data>
-class AccessorTestBase : public ManageRedisServiceForTest {
+class AccessorTestBase : public RedisServiceManagerForTest {
  public:
   AccessorTestBase() {}
 

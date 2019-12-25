@@ -71,7 +71,7 @@ int REDIS_SERVER_PORT;
 
 /// Test helper class, it will start redis server before the test runs,
 /// and stop redis server after the test is completed.
-class ManageRedisServiceForTest : public ::testing::Test {
+class RedisServiceManagerForTest : public ::testing::Test {
  public:
   static void SetUpTestCase() {
     auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();

@@ -11,7 +11,7 @@ static std::string redis_server_executable;
 static std::string redis_client_executable;
 static std::string libray_redis_module_path;
 
-class GcsServerTest : public ManageRedisServiceForTest {
+class GcsServerTest : public RedisServiceManagerForTest {
  public:
   using CallFunction = std::function<void(std::promise<bool> &promise)>;
 
