@@ -288,6 +288,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       if (task_spec.IsActorCreationTask()) {
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
                       << ", actor_id: " << task_spec.ActorCreationId();
+        // Tell raylet that an actor creation task has finished execution, so that
+        // raylet can publish actor creation event to GCS, and mark this worker as
+        // actor, thus if this worker dies later raylet will reconstruct the actor.
         RAY_CHECK_OK(local_raylet_client_->TaskDone());
       }
     }
