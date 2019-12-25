@@ -1,3 +1,7 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from setuptools import setup
 import os
 import re
@@ -81,8 +85,7 @@ setup(
     version=find_version(),
     description="Package all ray java resources so that ray can create java process "
                 "in python",
-    long_description="Package all ray java resources so that python can create ray-related "
-                     "java process",
+    long_description=open("README.rst").read(),
     url="https://github.com/ray-project/ray",
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
