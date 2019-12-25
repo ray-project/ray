@@ -38,7 +38,6 @@ class TrainableUtil(object):
         for basedir, _, file_names in os.walk(checkpoint_dir):
             for file_name in file_names:
                 path = os.path.join(basedir, file_name)
-
                 with open(path, "rb") as f:
                     data[os.path.relpath(path, checkpoint_dir)] = f.read()
         data_dict = pickle.dumps({
@@ -54,13 +53,17 @@ class TrainableUtil(object):
         Raises:
             FileNotFoundError if the directory is not found.
         """
-        checkpoint_dir = os.path.dirname(checkpoint_path)
+        if os.path.isdir(checkpoint_path):
+            checkpoint_dir = checkpoint_path
+        else:
+            checkpoint_dir = os.path.dirname(checkpoint_path)
         while checkpoint_dir != os.path.dirname(checkpoint_dir):
-            if os.path.isfile(os.path.join(checkpoint_dir, ".is_checkpoint")):
+            if os.path.exists(os.path.join(checkpoint_dir, ".is_checkpoint")):
                 break
             checkpoint_dir = os.path.dirname(checkpoint_dir)
         else:
-            raise FileNotFoundError("Checkpoint directory not found.")
+            raise FileNotFoundError("Checkpoint directory not found for {}."
+                                    .format(checkpoint_path))
         return checkpoint_dir
 
     @staticmethod
@@ -303,6 +306,8 @@ class Trainable(object):
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
                         checkpoint_dir, checkpoint))
+            if os.path.isdir(checkpoint):
+                checkpoint = os.path.join(checkpoint, "")  # trailing slash
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True

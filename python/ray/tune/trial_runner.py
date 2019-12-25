@@ -486,7 +486,11 @@ class TrialRunner(object):
             self._process_trial_failure(trial, traceback.format_exc())
 
     def _process_trial_restore(self, trial):
-        """Processes a trial restore."""
+        """Processes a trial restore.
+
+        Args:
+            trial: Trial being restored.
+        """
         try:
             self.trial_executor.fetch_result(trial)
             trial.on_restore()
