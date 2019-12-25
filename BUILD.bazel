@@ -875,10 +875,15 @@ cc_test(
     ],
 )
 
-cc_binary(
+cc_test(
     name = "asio_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/asio_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    data = [
+        "//:redis-server",
+        "//:redis-cli",
+        "//:libray_redis_module.so",
+    ],  
     copts = COPTS,
     deps = [
         ":gcs",
