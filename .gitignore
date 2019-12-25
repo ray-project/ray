@@ -145,6 +145,8 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
+java/dist/dist
+java/dist/ray_java/jars
 
 # streaming/python
 streaming/python/generated/
