@@ -71,7 +71,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
                 # Wait for new created actors to finish creation before
                 # removing a node. This is needed because right now we don't
                 # support reconstructing actors that died in the process of
-                #being created.
+                # being created.
                 ready, _ = ray.wait(
                     children_out,
                     num_returns=len(children_out),
