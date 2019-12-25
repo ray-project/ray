@@ -9,18 +9,25 @@ from ray.tune.syncer import get_cloud_sync_client
 
 
 class DurableTrainable(Trainable):
-    """Experimental API for a remote-storage backed fault-tolerant Trainable.
+    """Abstract class for a remote-storage backed fault-tolerant Trainable.
 
-    Supports checkpointing to and restoring from remote storage.
+    Supports checkpointing to and restoring from remote storage. To use this
+    class, implement the same private methods as ray.tune.Trainable (`_save`,
+    `_train`, `_restore`, `reset_config`, `_setup`, `_stop`).
 
-    The storage client must provide durability for restoration to work. That
-    is, once ``storage.client.wait()`` returns after a checkpoint `sync up`,
-    the checkpoint is considered committed and can be used to restore the
-    trainable.
+    .. warning:: This class is currently **experimental** and may
+        be subject to change.
 
     Run this with Tune as follows. Setting `sync_to_driver=False` disables
     syncing to the driver to avoid keeping redundant checkpoints around, as
     well as preventing the driver from syncing up the same checkpoint.
+
+    See ``tune/trainable.py``.
+
+    Attributes:
+        remote_checkpoint_dir (str):  Upload directory (S3 or GS path).
+        storage_client: Tune-internal interface for interacting with external
+            storage.
 
     >>> tune.run(MyDurableTrainable, sync_to_driver=False)
     """
@@ -37,6 +44,11 @@ class DurableTrainable(Trainable):
 
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint, persisted remotely.
+
+        The storage client must provide durability for
+        restoration to work. That is, once ``storage.client.wait()``
+        returns after a checkpoint `sync up`, the checkpoint is considered
+        committed and can be used to restore the trainable.
 
         Args:
             checkpoint_dir (Optional[str]): Optional dir to place the
