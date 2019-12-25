@@ -113,7 +113,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
     AsyncCall(call_function, timeout_ms_);
   }
 
-  void TestRegisterNodeInfo(const rpc::RegisterNodeInfoRequest &request) {
+  void RegisterNodeInfo(const rpc::RegisterNodeInfoRequest &request) {
     auto call_function = [this, request](std::promise<bool> &promise) {
       client_->RegisterNodeInfo(
           request,
@@ -125,7 +125,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
     AsyncCall(call_function, timeout_ms_);
   }
 
-  void TestUnregisterNodeInfo(const rpc::UnregisterNodeInfoRequest &request) {
+  void UnregisterNodeInfo(const rpc::UnregisterNodeInfoRequest &request) {
     auto call_function = [this, request](std::promise<bool> &promise) {
       client_->UnregisterNodeInfo(
           request,
@@ -251,7 +251,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   // Register node info
   rpc::RegisterNodeInfoRequest register_node_info_request;
   register_node_info_request.mutable_node_info()->CopyFrom(gcs_node_info);
-  TestRegisterNodeInfo(register_node_info_request);
+  RegisterNodeInfo(register_node_info_request);
   std::vector<rpc::GcsNodeInfo> node_infos;
   GetAllNodesInfo(node_infos);
   ASSERT_TRUE(node_infos.size() == 1);
@@ -261,7 +261,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   // Unregister node info
   rpc::UnregisterNodeInfoRequest unregister_node_info_request;
   unregister_node_info_request.set_node_id(node_id.Binary());
-  TestUnregisterNodeInfo(unregister_node_info_request);
+  UnregisterNodeInfo(unregister_node_info_request);
   GetAllNodesInfo(node_infos);
   ASSERT_TRUE(node_infos.size() == 2);
   ASSERT_TRUE(node_infos[1].state() ==
