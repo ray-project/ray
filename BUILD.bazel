@@ -810,7 +810,7 @@ cc_library(
     ],
 )
 
-# TODO(micafan) Replace cc_binary with cc_test for GCS test.
+# TODO(micafan) Support test group in future. Use test group we can run all gcs test once.
 cc_test(
     name = "redis_gcs_client_test",
     srcs = ["src/ray/gcs/test/redis_gcs_client_test.cc"],
