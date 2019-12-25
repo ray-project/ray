@@ -14,6 +14,7 @@ import ray.ray_constants as ray_constants
 
 RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
+
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 4,
@@ -63,18 +64,23 @@ def test_actor_creation_node_failure(ray_start_cluster):
                 except ray.exceptions.RayActorError:
                     children[i] = Child.remote(death_probability)
 
-            if (RAY_FORCE_DIRECT) :
-                children_out = [child.get_probability.remote() for child in children]
+            if (RAY_FORCE_DIRECT):
+                children_out = [
+                    child.get_probability.remote() for child in children
+                ]
                 # Wait for new created actors to finish creation before removing a node.
                 # This is needed because right now we don't support reconstructing actors
                 # that died in the process of being created.
                 ready, _ = ray.wait(
-                    children_out, num_returns=len(children_out), timeout=5 * 60.0)
+                    children_out,
+                    num_returns=len(children_out),
+                    timeout=5 * 60.0)
                 assert len(ready) == len(children_out)
 
         # Remove a node. Any actor creation tasks that were forwarded to this
         # node must be reconstructed.
         cluster.remove_node(cluster.list_all_nodes()[-1])
+
 
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
