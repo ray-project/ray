@@ -59,7 +59,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
                         promise.set_value(true);
                       });
     };
-    AsyncCall(call_function, timeout_ms_);
+    ASSERT_TRUE(WaitReady(call_function, timeout_ms_));
   }
 
   void TestMarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
@@ -71,7 +71,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
             promise.set_value(true);
           });
     };
-    AsyncCall(call_function, timeout_ms_);
+    ASSERT_TRUE(WaitReady(call_function, timeout_ms_));
   }
 
   void TestRegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
@@ -83,7 +83,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
             promise.set_value(true);
           });
     };
-    AsyncCall(call_function, timeout_ms_);
+    ASSERT_TRUE(WaitReady(call_function, timeout_ms_));
   }
 
   void TestUpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
@@ -95,7 +95,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
             promise.set_value(true);
           });
     };
-    AsyncCall(call_function, timeout_ms_);
+    ASSERT_TRUE(WaitReady(call_function, timeout_ms_));
   }
 
   void TestGetActorInfo(const rpc::ActorTableData &expected) {
@@ -110,7 +110,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
             ASSERT_TRUE(reply.actor_table_data().state() == expected.state());
           });
     };
-    AsyncCall(call_function, timeout_ms_);
+    ASSERT_TRUE(WaitReady(call_function, timeout_ms_));
   }
 
   void RegisterNodeInfo(const rpc::RegisterNodeInfoRequest &request) {
@@ -122,7 +122,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
             promise.set_value(true);
           });
     };
-    AsyncCall(call_function, timeout_ms_);
+    ASSERT_TRUE(WaitReady(call_function, timeout_ms_));
   }
 
   void UnregisterNodeInfo(const rpc::UnregisterNodeInfoRequest &request) {
@@ -134,7 +134,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
             promise.set_value(true);
           });
     };
-    AsyncCall(call_function, timeout_ms_);
+    ASSERT_TRUE(WaitReady(call_function, timeout_ms_));
   }
 
   void GetAllNodesInfo(std::vector<rpc::GcsNodeInfo> &node_infos) {
@@ -151,15 +151,15 @@ class GcsServerTest : public RedisServiceManagerForTest {
             }
           });
     };
-    AsyncCall(call_function, timeout_ms_);
+    ASSERT_TRUE(WaitReady(call_function, timeout_ms_));
   }
 
-  void AsyncCall(const CallFunction &function, uint64_t timeout_ms) {
+  bool WaitReady(const CallFunction &function, uint64_t timeout_ms) {
     std::promise<bool> promise_;
     auto future = promise_.get_future();
     function(promise_);
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
-    ASSERT_EQ(status, std::future_status::ready);
+    return status == std::future_status::ready;
   }
 
   rpc::JobTableData GenJobTableData(JobID job_id) {
