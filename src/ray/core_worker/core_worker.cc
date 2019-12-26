@@ -101,13 +101,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  direct_actor_table_subscriber_ = std::unique_ptr<
-      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>(
-      new gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>(
-          gcs_client_->direct_actor_table()));
-
-  actor_manager_ =
-      std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->direct_actor_table()));
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
@@ -194,8 +187,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(new TaskManager(
-      memory_store_, reference_counter_, actor_manager_,
-      [this](const TaskSpecification &spec) {
+      memory_store_, reference_counter_, nullptr, [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
@@ -301,8 +293,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   if (actor_id_.IsNil() && task_id.IsNil()) {
     absl::MutexLock lock(&actor_handles_mutex_);
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncUnsubscribe(
-          subscribe_id_, handle.first, nullptr));
+      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
     actor_handles_.clear();
   }
@@ -749,8 +740,20 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
-      RAY_CHECK(actor_data.state() != gcs::ActorTableData::RECONSTRUCTING);
-      if (actor_data.state() == gcs::ActorTableData::DEAD) {
+      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+        absl::MutexLock lock(&actor_handles_mutex_);
+        auto it = actor_handles_.find(actor_id);
+        RAY_CHECK(it != actor_handles_.end());
+        if (it->second->IsDirectCallActor()) {
+          // We have to reset the actor handle since the next instance of the
+          // actor will not have the last sequence number that we sent.
+          // TODO: Remove the check for direct calls. We do not reset for the
+          // raylet codepath because it tries to replay all tasks since the
+          // last actor checkpoint.
+          it->second->Reset();
+        }
+        direct_actor_submitter_->DisconnectActor(actor_id, false);
+      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
 
         ActorHandle *actor_handle = nullptr;
@@ -772,8 +775,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                     << ClientID::FromBinary(actor_data.address().raylet_id());
     };
 
-    RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
-        subscribe_id_, actor_id, actor_notification_callback, nullptr));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+        actor_id, actor_notification_callback, nullptr));
   }
   return inserted;
 }
