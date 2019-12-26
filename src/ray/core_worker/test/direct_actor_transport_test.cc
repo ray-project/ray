@@ -1,6 +1,5 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
@@ -45,6 +44,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                          const rpc::Address *addr));
   MOCK_METHOD3(PendingTaskFailed,
                void(const TaskID &task_id, rpc::ErrorType error_type, Status *status));
+
+  MOCK_METHOD1(OnTaskDependenciesInlined, void(const std::vector<ObjectID> &object_ids));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {

@@ -106,7 +106,7 @@ class RayParams(object):
                  redirect_output=None,
                  num_redis_shards=None,
                  redis_max_clients=None,
-                 redis_password=None,
+                 redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
                  plasma_directory=None,
                  worker_path=None,
                  huge_pages=False,

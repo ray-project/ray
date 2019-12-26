@@ -91,6 +91,25 @@ def test_simple_serialization(ray_start_regular):
             assert type(obj) == type(new_obj_2)
 
 
+def test_background_tasks_with_max_calls(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def g():
+        time.sleep(.1)
+        return 0
+
+    @ray.remote(max_calls=1, max_retries=0)
+    def f():
+        return [g.remote()]
+
+    nested = ray.get([f.remote() for _ in range(10)])
+
+    # Should still be able to retrieve these objects, since f's workers will
+    # wait for g to finish before exiting.
+    ray.get([x[0] for x in nested])
+
+
 def test_fair_queueing(shutdown_only):
     ray.init(
         num_cpus=1, _internal_config=json.dumps({

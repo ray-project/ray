@@ -17,6 +17,7 @@ struct GcsServerConfig {
   std::string redis_address;
   uint16_t redis_port = 6379;
   bool retry_redis = true;
+  bool is_test = false;
 };
 
 /// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
@@ -48,6 +49,9 @@ class GcsServer {
   /// The job info handler
   virtual std::unique_ptr<rpc::JobInfoHandler> InitJobInfoHandler();
 
+  /// The actor info handler
+  virtual std::unique_ptr<rpc::ActorInfoHandler> InitActorInfoHandler();
+
  private:
   /// Gcs server configuration
   GcsServerConfig config_;
@@ -58,6 +62,9 @@ class GcsServer {
   /// Job info handler and service
   std::unique_ptr<rpc::JobInfoHandler> job_info_handler_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
+  /// Actor info handler and service
+  std::unique_ptr<rpc::ActorInfoHandler> actor_info_handler_;
+  std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
 };

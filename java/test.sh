@@ -34,9 +34,6 @@ echo "Running tests under single-process mode."
 # bazel test //java:all_tests --jvmopt="-Dray.run-mode=SINGLE_PROCESS" --test_output="errors" || single_exit_code=$?
 run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp $ROOT_DIR/../bazel-bin/java/all_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/testng.xml
 
-echo "Running streaming tests."
-run_testng java -cp $ROOT_DIR/../bazel-bin/java/streaming_tests_deploy.jar org.testng.TestNG -d /tmp/ray_java_test_output $ROOT_DIR/streaming/testng.xml
-
 popd
 
 pushd $ROOT_DIR

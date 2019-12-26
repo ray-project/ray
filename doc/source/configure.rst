@@ -138,6 +138,13 @@ While Redis port authentication may protect against external attackers,
 Ray does not encrypt traffic between nodes so man-in-the-middle attacks are
 possible for clusters on untrusted networks.
 
+One of most common attack with Redis is port-scanning attack. Attacker scans
+open port with unprotected redis instance and execute arbitrary code. Ray
+enables a default password for redis. Even though this does not prevent brute
+force password cracking, the default password should alleviate most of the
+port-scanning attack. Furtheremore, redis and other ray services are bind
+to localhost when the ray is started using ``ray.init``.
+
 See the `Redis security documentation <https://redis.io/topics/security>`__
 for more information.
 
