@@ -10,12 +10,12 @@ from pygments import formatters, highlight, lexers
 from ray.experimental.serve.context import FakeFlaskQuest, TaskContext
 from ray.experimental.serve.http_util import build_flask_request
 
+
 def parse_request_item(request_item):
     if request_item.request_context == TaskContext.Web:
         is_web_context = True
         asgi_scope, body_bytes = request_item.request_args
-        flask_request = build_flask_request(asgi_scope,
-                                            io.BytesIO(body_bytes))
+        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
         args = (flask_request, )
         kwargs = {}
     else:
@@ -25,6 +25,7 @@ def parse_request_item(request_item):
 
     result_object_id = request_item.result_object_id
     return args, kwargs, is_web_context, result_object_id
+
 
 def _get_logger():
     logger = logging.getLogger("ray.serve")
