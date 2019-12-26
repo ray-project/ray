@@ -157,6 +157,11 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
   static void ConvertMessageListToRawData(
       const std::list<StreamingMessagePtr> &message_list, uint32_t raw_data_size,
       uint8_t *raw_data);
+
+  inline static bool CheckBundleMagicNum(const uint8_t *bytes) {
+    const uint32_t *magic_num = reinterpret_cast<const uint32_t *>(bytes);
+    return *magic_num == StreamingMessageBundleMagicNum;
+  }
 };
 }  // namespace streaming
 }  // namespace ray

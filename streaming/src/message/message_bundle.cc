@@ -56,34 +56,31 @@ StreamingMessageBundleMetaPtr StreamingMessageBundleMeta::FromBytes(const uint8_
   STREAMING_CHECK(bytes);
 
   uint32_t byte_offset = 0;
-  const uint32_t magic_num = *reinterpret_cast<const uint32_t *>(bytes + byte_offset);
-
-  if (magic_num != StreamingMessageBundleMagicNum) {
-    STREAMING_LOG(INFO) << "Magic Number => " << magic_num;
-  }
-
-  STREAMING_CHECK(magic_num == StreamingMessageBundleMagicNum);
+  STREAMING_CHECK(CheckBundleMagicNum(bytes));
   byte_offset += sizeof(uint32_t);
 
-  uint64_t message_bundle_ts = *reinterpret_cast<const uint64_t *>(bytes + byte_offset);
+  const uint64_t *message_bundle_ts =
+      reinterpret_cast<const uint64_t *>(bytes + byte_offset);
   byte_offset += sizeof(uint64_t);
 
-  uint64_t last_message_id = *reinterpret_cast<const uint64_t *>(bytes + byte_offset);
+  const uint64_t *last_message_id =
+      reinterpret_cast<const uint64_t *>(bytes + byte_offset);
   byte_offset += sizeof(uint64_t);
 
-  uint32_t messageListSize = *reinterpret_cast<const uint32_t *>(bytes + byte_offset);
+  const uint32_t *message_list_size =
+      reinterpret_cast<const uint32_t *>(bytes + byte_offset);
   byte_offset += sizeof(uint32_t);
-  STREAMING_LOG(DEBUG) << "ts => " << message_bundle_ts << " last message id => "
-                       << last_message_id << " message size => " << messageListSize;
+  STREAMING_LOG(DEBUG) << "ts => " << *message_bundle_ts << " last message id => "
+                       << *last_message_id << " message size => " << *message_list_size;
 
-  STREAMING_CHECK(messageListSize <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
+  STREAMING_CHECK(message_list_size <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
 
-  StreamingMessageBundleType messageBundleType =
+  const StreamingMessageBundleType *message_bundle_type =
       *reinterpret_cast<const StreamingMessageBundleType *>(bytes + byte_offset);
   byte_offset += sizeof(StreamingMessageBundleType);
 
   auto result = std::make_shared<StreamingMessageBundleMeta>(
-      message_bundle_ts, last_message_id, messageListSize, messageBundleType);
+      *message_bundle_ts, *last_message_id, *message_list_size, *message_bundle_type);
   STREAMING_CHECK(byte_offset == result->ClassBytesSize());
   return result;
 }
