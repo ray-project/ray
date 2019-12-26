@@ -126,17 +126,17 @@ class NodeInfoHandler {
  public:
   virtual ~NodeInfoHandler() = default;
 
-  virtual void HandleRegisterNodeInfo(const RegisterNodeInfoRequest &request,
-                                      RegisterNodeInfoReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleRegisterNode(const RegisterNodeRequest &request,
+                                  RegisterNodeReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleUnregisterNodeInfo(const UnregisterNodeInfoRequest &request,
-                                        UnregisterNodeInfoReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleUnregisterNode(const UnregisterNodeRequest &request,
+                                    UnregisterNodeReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllNodesInfo(const GetAllNodesInfoRequest &request,
-                                     GetAllNodesInfoReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
+                                    GetAllNodeInfoReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -156,9 +156,9 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNodeInfo, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNodeInfo, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodesInfo, 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode, 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode, 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo, 1);
   }
 
  private:

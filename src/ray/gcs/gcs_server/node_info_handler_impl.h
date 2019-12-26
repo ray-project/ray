@@ -13,17 +13,16 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
   explicit DefaultNodeInfoHandler(gcs::RedisGcsClient &gcs_client)
       : gcs_client_(gcs_client) {}
 
-  void HandleRegisterNodeInfo(const RegisterNodeInfoRequest &request,
-                              RegisterNodeInfoReply *reply,
-                              SendReplyCallback send_reply_callback) override;
+  void HandleRegisterNode(const RegisterNodeRequest &request, RegisterNodeReply *reply,
+                          SendReplyCallback send_reply_callback) override;
 
-  void HandleUnregisterNodeInfo(const UnregisterNodeInfoRequest &request,
-                                UnregisterNodeInfoReply *reply,
-                                SendReplyCallback send_reply_callback) override;
+  void HandleUnregisterNode(const UnregisterNodeRequest &request,
+                            UnregisterNodeReply *reply,
+                            SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllNodesInfo(const GetAllNodesInfoRequest &request,
-                             GetAllNodesInfoReply *reply,
-                             SendReplyCallback send_reply_callback) override;
+  void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
+                            GetAllNodeInfoReply *reply,
+                            SendReplyCallback send_reply_callback) override;
 
  private:
   gcs::RedisGcsClient &gcs_client_;

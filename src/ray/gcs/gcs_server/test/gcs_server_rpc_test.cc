@@ -13,7 +13,6 @@ static std::string libray_redis_module_path;
 
 class GcsServerTest : public RedisServiceManagerForTest {
  public:
-
   void SetUp() override {
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
@@ -52,27 +51,29 @@ class GcsServerTest : public RedisServiceManagerForTest {
 
   bool AddJob(const rpc::AddJobRequest &request) {
     std::promise<bool> promise;
-    client_->AddJob(request, [&](const Status &status, const rpc::AddJobReply &reply) {
+    client_->AddJob(request,
+                    [&promise](const Status &status, const rpc::AddJobReply &reply) {
+                      RAY_CHECK_OK(status);
+                      promise.set_value(true);
+                    });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool MarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
+    std::promise<bool> promise;
+    client_->MarkJobFinished(request, [&promise](const Status &status,
+                                                 const rpc::MarkJobFinishedReply &reply) {
       RAY_CHECK_OK(status);
       promise.set_value(true);
     });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool MarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
-    std::promise<bool> promise;
-    client_->MarkJobFinished(
-        request, [&](const Status &status, const rpc::MarkJobFinishedReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   bool RegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
     std::promise<bool> promise;
     client_->RegisterActorInfo(
-        request, [&](const Status &status, const rpc::RegisterActorInfoReply &reply) {
+        request,
+        [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -81,11 +82,11 @@ class GcsServerTest : public RedisServiceManagerForTest {
 
   bool UpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
     std::promise<bool> promise;
-    client_->UpdateActorInfo(
-        request, [&](const Status &status, const rpc::UpdateActorInfoReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
+    client_->UpdateActorInfo(request, [&promise](const Status &status,
+                                                 const rpc::UpdateActorInfoReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -94,20 +95,21 @@ class GcsServerTest : public RedisServiceManagerForTest {
     request.set_actor_id(actor_id);
     rpc::ActorTableData actor_table_data;
     std::promise<bool> promise;
-    client_->GetActorInfo(request,
-                          [&](const Status &status, const rpc::GetActorInfoReply &reply) {
-                            RAY_CHECK_OK(status);
-                            actor_table_data.CopyFrom(reply.actor_table_data());
-                            promise.set_value(true);
-                          });
+    client_->GetActorInfo(
+        request, [&actor_table_data, &promise](const Status &status,
+                                               const rpc::GetActorInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          actor_table_data.CopyFrom(reply.actor_table_data());
+          promise.set_value(true);
+        });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data;
   }
 
-  bool RegisterNodeInfo(const rpc::RegisterNodeInfoRequest &request) {
+  bool RegisterNode(const rpc::RegisterNodeRequest &request) {
     std::promise<bool> promise;
-    client_->RegisterNodeInfo(
-        request, [&](const Status &status, const rpc::RegisterNodeInfoReply &reply) {
+    client_->RegisterNode(
+        request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -115,30 +117,31 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool UnregisterNodeInfo(const rpc::UnregisterNodeInfoRequest &request) {
+  bool UnregisterNode(const rpc::UnregisterNodeRequest &request) {
     std::promise<bool> promise;
-    client_->UnregisterNodeInfo(
-        request, [&](const Status &status, const rpc::UnregisterNodeInfoReply &reply) {
+    client_->UnregisterNode(
+        request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  std::vector<rpc::GcsNodeInfo> GetAllNodesInfo() {
-    std::vector<rpc::GcsNodeInfo> node_infos;
-    rpc::GetAllNodesInfoRequest request;
+  std::vector<rpc::GcsNodeInfo> GetAllNodeInfo() {
+    std::vector<rpc::GcsNodeInfo> node_info_list;
+    rpc::GetAllNodeInfoRequest request;
     std::promise<bool> promise;
-    client_->GetAllNodesInfo(
-        request, [&](const Status &status, const rpc::GetAllNodesInfoReply &reply) {
+    client_->GetAllNodeInfo(
+        request, [&node_info_list, &promise](const Status &status,
+                                             const rpc::GetAllNodeInfoReply &reply) {
           RAY_CHECK_OK(status);
-          for (int index = 0; index < reply.node_infos_size(); ++index) {
-            node_infos.push_back(reply.node_infos(index));
+          for (int index = 0; index < reply.node_info_list_size(); ++index) {
+            node_info_list.push_back(reply.node_info_list(index));
           }
           promise.set_value(true);
         });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
-    return node_infos;
+    return node_info_list;
   }
 
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
@@ -237,21 +240,21 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id.Binary());
 
   // Register node info
-  rpc::RegisterNodeInfoRequest register_node_info_request;
+  rpc::RegisterNodeRequest register_node_info_request;
   register_node_info_request.mutable_node_info()->CopyFrom(gcs_node_info);
-  ASSERT_TRUE(RegisterNodeInfo(register_node_info_request));
-  std::vector<rpc::GcsNodeInfo> node_infos = GetAllNodesInfo();
-  ASSERT_TRUE(node_infos.size() == 1);
-  ASSERT_TRUE(node_infos[0].state() ==
+  ASSERT_TRUE(RegisterNode(register_node_info_request));
+  std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
 
   // Unregister node info
-  rpc::UnregisterNodeInfoRequest unregister_node_info_request;
+  rpc::UnregisterNodeRequest unregister_node_info_request;
   unregister_node_info_request.set_node_id(node_id.Binary());
-  ASSERT_TRUE(UnregisterNodeInfo(unregister_node_info_request));
-  node_infos = GetAllNodesInfo();
-  ASSERT_TRUE(node_infos.size() == 2);
-  ASSERT_TRUE(node_infos[1].state() ==
+  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
+  node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
 }
 

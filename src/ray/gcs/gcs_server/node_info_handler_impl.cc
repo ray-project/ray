@@ -4,8 +4,8 @@
 namespace ray {
 namespace rpc {
 
-void DefaultNodeInfoHandler::HandleRegisterNodeInfo(
-    const rpc::RegisterNodeInfoRequest &request, rpc::RegisterNodeInfoReply *reply,
+void DefaultNodeInfoHandler::HandleRegisterNode(
+    const rpc::RegisterNodeRequest &request, rpc::RegisterNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_info().node_id());
   RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id;
@@ -17,8 +17,8 @@ void DefaultNodeInfoHandler::HandleRegisterNodeInfo(
   RAY_LOG(DEBUG) << "Finished registering node info, node id = " << node_id;
 }
 
-void DefaultNodeInfoHandler::HandleUnregisterNodeInfo(
-    const rpc::UnregisterNodeInfoRequest &request, rpc::UnregisterNodeInfoReply *reply,
+void DefaultNodeInfoHandler::HandleUnregisterNode(
+    const rpc::UnregisterNodeRequest &request, rpc::UnregisterNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Unregistering node info, node id = " << node_id;
@@ -38,15 +38,18 @@ void DefaultNodeInfoHandler::HandleUnregisterNodeInfo(
   RAY_LOG(DEBUG) << "Finished unregistering node info, node id = " << node_id;
 }
 
-void DefaultNodeInfoHandler::HandleGetAllNodesInfo(
-    const rpc::GetAllNodesInfoRequest &request, rpc::GetAllNodesInfoReply *reply,
+void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
+    const rpc::GetAllNodeInfoRequest &request, rpc::GetAllNodeInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting all nodes info.";
   auto on_done = [reply, send_reply_callback](
                      Status status, const std::vector<rpc::GcsNodeInfo> &result) {
     if (status.ok()) {
-      for (const rpc::GcsNodeInfo &node_info : result) {
-        reply->add_node_infos()->CopyFrom(node_info);
+      std::set<std::string> node_ids;
+      for (int index = result.size() - 1; index >= 0; --index) {
+        if (node_ids.insert(result[index].node_id()).second) {
+          reply->add_node_info_list()->CopyFrom(result[index]);
+        }
       }
     } else {
       RAY_LOG(ERROR) << "Failed to get all nodes info: " << status.ToString();

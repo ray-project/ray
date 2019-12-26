@@ -876,7 +876,7 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return Status
   ray::Status Disconnect();
 
-  /// Register a different client to the GCS.
+  /// Register a new client to the GCS.
   ///
   /// \param node_info Information about the client.
   /// \return Status
