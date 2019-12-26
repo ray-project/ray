@@ -176,7 +176,7 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &callback) override;
 
   Status AsyncSubscribeBatchHeartbeat(
-      const SubscribeCallback<ClientID, HeartbeatBatchTableData> &subscribe,
+      const ItemCallback<HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) override;
 
  private:

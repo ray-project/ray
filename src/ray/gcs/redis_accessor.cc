@@ -304,13 +304,13 @@ bool RedisNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
 }
 Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<HeartbeatTableData> &data_ptr, const StatusCallback &callback) {
-  ClientID node_id = ClientID::FromBinary(data_ptr->client_id());
   HeartbeatTable::WriteCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
                          const HeartbeatTableData &data) { callback(Status::OK()); };
   }
 
+  ClientID node_id = ClientID::FromBinary(data_ptr->client_id());
   HeartbeatTable &heartbeat_table = client_impl_->heartbeat_table();
   return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
 }
@@ -341,12 +341,11 @@ Status RedisNodeInfoAccessor::AsyncReportBatchHeartbeat(
 }
 
 Status RedisNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
-    const SubscribeCallback<ClientID, HeartbeatBatchTableData> &subscribe,
-    const StatusCallback &done) {
+    const ItemCallback<HeartbeatBatchTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](const ClientID &node_id,
                                   const HeartbeatBatchTableData &data) {
-    subscribe(node_id, data);
+    subscribe(data);
   };
 
   return heartbeat_batch_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe,

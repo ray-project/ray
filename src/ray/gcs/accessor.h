@@ -286,11 +286,12 @@ class NodeInfoAccessor {
 
   /// Subscribe batched state of all nodes from GCS.
   ///
-  /// \param subscribe Callback that will be called each time when heartbeat is updated.
+  /// \param subscribe Callback that will be called each time when batch heartbeat is
+  /// updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeBatchHeartbeat(
-      const SubscribeCallback<ClientID, rpc::HeartbeatBatchTableData> &subscribe,
+      const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) = 0;
 
  protected:
