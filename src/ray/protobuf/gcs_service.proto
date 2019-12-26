@@ -98,3 +98,24 @@ service NodeInfoGcsService {
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
 }
+
+message GetLocationsRequest {
+  // Requested ObjectID.
+  bytes object_id = 1;
+}
+
+message GetLocationsReply {
+  // Data of object
+  ObjectTableData object_table_data = 1;
+}
+
+
+// Service for object info access.
+service NodeInfoGcsService {
+  // Get object location from GCS Service.
+  rpc GetLocations(RegisterNodeInfoRequest) returns (RegisterNodeInfoReply);
+  // Unregister an node from GCS Service.
+  rpc UnregisterNodeInfo(UnregisterNodeInfoRequest) returns (UnregisterNodeInfoReply);
+  // Get information of all nodes from GCS Service.
+  rpc GetAllNodesInfo(GetAllNodesInfoRequest) returns (GetAllNodesInfoReply);
+}
