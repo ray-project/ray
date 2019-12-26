@@ -156,7 +156,8 @@ class RayServeMixin:
             serve_context.batch_size = len(result_object_ids)
             start_timestamp = time.time()
             result_list = self.__call__(*args, **kwargs_list)
-            if len(result_list) != len(result_object_ids):
+            if (not isinstance(result_list,list)) or (len(result_list) !=
+            len(result_object_ids)):
                 raise RayServeException("__call__ function "
                                         "doesn't preserve batch-size. "
                                         "Please return a list of result "
