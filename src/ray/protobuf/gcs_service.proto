@@ -91,9 +91,9 @@ message GetAllNodesInfoReply {
 
 // Service for node info access.
 service NodeInfoGcsService {
-  // Register an node to GCS Service.
+  // Register a node to GCS Service.
   rpc RegisterNodeInfo(RegisterNodeInfoRequest) returns (RegisterNodeInfoReply);
-  // Unregister an node from GCS Service.
+  // Unregister a node from GCS Service.
   rpc UnregisterNodeInfo(UnregisterNodeInfoRequest) returns (UnregisterNodeInfoReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodesInfo(GetAllNodesInfoRequest) returns (GetAllNodesInfoReply);
