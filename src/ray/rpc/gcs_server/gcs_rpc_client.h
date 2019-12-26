@@ -129,8 +129,8 @@ class GcsRpcClient {
   void RegisterNodeInfo(const RegisterNodeInfoRequest &request,
                         const ClientCallback<RegisterNodeInfoReply> &callback) {
     client_call_manager_
-        .CreateCall<NodeInfoGcsService, RegisterNodeInfoRequest, RegisterNodeInfoReply>(
-            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncRegisterNodeInfo,
+        .CreateCall<NodeInfoGcsService, RegisterNodeRequest, RegisterNodeReply>(
+            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncRegisterNode,
             request, callback);
   }
 
@@ -138,23 +138,23 @@ class GcsRpcClient {
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  void UnregisterNodeInfo(const UnregisterNodeInfoRequest &request,
-                          const ClientCallback<UnregisterNodeInfoReply> &callback) {
-    client_call_manager_.CreateCall<NodeInfoGcsService, UnregisterNodeInfoRequest,
-                                    UnregisterNodeInfoReply>(
-        *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncUnregisterNodeInfo,
-        request, callback);
+  void UnregisterNode(const UnregisterNodeRequest &request,
+                      const ClientCallback<UnregisterNodeReply> &callback) {
+    client_call_manager_
+        .CreateCall<NodeInfoGcsService, UnregisterNodeRequest, UnregisterNodeReply>(
+            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncUnregisterNode,
+            request, callback);
   }
 
   /// Get information of all nodes from GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  void GetAllNodesInfo(const GetAllNodesInfoRequest &request,
-                       const ClientCallback<GetAllNodesInfoReply> &callback) {
+  void GetAllNodeInfo(const GetAllNodeInfoRequest &request,
+                      const ClientCallback<GetAllNodeInfoReply> &callback) {
     client_call_manager_
-        .CreateCall<NodeInfoGcsService, GetAllNodesInfoRequest, GetAllNodesInfoReply>(
-            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncGetAllNodesInfo,
+        .CreateCall<NodeInfoGcsService, GetAllNodeInfoRequest, GetAllNodeInfoReply>(
+            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncGetAllNodeInfo,
             request, callback);
   }
 
