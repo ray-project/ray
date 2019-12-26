@@ -44,10 +44,6 @@ if [[ "$platform" == "linux" ]]; then
   INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
   $PYTHON_EXE "$TEST_SCRIPT"
 
-  # Run the UI test to make sure that the packaged UI works.
-  $PIP_CMD install -q aiohttp google grpcio psutil requests setproctitle
-  $PYTHON_EXE "$UI_TEST_SCRIPT"
-
   # Now test Python 3.6.
 
   # Install miniconda.
