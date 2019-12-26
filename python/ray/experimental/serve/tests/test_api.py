@@ -127,7 +127,7 @@ def test_batching_exception(serve_instance):
     serve.link("exception-test", "exception:v1")
 
     handle = serve.get_handle("exception-test")
-    with pytest.raises(ray.exceptions.RayTaskError) as e:
+    with pytest.raises(ray.exceptions.RayTaskError):
         assert ray.get(handle.remote(temp=1))
 
 def test_killing_replicas(serve_instance):
