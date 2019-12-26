@@ -254,6 +254,8 @@ message ActorCheckpointData {
   repeated bytes unreleased_dummy_objects = 6;
   // The numbers of dependencies for the above unreleased dummy objects.
   repeated uint32 num_dummy_object_dependencies = 7;
+  // ID of this checkpoint.
+  bytes checkpoint_id = 8;
 }
 
 // This table stores the actor-to-available-checkpoint-ids mapping.

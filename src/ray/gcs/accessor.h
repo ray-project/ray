@@ -76,6 +76,33 @@ class ActorInfoAccessor {
   virtual Status AsyncUnsubscribe(const ActorID &actor_id,
                                   const StatusCallback &done) = 0;
 
+  /// Add actor checkpoint data to GCS asynchronously.
+  ///
+  /// \param data_ptr The checkpoint data that will be added to GCS.
+  /// \param callback The callback that will be called after add finishes.
+  /// \return Status
+  virtual Status AsyncAddCheckpoint(
+      const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+  /// Get actor checkpoint data from GCS asynchronously.
+  ///
+  /// \param checkpoint_id The ID of checkpoint to lookup in GCS.
+  /// \param callback The callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetCheckpoint(
+      const ActorCheckpointID &checkpoint_id,
+      const OptionalItemCallback<rpc::ActorCheckpointData> &callback) = 0;
+
+  /// Get actor checkpoint id data from GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor to lookup in GCS.
+  /// \param callback The callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetCheckpointID(
+      const ActorID &actor_id,
+      const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) = 0;
+
  protected:
   ActorInfoAccessor() = default;
 };

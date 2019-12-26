@@ -46,6 +46,27 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
 
+  Status AsyncAddCheckpoint(const std::shared_ptr<ActorCheckpointData> &data_ptr,
+                            const StatusCallback &callback) override;
+
+  Status AsyncGetCheckpoint(
+      const ActorCheckpointID &checkpoint_id,
+      const OptionalItemCallback<ActorCheckpointData> &callback) override;
+
+  Status AsyncGetCheckpointID(
+      const ActorID &actor_id,
+      const OptionalItemCallback<ActorCheckpointIdData> &callback) override;
+
+ private:
+  /// Add checkpoint id to GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor that the checkpoint belongs to.
+  /// \param checkpoint_id The ID of checkpoint that will be added to GCS.
+  /// \return Status
+  Status AsyncAddCheckpointID(const ActorID &actor_id,
+                              const ActorCheckpointID &checkpoint_id,
+                              const StatusCallback &callback);
+
  private:
   RedisGcsClient *client_impl_{nullptr};
   // Use a random ClientID for actor subscription. Because:
