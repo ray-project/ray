@@ -5,7 +5,6 @@ import traceback
 import ray
 from ray.experimental.serve import context as serve_context
 from ray.experimental.serve.context import FakeFlaskQuest
-from ray.experimental.serve.http_util import build_flask_request
 from collections import defaultdict
 from ray.experimental.serve.utils import parse_request_item
 from ray.experimental.serve.exceptions import RayServeException

@@ -7,6 +7,7 @@ import time
 import requests
 from pygments import formatters, highlight, lexers
 from ray.experimental.serve.context import FakeFlaskQuest, TaskContext
+from ray.experimental.serve.http_util import build_flask_request
 
 def parse_request_item(request_item):
     if request_item.request_context == TaskContext.Web:
