@@ -84,7 +84,7 @@ class CentralizedQueues:
         self.traffic = defaultdict(dict)
 
         # backend_name -> backend_config
-        self.backend_info = defaultdict()
+        self.backend_info = dict()
 
         # backend_name -> worker request queue
         self.workers = defaultdict(deque)

@@ -4,9 +4,10 @@ import traceback
 
 import ray
 from ray.experimental.serve import context as serve_context
-from ray.experimental.serve.context import FakeFlaskQuest, TaskContext
+from ray.experimental.serve.context import FakeFlaskQuest
 from ray.experimental.serve.http_util import build_flask_request
 from collections import defaultdict
+from ray.experimental.serve.utils import parse_request_item
 from ray.experimental.serve.exceptions import RayServeException
 
 
@@ -95,26 +96,10 @@ class RayServeMixin:
             self._ray_serve_dequeue_requester_name,
             self._ray_serve_self_handle)
 
-    def _parse_request_item(self, request_item):
-        if request_item.request_context == TaskContext.Web:
-            web_context = True
-            asgi_scope, body_bytes = request_item.request_args
-            flask_request = build_flask_request(asgi_scope,
-                                                io.BytesIO(body_bytes))
-            args = (flask_request, )
-            kwargs = {}
-        else:
-            web_context = False
-            args = (FakeFlaskQuest(), )
-            kwargs = request_item.request_kwargs
-
-        result_object_id = request_item.result_object_id
-        return args, kwargs, web_context, result_object_id
-
     def invoke_single(self, request_item):
-        args, kwargs, web_context, result_object_id = self._parse_request_item(
+        args, kwargs, is_web_context, result_object_id = parse_request_item(
             request_item)
-        serve_context.web = web_context
+        serve_context.web = is_web_context
         start_timestamp = time.time()
         try:
             result = self.__call__(*args, **kwargs)
@@ -142,24 +127,29 @@ class RayServeMixin:
         # where n (current batch size) <= max_batch_size of a backend
 
         kwargs_list = defaultdict(list)
-        result_object_ids, context_list, arg_list = [], [], []
+        result_object_ids, context_flag_list, arg_list = [], [], []
+        
         for item in request_item_list:
-            args, kwargs, web_context, r_object_id = self._parse_request_item(
-                item)
-            context_list.append(web_context)
-            if not web_context:
+            args, kwargs, is_web_context, result_object_id =
+                                                parse_request_item(item)
+            context_flag_list.append(is_web_context)
+
+            # Python context only have kwargs
+            # Web context only have one positional argument
+            if is_web_context:
+                arg_list.append(args[0])
+            else:
                 for k, v in kwargs.items():
                     kwargs_list[k].append(v)
-            else:
-                arg_list.append(args[0])
+            result_object_ids.append(result_object_id)
 
-            result_object_ids.append(r_object_id)
         try:
             # check mixing of query context
-            if not (all(context_list) or not any(context_list)):
+            # unified context needed
+            if len(set(context_flag_list)) != 1:
                 raise RayServeException(
                     "Batched queries contain mixed context.")
-            serve_context.web = all(context_list)
+            serve_context.web = all(context_flag_list)
             if serve_context.web:
                 args = (arg_list, )
             else:
@@ -170,7 +160,10 @@ class RayServeMixin:
             result_list = self.__call__(*args, **kwargs_list)
             if len(result_list) != len(result_object_ids):
                 raise RayServeException("__call__ function "
-                                        "doesn't preserve batch-size.")
+                                        "doesn't preserve batch-size. "
+                                        "Please return a list of result "
+                                        "with length equals to the batch "
+                                        "size.")
             for result, result_object_id in zip(result_list,
                                                 result_object_ids):
                 ray.worker.global_worker.put_object(result, result_object_id)
