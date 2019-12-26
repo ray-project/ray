@@ -149,7 +149,7 @@ If you are using Anaconda and have trouble installing ``psutil`` or
 
   conda install psutil setproctitle
 
-The command ``ray.init()`` or ``ray start --head`` will print ou the address of
+The command ``ray.init()`` or ``ray start --head`` will print out the address of
 the dashboard. For example,
 
 .. code-block::
