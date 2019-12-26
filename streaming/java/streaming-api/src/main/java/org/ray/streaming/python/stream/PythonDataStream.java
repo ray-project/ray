@@ -36,16 +36,6 @@ public class PythonDataStream extends Stream implements PythonStream {
   }
 
   /**
-   * Apply a sink function and get a StreamSink.
-   *
-   * @param func The sink function.
-   * @return A new StreamSink.
-   */
-  public PythonStreamSink sink(DescriptorFunction func) {
-    return new PythonStreamSink(this, DescriptorOperator.ofSink(func));
-  }
-
-  /**
    * Apply a key-by function to this stream.
    *
    * @param func the key function.
@@ -74,6 +64,16 @@ public class PythonDataStream extends Stream implements PythonStream {
   public PythonDataStream partitionBy(DescriptorPartition partition) {
     this.partition = partition;
     return this;
+  }
+
+  /**
+   * Apply a sink function and get a StreamSink.
+   *
+   * @param func The sink function.
+   * @return A new StreamSink.
+   */
+  public PythonStreamSink sink(DescriptorFunction func) {
+    return new PythonStreamSink(this, DescriptorOperator.ofSink(func));
   }
 
   /**
