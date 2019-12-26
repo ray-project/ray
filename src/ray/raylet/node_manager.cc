@@ -2494,10 +2494,8 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
         checkpoint_id,
         [this, checkpoint_id, actor_id, new_actor_info, update_callback](
             Status status, const boost::optional<ActorCheckpointData> &checkpoint_data) {
-          if (!checkpoint_data) {
-            RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
-                           << " for actor " << actor_id << " in GCS.";
-          }
+          RAY_CHECK(checkpoint_data) << "Couldn't find checkpoint " << checkpoint_id
+                                     << " for actor " << actor_id << " in GCS.";
           RAY_LOG(INFO) << "Restoring registration for actor " << actor_id
                         << " from checkpoint " << checkpoint_id;
           ActorRegistration actor_registration =
