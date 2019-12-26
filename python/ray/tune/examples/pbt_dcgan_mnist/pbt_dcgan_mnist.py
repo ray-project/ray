@@ -275,16 +275,13 @@ class PytorchTrainable(tune.Trainable):
         self.optimizerG.load_state_dict(checkpoint["optimG"])
 
     def reset_config(self, new_config):
-        del self.optimizerD
-        del self.optimizerG
-        self.optimizerD = optim.Adam(
-            self.netD.parameters(),
-            lr=new_config.get("netD_lr"),
-            betas=(beta1, 0.999))
-        self.optimizerG = optim.Adam(
-            self.netG.parameters(),
-            lr=new_config.get("netG_lr"),
-            betas=(beta1, 0.999))
+        if "netD_lr" in new_config:
+            for param_group in self.optimizerD.param_groups:
+                param_group["lr"] = new_config["netD_lr"]
+        if "netG_lr" in new_config:
+            for param_group in self.optimizerG.param_groups:
+                param_group["lr"] = new_config["netG_lr"]
+
         self.config = new_config
         return True
 
