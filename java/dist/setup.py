@@ -10,6 +10,7 @@ import shutil
 
 ray_java_py_pkg = "ray_java"
 current_dir = os.path.abspath(os.path.dirname(__file__))
+os.chdir(current_dir)
 root_dir = os.path.abspath(os.path.join(current_dir, os.pardir, os.pardir))
 ray_java_build_dir = os.path.abspath(os.path.join(root_dir, "build", "java"))
 ray_streaming_java_build_dir = os.path.abspath(
@@ -39,9 +40,11 @@ def build_jars():
     print("Build jars for ray java")
     subprocess.check_call("cd .. && mvn clean install -DskipTests", shell=True)
     print("Generate maven deps for ray streaming java")
-    subprocess.check_call("bazel build //streaming/java:gen_maven_deps", shell=True)
+    subprocess.check_call(
+        "bazel build //streaming/java:gen_maven_deps", shell=True)
     print("Build jars for ray streaming java")
-    subprocess.check_call("cd ../../streaming/java && mvn clean install -DskipTests", shell=True)
+    subprocess.check_call(
+        "cd ../../streaming/java && mvn clean install -DskipTests", shell=True)
     jars = {}
     for jar in os.listdir(ray_java_build_dir):
         jars[jar] = os.path.join(ray_java_build_dir, jar)
@@ -74,7 +77,7 @@ try:
 
         def get_tag(self):
             python, abi, plat = _bdist_wheel.get_tag(self)
-            python, abi = 'py2.py3', 'none'
+            python, abi = "py2.py3", "none"
             return python, abi, plat
 except ImportError:
     bdist_wheel = None
@@ -83,14 +86,14 @@ setup(
     name="ray-java",
     packages=["ray_java"],
     version=find_version(),
-    description="Package all ray java jars into a wheel so that ray can create "
-                "java actor in python code based on jars in the wheel.",
+    description="Package all ray java jars into a wheel so that ray can"
+    " create java actor in python code based on jars in the wheel.",
     long_description=open("README.rst").read(),
     url="https://github.com/ray-project/ray",
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
-    cmdclass={'bdist_wheel': bdist_wheel},
-    install_requires=['ray'],
+    cmdclass={"bdist_wheel": bdist_wheel},
+    install_requires=["ray"],
     include_package_data=True,
     zip_safe=False,
     license="Apache 2.0")
