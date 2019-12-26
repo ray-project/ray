@@ -310,8 +310,37 @@ std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
 
 void TaskDependencyManager::TaskPending(const Task &task) {
   // Direct tasks are not tracked by the raylet.
+  // NOTE(zhijunfu): Direct tasks are not tracked by the raylet,
+  // but we still need raylet to reconstruct the actors.
+  // For direct actor creation task:
+  //   - Initially the caller leases a worker from raylet and
+  //     then pushes actor creation task directly to the worker,
+  //     thus it doesn't need task lease. And actually if we
+  //     acquire a lease in this case and forget to cancel it,
+  //     the lease would never expire which will prevent the
+  //     actor from being reconstructed;
+  //   - When a direct actor is reconstructed, raylet resubmits
+  //     the task, and the task can be forwarded to another raylet,
+  //     and eventually assigned to a worker. In this case we need
+  //     the task lease to make sure there's only one raylet can
+  //     resubmit the task.
   if (task.GetTaskSpecification().IsDirectCall()) {
-    return;
+    // We can use `OnDispatch` to differeniate whether this task is
+    // a worker lease request.
+    // For direct actor creation task:
+    //   - when it's submitted by core worker, we guarantee that
+    //     we always request a new worker lease, in that case
+    //     `OnDispatch` is overriden to an actual callback.
+    //   - when it's resubmitted by raylet because of reconstruction,
+    //     `OnDispatch` will not be overriden and thus is nullptr.
+    if (task.GetTaskSpecification().IsActorCreationTask() &&
+        task.OnDispatch() == nullptr) {
+      // This is an actor creation task, and it's being reconstructed,
+      // in this case we still need the task lease. Note that we don't
+      // require task lease for direct actor creation task.
+    } else {
+      return;
+    }
   }
 
   TaskID task_id = task.GetTaskSpecification().TaskId();

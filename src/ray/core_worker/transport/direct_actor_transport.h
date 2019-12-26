@@ -509,6 +509,8 @@ class CoreWorkerDirectTaskReceiver {
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
   std::shared_ptr<FiberRateLimiter> fiber_rate_limiter_;
+
+  boost::optional<raylet::RayletClient &> local_raylet_client_;
 };
 
 }  // namespace ray
