@@ -11,8 +11,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     absl::MutexLock lock(&mu_);
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
-    const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
-                                       task_spec.GetDependencies());
+    const SchedulingKey scheduling_key(
+        task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
+        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
     auto it = task_queues_.find(scheduling_key);
     if (it == task_queues_.end()) {
       it = task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;

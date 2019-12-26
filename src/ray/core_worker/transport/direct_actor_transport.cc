@@ -289,11 +289,21 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         }
       }
       // If we spilled any return objects to plasma, notify the raylet to pin them.
+      // The raylet will then coordinate with the caller to manage the objects'
+      // lifetimes.
       // TODO(edoakes): the plasma objects could be evicted between creating them
       // here and when raylet pins them.
       if (!plasma_return_ids.empty()) {
         RAY_CHECK_OK(
             local_raylet_client_->PinObjectIDs(caller_address, plasma_return_ids));
+      }
+      if (task_spec.IsActorCreationTask()) {
+        RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
+                      << ", actor_id: " << task_spec.ActorCreationId();
+        // Tell raylet that an actor creation task has finished execution, so that
+        // raylet can publish actor creation event to GCS, and mark this worker as
+        // actor, thus if this worker dies later raylet will reconstruct the actor.
+        RAY_CHECK_OK(local_raylet_client_->TaskDone());
       }
     }
     if (status.IsSystemExit()) {

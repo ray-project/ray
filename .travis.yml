@@ -143,7 +143,6 @@ script:
   - export PATH="$HOME/miniconda/bin:$PATH"
 
   # raylet integration tests
-  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
