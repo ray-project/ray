@@ -128,12 +128,7 @@ def test_batching_exception(serve_instance):
 
     handle = serve.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError) as e:
-        assert handle.remote(temp=1)
-    assert str(e.value) == ("__call__ function "
-                            "doesn't preserve batch-size. "
-                            "Please return a list of result "
-                            "with length equals to the batch "
-                            "size.")
+        assert ray.get(handle.remote(temp=1))
 
 def test_killing_replicas(serve_instance):
     class Simple:
