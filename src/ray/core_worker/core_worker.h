@@ -638,6 +638,12 @@ class CoreWorker {
   /// String to be displayed on Web UI.
   std::string webui_display_;
 
+  /// Number of tasks pushed to this actor.
+  int64_t num_tasks_accepted_;
+
+  /// Number of tasks this actor has executed.
+  int64_t num_tasks_executed_;
+
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
 
