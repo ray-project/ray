@@ -1,5 +1,5 @@
 import time
-
+import pytest
 import requests
 
 from ray.experimental import serve
@@ -111,6 +111,30 @@ def test_batching(serve_instance):
     # counter result will always be less than 20
     assert max(counter_result) < 20
 
+def test_batching_exception(serve_instance):
+    class NoListReturned:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, flask_request, temp=None):
+            batch_size = serve.context.batch_size
+            return batch_size
+
+    serve.create_endpoint("exception-test", "/noListReturned")
+    # set the max batch size
+    b_config = BackendConfig(max_batch_size=5)
+    serve.create_backend(
+        NoListReturned, "exception:v1", backend_config=b_config)
+    serve.link("exception-test", "exception:v1")
+
+    handle = serve.get_handle("exception-test"")
+    with pytest.raises(Exception) as e:
+        assert handle.remote(temp=1)
+    assert str(e.value) == ("__call__ function "
+                            "doesn't preserve batch-size. "
+                            "Please return a list of result "
+                            "with length equals to the batch "
+                            "size.")
 
 def test_killing_replicas(serve_instance):
     class Simple:
