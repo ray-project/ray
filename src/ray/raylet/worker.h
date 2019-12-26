@@ -68,6 +68,10 @@ class Worker {
   void DirectActorCallArgWaitComplete(int64_t tag);
   void WorkerLeaseGranted(const std::string &address, int port);
 
+  /// Cpus borrowed by the worker. This happens when the machine is oversubscribed
+  /// and the worker does not get back the cpu resources when unblocked. 
+  /// TODO (ion): Add methods to access this variable.
+  ResourceSet borrowed_cpu_resources_;
  private:
   /// The worker's ID.
   WorkerID worker_id_;
@@ -108,6 +112,7 @@ class Worker {
   /// Whether the worker is detached. This is applies when the worker is actor.
   /// Detached actor means the actor's creator can exit without killing this actor.
   bool is_detached_actor_;
+
 };
 
 }  // namespace raylet
