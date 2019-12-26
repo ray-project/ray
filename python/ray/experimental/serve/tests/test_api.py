@@ -6,6 +6,7 @@ from ray.experimental import serve
 from ray.experimental.serve import BackendConfig
 import ray
 
+
 def test_e2e(serve_instance):
     serve.init()  # so we have access to global state
     serve.create_endpoint("endpoint", "/api", blocking=True)
@@ -110,6 +111,7 @@ def test_batching(serve_instance):
     # counter result will always be less than 20
     assert max(counter_result) < 20
 
+
 def test_batching_exception(serve_instance):
     class NoListReturned:
         def __init__(self):
@@ -129,6 +131,7 @@ def test_batching_exception(serve_instance):
     handle = serve.get_handle("exception-test")
     with pytest.raises(ray.exceptions.RayTaskError):
         assert ray.get(handle.remote(temp=1))
+
 
 def test_killing_replicas(serve_instance):
     class Simple:
