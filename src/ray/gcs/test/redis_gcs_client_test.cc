@@ -34,11 +34,6 @@ class TestGcs : public RedisServiceManagerForTest {
     job_id_ = NextJobID();
   }
 
-  virtual void SetUp() {
-    GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
-    client_ = std::make_shared<gcs::RedisGcsClient>(options, command_type_);
-  }
-
   virtual ~TestGcs() {
     // Clear all keys in the GCS.
     flushall_redis();
@@ -66,7 +61,6 @@ class TestGcsWithAsio : public TestGcs {
  public:
   TestGcsWithAsio(CommandType command_type)
       : TestGcs(command_type), io_service_(), work_(io_service_) {
-    RAY_CHECK_OK(client_->Connect(io_service_));
   }
 
   TestGcsWithAsio() : TestGcsWithAsio(CommandType::kRegular) {}
@@ -76,6 +70,13 @@ class TestGcsWithAsio : public TestGcs {
     client_->Disconnect();
     client_.reset();
   }
+
+  void SetUp() override {
+    GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    client_ = std::make_shared<gcs::RedisGcsClient>(options, command_type_);
+    RAY_CHECK_OK(client_->Connect(io_service_));
+  }
+
   void Start() override { io_service_.run(); }
   void Stop() override { io_service_.stop(); }
 
