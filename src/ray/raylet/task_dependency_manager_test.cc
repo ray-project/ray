@@ -420,6 +420,26 @@ TEST_F(TaskDependencyManagerTest, TestTaskLeaseRenewal) {
   Run(sleep_time);
 }
 
+TEST_F(TaskDependencyManagerTest, TestTaskLeaseRenewalExtendedTime) {
+  // Mark a task as pending.
+  auto task = ExampleTask({}, 0);
+  // We expect an initial call to acquire the lease.
+  EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _));
+  task_dependency_manager_.TaskPending(task);
+
+  // Check that while the task is still pending, there is one call to renew the
+  // lease for each lease period that passes. The lease period doubles with
+  // each renewal.
+  int num_expected_calls = 4;
+  int64_t sleep_time = 0;
+  for (int i = 1; i <= num_expected_calls; i++) {
+    sleep_time += i * initial_lease_period_ms_;
+  }
+  EXPECT_CALL(gcs_mock_, Add(_, task.GetTaskSpecification().TaskId(), _, _))
+      .Times(num_expected_calls);
+  Run(4 * sleep_time);
+}
+
 TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   // Create 3 tasks, each dependent on the previous. The first task has no
   // arguments.
