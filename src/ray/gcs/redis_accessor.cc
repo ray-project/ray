@@ -187,7 +187,7 @@ Status RedisActorInfoAccessor::AsyncGetCheckpointID(
 
   auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id) {
     boost::optional<ActorCheckpointIdData> optional;
-    callback(Status::Invalid("Invalid actor id."), std::move(optional));
+    callback(Status::Invalid("Checkpoint not found."), std::move(optional));
   };
 
   ActorCheckpointIdTable &cp_id_table = client_impl_->actor_checkpoint_id_table();
