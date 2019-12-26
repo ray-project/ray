@@ -130,8 +130,8 @@ class RayServeMixin:
         result_object_ids, context_flag_list, arg_list = [], [], []
         
         for item in request_item_list:
-            args, kwargs, is_web_context, result_object_id =
-                                                parse_request_item(item)
+            args, kwargs, is_web_context, result_object_id = (
+                                                parse_request_item(item))
             context_flag_list.append(is_web_context)
 
             # Python context only have kwargs
