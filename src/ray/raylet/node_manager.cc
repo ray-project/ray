@@ -1499,6 +1499,7 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     if (schedulable == false) {
       return;
     }
+    // Handle the allocation to specific resource IDs.
     auto acquired_resources =
           local_available_resources_.Acquire(spec.GetRequiredResources());
     const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
