@@ -76,7 +76,7 @@ class RedisServiceManagerForTest : public ::testing::Test {
   static void SetUpTestCase() {
     auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
     std::mt19937 gen(seed);
-    std::uniform_int_distribution<int> random_gen{5000, 7000};
+    std::uniform_int_distribution<int> random_gen{2000, 7000};
     // Use random port to avoid port conflicts between UTs.
     REDIS_SERVER_PORT = random_gen(gen);
 
