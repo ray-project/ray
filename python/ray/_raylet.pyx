@@ -874,6 +874,9 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+            # The object won't be pinned if an ObjectID is provided by the
+            # user (because we can't track its lifetime to unpin). Note that
+            # the API to do this isn't supported as a public API.
             c_bool owns_object = object_id is None
 
         metadata = string_to_buffer(serialized_object.metadata)

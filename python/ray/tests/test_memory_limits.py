@@ -29,8 +29,32 @@ class GreedyActor(object):
 
 class TestMemoryLimits(unittest.TestCase):
     def testWithoutQuota(self):
+        self.assertRaises(OBJECT_EVICTED, lambda: self._run(None, None, None))
         self.assertRaises(OBJECT_EVICTED,
                           lambda: self._run(100 * MB, None, None))
+        self.assertRaises(OBJECT_EVICTED,
+                          lambda: self._run(None, 100 * MB, None))
+
+    def testQuotasProtectSelf(self):
+        self._run(100 * MB, 100 * MB, None)
+
+    def testQuotasProtectOthers(self):
+        self._run(None, None, 100 * MB)
+
+    def testQuotaTooLarge(self):
+        self.assertRaisesRegexp(ray.memory_monitor.RayOutOfMemoryError,
+                                ".*Failed to set object_store_memory.*",
+                                lambda: self._run(300 * MB, None, None))
+
+    def testTooLargeAllocation(self):
+        try:
+            ray.init(num_cpus=1, driver_object_store_memory=100 * MB)
+            ray.put(np.zeros(50 * MB, dtype=np.uint8), weakref=True)
+            self.assertRaises(
+                OBJECT_TOO_LARGE,
+                lambda: ray.put(np.zeros(200 * MB, dtype=np.uint8)))
+        finally:
+            ray.shutdown()
 
     def _run(self, driver_quota, a_quota, b_quota):
         print("*** Testing ***", driver_quota, a_quota, b_quota)

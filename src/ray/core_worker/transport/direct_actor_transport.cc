@@ -148,7 +148,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
-  // XXX: set our address in the request
   next_send_position_[actor_id]++;
   auto it = worker_ids_.find(actor_id);
   RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
