@@ -5,8 +5,6 @@ import requests
 from ray.experimental import serve
 from ray.experimental.serve import BackendConfig
 import ray
-from ray.experimental.serve.exceptions import RayServeException
-
 
 def test_e2e(serve_instance):
     serve.init()  # so we have access to global state
@@ -129,7 +127,7 @@ def test_batching_exception(serve_instance):
     serve.link("exception-test", "exception:v1")
 
     handle = serve.get_handle("exception-test")
-    with pytest.raises(RayServeException) as e:
+    with pytest.raises(ray.exceptions.RayTaskError) as e:
         assert handle.remote(temp=1)
     assert str(e.value) == ("__call__ function "
                             "doesn't preserve batch-size. "
