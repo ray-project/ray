@@ -12,6 +12,7 @@ import copy
 
 import ray
 
+
 class PoolTaskError(Exception):
     def __init__(self, underlying):
         self.underlying = underlying
@@ -36,7 +37,7 @@ class ResultThread(threading.Thread):
         unready = self._object_ids
         while len(unready) > 0:
             ready, unready = ray.wait(unready, num_returns=1)
-            assert(len(ready) == 1)
+            assert (len(ready) == 1)
             ready_id = ready[0]
 
             batch = ray.get(ready_id)
@@ -66,6 +67,7 @@ class ResultThread(threading.Thread):
         with self._lock:
             return self._results
 
+
 class AsyncResult(object):
     def __init__(self,
                  chunk_object_ids,
@@ -73,12 +75,13 @@ class AsyncResult(object):
                  error_callback=None,
                  single_result=False):
         self._single_result = single_result
-        self._result_thread = ResultThread(chunk_object_ids, callback, error_callback)
+        self._result_thread = ResultThread(chunk_object_ids, callback,
+                                           error_callback)
         self._result_thread.start()
 
     def wait(self, timeout=None):
         start = time.time()
-        while timeout is None or time.time()-start < timeout:
+        while timeout is None or time.time() - start < timeout:
             if self._result_thread.done():
                 break
             time.sleep(0.001)
@@ -389,11 +392,11 @@ class Pool(object):
             self._stop_actor(actor)
         self._closed = True
 
-    # TODO(edoakes): Terminating a multiprocessing pool doesn't complete
-    # oustanding work, but there isn't currently any clean way to do this
-    # using the ray API.
     def terminate(self):
-        return self.close()
+        if not self._closed:
+            self.close()
+        for actor, _ in self._actor_pool:
+            actor.__ray_kill__()
 
     def join(self):
         if not self._closed:

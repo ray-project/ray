@@ -38,4 +38,3 @@ Don't support ``callback`` and ``error_callback`` arguments.
 Initializer cannot be used to modify the global namespace (e.g., import packages or set global variables).
 Can't pickle generator objects.
 imap and imap_unordered submit the full iterable immediately instead of lazily.
-Terminating a multiprocessing pool completes outstanding work.
