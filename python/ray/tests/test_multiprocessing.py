@@ -5,8 +5,11 @@ from __future__ import print_function
 import os
 import pytest
 import tempfile
+import time
+import random
 import subprocess
 from collections import defaultdict
+import queue
 
 import ray
 from ray.experimental.multiprocessing import Pool, TimeoutError
@@ -331,9 +334,66 @@ def test_starmap_async(pool_4_processes):
     pass
 
 
-def imap(pool_4_processes):
+def test_imap(pool_4_processes):
     pass
 
 
-def imap_unordered(pool_4_processes):
+def test_imap_unordered(pool_4_processes):
     pass
+
+
+def test_callbacks(pool_4_processes):
+    def f(args):
+        time.sleep(0.1 * random.random())
+        index = args[0]
+        err_indices = args[1]
+        if index in err_indices:
+            raise Exception("intentional failure")
+        return index
+
+    callback_queue = queue.Queue()
+
+    def callback(result):
+        callback_queue.put(result)
+
+    def error_callback(error):
+        callback_queue.put(error)
+
+    # Will not error, check that callback is called.
+    result = pool_4_processes.apply_async(f, ((0, [1]), ), callback=callback)
+    assert callback_queue.get() == 0
+    result.get()
+
+    # Will error, check that error_callback is called.
+    result = pool_4_processes.apply_async(
+        f, ((0, [0]), ), error_callback=error_callback)
+    assert isinstance(callback_queue.get(), Exception)
+    with pytest.raises(Exception, match="intentional failure"):
+        result.get()
+
+    # Test callbacks for map_async.
+    error_indices = [2, 50, 98]
+    result = pool_4_processes.map_async(
+        f, [(index, error_indices) for index in range(100)],
+        callback=callback,
+        error_callback=error_callback)
+    callback_results = []
+    while len(callback_results) < 100:
+        callback_results.append(callback_queue.get())
+
+    assert result.ready()
+    assert not result.successful()
+
+    # Check that callbacks were called on every result, error or not.
+    assert len(callback_results) == 100
+    # Check that callbacks were processed in the order that the tasks finished.
+    # NOTE: this could be flaky if the calls happened to finish in order due
+    # to the random sleeps, but it's very unlikely.
+    assert not all([
+        i in error_indices or i == result
+        for i, result in enumerate(callback_results)
+    ])
+    # Check that the correct callbacks were called on errors/successes.
+    assert all([index not in callback_results for index in error_indices])
+    assert [isinstance(result, Exception)
+            for result in callback_results].count(True) == len(error_indices)
