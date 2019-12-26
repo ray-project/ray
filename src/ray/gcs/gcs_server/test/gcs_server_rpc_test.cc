@@ -13,7 +13,6 @@ static std::string libray_redis_module_path;
 
 class GcsServerTest : public RedisServiceManagerForTest {
  public:
-  using CallFunction = std::function<void(std::promise<bool> &promise)>;
 
   void SetUp() override {
     gcs::GcsServerConfig config;
@@ -52,115 +51,97 @@ class GcsServerTest : public RedisServiceManagerForTest {
   }
 
   bool AddJob(const rpc::AddJobRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->AddJob(request,
-                      [&promise](const Status &status, const rpc::AddJobReply &reply) {
-                        RAY_CHECK_OK(status);
-                        promise.set_value(true);
-                      });
-    };
-    return WaitReady(call_function, timeout_ms_);
+    std::promise<bool> promise;
+    client_->AddJob(request, [&](const Status &status, const rpc::AddJobReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool MarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->MarkJobFinished(
-          request,
-          [&promise](const Status &status, const rpc::MarkJobFinishedReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-          });
-    };
-    return WaitReady(call_function, timeout_ms_);
+    std::promise<bool> promise;
+    client_->MarkJobFinished(
+        request, [&](const Status &status, const rpc::MarkJobFinishedReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool RegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->RegisterActorInfo(
-          request,
-          [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-          });
-    };
-    return WaitReady(call_function, timeout_ms_);
+    std::promise<bool> promise;
+    client_->RegisterActorInfo(
+        request, [&](const Status &status, const rpc::RegisterActorInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool UpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->UpdateActorInfo(
-          request,
-          [&promise](const Status &status, const rpc::UpdateActorInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-          });
-    };
-    return WaitReady(call_function, timeout_ms_);
+    std::promise<bool> promise;
+    client_->UpdateActorInfo(
+        request, [&](const Status &status, const rpc::UpdateActorInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   rpc::ActorTableData GetActorInfo(const std::string &actor_id) {
     rpc::GetActorInfoRequest request;
     request.set_actor_id(actor_id);
     rpc::ActorTableData actor_table_data;
-    auto call_function = [this, request, &actor_table_data](std::promise<bool> &promise) {
-      client_->GetActorInfo(
-          request, [&promise, &actor_table_data](const Status &status,
-                                         const rpc::GetActorInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            actor_table_data.CopyFrom(reply.actor_table_data());
-            promise.set_value(true);
-          });
-    };
-    EXPECT_TRUE(WaitReady(call_function, timeout_ms_));
+    std::promise<bool> promise;
+    client_->GetActorInfo(request,
+                          [&](const Status &status, const rpc::GetActorInfoReply &reply) {
+                            RAY_CHECK_OK(status);
+                            actor_table_data.CopyFrom(reply.actor_table_data());
+                            promise.set_value(true);
+                          });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data;
   }
 
   bool RegisterNodeInfo(const rpc::RegisterNodeInfoRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->RegisterNodeInfo(
-          request,
-          [&promise](const Status &status, const rpc::RegisterNodeInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-          });
-    };
-    return WaitReady(call_function, timeout_ms_);
+    std::promise<bool> promise;
+    client_->RegisterNodeInfo(
+        request, [&](const Status &status, const rpc::RegisterNodeInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool UnregisterNodeInfo(const rpc::UnregisterNodeInfoRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->UnregisterNodeInfo(
-          request,
-          [&promise](const Status &status, const rpc::UnregisterNodeInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-          });
-    };
-    return WaitReady(call_function, timeout_ms_);
+    std::promise<bool> promise;
+    client_->UnregisterNodeInfo(
+        request, [&](const Status &status, const rpc::UnregisterNodeInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   std::vector<rpc::GcsNodeInfo> GetAllNodesInfo() {
     std::vector<rpc::GcsNodeInfo> node_infos;
     rpc::GetAllNodesInfoRequest request;
-    auto call_function = [this, request, &node_infos](std::promise<bool> &promise) {
-      client_->GetAllNodesInfo(
-          request, [&promise, &node_infos](const Status &status,
-                                           const rpc::GetAllNodesInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            for (int index = 0; index < reply.node_infos_size(); ++index) {
-              node_infos.push_back(reply.node_infos(index));
-            }
-            promise.set_value(true);
-          });
-    };
-    EXPECT_TRUE(WaitReady(call_function, timeout_ms_));
+    std::promise<bool> promise;
+    client_->GetAllNodesInfo(
+        request, [&](const Status &status, const rpc::GetAllNodesInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          for (int index = 0; index < reply.node_infos_size(); ++index) {
+            node_infos.push_back(reply.node_infos(index));
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return node_infos;
   }
 
-  bool WaitReady(const CallFunction &function, uint64_t timeout_ms) {
-    std::promise<bool> promise_;
-    auto future = promise_.get_future();
-    function(promise_);
+  bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
   }
@@ -219,7 +200,8 @@ TEST_F(GcsServerTest, TestActorInfo) {
   register_actor_info_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
   ASSERT_TRUE(RegisterActorInfo(register_actor_info_request));
   rpc::ActorTableData result = GetActorInfo(actor_table_data.actor_id());
-  ASSERT_TRUE(result.state() == rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
+  ASSERT_TRUE(result.state() ==
+              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
   // Update actor state
   rpc::UpdateActorInfoRequest update_actor_info_request;
@@ -229,7 +211,8 @@ TEST_F(GcsServerTest, TestActorInfo) {
   update_actor_info_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
   ASSERT_TRUE(UpdateActorInfo(update_actor_info_request));
   result = GetActorInfo(actor_table_data.actor_id());
-  ASSERT_TRUE(result.state() == rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+  ASSERT_TRUE(result.state() ==
+              rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {
