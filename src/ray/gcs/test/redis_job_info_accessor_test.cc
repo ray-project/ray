@@ -1,4 +1,3 @@
-#include "ray/gcs/redis_job_info_accessor.h"
 #include <memory>
 #include "gtest/gtest.h"
 #include "ray/gcs/pb_util.h"
@@ -73,3 +72,12 @@ TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
 }  // namespace gcs
 
 }  // namespace ray
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  RAY_CHECK(argc == 4);
+  ray::REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  return RUN_ALL_TESTS();
+}

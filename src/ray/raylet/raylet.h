@@ -43,25 +43,30 @@ class Raylet {
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::RedisGcsClient> gcs_client);
 
+  /// Start this raylet.
+  void Start();
+
+  /// Stop this raylet.
+  void Stop();
+
   /// Destroy the NodeServer.
   ~Raylet();
 
  private:
   /// Register GCS client.
-  ray::Status RegisterGcs(const std::string &node_ip_address,
-                          const std::string &raylet_socket_name,
-                          const std::string &object_store_socket_name,
-                          const std::string &redis_address, int redis_port,
-                          const std::string &redis_password,
-                          boost::asio::io_service &io_service, const NodeManagerConfig &);
+  ray::Status RegisterGcs();
 
-  ray::Status RegisterPeriodicTimer(boost::asio::io_service &io_service);
   /// Accept a client connection.
   void DoAccept();
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
 
   friend class TestObjectManagerIntegration;
+
+  /// ID of this node.
+  ClientID self_node_id_;
+  /// Information of this node.
+  GcsNodeInfo self_node_info_;
 
   /// A client connection to the GCS.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
@@ -76,7 +81,7 @@ class Raylet {
   std::string socket_name_;
 
   /// An acceptor for new clients.
-  local_stream_protocol::acceptor acceptor_;
+  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
   local_stream_protocol::socket socket_;
 };

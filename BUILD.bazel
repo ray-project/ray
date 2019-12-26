@@ -662,7 +662,13 @@ cc_test(
 cc_test(
     name = "gcs_server_rpc_test",
     srcs = ["src/ray/gcs/gcs_server/test/gcs_server_rpc_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs_server_lib",
         "@com_google_googletest//:gtest_main",
@@ -804,56 +810,81 @@ cc_library(
     ],
 )
 
-# TODO(micafan) Replace cc_binary with cc_test for GCS test.
-cc_binary(
+# TODO(micafan) Support test group in future. Use test group we can run all gcs test once.
+cc_test(
     name = "redis_gcs_client_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/redis_gcs_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_binary(
+cc_test(
     name = "redis_actor_info_accessor_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/redis_actor_info_accessor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_binary(
+cc_test(
     name = "subscription_executor_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/subscription_executor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_binary(
+cc_test(
     name = "redis_job_info_accessor_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/redis_job_info_accessor_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_binary(
+cc_test(
     name = "asio_test",
-    testonly = 1,
     srcs = ["src/ray/gcs/test/asio_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
     deps = [
         ":gcs",
         ":ray_util",
@@ -962,10 +993,23 @@ cc_binary(
         "@bazel_tools//src/conditions:darwin": ["external/bazel_tools/tools/jdk/include/darwin"],
         "//conditions:default": ["external/bazel_tools/tools/jdk/include/linux"],
     }),
+    # Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
+    linkopts = select({
+        "@bazel_tools//src/conditions:darwin": [
+            "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+        ],
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
+        ],
+    }),
     linkshared = 1,
     linkstatic = 1,
     deps = [
         "//:core_worker_lib",
+        "//:src/ray/ray_exported_symbols.lds",
+        "//:src/ray/ray_version_script.lds",
     ],
 )
 
