@@ -1702,8 +1702,6 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
         task_resources.ToResourceSet());
     worker->ResetTaskResourceIds();
 
-    NewSchedulerSchedulePendingTasks();
-
     // TODO (ion): Handle ProcessDisconnectClientMessage()
     HandleWorkerAvailable(worker);
     leased_workers_.erase(worker_id);
