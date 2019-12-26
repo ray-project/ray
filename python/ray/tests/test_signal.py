@@ -276,9 +276,6 @@ def test_forget(ray_start_regular):
     assert len(result_list) == count
 
 
-@pytest.mark.skipif(
-    ray_constants.direct_call_enabled(),
-    reason="TODO(ekl): this requires reconstruction")
 def test_signal_on_node_failure(two_node_cluster):
     """Test actor checkpointing on a remote node."""
 
