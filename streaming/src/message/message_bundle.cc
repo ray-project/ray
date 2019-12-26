@@ -73,10 +73,10 @@ StreamingMessageBundleMetaPtr StreamingMessageBundleMeta::FromBytes(const uint8_
   STREAMING_LOG(DEBUG) << "ts => " << *message_bundle_ts << " last message id => "
                        << *last_message_id << " message size => " << *message_list_size;
 
-  STREAMING_CHECK(message_list_size <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
+  STREAMING_CHECK(*message_list_size <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
 
   const StreamingMessageBundleType *message_bundle_type =
-      *reinterpret_cast<const StreamingMessageBundleType *>(bytes + byte_offset);
+      reinterpret_cast<const StreamingMessageBundleType *>(bytes + byte_offset);
   byte_offset += sizeof(StreamingMessageBundleType);
 
   auto result = std::make_shared<StreamingMessageBundleMeta>(

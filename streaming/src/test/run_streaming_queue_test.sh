@@ -22,7 +22,6 @@ fi
 # Cause the script to exit if a single command fails.
 set -e
 set -x
-export STREAMING_METRICS_MODE=DEV
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
@@ -35,6 +34,9 @@ RAY_ROOT="`( cd \"$RAY_ROOT\" && pwd )`"
 if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
+
+# Run common tests
+bazel test //streaming:all
 
 bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
 bazel build //streaming:streaming_test_worker

@@ -74,6 +74,11 @@ class StreamingMessageBundleMeta {
                                                  bool verifer_check = true);
   inline virtual uint32_t ClassBytesSize() { return kMessageBundleMetaHeaderSize; }
 
+  inline static bool CheckBundleMagicNum(const uint8_t *bytes) {
+    const uint32_t *magic_num = reinterpret_cast<const uint32_t *>(bytes);
+    return *magic_num == StreamingMessageBundleMagicNum;
+  }
+
   std::string ToString() {
     return std::to_string(last_message_id_) + "," + std::to_string(message_list_size_) +
            "," + std::to_string(message_bundle_ts_) + "," +
@@ -81,11 +86,9 @@ class StreamingMessageBundleMeta {
   }
 };
 
-/// StreamingMessageBundle inherits from metadata class (StreamingMessageBundleMeta) with
-/// the following protocol:
-/// MagicNum = 0xcafebaba
-/// Timestamp 64bits timestamp (milliseconds from 1970)
-/// LastMessageId( the last id of bundle) (0,INF]
+/// StreamingMessageBundle inherits from metadata class (StreamingMessageBundleMeta)
+/// with the following protocol: MagicNum = 0xcafebaba Timestamp 64bits timestamp
+/// (milliseconds from 1970) LastMessageId( the last id of bundle) (0,INF]
 /// MessageListSize(bundle len of message)
 /// BundleType(a. bundle = 3 , b. barrier =2, c. empty = 1)
 /// RawBundleSize（binary length of data)
@@ -154,14 +157,10 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
   static void GetMessageListFromRawData(const uint8_t *bytes, uint32_t bytes_size,
                                         uint32_t message_list_size,
                                         std::list<StreamingMessagePtr> &message_list);
+
   static void ConvertMessageListToRawData(
       const std::list<StreamingMessagePtr> &message_list, uint32_t raw_data_size,
       uint8_t *raw_data);
-
-  inline static bool CheckBundleMagicNum(const uint8_t *bytes) {
-    const uint32_t *magic_num = reinterpret_cast<const uint32_t *>(bytes);
-    return *magic_num == StreamingMessageBundleMagicNum;
-  }
 };
 }  // namespace streaming
 }  // namespace ray
