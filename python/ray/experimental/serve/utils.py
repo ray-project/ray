@@ -3,6 +3,7 @@ import logging
 import random
 import string
 import time
+import io
 
 import requests
 from pygments import formatters, highlight, lexers
