@@ -127,7 +127,7 @@ def test_batching_exception(serve_instance):
         NoListReturned, "exception:v1", backend_config=b_config)
     serve.link("exception-test", "exception:v1")
 
-    handle = serve.get_handle("exception-test"")
+    handle = serve.get_handle("exception-test")
     with pytest.raises(Exception) as e:
         assert handle.remote(temp=1)
     assert str(e.value) == ("__call__ function "
