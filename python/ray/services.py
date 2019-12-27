@@ -1018,7 +1018,8 @@ def start_reporter(redis_address,
     return process_info
 
 
-def start_dashboard(host,
+def start_dashboard(require_webui,
+                    host,
                     redis_address,
                     temp_dir,
                     stdout_file=None,
@@ -1027,6 +1028,9 @@ def start_dashboard(host,
     """Start a dashboard process.
 
     Args:
+        require_webui (bool): If true, this will raise an exception if we fail
+            to start the webui. Otherwise it will print a warning if we fail
+            to start the webui.
         host (str): The host to bind the dashboard web server to.
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
@@ -1066,37 +1070,48 @@ def start_dashboard(host,
 
     if sys.version_info <= (3, 0):
         return None, None
+
+    webui_dependencies_present = True
     try:
         import aiohttp  # noqa: F401
         import psutil  # noqa: F401
         import setproctitle  # noqa: F401
         import grpc  # noqa: F401
     except ImportError:
-        raise ImportError(
+        webui_dependencies_present = False
+        warning_message = (
             "Failed to start the dashboard. The dashboard requires Python 3 "
             "as well as 'pip install aiohttp psutil setproctitle grpcio'.")
+        if require_webui:
+            raise ImportError(warning_message)
+        else:
+            logger.warning(warning_message)
 
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_DASHBOARD,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file)
-    dashboard_url = "http://{}:{}".format(
-        host if host == "127.0.0.1" else get_node_ip_address(), port)
-    print("\n" + "=" * 70)
-    print("View the dashboard at {}.".format(dashboard_url))
-    if host == "127.0.0.1":
-        note = (
-            "Note: If Ray is running on a remote node, you will need to set "
-            "up an SSH tunnel with local port forwarding in order to access "
-            "the dashboard in your browser, e.g. by running "
-            "'ssh -L {}:{}:{} <username>@<host>'. Alternatively, you can set "
-            "webui_host=\"0.0.0.0\" in the call to ray.init() to allow direct "
-            "access from external machines.")
-        note = note.format(port, host, port)
-        print("\n".join(textwrap.wrap(note, width=70)))
-    print("=" * 70 + "\n")
-    return dashboard_url, process_info
+    if webui_dependencies_present:
+        process_info = start_ray_process(
+            command,
+            ray_constants.PROCESS_TYPE_DASHBOARD,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file)
+
+        dashboard_url = "http://{}:{}".format(
+            host if host == "127.0.0.1" else get_node_ip_address(), port)
+        print("\n" + "=" * 70)
+        print("View the dashboard at {}.".format(dashboard_url))
+        if host == "127.0.0.1":
+            note = (
+                "Note: If Ray is running on a remote node, you will need to "
+                "set up an SSH tunnel with local port forwarding in order to "
+                "access the dashboard in your browser, e.g. by running "
+                "'ssh -L {}:{}:{} <username>@<host>'. Alternatively, you can "
+                "set webui_host=\"0.0.0.0\" in the call to ray.init() to "
+                "allow direct access from external machines.")
+            note = note.format(port, host, port)
+            print("\n".join(textwrap.wrap(note, width=70)))
+        print("=" * 70 + "\n")
+        return dashboard_url, process_info
+    else:
+        return None, None
 
 
 def start_raylet(redis_address,
