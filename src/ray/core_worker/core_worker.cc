@@ -1075,7 +1075,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_actor_id(worker_context_.GetCurrentActorID().Hex());
   stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
-  auto current_task = worker_Context_.GetCurrentTask();
+  auto current_task = worker_context_.GetCurrentTask();
   if (current_task) {
     stats->set_current_task_desc(current_task->DebugString());
   }

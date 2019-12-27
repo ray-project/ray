@@ -89,6 +89,7 @@ message NodeStatsReply {
   map<string, double> available_resources = 3;
   map<string, double> total_resources = 4;
   uint32 num_workers = 5;
+  string debug_string = 6;
 }
 
 // Service for inter-node-manager communication.

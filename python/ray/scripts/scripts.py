@@ -853,7 +853,6 @@ def stat(address):
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
     raylet = ray.nodes()[0]
-    num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     ray.nodes()[0]["NodeManagerPort"])
 

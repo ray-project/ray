@@ -3024,6 +3024,7 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
                        << status.ToString();
     }
   }
+  reply->set_debug_string(DebugString());
 }
 
 void NodeManager::RecordMetrics() {
