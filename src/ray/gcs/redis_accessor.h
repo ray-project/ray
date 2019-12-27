@@ -208,8 +208,26 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   bool IsRemoved(const ClientID &node_id) const override;
 
+  Status AsyncGetResource(const ClientID &node_id,
+                          const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncUpdateResource(const ClientID &node_id, const ResourceMap &resources,
+                             const StatusCallback &callback) override;
+
+  Status AsyncDeleteResource(const ClientID &node_id,
+                             const std::vector<std::string> &resource_names,
+                             const StatusCallback &callback) override;
+
+  Status AsyncSubscribeResource(
+      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+      const StatusCallback &done) override;
+
  private:
   RedisGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
+      DynamicResourceSubscriptionExecutor;
+  DynamicResourceSubscriptionExecutor resource_sub_executor_;
 };
 
 }  // namespace gcs
