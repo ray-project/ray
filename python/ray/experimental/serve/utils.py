@@ -7,7 +7,7 @@ import io
 
 import requests
 from pygments import formatters, highlight, lexers
-from ray.experimental.serve.context import FakeFlaskQuest, TaskContext
+from ray.experimental.serve.context import FakeFlaskRequest, TaskContext
 from ray.experimental.serve.http_util import build_flask_request
 
 
@@ -20,7 +20,7 @@ def parse_request_item(request_item):
         kwargs = {}
     else:
         is_web_context = False
-        args = (FakeFlaskQuest(), )
+        args = (FakeFlaskRequest(), )
         kwargs = request_item.request_kwargs
 
     result_object_id = request_item.result_object_id

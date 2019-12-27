@@ -3,7 +3,7 @@ import traceback
 
 import ray
 from ray.experimental.serve import context as serve_context
-from ray.experimental.serve.context import FakeFlaskQuest
+from ray.experimental.serve.context import FakeFlaskRequest
 from collections import defaultdict
 from ray.experimental.serve.utils import parse_request_item
 from ray.experimental.serve.exceptions import RayServeException
@@ -151,7 +151,7 @@ class RayServeMixin:
             if serve_context.web:
                 args = (arg_list, )
             else:
-                args = (FakeFlaskQuest(), )
+                args = (FakeFlaskRequest(), )
             # set the current batch size (n) for serve_context
             serve_context.batch_size = len(result_object_ids)
             start_timestamp = time.time()

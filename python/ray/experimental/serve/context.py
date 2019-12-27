@@ -26,7 +26,7 @@ a web context.
 """
 
 
-class FakeFlaskQuest:
+class FakeFlaskRequest:
     def __getattribute__(self, name):
         raise RayServeException(_not_in_web_context_error)
 
