@@ -19,6 +19,7 @@ class MagicCounter:
     def __init__(self, increment):
         self.increment = increment
 
+    @serve.accept_batch
     def __call__(self, flask_request_list, base_number=None):
         # batch_size = serve.context.batch_size
         if serve.context.web:

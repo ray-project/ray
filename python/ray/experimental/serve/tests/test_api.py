@@ -82,6 +82,7 @@ def test_batching(serve_instance):
         def __init__(self):
             self.count = 0
 
+        @serve.accept_batch
         def __call__(self, flask_request, temp=None):
             self.count += 1
             batch_size = serve.context.batch_size
@@ -117,6 +118,7 @@ def test_batching_exception(serve_instance):
         def __init__(self):
             self.count = 0
 
+        @serve.accept_batch
         def __call__(self, flask_request, temp=None):
             batch_size = serve.context.batch_size
             return batch_size
@@ -170,6 +172,7 @@ def test_not_killing_replicas(serve_instance):
         def __init__(self):
             self.count = 0
 
+        @serve.accept_batch
         def __call__(self, flask_request, temp=None):
             batch_size = serve.context.batch_size
             return [1] * batch_size
