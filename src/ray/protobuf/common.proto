@@ -161,3 +161,17 @@ message ResourceMapEntry {
   // The set of resource ids assigned.
   repeated ResourceId resource_ids = 2;
 }
+
+// Debug info returned from the core worker.
+message CoreWorkerStats {
+  // Currently assigned job id.
+  string job_id = 1;
+  // Currently assigned actor id.
+  string actor_id = 2;
+  // Number of pending normal and actor tasks.
+  int32 num_pending_tasks = 3;
+  // Number of object ids in local scope.
+  int32 num_object_ids_in_scope = 4;
+  // Debug string of the currently executing task.
+  string current_task_desc = 5;
+}

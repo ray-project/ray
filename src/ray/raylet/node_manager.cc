@@ -3013,6 +3013,7 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
             worker_stats->set_is_driver(false);
             reply->set_num_workers(reply->num_workers() + 1);
             worker_stats->set_webui_display(r.webui_display());
+            worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
             if (reply->num_workers() == all_workers.size()) {
               send_reply_callback(Status::OK(), nullptr, nullptr);
             }

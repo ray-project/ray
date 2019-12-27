@@ -55,6 +55,8 @@ message WorkerStats {
   bool is_driver = 2;
   // String displayed on Web UI.
   string webui_display = 3;
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 4;
 }
 
 message ViewData {
