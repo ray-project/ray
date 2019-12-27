@@ -3,12 +3,6 @@
 
 namespace ray {
 
-void ActorManager::PublishCreatedActor(const TaskSpecification &actor_creation_task,
-                                       const rpc::Address &address) {
-  // Actor creation is currently published by raylet when a new actor is created.
-  // So this function is a no-op.
-}
-
 void ActorManager::PublishTerminatedActor(const TaskSpecification &actor_creation_task) {
   auto actor_id = actor_creation_task.ActorCreationId();
   auto data = gcs::CreateActorTableData(actor_creation_task, rpc::Address(),

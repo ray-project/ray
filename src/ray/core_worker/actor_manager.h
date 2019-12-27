@@ -9,23 +9,19 @@ namespace ray {
 // Interface for testing.
 class ActorManagerInterface {
  public:
-  virtual void PublishCreatedActor(const TaskSpecification &actor_creation_task,
-                                   const rpc::Address &address) = 0;
-
   virtual void PublishTerminatedActor(const TaskSpecification &actor_creation_task) = 0;
 
   virtual ~ActorManagerInterface() {}
 };
 
 /// Class to manage lifetimes of actors that we create (actor children).
+/// Currently this class is only used to publish actor DEAD event
+/// for actor creation task failures. All other cases are managed
+/// by raylet.
 class ActorManager : public ActorManagerInterface {
  public:
   ActorManager(gcs::ActorInfoAccessor &actor_accessor)
       : actor_accessor_(actor_accessor) {}
-
-  /// Called when an actor creation task that we submitted finishes.
-  void PublishCreatedActor(const TaskSpecification &actor_creation_task,
-                           const rpc::Address &address) override;
 
   /// Called when an actor that we own can no longer be restarted.
   void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override;

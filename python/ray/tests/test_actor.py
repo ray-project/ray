@@ -1446,6 +1446,47 @@ def test_kill(ray_start_regular):
         ray.get(result, timeout=1)
 
 
+# This test verifies actor creation task failure will not
+# hang the caller.
+def test_actor_creation_task_crash(ray_start_regular):
+     # Test actor death in constructor.
+     @ray.remote(max_reconstructions=0)
+     class Actor(object):
+         def __init__(self):
+             print("crash")
+             os._exit(0)
+
+         def f(self):
+             return "ACTOR OK"
+
+     a = Actor.remote()
+     try:
+         ray.get(a.f.remote())
+     except ray.exceptions.RayActorError:
+         pass
+
+     # The actor has probability to die when running its constructor,
+     # and the actor can be reconstructed a few times.
+     @ray.remote(max_reconstructions=5)
+     class ReconstructableActor(object):
+         def __init__(self):
+             if random.random() < 0.5:
+                 print("crash")
+                 os._exit(0)
+             else:
+                 print("no crash")
+
+         def f(self):
+             return "ACTOR OK"
+
+     for i in range(5):
+         time.sleep(1)
+         ra = Actor.remote()
+         try:
+             ray.get(ra.f.remote())
+         except ray.exceptions.RayActorError:
+             pass
+
 if __name__ == "__main__":
     import pytest
     import sys
