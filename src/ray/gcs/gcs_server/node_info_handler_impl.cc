@@ -45,11 +45,8 @@ void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
   auto on_done = [reply, send_reply_callback](
                      Status status, const std::vector<rpc::GcsNodeInfo> &result) {
     if (status.ok()) {
-      std::set<std::string> node_ids;
-      for (int index = result.size() - 1; index >= 0; --index) {
-        if (node_ids.insert(result[index].node_id()).second) {
-          reply->add_node_info_list()->CopyFrom(result[index]);
-        }
+      for (const rpc::GcsNodeInfo &node_info : result) {
+        reply->add_node_info_list()->CopyFrom(node_info);
       }
     } else {
       RAY_LOG(ERROR) << "Failed to get all nodes info: " << status.ToString();
