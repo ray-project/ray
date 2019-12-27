@@ -17,6 +17,7 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import run_string_as_driver
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -1440,6 +1441,58 @@ def test_kill(ray_start_regular):
     actor.__ray_kill__()
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(result, timeout=1)
+
+
+# This test verifies actor creation task failure will not
+# hang the caller.
+def test_actor_creation_task_crash(ray_start_regular):
+    # Test actor death in constructor.
+    @ray.remote(max_reconstructions=0)
+    class Actor(object):
+        def __init__(self):
+            print("crash")
+            os._exit(0)
+
+        def f(self):
+            return "ACTOR OK"
+
+    # Verify an exception is thrown.
+    a = Actor.remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.f.remote())
+
+    # Test an actor can be reconstructed successfully
+    # afte it dies in its constructor.
+    @ray.remote(max_reconstructions=3)
+    class ReconstructableActor(object):
+        def __init__(self):
+            count = self.get_count()
+            count += 1
+            # Make it die for the first 2 times.
+            if count < 3:
+                self.set_count(count)
+                print("crash: " + str(count))
+                os._exit(0)
+            else:
+                print("no crash")
+
+        def f(self):
+            return "ACTOR OK"
+
+        def get_count(self):
+            value = _internal_kv_get("count")
+            if value is None:
+                count = 0
+            else:
+                count = int(value)
+            return count
+
+        def set_count(self, count):
+            _internal_kv_put("count", count, True)
+
+    # Verify we can get the object successfully.
+    ra = ReconstructableActor.remote()
+    ray.get(ra.f.remote())
 
 
 if __name__ == "__main__":
