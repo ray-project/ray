@@ -10,6 +10,7 @@
 #include "ray/util/util.h"
 
 namespace ray {
+
 using WorkerType = rpc::WorkerType;
 
 // Return a string representation of the worker type.
@@ -84,11 +85,14 @@ class TaskArg {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), resources(resources) {}
+  TaskOptions(int num_returns, bool is_direct_call,
+              std::unordered_map<std::string, double> &resources)
+      : num_returns(num_returns), is_direct_call(is_direct_call), resources(resources) {}
 
   /// Number of returns of this task.
   int num_returns = 1;
+  /// Whether to use the direct task transport.
+  bool is_direct_call = false;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
 };
@@ -101,14 +105,15 @@ struct ActorCreationOptions {
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached)
+                       bool is_detached, bool is_asyncio)
       : max_reconstructions(max_reconstructions),
         is_direct_call(is_direct_call),
         max_concurrency(max_concurrency),
         resources(resources),
         placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options),
-        is_detached(is_detached){};
+        is_detached(is_detached),
+        is_asyncio(is_asyncio){};
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
@@ -128,6 +133,8 @@ struct ActorCreationOptions {
   /// Whether to keep the actor persistent after driver exit. If true, this will set
   /// the worker to not be destroyed after the driver shutdown.
   const bool is_detached = false;
+  /// Whether to use async mode of direct actor call. is_direct_call must be true.
+  const bool is_asyncio = false;
 };
 
 }  // namespace ray

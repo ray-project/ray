@@ -6,7 +6,7 @@ This page will cover some more advanced examples of using Ray's flexible program
 Dynamic Remote Parameters
 -------------------------
 
-You can dynamically adjust resource requirements or return values of ``ray.remote`` during execution with ``._remote``.
+You can dynamically adjust resource requirements or return values of ``ray.remote`` during execution with ``.options``.
 
 For example, here we instantiate many copies of the same actor with varying resource requirements. Note that to create these actors successfully, Ray will need to be started with sufficient CPU resources and the relevant custom resources:
 
@@ -21,9 +21,9 @@ For example, here we instantiate many copies of the same actor with varying reso
           self.value += 1
           return self.value
 
-  a1 = Counter._remote(num_cpus=1, resources={"Custom1": 1})
-  a2 = Counter._remote(num_cpus=2, resources={"Custom2": 1})
-  a3 = Counter._remote(num_cpus=3, resources={"Custom3": 1})
+  a1 = Counter.options(num_cpus=1, resources={"Custom1": 1}).remote()
+  a2 = Counter.options(num_cpus=2, resources={"Custom2": 1}).remote()
+  a3 = Counter.options(num_cpus=3, resources={"Custom3": 1}).remote()
 
 You can specify different resource requirements for tasks (but not for actor methods):
 
@@ -36,7 +36,7 @@ You can specify different resource requirements for tasks (but not for actor met
     object_gpu_ids = g.remote()
     assert ray.get(object_gpu_ids) == [0]
 
-    dynamic_object_gpu_ids = g._remote(args=[], num_cpus=1, num_gpus=1)
+    dynamic_object_gpu_ids = g.options(num_cpus=1, num_gpus=1).remote()
     assert ray.get(dynamic_object_gpu_ids) == [0]
 
 And vary the number of return values for tasks (and actor methods too):
@@ -47,9 +47,10 @@ And vary the number of return values for tasks (and actor methods too):
     def f(n):
         return list(range(n))
 
-    id1, id2 = f._remote(args=[2], num_return_vals=2)
+    id1, id2 = f.options(num_return_vals=2).remote(2)
     assert ray.get(id1) == 0
     assert ray.get(id2) == 1
+
 
 Dynamic Custom Resources
 ------------------------
@@ -250,7 +251,7 @@ For example, you can instantiate and register a persistent actor as follows:
 
 .. code-block:: python
 
-  counter = Counter._remote(name="CounterActor", detached=True)
+  counter = Counter.options(name="CounterActor", detached=True).remote()
 
 The CounterActor will be kept alive even after the driver running above script
 exits. Therefore it is possible to run the following script in a different
@@ -266,7 +267,7 @@ up after driver exits:
 
 .. code-block:: python
 
-  Counter._remote(name="CounterActor")
+  Counter.options(name="CounterActor").remote()
 
 However, creating a detached actor without name is not allowed because there
 will be no way to retrieve the actor handle and the resource is leaked.
@@ -274,4 +275,4 @@ will be no way to retrieve the actor handle and the resource is leaked.
 .. code-block:: python
 
   # Can't do this!
-  Counter._remote(detached=True)
+  Counter.options(detached=True).remote()

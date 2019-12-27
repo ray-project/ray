@@ -161,6 +161,11 @@ class UnreconstructableError(RayError):
                 "https://ray.readthedocs.io/en/latest/memory-management.html"))
 
 
+class RayTimeoutError(RayError):
+    """Indicates that a call to the worker timed out."""
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     RayError,
     RayTaskError,
@@ -168,4 +173,5 @@ RAY_EXCEPTION_TYPES = [
     RayActorError,
     ObjectStoreFullError,
     UnreconstructableError,
+    RayTimeoutError,
 ]

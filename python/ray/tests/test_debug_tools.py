@@ -47,3 +47,12 @@ def test_raylet_gdb(ray_gdb_start):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         assert pgrep_command.communicate()[0]
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    # Make subprocess happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+    sys.exit(pytest.main(["-v", __file__]))

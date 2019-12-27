@@ -207,7 +207,7 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None):
         pass
 
-    def save(self, trial, type=Checkpoint.DISK):
+    def save(self, trial, type=Checkpoint.DISK, result=None):
         return trial.trainable_name
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
@@ -590,7 +590,7 @@ class HyperbandSuite(unittest.TestCase):
     def testRemove(self):
         """Test with 4: start 1, remove 1 pending, add 2, remove 1 pending."""
         sched, runner = self.schedulerSetup(4)
-        trials = sorted(list(sched._trial_info), key=lambda t: t.trial_id)
+        trials = sorted(sched._trial_info, key=lambda t: t.trial_id)
         runner._launch_trial(trials[0])
         sched.on_trial_result(runner, trials[0], result(1, 5))
         self.assertEqual(trials[0].status, Trial.RUNNING)
@@ -1194,4 +1194,6 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

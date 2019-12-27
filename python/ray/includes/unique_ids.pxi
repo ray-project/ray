@@ -19,7 +19,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CTaskID,
     CUniqueID,
-    CWorkerID,
+    CWorkerID
 )
 
 import ray
@@ -40,8 +40,6 @@ cdef extern from "ray/common/constants.h" nogil:
 
 cdef class BaseID:
 
-    # To avoid the error of "Python int too large to convert to C ssize_t",
-    # here `cdef size_t` is required.
     cdef size_t hash(self):
         pass
 
@@ -129,13 +127,6 @@ cdef class UniqueID(BaseID):
 
 
 cdef class ObjectID(BaseID):
-    cdef:
-        CObjectID data
-        object buffer_ref
-        # Flag indicating whether or not this object ID was added to the set
-        # of active IDs in the core worker so we know whether we should clean
-        # it up.
-        c_bool in_core_worker
 
     def __init__(self, id):
         check_id(id)
@@ -146,14 +137,14 @@ cdef class ObjectID(BaseID):
         # TODO(edoakes): there are dummy object IDs being created in
         # includes/task.pxi before the core worker is initialized.
         if hasattr(worker, "core_worker"):
-            worker.core_worker.add_active_object_id(self)
+            worker.core_worker.add_object_id_reference(self)
             self.in_core_worker = True
 
     def __dealloc__(self):
         if self.in_core_worker:
             try:
                 worker = ray.worker.global_worker
-                worker.core_worker.remove_active_object_id(self)
+                worker.core_worker.remove_object_id_reference(self)
             except Exception as e:
                 # There is a strange error in rllib that causes the above to
                 # fail. Somehow the global 'ray' variable corresponding to the
@@ -176,8 +167,8 @@ cdef class ObjectID(BaseID):
     def hex(self):
         return decode(self.data.Hex())
 
-    def is_direct_actor_type(self):
-        return self.data.IsDirectActorType()
+    def is_direct_call_type(self):
+        return self.data.IsDirectCallType()
 
     def is_nil(self):
         return self.data.IsNil()
@@ -202,6 +193,15 @@ cdef class ObjectID(BaseID):
     def from_random(cls):
         return cls(CObjectID.FromRandom().Binary())
 
+    def __await__(self):
+        # Delayed import because this can only be imported in py3.
+        from ray.async_compat import get_async
+        return get_async(self).__await__()
+
+    def as_future(self):
+        # Delayed import because this can only be imported in py3.
+        from ray.async_compat import get_async
+        return get_async(self)
 
 cdef class TaskID(BaseID):
     cdef CTaskID data
@@ -294,6 +294,7 @@ cdef class JobID(BaseID):
 
     @classmethod
     def from_int(cls, value):
+        assert value < 65536, "Maximum JobID integer is 65535."
         return cls(CJobID.FromInt(value).Binary())
 
     @classmethod
@@ -329,8 +330,6 @@ cdef class WorkerID(UniqueID):
         return <CWorkerID>self.data
 
 cdef class ActorID(BaseID):
-    cdef CActorID data
-
     def __init__(self, id):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)

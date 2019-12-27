@@ -69,11 +69,12 @@ def run(run_or_experiment,
         sync_to_driver=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
+        sync_on_checkpoint=True,
         keep_checkpoints_num=None,
         checkpoint_score_attr=None,
         global_checkpoint_period=10,
         export_formats=None,
-        max_failures=3,
+        max_failures=0,
         restore=None,
         search_alg=None,
         scheduler=None,
@@ -118,18 +119,18 @@ def run(run_or_experiment,
             `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results
-            to (e.g. ``s3://bucket``).
+        upload_dir (str): Optional URI to sync training results to
+            (e.g. ``s3://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
         sync_to_cloud (func|str): Function for syncing the local_dir to and
-            from upload_dir. If string, then it must be a string template
-            that includes `{source}` and `{target}` for the syncer to run.
-            If not provided, the sync command defaults to standard
-            S3 or gsutil sync comamnds.
+            from upload_dir. If string, then it must be a string template that
+            includes `{source}` and `{target}` for the syncer to run. If not
+            provided, the sync command defaults to standard S3 or gsutil sync
+            comamnds.
         sync_to_driver (func|str): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template
             that includes `{source}` and `{target}` for the syncer to run.
@@ -138,6 +139,11 @@ def run(run_or_experiment,
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
+        sync_on_checkpoint (bool): Force sync-down of trial checkpoint, to
+            guarantee recoverability. If set to False, checkpoint syncing from
+            worker to driver is asynchronous. Set this to False only if
+            synchronous checkpointing is too slow and trial restoration
+            failures can be tolerated. Defaults to True.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
@@ -150,17 +156,18 @@ def run(run_or_experiment,
             for individual trials.
         export_formats (list): List of formats that exported at the end of
             the experiment. Default is None.
-        max_failures (int): Try to recover a trial from its last
-            checkpoint at least this many times. Only applies if
-            checkpointing is enabled. Setting to -1 will lead to infinite
-            recovery retries. Defaults to 3.
+        max_failures (int): Try to recover a trial at least this many times.
+            Ray will recover from the latest checkpoint if present.
+            Setting to -1 will lead to infinite recovery retries.
+            Setting to 0 will disable retries. Defaults to 3.
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
             BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
-            AsyncHyperBand, and HyperBand.
+            AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
+            ray.tune.schedulers for more options.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.
@@ -213,41 +220,51 @@ def run(run_or_experiment,
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
         ray_auto_init=ray_auto_init)
-    experiment = run_or_experiment
-    if not isinstance(run_or_experiment, Experiment):
-        run_identifier = Experiment._register_if_needed(run_or_experiment)
-        experiment = Experiment(
-            name=name,
-            run=run_identifier,
-            stop=stop,
-            config=config,
-            resources_per_trial=resources_per_trial,
-            num_samples=num_samples,
-            local_dir=local_dir,
-            upload_dir=upload_dir,
-            sync_to_driver=sync_to_driver,
-            trial_name_creator=trial_name_creator,
-            loggers=loggers,
-            checkpoint_freq=checkpoint_freq,
-            checkpoint_at_end=checkpoint_at_end,
-            keep_checkpoints_num=keep_checkpoints_num,
-            checkpoint_score_attr=checkpoint_score_attr,
-            export_formats=export_formats,
-            max_failures=max_failures,
-            restore=restore,
-            sync_function=sync_function)
+    if isinstance(run_or_experiment, list):
+        experiments = run_or_experiment
+    else:
+        experiments = [run_or_experiment]
+    if len(experiments) > 1:
+        logger.info(
+            "Running multiple concurrent experiments is experimental and may "
+            "not work with certain features.")
+    for i, exp in enumerate(experiments):
+        if not isinstance(exp, Experiment):
+            run_identifier = Experiment.register_if_needed(exp)
+            experiments[i] = Experiment(
+                name=name,
+                run=run_identifier,
+                stop=stop,
+                config=config,
+                resources_per_trial=resources_per_trial,
+                num_samples=num_samples,
+                local_dir=local_dir,
+                upload_dir=upload_dir,
+                sync_to_driver=sync_to_driver,
+                trial_name_creator=trial_name_creator,
+                loggers=loggers,
+                checkpoint_freq=checkpoint_freq,
+                checkpoint_at_end=checkpoint_at_end,
+                sync_on_checkpoint=sync_on_checkpoint,
+                keep_checkpoints_num=keep_checkpoints_num,
+                checkpoint_score_attr=checkpoint_score_attr,
+                export_formats=export_formats,
+                max_failures=max_failures,
+                restore=restore,
+                sync_function=sync_function)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
     if sync_to_cloud:
-        assert experiment.remote_checkpoint_dir, (
-            "Need `upload_dir` if `sync_to_cloud` given.")
+        for exp in experiments:
+            assert exp.remote_checkpoint_dir, (
+                "Need `upload_dir` if `sync_to_cloud` given.")
 
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),
         scheduler=scheduler or FIFOScheduler(),
-        local_checkpoint_dir=experiment.checkpoint_dir,
-        remote_checkpoint_dir=experiment.remote_checkpoint_dir,
+        local_checkpoint_dir=experiments[0].checkpoint_dir,
+        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
         sync_to_cloud=sync_to_cloud,
         checkpoint_period=global_checkpoint_period,
         resume=resume,
@@ -256,7 +273,8 @@ def run(run_or_experiment,
         verbose=bool(verbose > 1),
         trial_executor=trial_executor)
 
-    runner.add_experiment(experiment)
+    for exp in experiments:
+        runner.add_experiment(exp)
 
     if IS_NOTEBOOK:
         reporter = JupyterNotebookReporter(overwrite=verbose < 2)
@@ -269,7 +287,7 @@ def run(run_or_experiment,
                       dict) and "gpu" in resources_per_trial:
             # "gpu" is manually set.
             pass
-        elif _check_default_resources_override(experiment.run_identifier):
+        elif _check_default_resources_override(experiments[0].run_identifier):
             # "default_resources" is manually overriden.
             pass
         else:
@@ -329,7 +347,8 @@ def run_experiments(experiments,
                     queue_trials=False,
                     reuse_actors=False,
                     trial_executor=None,
-                    raise_on_failed_trial=True):
+                    raise_on_failed_trial=True,
+                    concurrent=False):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -357,10 +376,9 @@ def run_experiments(experiments,
     # and it conducts the implicit registration.
     experiments = convert_to_experiment_list(experiments)
 
-    trials = []
-    for exp in experiments:
-        trials += run(
-            exp,
+    if concurrent:
+        return run(
+            experiments,
             search_alg=search_alg,
             scheduler=scheduler,
             with_server=with_server,
@@ -372,4 +390,20 @@ def run_experiments(experiments,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
             return_trials=True)
-    return trials
+    else:
+        trials = []
+        for exp in experiments:
+            trials += run(
+                exp,
+                search_alg=search_alg,
+                scheduler=scheduler,
+                with_server=with_server,
+                server_port=server_port,
+                verbose=verbose,
+                resume=resume,
+                queue_trials=queue_trials,
+                reuse_actors=reuse_actors,
+                trial_executor=trial_executor,
+                raise_on_failed_trial=raise_on_failed_trial,
+                return_trials=True)
+        return trials

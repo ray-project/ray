@@ -58,6 +58,7 @@ def _parse_client_table(redis_client):
                 "NodeID": node_id,
                 "Alive": True,
                 "NodeManagerAddress": item.node_manager_address,
+                "NodeManagerHostname": item.node_manager_hostname,
                 "NodeManagerPort": item.node_manager_port,
                 "ObjectManagerPort": item.object_manager_port,
                 "ObjectStoreSocketName": item.object_store_socket_name,

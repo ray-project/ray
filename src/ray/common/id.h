@@ -18,7 +18,7 @@
 
 namespace ray {
 
-enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
+enum class TaskTransportType { RAYLET, DIRECT };
 
 class TaskID;
 class WorkerID;
@@ -99,9 +99,9 @@ class UniqueID : public BaseID<UniqueID> {
 
 class JobID : public BaseID<JobID> {
  public:
-  static constexpr int64_t kLength = 4;
+  static constexpr int64_t kLength = 2;
 
-  static JobID FromInt(uint32_t value);
+  static JobID FromInt(uint16_t value);
 
   static size_t Size() { return kLength; }
 
@@ -161,7 +161,7 @@ class ActorID : public BaseID<ActorID> {
 
 class TaskID : public BaseID<TaskID> {
  private:
-  static constexpr size_t kUniqueBytesLength = 6;
+  static constexpr size_t kUniqueBytesLength = 8;
 
  public:
   static constexpr size_t kLength = kUniqueBytesLength + ActorID::kLength;
@@ -290,9 +290,24 @@ class ObjectID : public BaseID<ObjectID> {
   /// Return if this is a direct actor call object.
   ///
   /// \return True if this is a direct actor object return.
-  bool IsDirectActorType() const {
-    return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT_ACTOR);
+  bool IsDirectCallType() const {
+    return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT);
   }
+
+  /// Return this object id with a changed transport type.
+  ///
+  /// \return Copy of this object id with the specified transport type.
+  ObjectID WithTransportType(TaskTransportType transport_type) const;
+
+  /// Return this object id with the plasma transport type.
+  ///
+  /// \return Copy of this object id with the plasma transport type.
+  ObjectID WithPlasmaTransportType() const;
+
+  /// Return this object id with the direct call transport type.
+  ///
+  /// \return Copy of this object id with the direct call transport type.
+  ObjectID WithDirectTransportType() const;
 
   /// Get the transport type of this object.
   ///

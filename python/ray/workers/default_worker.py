@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import json
 
 import ray
 import ray.actor
@@ -19,6 +20,11 @@ parser.add_argument(
     required=True,
     type=str,
     help="the ip address of the worker's node")
+parser.add_argument(
+    "--node-manager-port",
+    required=True,
+    type=int,
+    help="the port of the worker's node")
 parser.add_argument(
     "--redis-address",
     required=True,
@@ -51,6 +57,12 @@ parser.add_argument(
     default=ray_constants.LOGGER_FORMAT,
     help=ray_constants.LOGGER_FORMAT_HELP)
 parser.add_argument(
+    "--config-list",
+    required=False,
+    type=str,
+    default=None,
+    help="Override internal config options for the worker process.")
+parser.add_argument(
     "--temp-dir",
     required=False,
     type=str,
@@ -72,18 +84,35 @@ if __name__ == "__main__":
 
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
+    internal_config = {}
+    if args.config_list is not None:
+        config_list = args.config_list.split(",")
+        if len(config_list) > 1:
+            i = 0
+            while i < len(config_list):
+                internal_config[config_list[i]] = config_list[i + 1]
+                i += 2
+
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
+        node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
         redis_password=args.redis_password,
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         load_code_from_local=args.load_code_from_local,
-        use_pickle=args.use_pickle)
+        use_pickle=args.use_pickle,
+        _internal_config=json.dumps(internal_config),
+    )
 
     node = ray.node.Node(
-        ray_params, head=False, shutdown_at_exit=False, connect_only=True)
+        ray_params,
+        head=False,
+        shutdown_at_exit=False,
+        spawn_reaper=False,
+        connect_only=True)
     ray.worker._global_node = node
-    ray.worker.connect(node, mode=ray.WORKER_MODE)
+    ray.worker.connect(
+        node, mode=ray.WORKER_MODE, internal_config=internal_config)
     ray.worker.global_worker.main_loop()

@@ -5,6 +5,7 @@
 
 namespace ray {
 
+absl::Mutex TaskSpecification::mutex_;
 std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
 std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
@@ -13,6 +14,7 @@ int TaskSpecification::next_sched_id_;
 
 SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
     SchedulingClass id) {
+  absl::MutexLock lock(&mutex_);
   auto it = sched_id_to_cls_.find(id);
   RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
   return it->second;
@@ -30,6 +32,7 @@ void TaskSpecification::ComputeResources() {
 
   // Map the scheduling class descriptor to an integer for performance.
   auto sched_cls = std::make_pair(GetRequiredResources(), FunctionDescriptor());
+  absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
   if (it == sched_cls_to_id_.end()) {
     sched_cls_id_ = ++next_sched_id_;
@@ -50,12 +53,23 @@ void TaskSpecification::ComputeResources() {
 
 // Task specification getter methods.
 TaskID TaskSpecification::TaskId() const {
+  if (message_->task_id().empty() /* e.g., empty proto default */) {
+    return TaskID::Nil();
+  }
   return TaskID::FromBinary(message_->task_id());
 }
 
-JobID TaskSpecification::JobId() const { return JobID::FromBinary(message_->job_id()); }
+JobID TaskSpecification::JobId() const {
+  if (message_->job_id().empty() /* e.g., empty proto default */) {
+    return JobID::Nil();
+  }
+  return JobID::FromBinary(message_->job_id());
+}
 
 TaskID TaskSpecification::ParentTaskId() const {
+  if (message_->parent_task_id().empty() /* e.g., empty proto default */) {
+    return TaskID::Nil();
+  }
   return TaskID::FromBinary(message_->parent_task_id());
 }
 
@@ -74,8 +88,10 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
-ObjectID TaskSpecification::ReturnId(size_t return_index) const {
-  return ObjectID::ForTaskReturn(TaskId(), return_index + 1, /*transport_type=*/0);
+ObjectID TaskSpecification::ReturnId(size_t return_index,
+                                     TaskTransportType transport_type) const {
+  return ObjectID::ForTaskReturn(TaskId(), return_index + 1,
+                                 static_cast<uint8_t>(transport_type));
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
@@ -108,6 +124,20 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
 
 const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
+}
+
+std::vector<ObjectID> TaskSpecification::GetDependencies() const {
+  std::vector<ObjectID> dependencies;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    int count = ArgIdCount(i);
+    for (int j = 0; j < count; j++) {
+      dependencies.push_back(ArgId(i, j));
+    }
+  }
+  if (IsActorTask()) {
+    dependencies.push_back(PreviousActorTaskDummyObjectId());
+  }
+  return dependencies;
 }
 
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
@@ -181,12 +211,17 @@ ObjectID TaskSpecification::PreviousActorTaskDummyObjectId() const {
 
 ObjectID TaskSpecification::ActorDummyObject() const {
   RAY_CHECK(IsActorTask() || IsActorCreationTask());
-  return ReturnId(NumReturns() - 1);
+  return ReturnId(NumReturns() - 1, TaskTransportType::RAYLET);
 }
 
-bool TaskSpecification::IsDirectCall() const {
-  RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().is_direct_call();
+bool TaskSpecification::IsDirectCall() const { return message_->is_direct_call(); }
+
+bool TaskSpecification::IsDirectActorCreationCall() const {
+  if (IsActorCreationTask()) {
+    return message_->actor_creation_task_spec().is_direct_call();
+  } else {
+    return false;
+  }
 }
 
 int TaskSpecification::MaxActorConcurrency() const {
@@ -194,9 +229,13 @@ int TaskSpecification::MaxActorConcurrency() const {
   return message_->actor_creation_task_spec().max_concurrency();
 }
 
-bool TaskSpecification::IsDetachedActor() const {
+bool TaskSpecification::IsAsyncioActor() const {
   RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().is_detached();
+  return message_->actor_creation_task_spec().is_asyncio();
+}
+
+bool TaskSpecification::IsDetachedActor() const {
+  return IsActorCreationTask() && message_->actor_creation_task_spec().is_detached();
 }
 
 std::string TaskSpecification::DebugString() const {
@@ -224,6 +263,8 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_reconstructions=" << MaxActorReconstructions()
            << ", is_direct_call=" << IsDirectCall()
+           << ", max_concurrency=" << MaxActorConcurrency()
+           << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
   } else if (IsActorTask()) {
     // Print actor task spec.

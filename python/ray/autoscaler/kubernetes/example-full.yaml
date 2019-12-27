@@ -135,6 +135,15 @@ head_node:
               requests:
                   cpu: 1000m
                   memory: 512Mi
+              limits:
+                  # The maximum memory that this pod is allowed to use. The
+                  # limit will be detected by ray and split to use 10% for
+                  # redis, 30% for the shared memory object store, and the
+                  # rest for application memory. If this limit is not set and
+                  # the object store size is not set manually, ray will
+                  # allocate a very large object store in each pod that may
+                  # cause problems for other pods.
+                  memory: 2Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
@@ -191,6 +200,10 @@ worker_nodes:
               requests:
                   cpu: 1000m
                   memory: 512Mi
+              limits:
+                  # This memory limit will be detected by ray and split into
+                  # 30% for plasma, and 70% for workers.
+                  memory: 2Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this

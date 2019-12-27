@@ -10,8 +10,8 @@ Deploying on Kubernetes
 .. warning::
 
   Running Ray on Kubernetes is still a work in progress. If you have a
-  suggestion for how to improve them or want to request a missing feature,
-  please get in touch using one of the channels in the 
+  suggestion for how to improve this documentation or want to request a
+  missing feature, please get in touch using one of the channels in the 
   `Questions or Issues?`_ section below.
 
 This document assumes that you have access to a Kubernetes cluster and have

@@ -95,7 +95,7 @@ def stats(policy, train_batch):
         "policy_loss": policy.loss.pi_loss,
         "policy_entropy": policy.loss.entropy,
         "var_gnorm": tf.global_norm(
-            [x for x in policy.model.trainable_variables()]),
+            list(policy.model.trainable_variables())),
         "vf_loss": policy.loss.vf_loss,
     }
 

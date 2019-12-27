@@ -286,7 +286,7 @@ static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int 
     __attribute__((unused));
 static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int apiver) {
   void *getapifuncptr = ((void **)ctx)[0];
-  RedisModule_GetApi = (int (*)(const char *, void *))(unsigned long)getapifuncptr;
+  RedisModule_GetApi = (int (*)(const char *, void *))getapifuncptr;
   REDISMODULE_GET_API(Alloc);
   REDISMODULE_GET_API(Calloc);
   REDISMODULE_GET_API(Free);

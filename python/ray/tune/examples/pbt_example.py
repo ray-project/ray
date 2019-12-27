@@ -81,6 +81,7 @@ class PBTBenchmarkExample(Trainable):
 
     def reset_config(self, new_config):
         self.lr = new_config["lr"]
+        self.config = new_config
         return True
 
 

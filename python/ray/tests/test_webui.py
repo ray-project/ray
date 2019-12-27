@@ -19,7 +19,7 @@ def test_get_webui(shutdown_only):
     webui_url = addresses["webui_url"]
     assert ray.get_webui_url() == webui_url
 
-    assert re.match(r"^http://\d+\.\d+\.\d+\.\d+:8080$", webui_url)
+    assert re.match(r"^http://\d+\.\d+\.\d+\.\d+:8265$", webui_url)
 
     start_time = time.time()
     while True:
@@ -33,3 +33,9 @@ def test_get_webui(shutdown_only):
     assert node_info["error"] is None
     assert node_info["result"] is not None
     assert isinstance(node_info["timestamp"], float)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

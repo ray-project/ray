@@ -239,7 +239,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     @override(Preprocessor)
     def write(self, observation, array, offset):
         if not isinstance(observation, OrderedDict):
-            observation = OrderedDict(sorted(list(observation.items())))
+            observation = OrderedDict(sorted(observation.items()))
         assert len(observation) == len(self.preprocessors), \
             (len(observation), len(self.preprocessors))
         for o, p in zip(observation.values(), self.preprocessors):

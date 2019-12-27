@@ -139,7 +139,7 @@ def receive(sources, timeout=None):
     # redis expects ms.
     query += str(timeout_ms)
     query += " STREAMS "
-    query += " ".join([task_id for task_id in task_id_to_sources])
+    query += " ".join(task_id_to_sources)
     query += " "
     query += " ".join([
         ray.utils.decode(signal_counters[ray.utils.hex_to_binary(task_id)])

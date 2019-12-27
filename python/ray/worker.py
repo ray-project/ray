@@ -8,7 +8,6 @@ import atexit
 import faulthandler
 import hashlib
 import inspect
-import io
 import json
 import logging
 import os
@@ -22,8 +21,6 @@ import traceback
 import random
 
 # Ray modules
-import pyarrow
-import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
@@ -43,17 +40,11 @@ from ray import (
 )
 from ray import import_thread
 from ray import profiling
-from ray._raylet import Pickle5Writer, unpack_pickle5_buffers
 
-from ray.gcs_utils import ErrorType
 from ray.exceptions import (
-    RayActorError,
     RayError,
     RayTaskError,
-    RayWorkerError,
     ObjectStoreFullError,
-    UnreconstructableError,
-    RAY_EXCEPTION_TYPES,
 )
 from ray.function_manager import FunctionActorManager
 from ray.utils import (
@@ -69,6 +60,8 @@ WORKER_MODE = 1
 LOCAL_MODE = 2
 
 ERROR_KEY_PREFIX = b"Error:"
+
+PY3 = sys.version_info.major >= 3
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -198,7 +191,7 @@ class Worker(object):
         if self.actor_init_error is not None:
             raise self.actor_init_error
 
-    def get_serialization_context(self, job_id):
+    def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.
 
         Args:
@@ -208,13 +201,17 @@ class Worker(object):
         Returns:
             The serialization context of the given job.
         """
-        # This function needs to be proctected by a lock, because it will be
+        # This function needs to be protected by a lock, because it will be
         # called by`register_class_for_serialization`, as well as the import
         # thread, from different threads. Also, this function will recursively
         # call itself, so we use RLock here.
+        if job_id is None:
+            job_id = self.current_job_id
         with self.lock:
             if job_id not in self.serialization_context_map:
-                _initialize_serialization(job_id)
+                self.serialization_context_map[
+                    job_id] = serialization.SerializationContext(self)
+                self.serialization_context_map[job_id].initialize()
             return self.serialization_context_map[job_id]
 
     def check_connected(self):
@@ -279,199 +276,19 @@ class Worker(object):
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        if isinstance(value, bytes):
-            # If the object is a byte array, skip serializing it and
-            # use a special metadata to indicate it's raw binary. So
-            # that this object can also be read by Java.
-            return self.core_worker.put_raw_buffer(value, object_id=object_id)
-
-        if self.use_pickle:
-            return self._serialize_and_put_pickle5(value, object_id=object_id)
-        else:
-            return self._serialize_and_put_pyarrow(value, object_id=object_id)
-
-    def _serialize_and_put_pickle5(self, value, object_id=None):
-        """Serialize an object using pickle5 and store it in the object store.
-
-        Args:
-            value: The value to put in the object store.
-            object_id: The ID of the object to store. If none, one will be
-                generated.
-
-        Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if the object store is full.
-        """
-        inband, writer = self._serialize_with_pickle5(value)
-        return self.core_worker.put_pickle5_buffers(
-            inband, writer, object_id=object_id)
-
-    def _serialize_with_pickle5(self, value):
-        writer = Pickle5Writer()
-        if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
-            inband = pickle.dumps(
-                value, protocol=5, buffer_callback=writer.buffer_callback)
-        else:
-            inband = pickle.dumps(value)
-        return inband, writer
-
-    def _serialize_and_put_pyarrow(self, value, object_id=None):
-        """Wraps `store_and_register` with cases for existence and pickling.
-
-        Args:
-            object_id (object_id.ObjectID): The object ID of the value to be
-                put.
-            value: The value to put in the object store.
-        """
-        serialized_value = self._serialize_with_pyarrow(value)
+        serialized_value = self.get_serialization_context().serialize(value)
         return self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id)
-
-    def _serialize_with_pyarrow(self, value):
-        try:
-            serialized_value = self._store_and_register_pyarrow(value)
-        except TypeError:
-            # TypeError can happen because one of the members of the object
-            # may not be serializable for cloudpickle. So we need
-            # these extra fallbacks here to start from the beginning.
-            # Hopefully the object could have a `__reduce__` method.
-            _register_custom_serializer(type(value), use_pickle=True)
-            logger.warning("WARNING: Serializing the class {} failed, "
-                           "falling back to cloudpickle.".format(type(value)))
-            serialized_value = self._store_and_register_pyarrow(value)
-
-        return serialized_value
-
-    def _store_and_register_pyarrow(self, value, depth=100):
-        """Store an object and attempt to register its class if needed.
-
-        Args:
-            value: The value to put in the object store.
-            depth: The maximum number of classes to recursively register.
-
-        Raises:
-            Exception: An exception is raised if the attempt to serialize the
-                object fails.
-        """
-        counter = 0
-        while True:
-            if counter == depth:
-                raise Exception("Ray exceeded the maximum number of classes "
-                                "that it will recursively serialize when "
-                                "attempting to serialize an object of "
-                                "type {}.".format(type(value)))
-            counter += 1
-            try:
-                serialization_context = self.get_serialization_context(
-                    self.current_job_id)
-                return pyarrow.serialize(value, serialization_context)
-            except pyarrow.SerializationCallbackError as e:
-                cls_type = type(e.example_object)
-                try:
-                    _register_custom_serializer(cls_type, use_dict=True)
-                    warning_message = (
-                        "WARNING: Serializing objects of type "
-                        "{} by expanding them as dictionaries "
-                        "of their fields. This behavior may "
-                        "be incorrect in some cases.".format(cls_type))
-                    logger.debug(warning_message)
-                except (serialization.RayNotDictionarySerializable,
-                        serialization.CloudPickleError,
-                        pickle.pickle.PicklingError, Exception):
-                    # We also handle generic exceptions here because
-                    # cloudpickle can fail with many different types of errors.
-                    warning_message = (
-                        "Falling back to serializing {} objects by using "
-                        "pickle. Use `ray.register_custom_serializer({},...)` "
-                        "to provide faster serialization.".format(
-                            cls_type, cls_type))
-                    try:
-                        _register_custom_serializer(cls_type, use_pickle=True)
-                        logger.warning(warning_message)
-                    except (serialization.CloudPickleError, ValueError):
-                        _register_custom_serializer(
-                            cls_type, use_pickle=True, local=True)
-                        warning_message = ("WARNING: Pickling the class {} "
-                                           "failed, so we are using pickle "
-                                           "and only registering the class "
-                                           "locally.".format(cls_type))
-                        logger.warning(warning_message)
 
     def deserialize_objects(self,
                             data_metadata_pairs,
                             object_ids,
                             error_timeout=10):
-        assert len(data_metadata_pairs) == len(object_ids)
+        context = self.get_serialization_context()
+        return context.deserialize_objects(data_metadata_pairs, object_ids,
+                                           error_timeout)
 
-        start_time = time.time()
-        serialization_context = self.get_serialization_context(
-            self.current_job_id)
-        results = []
-        warning_sent = False
-        i = 0
-        while i < len(object_ids):
-            object_id = object_ids[i]
-            data, metadata = data_metadata_pairs[i]
-            try:
-                results.append(
-                    self._deserialize_object_from_arrow(
-                        data, metadata, object_id, serialization_context))
-                i += 1
-            except pyarrow.DeserializationCallbackError:
-                # Wait a little bit for the import thread to import the class.
-                # If we currently have the worker lock, we need to release it
-                # so that the import thread can acquire it.
-                time.sleep(0.01)
-
-                if time.time() - start_time > error_timeout:
-                    warning_message = ("This worker or driver is waiting to "
-                                       "receive a class definition so that it "
-                                       "can deserialize an object from the "
-                                       "object store. This may be fine, or it "
-                                       "may be a bug.")
-                    if not warning_sent:
-                        ray.utils.push_error_to_driver(
-                            self,
-                            ray_constants.WAIT_FOR_CLASS_PUSH_ERROR,
-                            warning_message,
-                            job_id=self.current_job_id)
-                    warning_sent = True
-
-        return results
-
-    def _deserialize_object_from_arrow(self, data, metadata, object_id,
-                                       serialization_context):
-        if metadata:
-            if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
-                in_band, buffers = unpack_pickle5_buffers(data)
-                if len(buffers) > 0:
-                    return pickle.loads(in_band, buffers=buffers)
-                else:
-                    return pickle.loads(in_band)
-            # Check if the object should be returned as raw bytes.
-            if metadata == ray_constants.RAW_BUFFER_METADATA:
-                if data is None:
-                    return b""
-                return data.to_pybytes()
-            # Otherwise, return an exception object based on
-            # the error type.
-            error_type = int(metadata)
-            if error_type == ErrorType.Value("WORKER_DIED"):
-                return RayWorkerError()
-            elif error_type == ErrorType.Value("ACTOR_DIED"):
-                return RayActorError()
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
-                return UnreconstructableError(ray.ObjectID(object_id.binary()))
-            else:
-                assert False, "Unrecognized error type " + str(error_type)
-        elif data:
-            # If data is not empty, deserialize the object.
-            return pyarrow.deserialize(data, serialization_context)
-        else:
-            # Object isn't available in plasma.
-            return plasma.ObjectNotAvailable
-
-    def get_objects(self, object_ids):
+    def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_ids. This will
@@ -481,6 +298,8 @@ class Worker(object):
         Args:
             object_ids (List[object_id.ObjectID]): A list of the object IDs
                 whose values should be retrieved.
+            timeout (float): timeout (float): The maximum amount of time in
+                seconds to wait before returning.
 
         Raises:
             Exception if running in LOCAL_MODE and any of the object IDs do not
@@ -496,8 +315,9 @@ class Worker(object):
         if self.mode == LOCAL_MODE:
             return self.local_mode_manager.get_objects(object_ids)
 
+        timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_ids, self.current_task_id)
+            object_ids, self.current_task_id, timeout_ms)
         return self.deserialize_objects(data_metadata_pairs, object_ids)
 
     def run_function_on_all_workers(self, function,
@@ -613,6 +433,7 @@ class Worker(object):
 
         signal.signal(signal.SIGTERM, sigterm_handler)
         self.core_worker.run_task_loop()
+        sys.exit(0)
 
 
 def get_gpu_ids():
@@ -705,98 +526,6 @@ def print_failed_task(task_status):
                task_status["error_message"]))
 
 
-def _initialize_serialization(job_id, worker=global_worker):
-    """Initialize the serialization library.
-
-    This defines a custom serializer for object IDs and also tells ray to
-    serialize several exception classes that we define for error handling.
-    """
-    serialization_context = pyarrow.default_serialization_context()
-    # Tell the serialization context to use the cloudpickle version that we
-    # ship with Ray.
-    serialization_context.set_pickle(pickle.dumps, pickle.loads)
-    pyarrow.register_torch_serialization_handlers(serialization_context)
-
-    def id_serializer(obj):
-        if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
-            raise NotImplementedError(
-                "Objects produced by direct actor calls cannot be "
-                "passed to other tasks as arguments.")
-        return pickle.dumps(obj)
-
-    def id_deserializer(serialized_obj):
-        return pickle.loads(serialized_obj)
-
-    for id_type in ray._raylet._ID_TYPES:
-        serialization_context.register_type(
-            id_type,
-            "{}.{}".format(id_type.__module__, id_type.__name__),
-            custom_serializer=id_serializer,
-            custom_deserializer=id_deserializer)
-
-    def actor_handle_serializer(obj):
-        return obj._serialization_helper(True)
-
-    def actor_handle_deserializer(serialized_obj):
-        new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
-        new_handle._deserialization_helper(serialized_obj, True)
-        return new_handle
-
-    # We register this serializer on each worker instead of calling
-    # _register_custom_serializer from the driver so that isinstance still
-    # works.
-    serialization_context.register_type(
-        ray.actor.ActorHandle,
-        "ray.ActorHandle",
-        pickle=False,
-        custom_serializer=actor_handle_serializer,
-        custom_deserializer=actor_handle_deserializer)
-
-    worker.serialization_context_map[job_id] = serialization_context
-
-    if not worker.use_pickle:
-        for error_cls in RAY_EXCEPTION_TYPES:
-            _register_custom_serializer(
-                error_cls,
-                use_dict=True,
-                local=True,
-                job_id=job_id,
-                class_id=error_cls.__module__ + ". " + error_cls.__name__,
-            )
-        # Tell Ray to serialize lambdas with pickle.
-        _register_custom_serializer(
-            type(lambda: 0),
-            use_pickle=True,
-            local=True,
-            job_id=job_id,
-            class_id="lambda")
-        # Tell Ray to serialize types with pickle.
-        _register_custom_serializer(
-            type(int),
-            use_pickle=True,
-            local=True,
-            job_id=job_id,
-            class_id="type")
-        # Tell Ray to serialize RayParameters as dictionaries. This is
-        # used when passing around actor handles.
-        _register_custom_serializer(
-            ray.signature.RayParameter,
-            use_dict=True,
-            local=True,
-            job_id=job_id,
-            class_id="ray.signature.RayParameter")
-        # Tell Ray to serialize StringIO with pickle. We do this because
-        # Ray's default __dict__ serialization is incorrect for this type
-        # (the object's __dict__ is empty and therefore doesn't
-        # contain the full state of the object).
-        _register_custom_serializer(
-            io.StringIO,
-            use_pickle=True,
-            local=True,
-            job_id=job_id,
-            class_id="io.StringIO")
-
-
 def init(address=None,
          redis_address=None,
          num_cpus=None,
@@ -807,7 +536,7 @@ def init(address=None,
          driver_object_store_memory=None,
          redis_max_memory=None,
          log_to_driver=True,
-         node_ip_address=None,
+         node_ip_address=ray_constants.NODE_DEFAULT_IP,
          object_id_seed=None,
          local_mode=False,
          redirect_worker_output=None,
@@ -815,10 +544,10 @@ def init(address=None,
          ignore_reinit_error=False,
          num_redis_shards=None,
          redis_max_clients=None,
-         redis_password=None,
+         redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=False,
+         include_webui=None,
          webui_host="127.0.0.1",
          job_id=None,
          configure_logging=True,
@@ -828,7 +557,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
-         use_pickle=False,
+         use_pickle=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -898,7 +627,9 @@ def init(address=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which displays the status of the Ray cluster.
+            UI, which displays the status of the Ray cluster. If this argument
+            is None, then the UI will be started if the relevant dependencies
+            are present.
         webui_host: The host to bind the web UI server to. Can either be
             127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
             By default, this is set to 127.0.0.1 to prevent access from
@@ -998,9 +729,13 @@ def init(address=None,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
-        # handler.
+        # handler. We still spawn a reaper process in case the atexit handler
+        # isn't called.
         _global_node = ray.node.Node(
-            head=True, shutdown_at_exit=False, ray_params=ray_params)
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
@@ -1053,7 +788,11 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             use_pickle=use_pickle)
         _global_node = ray.node.Node(
-            ray_params, head=False, shutdown_at_exit=False, connect_only=True)
+            ray_params,
+            head=False,
+            shutdown_at_exit=False,
+            spawn_reaper=False,
+            connect_only=True)
 
     connect(
         _global_node,
@@ -1061,7 +800,9 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id)
+        job_id=job_id,
+        internal_config=json.loads(_internal_config)
+        if _internal_config else {})
 
     for hook in _post_init_hooks:
         hook()
@@ -1098,6 +839,12 @@ def shutdown(exiting_interpreter=False):
 
     disconnect(exiting_interpreter)
 
+    # We need to destruct the core worker here because after this function,
+    # we will tear down any processes spawned by ray.init() and the background
+    # IO thread in the core worker doesn't currently handle that gracefully.
+    if hasattr(global_worker, "core_worker"):
+        del global_worker.core_worker
+
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
 
@@ -1107,7 +854,7 @@ def shutdown(exiting_interpreter=False):
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
-    # TODO(rkn): Instead of manually reseting some of the worker fields, we
+    # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker._post_get_hooks = []
@@ -1120,7 +867,11 @@ def sigterm_handler(signum, frame):
     sys.exit(signal.SIGTERM)
 
 
-signal.signal(signal.SIGTERM, sigterm_handler)
+try:
+    signal.signal(signal.SIGTERM, sigterm_handler)
+except ValueError:
+    logger.warning("Failed to set SIGTERM handler, processes might"
+                   "not be cleaned up properly on exit.")
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1326,7 +1077,8 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None):
+            job_id=None,
+            internal_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1339,6 +1091,8 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
+        internal_config: Dictionary of (str,str) containing internal config
+            options to override the defaults.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1348,6 +1102,8 @@ def connect(node,
     # Enable nice stack traces on SIGSEGV etc.
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
+
+    ray._raylet.set_internal_config(internal_config)
 
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
@@ -1364,11 +1120,10 @@ def connect(node,
         # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
         if setproctitle:
-            setproctitle.setproctitle("ray_worker")
+            setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
-        # Code path of local mode
         if job_id is None:
-            job_id = JobID.from_int(random.randint(1, 100000))
+            job_id = JobID.from_int(random.randint(1, 65535))
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
     else:
@@ -1487,6 +1242,7 @@ def connect(node,
         gcs_options,
         node.get_logs_dir_path(),
         node.node_ip_address,
+        node.node_manager_port,
     )
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
@@ -1587,12 +1343,6 @@ def disconnect(exiting_interpreter=False):
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
 
-    # We need to destruct the core worker here because after this function,
-    # we will tear down any processes spawned by ray.init() and the background
-    # threads in the core worker don't currently handle that gracefully.
-    if hasattr(worker, "core_worker"):
-        del worker.core_worker
-
 
 @contextmanager
 def _changeproctitle(title, next_title):
@@ -1601,48 +1351,6 @@ def _changeproctitle(title, next_title):
     yield
     if setproctitle:
         setproctitle.setproctitle(next_title)
-
-
-def _try_to_compute_deterministic_class_id(cls, depth=5):
-    """Attempt to produce a deterministic class ID for a given class.
-
-    The goal here is for the class ID to be the same when this is run on
-    different worker processes. Pickling, loading, and pickling again seems to
-    produce more consistent results than simply pickling. This is a bit crazy
-    and could cause problems, in which case we should revert it and figure out
-    something better.
-
-    Args:
-        cls: The class to produce an ID for.
-        depth: The number of times to repeatedly try to load and dump the
-            string while trying to reach a fixed point.
-
-    Returns:
-        A class ID for this class. We attempt to make the class ID the same
-            when this function is run on different workers, but that is not
-            guaranteed.
-
-    Raises:
-        Exception: This could raise an exception if cloudpickle raises an
-            exception.
-    """
-    # Pickling, loading, and pickling again seems to produce more consistent
-    # results than simply pickling. This is a bit
-    class_id = pickle.dumps(cls)
-    for _ in range(depth):
-        new_class_id = pickle.dumps(pickle.loads(class_id))
-        if new_class_id == class_id:
-            # We appear to have reached a fix point, so use this as the ID.
-            return hashlib.sha1(new_class_id).digest()
-        class_id = new_class_id
-
-    # We have not reached a fixed point, so we may end up with a different
-    # class ID for this custom class on each worker, which could lead to the
-    # same class definition being exported many many times.
-    logger.warning(
-        "WARNING: Could not produce a deterministic class ID for class "
-        "{}".format(cls))
-    return hashlib.sha1(new_class_id).digest()
 
 
 def register_custom_serializer(cls,
@@ -1657,7 +1365,7 @@ def register_custom_serializer(cls,
 
     The serializer and deserializer are used when transferring objects of
     `cls` across processes and nodes. This can be significantly faster than
-    the Ray default fallbacks. Wraps `_register_custom_serializer` underneath.
+    the Ray default fallbacks. Wraps `register_custom_serializer` underneath.
 
     `use_pickle` tells Ray to automatically use cloudpickle for serialization,
     and `use_dict` automatically uses `cls.__dict__`.
@@ -1690,13 +1398,14 @@ def register_custom_serializer(cls,
         raise DeprecationWarning(
             "`job_id` is no longer a valid parameter and will be removed in "
             "future versions of Ray. If this breaks your application, "
-            "see `ray.worker._register_custom_serializer`.")
+            "see `SerializationContext.register_custom_serializer`.")
     if local:
         raise DeprecationWarning(
             "`local` is no longer a valid parameter and will be removed in "
             "future versions of Ray. If this breaks your application, "
-            "see `ray.worker._register_custom_serializer`.")
-    _register_custom_serializer(
+            "see `SerializationContext.register_custom_serializer`.")
+    context = global_worker.get_serialization_context()
+    context.register_custom_serializer(
         cls,
         use_pickle=use_pickle,
         use_dict=use_dict,
@@ -1705,127 +1414,22 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
-def _register_custom_serializer(cls,
-                                use_pickle=False,
-                                use_dict=False,
-                                serializer=None,
-                                deserializer=None,
-                                local=False,
-                                job_id=None,
-                                class_id=None):
-    """Enable serialization and deserialization for a particular class.
+def show_in_webui(message):
+    """Display message in dashboard.
 
-    This method runs the register_class function defined below on every worker,
-    which will enable ray to properly serialize and deserialize objects of
-    this class.
+    Display message for the current task or actor in the dashboard.
+    For example, this can be used to display the status of a long-running
+    computation.
 
     Args:
-        cls (type): The class that ray should use this custom serializer for.
-        use_pickle (bool): If true, then objects of this class will be
-            serialized using pickle.
-        use_dict: If true, then objects of this class be serialized turning
-            their __dict__ fields into a dictionary. Must be False if
-            use_pickle is true.
-        serializer: The custom serializer to use. This should be provided if
-            and only if use_pickle and use_dict are False.
-        deserializer: The custom deserializer to use. This should be provided
-            if and only if use_pickle and use_dict are False.
-        local: True if the serializers should only be registered on the current
-            worker. This should usually be False.
-        job_id: ID of the job that we want to register the class for.
-        class_id (str): Unique ID of the class. Autogenerated if None.
-
-    Raises:
-        RayNotDictionarySerializable: Raised if use_dict is true and cls cannot
-            be efficiently serialized by Ray.
-        ValueError: Raised if ray could not autogenerate a class_id.
+        message (str): Message to be displayed.
     """
     worker = global_worker
-    assert (serializer is None) == (deserializer is None), (
-        "The serializer/deserializer arguments must both be provided or "
-        "both not be provided.")
-    use_custom_serializer = (serializer is not None)
-
-    assert use_custom_serializer + use_pickle + use_dict == 1, (
-        "Exactly one of use_pickle, use_dict, or serializer/deserializer must "
-        "be specified.")
-
-    if worker.use_pickle and serializer is None:
-        # In this case it should do nothing.
-        return
-
-    if use_dict:
-        # Raise an exception if cls cannot be serialized efficiently by Ray.
-        serialization.check_serializable(cls)
-
-    if class_id is None:
-        if not local:
-            # In this case, the class ID will be used to deduplicate the class
-            # across workers. Note that cloudpickle unfortunately does not
-            # produce deterministic strings, so these IDs could be different
-            # on different workers. We could use something weaker like
-            # cls.__name__, however that would run the risk of having
-            # collisions.
-            # TODO(rkn): We should improve this.
-            try:
-                # Attempt to produce a class ID that will be the same on each
-                # worker. However, determinism is not guaranteed, and the
-                # result may be different on different workers.
-                class_id = _try_to_compute_deterministic_class_id(cls)
-            except Exception:
-                raise ValueError(
-                    "Failed to use pickle in generating a unique id for '{}'. "
-                    "Provide a unique class_id.".format(cls))
-        else:
-            # In this case, the class ID only needs to be meaningful on this
-            # worker and not across workers.
-            class_id = _random_string()
-
-        # Make sure class_id is a string.
-        class_id = ray.utils.binary_to_hex(class_id)
-
-    if job_id is None:
-        job_id = worker.current_job_id
-    assert isinstance(job_id, JobID)
-
-    def register_class_for_serialization(worker_info):
-        if worker_info["worker"].use_pickle:
-            if pickle.FAST_CLOUDPICKLE_USED:
-                # construct a reducer
-                pickle.CloudPickler.dispatch[
-                    cls] = lambda obj: (deserializer, (serializer(obj), ))
-            else:
-
-                def _CloudPicklerReducer(_self, obj):
-                    _self.save_reduce(
-                        deserializer, (serializer(obj), ), obj=obj)
-
-                # use a placeholder for 'self' argument
-                pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
-        else:
-            # TODO(rkn): We need to be more thoughtful about what to do if
-            # custom serializers have already been registered for class_id.
-            # In some cases, we may want to use the last user-defined
-            # serializers and ignore subsequent calls to
-            # register_custom_serializer that were made by the system.
-            serialization_context = worker_info[
-                "worker"].get_serialization_context(job_id)
-            serialization_context.register_type(
-                cls,
-                class_id,
-                pickle=use_pickle,
-                custom_serializer=serializer,
-                custom_deserializer=deserializer)
-
-    if not local:
-        worker.run_function_on_all_workers(register_class_for_serialization)
-    else:
-        # Since we are pickling objects of this class, we don't actually need
-        # to ship the class definition.
-        register_class_for_serialization({"worker": worker})
+    worker.check_connected()
+    worker.core_worker.set_webui_display(message.encode())
 
 
-def get(object_ids):
+def get(object_ids, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -1837,16 +1441,28 @@ def get(object_ids):
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
             get.
+        timeout (Optional[float]): The maximum amount of time in seconds to
+            wait before returning.
 
     Returns:
         A Python object or a list of Python objects.
 
     Raises:
+        RayTimeoutError: A RayTimeoutError is raised if a timeout is set and
+            the get takes longer than timeout to return.
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
     worker = global_worker
     worker.check_connected()
+
+    if PY3 and hasattr(
+            worker,
+            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+        raise RayError("Using blocking ray.get inside async actor. "
+                       "This blocks the event loop. Please "
+                       "use `await` on object id with asyncio.gather.")
+
     with profiling.profile("ray.get"):
         is_individual_id = isinstance(object_ids, ray.ObjectID)
         if is_individual_id:
@@ -1857,7 +1473,8 @@ def get(object_ids):
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
-        values = worker.get_objects(object_ids)
+        # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
+        values = worker.get_objects(object_ids, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -1958,6 +1575,13 @@ def wait(object_ids, num_returns=1, timeout=None):
     """
     worker = global_worker
 
+    if PY3 and hasattr(
+            worker,
+            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+        raise RayError("Using blocking ray.wait inside async method. "
+                       "This blocks the event loop. Please use `await` "
+                       "on object id with asyncio.wait. ")
+
     if isinstance(object_ids, ObjectID):
         raise TypeError(
             "wait() expected a list of ray.ObjectID, got a single ray.ObjectID"
@@ -2038,6 +1662,7 @@ def make_decorator(num_return_vals=None,
                    object_store_memory=None,
                    resources=None,
                    max_calls=None,
+                   max_retries=None,
                    max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
@@ -2050,7 +1675,8 @@ def make_decorator(num_return_vals=None,
 
             return ray.remote_function.RemoteFunction(
                 function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls)
+                object_store_memory, resources, num_return_vals, max_calls,
+                max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -2122,6 +1748,28 @@ def remote(*args, **kwargs):
         class Foo(object):
             def method(self):
                 return 1
+
+    Remote task and actor objects returned by @ray.remote can also be
+    dynamically modified with the same arguments as above using
+    ``.options()`` as follows:
+
+    .. code-block:: python
+
+        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        def f():
+            return 1, 2
+        g = f.options(num_gpus=2, max_calls=None)
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo(object):
+            def method(self):
+                return 1
+        Bar = Foo.options(num_cpus=1, resources=None)
+
+    Running remote actors will be terminated when the actor handle to them
+    in Python is deleted, which will cause them to complete any outstanding
+    work and then shut down. If you want to kill them immediately, you can
+    also call ``actor_handle.__ray_kill__()``.
     """
     worker = get_global_worker()
 
@@ -2149,6 +1797,7 @@ def remote(*args, **kwargs):
             "resources",
             "max_calls",
             "max_reconstructions",
+            "max_retries",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2168,6 +1817,7 @@ def remote(*args, **kwargs):
     max_reconstructions = kwargs.get("max_reconstructions")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
+    max_retries = kwargs.get("max_retries")
 
     return make_decorator(
         num_return_vals=num_return_vals,
@@ -2178,4 +1828,5 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
+        max_retries=max_retries,
         worker=worker)

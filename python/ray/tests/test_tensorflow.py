@@ -252,3 +252,9 @@ def test_remote_training_loss(ray_start_2_cpus):
     after_acc = sess.run(
         loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100])))
     assert before_acc < after_acc
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

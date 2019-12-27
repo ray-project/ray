@@ -8,7 +8,7 @@ import pytest
 import subprocess
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 
 @pytest.fixture
@@ -16,14 +16,6 @@ def shutdown_only():
     yield None
     # The code after the yield will run as teardown code.
     ray.shutdown()
-
-
-def generate_internal_config_map(**kwargs):
-    internal_config = json.dumps(kwargs)
-    ray_kwargs = {
-        "_internal_config": internal_config,
-    }
-    return ray_kwargs
 
 
 def get_default_fixure_internal_config():
@@ -66,6 +58,13 @@ def ray_start_no_cpu(request):
 # The following fixture will start ray with 1 cpu.
 @pytest.fixture
 def ray_start_regular(request):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
+@pytest.fixture(scope="session")
+def ray_start_regular_shared(request):
     param = getattr(request, "param", {})
     with _ray_start(**param) as res:
         yield res
@@ -171,13 +170,19 @@ def call_ray_start(request):
     subprocess.check_output(["ray", "stop"])
 
 
+@pytest.fixture
+def call_ray_stop_only():
+    yield
+    subprocess.check_output(["ray", "stop"])
+
+
 @pytest.fixture()
 def two_node_cluster():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     })
-    cluster = ray.tests.cluster_utils.Cluster(
+    cluster = ray.cluster_utils.Cluster(
         head_node_args={"_internal_config": internal_config})
     for _ in range(2):
         remote_node = cluster.add_node(

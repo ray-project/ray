@@ -6,9 +6,10 @@
 namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    std::unique_ptr<RayletClient> &raylet_client, const TaskHandler &task_handler,
-    const std::function<void()> &exit_handler)
-    : raylet_client_(raylet_client),
+    const WorkerID &worker_id, std::shared_ptr<raylet::RayletClient> &raylet_client,
+    const TaskHandler &task_handler, const std::function<void(bool)> &exit_handler)
+    : worker_id_(worker_id),
+      raylet_client_(raylet_client),
       task_handler_(task_handler),
       exit_handler_(exit_handler) {}
 
@@ -17,18 +18,19 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     rpc::SendReplyCallback send_reply_callback) {
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId() << " is create "
+                 << task_spec.IsActorCreationTask();
 
   // Set the resource IDs for this task.
   // TODO: convert the resource map to protobuf and change this.
-  ResourceMappingType resource_ids;
+  auto resource_ids = std::make_shared<ResourceMappingType>();
   auto resource_infos =
       flatbuffers::GetRoot<protocol::ResourceIdSetInfos>(request.resource_ids().data())
           ->resource_infos();
   for (size_t i = 0; i < resource_infos->size(); ++i) {
     auto const &fractional_resource_ids = resource_infos->Get(i);
     auto &acquired_resources =
-        resource_ids[string_from_flatbuf(*fractional_resource_ids->resource_name())];
+        (*resource_ids)[string_from_flatbuf(*fractional_resource_ids->resource_name())];
 
     size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
     size_t num_resource_fractions = fractional_resource_ids->resource_fractions()->size();
@@ -48,11 +50,9 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, resource_ids, &results);
   if (status.IsSystemExit()) {
-    exit_handler_();
+    exit_handler_(status.IsIntentionalSystemExit());
     return;
   }
-  // Raylet transport doesn't currently support returning objects inline.
-  RAY_CHECK(results.size() == 0);
 
   RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId() << " finished execution.";
 

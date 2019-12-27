@@ -71,7 +71,7 @@ class InputReader(object):
                 "tf_input_ops() is not implemented for multi agent batches")
 
         keys = [
-            k for k in sorted(list(batch.keys()))
+            k for k in sorted(batch.keys())
             if np.issubdtype(batch[k].dtype, np.number)
         ]
         dtypes = [batch[k].dtype for k in keys]

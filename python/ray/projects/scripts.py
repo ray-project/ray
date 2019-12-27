@@ -26,11 +26,11 @@ logger = logging.getLogger(__file__)
 
 # File layout for generated project files
 # user-dir/
-#   .rayproject/
+#   ray-project/
 #     project.yaml
 #     cluster.yaml
 #     requirements.txt
-PROJECT_DIR = ".rayproject"
+PROJECT_DIR = "ray-project"
 PROJECT_YAML = os.path.join(PROJECT_DIR, "project.yaml")
 CLUSTER_YAML = os.path.join(PROJECT_DIR, "cluster.yaml")
 REQUIREMENTS_TXT = os.path.join(PROJECT_DIR, "requirements.txt")
@@ -270,10 +270,11 @@ def get_session_runs(name, command, parsed_args):
         List of sessions to start, which are dictionaries with keys:
             "name": Name of the session to start,
             "command": Command to run after starting the session,
+            "params": Parameters for this run,
             "num_steps": 4 if a command should be run, 3 if not.
     """
     if not command:
-        return [{"name": name, "command": None, "num_steps": 3}]
+        return [{"name": name, "command": None, "params": {}, "num_steps": 3}]
 
     # Try to find a wildcard argument (i.e. one that has a list of values)
     # and give an error if there is more than one (currently unsupported).
@@ -290,6 +291,7 @@ def get_session_runs(name, command, parsed_args):
         session_run = {
             "name": name,
             "command": format_command(command, parsed_args),
+            "params": parsed_args,
             "num_steps": 4
         }
         return [session_run]
@@ -301,6 +303,7 @@ def get_session_runs(name, command, parsed_args):
             session_run = {
                 "name": "{}-{}-{}".format(name, wildcard_arg, val),
                 "command": format_command(command, parsed_args),
+                "params": parsed_args,
                 "num_steps": 4
             }
             session_runs.append(session_run)

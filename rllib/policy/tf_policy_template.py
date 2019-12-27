@@ -160,26 +160,26 @@ def build_tf_policy(name,
             if optimizer_fn:
                 return optimizer_fn(self, self.config)
             else:
-                return TFPolicy.optimizer(self)
+                return base.optimizer(self)
 
         @override(TFPolicy)
         def gradients(self, optimizer, loss):
             if gradients_fn:
                 return gradients_fn(self, optimizer, loss)
             else:
-                return TFPolicy.gradients(self, optimizer, loss)
+                return base.gradients(self, optimizer, loss)
 
         @override(TFPolicy)
         def build_apply_op(self, optimizer, grads_and_vars):
             if apply_gradients_fn:
                 return apply_gradients_fn(self, optimizer, grads_and_vars)
             else:
-                return TFPolicy.build_apply_op(self, optimizer, grads_and_vars)
+                return base.build_apply_op(self, optimizer, grads_and_vars)
 
         @override(TFPolicy)
         def extra_compute_action_fetches(self):
             return dict(
-                TFPolicy.extra_compute_action_fetches(self),
+                base.extra_compute_action_fetches(self),
                 **self._extra_action_fetches)
 
         @override(TFPolicy)
@@ -190,7 +190,7 @@ def build_tf_policy(name,
                     LEARNER_STATS_KEY: {}
                 }, **extra_learn_fetches_fn(self))
             else:
-                return TFPolicy.extra_compute_grad_fetches(self)
+                return base.extra_compute_grad_fetches(self)
 
     @staticmethod
     def with_updates(**overrides):

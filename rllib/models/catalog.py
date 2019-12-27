@@ -170,6 +170,10 @@ class ModelCatalog(object):
                                           "supported for Pytorch.")
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
+        elif isinstance(action_space, gym.spaces.Dict):
+            raise NotImplementedError(
+                "Dict action spaces are not supported, consider using "
+                "gym.spaces.Tuple instead")
 
         return dist, dist.required_model_output_shape(action_space, config)
 
@@ -204,6 +208,10 @@ class ModelCatalog(object):
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
             return (tf.int64 if all_discrete else tf.float32, (None, size))
+        elif isinstance(action_space, gym.spaces.Dict):
+            raise NotImplementedError(
+                "Dict action spaces are not supported, consider using "
+                "gym.spaces.Tuple instead")
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
@@ -257,12 +265,11 @@ class ModelCatalog(object):
             model_cls = _global_registry.get(RLLIB_MODEL,
                                              model_config["custom_model"])
             if issubclass(model_cls, ModelV2):
-                if model_interface and not issubclass(model_cls,
-                                                      model_interface):
-                    raise ValueError("The given model must subclass",
-                                     model_interface)
-
                 if framework == "tf":
+                    logger.info("Wrapping {} as {}".format(
+                        model_cls, model_interface))
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        model_cls, model_interface)
                     created = set()
 
                     # Track and warn if vars were created but not registered

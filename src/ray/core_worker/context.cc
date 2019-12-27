@@ -55,7 +55,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
       worker_id_(worker_type_ == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
                                                     : WorkerID::FromRandom()),
       current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
-      current_actor_id_(ActorID::Nil()) {
+      current_actor_id_(ActorID::Nil()),
+      main_thread_id_(boost::this_thread::get_id()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
@@ -89,13 +90,15 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   if (task_spec.IsNormalTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
+    current_task_is_direct_call_ = task_spec.IsDirectCall();
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
-    current_actor_use_direct_call_ = task_spec.IsDirectCall();
+    current_actor_is_direct_call_ = task_spec.IsDirectActorCreationCall();
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
+    current_actor_is_asyncio_ = task_spec.IsAsyncioActor();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_job_id_ == task_spec.JobId());
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
@@ -117,13 +120,33 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
 
 const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
 
-bool WorkerContext::CurrentActorUseDirectCall() const {
-  return current_actor_use_direct_call_;
+bool WorkerContext::CurrentThreadIsMain() const {
+  return boost::this_thread::get_id() == main_thread_id_;
+}
+
+bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
+  // Check if we need to release resources when we block:
+  //  - Driver doesn't acquire resources and thus doesn't need to release.
+  //  - We only support lifetime resources for direct actors, which can be
+  //    acquired when the actor is created, per call resources are not supported,
+  //    thus we don't need to release resources for direct actor call.
+  return worker_type_ != WorkerType::DRIVER && !CurrentActorIsDirectCall() &&
+         CurrentThreadIsMain();
+}
+
+bool WorkerContext::CurrentActorIsDirectCall() const {
+  return current_actor_is_direct_call_;
+}
+
+bool WorkerContext::CurrentTaskIsDirectCall() const {
+  return current_task_is_direct_call_ || current_actor_is_direct_call_;
 }
 
 int WorkerContext::CurrentActorMaxConcurrency() const {
   return current_actor_max_concurrency_;
 }
+
+bool WorkerContext::CurrentActorIsAsync() const { return current_actor_is_asyncio_; }
 
 WorkerThreadContext &WorkerContext::GetThreadContext(bool for_main_thread) {
   if (thread_context_ == nullptr) {

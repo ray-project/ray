@@ -25,8 +25,8 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
       client_call_manager_(client_call_manager),
       is_detached_actor_(false) {
   if (port_ > 0) {
-    rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
-        new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
+    rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_));
   }
 }
 
@@ -128,18 +128,18 @@ void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids)
   active_object_ids_ = object_ids;
 }
 
-void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
-                        const std::function<void(Status)> finish_assign_callback) {
+Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
   RAY_CHECK(port_ > 0);
   rpc::AssignTaskRequest request;
+  request.set_intended_worker_id(worker_id_.Binary());
   request.mutable_task()->mutable_task_spec()->CopyFrom(
       task.GetTaskSpecification().GetMessage());
   request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
       task.GetTaskExecutionSpec().GetMessage());
   request.set_resource_ids(resource_id_set.Serialize());
 
-  auto status = rpc_client_->AssignTask(request, [](Status status,
-                                                    const rpc::AssignTaskReply &reply) {
+  return rpc_client_->AssignTask(request, [](Status status,
+                                             const rpc::AssignTaskReply &reply) {
     if (!status.ok()) {
       RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
     }
@@ -147,20 +147,13 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     // and assigning new task will be done when raylet receives
     // `TaskDone` message.
   });
-  finish_assign_callback(status);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
-                   << " to worker " << worker_id_;
-  } else {
-    RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
-                   << " to worker " << worker_id_;
-  }
 }
 
 void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
   RAY_CHECK(port_ > 0);
   rpc::DirectActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
+  request.set_intended_worker_id(worker_id_.Binary());
   auto status = rpc_client_->DirectActorCallArgWaitComplete(
       request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {

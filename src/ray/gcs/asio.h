@@ -29,12 +29,19 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 #include "ray/gcs/redis_async_context.h"
-#include "ray/thirdparty/hiredis/async.h"
-#include "ray/thirdparty/hiredis/hiredis.h"
 
 class RedisAsioClient {
  public:
+  /// Constructor of RedisAsioClient.
+  /// Use single-threaded io_service as event loop (because the redis commands
+  /// that will run in the event loop are non-thread safe).
+  ///
+  /// \param io_service The single-threaded event loop for this client.
+  /// \param redis_async_context The redis async context used to execute redis commands
+  /// for this client.
   RedisAsioClient(boost::asio::io_service &io_service,
                   ray::gcs::RedisAsyncContext &redis_async_context);
 
@@ -51,6 +58,7 @@ class RedisAsioClient {
  private:
   ray::gcs::RedisAsyncContext &redis_async_context_;
 
+  boost::asio::io_service &io_service_;
   boost::asio::ip::tcp::socket socket_;
   // Hiredis wanted to add a read operation to the event loop
   // but the read might not have happened yet

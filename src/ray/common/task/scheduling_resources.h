@@ -16,6 +16,9 @@ namespace ray {
 constexpr double kResourceConversionFactor = 10000;
 
 const std::string kCPU_ResourceLabel = "CPU";
+const std::string kGPU_ResourceLabel = "GPU";
+const std::string kTPU_ResourceLabel = "TPU";
+const std::string kMemory_ResourceLabel = "memory";
 
 /// \class FractionalResourceQuantity
 /// \brief Converts the resource quantities to an internal representation to
@@ -506,7 +509,7 @@ class SchedulingResources {
   /// \param resource_name: Name of the resource to be modified
   /// \param capacity: New capacity of the resource.
   /// \return Void.
-  void UpdateResource(const std::string &resource_name, int64_t capacity);
+  void UpdateResourceCapacity(const std::string &resource_name, int64_t capacity);
 
   /// \brief Delete resource from total, available and load resources.
   ///

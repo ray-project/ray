@@ -152,13 +152,10 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param config ObjectManager configuration.
   /// \param object_directory An object implementing the object directory interface.
   explicit ObjectManager(boost::asio::io_service &main_service,
-                         const ObjectManagerConfig &config,
+                         const ClientID &self_node_id, const ObjectManagerConfig &config,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   ~ObjectManager();
-
-  /// Register GCS-related functionality.
-  void RegisterGcs();
 
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
@@ -189,7 +186,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id);
+  ray::Status Pull(const ObjectID &object_id) override;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -207,7 +204,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The ObjectID.
   /// \return Void.
-  void CancelPull(const ObjectID &object_id);
+  void CancelPull(const ObjectID &object_id) override;
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,
@@ -355,7 +352,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// Handle Push task timeout.
   void HandlePushTaskTimeout(const ObjectID &object_id, const ClientID &client_id);
 
-  ClientID client_id_;
+  ClientID self_node_id_;
   const ObjectManagerConfig config_;
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   ObjectStoreNotificationManager store_notification_;

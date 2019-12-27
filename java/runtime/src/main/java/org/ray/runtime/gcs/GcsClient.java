@@ -48,7 +48,7 @@ public class GcsClient {
     List<byte[]> shardAddresses = primary.lrange("RedisShards".getBytes(), 0, -1);
     Preconditions.checkState(shardAddresses.size() == numShards);
     shards = shardAddresses.stream().map((byte[] address) -> {
-      return new RedisClient(new String(address));
+      return new RedisClient(new String(address), redisPassword);
     }).collect(Collectors.toList());
   }
 
@@ -77,12 +77,14 @@ public class GcsClient {
       if (data.getState() == GcsNodeInfo.GcsNodeState.ALIVE) {
         //Code path of node insertion.
         NodeInfo nodeInfo = new NodeInfo(
-            nodeId, data.getNodeManagerAddress(), true, new HashMap<>());
+            nodeId, data.getNodeManagerAddress(),
+            data.getNodeManagerHostname(),
+            true, new HashMap<>());
         nodes.put(nodeId, nodeInfo);
       } else {
         // Code path of node deletion.
         NodeInfo nodeInfo = new NodeInfo(nodeId, nodes.get(nodeId).nodeAddress,
-            false, new HashMap<>());
+            nodes.get(nodeId).nodeHostname, false, new HashMap<>());
         nodes.put(nodeId, nodeInfo);
       }
     }

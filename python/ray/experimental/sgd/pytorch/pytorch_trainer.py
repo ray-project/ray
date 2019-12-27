@@ -7,6 +7,7 @@ import os
 import torch
 import torch.distributed as dist
 import logging
+import numbers
 
 import ray
 
@@ -77,6 +78,8 @@ class PyTorchTrainer(object):
                  "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
+        self.train_function = train_function
+        self.validation_function = validation_function
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
@@ -113,7 +116,7 @@ class PyTorchTrainer(object):
             batch_size_per_replica = batch_size // num_replicas
             if batch_size % num_replicas > 0:
                 new_batch_size = batch_size_per_replica * num_replicas
-                logger.warn(
+                logger.warning(
                     ("Changing batch size from {old_batch_size} to "
                      "{new_batch_size} to evenly distribute batches across "
                      "{num_replicas} replicas.").format(
@@ -148,13 +151,20 @@ class PyTorchTrainer(object):
             ])
 
     def train(self):
-        """Runs a training epoch."""
+        """Runs a training epoch.
+
+        Runs an average over all values returned from workers.
+        """
         with self.optimizer_timer:
             worker_stats = ray.get([w.step.remote() for w in self.workers])
 
-        train_stats = worker_stats[0].copy()
-        train_stats["train_loss"] = np.mean(
-            [s["train_loss"] for s in worker_stats])
+        train_stats = {}
+        for stat_key in worker_stats[0]:
+            if isinstance(worker_stats[0], numbers.Number):
+                train_stats[stat_key] = np.nanmean(
+                    [s.get(stat_key, np.nan) for s in worker_stats])
+            else:
+                train_stats[stat_key] = worker_stats[0][stat_key]
         return train_stats
 
     def apply_all_workers(self, fn):
@@ -162,22 +172,29 @@ class PyTorchTrainer(object):
 
     def validate(self):
         """Evaluates the model on the validation data set."""
+        if self.validation_function is False:
+            return {}
         worker_stats = ray.get([w.validate.remote() for w in self.workers])
-        validation_stats = worker_stats[0].copy()
-        if "validation_loss" in validation_stats:
-            validation_stats["validation_loss"] = np.nanmean(
-                [s.get("validation_loss", np.nan) for s in worker_stats])
+
+        validation_stats = {}
+        for stat_key in worker_stats[0]:
+            validation_stats[stat_key] = np.nanmean(
+                [s.get(stat_key, np.nan) for s in worker_stats])
         return validation_stats
 
     def get_model(self):
-        """Returns the learned model."""
-        model = self.model_creator(self.config)
+        """Returns the learned model(s)."""
+        models = self.model_creator(self.config)
         state = ray.get(self.workers[0].get_state.remote())
-        model.load_state_dict(state["model"])
-        return model
+        if len(state["models"]) == 1:
+            models.load_state_dict(state["models"][0])
+        else:
+            for model, state_dict in zip(models, state["models"]):
+                model.load_state_dict(state_dict)
+        return models
 
     def save(self, checkpoint):
-        """Saves the model at the provided checkpoint.
+        """Saves the model(s) to the provided checkpoint.
 
         Args:
             checkpoint (str): Path to target checkpoint file.
