@@ -20,8 +20,8 @@ class ActorManagerInterface {
 /// Class to manage lifetimes of actors that we create (actor children).
 class ActorManager : public ActorManagerInterface {
  public:
-  ActorManager(gcs::DirectActorTable &global_actor_table)
-      : global_actor_table_(global_actor_table) {}
+  ActorManager(gcs::ActorInfoAccessor &actor_accessor)
+      : actor_accessor_(actor_accessor) {}
 
   /// Called when an actor creation task that we submitted finishes.
   void PublishCreatedActor(const TaskSpecification &actor_creation_task,
@@ -32,7 +32,7 @@ class ActorManager : public ActorManagerInterface {
 
  private:
   /// Global database of actors.
-  gcs::DirectActorTable &global_actor_table_;
+  gcs::ActorInfoAccessor &actor_accessor_;
 };
 
 }  // namespace ray
