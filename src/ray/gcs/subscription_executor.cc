@@ -52,8 +52,6 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
       return;
     }
 
-    RAY_LOG(DEBUG) << "Subscribe received update of id " << id;
-
     SubscribeCallback<ID, Data> sub_one_callback = nullptr;
     SubscribeCallback<ID, Data> sub_all_callback = nullptr;
     {
@@ -190,6 +188,7 @@ template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
 template class SubscriptionExecutor<ActorID, ActorTableData, DirectActorTable>;
 template class SubscriptionExecutor<JobID, JobTableData, JobTable>;
 template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;
+template class SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>;
 
 }  // namespace gcs
 
