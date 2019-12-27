@@ -6,9 +6,9 @@ if sys.version_info < (3, 0):
 
 from ray.experimental.serve.api import (
     init, create_backend, create_endpoint, link, split, get_handle, stat,
-    set_backend_config, get_backend_config)  # noqa: E402
+    set_backend_config, get_backend_config, accept_batch)  # noqa: E402
 __all__ = [
     "init", "create_backend", "create_endpoint", "link", "split", "get_handle",
     "stat", "set_backend_config", "get_backend_config", "BackendConfig",
-    "RoutePolicy"
+    "RoutePolicy", "accept_batch"
 ]

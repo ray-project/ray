@@ -37,6 +37,27 @@ def _ensure_connected(f):
     return check
 
 
+def accept_batch(f):
+    """Annotation to mark a serving function that batch is accepted.
+
+    This annotation need to be used to mark a function expect all arguments
+    to be passed into a list.
+
+    Example:
+        @serve.accept_batch
+        def serving_func(flask_request):
+            assert isinstance(flask_request, list)
+            ...
+
+        class ServingActor:
+            @serve.accept_batch
+            def __call__(self, *, python_arg=None):
+                assert isinstance(python_arg, list)
+    """
+    f.serve_accept_batch = True
+    return f
+
+
 def init(kv_store_connector=None,
          kv_store_path=None,
          blocking=False,
@@ -199,13 +220,29 @@ def create_backend(func_or_class,
                       BackendConfig), ("backend_config must be"
                                        " of instance BackendConfig")
     backend_config_dict = dict(backend_config)
+
+    should_accept_batch = (True if backend_config.max_batch_size is not None
+                           else False)
+    batch_annotation_not_found = RayServeException(
+        "max_batch_size is set in config but the function or method does not "
+        "accept batching. Please use @serve.accept_batch to explicitly mark "
+        "the function or method as batchable and takes in list as arguments.")
+
     arg_list = []
     if inspect.isfunction(func_or_class):
+        if should_accept_batch and not hasattr(func_or_class,
+                                               "serve_accept_batch"):
+            raise batch_annotation_not_found
+
         # arg list for a fn is function itself
         arg_list = [func_or_class]
         # ignore lint on lambda expression
         creator = lambda kwrgs: TaskRunnerActor._remote(**kwrgs)  # noqa: E731
     elif inspect.isclass(func_or_class):
+        if should_accept_batch and not hasattr(func_or_class.__call__,
+                                               "serve_accept_batch"):
+            raise batch_annotation_not_found
+
         # Python inheritance order is right-to-left. We put RayServeMixin
         # on the left to make sure its methods are not overriden.
         @ray.remote
