@@ -7,7 +7,9 @@ import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.exception.RayException;
 import org.ray.api.id.ObjectId;
+import org.ray.runtime.RayNativeRuntime;
 import org.ray.runtime.object.RayObjectImpl;
+import org.ray.runtime.runner.RunManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -26,7 +28,11 @@ public class ClientExceptionTest extends BaseTest {
     Thread thread = new Thread(() -> {
       try {
         TimeUnit.SECONDS.sleep(1);
-        Ray.shutdown();
+        // kill raylet
+        RunManager runManager = ((RayNativeRuntime) TestUtils.getRuntime()).getRunManager();
+        for (Process process : runManager.getProcesses("raylet")) {
+          runManager.terminateProcess("raylet", process);
+        }
       } catch (InterruptedException e) {
         LOGGER.error("Got InterruptedException when sleeping, exit right now.");
         throw new RuntimeException("Got InterruptedException when sleeping.", e);

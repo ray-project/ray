@@ -47,7 +47,7 @@ def define_java_module(
     )
     checkstyle_test(
         name = "org_ray_ray_" + name + "-checkstyle",
-        target = "//java:org_ray_ray_" + name,
+        target = ":org_ray_ray_" + name,
         config = "//java:checkstyle.xml",
         suppressions = "//java:checkstyle-suppressions.xml",
         size = "small",
@@ -63,7 +63,7 @@ def define_java_module(
         )
         checkstyle_test(
             name = "org_ray_ray_" + name + "_test-checkstyle",
-            target = "//java:org_ray_ray_" + name + "_test",
+            target = ":org_ray_ray_" + name + "_test",
             config = "//java:checkstyle.xml",
             suppressions = "//java:checkstyle-suppressions.xml",
             size = "small",

@@ -55,8 +55,13 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_tasks_failed++;
   }
 
+  void OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) override {
+    num_inlined += object_ids.size();
+  }
+
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
+  int num_inlined = 0;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
@@ -136,17 +141,20 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
   TaskSpecification task;
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
+  ASSERT_EQ(task_finisher->num_inlined, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
-  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::RAYLET);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
+  ObjectID obj1 = ObjectID::FromRandom();
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   bool ok = false;
@@ -154,11 +162,13 @@ TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
   // We ignore and don't block on plasma dependencies.
   ASSERT_TRUE(ok);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(task_finisher->num_inlined, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
   auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
@@ -175,11 +185,13 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   // Checks that the object id is still a direct call id.
   ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(task_finisher->num_inlined, 0);
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
@@ -198,11 +210,13 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(task_finisher->num_inlined, 2);
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
-  LocalDependencyResolver resolver(store);
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
@@ -223,6 +237,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+  ASSERT_EQ(task_finisher->num_inlined, 2);
 }
 
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,

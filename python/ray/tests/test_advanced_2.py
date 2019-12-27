@@ -150,11 +150,10 @@ def test_multi_resource_constraints(shutdown_only):
 
 
 def test_gpu_ids(shutdown_only):
-    num_gpus = 10
-    ray.init(num_cpus=10, num_gpus=num_gpus)
+    num_gpus = 3
+    ray.init(num_cpus=num_gpus, num_gpus=num_gpus)
 
     def get_gpu_ids(num_gpus_per_worker):
-        time.sleep(0.1)
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == num_gpus_per_worker
         assert (os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
@@ -166,18 +165,18 @@ def test_gpu_ids(shutdown_only):
     f0 = ray.remote(num_gpus=0)(lambda: get_gpu_ids(0))
     f1 = ray.remote(num_gpus=1)(lambda: get_gpu_ids(1))
     f2 = ray.remote(num_gpus=2)(lambda: get_gpu_ids(2))
-    f4 = ray.remote(num_gpus=4)(lambda: get_gpu_ids(4))
-    f5 = ray.remote(num_gpus=5)(lambda: get_gpu_ids(5))
 
     # Wait for all workers to start up.
     @ray.remote
     def f():
-        time.sleep(0.1)
+        time.sleep(0.2)
         return os.getpid()
 
     start_time = time.time()
     while True:
-        if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
+        num_workers_started = len(
+            set(ray.get([f.remote() for _ in range(num_gpus)])))
+        if num_workers_started == num_gpus:
             break
         if time.time() > start_time + 10:
             raise RayTestTimeoutException(
@@ -186,20 +185,8 @@ def test_gpu_ids(shutdown_only):
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
-
-    list_of_ids = ray.get([f1.remote() for _ in range(10)])
-    set_of_ids = {tuple(gpu_ids) for gpu_ids in list_of_ids}
-    assert set_of_ids == {(i, ) for i in range(10)}
-
-    list_of_ids = ray.get([f2.remote(), f4.remote(), f4.remote()])
-    all_ids = [gpu_id for gpu_ids in list_of_ids for gpu_id in gpu_ids]
-    assert set(all_ids) == set(range(10))
-
-    # There are only 10 GPUs, and each task uses 5 GPUs, so there should only
-    # be 2 tasks scheduled at a given time.
-    t1 = time.time()
-    ray.get([f5.remote() for _ in range(20)])
-    assert time.time() - t1 >= 10 * 0.1
+    ray.get([f1.remote() for _ in range(10)])
+    ray.get([f2.remote() for _ in range(10)])
 
     # Test that actors have CUDA_VISIBLE_DEVICES set properly.
 

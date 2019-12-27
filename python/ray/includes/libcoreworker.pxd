@@ -98,6 +98,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
+        CRayStatus KillActor(const CActorID &actor_id)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -113,13 +114,14 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
         const CActorID &GetActorId()
+        void SetWebuiDisplay(const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes)
-        void AddObjectIDReference(const CObjectID &object_id)
-        void RemoveObjectIDReference(const CObjectID &object_id)
+        void AddLocalReference(const CObjectID &object_id)
+        void RemoveLocalReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_id,
                                                 CTaskID *owner_id,
@@ -149,6 +151,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
+
+        unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
+
         void GetAsync(const CObjectID &object_id,
                       ray_callback_function successs_callback,
                       ray_callback_function fallback_callback,
