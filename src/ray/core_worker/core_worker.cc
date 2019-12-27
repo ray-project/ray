@@ -195,6 +195,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
                        << spec.DebugString();
+        absl::MutexLock lock(&mutex_);
         to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
       }));
 
@@ -327,6 +328,7 @@ void CoreWorker::ReportActiveObjectIDs() {
 }
 
 void CoreWorker::InternalHeartbeat() {
+  absl::MutexLock lock(&mutex_);
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
     to_resubmit_.pop_front();
@@ -847,6 +849,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
 
+  {
+    absl::MutexLock lock(&mutex_);
+    current_task_ = task_spec;
+  }
+
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
   std::vector<std::shared_ptr<RayObject>> args;
@@ -908,6 +915,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
+  {
+    absl::MutexLock lock(&mutex_);
+    current_task_ = TaskSpecification();
+  }
   return status;
 }
 
@@ -1069,15 +1080,13 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&mutex_);
   reply->set_webui_display(webui_display_);
   auto stats = reply->mutable_core_worker_stats();
-  stats->set_job_id(worker_context_.GetCurrentJobID().Hex());
-  stats->set_actor_id(worker_context_.GetCurrentActorID().Hex());
   stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
-  auto current_task = worker_context_.GetCurrentTask();
-  if (current_task) {
-    stats->set_current_task_desc(current_task->DebugString());
+  if (!current_task_.TaskId().IsNil()) {
+    stats->set_current_task_desc(current_task_.DebugString());
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
