@@ -876,6 +876,12 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return Status
   ray::Status Disconnect();
 
+  /// Register a new client to the GCS.
+  ///
+  /// \param node_info Information about the client.
+  /// \return Status
+  ray::Status Register(const GcsNodeInfo &node_info);
+
   /// Mark a different client as disconnected. The client ID should never be
   /// reused for a new client.
   ///
