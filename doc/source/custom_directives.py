@@ -11,6 +11,8 @@ try:
 except NameError:
     FileNotFoundError = IOError
 
+# This is not a top level item in the directory, so we use `../` to refer
+# to images located at the top level.
 GALLERY_TEMPLATE = """
 .. raw:: html
 
@@ -18,7 +20,7 @@ GALLERY_TEMPLATE = """
 
 .. only:: html
 
-    .. figure:: {thumbnail}
+    .. figure:: ../{thumbnail}
 
         {description}
 
@@ -71,12 +73,13 @@ class CustomGalleryItemDirective(Directive):
         if "figure" in self.options:
             env = self.state.document.settings.env
             rel_figname, figname = env.relfn2path(self.options["figure"])
-            thumbnail = os.path.join("_static/thumbs/",
-                                     os.path.basename(figname))
 
-            os.makedirs("_static/thumbs", exist_ok=True)
+            thumb_dir = os.path.join(env.srcdir, "_static/thumbs/")
+            os.makedirs(thumb_dir, exist_ok=True)
+            image_path = os.path.join(thumb_dir, os.path.basename(figname))
+            sphinx_gallery.gen_rst.scale_image(figname, image_path, 400, 280)
 
-            sphinx_gallery.gen_rst.scale_image(figname, thumbnail, 400, 280)
+            thumbnail = os.path.relpath(image_path, env.srcdir)
         else:
             thumbnail = "/_static/img/thumbnails/default.png"
 

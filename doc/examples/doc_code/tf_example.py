@@ -9,11 +9,11 @@ in the documentation.
 
 # yapf: disable
 # __tf_model_start__
-import tensorflow as tf
 from tensorflow.keras import layers
 
 
 def create_keras_model():
+    import tensorflow as tf
     model = tf.keras.Sequential()
     # Adds a densely-connected layer with 64 units to the model:
     model.add(layers.Dense(64, activation="relu", input_shape=(32, )))
@@ -23,7 +23,7 @@ def create_keras_model():
     model.add(layers.Dense(10, activation="softmax"))
 
     model.compile(
-        optimizer=tf.train.RMSPropOptimizer(0.01),
+        optimizer=tf.keras.optimizers.RMSprop(0.01),
         loss=tf.keras.losses.categorical_crossentropy,
         metrics=[tf.keras.metrics.categorical_accuracy])
     return model
@@ -48,7 +48,7 @@ def random_one_hot_labels(shape):
 # Use GPU wth
 # @ray.remote(num_gpus=1)
 @ray.remote
-class Network():
+class Network(object):
     def __init__(self):
         self.model = create_keras_model()
         self.dataset = np.random.random((1000, 32))

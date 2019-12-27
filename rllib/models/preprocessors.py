@@ -77,11 +77,7 @@ class Preprocessor(object):
     @property
     @PublicAPI
     def observation_space(self):
-        obs_space = gym.spaces.Box(
-            np.finfo(np.float32).min,
-            np.finfo(np.float32).max,
-            self.shape,
-            dtype=np.float32)
+        obs_space = gym.spaces.Box(-1., 1., self.shape, dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
         # automatically in model.py
         if (isinstance(self, TupleFlatteningPreprocessor)
@@ -175,6 +171,11 @@ class NoPreprocessor(Preprocessor):
         array[offset:offset + self._size] = np.array(
             observation, copy=False).ravel()
 
+    @property
+    @override(Preprocessor)
+    def observation_space(self):
+        return self._obs_space
+
 
 class TupleFlatteningPreprocessor(Preprocessor):
     """Preprocesses each tuple element, then flattens it all into a vector.
@@ -238,7 +239,7 @@ class DictFlatteningPreprocessor(Preprocessor):
     @override(Preprocessor)
     def write(self, observation, array, offset):
         if not isinstance(observation, OrderedDict):
-            observation = OrderedDict(sorted(list(observation.items())))
+            observation = OrderedDict(sorted(observation.items()))
         assert len(observation) == len(self.preprocessors), \
             (len(observation), len(self.preprocessors))
         for o, p in zip(observation.values(), self.preprocessors):

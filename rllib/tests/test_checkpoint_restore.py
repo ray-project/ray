@@ -21,7 +21,7 @@ def get_mean_action(alg, obs):
     return np.mean(out)
 
 
-ray.init(num_cpus=10)
+ray.init(num_cpus=10, object_store_memory=1e9)
 
 CONFIGS = {
     "SAC": {},
@@ -29,6 +29,7 @@ CONFIGS = {
         "episodes_per_batch": 10,
         "train_batch_size": 100,
         "num_workers": 2,
+        "noise_size": 2500000,
         "observation_filter": "MeanStdFilter"
     },
     "DQN": {},
@@ -56,6 +57,7 @@ CONFIGS = {
     "ARS": {
         "num_rollouts": 10,
         "num_workers": 2,
+        "noise_size": 2500000,
         "observation_filter": "MeanStdFilter"
     }
 }

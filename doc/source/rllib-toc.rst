@@ -18,6 +18,8 @@ Training APIs
 
    -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
 
+   -  `Computing Actions <rllib-training.html#computing-actions>`__
+
    -  `Accessing Policy State <rllib-training.html#accessing-policy-state>`__
 
    -  `Accessing Model State <rllib-training.html#accessing-model-state>`__
@@ -75,6 +77,8 @@ Algorithms
    -  `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 
    -  `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
+
+   -  `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
 
 *  Gradient-based
 
@@ -171,3 +175,8 @@ If you encounter out-of-memory errors, consider setting ``redis_max_memory`` and
 For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
 the stack traces of all Ray workers on the current node, and ``ray timeline`` to dump
 a timeline visualization of tasks to a file.
+
+TensorFlow 2.0
+~~~~~~~~~~~~~~
+
+RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.

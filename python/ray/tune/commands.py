@@ -11,8 +11,8 @@ from datetime import datetime
 
 import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
-from ray.tune.result import (TRAINING_ITERATION, MEAN_ACCURACY, MEAN_LOSS,
-                             TIME_TOTAL_S, TRIAL_ID, CONFIG_PREFIX)
+from ray.tune.result import (DEFAULT_EXPERIMENT_INFO_KEYS, DEFAULT_RESULT_KEYS,
+                             CONFIG_PREFIX)
 from ray.tune.analysis import Analysis
 from ray.tune import TuneError
 try:
@@ -26,9 +26,7 @@ EDITOR = os.getenv("EDITOR", "vim")
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S (%A)"
 
-DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag",
-                                TRAINING_ITERATION, TIME_TOTAL_S,
-                                MEAN_ACCURACY, MEAN_LOSS, TRIAL_ID)
+DEFAULT_CLI_KEYS = DEFAULT_EXPERIMENT_INFO_KEYS + DEFAULT_RESULT_KEYS
 
 DEFAULT_PROJECT_INFO_KEYS = (
     "name",
@@ -127,7 +125,7 @@ def list_trials(experiment_path,
         raise click.ClickException("No trial data found!")
 
     def key_filter(k):
-        return k in DEFAULT_EXPERIMENT_INFO_KEYS or k.startswith(CONFIG_PREFIX)
+        return k in DEFAULT_CLI_KEYS or k.startswith(CONFIG_PREFIX)
 
     col_keys = [k for k in checkpoints_df.columns if key_filter(k)]
 

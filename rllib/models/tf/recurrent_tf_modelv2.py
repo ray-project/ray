@@ -34,7 +34,7 @@ class RecurrentTFModelV2(TFModelV2):
                     shape=(None, obs_space.shape[0]))
                 state_in_h = tf.keras.layers.Input(shape=(256, ))
                 state_in_c = tf.keras.layers.Input(shape=(256, ))
-                seq_in = tf.keras.layers.Input(shape=())
+                seq_in = tf.keras.layers.Input(shape=(), dtype=tf.int32)
 
                 # Send to LSTM cell
                 lstm_out, state_h, state_c = tf.keras.layers.LSTM(

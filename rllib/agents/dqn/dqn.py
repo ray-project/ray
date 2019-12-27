@@ -275,7 +275,7 @@ def collect_metrics(trainer):
 
 
 def disable_exploration(trainer):
-    trainer.evaluation_workers.local_worker().foreach_policy(
+    trainer.evaluation_workers.local_worker().foreach_trainable_policy(
         lambda p, _: p.set_epsilon(0))
 
 

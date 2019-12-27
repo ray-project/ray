@@ -1,0 +1,27 @@
+diff --git cpp/src/plasma/client.cc cpp/src/plasma/client.cc
+--- cpp/src/plasma/client.cc
++++ cpp/src/plasma/client.cc
+@@ -985,3 +985,8 @@ Status PlasmaClient::Impl::Subscribe(int* fd) {
+   // Make the socket non-blocking.
++#ifdef _WINSOCKAPI_
++  unsigned long value = 1;
++  ARROW_CHECK(ioctlsocket(sock[1], FIONBIO, &value) == 0);
++#else
+   int flags = fcntl(sock[1], F_GETFL, 0);
+   ARROW_CHECK(fcntl(sock[1], F_SETFL, flags | O_NONBLOCK) == 0);
++#endif
+diff --git cpp/src/plasma/fling.cc cpp/src/plasma/fling.cc
+--- cpp/src/plasma/fling.cc
++++ cpp/src/plasma/fling.cc
+@@ -18,6 +18,10 @@
+ 
+ #include "arrow/util/logging.h"
+ 
++#ifdef _WIN32
++#include <ws2tcpip.h>  // socklen_t
++#endif
++
+ void init_msg(struct msghdr* msg, struct iovec* iov, char* buf, size_t buf_len) {
+   iov->iov_base = buf;
+   iov->iov_len = 1;
+-- 

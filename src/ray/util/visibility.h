@@ -8,7 +8,9 @@
 #pragma GCC diagnostic ignored "-Wattributes"
 #endif
 
-#ifdef RAY_EXPORTING
+#ifdef RAY_STATIC
+#define RAY_EXPORT
+#elif defined(RAY_EXPORTING)
 #define RAY_EXPORT __declspec(dllexport)
 #else
 #define RAY_EXPORT __declspec(dllimport)

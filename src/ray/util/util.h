@@ -8,6 +8,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #include "ray/common/status.h"
@@ -26,25 +27,6 @@ inline int64_t current_time_ms() {
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now().time_since_epoch());
   return ms_since_epoch.count();
-}
-
-inline int64_t current_sys_time_ms() {
-  std::chrono::milliseconds ms_since_epoch =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch());
-  return ms_since_epoch.count();
-}
-
-inline int64_t current_sys_time_us() {
-  std::chrono::microseconds mu_since_epoch =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::system_clock::now().time_since_epoch());
-  return mu_since_epoch.count();
-}
-
-inline double current_sys_time_seconds() {
-  int64_t microseconds_in_seconds = 1000000;
-  return static_cast<double>(current_sys_time_us()) / microseconds_in_seconds;
 }
 
 inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
@@ -108,11 +90,19 @@ template <typename Key, typename T>
 using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 
 /// A helper function to fill random bytes into the `data`.
+/// Warning: this is not fork-safe, we need to re-seed after that.
 template <typename T>
 void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);
   auto randomly_seeded_mersenne_twister = []() {
     auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    // To increase the entropy, mix in a number of time samples instead of a single one.
+    // This avoids the possibility of duplicate seeds for many workers that start in
+    // close succession.
+    for (int i = 0; i < 128; i++) {
+      std::this_thread::sleep_for(std::chrono::microseconds(10));
+      seed += std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    }
     std::mt19937 seeded_engine(seed);
     return seeded_engine;
   };

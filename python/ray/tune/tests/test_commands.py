@@ -20,7 +20,7 @@ from ray.tune import commands
 from ray.tune.result import CONFIG_PREFIX
 
 
-class Capturing():
+class Capturing(object):
     def __enter__(self):
         self._stdout = sys.stdout
         sys.stdout = self._stringio = StringIO()
@@ -156,3 +156,10 @@ def test_lsx(start_ray, tmpdir):
     lines = output.captured
     assert sum("1" in line for line in lines) >= num_experiments
     assert len(lines) == 3 + num_experiments + 1
+
+
+if __name__ == "__main__":
+    # Make click happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+    sys.exit(pytest.main([__file__]))

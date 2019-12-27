@@ -10,8 +10,8 @@ from ray.experimental import serve
 from ray.experimental.serve.utils import pformat_color_json
 
 
-def echo(context):
-    return context
+def echo(flask_request):
+    return "hello " + flask_request.args.get("name", "serve!")
 
 
 serve.init(blocking=True)

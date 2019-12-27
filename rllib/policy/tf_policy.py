@@ -146,6 +146,10 @@ class TFPolicy(Policy):
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
 
+    def variables(self):
+        """Return the list of all savable variables for this policy."""
+        return self.model.variables()
+
     def get_placeholder(self, name):
         """Returns the given action or loss input placeholder by name.
 
@@ -194,8 +198,13 @@ class TFPolicy(Policy):
             if g is not None
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
-        self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-            self._loss, self._sess)
+        if hasattr(self, "model") and isinstance(self.model, ModelV2):
+            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
+                [], self._sess, self.variables())
+        else:
+            # TODO(ekl) deprecate support for v1 models
+            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
+                self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
@@ -253,11 +262,11 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def get_weights(self):
-        return self._variables.get_flat()
+        return self._variables.get_weights()
 
     @override(Policy)
     def set_weights(self, weights):
-        return self._variables.set_flat(weights)
+        return self._variables.set_weights(weights)
 
     @override(Policy)
     def export_model(self, export_dir):
@@ -587,14 +596,24 @@ class EntropyCoeffSchedule(object):
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self.entropy_coeff = tf.get_variable(
             "entropy_coeff", initializer=entropy_coeff, trainable=False)
-        self._entropy_schedule = entropy_coeff_schedule
+
+        if entropy_coeff_schedule is None:
+            self.entropy_coeff_schedule = ConstantSchedule(entropy_coeff)
+        else:
+            # Allows for custom schedule similar to lr_schedule format
+            if isinstance(entropy_coeff_schedule, list):
+                self.entropy_coeff_schedule = PiecewiseSchedule(
+                    entropy_coeff_schedule,
+                    outside_value=entropy_coeff_schedule[-1][-1])
+            else:
+                # Implements previous version but enforces outside_value
+                self.entropy_coeff_schedule = PiecewiseSchedule(
+                    [[0, entropy_coeff], [entropy_coeff_schedule, 0.0]],
+                    outside_value=0.0)
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
-        if self._entropy_schedule is not None:
-            self.entropy_coeff.load(
-                self.entropy_coeff.eval(session=self._sess) *
-                (1 - global_vars["timestep"] /
-                 self.config["entropy_coeff_schedule"]),
-                session=self._sess)
+        self.entropy_coeff.load(
+            self.entropy_coeff_schedule.value(global_vars["timestep"]),
+            session=self._sess)

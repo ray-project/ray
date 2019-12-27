@@ -6,7 +6,6 @@
 #include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"
-#include "ray/util/util.h"
 // clang-format on
 
 namespace ray {

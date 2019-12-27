@@ -1,8 +1,8 @@
 #include "ray/gcs/redis_async_context.h"
 
 extern "C" {
-#include "ray/thirdparty/hiredis/async.h"
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 }
 
 namespace ray {
@@ -31,7 +31,12 @@ void RedisAsyncContext::ResetRawRedisAsyncContext() {
 }
 
 void RedisAsyncContext::RedisAsyncHandleRead() {
-  // `redisAsyncHandleRead` is already thread-safe, so no lock here.
+  // `redisAsyncHandleRead` will mutate `redis_async_context_`, use a lock to protect
+  // it.
+  // This function will execute the callbacks which are registered by
+  // `redisvAsyncCommand`, `redisAsyncCommandArgv` and so on.
+  std::lock_guard<std::mutex> lock(mutex_);
+
   redisAsyncHandleRead(redis_async_context_);
 }
 
@@ -51,6 +56,9 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
   {
     // `redisvAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!redis_async_context_) {
+      return Status::NotImplemented("...");
+    }
     ret_code = redisvAsyncCommand(redis_async_context_, fn, privdata, format, ap);
   }
 

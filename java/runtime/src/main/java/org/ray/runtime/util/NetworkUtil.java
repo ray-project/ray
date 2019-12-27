@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.net.DatagramSocket;
 import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.util.Enumeration;
@@ -45,6 +46,19 @@ public class NetworkUtil {
     }
 
     return "127.0.0.1";
+  }
+
+  public static int getUnusedPort() {
+    int port;
+    try {
+      ServerSocket ss = new ServerSocket();
+      ss.bind(new InetSocketAddress(0));
+      port = ss.getLocalPort();
+      ss.close();
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to bind to an available port.", e);
+    }
+    return port;
   }
 
   public static boolean isPortAvailable(int port) {

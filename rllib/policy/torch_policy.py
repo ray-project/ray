@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import os
 
 try:
     import torch
@@ -49,8 +48,7 @@ class TorchPolicy(Policy):
         self.observation_space = observation_space
         self.action_space = action_space
         self.device = (torch.device("cuda")
-                       if bool(os.environ.get("CUDA_VISIBLE_DEVICES", None))
-                       else torch.device("cpu"))
+                       if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
         self._loss = loss
         self._optimizer = self.optimizer()

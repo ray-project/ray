@@ -6,9 +6,9 @@ namespace ray {
 namespace gcs {
 
 DynamicResourceStateAccessor::DynamicResourceStateAccessor(RedisGcsClient &client_impl)
-    : client_impl_(client_impl), resource_sub_executor_(client_impl_.resource_table()) {}
+    : client_impl_(client_impl), resource_sub_executor_(client_impl_->resource_table()) {}
 
-Status DynamicResourceStateAccessor::AsyncGet(
+Status DynamicResourceStateAccessor::AsyncGetResource(
     const ClientID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ClientID &id,
@@ -20,24 +20,24 @@ Status DynamicResourceStateAccessor::AsyncGet(
     callback(Status::OK(), result);
   };
 
-  DynamicResourceTable &resource_table = client_impl_.resource_table();
+  DynamicResourceTable &resource_table = client_impl_->resource_table();
   return resource_table.Lookup(JobID::Nil(), node_id, on_done);
 }
 
-Status DynamicResourceStateAccessor::AsyncUpdate(const ClientID &node_id,
-                                                 const ResourceMap &resources,
-                                                 const StatusCallback &callback) {
+Status DynamicResourceStateAccessor::AsyncUpdateResource(const ClientID &node_id,
+                                                         const ResourceMap &resources,
+                                                         const StatusCallback &callback) {
   Hash<ClientID, ResourceTableData>::HashCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
                          const ResourceMap &resources) { callback(Status::OK()); };
   }
 
-  DynamicResourceTable &resource_table = client_impl_.resource_table();
+  DynamicResourceTable &resource_table = client_impl_->resource_table();
   return resource_table.Update(JobID::Nil(), node_id, resources, on_done);
 }
 
-Status DynamicResourceStateAccessor::AsyncDelete(
+Status DynamicResourceStateAccessor::AsyncDeleteResource(
     const ClientID &node_id, const std::vector<std::string> &resource_tags,
     const StatusCallback &callback) {
   Hash<ClientID, ResourceTableData>::HashRemoveCallback on_done = nullptr;
@@ -48,12 +48,12 @@ Status DynamicResourceStateAccessor::AsyncDelete(
     };
   }
 
-  DynamicResourceTable &resource_table = client_impl_.resource_table();
+  DynamicResourceTable &resource_table = client_impl_->resource_table();
   return resource_table.RemoveEntries(JobID::Nil(), node_id, resource_tags, on_done);
 }
 
-Status DynamicResourceStateAccessor::AsyncSubscribe(
-    const SubscribeCallback<ClientID, DynamicResourceNotification> &subscribe,
+Status DynamicResourceStateAccessor::AsyncSubscribeResource(
+    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return resource_sub_executor_.AsyncSubscribe(ClientID::Nil(), subscribe, done);

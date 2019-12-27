@@ -38,6 +38,21 @@ class LSTMUtilsTest(unittest.TestCase):
         self.assertEqual([s.tolist() for s in s_init], [[209, 109, 105]])
         self.assertEqual(seq_lens.tolist(), [3, 4, 1])
 
+    def testMultiDim(self):
+        eps_ids = [1, 1, 1]
+        agent_ids = [1, 1, 1]
+        obs = np.ones((84, 84, 4))
+        f = [[obs, obs * 2, obs * 3]]
+        s = [[209, 208, 207]]
+        f_pad, s_init, seq_lens = chop_into_sequences(eps_ids,
+                                                      np.ones_like(eps_ids),
+                                                      agent_ids, f, s, 4)
+        self.assertEqual([f.tolist() for f in f_pad], [
+            np.array([obs, obs * 2, obs * 3]).tolist(),
+        ])
+        self.assertEqual([s.tolist() for s in s_init], [[209]])
+        self.assertEqual(seq_lens.tolist(), [3])
+
     def testBatchId(self):
         eps_ids = [1, 1, 1, 5, 5, 5, 5, 5]
         batch_ids = [1, 1, 2, 2, 3, 3, 4, 4]

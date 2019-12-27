@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class LogTimer():
+class LogTimer(object):
     def __init__(self, message):
         self._message = message
 

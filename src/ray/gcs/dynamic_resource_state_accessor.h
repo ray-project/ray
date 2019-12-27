@@ -29,40 +29,39 @@ class DynamicResourceStateAccessor {
   /// \param node_id The ID of node to lookup dynamic resources.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  Status AsyncGet(const ClientID &node_id,
-                  const OptionalItemCallback<ResourceMap> &callback);
+  Status AsyncGetResource(const ClientID &node_id,
+                          const OptionalItemCallback<ResourceMap> &callback);
 
   /// Update dynamic resources of node in GCS asynchronously.
   ///
   /// \param node_id The ID of node to update dynamic resources.
   /// \param resources The dynamic resources of node to be updated.
   /// \param callback Callback that will be called after update finishes.
-  Status AsyncUpdate(const ClientID &node_id, const ResourceMap &resources,
-                     const StatusCallback &callback);
+  Status AsyncUpdateResource(const ClientID &node_id, const ResourceMap &resources,
+                             const StatusCallback &callback);
 
   /// Delete resources of an node from GCS asynchronously.
   ///
   /// \param node_id The ID of node to delete resources from GCS.
   /// \param resource_tags The tags of resource to be deleted.
   /// \param callback Callback that will be called after delete finishes.
-  Status AsyncDelete(const ClientID &node_id,
-                     const std::vector<std::string> &resource_tags,
-                     const StatusCallback &callback);
+  Status AsyncDeleteResource(const ClientID &node_id,
+                             const std::vector<std::string> &resource_tags,
+                             const StatusCallback &callback);
 
   /// Subscribe to any update operations of dynamic resources.
   ///
   /// \param subscribe Callback that will be called when any resource is updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(
-      const SubscribeCallback<ClientID, DynamicResourceNotification> &subscribe,
+  Status AsyncSubscribeResource(
+      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
       const StatusCallback &done);
 
  private:
-  RedisGcsClient &client_impl_;
+  RedisGcsClient *client_impl_;
 
-  typedef SubscriptionExecutor<ClientID, DynamicResourceNotification,
-                               DynamicResourceTable>
+  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
 };

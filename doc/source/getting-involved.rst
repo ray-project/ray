@@ -31,7 +31,7 @@ There are a couple steps to merge a contribution.
      git fetch upstream
      git rebase upstream/master
 
-2. Make sure all existing tests `pass <contrib.html#testing>`__.
+2. Make sure all existing tests `pass <getting-involved.html#testing>`__.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
    in the relevant file in `ray/python/ray/tests/`.
 4. Document the code. Public functions need to be documented, and remember to provide an usage
@@ -53,7 +53,7 @@ burden and speedup review process.
 
 .. code-block:: shell
 
-    pytest ray/python/ray/Ray/tests/
+    pytest ray/python/ray/tests/
 
 Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
 

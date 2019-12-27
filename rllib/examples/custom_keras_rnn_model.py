@@ -47,7 +47,7 @@ class MyKerasRNN(RecurrentTFModelV2):
             shape=(None, obs_space.shape[0]), name="inputs")
         state_in_h = tf.keras.layers.Input(shape=(cell_size, ), name="h")
         state_in_c = tf.keras.layers.Input(shape=(cell_size, ), name="c")
-        seq_in = tf.keras.layers.Input(shape=(), name="seq_in")
+        seq_in = tf.keras.layers.Input(shape=(), name="seq_in", dtype=tf.int32)
 
         # Preprocess observation with a hidden layer and send to LSTM cell
         dense1 = tf.keras.layers.Dense(

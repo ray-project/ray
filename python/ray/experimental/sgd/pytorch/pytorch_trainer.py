@@ -7,16 +7,16 @@ import os
 import torch
 import torch.distributed as dist
 import logging
+import numbers
 
 import ray
 
 from ray.tune import Trainable
-from ray.tune.resources import Resources
-from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.tune.trial import Resources
 from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
-from ray.experimental.sgd.pytorch import pytorch_utils
 from ray.experimental.sgd import utils
+from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,11 @@ class PyTorchTrainer(object):
     def __init__(self,
                  model_creator,
                  data_creator,
-                 optimizer_creator=pytorch_utils.sgd_mse_optimizer,
+                 optimizer_creator,
+                 loss_creator,
+                 train_function=None,
+                 validation_function=None,
+                 initialization_hook=None,
                  config=None,
                  num_replicas=1,
                  use_gpu=False,
@@ -42,12 +46,21 @@ class PyTorchTrainer(object):
         Args:
             model_creator (dict -> torch.nn.Module): creates the model
                 using the config.
-            data_creator (dict -> Dataset, Dataset): creates the training
-                and validation data sets using the config.
-            optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
+            data_creator (int, dict -> DataLoader, DataLoader): Function that
+                takes in (batch_size, config) and returns two Torch DataLoader
+                objects.
+            optimizer_creator (torch.nn.Module, dict -> optimizer):
                 creates the loss and optimizer using the model and the config.
-            config (dict): configuration passed to 'model_creator',
-                'data_creator', and 'optimizer_creator'.
+            loss_creator (dict -> loss): Creates the loss function/criterion
+                using the config.
+            train_function: Trains a model for a epoch. This takes in (
+                model, train_dataloader, criterion, optimizer, config), and
+                returns a dict of training stats.
+            validation_function: Runs validation. This takes in (
+                model, val_dataloader, criterion, config) and returns a dict of
+                validation stats.
+            config (dict): configuration passed to "model_creator",
+                "data_creator", "optimizer_creator", and "loss_creator".
             num_replicas (int): the number of workers used in distributed
                 training.
             use_gpu (bool): Sets resource allocation for workers to 1 GPU
@@ -65,6 +78,8 @@ class PyTorchTrainer(object):
                  "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
+        self.train_function = train_function
+        self.validation_function = validation_function
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
@@ -79,13 +94,22 @@ class PyTorchTrainer(object):
                 num_cpus=1, num_gpus=int(use_gpu))(PyTorchRunner)
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size)
+                Runner.remote(
+                    model_creator,
+                    data_creator,
+                    optimizer_creator,
+                    loss_creator,
+                    train_function=train_function,
+                    validation_function=validation_function,
+                    config=self.config,
+                    batch_size=batch_size)
             ]
+            if initialization_hook:
+                self.apply_all_workers(initialization_hook)
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
         else:
-            # Geneate actor class
+            # Generate actor class
             Runner = ray.remote(
                 num_cpus=1, num_gpus=int(use_gpu))(DistributedPyTorchRunner)
             # Compute batch size per replica
@@ -101,10 +125,21 @@ class PyTorchTrainer(object):
                          num_replicas=num_replicas))
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size_per_replica, backend)
+                Runner.remote(
+                    model_creator,
+                    data_creator,
+                    optimizer_creator,
+                    loss_creator,
+                    backend=backend,
+                    train_function=train_function,
+                    validation_function=validation_function,
+                    config=self.config,
+                    batch_size=batch_size_per_replica)
                 for i in range(num_replicas)
             ]
+            if initialization_hook:
+                self.apply_all_workers(initialization_hook)
+
             # Compute URL for initializing distributed PyTorch
             ip = ray.get(self.workers[0].get_node_ip.remote())
             port = ray.get(self.workers[0].find_free_port.remote())
@@ -116,32 +151,50 @@ class PyTorchTrainer(object):
             ])
 
     def train(self):
-        """Runs a training epoch."""
+        """Runs a training epoch.
+
+        Runs an average over all values returned from workers.
+        """
         with self.optimizer_timer:
             worker_stats = ray.get([w.step.remote() for w in self.workers])
 
-        train_stats = worker_stats[0].copy()
-        train_stats["train_loss"] = np.mean(
-            [s["train_loss"] for s in worker_stats])
+        train_stats = {}
+        for stat_key in worker_stats[0]:
+            if isinstance(worker_stats[0], numbers.Number):
+                train_stats[stat_key] = np.nanmean(
+                    [s.get(stat_key, np.nan) for s in worker_stats])
+            else:
+                train_stats[stat_key] = worker_stats[0][stat_key]
         return train_stats
+
+    def apply_all_workers(self, fn):
+        return ray.get([w.apply_fn.remote(fn) for w in self.workers])
 
     def validate(self):
         """Evaluates the model on the validation data set."""
+        if self.validation_function is False:
+            return {}
         worker_stats = ray.get([w.validate.remote() for w in self.workers])
-        validation_stats = worker_stats[0].copy()
-        validation_stats["validation_loss"] = np.mean(
-            [s["validation_loss"] for s in worker_stats])
+
+        validation_stats = {}
+        for stat_key in worker_stats[0]:
+            validation_stats[stat_key] = np.nanmean(
+                [s.get(stat_key, np.nan) for s in worker_stats])
         return validation_stats
 
     def get_model(self):
-        """Returns the learned model."""
-        model = self.model_creator(self.config)
+        """Returns the learned model(s)."""
+        models = self.model_creator(self.config)
         state = ray.get(self.workers[0].get_state.remote())
-        model.load_state_dict(state["model"])
-        return model
+        if len(state["models"]) == 1:
+            models.load_state_dict(state["models"][0])
+        else:
+            for model, state_dict in zip(models, state["models"]):
+                model.load_state_dict(state_dict)
+        return models
 
     def save(self, checkpoint):
-        """Saves the model at the provided checkpoint.
+        """Saves the model(s) to the provided checkpoint.
 
         Args:
             checkpoint (str): Path to target checkpoint file.
@@ -179,23 +232,15 @@ class PyTorchTrainable(Trainable):
             extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
 
     def _setup(self, config):
-        self._trainer = PyTorchTrainer(
-            model_creator=config["model_creator"],
-            data_creator=config["data_creator"],
-            optimizer_creator=config["optimizer_creator"],
-            config=config,
-            num_replicas=config["num_replicas"],
-            use_gpu=config["use_gpu"],
-            batch_size=config["batch_size"],
-            backend=config["backend"])
+        self._trainer = PyTorchTrainer(**config)
 
     def _train(self):
-
         train_stats = self._trainer.train()
         validation_stats = self._trainer.validate()
 
         train_stats.update(validation_stats)
 
+        # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
         return train_stats
 
     def _save(self, checkpoint_dir):

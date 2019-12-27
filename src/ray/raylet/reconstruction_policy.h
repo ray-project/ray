@@ -9,7 +9,6 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/tables.h"
-#include "ray/util/util.h"
 
 #include "ray/object_manager/object_directory.h"
 

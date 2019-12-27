@@ -70,7 +70,7 @@ def make_tf_callable(session_or_none, dynamic_shape=False):
                     else:
                         args_flat.append(a)
                 args = args_flat
-                if not placeholders:
+                if symbolic_out[0] is None:
                     with session_or_none.graph.as_default():
                         for i, v in enumerate(args):
                             if dynamic_shape:

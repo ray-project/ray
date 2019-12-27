@@ -43,7 +43,7 @@ TEST_F(DynamicResourceStateAccessorTest, UpdateAndGet) {
     ++pending_count_;
     const ClientID &id = node_rs.first;
     // Update
-    Status status = resource_accessor->AsyncUpdate(
+    Status status = resource_accessor->AsyncUpdateResource(
         node_rs.first, node_rs.second, [this, id](Status status) {
           RAY_CHECK_OK(status);
           auto get_callback = [this, &resource_accessor, id](
@@ -56,7 +56,7 @@ TEST_F(DynamicResourceStateAccessorTest, UpdateAndGet) {
             ASSERT_EQ(it->second.size(), result->size());
           };
           // Get
-          status = resource_accessor->AsyncGet(id, get_callback);
+          status = resource_accessor->AsyncGetResource(id, get_callback);
           RAY_CHECK_OK(status);
         });
   }
@@ -68,11 +68,11 @@ TEST_F(DynamicResourceStateAccessorTest, Delete) {
   for (const auto &node_rs : id_to_resource_map_) {
     ++pending_count_;
     // Update
-    Status status =
-        resource_accessor->AsyncUpdate(node_rs.first, node_rs.second, [](Status status) {
-          RAY_CHECK_OK(status);
-          --pending_count_;
-        });
+    Status status = resource_accessor->AsyncUpdateResource(node_rs.first, node_rs.second,
+                                                           [](Status status) {
+                                                             RAY_CHECK_OK(status);
+                                                             --pending_count_;
+                                                           });
   }
   WaitPendingDone(wait_pending_timeout_);
 
@@ -80,11 +80,11 @@ TEST_F(DynamicResourceStateAccessorTest, Delete) {
     ++pending_count_;
     const ClientID &id = node_rs.first;
     // Delete
-    Status status = resource_accessor->AsyncDelete(
+    Status status = resource_accessor->AsyncDeleteResource(
         id, resource_to_delete_, [this, &resource_accessor, id](Status status) {
           RAY_CHECK_OK(status);
           // Get
-          status = resource_accessor->AsyncGet(
+          status = resource_accessor->AsyncGetResource(
               id, [this, id](Status status, const boost::optional<ResourceMap> &result) {
                 --pending_count_;
                 RAY_CHECK_OK(status);
@@ -102,11 +102,11 @@ TEST_F(DynamicResourceStateAccessorTest, Subscribe) {
   for (const auto &node_rs : id_to_resource_map_) {
     ++pending_count_;
     // Update
-    Status status = resource_accessor->AsyncUpdate(node_rs.first, node_rs.second,
-                                                   [this](Status status) {
-                                                     RAY_CHECK_OK(status);
-                                                     --pending_count_;
-                                                   });
+    Status status = resource_accessor->AsyncUpdateResource(node_rs.first, node_rs.second,
+                                                           [this](Status status) {
+                                                             RAY_CHECK_OK(status);
+                                                             --pending_count_;
+                                                           });
   }
   WaitPendingDone(wait_pending_timeout_);
 
@@ -129,7 +129,7 @@ TEST_F(DynamicResourceStateAccessorTest, Subscribe) {
       RAY_CHECK_OK(status);
       // Delete
       ++sub_pending_count_;
-      status = resource_accessor.AsyncDelete(id, resource_to_delete_, [this](status) {
+      status = resource_accessor.AsyncDeleteResource(id, resource_to_delete_, [this](status) {
         --pending_count_;
         RAY_CHECK_OK(status);
       };
@@ -138,7 +138,7 @@ TEST_F(DynamicResourceStateAccessorTest, Subscribe) {
     ++pending_count_;
     ++sub_pending_count_;
     // Subscribe
-    Status status = resource_accessor.AsyncSubscribe(subscribe, done);
+    Status status = resource_accessor.AsyncSubscribeResource(subscribe, done);
     RAY_CHECK_OK(status);
   }
   WaitPendingDone(wait_pending_timeout_);

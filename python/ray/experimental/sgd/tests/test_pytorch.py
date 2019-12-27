@@ -6,11 +6,13 @@ import os
 import pytest
 import tempfile
 import torch
+import torch.nn as nn
 import torch.distributed as dist
 
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
+from ray.experimental.sgd.pytorch.utils import train
 
 from ray.experimental.sgd.examples.train_example import (
     model_creator, optimizer_creator, data_creator)
@@ -23,6 +25,7 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["validation_loss"]
@@ -39,12 +42,71 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
+def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
+    def custom_train(models, dataloader, criterion, optimizers, config):
+        result = {}
+        for i, (model, optimizer) in enumerate(zip(models, optimizers)):
+            result["model_{}".format(i)] = train(model, dataloader, criterion,
+                                                 optimizer, config)
+        return result
+
+    def multi_model_creator(config):
+        return nn.Linear(1, 1), nn.Linear(1, 1)
+
+    def multi_optimizer_creator(models, config):
+        opts = [
+            torch.optim.SGD(model.parameters(), lr=0.0001) for model in models
+        ]
+        return opts[0], opts[1]
+
+    trainer1 = PyTorchTrainer(
+        multi_model_creator,
+        data_creator,
+        multi_optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        train_function=custom_train,
+        num_replicas=num_replicas)
+    trainer1.train()
+
+    filename = os.path.join(tempfile.mkdtemp(), "checkpoint")
+    trainer1.save(filename)
+
+    models1 = trainer1.get_model()
+
+    trainer1.shutdown()
+
+    trainer2 = PyTorchTrainer(
+        multi_model_creator,
+        data_creator,
+        multi_optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_replicas=num_replicas)
+    trainer2.restore(filename)
+
+    os.remove(filename)
+
+    models2 = trainer2.get_model()
+
+    for model_1, model_2 in zip(models1, models2):
+
+        model1_state_dict = model_1.state_dict()
+        model2_state_dict = model_2.state_dict()
+
+        assert set(model1_state_dict.keys()) == set(model2_state_dict.keys())
+
+        for k in model1_state_dict:
+            assert torch.equal(model1_state_dict[k], model2_state_dict[k])
+
+
+@pytest.mark.parametrize(  # noqa: F811
+    "num_replicas", [1, 2] if dist.is_available() else [1])
 def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     config = {
         "model_creator": tune.function(model_creator),
         "data_creator": tune.function(data_creator),
         "optimizer_creator": tune.function(optimizer_creator),
+        "loss_creator": tune.function(lambda config: nn.MSELoss()),
         "num_replicas": num_replicas,
         "use_gpu": False,
         "batch_size": 512,
@@ -76,6 +138,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     trainer1.train()
 
@@ -90,6 +153,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
     trainer2.restore(filename)
 

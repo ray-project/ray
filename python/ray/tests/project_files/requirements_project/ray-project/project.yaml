@@ -1,0 +1,7 @@
+name: testproject2
+
+environment:
+  requirements: "requirements.txt"
+
+cluster:
+  config: cluster.yaml

@@ -59,3 +59,9 @@ class ExperimentTest(unittest.TestCase):
 
     def testConvertExperimentIncorrect(self):
         self.assertRaises(TuneError, lambda: convert_to_experiment_list("hi"))
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

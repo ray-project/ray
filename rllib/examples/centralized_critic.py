@@ -17,6 +17,7 @@ modifies the environment.
 
 import argparse
 import numpy as np
+from gym.spaces import Discrete
 
 from ray import tune
 from ray.rllib.agents.ppo.ppo import PPOTrainer
@@ -56,7 +57,7 @@ class CentralizedCriticModel(TFModelV2):
                                            num_outputs, model_config, name)
         self.register_variables(self.model.variables())
 
-        # Central VF maps (obs, opp_ops, opp_act) -> vf_pred
+        # Central VF maps (obs, opp_obs, opp_act) -> vf_pred
         obs = tf.keras.layers.Input(shape=(6, ), name="obs")
         opp_obs = tf.keras.layers.Input(shape=(6, ), name="opp_obs")
         opp_act = tf.keras.layers.Input(shape=(2, ), name="opp_act")
@@ -209,10 +210,8 @@ if __name__ == "__main__":
             "num_workers": 0,
             "multiagent": {
                 "policies": {
-                    "pol1": (None, TwoStepGame.observation_space,
-                             TwoStepGame.action_space, {}),
-                    "pol2": (None, TwoStepGame.observation_space,
-                             TwoStepGame.action_space, {}),
+                    "pol1": (None, Discrete(6), TwoStepGame.action_space, {}),
+                    "pol2": (None, Discrete(6), TwoStepGame.action_space, {}),
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },

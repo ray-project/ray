@@ -126,6 +126,8 @@ Advantage Actor-Critic (A2C, A3C)
 `[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__
 RLlib implements A2C and A3C using SyncSamplesOptimizer and AsyncGradientsOptimizer respectively for policy optimization. These algorithms scale to up to 16-32 worker processes depending on the environment. Both a TensorFlow (LSTM), and PyTorch version are available.
 
+A2C also supports microbatching (i.e., gradient accumulation), which can be enabled by setting the ``microbatch_size`` config. Microbatching allows for training with a ``train_batch_size`` much larger than GPU memory. See also the `microbatch optimizer implementation <https://github.com/ray-project/ray/blob/master/rllib/optimizers/microbatch_optimizer.py>`__.
+
 .. figure:: a2c-arch.svg
 
     A2C architecture
@@ -359,6 +361,20 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. literalinclude:: ../../rllib/agents/marwil/marwil.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+Single-Player Alpha Zero (contrib/AlphaZero)
+--------------------------------------------
+
+`[paper] <https://arxiv.org/abs/1712.01815>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero>`__ AlphaZero is an RL agent originally designed for two-player games. This version adapts it to handle single player games. The code can be used with the SyncSamplesOptimizer as well as with a modified version of the SyncReplayOptimizer, and it scales to any number of workers. It also implements the ranked rewards `(R2) <https://arxiv.org/abs/1807.01672>`__ strategy to enable self-play even in the one-player setting. The code is mainly purposed to be used for combinatorial optimization.
+
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/contrib/alpha_zero/examples/train_cartpole.py>`__
+
+**AlphaZero-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. literalinclude:: ../../rllib/contrib/alpha_zero/core/alpha_zero_trainer.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

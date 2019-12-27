@@ -14,7 +14,7 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.policy import Policy, TupleActions
+from ray.rllib.policy.policy import TupleActions, Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
@@ -23,6 +23,9 @@ from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
+
+# if the obs space is Dict type, look for the global state under this key
+ENV_STATE = "state"
 
 
 class QMixLoss(nn.Module):
@@ -45,8 +48,17 @@ class QMixLoss(nn.Module):
         self.double_q = double_q
         self.gamma = gamma
 
-    def forward(self, rewards, actions, terminated, mask, obs, next_obs,
-                action_mask, next_action_mask):
+    def forward(self,
+                rewards,
+                actions,
+                terminated,
+                mask,
+                obs,
+                next_obs,
+                action_mask,
+                next_action_mask,
+                state=None,
+                next_state=None):
         """Forward pass of the loss.
 
         Arguments:
@@ -58,7 +70,19 @@ class QMixLoss(nn.Module):
             next_obs: Tensor of shape [B, T, n_agents, obs_size]
             action_mask: Tensor of shape [B, T, n_agents, n_actions]
             next_action_mask: Tensor of shape [B, T, n_agents, n_actions]
+            state: Tensor of shape [B, T, state_dim] (optional)
+            next_state: Tensor of shape [B, T, state_dim] (optional)
         """
+
+        # Assert either none or both of state and next_state are given
+        if state is None and next_state is None:
+            state = obs  # default to state being all agents' observations
+            next_state = next_obs
+        elif (state is None) != (next_state is None):
+            raise ValueError("Expected either neither or both of `state` and "
+                             "`next_state` to be given. Got: "
+                             "\n`state` = {}\n`next_state` = {}".format(
+                                 state, next_state))
 
         # Calculate estimated Q-Values
         mac_out = _unroll_mac(self.model, obs)
@@ -89,7 +113,7 @@ class QMixLoss(nn.Module):
             mac_out_tp1[ignore_action_tp1] = -np.inf
 
             # obtain best actions at t+1 according to policy NN
-            cur_max_actions = mac_out_tp1.max(dim=3, keepdim=True)[1]
+            cur_max_actions = mac_out_tp1.argmax(dim=3, keepdim=True)
 
             # use the target network to estimate the Q-values of policy
             # network's selected actions
@@ -104,10 +128,8 @@ class QMixLoss(nn.Module):
 
         # Mix
         if self.mixer is not None:
-            # TODO(ekl) add support for handling global state? This is just
-            # treating the stacked agent obs as the state.
-            chosen_action_qvals = self.mixer(chosen_action_qvals, obs)
-            target_max_qvals = self.target_mixer(target_max_qvals, next_obs)
+            chosen_action_qvals = self.mixer(chosen_action_qvals, state)
+            target_max_qvals = self.target_mixer(target_max_qvals, next_state)
 
         # Calculate 1-step Q-Learning targets
         targets = rewards + self.gamma * (1 - terminated) * target_max_qvals
@@ -146,24 +168,35 @@ class QMixTorchPolicy(Policy):
         self.n_agents = len(obs_space.original_space.spaces)
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
+        self.has_env_global_state = False
+        self.has_action_mask = False
+        self.device = (th.device("cuda")
+                       if th.cuda.is_available() else th.device("cpu"))
 
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
             space_keys = set(agent_obs_space.spaces.keys())
-            if not {"obs", "action_mask"}.issubset(space_keys):
+            if "obs" not in space_keys:
                 raise ValueError(
-                    "Dict obs space for agent must have keyset "
-                    "['obs', 'action_mask'], got {}".format(space_keys))
-            mask_shape = tuple(agent_obs_space.spaces["action_mask"].shape)
-            if mask_shape != (self.n_actions, ):
-                raise ValueError("Action mask shape must be {}, got {}".format(
-                    (self.n_actions, ), mask_shape))
-            self.has_action_mask = True
+                    "Dict obs space must have subspace labeled `obs`")
             self.obs_size = _get_size(agent_obs_space.spaces["obs"])
+            if "action_mask" in space_keys:
+                mask_shape = tuple(agent_obs_space.spaces["action_mask"].shape)
+                if mask_shape != (self.n_actions, ):
+                    raise ValueError(
+                        "Action mask shape must be {}, got {}".format(
+                            (self.n_actions, ), mask_shape))
+                self.has_action_mask = True
+            if ENV_STATE in space_keys:
+                self.env_global_state_shape = _get_size(
+                    agent_obs_space.spaces[ENV_STATE])
+                self.has_env_global_state = True
+            else:
+                self.env_global_state_shape = (self.obs_size, self.n_agents)
             # The real agent obs space is nested inside the dict
+            config["model"]["full_obs_space"] = agent_obs_space
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
-            self.has_action_mask = False
             self.obs_size = _get_size(agent_obs_space)
 
         self.model = ModelCatalog.get_model_v2(
@@ -173,7 +206,7 @@ class QMixTorchPolicy(Policy):
             config["model"],
             framework="torch",
             name="model",
-            default_model=RNNModel)
+            default_model=RNNModel).to(self.device)
 
         self.target_model = ModelCatalog.get_model_v2(
             agent_obs_space,
@@ -182,22 +215,21 @@ class QMixTorchPolicy(Policy):
             config["model"],
             framework="torch",
             name="target_model",
-            default_model=RNNModel)
+            default_model=RNNModel).to(self.device)
 
         # Setup the mixer network.
-        # The global state is just the stacked agent observations for now.
-        self.state_shape = [self.obs_size, self.n_agents]
         if config["mixer"] is None:
             self.mixer = None
             self.target_mixer = None
         elif config["mixer"] == "qmix":
-            self.mixer = QMixer(self.n_agents, self.state_shape,
-                                config["mixing_embed_dim"])
-            self.target_mixer = QMixer(self.n_agents, self.state_shape,
-                                       config["mixing_embed_dim"])
+            self.mixer = QMixer(self.n_agents, self.env_global_state_shape,
+                                config["mixing_embed_dim"]).to(self.device)
+            self.target_mixer = QMixer(
+                self.n_agents, self.env_global_state_shape,
+                config["mixing_embed_dim"]).to(self.device)
         elif config["mixer"] == "vdn":
-            self.mixer = VDNMixer()
-            self.target_mixer = VDNMixer()
+            self.mixer = VDNMixer().to(self.device)
+            self.target_mixer = VDNMixer().to(self.device)
         else:
             raise ValueError("Unknown mixer type {}".format(config["mixer"]))
 
@@ -226,14 +258,21 @@ class QMixTorchPolicy(Policy):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        obs_batch, action_mask = self._unpack_observation(obs_batch)
+        obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
+        # We need to ensure we do not use the env global state
+        # to compute actions
 
         # Compute actions
         with th.no_grad():
             q_values, hiddens = _mac(
-                self.model, th.from_numpy(obs_batch),
-                [th.from_numpy(np.array(s)) for s in state_batches])
-            avail = th.from_numpy(action_mask).float()
+                self.model,
+                th.as_tensor(obs_batch, dtype=th.float, device=self.device), [
+                    th.as_tensor(
+                        np.array(s), dtype=th.float, device=self.device)
+                    for s in state_batches
+                ])
+            avail = th.as_tensor(
+                action_mask, dtype=th.float, device=self.device)
             masked_q_values = q_values.clone()
             masked_q_values[avail == 0.0] = -float("inf")
             # epsilon-greedy action selector
@@ -241,63 +280,81 @@ class QMixTorchPolicy(Policy):
             pick_random = (random_numbers < self.cur_epsilon).long()
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
-                       (1 - pick_random) * masked_q_values.max(dim=2)[1])
-            actions = actions.numpy()
-            hiddens = [s.numpy() for s in hiddens]
+                       (1 - pick_random) * masked_q_values.argmax(dim=2))
+            actions = actions.cpu().numpy()
+            hiddens = [s.cpu().numpy() for s in hiddens]
 
         return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
 
     @override(Policy)
     def learn_on_batch(self, samples):
-        obs_batch, action_mask = self._unpack_observation(
+        obs_batch, action_mask, env_global_state = self._unpack_observation(
             samples[SampleBatch.CUR_OBS])
-        next_obs_batch, next_action_mask = self._unpack_observation(
-            samples[SampleBatch.NEXT_OBS])
+        (next_obs_batch, next_action_mask,
+         next_env_global_state) = self._unpack_observation(
+             samples[SampleBatch.NEXT_OBS])
         group_rewards = self._get_group_rewards(samples[SampleBatch.INFOS])
 
-        # These will be padded to shape [B * T, ...]
-        [rew, action_mask, next_action_mask, act, dones, obs, next_obs], \
-            initial_states, seq_lens = \
+        input_list = [
+            group_rewards, action_mask, next_action_mask,
+            samples[SampleBatch.ACTIONS], samples[SampleBatch.DONES],
+            obs_batch, next_obs_batch
+        ]
+        if self.has_env_global_state:
+            input_list.extend([env_global_state, next_env_global_state])
+
+        output_list, _, seq_lens = \
             chop_into_sequences(
                 samples[SampleBatch.EPS_ID],
                 samples[SampleBatch.UNROLL_ID],
-                samples[SampleBatch.AGENT_INDEX], [
-                    group_rewards, action_mask, next_action_mask,
-                    samples[SampleBatch.ACTIONS], samples[SampleBatch.DONES],
-                    obs_batch, next_obs_batch
-                ],
-                [samples["state_in_{}".format(k)]
-                 for k in range(len(self.get_initial_state()))],
+                samples[SampleBatch.AGENT_INDEX],
+                input_list,
+                [],  # RNN states not used here
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
+        # These will be padded to shape [B * T, ...]
+        if self.has_env_global_state:
+            (rew, action_mask, next_action_mask, act, dones, obs, next_obs,
+             env_global_state, next_env_global_state) = output_list
+        else:
+            (rew, action_mask, next_action_mask, act, dones, obs,
+             next_obs) = output_list
         B, T = len(seq_lens), max(seq_lens)
 
-        def to_batches(arr):
+        def to_batches(arr, dtype):
             new_shape = [B, T] + list(arr.shape[1:])
-            return th.from_numpy(np.reshape(arr, new_shape))
+            return th.as_tensor(
+                np.reshape(arr, new_shape), dtype=dtype, device=self.device)
 
-        rewards = to_batches(rew).float()
-        actions = to_batches(act).long()
-        obs = to_batches(obs).reshape([B, T, self.n_agents,
-                                       self.obs_size]).float()
-        action_mask = to_batches(action_mask)
-        next_obs = to_batches(next_obs).reshape(
-            [B, T, self.n_agents, self.obs_size]).float()
-        next_action_mask = to_batches(next_action_mask)
+        rewards = to_batches(rew, th.float)
+        actions = to_batches(act, th.long)
+        obs = to_batches(obs, th.float).reshape(
+            [B, T, self.n_agents, self.obs_size])
+        action_mask = to_batches(action_mask, th.float)
+        next_obs = to_batches(next_obs, th.float).reshape(
+            [B, T, self.n_agents, self.obs_size])
+        next_action_mask = to_batches(next_action_mask, th.float)
+        if self.has_env_global_state:
+            env_global_state = to_batches(env_global_state, th.float)
+            next_env_global_state = to_batches(next_env_global_state, th.float)
 
         # TODO(ekl) this treats group termination as individual termination
-        terminated = to_batches(dones.astype(np.float32)).unsqueeze(2).expand(
+        terminated = to_batches(dones, th.float).unsqueeze(2).expand(
             B, T, self.n_agents)
 
         # Create mask for where index is < unpadded sequence length
-        filled = (np.reshape(np.tile(np.arange(T), B), [B, T]) <
-                  np.expand_dims(seq_lens, 1)).astype(np.float32)
-        mask = th.from_numpy(filled).unsqueeze(2).expand(B, T, self.n_agents)
+        filled = np.reshape(
+            np.tile(np.arange(T, dtype=np.float32), B),
+            [B, T]) < np.expand_dims(seq_lens, 1)
+        mask = th.as_tensor(
+            filled, dtype=th.float, device=self.device).unsqueeze(2).expand(
+                B, T, self.n_agents)
 
         # Compute loss
-        loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
-            self.loss(rewards, actions, terminated, mask, obs,
-                      next_obs, action_mask, next_action_mask)
+        loss_out, mask, masked_td_error, chosen_action_qvals, targets = (
+            self.loss(rewards, actions, terminated, mask, obs, next_obs,
+                      action_mask, next_action_mask, env_global_state,
+                      next_env_global_state))
 
         # Optimise
         self.optimiser.zero_grad()
@@ -319,40 +376,43 @@ class QMixTorchPolicy(Policy):
         return {LEARNER_STATS_KEY: stats}
 
     @override(Policy)
-    def get_initial_state(self):
+    def get_initial_state(self):  # initial RNN state
         return [
-            s.expand([self.n_agents, -1]).numpy()
+            s.expand([self.n_agents, -1]).cpu().numpy()
             for s in self.model.get_initial_state()
         ]
 
     @override(Policy)
     def get_weights(self):
-        return {"model": self.model.state_dict()}
-
-    @override(Policy)
-    def set_weights(self, weights):
-        self.model.load_state_dict(weights["model"])
-
-    @override(Policy)
-    def get_state(self):
         return {
-            "model": self.model.state_dict(),
-            "target_model": self.target_model.state_dict(),
-            "mixer": self.mixer.state_dict() if self.mixer else None,
-            "target_mixer": self.target_mixer.state_dict()
+            "model": self._cpu_dict(self.model.state_dict()),
+            "target_model": self._cpu_dict(self.target_model.state_dict()),
+            "mixer": self._cpu_dict(self.mixer.state_dict())
             if self.mixer else None,
-            "cur_epsilon": self.cur_epsilon,
+            "target_mixer": self._cpu_dict(self.target_mixer.state_dict())
+            if self.mixer else None,
         }
 
     @override(Policy)
+    def set_weights(self, weights):
+        self.model.load_state_dict(self._device_dict(weights["model"]))
+        self.target_model.load_state_dict(
+            self._device_dict(weights["target_model"]))
+        if weights["mixer"] is not None:
+            self.mixer.load_state_dict(self._device_dict(weights["mixer"]))
+            self.target_mixer.load_state_dict(
+                self._device_dict(weights["target_mixer"]))
+
+    @override(Policy)
+    def get_state(self):
+        state = self.get_weights()
+        state["cur_epsilon"] = self.cur_epsilon
+        return state
+
+    @override(Policy)
     def set_state(self, state):
-        self.model.load_state_dict(state["model"])
-        self.target_model.load_state_dict(state["target_model"])
-        if state["mixer"] is not None:
-            self.mixer.load_state_dict(state["mixer"])
-            self.target_mixer.load_state_dict(state["target_mixer"])
+        self.set_weights(state)
         self.set_epsilon(state["cur_epsilon"])
-        self.update_target()
 
     def update_target(self):
         self.target_model.load_state_dict(self.model.state_dict())
@@ -370,15 +430,28 @@ class QMixTorchPolicy(Policy):
         ])
         return group_rewards
 
+    def _device_dict(self, state_dict):
+        return {
+            k: th.as_tensor(v, device=self.device)
+            for k, v in state_dict.items()
+        }
+
+    @staticmethod
+    def _cpu_dict(state_dict):
+        return {k: v.cpu().detach().numpy() for k, v in state_dict.items()}
+
     def _unpack_observation(self, obs_batch):
-        """Unpacks the action mask / tuple obs from agent grouping.
+        """Unpacks the observation, action mask, and state (if present)
+        from agent grouping.
 
         Returns:
-            obs (Tensor): flattened obs tensor of shape [B, n_agents, obs_size]
-            mask (Tensor): action mask, if any
+            obs (np.ndarray): obs tensor of shape [B, n_agents, obs_size]
+            mask (np.ndarray): action mask, if any
+            state (np.ndarray or None): state tensor of shape [B, state_size]
+                or None if it is not in the batch
         """
         unpacked = _unpack_obs(
-            np.array(obs_batch),
+            np.array(obs_batch, dtype=np.float32),
             self.observation_space.original_space,
             tensorlib=np)
         if self.has_action_mask:
@@ -389,12 +462,22 @@ class QMixTorchPolicy(Policy):
                 [o["action_mask"] for o in unpacked], axis=1).reshape(
                     [len(obs_batch), self.n_agents, self.n_actions])
         else:
+            if isinstance(unpacked[0], dict):
+                unpacked_obs = [u["obs"] for u in unpacked]
+            else:
+                unpacked_obs = unpacked
             obs = np.concatenate(
-                unpacked,
+                unpacked_obs,
                 axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
             action_mask = np.ones(
-                [len(obs_batch), self.n_agents, self.n_actions])
-        return obs, action_mask
+                [len(obs_batch), self.n_agents, self.n_actions],
+                dtype=np.float32)
+
+        if self.has_env_global_state:
+            state = unpacked[0][ENV_STATE]
+        else:
+            state = None
+        return obs, action_mask, state
 
 
 def _validate(obs_space, action_space):
@@ -436,9 +519,11 @@ def _mac(model, obs, h):
         h: Tensor of shape [B, n_agents, h_size]
     """
     B, n_agents = obs.size(0), obs.size(1)
-    obs_flat = obs.reshape([B * n_agents, -1])
+    if not isinstance(obs, dict):
+        obs = {"obs": obs}
+    obs_agents_as_batches = {k: _drop_agent_dim(v) for k, v in obs.items()}
     h_flat = [s.reshape([B * n_agents, -1]) for s in h]
-    q_flat, h_flat = model({"obs": obs_flat}, h_flat, None)
+    q_flat, h_flat = model(obs_agents_as_batches, h_flat, None)
     return q_flat.reshape(
         [B, n_agents, -1]), [s.reshape([B, n_agents, -1]) for s in h_flat]
 
@@ -457,3 +542,16 @@ def _unroll_mac(model, obs_tensor):
     mac_out = th.stack(mac_out, dim=1)  # Concat over time
 
     return mac_out
+
+
+def _drop_agent_dim(T):
+    shape = list(T.shape)
+    B, n_agents = shape[0], shape[1]
+    return T.reshape([B * n_agents] + shape[2:])
+
+
+def _add_agent_dim(T, n_agents):
+    shape = list(T.shape)
+    B = shape[0] // n_agents
+    assert shape[0] % n_agents == 0
+    return T.reshape([B, n_agents] + shape[1:])

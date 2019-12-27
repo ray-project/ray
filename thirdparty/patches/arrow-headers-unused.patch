@@ -1,0 +1,14 @@
+diff --git cpp/src/plasma/client.cc cpp/src/plasma/client.cc
+--- cpp/src/plasma/client.cc
++++ cpp/src/plasma/client.cc
+@@ -22,4 +22,0 @@
+-#ifdef _WIN32
+-#include <Win32_Interop/win32_types.h>
+-#endif
+-
+diff --git cpp/src/plasma/plasma.h cpp/src/plasma/plasma.h
+--- cpp/src/plasma/plasma.h
++++ cpp/src/plasma/plasma.h
+@@ -28,1 +28,0 @@
+-#include <unistd.h>  // pid_t
+-- 

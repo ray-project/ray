@@ -112,6 +112,12 @@ class PopulationBasedTraining(FIFOScheduler):
     they will be time-multiplexed as to balance training progress across the
     population. To run multiple trials, use `tune.run(num_samples=<int>)`.
 
+    In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in
+    `pbt_global.txt` and individual policy perturbations are recorded
+    in pbt_policy_{i}.txt. Tune logs: [target trial tag, clone trial tag,
+    target trial iteration, clone trial iteration, old config, new config]
+    on each perturbation step.
+
     Args:
         time_attr (str): The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
@@ -177,6 +183,11 @@ class PopulationBasedTraining(FIFOScheduler):
                  resample_probability=0.25,
                  custom_explore_fn=None,
                  log_config=True):
+        for value in hyperparam_mutations.values():
+            if not (isinstance(value, list) or callable(value)):
+                raise TypeError("`hyperparam_mutation` values must be either "
+                                "a List or callable.")
+
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` or "
@@ -234,8 +245,10 @@ class PopulationBasedTraining(FIFOScheduler):
         lower_quantile, upper_quantile = self._quantiles()
 
         if trial in upper_quantile:
+            # The trial last result is only updated after the scheduler
+            # callback. So, we override with the current result.
             state.last_checkpoint = trial_runner.trial_executor.save(
-                trial, Checkpoint.MEMORY)
+                trial, Checkpoint.MEMORY, result=result)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial

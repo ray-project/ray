@@ -16,6 +16,8 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
+from torch import distributed
+from torch.utils.data.distributed import DistributedSampler
 
 from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
 
@@ -24,7 +26,6 @@ class LinearDataset(torch.utils.data.Dataset):
     """y = a * x + b"""
 
     def __init__(self, a, b, size=1000):
-        x = np.random.random(size).astype(np.float32) * 10
         x = np.arange(0, 10, 10 / size, dtype=np.float32)
         self.x = torch.from_numpy(x)
         self.y = torch.from_numpy(a * x + b)
@@ -41,15 +42,34 @@ def model_creator(config):
 
 
 def optimizer_creator(model, config):
-    """Returns criterion, optimizer"""
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
-    return criterion, optimizer
+    """Returns optimizer."""
+    return torch.optim.SGD(model.parameters(), lr=1e-2)
 
 
-def data_creator(config):
-    """Returns training set, validation set"""
-    return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+def data_creator(batch_size, config):
+    """Returns training dataloader, validation dataloader."""
+    train_dataset = LinearDataset(2, 5)
+    validation_dataset = LinearDataset(2, 5, size=400)
+
+    train_sampler = None
+    if distributed.is_initialized():
+        train_sampler = DistributedSampler(train_dataset)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=(train_sampler is None),
+        sampler=train_sampler)
+
+    validation_sampler = None
+    if distributed.is_initialized():
+        validation_sampler = DistributedSampler(validation_dataset)
+    validation_loader = torch.utils.data.DataLoader(
+        validation_dataset,
+        batch_size=batch_size,
+        shuffle=(validation_sampler is None),
+        sampler=validation_sampler)
+
+    return train_loader, validation_loader
 
 
 def train_example(num_replicas=1, use_gpu=False):
@@ -57,11 +77,19 @@ def train_example(num_replicas=1, use_gpu=False):
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        batch_size=512,
+        batch_size=num_replicas * 4,
         backend="gloo")
-    trainer1.train()
+    for i in range(5):
+        stats = trainer1.train()
+        print(stats)
+
+    print(trainer1.validate())
+    m = trainer1.get_model()
+    print("trained weight: % .2f, bias: % .2f" % (
+        m.weight.item(), m.bias.item()))
     trainer1.shutdown()
     print("success!")
 

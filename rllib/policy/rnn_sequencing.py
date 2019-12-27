@@ -152,7 +152,7 @@ def chop_into_sequences(episode_ids,
         permutation = np.random.permutation(len(seq_lens))
         for i, f in enumerate(feature_sequences):
             orig_shape = f.shape
-            f = np.reshape(f, (len(seq_lens), -1) + f.shape[2:])
+            f = np.reshape(f, (len(seq_lens), -1) + f.shape[1:])
             f = f[permutation]
             f = np.reshape(f, orig_shape)
             feature_sequences[i] = f

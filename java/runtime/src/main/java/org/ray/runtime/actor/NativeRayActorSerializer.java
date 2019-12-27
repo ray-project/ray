@@ -15,7 +15,7 @@ public class NativeRayActorSerializer extends FSTBasicObjectSerializer {
   @Override
   public void writeObject(FSTObjectOutput out, Object toWrite, FSTClazzInfo clzInfo,
       FSTClazzInfo.FSTFieldInfo referencedBy, int streamPosition) throws IOException {
-    ((NativeRayActor) toWrite).fork().writeExternal(out);
+    ((NativeRayActor) toWrite).writeExternal(out);
   }
 
   @Override

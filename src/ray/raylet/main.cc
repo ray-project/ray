@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.8.0.dev4"},
+      {ray::stats::VersionKey, "0.9.0.dev"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -120,9 +120,11 @@ int main(int argc, char *argv[]) {
   }
 
   node_manager_config.heartbeat_period_ms =
-      RayConfig::instance().heartbeat_timeout_milliseconds();
+      RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
   node_manager_config.debug_dump_period_ms =
       RayConfig::instance().debug_dump_period_milliseconds();
+  node_manager_config.fair_queueing_enabled =
+      RayConfig::instance().fair_queueing_enabled();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
   node_manager_config.temp_dir = temp_dir;
@@ -138,7 +140,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().object_manager_push_timeout_ms();
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
-  object_manager_config.rpc_service_threads_number = std::max(2, num_cpus / 2);
+  object_manager_config.rpc_service_threads_number =
+      std::min(std::max(2, num_cpus / 4), 8);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
@@ -158,6 +161,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
       main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
       redis_password, node_manager_config, object_manager_config, gcs_client));
+  server->Start();
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
@@ -165,22 +169,10 @@ int main(int argc, char *argv[]) {
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
-    auto shutdown_callback = [&server, &main_service, &gcs_client]() {
-      server.reset();
-      gcs_client->Disconnect();
-      main_service.stop();
-      RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
-    };
-    RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
-    // Give a timeout for this Disconnect operation.
-    boost::posix_time::milliseconds stop_timeout(800);
-    boost::asio::deadline_timer timer(main_service);
-    timer.expires_from_now(stop_timeout);
-    timer.async_wait([shutdown_callback](const boost::system::error_code &error) {
-      if (!error) {
-        shutdown_callback();
-      }
-    });
+    RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
+    server->Stop();
+    gcs_client->Disconnect();
+    main_service.stop();
     remove(raylet_socket_name.c_str());
   };
   boost::asio::signal_set signals(main_service, SIGTERM);

@@ -25,6 +25,10 @@ To run the application, first install **ray** and then some dependencies:
   pip install opencv-python-headless
   pip install scipy
 
+
+.. image:: ../images/a3c.png
+    :align: center
+
 You can run the code with
 
 .. code-block:: bash

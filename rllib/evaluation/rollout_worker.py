@@ -290,13 +290,15 @@ class RolloutWorker(EvaluatorInterface):
                     dim=model_config.get("dim"),
                     framestack=model_config.get("framestack"))
                 if monitor_path:
-                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
+                    from gym import wrappers
+                    env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         else:
 
             def wrap(env):
                 if monitor_path:
-                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
+                    from gym import wrappers
+                    env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
 
         self.env = wrap(self.env)
@@ -325,12 +327,6 @@ class RolloutWorker(EvaluatorInterface):
                 logger.info("Could not seed torch")
         if _has_tensorflow_graph(policy_dict) and not (tf and
                                                        tf.executing_eagerly()):
-            if (ray.is_initialized()
-                    and ray.worker._mode() != ray.worker.LOCAL_MODE
-                    and not ray.get_gpu_ids()):
-                logger.debug("Creating policy evaluation worker {}".format(
-                    worker_index) +
-                             " on CPU (please ignore any CUDA init errors)")
             if not tf:
                 raise ImportError("Could not import tensorflow")
             with tf.Graph().as_default():
@@ -346,6 +342,18 @@ class RolloutWorker(EvaluatorInterface):
                         tf.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
+            if (ray.is_initialized()
+                    and ray.worker._mode() != ray.worker.LOCAL_MODE):
+                if not ray.get_gpu_ids():
+                    logger.debug(
+                        "Creating policy evaluation worker {}".format(
+                            worker_index) +
+                        " on CPU (please ignore any CUDA init errors)")
+                elif not tf.test.is_gpu_available():
+                    raise RuntimeError(
+                        "GPUs were assigned to this worker by Ray, but "
+                        "TensorFlow reports GPU acceleration is disabled. "
+                        "This could be due to a bad CUDA or TF installation.")
         else:
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)

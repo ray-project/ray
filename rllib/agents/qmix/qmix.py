@@ -49,7 +49,7 @@ DEFAULT_CONFIG = with_common_config({
     "buffer_size": 10000,
 
     # === Optimization ===
-    # Learning rate for adam optimizer
+    # Learning rate for RMSProp optimizer
     "lr": 0.0005,
     # RMSProp alpha
     "optim_alpha": 0.99,

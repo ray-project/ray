@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-from tensorflow.data import Dataset
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 import numpy as np
@@ -43,8 +43,8 @@ def simple_dataset(config):
     x_train, y_train = linear_dataset(size=NUM_TRAIN_SAMPLES)
     x_test, y_test = linear_dataset(size=NUM_TEST_SAMPLES)
 
-    train_dataset = Dataset.from_tensor_slices((x_train, y_train))
-    test_dataset = Dataset.from_tensor_slices((x_test, y_test))
+    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
     train_dataset = train_dataset.shuffle(NUM_TRAIN_SAMPLES).repeat().batch(
         batch_size)
     test_dataset = test_dataset.repeat().batch(batch_size)

@@ -74,6 +74,12 @@ std::string Status::CodeAsString() const {
   case StatusCode::RedisError:
     type = "RedisError";
     break;
+  case StatusCode::TimedOut:
+    type = "TimedOut";
+    break;
+  case StatusCode::Interrupted:
+    type = "Interrupted";
+    break;
   default:
     type = "Unknown";
     break;

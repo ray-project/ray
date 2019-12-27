@@ -60,14 +60,6 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --env CartPole-v1 \
     --run PPO \
     --stop '{"training_iteration": 1}' \
-    --config '{"num_gpus": 0.1}' \
-    --ray-num-gpus 1
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output /ray/rllib/train.py \
-    --env CartPole-v1 \
-    --run PPO \
-    --stop '{"training_iteration": 1}' \
     --config '{"kl_coeff": 1.0, "num_sgd_iter": 10, "lr": 1e-4, "sgd_minibatch_size": 64, "train_batch_size": 2000, "num_workers": 1, "use_gae": false, "batch_mode": "complete_episodes"}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -285,7 +277,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --run APEX_DDPG \
     --ray-num-cpus 8 \
     --stop '{"training_iteration": 1}' \
-    --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100, "min_iter_time_s": 1, "batch_mode": "complete_episodes", "parameter_noise": true}'
+    --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100, "min_iter_time_s": 1, "batch_mode": "complete_episodes", "parameter_noise": false}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output /ray/rllib/train.py \
@@ -339,12 +331,6 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/examples/custom_keras_model.py --run=DQN --stop=50
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output python /ray/rllib/examples/custom_keras_rnn_model.py --run=PPO --stop=50 --env=RepeatAfterMeEnv
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output python /ray/rllib/examples/custom_keras_rnn_model.py --run=PPO --stop=50 --env=RepeatInitialEnv
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/examples/parametric_action_cartpole.py --run=PG --stop=50
@@ -441,6 +427,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/contrib/random_agent/random_agent.py
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/contrib/alpha_zero/examples/train_cartpole.py --training-iteration=1
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/examples/centralized_critic.py --stop=2000
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -495,3 +484,9 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output python /ray/rllib/tests/test_ignore_worker_failure.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/examples/custom_keras_rnn_model.py --run=PPO --stop=50 --env=RepeatAfterMeEnv
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/examples/custom_keras_rnn_model.py --run=PPO --stop=50 --env=RepeatInitialEnv

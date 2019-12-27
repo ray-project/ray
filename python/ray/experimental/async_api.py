@@ -72,7 +72,7 @@ async def _async_init():
     if handler is None:
         worker = ray.worker.global_worker
         plasma_client = thread_safe_client(
-            plasma.connect(worker.node.plasma_store_socket_name, None, 0, 300))
+            plasma.connect(worker.node.plasma_store_socket_name, 300))
         loop = asyncio.get_event_loop()
         plasma_client.subscribe()
         rsock = plasma_client.get_notification_socket()
@@ -88,9 +88,19 @@ def init():
     """
     assert ray.is_initialized(), "Please call ray.init before async_api.init"
 
+    # Noop when handler is set.
+    if handler is not None:
+        return
+
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        asyncio.ensure_future(_async_init())
+        assert loop._thread_id != threading.get_ident(), (
+            "You are using async_api inside a running event loop. "
+            "Please call `await _async_init()` to initialize inside "
+            "asynchrounous context.")
+        # If the loop is runing outside current thread, we actually need
+        # to do this to make sure the context is initialized.
+        asyncio.run_coroutine_threadsafe(_async_init(), loop=loop)
     else:
         asyncio.get_event_loop().run_until_complete(_async_init())
 

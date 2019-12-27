@@ -240,7 +240,8 @@ class JsonIOTest(unittest.TestCase):
         self.assertEqual(len(os.listdir(self.test_dir)), 0)
         for _ in range(100):
             writer.write(SAMPLES)
-        self.assertEqual(len(os.listdir(self.test_dir)), 12)
+        num_files = len(os.listdir(self.test_dir))
+        assert num_files in [12, 13], num_files
 
     def testReadWrite(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)

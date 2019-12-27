@@ -17,6 +17,7 @@ def dockerize_if_needed(config):
         return config
 
     docker_image = config["docker"].get("image")
+    docker_pull = config["docker"].get("pull_before_run", True)
     cname = config["docker"].get("container_name")
     run_options = config["docker"].get("run_options", [])
 
@@ -36,6 +37,10 @@ def dockerize_if_needed(config):
     else:
         assert cname, "Must provide container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
+
+    if docker_pull:
+        docker_pull_cmd = "docker pull {}".format(docker_image)
+        config["initialization_commands"].append(docker_pull_cmd)
 
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
                                           docker_mounts, cname,

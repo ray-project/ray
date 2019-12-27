@@ -72,6 +72,10 @@ class TargetNetworkMixin(object):
 
         self.update_target = do_update
 
+    @override(TFPolicy)
+    def variables(self):
+        return self.q_func_vars + self.target_q_func_vars
+
 
 def build_q_models(policy, obs_space, action_space, config):
 

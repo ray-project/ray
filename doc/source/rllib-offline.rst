@@ -173,7 +173,7 @@ You can configure experience output for an agent using the following options:
 .. literalinclude:: ../../rllib/agents/trainer.py
    :language: python
    :start-after: shuffle_buffer_size
-   :end-before: === Multiagent ===
+   :end-before: Settings for Multi-Agent Environments
 
 The interface for a custom output writer is as follows:
 

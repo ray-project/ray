@@ -263,13 +263,22 @@ def get_cuda_visible_devices():
     return [int(i) for i in gpu_ids_str.split(",")]
 
 
+last_set_gpu_ids = None
+
+
 def set_cuda_visible_devices(gpu_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
     Args:
         gpu_ids: This is a list of integers representing GPU IDs.
     """
+
+    global last_set_gpu_ids
+    if last_set_gpu_ids == gpu_ids:
+        return  # optimization: already set
+
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
+    last_set_gpu_ids = gpu_ids
 
 
 def resources_from_resource_arguments(
@@ -543,7 +552,6 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
         directory_path: The path of the directory to create.
         warn_if_exist (bool): Warn if the directory already exists.
     """
-    logger = logging.getLogger("ray")
     directory_path = os.path.expanduser(directory_path)
     if not os.path.exists(directory_path):
         try:
@@ -552,6 +560,7 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
             if e.errno != errno.EEXIST:
                 raise e
             if warn_if_exist:
+                logger = logging.getLogger("ray")
                 logger.warning(
                     "Attempted to create '{}', but the directory already "
                     "exists.".format(directory_path))

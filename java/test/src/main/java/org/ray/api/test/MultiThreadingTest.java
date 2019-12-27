@@ -168,4 +168,32 @@ public class MultiThreadingTest extends BaseTest {
     }
   }
 
+  private static boolean testGetAsyncContextAndSetAsyncContext() throws Exception {
+    final Object asyncContext = Ray.getAsyncContext();
+    final Object[] result = new Object[1];
+    Thread thread = new Thread(() -> {
+      try {
+        Ray.setAsyncContext(asyncContext);
+        Ray.put(0);
+      } catch (Exception e) {
+        result[0] = e;
+      }
+    });
+    thread.start();
+    thread.join();
+    if (result[0] instanceof Exception) {
+      throw (Exception) result[0];
+    }
+    return true;
+  }
+
+  public void testGetAsyncContextAndSetAsyncContextInDriver() throws Exception {
+    Assert.assertTrue(testGetAsyncContextAndSetAsyncContext());
+  }
+
+  public void testGetAsyncContextAndSetAsyncContextInWorker() {
+    RayObject<Boolean> obj = Ray.call(MultiThreadingTest::testGetAsyncContextAndSetAsyncContext);
+    Assert.assertTrue(obj.get());
+  }
+
 }

@@ -46,6 +46,11 @@ Inspect the Cluster State
 
 .. autofunction:: ray.errors
 
+Experimental APIs
+-----------------
+
+.. automodule:: ray.experimental
+   :members:
 
 The Ray Command Line API
 ------------------------
@@ -68,6 +73,10 @@ The Ray Command Line API
 
 .. click:: ray.scripts.scripts:exec_cmd
    :prog: ray exec
+   :show-nested:
+
+.. click:: ray.scripts.scripts:submit
+   :prog: ray submit
    :show-nested:
 
 .. click:: ray.scripts.scripts:attach

@@ -75,7 +75,7 @@ class ObjectDirectoryInterface {
   /// method may fire immediately, within the call to this method, if any other
   /// listener is subscribed to the same object: This occurs when location data
   /// for the object has already been obtained.
-  //
+  ///
   /// \param callback_id The id associated with the specified callback. This is
   /// needed when UnsubscribeObjectLocations is called.
   /// \param object_id The required object's ObjectID.
@@ -114,11 +114,6 @@ class ObjectDirectoryInterface {
   virtual ray::Status ReportObjectRemoved(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) = 0;
-
-  /// Get local client id
-  ///
-  /// \return ClientID
-  virtual ray::ClientID GetLocalClientID() = 0;
 
   /// Returns debug string for class.
   ///
@@ -163,8 +158,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ray::Status ReportObjectRemoved(
       const ObjectID &object_id, const ClientID &client_id,
       const object_manager::protocol::ObjectInfoT &object_info) override;
-
-  ray::ClientID GetLocalClientID() override;
 
   std::string DebugString() const override;
 
