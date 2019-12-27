@@ -47,9 +47,6 @@ public class ActorReconstructionTest extends BaseTest {
 
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
-    // TODO (kfstorm): Actor reconstruction is currently not supporeted in direct actor call mode.
-    // Will re-enable the test once the issue got fixed.
-    TestUtils.skipTestIfDirectActorCallEnabled();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<Counter> actor = Ray.createActor(Counter::new, options);
@@ -130,10 +127,6 @@ public class ActorReconstructionTest extends BaseTest {
 
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-    // TODO (kfstorm): In direct actor call mode, the actor creation task is not pushed to raylet.
-    // But to save an actor checkpoint, raylet needs to know about this the actor. Will re-enable
-    // the test once the issue got fixed.
-    TestUtils.skipTestIfDirectActorCallEnabled();
     ActorCreationOptions options =
         new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);

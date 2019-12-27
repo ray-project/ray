@@ -17,7 +17,7 @@ namespace gcs {
 
 /* Flush redis. */
 static inline void flushall_redis(void) {
-  redisContext *context = redisConnect("127.0.0.1", 6379);
+  redisContext *context = redisConnect("127.0.0.1", REDIS_SERVER_PORT);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
   redisFree(context);
 }
@@ -28,11 +28,9 @@ inline JobID NextJobID() {
   return JobID::FromInt(++counter);
 }
 
-class TestGcs : public ::testing::Test {
+class TestGcs : public RedisServiceManagerForTest {
  public:
   TestGcs(CommandType command_type) : num_callbacks_(0), command_type_(command_type) {
-    GcsClientOptions options("127.0.0.1", 6379, "", true);
-    client_ = std::make_shared<gcs::RedisGcsClient>(options, command_type_);
     job_id_ = NextJobID();
   }
 
@@ -63,7 +61,6 @@ class TestGcsWithAsio : public TestGcs {
  public:
   TestGcsWithAsio(CommandType command_type)
       : TestGcs(command_type), io_service_(), work_(io_service_) {
-    RAY_CHECK_OK(client_->Connect(io_service_));
   }
 
   TestGcsWithAsio() : TestGcsWithAsio(CommandType::kRegular) {}
@@ -73,6 +70,13 @@ class TestGcsWithAsio : public TestGcs {
     client_->Disconnect();
     client_.reset();
   }
+
+  void SetUp() override {
+    GcsClientOptions options("127.0.0.1", REDIS_SERVER_PORT, "", true);
+    client_ = std::make_shared<gcs::RedisGcsClient>(options, command_type_);
+    RAY_CHECK_OK(client_->Connect(io_service_));
+  }
+
   void Start() override { io_service_.run(); }
   void Stop() override { io_service_.stop(); }
 
@@ -1442,3 +1446,12 @@ TEST_F(TestGcsWithAsio, TestHashTable) {
 
 }  // namespace gcs
 }  // namespace ray
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  RAY_CHECK(argc == 4);
+  ray::REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  return RUN_ALL_TESTS();
+}
