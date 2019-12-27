@@ -67,6 +67,9 @@ class ResultThread(threading.Thread):
         with self._lock:
             return self._results
 
+    def next_ready_index(self, timeout=None):
+        return self._ready_index_queue.get(timeout=timeout)
+
 
 class AsyncResult(object):
     def __init__(self,
@@ -113,11 +116,12 @@ class AsyncResult(object):
 
 class IMapIterator(object):
     def __init__(self, chunk_object_ids):
+        self._chunk_object_ids = chunk_object_ids
+        self._next_chunk_index = 0
+        self._ready_indices = [False] * len(chunk_object_ids)
+        self._ready_objects = []
         self._result_thread = ResultThread(chunk_object_ids)
         self._result_thread.start()
-        self._index = 0
-        self._ready_indices = [None] * len(chunk_object_ids)
-        self._ready_objects = []
 
     def __iter__(self):
         return self
@@ -128,46 +132,49 @@ class IMapIterator(object):
 
 class OrderedIMapIterator(IMapIterator):
     def next(self, timeout=None):
-        if timeout is not None:
-            timeout = float(timeout)
-
         if len(self._ready_objects) != 0:
             return self._ready_objects.pop(0)
 
-        if self._index == len(self._chunk_object_ids):
+        if self._next_chunk_index == len(self._chunk_object_ids):
             raise StopIteration
 
-        try:
-            chunk_result = ray.get(
-                self._chunk_object_ids[self._index], timeout=timeout)
-            result = chunk_result[0]
-            self._ready_objects = chunk_result[1:]
-        except ray.exceptions.RayTimeoutError:
-            raise TimeoutError
+        while timeout is None or timeout > 0:
+            start = time.time()
+            try:
+                index = self._result_thread.next_ready_index(timeout=timeout)
+            except queue.Empty:
+                raise TimeoutError
+            self._ready_indices[index] = True
+            if index == self._next_chunk_index:
+                break
+            if timeout is not None:
+                timeout = max(0, timeout - (time.time() - start))
 
-        self._index += 1
-        return result
+        while self._next_chunk_index < len(
+                self._chunk_object_ids
+        ) and self._ready_indices[self._next_chunk_index]:
+            self._ready_objects.extend(
+                self._result_thread.results()[self._next_chunk_index])
+            self._next_chunk_index += 1
+
+        return self._ready_objects.pop(0)
 
 
 class UnorderedIMapIterator(IMapIterator):
     def next(self, timeout=None):
-        if timeout is not None:
-            timeout = float(timeout)
-
         if len(self._ready_objects) != 0:
             return self._ready_objects.pop(0)
 
-        if len(self._chunk_object_ids) == 0:
+        if self._next_chunk_index == len(self._chunk_object_ids):
             raise StopIteration
 
-        ready_ids, self._chunk_object_ids = ray.wait(
-            self._chunk_object_ids, num_returns=1, timeout=timeout)
-        if len(ready_ids) == 0:
+        try:
+            index = self._result_thread.next_ready_index(timeout=timeout)
+        except queue.Empty:
             raise TimeoutError
 
-        for ready_id in ready_ids:
-            # TODO(edoakes): can we safely set timeout=0 here?
-            self._ready_objects.extend(ray.get(ready_id, timeout=timeout))
+        self._ready_objects.extend(self._result_thread.results()[index])
+        self._next_chunk_index += 1
 
         return self._ready_objects.pop(0)
 

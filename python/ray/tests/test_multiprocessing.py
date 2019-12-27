@@ -326,20 +326,12 @@ def test_map_async(pool_4_processes):
         async_result.get()
 
 
-def test_starmap(pool_4_processes):
-    pass
+def test_starmap(pool):
+    def f(*args):
+        return args
 
-
-def test_starmap_async(pool_4_processes):
-    pass
-
-
-def test_imap(pool_4_processes):
-    pass
-
-
-def test_imap_unordered(pool_4_processes):
-    pass
+    args = [tuple([j for j in range(i)]) for i in range(100)]
+    assert pool.starmap(f, args) == args
 
 
 def test_callbacks(pool_4_processes):
@@ -397,3 +389,106 @@ def test_callbacks(pool_4_processes):
     assert all([index not in callback_results for index in error_indices])
     assert [isinstance(result, Exception)
             for result in callback_results].count(True) == len(error_indices)
+
+
+def test_imap(pool_4_processes):
+    def f(args):
+        time.sleep(0.1 * random.random())
+        index = args[0]
+        err_indices = args[1]
+        if index in err_indices:
+            raise Exception("intentional failure")
+        return index
+
+    error_indices = [2, 50, 98]
+    result_iter = pool_4_processes.imap(
+        f, [(index, error_indices) for index in range(100)])
+    for i in range(100):
+        result = result_iter.next()
+        if i in error_indices:
+            assert isinstance(result, Exception)
+        else:
+            assert result == i
+
+    with pytest.raises(StopIteration):
+        result_iter.next()
+
+
+def test_imap_unordered(pool_4_processes):
+    def f(args):
+        time.sleep(0.1 * random.random())
+        index = args[0]
+        err_indices = args[1]
+        if index in err_indices:
+            raise Exception("intentional failure")
+        return index
+
+    error_indices = [2, 50, 98]
+    in_order = []
+    num_errors = 0
+    result_iter = pool_4_processes.imap_unordered(
+        f, [(index, error_indices) for index in range(100)])
+    for i in range(100):
+        result = result_iter.next()
+        if isinstance(result, Exception):
+            in_order.append(True)
+            num_errors += 1
+        else:
+            in_order.append(result == i)
+
+    # Check that the results didn't come back all in order.
+    # NOTE: this could be flaky if the calls happened to finish in order due
+    # to the random sleeps, but it's very unlikely.
+    assert not all(in_order)
+    assert num_errors == len(error_indices)
+
+    with pytest.raises(StopIteration):
+        result_iter.next()
+
+
+def test_imap_timeout(pool_4_processes):
+    def f(args):
+        index = args[0]
+        wait_index = args[1]
+        object_id = args[2]
+        if index == wait_index:
+            ray.get(object_id)
+        return index
+
+    wait_index = 23
+    object_id = ray.ObjectID.from_random()
+    result_iter = pool_4_processes.imap(
+        f, [(index, wait_index, object_id) for index in range(100)])
+    for i in range(100):
+        if i == wait_index:
+            with pytest.raises(TimeoutError):
+                result = result_iter.next(timeout=0.1)
+            ray.worker.global_worker.put_object(None, object_id=object_id)
+
+        result = result_iter.next()
+        assert result == i
+
+    with pytest.raises(StopIteration):
+        result_iter.next()
+
+    wait_index = 23
+    object_id = ray.ObjectID.from_random()
+    result_iter = pool_4_processes.imap_unordered(
+        f, [(index, wait_index, object_id) for index in range(100)])
+    in_order = []
+    for i in range(100):
+        try:
+            result = result_iter.next(timeout=1)
+        except TimeoutError:
+            ray.worker.global_worker.put_object(None, object_id=object_id)
+            result = result_iter.next()
+
+        in_order.append(result == i)
+
+    # Check that the results didn't come back all in order.
+    # NOTE: this could be flaky if the calls happened to finish in order due
+    # to the random sleeps, but it's very unlikely.
+    assert not all(in_order)
+
+    with pytest.raises(StopIteration):
+        result_iter.next()
