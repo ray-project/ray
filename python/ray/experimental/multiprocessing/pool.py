@@ -45,7 +45,7 @@ class ResultThread(threading.Thread):
     def _add_object_id(self, object_id):
         with self._lock:
             self._indices[object_id] = len(self._object_ids)
-            self._object_ids.append(copy.copy(object_id))
+            self._object_ids.append(object_id)
             self._results.append(None)
 
     def add_object_id(self, object_id):
@@ -452,9 +452,6 @@ class Pool(object):
 
         return chunk_object_ids
 
-    # TODO(edoakes): imap and imap_unordered shouldn't submit the full iterable
-    # at once, but rather submit a new batch as each one finishes. This is
-    # important for very long (or even infinite) iterables.
     def imap(self, func, iterable, chunksize=1):
         self._check_running()
         return OrderedIMapIterator(self, func, iterable, chunksize=chunksize)

@@ -492,3 +492,11 @@ def test_imap_timeout(pool_4_processes):
 
     with pytest.raises(StopIteration):
         result_iter.next()
+
+
+def test_maxtasksperchild(cleanup_only):
+    def f(args):
+        return os.getpid()
+
+    pool = Pool(5, maxtasksperchild=1)
+    assert len(set(pool.map(f, range(20)))) == 20
