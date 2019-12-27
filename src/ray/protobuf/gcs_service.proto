@@ -106,14 +106,14 @@ message GetObjectLocationsRequest {
 
 message GetObjectLocationsReply {
   // Data of object
-  repeated ObjectTableData object_table_datas = 1;
+  repeated ObjectTableData object_table_data_list = 1;
 }
 
 message AddObjectLocationRequest {
   // The ID of object which location will be added to GCS Service.
   bytes object_id = 1;
   // The location that will be added to GCS Service.
-  bytes client_id = 2;
+  bytes node_id = 2;
 }
 
 message AddObjectLocationReply {
@@ -123,7 +123,7 @@ message RemoveObjectLocationRequest {
   // The ID of object which location will be removed from GCS Service.
   bytes object_id = 1;
   // The location that will be removed from GCS Service.
-  bytes client_id = 2;
+  bytes node_id = 2;
 }
 
 message RemoveObjectLocationReply {
