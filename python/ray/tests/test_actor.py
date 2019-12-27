@@ -19,7 +19,6 @@ import ray.cluster_utils
 from ray import ray_constants
 from ray.test_utils import run_string_as_driver
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
-import pickle
 
 RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
