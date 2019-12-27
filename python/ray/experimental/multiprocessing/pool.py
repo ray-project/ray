@@ -7,6 +7,7 @@ import os
 import time
 import random
 import threading
+import math
 import queue
 import copy
 
@@ -19,41 +20,72 @@ class PoolTaskError(Exception):
 
 
 class ResultThread(threading.Thread):
-    def __init__(self, object_ids, callback=None, error_callback=None):
+    def __init__(self,
+                 object_ids,
+                 callback=None,
+                 error_callback=None,
+                 total_object_ids=None):
         threading.Thread.__init__(self)
         self._done = False
         self._got_error = False
         self._lock = threading.Lock()
-        self._object_ids = copy.copy(object_ids)
-        self._results = [None] * len(object_ids)
+        self._object_ids = []
+        self._num_ready = 0
+        self._results = []
         self._ready_index_queue = queue.Queue()
         self._callback = callback
         self._error_callback = error_callback
+        self._total_object_ids = total_object_ids if total_object_ids else len(
+            object_ids)
         self._indices = {}
-        for i, object_id in enumerate(object_ids):
-            self._indices[object_id] = i
+        self._new_object_ids = queue.Queue()
+        for object_id in object_ids:
+            self._add_object_id(object_id)
+
+    def _add_object_id(self, object_id):
+        with self._lock:
+            self._indices[object_id] = len(self._object_ids)
+            self._object_ids.append(copy.copy(object_id))
+            self._results.append(None)
+
+    def add_object_id(self, object_id):
+        self._new_object_ids.put(object_id)
 
     def run(self):
-        unready = self._object_ids
-        while len(unready) > 0:
+        unready = copy.copy(self._object_ids)
+        while self._num_ready < self._total_object_ids:
+            # Get as many new IDs from the queue as possible without blocking,
+            # unless we have no IDs to wait on, in which case we block.
+            while True:
+                try:
+                    block = True if len(unready) == 0 else False
+                    new_object_id = self._new_object_ids.get(block=block)
+                    self._add_object_id(new_object_id)
+                    unready.append(new_object_id)
+                except queue.Empty:
+                    break
+
             ready, unready = ray.wait(unready, num_returns=1)
-            assert (len(ready) == 1)
+            assert len(ready) == 1
             ready_id = ready[0]
 
             batch = ray.get(ready_id)
             for result in batch:
                 if isinstance(result, Exception):
-                    self._got_error = True
+                    with self._lock:
+                        self._got_error = True
                     if self._error_callback is not None:
                         self._error_callback(result)
                 elif self._callback is not None:
                     self._callback(result)
 
             with self._lock:
+                self._num_ready += 1
                 self._results[self._indices[ready_id]] = batch
                 self._ready_index_queue.put(self._indices[ready_id])
 
-        self._done = True
+        with self._lock:
+            self._done = True
 
     def done(self):
         with self._lock:
@@ -115,13 +147,38 @@ class AsyncResult(object):
 
 
 class IMapIterator(object):
-    def __init__(self, chunk_object_ids):
-        self._chunk_object_ids = chunk_object_ids
+    def __init__(self, pool, func, iterable, chunksize=None):
+        self._pool = pool
+        self._func = func
         self._next_chunk_index = 0
-        self._ready_indices = [False] * len(chunk_object_ids)
+        self._chunk_object_ids = []
+        self._ready_indices = []
         self._ready_objects = []
-        self._result_thread = ResultThread(chunk_object_ids)
+        if not hasattr(iterable, "__len__"):
+            iterable = [iterable]
+        self._iterator = iter(iterable)
+        if chunksize:
+            self._chunksize = chunksize
+        else:
+            self._chunksize = pool._calculate_chunksize(iterable)
+        self._total_chunks = int(math.ceil(len(iterable) / chunksize))
+        self._result_thread = ResultThread(
+            [], total_object_ids=self._total_chunks)
         self._result_thread.start()
+
+        for _ in range(len(pool._actor_pool)):
+            self._submit_next_chunk()
+
+    def _submit_next_chunk(self):
+        if len(self._chunk_object_ids) >= self._total_chunks:
+            return
+
+        actor_index = len(self._chunk_object_ids) % len(self._pool._actor_pool)
+        new_chunk_id = self._pool._submit_chunk(self._func, self._iterator,
+                                                self._chunksize, actor_index)
+        self._chunk_object_ids.append(new_chunk_id)
+        self._ready_indices.append(None)
+        self._result_thread.add_object_id(new_chunk_id)
 
     def __iter__(self):
         return self
@@ -142,6 +199,7 @@ class OrderedIMapIterator(IMapIterator):
             start = time.time()
             try:
                 index = self._result_thread.next_ready_index(timeout=timeout)
+                self._submit_next_chunk()
             except queue.Empty:
                 raise TimeoutError
             self._ready_indices[index] = True
@@ -170,6 +228,7 @@ class UnorderedIMapIterator(IMapIterator):
 
         try:
             index = self._result_thread.next_ready_index(timeout=timeout)
+            self._submit_next_chunk()
         except queue.Empty:
             raise TimeoutError
 
@@ -346,27 +405,50 @@ class Pool(object):
             func, iterable, chunksize=chunksize, unpack_args=unpack_args)
         return AsyncResult(object_ids, callback, error_callback)
 
+    def _calculate_chunksize(self, iterable):
+        chunksize, extra = divmod(len(iterable), len(self._actor_pool) * 4)
+        if extra:
+            chunksize += 1
+        return chunksize
+
+    def _submit_chunk(self,
+                      func,
+                      iterator,
+                      chunksize,
+                      actor_index,
+                      unpack_args=False):
+        chunk = []
+        while len(chunk) < chunksize:
+            try:
+                args = iterator.__next__()
+                if not unpack_args:
+                    args = (args, )
+                chunk.append((args, {}))
+            except StopIteration:
+                break
+        if len(chunk) == 0:
+            return None
+        return self._run_batch(actor_index, func, chunk)
+
     def _chunk_and_run(self, func, iterable, chunksize=None,
                        unpack_args=False):
         if not hasattr(iterable, "__len__"):
             iterable = [iterable]
 
         if chunksize is None:
-            chunksize, extra = divmod(len(iterable), len(self._actor_pool) * 4)
-            if extra:
-                chunksize += 1
+            chunksize = self._calculate_chunksize(iterable)
 
+        iterator = iter(iterable)
         chunk_object_ids = []
-        chunk = []
-        for i, args in enumerate(iterable):
-            if not unpack_args:
-                args = (args, )
-            chunk.append((args, {}))
-            if len(chunk) == chunksize or i == len(iterable) - 1:
-                actor_index = len(chunk_object_ids) % len(self._actor_pool)
-                chunk_object_ids.append(
-                    self._run_batch(actor_index, func, chunk))
-                chunk = []
+        while len(chunk_object_ids) * chunksize < len(iterable):
+            actor_index = len(chunk_object_ids) % len(self._actor_pool)
+            chunk_object_ids.append(
+                self._submit_chunk(
+                    func,
+                    iterator,
+                    chunksize,
+                    actor_index,
+                    unpack_args=unpack_args))
 
         return chunk_object_ids
 
@@ -375,13 +457,11 @@ class Pool(object):
     # important for very long (or even infinite) iterables.
     def imap(self, func, iterable, chunksize=1):
         self._check_running()
-        return OrderedIMapIterator(
-            self._chunk_and_run(func, iterable, chunksize=chunksize))
+        return OrderedIMapIterator(self, func, iterable, chunksize=chunksize)
 
     def imap_unordered(self, func, iterable, chunksize=1):
         self._check_running()
-        return UnorderedIMapIterator(
-            self._chunk_and_run(func, iterable, chunksize=chunksize))
+        return UnorderedIMapIterator(self, func, iterable, chunksize=chunksize)
 
     def _check_running(self):
         if self._closed:
