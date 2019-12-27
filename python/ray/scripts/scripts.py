@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import time
+import re
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -44,6 +45,33 @@ def check_no_existing_redis_clients(node_ip_address, redis_client):
         if ray.utils.decode(info[b"node_ip_address"]) == node_ip_address:
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
+
+
+def __process_java_worker_classpath(java_options):
+    """Add ray jars path to java classpath"""
+    ray_jars_dir = ""
+    try:
+        from ray_java import resource_util
+        ray_jars_dir = resource_util.get_ray_jars_dir()
+    except ModuleNotFoundError:
+        pass
+    cp_sep = ":"
+    import platform
+    if platform.system() == "Windows":
+        cp_sep = ";"
+    java_options = java_options if java_options is not None else ""
+    options = re.split("\\s+", java_options)
+    cp_index = -1
+    for i in range(len(options)):
+        option = options[i]
+        if option == "-cp" or option == "-classpath":
+            cp_index = i + 1
+            break
+    if cp_index != -1 and ray_jars_dir != "":
+        options[cp_index] = options[cp_index] + cp_sep + ray_jars_dir
+    elif ray_jars_dir != "":
+        options = ["-cp", ray_jars_dir] + options
+    return " ".join(options)
 
 
 @click.group()
@@ -287,7 +315,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         include_java=include_java,
         include_webui=include_webui,
         webui_host=webui_host,
-        java_worker_options=java_worker_options,
+        java_worker_options=__process_java_worker_classpath(java_worker_options),
         load_code_from_local=load_code_from_local,
         use_pickle=use_pickle,
         _internal_config=internal_config)
