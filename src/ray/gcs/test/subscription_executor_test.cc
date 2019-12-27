@@ -1,6 +1,7 @@
 #include "ray/gcs/subscription_executor.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/callback.h"
+#include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/test/accessor_test_base.h"
 
@@ -190,9 +191,19 @@ TEST_F(SubscriptionExecutorTest, UnsubscribeTest) {
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   sub_pending_count_ = id_to_data_.size();
   AsyncRegisterActorToGcs();
+  WaitPendingDone(pending_count_, wait_pending_timeout_);
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
 
 }  // namespace gcs
 
 }  // namespace ray
+
+int main(int argc, char **argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  RAY_CHECK(argc == 4);
+  ray::REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
+  return RUN_ALL_TESTS();
+}

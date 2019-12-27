@@ -11,8 +11,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     absl::MutexLock lock(&mu_);
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
-    const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
-                                       task_spec.GetDependencies());
+    const SchedulingKey scheduling_key(
+        task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
+        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
     auto it = task_queues_.find(scheduling_key);
     if (it == task_queues_.end()) {
       it = task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
@@ -175,10 +176,16 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        // Successful actor creation leases the worker indefinitely from the raylet.
-        if (!status.ok() || !is_actor_creation) {
+        if (reply.worker_exiting()) {
+          // The worker is draining and will shutdown after it is done. Don't return
+          // it to the Raylet since that will kill it early.
           absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok(), assigned_resources);
+          worker_to_lease_client_.erase(addr);
+        } else if (!status.ok() || !is_actor_creation) {
+          // Successful actor creation leases the worker indefinitely from the raylet.
+          absl::MutexLock lock(&mu_);
+          OnWorkerIdle(addr, scheduling_key,
+                       /*error=*/!status.ok(), assigned_resources);
         }
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node

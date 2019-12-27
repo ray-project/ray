@@ -170,9 +170,6 @@ cdef class ObjectID(BaseID):
     def is_direct_call_type(self):
         return self.data.IsDirectCallType()
 
-    def with_plasma_transport_type(self):
-        return ObjectID(self.data.WithPlasmaTransportType().Binary())
-
     def is_nil(self):
         return self.data.IsNil()
 

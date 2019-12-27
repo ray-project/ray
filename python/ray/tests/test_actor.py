@@ -16,10 +16,7 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray import ray_constants
 from ray.test_utils import run_string_as_driver
-
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -810,7 +807,6 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no ft yet")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
@@ -836,7 +832,6 @@ def test_actor_init_fails(ray_start_cluster_head):
     assert results == [1 for actor in actors]
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no ft yet")
 def test_reconstruction_suppression(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     num_nodes = 5
@@ -1429,6 +1424,22 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.experimental.get_actor(actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+
+
+def test_kill(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def hang(self):
+            # Never returns.
+            ray.get(ray.ObjectID.from_random())
+
+    actor = Actor.remote()
+    result = actor.hang.remote()
+    ready, _ = ray.wait([result], timeout=0.1)
+    assert len(ready) == 0
+    actor.__ray_kill__()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(result, timeout=1)
 
 
 if __name__ == "__main__":

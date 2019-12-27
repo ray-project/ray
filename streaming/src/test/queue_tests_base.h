@@ -259,7 +259,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
     CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "",
+                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
                       node_manager_port_, nullptr);
 
     // Create writer and reader actors

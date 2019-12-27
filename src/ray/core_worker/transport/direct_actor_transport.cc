@@ -1,11 +1,30 @@
+#include "ray/core_worker/transport/direct_actor_transport.h"
+
 #include <thread>
 
 #include "ray/common/task/task.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
 
 using ray::rpc::ActorTableData;
 
 namespace ray {
+
+Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+  pending_force_kills_.insert(actor_id);
+  auto it = rpc_clients_.find(actor_id);
+  if (it == rpc_clients_.end()) {
+    // Actor is not yet created, or is being reconstructed, cache the request
+    // and submit after actor is alive.
+    // TODO(zhijunfu): it might be possible for a user to specify an invalid
+    // actor handle (e.g. from unpickling), in that case it might be desirable
+    // to have a timeout to mark it as invalid if it doesn't show up in the
+    // specified time.
+    RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
+  } else {
+    SendPendingTasks(actor_id);
+  }
+  return Status::OK();
+}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
@@ -101,6 +120,15 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
   RAY_CHECK(client);
+  // Check if there is a pending force kill. If there is, send it and disconnect the
+  // client.
+  if (pending_force_kills_.find(actor_id) != pending_force_kills_.end()) {
+    rpc::KillActorRequest request;
+    request.set_intended_actor_id(actor_id.Binary());
+    RAY_CHECK_OK(client->KillActor(request, nullptr));
+    pending_force_kills_.erase(actor_id);
+  }
+
   // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
   auto head = requests.begin();
@@ -146,6 +174,7 @@ void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
+  local_raylet_client_ = raylet_client;
 }
 
 void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
@@ -255,18 +284,32 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
           }
         }
       }
+
+      if (task_spec.IsActorCreationTask()) {
+        RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
+                      << ", actor_id: " << task_spec.ActorCreationId();
+        // Tell raylet that an actor creation task has finished execution, so that
+        // raylet can publish actor creation event to GCS, and mark this worker as
+        // actor, thus if this worker dies later raylet will reconstruct the actor.
+        RAY_CHECK_OK(local_raylet_client_->TaskDone());
+      }
     }
     if (status.IsSystemExit()) {
+      // Don't allow the worker to be reused, even though the reply status is OK.
+      // The worker will be shutting down shortly.
+      reply->set_worker_exiting(true);
       // In Python, SystemExit can only be raised on the main thread. To
       // work around this when we are executing tasks on worker threads,
       // we re-post the exit event explicitly on the main thread.
       exiting_ = true;
       if (objects_valid) {
+        // This happens when max_calls is hit. We still need to return the objects.
         send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
-        send_reply_callback(Status::SystemExit(), nullptr, nullptr);
+        send_reply_callback(status, nullptr, nullptr);
       }
-      task_main_io_service_.post([this]() { exit_handler_(); });
+      task_main_io_service_.post(
+          [this, status]() { exit_handler_(status.IsIntentionalSystemExit()); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       send_reply_callback(status, nullptr, nullptr);

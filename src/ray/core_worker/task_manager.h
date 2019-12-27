@@ -4,7 +4,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-
 #include "ray/common/id.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/actor_manager.h"
@@ -22,6 +21,8 @@ class TaskFinisherInterface {
   virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                                  Status *status = nullptr) = 0;
 
+  virtual void OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) = 0;
+
   virtual ~TaskFinisherInterface() {}
 };
 
@@ -30,19 +31,29 @@ using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
 class TaskManager : public TaskFinisherInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
+              std::shared_ptr<ReferenceCounter> reference_counter,
               std::shared_ptr<ActorManagerInterface> actor_manager,
               RetryTaskCallback retry_task_callback)
       : in_memory_store_(in_memory_store),
+        reference_counter_(reference_counter),
         actor_manager_(actor_manager),
         retry_task_callback_(retry_task_callback) {}
 
   /// Add a task that is pending execution.
   ///
+  /// \param[in] caller_id The TaskID of the calling task.
+  /// \param[in] caller_address The rpc address of the calling task.
   /// \param[in] spec The spec of the pending task.
   /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return Void.
-  void AddPendingTask(const TaskSpecification &spec, int max_retries = 0);
+  void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
+                      const TaskSpecification &spec, int max_retries = 0);
+
+  /// Wait for all pending tasks to finish, and then shutdown.
+  ///
+  /// \param shutdown The shutdown callback to call.
+  void DrainAndShutdown(std::function<void()> shutdown);
 
   /// Return whether the task is pending.
   ///
@@ -68,6 +79,8 @@ class TaskManager : public TaskFinisherInterface {
   void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
                          Status *status = nullptr) override;
 
+  void OnTaskDependenciesInlined(const std::vector<ObjectID> &object_id) override;
+
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
@@ -77,8 +90,24 @@ class TaskManager : public TaskFinisherInterface {
   void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
                              rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
 
+  /// Remove submittted task references in the reference counter for the object IDs.
+  /// If their reference counts reach zero, they are deleted from the in-memory store.
+  void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids);
+
+  /// Helper function to call RemoveSubmittedTaskReferences on the plasma dependencies
+  /// of the given task spec.
+  void RemovePlasmaSubmittedTaskReferences(TaskSpecification &spec);
+
+  /// Shutdown if all tasks are finished and shutdown is scheduled.
+  void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);
+
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+
+  /// Used for reference counting objects.
+  /// The task manager is responsible for managing all references related to
+  /// submitted tasks (dependencies and return objects).
+  std::shared_ptr<ReferenceCounter> reference_counter_;
 
   // Interface for publishing actor creation.
   std::shared_ptr<ActorManagerInterface> actor_manager_;
@@ -105,6 +134,9 @@ class TaskManager : public TaskFinisherInterface {
   /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
   absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
       GUARDED_BY(mu_);
+
+  /// Optional shutdown hook to call when pending tasks all finish.
+  std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
 };
 
 }  // namespace ray
