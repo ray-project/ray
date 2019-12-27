@@ -497,6 +497,7 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
                                           uint64_t num_required_objects, bool wait_local,
                                           const WaitCallback &callback) {
   if (wait_local) {
+    // TODO(ekl) for this pr
     return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
   }
 
