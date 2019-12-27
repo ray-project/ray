@@ -11,7 +11,8 @@ void ActorManager::PublishTerminatedActor(const TaskSpecification &actor_creatio
   auto update_callback = [actor_id](Status status) {
     if (!status.ok()) {
       // Only one node at a time should succeed at creating or updating the actor.
-      RAY_LOG(FATAL) << "Failed to update state to DEAD for actor " << actor_id;
+      RAY_LOG(ERROR) << "Failed to update state to DEAD for actor " << actor_id
+                     << ", error: " << status.ToString();
     }
   };
   RAY_CHECK_OK(actor_accessor_.AsyncRegister(data, update_callback));
