@@ -126,6 +126,7 @@ class RayServeMixin:
 
         kwargs_list = defaultdict(list)
         result_object_ids, context_flag_list, arg_list = [], [], []
+        curr_batch_size = len(request_item_list)
 
         for item in request_item_list:
             args, kwargs, is_web_context, result_object_id = (
@@ -151,7 +152,13 @@ class RayServeMixin:
             if serve_context.web:
                 args = (arg_list, )
             else:
-                args = (FakeFlaskRequest(), )
+                # Set the flask request as a list to conform
+                # with batching semantics: when in batching
+                # mode, each argument it turned into list.
+                fake_flask_request_lst = [
+                    FakeFlaskRequest() for _ in range(curr_batch_size)
+                ]
+                args = (fake_flask_request_lst, )
             # set the current batch size (n) for serve_context
             serve_context.batch_size = len(result_object_ids)
             start_timestamp = time.time()
