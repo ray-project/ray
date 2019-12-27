@@ -110,9 +110,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   // might be used, if available.
   CommandType command_type_{CommandType::kUnknown};
 
-  /// Use method Objects() instead
-  ObjectTable &object_table();
-
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;

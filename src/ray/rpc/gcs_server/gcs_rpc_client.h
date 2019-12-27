@@ -27,6 +27,7 @@ class GcsRpcClient {
     job_info_stub_ = JobInfoGcsService::NewStub(channel);
     actor_info_stub_ = ActorInfoGcsService::NewStub(channel);
     node_info_stub_ = NodeInfoGcsService::NewStub(channel);
+    object_info_stub_ = ObjectInfoGcsService::NewStub(channel);
   };
 
   /// Add job info to gcs server.
@@ -92,42 +93,6 @@ class GcsRpcClient {
   /// \param callback The callback function that handles reply from server.
   void RegisterNode(const RegisterNodeRequest &request,
                     const ClientCallback<RegisterNodeReply> &callback) {
-    client_call_manager_
-        .CreateCall<NodeInfoGcsService, RegisterNodeRequest, RegisterNodeReply>(
-            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncRegisterNode,
-            request, callback);
-  }
-
-  /// Unregister a node from GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void UnregisterNode(const UnregisterNodeRequest &request,
-                      const ClientCallback<UnregisterNodeReply> &callback) {
-    client_call_manager_
-        .CreateCall<NodeInfoGcsService, UnregisterNodeRequest, UnregisterNodeReply>(
-            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncUnregisterNode,
-            request, callback);
-  }
-
-  /// Get information of all nodes from GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void GetAllNodeInfo(const GetAllNodeInfoRequest &request,
-                      const ClientCallback<GetAllNodeInfoReply> &callback) {
-    client_call_manager_
-        .CreateCall<NodeInfoGcsService, GetAllNodeInfoRequest, GetAllNodeInfoReply>(
-            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncGetAllNodeInfo,
-            request, callback);
-  }
-
-  /// Register an node to gcs server.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void RegisterNodeInfo(const RegisterNodeInfoRequest &request,
-                        const ClientCallback<RegisterNodeInfoReply> &callback) {
     client_call_manager_
         .CreateCall<NodeInfoGcsService, RegisterNodeRequest, RegisterNodeReply>(
             *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncRegisterNode,

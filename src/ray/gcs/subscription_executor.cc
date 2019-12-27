@@ -190,8 +190,6 @@ template class SubscriptionExecutor<JobID, JobTableData, JobTable>;
 template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;
 template class SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>;
 
-template class SubscriptionExecutor<ObjectID, ObjectNotification, ObjectTable>;
-
 }  // namespace gcs
 
 }  // namespace ray
