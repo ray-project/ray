@@ -126,12 +126,12 @@ Status RedisActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, subscribe, done);
+  return actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
 }
 
 Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                                 const StatusCallback &done) {
-  return actor_sub_executor_.AsyncUnsubscribe(node_id_, actor_id, done);
+  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
 }
 
 RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)
@@ -226,6 +226,70 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
 Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
                                                const StatusCallback &done) {
   return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+}
+
+RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl), object_sub_executor_(client_impl->object_table()) {}
+
+Status RedisObjectInfoAccessor::AsyncGetLocations(
+    const ObjectID &object_id, const MultiItemCallback<ObjectTableData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
+                            const std::vector<ObjectTableData> &data) {
+    callback(Status::OK(), data);
+  };
+
+  ObjectTable &object_table = client_impl_->object_table();
+  return object_table.Lookup(JobID::Nil(), object_id, on_done);
+}
+
+Status RedisObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_id,
+                                                 const ClientID &node_id,
+                                                 const StatusCallback &callback) {
+  std::function<void(RedisGcsClient * client, const ObjectID &id,
+                     const ObjectTableData &data)>
+      on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
+                         const ObjectTableData &data) { callback(Status::OK()); };
+  }
+
+  std::shared_ptr<ObjectTableData> data_ptr = std::make_shared<ObjectTableData>();
+  data_ptr->set_manager(node_id.Binary());
+
+  ObjectTable &object_table = client_impl_->object_table();
+  return object_table.Add(JobID::Nil(), object_id, data_ptr, on_done);
+}
+
+Status RedisObjectInfoAccessor::AsyncRemoveLocation(const ObjectID &object_id,
+                                                    const ClientID &node_id,
+                                                    const StatusCallback &callback) {
+  std::function<void(RedisGcsClient * client, const ObjectID &id,
+                     const ObjectTableData &data)>
+      on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
+                         const ObjectTableData &data) { callback(Status::OK()); };
+  }
+
+  std::shared_ptr<ObjectTableData> data_ptr = std::make_shared<ObjectTableData>();
+  data_ptr->set_manager(node_id.Binary());
+
+  ObjectTable &object_table = client_impl_->object_table();
+  return object_table.Remove(JobID::Nil(), object_id, data_ptr, on_done);
+}
+
+Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
+    const ObjectID &object_id,
+    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+}
+
+Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id,
+                                                            const StatusCallback &done) {
+  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
 }
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
