@@ -21,7 +21,7 @@ Quickstart
 ----------
 
 To get started, first `install Ray <installation.html>`__, then use 
-``ray.experimental.multiprocessing.Pool``in place of ``multiprocessing.Pool``.
+``ray.experimental.multiprocessing.Pool`` in place of ``multiprocessing.Pool``.
 This will start a local Ray cluster the first time you create a ``Pool`` and
 distribute your tasks across it. See the `Run on a Cluster`_ section below for
 instructions to run on a multi-node Ray cluster instead.
