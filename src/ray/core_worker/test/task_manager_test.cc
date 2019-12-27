@@ -21,7 +21,6 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 }
 
 class MockActorManager : public ActorManagerInterface {
-
   void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override {
     num_terminations += 1;
   }
