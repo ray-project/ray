@@ -6,12 +6,19 @@ from multiprocessing import TimeoutError
 import os
 import time
 import random
+import collections
 import threading
-import math
 import queue
 import copy
 
 import ray
+
+RAY_ADDRESS_ENV = "RAY_ADDRESS"
+
+
+# Helper function to divide a by b and round the result up.
+def div_round_up(a, b):
+    return -(-a // b)
 
 
 class PoolTaskError(Exception):
@@ -26,27 +33,25 @@ class ResultThread(threading.Thread):
                  error_callback=None,
                  total_object_ids=None):
         threading.Thread.__init__(self)
-        self._done = False
         self._got_error = False
-        self._lock = threading.Lock()
         self._object_ids = []
         self._num_ready = 0
         self._results = []
         self._ready_index_queue = queue.Queue()
         self._callback = callback
         self._error_callback = error_callback
-        self._total_object_ids = total_object_ids if total_object_ids else len(
-            object_ids)
+        self._total_object_ids = total_object_ids or len(object_ids)
         self._indices = {}
+        # Thread-safe queue used to add ObjectIDs to fetch after creating
+        # this thread (used to lazily submit for imap and imap_unordered).
         self._new_object_ids = queue.Queue()
         for object_id in object_ids:
             self._add_object_id(object_id)
 
     def _add_object_id(self, object_id):
-        with self._lock:
-            self._indices[object_id] = len(self._object_ids)
-            self._object_ids.append(object_id)
-            self._results.append(None)
+        self._indices[object_id] = len(self._object_ids)
+        self._object_ids.append(object_id)
+        self._results.append(None)
 
     def add_object_id(self, object_id):
         self._new_object_ids.put(object_id)
@@ -63,41 +68,34 @@ class ResultThread(threading.Thread):
                     self._add_object_id(new_object_id)
                     unready.append(new_object_id)
                 except queue.Empty:
+                    # queue.Empty means no result was retrieved if block=False.
                     break
 
-            ready, unready = ray.wait(unready, num_returns=1)
-            assert len(ready) == 1
-            ready_id = ready[0]
-
+            [ready_id], unready = ray.wait(unready, num_returns=1)
             batch = ray.get(ready_id)
             for result in batch:
                 if isinstance(result, Exception):
-                    with self._lock:
-                        self._got_error = True
+                    self._got_error = True
                     if self._error_callback is not None:
                         self._error_callback(result)
                 elif self._callback is not None:
                     self._callback(result)
 
-            with self._lock:
-                self._num_ready += 1
-                self._results[self._indices[ready_id]] = batch
-                self._ready_index_queue.put(self._indices[ready_id])
-
-        with self._lock:
-            self._done = True
-
-    def done(self):
-        with self._lock:
-            return self._done
+            self._num_ready += 1
+            self._results[self._indices[ready_id]] = batch
+            self._ready_index_queue.put(self._indices[ready_id])
 
     def got_error(self):
-        with self._lock:
-            return self._got_error
+        # Should only be called after the thread finishes.
+        return self._got_error
+
+    def result(self, index):
+        # Should only be called on results that are ready.
+        return self._results[index]
 
     def results(self):
-        with self._lock:
-            return self._results
+        # Should only be called after the thread finishes.
+        return self._results
 
     def next_ready_index(self, timeout=None):
         return self._ready_index_queue.get(timeout=timeout)
@@ -115,15 +113,11 @@ class AsyncResult(object):
         self._result_thread.start()
 
     def wait(self, timeout=None):
-        start = time.time()
-        while timeout is None or time.time() - start < timeout:
-            if self._result_thread.done():
-                break
-            time.sleep(0.001)
+        self._result_thread.join(timeout)
 
     def get(self, timeout=None):
         self.wait(timeout)
-        if not self._result_thread.done():
+        if self._result_thread.is_alive():
             raise TimeoutError
 
         results = []
@@ -132,13 +126,14 @@ class AsyncResult(object):
                 if isinstance(result, PoolTaskError):
                     raise result.underlying
             results.extend(batch)
+
         if self._single_result:
             return results[0]
 
         return results
 
     def ready(self):
-        return self._result_thread.done()
+        return not self._result_thread.is_alive()
 
     def successful(self):
         if not self.ready():
@@ -151,17 +146,15 @@ class IMapIterator(object):
         self._pool = pool
         self._func = func
         self._next_chunk_index = 0
-        self._chunk_object_ids = []
-        self._ready_indices = []
-        self._ready_objects = []
+        # List of bools indicating if the given chunk is ready or not for all
+        # submitted chunks. Ordering mirrors that in the in the ResultThread.
+        self._submitted_chunks = []
+        self._ready_objects = collections.deque()
         if not hasattr(iterable, "__len__"):
             iterable = [iterable]
         self._iterator = iter(iterable)
-        if chunksize:
-            self._chunksize = chunksize
-        else:
-            self._chunksize = pool._calculate_chunksize(iterable)
-        self._total_chunks = int(math.ceil(len(iterable) / chunksize))
+        self._chunksize = chunksize or pool._calculate_chunksize(iterable)
+        self._total_chunks = div_round_up(len(iterable), chunksize)
         self._result_thread = ResultThread(
             [], total_object_ids=self._total_chunks)
         self._result_thread.start()
@@ -170,14 +163,14 @@ class IMapIterator(object):
             self._submit_next_chunk()
 
     def _submit_next_chunk(self):
-        if len(self._chunk_object_ids) >= self._total_chunks:
+        # The full iterable has been submitted, so no-op.
+        if len(self._submitted_chunks) >= self._total_chunks:
             return
 
-        actor_index = len(self._chunk_object_ids) % len(self._pool._actor_pool)
+        actor_index = len(self._submitted_chunks) % len(self._pool._actor_pool)
         new_chunk_id = self._pool._submit_chunk(self._func, self._iterator,
                                                 self._chunksize, actor_index)
-        self._chunk_object_ids.append(new_chunk_id)
-        self._ready_indices.append(None)
+        self._submitted_chunks.append(False)
         self._result_thread.add_object_id(new_chunk_id)
 
     def __iter__(self):
@@ -186,76 +179,78 @@ class IMapIterator(object):
     def __next__(self):
         return self.next()
 
+    def next(self):
+        # Should be implemented by subclasses.
+        raise NotImplementedError
+
 
 class OrderedIMapIterator(IMapIterator):
     def next(self, timeout=None):
-        if len(self._ready_objects) != 0:
-            return self._ready_objects.pop(0)
+        if len(self._ready_objects) == 0:
+            if self._next_chunk_index == self._total_chunks:
+                raise StopIteration
 
-        if self._next_chunk_index == len(self._chunk_object_ids):
-            raise StopIteration
+            while timeout is None or timeout > 0:
+                start = time.time()
+                try:
+                    index = self._result_thread.next_ready_index(
+                        timeout=timeout)
+                    self._submit_next_chunk()
+                except queue.Empty:
+                    # queue.Queue signals a timeout by raising queue.Empty.
+                    raise TimeoutError
+                self._submitted_chunks[index] = True
+                if index == self._next_chunk_index:
+                    break
+                if timeout is not None:
+                    timeout = max(0, timeout - (time.time() - start))
 
-        while timeout is None or timeout > 0:
-            start = time.time()
+            while self._next_chunk_index < len(
+                    self._submitted_chunks
+            ) and self._submitted_chunks[self._next_chunk_index]:
+                for result in self._result_thread.result(
+                        self._next_chunk_index):
+                    self._ready_objects.append(result)
+                self._next_chunk_index += 1
+
+        return self._ready_objects.popleft()
+
+
+class UnorderedIMapIterator(IMapIterator):
+    def next(self, timeout=None):
+        if len(self._ready_objects) == 0:
+            if self._next_chunk_index == self._total_chunks:
+                raise StopIteration
+
             try:
                 index = self._result_thread.next_ready_index(timeout=timeout)
                 self._submit_next_chunk()
             except queue.Empty:
                 raise TimeoutError
-            self._ready_indices[index] = True
-            if index == self._next_chunk_index:
-                break
-            if timeout is not None:
-                timeout = max(0, timeout - (time.time() - start))
 
-        while self._next_chunk_index < len(
-                self._chunk_object_ids
-        ) and self._ready_indices[self._next_chunk_index]:
-            self._ready_objects.extend(
-                self._result_thread.results()[self._next_chunk_index])
+            for result in self._result_thread.result(index):
+                self._ready_objects.append(result)
             self._next_chunk_index += 1
 
-        return self._ready_objects.pop(0)
-
-
-class UnorderedIMapIterator(IMapIterator):
-    def next(self, timeout=None):
-        if len(self._ready_objects) != 0:
-            return self._ready_objects.pop(0)
-
-        if self._next_chunk_index == len(self._chunk_object_ids):
-            raise StopIteration
-
-        try:
-            index = self._result_thread.next_ready_index(timeout=timeout)
-            self._submit_next_chunk()
-        except queue.Empty:
-            raise TimeoutError
-
-        self._ready_objects.extend(self._result_thread.results()[index])
-        self._next_chunk_index += 1
-
-        return self._ready_objects.pop(0)
+        return self._ready_objects.popleft()
 
 
 @ray.remote
 class PoolActor(object):
     def __init__(self, initializer=None, initargs=None):
         if initializer:
-            if initargs is None:
-                initargs = ()
+            initargs = initargs or ()
             initializer(*initargs)
 
     def ping(self):
+        # Used to wait for this actor to be initialized.
         pass
 
     def run_batch(self, func, batch):
         results = []
         for args, kwargs in batch:
-            if args is None:
-                args = tuple()
-            if kwargs is None:
-                kwargs = {}
+            args = args or ()
+            kwargs = kwargs or {}
             try:
                 results.append(func(*args, **kwargs))
             except Exception as e:
@@ -270,24 +265,30 @@ class Pool(object):
                  processes=None,
                  initializer=None,
                  initargs=None,
-                 maxtasksperchild=None):
+                 maxtasksperchild=None,
+                 ray_address=None):
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs
-        self._maxtasksperchild = maxtasksperchild if maxtasksperchild else -1
+        self._maxtasksperchild = maxtasksperchild or -1
         self._actor_deletion_ids = []
 
-        processes = self._init_ray(processes)
+        processes = self._init_ray(processes, ray_address)
         self._start_actor_pool(processes)
 
-    def _init_ray(self, processes=None):
+    def _init_ray(self, processes=None, ray_address=None):
+        # Initialize ray. If ray is already initialized, we do nothing.
+        # Else, the priority is:
+        # ray_address argument > RAY_ADDRESS > start new local cluster.
         if not ray.is_initialized():
+            if ray_address is None and RAY_ADDRESS_ENV in os.environ:
+                ray_address = os.environ[RAY_ADDRESS_ENV]
+
             # Cluster mode.
-            if "RAY_ADDRESS" in os.environ:
-                address = os.environ["RAY_ADDRESS"]
+            if ray_address is not None:
                 print("Connecting to ray cluster at address='{}'".format(
-                    address))
-                ray.init(address=address)
+                    ray_address))
+                ray.init(address=ray_address)
             # Local mode.
             else:
                 print("Starting local ray cluster")
@@ -296,7 +297,9 @@ class Pool(object):
         ray_cpus = int(ray.state.cluster_resources()["CPU"])
         if processes is None:
             processes = ray_cpus
-        elif ray_cpus < processes:
+        if processes <= 0:
+            raise ValueError("Processes in the pool must be >0.")
+        if ray_cpus < processes:
             raise ValueError("Tried to start a pool with {} processes on an "
                              "existing ray cluster, but there are only {} "
                              "CPUs in the ray cluster.".format(
@@ -333,11 +336,15 @@ class Pool(object):
         # due to a limitation in cloudpickle.
         return (PoolActor.remote(self._initializer, self._initargs), 0)
 
+    def _random_actor_index(self):
+        return random.randrange(len(self._actor_pool))
+
     # Batch should be a list of tuples: (args, kwargs).
     def _run_batch(self, actor_index, func, batch):
         actor, count = self._actor_pool[actor_index]
         object_id = actor.run_batch.remote(func, batch)
         count += 1
+        assert self._maxtasksperchild == -1 or count <= self._maxtasksperchild
         if count == self._maxtasksperchild:
             self._stop_actor(actor)
             actor, count = self._new_actor_entry()
@@ -354,8 +361,8 @@ class Pool(object):
                     callback=None,
                     error_callback=None):
         self._check_running()
-        random_actor_index = random.randrange(len(self._actor_pool))
-        object_id = self._run_batch(random_actor_index, func, [(args, kwargs)])
+        object_id = self._run_batch(self._random_actor_index(), func,
+                                    [(args, kwargs)])
         return AsyncResult(
             [object_id], callback, error_callback, single_result=True)
 
@@ -420,14 +427,16 @@ class Pool(object):
         chunk = []
         while len(chunk) < chunksize:
             try:
-                args = iterator.__next__()
+                args = next(iterator)
                 if not unpack_args:
                     args = (args, )
                 chunk.append((args, {}))
             except StopIteration:
                 break
-        if len(chunk) == 0:
-            return None
+
+        # Nothing to submit. The caller should prevent this.
+        assert len(chunk) > 0
+
         return self._run_batch(actor_index, func, chunk)
 
     def _chunk_and_run(self, func, iterable, chunksize=None,

@@ -42,7 +42,6 @@ def pool_4_processes():
 
 def test_initialize_ray(cleanup_only):
     def getpid(args):
-        import os
         return os.getpid()
 
     def check_pool_size(pool, size):
@@ -88,6 +87,14 @@ def test_initialize_ray(cleanup_only):
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == init_cpus
     check_pool_size(pool, init_cpus)
+    ray.shutdown()
+
+    # Check that starting a pool connects to a running ray cluster if
+    # ray_address is passed in.
+    pool = Pool(ray_address="auto")
+    assert ray.is_initialized()
+    assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
+    check_pool_size(pool, start_cpus)
     ray.shutdown()
 
     # Set RAY_ADDRESS, so pools should connect to the running ray cluster.
@@ -176,6 +183,7 @@ def test_terminate(pool_4_processes):
     # terminate() should interrupt pending tasks, so check that join() returns
     # even though the tasks should be blocked forever.
     pool_4_processes.join()
+    result.wait(timeout=10)
     assert result.ready()
     assert not result.successful()
 
@@ -257,7 +265,6 @@ def test_apply_async(pool):
 
 def test_map(pool_4_processes):
     def f(index):
-        import os
         return index, os.getpid()
 
     results = pool_4_processes.map(f, range(1000))
@@ -281,7 +288,6 @@ def test_map(pool_4_processes):
 
 def test_map_async(pool_4_processes):
     def f(args):
-        import os
         index = args[0]
         ray.get(args[1])
         return index, os.getpid()
@@ -330,7 +336,7 @@ def test_starmap(pool):
     def f(*args):
         return args
 
-    args = [tuple([j for j in range(i)]) for i in range(100)]
+    args = [tuple(range(i)) for i in range(100)]
     assert pool.starmap(f, args) == args
 
 
@@ -381,12 +387,10 @@ def test_callbacks(pool_4_processes):
     # Check that callbacks were processed in the order that the tasks finished.
     # NOTE: this could be flaky if the calls happened to finish in order due
     # to the random sleeps, but it's very unlikely.
-    assert not all([
-        i in error_indices or i == result
-        for i, result in enumerate(callback_results)
-    ])
+    assert not all(i in error_indices or i == result
+                   for i, result in enumerate(callback_results))
     # Check that the correct callbacks were called on errors/successes.
-    assert all([index not in callback_results for index in error_indices])
+    assert all(index not in callback_results for index in error_indices)
     assert [isinstance(result, Exception)
             for result in callback_results].count(True) == len(error_indices)
 
@@ -402,7 +406,7 @@ def test_imap(pool_4_processes):
 
     error_indices = [2, 50, 98]
     result_iter = pool_4_processes.imap(
-        f, [(index, error_indices) for index in range(100)])
+        f, [(index, error_indices) for index in range(100)], chunksize=11)
     for i in range(100):
         result = result_iter.next()
         if i in error_indices:
@@ -427,7 +431,7 @@ def test_imap_unordered(pool_4_processes):
     in_order = []
     num_errors = 0
     result_iter = pool_4_processes.imap_unordered(
-        f, [(index, error_indices) for index in range(100)])
+        f, [(index, error_indices) for index in range(100)], chunksize=11)
     for i in range(100):
         result = result_iter.next()
         if isinstance(result, Exception):
@@ -448,6 +452,7 @@ def test_imap_unordered(pool_4_processes):
 
 def test_imap_timeout(pool_4_processes):
     def f(args):
+        time.sleep(0.1 * random.random())
         index = args[0]
         wait_index = args[1]
         object_id = args[2]
@@ -474,7 +479,8 @@ def test_imap_timeout(pool_4_processes):
     wait_index = 23
     object_id = ray.ObjectID.from_random()
     result_iter = pool_4_processes.imap_unordered(
-        f, [(index, wait_index, object_id) for index in range(100)])
+        f, [(index, wait_index, object_id) for index in range(100)],
+        chunksize=11)
     in_order = []
     for i in range(100):
         try:
