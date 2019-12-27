@@ -368,8 +368,8 @@ Status Set<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   auto on_subscribe = [subscribe](RedisGcsClient *client, const ID &id,
                                   const GcsChangeMode change_mode,
                                   const std::vector<Data> &data) {
-    EntryChangeNotification<Data> change_notification(change_mode, data);
-    std::vector<EntryChangeNotification<Data>> notification_vec;
+    ArrayNotification<Data> change_notification(change_mode, data);
+    std::vector<ArrayNotification<Data>> notification_vec;
     notification_vec.emplace_back(std::move(change_notification));
     subscribe(client, id, notification_vec);
   };
@@ -498,7 +498,11 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
             data_map.emplace(key, std::move(value));
           }
         }
-        subscribe(client_, id, gcs_entry.change_mode(), data_map);
+        MapNotification<std::string, Data> notification(gcs_entry.change_mode(),
+                                                        data_map);
+        std::vector<MapNotification<std::string, Data>> notification_vec;
+        notification_vec.emplace_back(std::move(notification));
+        subscribe(client_, id, notification_vec);
       }
     }
   };

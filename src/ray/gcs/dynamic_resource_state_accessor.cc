@@ -5,7 +5,7 @@ namespace ray {
 
 namespace gcs {
 
-DynamicResourceStateAccessor::DynamicResourceStateAccessor(RedisGcsClient &client_impl)
+DynamicResourceStateAccessor::DynamicResourceStateAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), resource_sub_executor_(client_impl_->resource_table()) {}
 
 Status DynamicResourceStateAccessor::AsyncGetResource(
@@ -56,7 +56,7 @@ Status DynamicResourceStateAccessor::AsyncSubscribeResource(
     const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return resource_sub_executor_.AsyncSubscribe(ClientID::Nil(), subscribe, done);
+  return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 }  // namespace gcs
