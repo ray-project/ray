@@ -1,13 +1,12 @@
 #include <iostream>
 
+#include "gflags/gflags.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
-
-#include "gflags/gflags.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -125,6 +124,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().debug_dump_period_milliseconds();
   node_manager_config.fair_queueing_enabled =
       RayConfig::instance().fair_queueing_enabled();
+  node_manager_config.object_pinning_enabled =
+      RayConfig::instance().object_pinning_enabled();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
   node_manager_config.temp_dir = temp_dir;

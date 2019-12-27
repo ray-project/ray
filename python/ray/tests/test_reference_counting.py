@@ -4,10 +4,12 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import json
 import copy
 import tempfile
 import numpy as np
 import time
+import pytest
 import logging
 import uuid
 
@@ -160,8 +162,8 @@ def test_basic_pinning(shutdown_only):
     ray.init(object_store_memory=100 * 1024 * 1024)
 
     @ray.remote
-    def shuffle(input):
-        return np.random.shuffle(input)
+    def f(array):
+        return np.sum(array)
 
     @ray.remote
     class Actor(object):
@@ -180,7 +182,7 @@ def test_basic_pinning(shutdown_only):
     # evicted before the long-lived object whose reference is held by
     # the actor.
     for batch in range(10):
-        intermediate_result = shuffle.remote(
+        intermediate_result = f.remote(
             np.zeros(10 * 1024 * 1024, dtype=np.uint8))
         ray.get(intermediate_result)
 
@@ -215,7 +217,41 @@ def test_pending_task_dependency_pinning(shutdown_only):
     ray.get(oid)
 
 
+def test_feature_flag(shutdown_only):
+    ray.init(
+        object_store_memory=100 * 1024 * 1024,
+        _internal_config=json.dumps({
+            "object_pinning_enabled": 0
+        }))
+
+    @ray.remote
+    def f(array):
+        return np.sum(array)
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            # Hold a long-lived reference to a ray.put object. This should not
+            # be garbage collected while the actor is alive.
+            self.large_object = ray.put(
+                np.zeros(25 * 1024 * 1024, dtype=np.uint8))
+
+        def get_large_object(self):
+            return ray.get(self.large_object)
+
+    actor = Actor.remote()
+
+    for batch in range(10):
+        intermediate_result = f.remote(
+            np.zeros(10 * 1024 * 1024, dtype=np.uint8))
+        ray.get(intermediate_result)
+
+    # The ray.get below fails with only LRU eviction, as the object
+    # that was ray.put by the actor should have been evicted.
+    with pytest.raises(ray.exceptions.RayTimeoutError):
+        ray.get(actor.get_large_object.remote(), timeout=1)
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

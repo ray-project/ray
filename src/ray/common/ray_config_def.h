@@ -40,6 +40,10 @@ RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 /// type of task from starving other types (see issue #3664).
 RAY_CONFIG(bool, fair_queueing_enabled, true)
 
+/// Whether to enable object pinning for plasma objects. When this is
+/// enabled, objects in scope in the cluster will not be LRU evicted.
+RAY_CONFIG(bool, object_pinning_enabled, true)
+
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.

@@ -181,7 +181,7 @@ py_test(
 
 py_test(
     name = "test_reference_counting",
-    size = "small",
+    size = "medium",
     srcs = ["test_reference_counting.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],

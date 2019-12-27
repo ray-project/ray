@@ -84,6 +84,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
+      object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       initial_config_(config),
@@ -2932,6 +2933,10 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &request,
                                             rpc::PinObjectIDsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  if (!object_pinning_enabled_) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
   WorkerID worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
   auto it = worker_rpc_clients_.find(worker_id);
   if (it == worker_rpc_clients_.end()) {
@@ -2966,11 +2971,11 @@ void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &requ
     ObjectID object_id = ObjectID::FromBinary(object_id_binary);
 
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
-    auto ray_object = std::unique_ptr<RayObject>(
-        new RayObject(std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                      std::make_shared<PlasmaBuffer>(plasma_results[i].metadata)));
+    pinned_objects_.emplace(
+        object_id, std::unique_ptr<RayObject>(new RayObject(
+                       std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata))));
     i++;
-    pinned_objects_.emplace(object_id, std::move(ray_object));
 
     rpc::WaitForObjectEvictionRequest wait_request;
     wait_request.set_object_id(object_id_binary);
