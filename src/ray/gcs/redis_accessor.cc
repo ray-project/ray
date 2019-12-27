@@ -251,6 +251,11 @@ const GcsNodeInfo &RedisNodeInfoAccessor::GetSelfInfo() const {
   return client_table.GetLocalClient();
 }
 
+Status RedisNodeInfoAccessor::Register(const GcsNodeInfo &node_info) {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.Register(node_info);
+}
+
 Status RedisNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
                                               const StatusCallback &callback) {
   ClientTable::WriteCallback on_done = nullptr;
@@ -275,7 +280,14 @@ Status RedisNodeInfoAccessor::AsyncGetAll(
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ClientID &id,
                             const std::vector<GcsNodeInfo> &data) {
-    callback(Status::OK(), data);
+    std::vector<GcsNodeInfo> result;
+    std::set<std::string> node_ids;
+    for (int index = data.size() - 1; index >= 0; --index) {
+      if (node_ids.insert(data[index].node_id()).second) {
+        result.emplace_back(data[index]);
+      }
+    }
+    callback(Status::OK(), result);
   };
   ClientTable &client_table = client_impl_->client_table();
   return client_table.Lookup(on_done);

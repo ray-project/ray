@@ -621,6 +621,12 @@ Status ClientTable::Disconnect() {
   return status;
 }
 
+ray::Status ClientTable::Register(const GcsNodeInfo &node_info) {
+  RAY_CHECK(node_info.state() == GcsNodeInfo::ALIVE);
+  auto node_info_ptr = std::make_shared<GcsNodeInfo>(node_info);
+  return SyncAppend(JobID::Nil(), client_log_key_, node_info_ptr);
+}
+
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id,
                                           const WriteCallback &done) {
   auto node_info = std::make_shared<GcsNodeInfo>();
