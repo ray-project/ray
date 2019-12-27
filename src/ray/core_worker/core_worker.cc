@@ -113,7 +113,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                                   std::placeholders::_2, std::placeholders::_3);
     auto exit = [this](bool intentional) {
       // Release the resources early in case draining takes a long time.
-      // Ignore any errors if the raylet is already shut down.
       RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
       task_manager_->DrainAndShutdown([this, intentional]() {
         // To avoid problems, make sure shutdown is always called from the same
