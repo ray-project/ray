@@ -1,38 +1,73 @@
-Multiprocessing API on Ray
-==========================
+multiprocessing.Pool API (Experimental)
+=======================================
 
 .. warning::
 
-  Support for the multiprocessing API on Ray is an experimental feature,
+  Support for the multiprocessing.Pool API on Ray is an experimental feature,
   so it may be changed at any time without warning. If you encounter any
-  bugs/shortcomings that aren't listed in the `Known Limitations`_ section
-  below, please file an `issue on GitHub`_. Contributions are always welcome!
+  bugs/shortcomings/incompatibilities, please file an `issue on GitHub`_.
+  Contributions are always welcome!
 
-Ray offers a subset of the `Python multiprocessing API`_ that makes it easy
-for you to scale existing applications that use multiprocessing to a cluster.
+.. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
-Features
---------
+Ray supports running distributed python programs with the `multiprocessing.Pool API`_
+using `Ray Actors <actors.html>`__ instead of local processes. This makes it easy
+to scale existing applications that use ``multiprocessing.Pool`` from a single node
+to a cluster.
 
-Currently, only the ``multiprocessing.Pool`` API is supported.
+.. _`multiprocessing.Pool API`: https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 
-Usage
------
+Quickstart
+----------
 
-Just replace
-``from multiprocessing import Pool`` with
-``from ray.experimental.multiprocessing import Pool`` for a drop-in replacement.
+To get started, first `install Ray <installation.html>`__, then use 
+``ray.experimental.multiprocessing.Pool``in place of ``multiprocessing.Pool``.
+This will start a local Ray cluster the first time you create a ``Pool`` and
+distribute your tasks across it. See the `Run on a Cluster`_ section below for
+instructions to run on a multi-node Ray cluster instead.
 
-If there is no Ray cluster running (i.e., started with ``ray.init``), a new one
-will be instantiated when the first ``Pool`` is created. If a local Ray cluster is
-already running, a new one won't be created.
+.. code-block:: python
 
-If you want to connect to an existing Ray cluster than spans multiple machines,
-just set the environment variable ``RAY_ADDRESS=<address>``. If running on the head
-node, you can use ``RAY_ADDRESS=auto``.
+  from ray.experimental.multiprocessing import Pool
 
-Known Limitations
------------------
+  def f(index):
+      return index
 
-Initializer cannot be used to modify the global namespace (e.g., import packages or set global variables).
-Can't pickle generator objects.
+  pool = Pool()
+  for result in pool.map(f, range(100)):
+      print(result)
+
+The full ``multiprocessing.Pool`` API is currently supported. Please see the
+`multiprocessing documentation`_ for details.
+
+.. _`multiprocessing documentation`: https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
+
+Run on a Cluster
+----------------
+
+This section assumes that you have a running Ray cluster. To start a Ray cluster,
+please refer to the `cluster setup <cluster-index.html>`__ instructions.
+
+To connect a ``Pool`` to a running Ray cluster, you can specify the address of the
+head node in one of two ways:
+
+- By setting the ``RAY_ADDRESS`` environment variable.
+- By passing the ``ray_address`` keyword argument to the ``Pool`` constructor.
+
+.. code-block:: python
+
+  from ray.experimental.multiprocessing import Pool
+
+  # Starts a new local Ray cluster.
+  pool = Pool()
+
+  # Connects to a running Ray cluster, with the current node as the head node.
+  # Alternatively, set the environment variable RAY_ADDRESS="auto".
+  pool = Pool(ray_address="auto")
+
+  # Connects to a running Ray cluster, with a remote node as the head node.
+  # Alternatively, set the environment variable RAY_ADDRESS="<ip_address>:<port>".
+  pool = Pool(ray_address="<ip_address>:<port>")
+
+You can also start Ray manually by calling ``ray.init()`` (with any of its supported
+configuration options) before creating a ``Pool``.

@@ -133,24 +133,6 @@ def test_initializer(cleanup_only):
         pool.terminate()
 
 
-@pytest.mark.skip(reason="Modifying globals in initializer not working.")
-def test_initializer_globals(cleanup_only):
-    def init(arg1, arg2):
-        global x
-        x = arg1 + arg2
-
-    pool = Pool(processes=4, initializer=init, initargs=(1, 2))
-
-    def get(i):
-        return x
-
-    for result in pool.map(get, range(100)):
-        assert result == 3
-
-    pool.terminate()
-    ray.shutdown()
-
-
 def test_close(pool_4_processes):
     def f(object_id):
         return ray.get(object_id)
