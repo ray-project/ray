@@ -81,7 +81,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     CRayStatus() nogil,
                     c_bool ref_counting_enabled)
-        void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
 

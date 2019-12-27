@@ -102,6 +102,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
+  actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
+
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
                                                  io_service_, gcs_client_);
@@ -187,7 +189,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(new TaskManager(
-      memory_store_, reference_counter_, nullptr, [this](const TaskSpecification &spec) {
+      memory_store_, reference_counter_, actor_manager_,
+      [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
@@ -661,8 +664,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   if (actor_creation_options.is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
-                                  actor_creation_options.max_reconstructions);
+    task_manager_->AddPendingTask(
+        GetCallerId(), rpc_address_, task_spec,
+        std::max(RayConfig::instance().actor_creation_min_retries(),
+                 actor_creation_options.max_reconstructions));
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
