@@ -617,7 +617,7 @@ class CoreWorker {
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
 
-  // Interface for publishing actor creation.	
+  // Interface for publishing actor creation.
   std::shared_ptr<ActorManager> actor_manager_;
 
   // Interface to submit tasks directly to other actors.
