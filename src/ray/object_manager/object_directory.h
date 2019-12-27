@@ -33,8 +33,6 @@ class ObjectDirectoryInterface {
  public:
   virtual ~ObjectDirectoryInterface() {}
 
-  virtual void RegisterBackend() = 0;
-
   /// Lookup how to connect to a remote object manager.
   ///
   /// \param connection_info The connection information to fill out. This
@@ -134,8 +132,6 @@ class ObjectDirectory : public ObjectDirectoryInterface {
                   std::shared_ptr<gcs::RedisGcsClient> &gcs_client);
 
   virtual ~ObjectDirectory() {}
-
-  void RegisterBackend() override;
 
   void LookupRemoteConnectionInfo(RemoteConnectionInfo &connection_info) const override;
 

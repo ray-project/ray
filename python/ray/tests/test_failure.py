@@ -888,9 +888,6 @@ def test_fill_object_store_exception(ray_start_cluster_head):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
 
 
-@pytest.mark.skipif(
-    not RAY_FORCE_DIRECT,
-    reason="raylet path attempts reconstruction for evicted objects")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_nodes": 1,
@@ -925,9 +922,6 @@ def test_direct_call_eviction(ray_start_cluster):
         ray.get(dependent_task.remote(obj))
 
 
-@pytest.mark.skipif(
-    not RAY_FORCE_DIRECT,
-    reason="raylet path attempts reconstruction for evicted objects")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_nodes": 1,

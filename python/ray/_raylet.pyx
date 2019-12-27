@@ -787,11 +787,6 @@ cdef class CoreWorker:
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, True))
 
-    def disconnect(self):
-        self.destory_event_loop_if_exists()
-        with nogil:
-            self.core_worker.get().Disconnect()
-
     def run_task_loop(self):
         with nogil:
             self.core_worker.get().StartExecutingTasks()
