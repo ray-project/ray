@@ -1450,7 +1450,7 @@ def test_kill(ray_start_regular):
 # This test verifies actor creation task failure will not
 # hang the caller.
 def test_actor_creation_task_crash(ray_start_regular):
-     # Test actor death in constructor.
+    # Test actor death in constructor.
     @ray.remote(max_reconstructions=0)
     class Actor(object):
         def __init__(self):
