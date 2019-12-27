@@ -12,6 +12,7 @@
 #include "ray/util/logging.h"
 
 #include "ray/gcs/callback.h"
+#include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/protobuf/gcs.pb.h"
 
@@ -93,9 +94,11 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
  public:
   using Callback = std::function<void(RedisGcsClient *client, const ID &id,
                                       const std::vector<Data> &data)>;
+
   using NotificationCallback =
       std::function<void(RedisGcsClient *client, const ID &id,
                          const GcsChangeMode change_mode, const std::vector<Data> &data)>;
+
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to
@@ -164,6 +167,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// called with an empty vector, then there was no data at the key.
   /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
+
   /// Subscribe to any Append operations to this table. The caller may choose
   /// requests notifications for. This may only be called once per Log
   ///
@@ -210,6 +214,28 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Status CancelNotifications(const JobID &job_id, const ID &id, const ClientID &client_id,
                              const StatusCallback &done);
 
+  /// Subscribe to any modifications to the key. The caller may choose
+  /// to subscribe to all modifications, or to subscribe only to keys that it
+  /// requests notifications for. This may only be called once per Log
+  /// instance. This function is different from public version due to
+  /// an additional parameter change_mode in NotificationCallback. Therefore this
+  /// function supports notifications of remove operations.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Add to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe Callback that is called on each received message. If the
+  /// callback is called with an empty vector, then there was no data at the key.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const NotificationCallback &subscribe,
+                   const SubscriptionCallback &done);
+
   /// Delete an entire key from redis.
   ///
   /// \param job_id The ID of the job.
@@ -234,28 +260,6 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
     static std::hash<ID> index;
     return shard_contexts_[index(id) % shard_contexts_.size()];
   }
-
-  /// Subscribe to any modifications to the key. The caller may choose
-  /// to subscribe to all modifications, or to subscribe only to keys that it
-  /// requests notifications for. This may only be called once per Log
-  /// instance. This function is different from public version due to
-  /// an additional parameter change_mode in NotificationCallback. Therefore this
-  /// function supports notifications of remove operations.
-  ///
-  /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
-  /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
-  /// table via `RequestNotifications`.
-  /// \param subscribe Callback that is called on each received message. If the
-  /// callback is called with an empty vector, then there was no data at the key.
-  /// \param done Callback that is called when subscription is complete and we
-  /// are ready to receive messages.
-  /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const NotificationCallback &subscribe,
-                   const SubscriptionCallback &done);
 
   /// The connection to the GCS.
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
@@ -435,7 +439,6 @@ class Set : private Log<ID, Data>,
  public:
   using Callback = typename Log<ID, Data>::Callback;
   using WriteCallback = typename Log<ID, Data>::WriteCallback;
-  using NotificationCallback = typename Log<ID, Data>::NotificationCallback;
   using SubscriptionCallback = typename Log<ID, Data>::SubscriptionCallback;
 
   Set(const std::vector<std::shared_ptr<RedisContext>> &contexts, RedisGcsClient *client)
@@ -468,11 +471,24 @@ class Set : private Log<ID, Data>,
   Status Remove(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                 const WriteCallback &done);
 
+  using NotificationCallback =
+      std::function<void(RedisGcsClient *client, const ID &id,
+                         const std::vector<ObjectChangeNotification> &data)>;
+  /// Subscribe to any add or remove operations to this table.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each add or remove to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe Callback that is called on each received message.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
   Status Subscribe(const JobID &job_id, const ClientID &client_id,
                    const NotificationCallback &subscribe,
-                   const SubscriptionCallback &done) {
-    return Log<ID, Data>::Subscribe(job_id, client_id, subscribe, done);
-  }
+                   const SubscriptionCallback &done);
 
   /// Returns debug string for class.
   ///

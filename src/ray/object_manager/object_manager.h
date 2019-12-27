@@ -157,9 +157,6 @@ class ObjectManager : public ObjectManagerInterface,
 
   ~ObjectManager();
 
-  /// Register GCS-related functionality.
-  void RegisterGcs();
-
   /// Subscribe to notifications of objects added to local store.
   /// Upon subscribing, the callback will be invoked for all objects that
   ///

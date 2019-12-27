@@ -136,8 +136,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
-  object_manager_.RegisterGcs();
-
   const auto task_lease_notification_callback = [this](gcs::RedisGcsClient *client,
                                                        const TaskID &task_id,
                                                        const TaskLeaseData &task_lease) {

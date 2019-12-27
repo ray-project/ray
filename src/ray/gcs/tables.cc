@@ -362,6 +362,21 @@ Status Set<ID, Data>::Remove(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
+Status Set<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                const NotificationCallback &subscribe,
+                                const SubscriptionCallback &done) {
+  auto on_subscribe = [subscribe](RedisGcsClient *client, const ID &id,
+                                  const GcsChangeMode change_mode,
+                                  const std::vector<Data> &data) {
+    EntryChangeNotification<Data> change_notification(change_mode, data);
+    std::vector<EntryChangeNotification<Data>> notification_vec;
+    notification_vec.emplace_back(std::move(change_notification));
+    subscribe(client, id, notification_vec);
+  };
+  return Log<ID, Data>::Subscribe(job_id, client_id, on_subscribe, done);
+}
+
+template <typename ID, typename Data>
 std::string Set<ID, Data>::DebugString() const {
   std::stringstream result;
   result << "num lookups: " << num_lookups_ << ", num adds: " << num_adds_
