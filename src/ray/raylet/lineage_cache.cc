@@ -152,15 +152,15 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
   }
 }
 
-LineageCache::LineageCache(std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+LineageCache::LineageCache(const ClientID &self_node_id,
+                           std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                            uint64_t max_lineage_size)
-    : gcs_client_(gcs_client) {}
+    : self_node_id_(self_node_id), gcs_client_(gcs_client) {}
 
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage) {
-  RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on "
-                 << gcs_client_->client_table().GetLocalClientId();
+  RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << self_node_id_;
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
   auto entry = uncommitted_lineage.GetEntry(task_id);
@@ -191,8 +191,7 @@ bool LineageCache::CommitTask(const Task &task) {
     return true;
   }
   const TaskID task_id = task.GetTaskSpecification().TaskId();
-  RAY_LOG(DEBUG) << "Committing task " << task_id << " on "
-                 << gcs_client_->client_table().GetLocalClientId();
+  RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << self_node_id_;
 
   if (lineage_.SetEntry(task, GcsStatus::UNCOMMITTED) ||
       lineage_.GetEntry(task_id)->GetStatus() == GcsStatus::UNCOMMITTED) {
@@ -339,8 +338,7 @@ void LineageCache::EvictTask(const TaskID &task_id) {
   }
 
   // Evict the task.
-  RAY_LOG(DEBUG) << "Evicting task " << task_id << " on "
-                 << gcs_client_->client_table().GetLocalClientId();
+  RAY_LOG(DEBUG) << "Evicting task " << task_id << " on " << self_node_id_;
   lineage_.PopEntry(task_id);
   // Try to evict the children of the evict task. These are the tasks that have
   // a dependency on the evicted task.

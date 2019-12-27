@@ -787,11 +787,6 @@ cdef class CoreWorker:
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, True))
 
-    def disconnect(self):
-        self.destory_event_loop_if_exists()
-        with nogil:
-            self.core_worker.get().Disconnect()
-
     def run_task_loop(self):
         with nogil:
             self.core_worker.get().StartExecutingTasks()
@@ -1033,6 +1028,14 @@ cdef class CoreWorker:
                       args_vector, task_options, &return_ids))
 
             return VectorToObjectIDs(return_ids)
+
+    def kill_actor(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            check_status(self.core_worker.get().KillActor(
+                  c_actor_id))
 
     def resource_ids(self):
         cdef:

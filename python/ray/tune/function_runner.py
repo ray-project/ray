@@ -7,6 +7,7 @@ import time
 import inspect
 import threading
 import traceback
+import sys
 from six.moves import queue
 
 from ray.tune import track
@@ -248,7 +249,10 @@ def wrap_function(train_func):
 
     use_track = False
     try:
-        func_args = inspect.getargspec(train_func).args
+        if sys.version_info >= (3, 3):
+            func_args = inspect.getfullargspec(train_func).args
+        else:
+            func_args = inspect.getargspec(train_func).args
         use_track = ("reporter" not in func_args and len(func_args) == 1)
         if use_track:
             logger.info("tune.track signature detected.")

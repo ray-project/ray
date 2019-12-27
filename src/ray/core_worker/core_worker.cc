@@ -96,17 +96,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
     RayLog::InstallFailureSignalHandler();
   }
+  RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
 
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  direct_actor_table_subscriber_ = std::unique_ptr<
-      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>(
-      new gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>(
-          gcs_client_->direct_actor_table()));
-
-  actor_manager_ =
-      std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->direct_actor_table()));
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
@@ -193,8 +187,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(new TaskManager(
-      memory_store_, reference_counter_, actor_manager_,
-      [this](const TaskSpecification &spec) {
+      memory_store_, reference_counter_, nullptr, [this](const TaskSpecification &spec) {
         // Retry after a delay to emulate the existing Raylet reconstruction
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
@@ -300,8 +293,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   if (actor_id_.IsNil() && task_id.IsNil()) {
     absl::MutexLock lock(&actor_handles_mutex_);
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncUnsubscribe(
-          gcs_client_->client_table().GetLocalClientId(), handle.first, nullptr));
+      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
     actor_handles_.clear();
   }
@@ -658,8 +650,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   if (actor_creation_options.is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
-                                  actor_creation_options.max_reconstructions);
+    task_manager_->AddPendingTask(
+        GetCallerId(), rpc_address_, task_spec,
+        std::max(RayConfig::instance().actor_creation_min_retries(),
+                 actor_creation_options.max_reconstructions));
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
@@ -715,6 +709,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
+Status CoreWorker::KillActor(const ActorID &actor_id) {
+  ActorHandle *actor_handle = nullptr;
+  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  RAY_CHECK(actor_handle->IsDirectCallActor());
+  return direct_actor_submitter_->KillActor(actor_id);
+}
+
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const ActorID actor_id = actor_handle->GetActorID();
@@ -741,8 +742,20 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
-      RAY_CHECK(actor_data.state() != gcs::ActorTableData::RECONSTRUCTING);
-      if (actor_data.state() == gcs::ActorTableData::DEAD) {
+      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+        absl::MutexLock lock(&actor_handles_mutex_);
+        auto it = actor_handles_.find(actor_id);
+        RAY_CHECK(it != actor_handles_.end());
+        if (it->second->IsDirectCallActor()) {
+          // We have to reset the actor handle since the next instance of the
+          // actor will not have the last sequence number that we sent.
+          // TODO: Remove the check for direct calls. We do not reset for the
+          // raylet codepath because it tries to replay all tasks since the
+          // last actor checkpoint.
+          it->second->Reset();
+        }
+        direct_actor_submitter_->DisconnectActor(actor_id, false);
+      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
 
         ActorHandle *actor_handle = nullptr;
@@ -764,9 +777,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                     << ClientID::FromBinary(actor_data.address().raylet_id());
     };
 
-    RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
-        gcs_client_->client_table().GetLocalClientId(), actor_id,
-        actor_notification_callback, nullptr));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+        actor_id, actor_notification_callback, nullptr));
   }
   return inserted;
 }
@@ -853,6 +865,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    RAY_LOG(INFO) << "Creating actor: " << actor_id_;
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
@@ -1030,6 +1043,24 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
     // The task is done. Send the reply immediately.
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
+}
+
+void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
+                                 rpc::KillActorReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
+  ActorID intended_actor_id = ActorID::FromBinary(request.intended_actor_id());
+  if (intended_actor_id != worker_context_.GetCurrentActorID()) {
+    std::ostringstream stream;
+    stream << "Mismatched ActorID: ignoring KillActor for previous actor "
+           << intended_actor_id
+           << ", current actor ID: " << worker_context_.GetCurrentActorID();
+    auto msg = stream.str();
+    RAY_LOG(ERROR) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return;
+  }
+  RAY_LOG(INFO) << "Got KillActor, shutting down...";
+  Shutdown();
 }
 
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,

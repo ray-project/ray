@@ -1,15 +1,15 @@
 #ifndef RAY_RPC_CORE_WORKER_CLIENT_H
 #define RAY_RPC_CORE_WORKER_CLIENT_H
 
+#include <grpcpp/grpcpp.h>
+
 #include <deque>
 #include <memory>
 #include <mutex>
 #include <thread>
 
-#include <grpcpp/grpcpp.h>
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
-
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/logging.h"
@@ -121,6 +121,12 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  /// Tell this actor to exit immediately.
+  virtual ray::Status KillActor(const KillActorRequest &request,
+                                const ClientCallback<KillActorReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ray::Status GetCoreWorkerStats(
       const GetCoreWorkerStatsRequest &request,
       const ClientCallback<GetCoreWorkerStatsReply> &callback) {
@@ -200,6 +206,15 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     auto call = client_call_manager_.CreateCall<CoreWorkerService, GetObjectStatusRequest,
                                                 GetObjectStatusReply>(
         *stub_, &CoreWorkerService::Stub::PrepareAsyncGetObjectStatus, request, callback);
+    return call->GetStatus();
+  }
+
+  virtual ray::Status KillActor(const KillActorRequest &request,
+                                const ClientCallback<KillActorReply> &callback) override {
+    auto call = client_call_manager_
+                    .CreateCall<CoreWorkerService, KillActorRequest, KillActorReply>(
+                        *stub_, &CoreWorkerService::Stub::PrepareAsyncKillActor, request,
+                        callback);
     return call->GetStatus();
   }
 

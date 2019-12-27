@@ -126,16 +126,25 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
   int num_task_adds_ = 0;
 };
 
+class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
+ public:
+  MockNodeInfoAccessor(gcs::RedisGcsClient *gcs_client, const ClientID &node_id)
+      : RedisNodeInfoAccessor(gcs_client), node_id_(node_id) {}
+
+  const ClientID &GetSelfId() const override { return node_id_; }
+
+ private:
+  ClientID node_id_;
+};
+
 class MockGcsClient : public gcs::RedisGcsClient {
  public:
-  MockGcsClient(const gcs::GcsClientOptions &options) : RedisGcsClient(options) {
-    client_table_fake_.reset(
-        new gcs::ClientTable({nullptr}, this, ClientID::FromRandom()));
+  MockGcsClient(const gcs::GcsClientOptions &options, const ClientID &node_id)
+      : RedisGcsClient(options) {
     task_table_fake_.reset(new gcs::raylet::TaskTable({nullptr}, this));
     task_accessor_.reset(new MockTaskInfoAccessor(this));
+    node_accessor_.reset(new MockNodeInfoAccessor(this, node_id));
   }
-
-  gcs::ClientTable &client_table() { return *client_table_fake_; }
 
   gcs::raylet::TaskTable &raylet_task_table() { return *task_table_fake_; }
 
@@ -144,7 +153,6 @@ class MockGcsClient : public gcs::RedisGcsClient {
   }
 
  private:
-  std::unique_ptr<gcs::ClientTable> client_table_fake_;
   std::unique_ptr<gcs::raylet::TaskTable> task_table_fake_;
 };
 
@@ -152,9 +160,9 @@ class LineageCacheTest : public ::testing::Test {
  public:
   LineageCacheTest() : max_lineage_size_(10), num_notifications_(0) {
     gcs::GcsClientOptions options("10.10.10.10", 12100, "");
-    mock_gcs_ = std::make_shared<MockGcsClient>(options);
+    mock_gcs_ = std::make_shared<MockGcsClient>(options, node_id_);
 
-    lineage_cache_.reset(new LineageCache(mock_gcs_, max_lineage_size_));
+    lineage_cache_.reset(new LineageCache(node_id_, mock_gcs_, max_lineage_size_));
 
     mock_gcs_->MockTasks().RegisterSubscribeCallback(
         [this](const TaskID &task_id, const TaskTableData &data) {
@@ -166,6 +174,7 @@ class LineageCacheTest : public ::testing::Test {
  protected:
   uint64_t max_lineage_size_;
   uint64_t num_notifications_;
+  ClientID node_id_{ClientID::FromRandom()};
   std::shared_ptr<MockGcsClient> mock_gcs_;
   std::unique_ptr<LineageCache> lineage_cache_;
 };

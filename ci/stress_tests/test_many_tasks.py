@@ -60,7 +60,6 @@ for i in range(10):
 stage_0_time = time.time() - start_time
 logger.info("Finished stage 0 after %s seconds.", stage_0_time)
 
-
 # Stage 1: Launch a bunch of tasks.
 stage_1_iterations = []
 start_time = time.time()
