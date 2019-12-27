@@ -16,10 +16,7 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray import ray_constants
 from ray.test_utils import run_string_as_driver
-
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -810,7 +807,6 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no ft yet")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
