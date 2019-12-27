@@ -17,8 +17,18 @@ StreamingMessageBundle::StreamingMessageBundle(uint64_t last_offset_seq_id,
 }
 
 StreamingMessageBundleMeta::StreamingMessageBundleMeta(
-    uint64_t message_bundle_ts, uint64_t last_offset_seq_id, uint32_t message_list_size,
-    StreamingMessageBundleType bundle_type)
+    const uint64_t &&message_bundle_ts, const uint64_t &&last_offset_seq_id,
+    const uint32_t &&message_list_size, const StreamingMessageBundleType &&bundle_type)
+    : message_bundle_ts_(message_bundle_ts),
+      last_message_id_(last_offset_seq_id),
+      message_list_size_(message_list_size),
+      bundle_type_(bundle_type) {
+  STREAMING_CHECK(message_list_size <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
+}
+
+StreamingMessageBundleMeta::StreamingMessageBundleMeta(
+    const uint64_t &message_bundle_ts, const uint64_t &last_offset_seq_id,
+    const uint32_t &message_list_size, const StreamingMessageBundleType &bundle_type)
     : message_bundle_ts_(message_bundle_ts),
       last_message_id_(last_offset_seq_id),
       message_list_size_(message_list_size),

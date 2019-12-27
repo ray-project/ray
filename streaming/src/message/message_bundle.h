@@ -45,8 +45,15 @@ class StreamingMessageBundleMeta {
   StreamingMessageBundleType bundle_type_;
 
  public:
-  explicit StreamingMessageBundleMeta(uint64_t, uint64_t, uint32_t,
-                                      StreamingMessageBundleType);
+  explicit StreamingMessageBundleMeta(const uint64_t &message_bunddle_tes,
+                                      const uint64_t &last_offset_seq_id,
+                                      const uint32_t &message_list_size,
+                                      const StreamingMessageBundleType &bundle_type);
+
+  explicit StreamingMessageBundleMeta(const uint64_t &&message_bunddle_tes,
+                                      const uint64_t &&last_offset_seq_id,
+                                      const uint32_t &&message_list_size,
+                                      const StreamingMessageBundleType &&bundle_type);
 
   explicit StreamingMessageBundleMeta(StreamingMessageBundleMeta *);
 
