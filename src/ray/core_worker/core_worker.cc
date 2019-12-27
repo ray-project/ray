@@ -1040,14 +1040,19 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   reply->set_webui_display(webui_display_);
-  // RAY_LOG(DEBUG) << "YYY task queue length" << direct_task_receiver_->SizeSchedulingQueue();
   reply->set_task_queue_length(num_tasks_accepted_ - num_tasks_executed_);
-  // reply->set_task_queue_length(task_manager_->NumPendingTask());
   reply->set_current_executed_task("test");
   reply->set_ip_address(rpc_address_.ip_address());
   reply->set_port(rpc_address_.port());
   reply->set_actor_id(actor_id_.Binary());
-  // reply->set_used_resources(resource_ids_);
+  auto used_resources_map = reply->mutable_used_resources();
+  for (auto const& it : *resource_ids_) {
+    double quantity = 0;
+    for (auto const& pair : it.second) {
+      quantity += pair.second;
+    }
+    (*used_resources_map)[it.first] = quantity;
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

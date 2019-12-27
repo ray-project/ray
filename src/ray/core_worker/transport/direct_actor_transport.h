@@ -468,8 +468,6 @@ class CoreWorkerDirectTaskReceiver {
 
   void SetActorAsAsync();
 
-  int64_t SizeSchedulingQueue();
-
  private:
   // Worker context.
   WorkerContext &worker_context_;

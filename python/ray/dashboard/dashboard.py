@@ -290,26 +290,24 @@ class NodeStats(threading.Thread):
             }
 
     def get_actor_tree(self, workers_info) -> Dict:
+        # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
         with self._node_stats_lock:
-            print("node stats has length", len(self._addr_to_actor_id))
             for addr, actor_id in self._addr_to_actor_id.items():
-                print(addr)
                 flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
                 flattened_tree[actor_id]["children"] = {}
                 parent_id = self._addr_to_actor_id.get(self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
         
-            print(len(workers_info))
             for worker_info in workers_info:
                 if not worker_info.get("isDriver", False):
                     addr = (worker_info["ipAddress"], worker_info["port"])
                     if addr in self._addr_to_actor_id:
-                        print("worker is not Driver", addr)
                         actor_id = self._addr_to_actor_id[addr]
                         flattened_tree[actor_id].update(worker_info)
 
+        # construct actor tree
         actor_tree = flattened_tree
         for actor_id, parent_id in child_to_parent.items():
             actor_tree[parent_id]["children"][actor_id] = actor_tree[actor_id]
