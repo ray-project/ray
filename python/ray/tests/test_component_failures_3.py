@@ -70,9 +70,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             # support reconstructing actors that died in the process of
             # being created.
             ready, _ = ray.wait(
-                children_out,
-                num_returns=len(children_out),
-                timeout=5 * 60.0)
+                children_out, num_returns=len(children_out), timeout=5 * 60.0)
             assert len(ready) == len(children_out)
 
         # Remove a node. Any actor creation tasks that were forwarded to this
