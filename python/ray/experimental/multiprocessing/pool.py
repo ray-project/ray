@@ -98,7 +98,11 @@ class ResultThread(threading.Thread):
         return self._results
 
     def next_ready_index(self, timeout=None):
-        return self._ready_index_queue.get(timeout=timeout)
+        try:
+            return self._ready_index_queue.get(timeout=timeout)
+        except queue.Empty:
+            # queue.Queue signals a timeout by raising queue.Empty.
+            raise TimeoutError
 
 
 class AsyncResult(object):
@@ -192,13 +196,8 @@ class OrderedIMapIterator(IMapIterator):
 
             while timeout is None or timeout > 0:
                 start = time.time()
-                try:
-                    index = self._result_thread.next_ready_index(
-                        timeout=timeout)
-                    self._submit_next_chunk()
-                except queue.Empty:
-                    # queue.Queue signals a timeout by raising queue.Empty.
-                    raise TimeoutError
+                index = self._result_thread.next_ready_index(timeout=timeout)
+                self._submit_next_chunk()
                 self._submitted_chunks[index] = True
                 if index == self._next_chunk_index:
                     break
@@ -222,11 +221,8 @@ class UnorderedIMapIterator(IMapIterator):
             if self._next_chunk_index == self._total_chunks:
                 raise StopIteration
 
-            try:
-                index = self._result_thread.next_ready_index(timeout=timeout)
-                self._submit_next_chunk()
-            except queue.Empty:
-                raise TimeoutError
+            index = self._result_thread.next_ready_index(timeout=timeout)
+            self._submit_next_chunk()
 
             for result in self._result_thread.result(index):
                 self._ready_objects.append(result)
