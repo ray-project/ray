@@ -56,7 +56,7 @@ Status DynamicResourceStateAccessor::AsyncSubscribe(
     const SubscribeCallback<ClientID, DynamicResourceNotification> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return resource_sub_executor_.AsyncSubscribe(ClientID::Nil(), subscribe, done);
+  return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 }  // namespace gcs

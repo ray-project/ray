@@ -3,6 +3,7 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
+#include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
 
@@ -17,7 +18,7 @@ class RedisGcsClient;
 /// reading or writing or subscribing of node's dynamic resources from GCS.
 class DynamicResourceStateAccessor {
  public:
-  explicit DynamicResourceStateAccessor(RedisGcsClient &client_impl);
+  explicit DynamicResourceStateAccessor(RedisGcsClient *client_impl);
 
   ~DynamicResourceStateAccessor() {}
 
