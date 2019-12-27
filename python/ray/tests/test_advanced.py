@@ -763,10 +763,10 @@ def test_wait_makes_object_local(ray_start_cluster):
     a = Foo.remote()
 
     # Test get makes the object local.
-    #    x_id = a.method.remote()
-    #    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
-    #    ray.get(x_id)
-    #    assert ray.worker.global_worker.core_worker.object_exists(x_id)
+    x_id = a.method.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
+    ray.get(x_id)
+    assert ray.worker.global_worker.core_worker.object_exists(x_id)
 
     # Test wait makes the object local.
     x_id = a.method.remote()

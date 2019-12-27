@@ -491,18 +491,14 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
                                absl::flat_hash_set<ObjectID> &plasma_object_ids,
                                absl::flat_hash_set<ObjectID> &ready) {
   for (const auto &mem_id : memory_object_ids) {
-    RAY_LOG(ERROR) << "MEM " << mem_id;
     if (ready.find(mem_id) != ready.end()) {
       std::vector<std::shared_ptr<RayObject>> found;
       memory_store->Get({mem_id}, /*num_objects=*/1, /*timeout=*/0, worker_context,
                         /*remote_after_get=*/false, &found);
       if (found.size() == 1 && found[0]->IsInPlasmaError()) {
-        RAY_LOG(ERROR) << "Is in plasma";
         memory_object_ids.erase(mem_id);
         ready.erase(mem_id);
         plasma_object_ids.insert(mem_id);
-      } else {
-        RAY_LOG(ERROR) << "Is NOT in plasma";
       }
     }
   }
@@ -546,7 +542,6 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
-    RAY_LOG(ERROR) << "Wait in plasma 1";
     RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
         plasma_object_ids, num_objects - static_cast<int>(ready.size()), /*timeout_ms=*/0,
         worker_context_, &ready));
@@ -571,12 +566,10 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
     if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
-      RAY_LOG(ERROR) << "Wait in plasma 2 " << ready.size();
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
           plasma_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
           worker_context_, &ready));
     }
-    RAY_LOG(ERROR) << "Wait in plasma result " << ready.size();
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   }
 
