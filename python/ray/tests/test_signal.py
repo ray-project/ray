@@ -1,7 +1,6 @@
 import pytest
 import time
 
-from ray import ray_constants
 import ray
 import ray.experimental.signal as signal
 
@@ -392,6 +391,5 @@ def test_small_receive_timeout(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", __file__]))

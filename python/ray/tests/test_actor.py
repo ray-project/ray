@@ -16,7 +16,6 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
-from ray import ray_constants
 from ray.test_utils import run_string_as_driver
 
 
