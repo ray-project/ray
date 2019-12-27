@@ -58,7 +58,7 @@ class ResultThread(threading.Thread):
             # unless we have no IDs to wait on, in which case we block.
             while True:
                 try:
-                    block = True if len(unready) == 0 else False
+                    block = len(unready) == 0
                     new_object_id = self._new_object_ids.get(block=block)
                     self._add_object_id(new_object_id)
                     unready.append(new_object_id)
