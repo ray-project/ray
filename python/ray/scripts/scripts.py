@@ -315,7 +315,8 @@ def start(node_ip_address, redis_address, address, redis_port,
         include_java=include_java,
         include_webui=include_webui,
         webui_host=webui_host,
-        java_worker_options=__process_java_worker_classpath(java_worker_options),
+        java_worker_options=__process_java_worker_classpath(
+            java_worker_options),
         load_code_from_local=load_code_from_local,
         use_pickle=use_pickle,
         _internal_config=internal_config)
