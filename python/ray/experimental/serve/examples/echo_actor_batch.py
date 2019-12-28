@@ -1,7 +1,7 @@
 """
 Example actor that adds an increment to a number. This number can
 come from either web (parsing Flask request) or python call.
-
+The queries incoming to this actor are batched.
 This actor can be called from HTTP as well as from Python.
 """
 
@@ -12,21 +12,35 @@ import requests
 import ray
 from ray.experimental import serve
 from ray.experimental.serve.utils import pformat_color_json
+from ray.experimental.serve import BackendConfig
 
 
 class MagicCounter:
     def __init__(self, increment):
         self.increment = increment
 
-    def __call__(self, flask_request, base_number=None):
+    @serve.accept_batch
+    def __call__(self, flask_request_list, base_number=None):
+        # batch_size = serve.context.batch_size
         if serve.context.web:
-            base_number = int(flask_request.args.get("base_number", "0"))
-        return base_number + self.increment
+            result = []
+            for flask_request in flask_request_list:
+                base_number = int(flask_request.args.get("base_number", "0"))
+                result.append(base_number)
+            return list(map(lambda x: x + self.increment, result))
+        else:
+            result = []
+            for b in base_number:
+                ans = b + self.increment
+                result.append(ans)
+            return result
 
 
 serve.init(blocking=True)
 serve.create_endpoint("magic_counter", "/counter", blocking=True)
-serve.create_backend(MagicCounter, "counter:v1", 42)  # increment=42
+b_config = BackendConfig(max_batch_size=5)
+serve.create_backend(
+    MagicCounter, "counter:v1", 42, backend_config=b_config)  # increment=42
 serve.link("magic_counter", "counter:v1")
 
 print("Sending ten queries via HTTP")
