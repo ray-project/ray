@@ -11,15 +11,13 @@ echo 10
 EOF
 chmod +x /usr/bin/nproc
 
-PYTHONS=("cp27-cp27mu"
-         "cp35-cp35m"
+PYTHONS=("cp35-cp35m"
          "cp36-cp36m"
          "cp37-cp37m")
 
 # The minimum supported numpy version is 1.14, see
 # https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
-                "1.14.5"
                 "1.14.5"
                 "1.14.5")
 
@@ -28,12 +26,6 @@ sudo apt-get install unzip
 
 # Put bazel into the PATH
 export PATH=$PATH:/root/bin
-
-# Remove this old Python 2.4.3 executable, and make the "python2" command find
-# a newer version of Python. We need this for autogenerating some files for the
-# UI.
-rm -f /usr/bin/python2
-ln -s /opt/python/cp27-cp27m/bin/python2 /usr/bin/python2
 
 # Install and use the latest version of Node.js in order to build the dashboard.
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
