@@ -852,18 +852,21 @@ def stat(address):
         address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(address))
     ray.init(address=address)
-    raylet = ray.nodes()[0]
-    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
-                                    ray.nodes()[0]["NodeManagerPort"])
 
     import grpc
     from ray.core.generated import node_manager_pb2
     from ray.core.generated import node_manager_pb2_grpc
 
-    channel = grpc.insecure_channel(raylet_address)
-    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest(), timeout=2.0)
-    print(reply)
+    for raylet in ray.nodes():
+        raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                        ray.nodes()[0]["NodeManagerPort"])
+        logger.info("Querying raylet {}".format(raylet_address))
+
+        channel = grpc.insecure_channel(raylet_address)
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        reply = stub.GetNodeStats(
+            node_manager_pb2.NodeStatsRequest(), timeout=2.0)
+        print(reply)
 
 
 cli.add_command(start)
