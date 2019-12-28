@@ -133,6 +133,8 @@ message GetCoreWorkerStatsRequest {
 message GetCoreWorkerStatsReply {
   // String displayed on Web UI.
   string webui_display = 1;
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 2;
 }
 
 service CoreWorkerService {

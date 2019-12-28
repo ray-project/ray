@@ -195,6 +195,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
                        << spec.DebugString();
+        absl::MutexLock lock(&mutex_);
         to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
       }));
 
@@ -292,8 +293,13 @@ void CoreWorker::RunIOService() {
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
+  bool not_actor_task = false;
+  {
+    absl::MutexLock lock(&mutex_);
+    not_actor_task = actor_id_.IsNil();
+  }
   // Clear all actor handles at the end of each non-actor task.
-  if (actor_id_.IsNil() && task_id.IsNil()) {
+  if (not_actor_task && task_id.IsNil()) {
     absl::MutexLock lock(&actor_handles_mutex_);
     for (const auto &handle : actor_handles_) {
       RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
@@ -327,6 +333,7 @@ void CoreWorker::ReportActiveObjectIDs() {
 }
 
 void CoreWorker::InternalHeartbeat() {
+  absl::MutexLock lock(&mutex_);
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
     to_resubmit_.pop_front();
@@ -847,6 +854,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
 
+  {
+    absl::MutexLock lock(&mutex_);
+    current_task_ = task_spec;
+  }
+
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
   std::vector<std::shared_ptr<RayObject>> args;
@@ -868,7 +880,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
-    RAY_LOG(INFO) << "Creating actor: " << actor_id_;
+    RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
@@ -908,6 +920,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
+  {
+    absl::MutexLock lock(&mutex_);
+    current_task_ = TaskSpecification();
+  }
   return status;
 }
 
@@ -1069,7 +1085,14 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&mutex_);
   reply->set_webui_display(webui_display_);
+  auto stats = reply->mutable_core_worker_stats();
+  stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
+  if (!current_task_.TaskId().IsNil()) {
+    stats->set_current_task_desc(current_task_.DebugString());
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1090,6 +1113,17 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
       success_callback(ray_object, object_id, python_future);
     }
   });
+}
+
+void CoreWorker::SetActorId(const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  RAY_CHECK(actor_id_.IsNil());
+  actor_id_ = actor_id;
+}
+
+void CoreWorker::SetWebuiDisplay(const std::string &message) {
+  absl::MutexLock lock(&mutex_);
+  webui_display_ = message;
 }
 
 }  // namespace ray

@@ -823,15 +823,15 @@ def clusterbenchmark():
 
 @cli.command()
 @click.option(
-    "--redis-address",
+    "--address",
     required=False,
     type=str,
     help="Override the redis address to connect to.")
-def timeline(redis_address):
-    if not redis_address:
-        redis_address = services.find_redis_address_or_die()
-    logger.info("Connecting to Ray instance at {}.".format(redis_address))
-    ray.init(redis_address=redis_address)
+def timeline(address):
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = "/tmp/ray-timeline-{}.json".format(time)
     ray.timeline(filename=filename)
@@ -839,6 +839,34 @@ def timeline(redis_address):
     logger.info("Trace file written to {} ({} bytes).".format(filename, size))
     logger.info(
         "You can open this with chrome://tracing in the Chrome browser.")
+
+
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def stat(address):
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+
+    import grpc
+    from ray.core.generated import node_manager_pb2
+    from ray.core.generated import node_manager_pb2_grpc
+
+    for raylet in ray.nodes():
+        raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                        ray.nodes()[0]["NodeManagerPort"])
+        logger.info("Querying raylet {}".format(raylet_address))
+
+        channel = grpc.insecure_channel(raylet_address)
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        reply = stub.GetNodeStats(
+            node_manager_pb2.NodeStatsRequest(), timeout=2.0)
+        print(reply)
 
 
 cli.add_command(start)
@@ -856,6 +884,7 @@ cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
+cli.add_command(stat)
 cli.add_command(timeline)
 cli.add_command(project_cli)
 cli.add_command(session_cli)
