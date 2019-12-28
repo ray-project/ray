@@ -1110,4 +1110,15 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
+void CoreWorker::SetActorId(const ActorID &actor_id) {
+  RAY_CHECK(actor_id_.IsNil());
+  absl::MutexLock lock(&mutex_);
+  actor_id_ = actor_id;
+}
+
+void CoreWorker::SetWebuiDisplay(const std::string &message) {
+  absl::MutexLock lock(&mutex_);
+  webui_display_ = message;
+}
+
 }  // namespace ray

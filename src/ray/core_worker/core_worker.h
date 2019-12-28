@@ -98,16 +98,9 @@ class CoreWorker {
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
-  void SetActorId(const ActorID &actor_id) {
-    RAY_CHECK(actor_id_.IsNil());
-    absl::MutexLock lock(&mutex_);
-    actor_id_ = actor_id;
-  }
+  void SetActorId(const ActorID &actor_id);
 
-  void SetWebuiDisplay(const std::string &message) {
-    absl::MutexLock lock(&mutex_);
-    webui_display_ = message;
-  }
+  void SetWebuiDisplay(const std::string &message);
 
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
