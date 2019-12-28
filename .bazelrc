@@ -45,9 +45,11 @@ build:asan --copt -Wno-macro-redefined
 # Thread sanitizer configuration:
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
+build:tsan --copt -fsanitize=undefined
 build:tsan --copt -DTHREAD_SANITIZER
 build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
+build:tsan --linkopt -fsanitize=undefined
 build:tsan --copt -Wno-macro-redefined
