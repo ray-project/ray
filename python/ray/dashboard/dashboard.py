@@ -172,7 +172,18 @@ class Dashboard(object):
                     extra_info.append("{}: {} / {}".format(
                         resource_name, occupied, total))
                 data["extraInfo"] = ", ".join(extra_info)
-            print(actor_tree)
+                if os.environ.get("RAY_DASHBOARD_DEBUG"):
+                    print("dashboard debugging..")
+                    actor_tree_str = json.dumps(actor_tree, indent=2)
+                    actor_tree_lines = actor_tree_str.split("\n")
+                    max_line_length = max(map(len, actor_tree_lines))
+                    actor_tree_print = []
+                    for line in actor_tree_lines:
+                        actor_tree_print.append(line + (max_line_length - len(line)) * " ")
+                    for line in actor_tree_print:
+                        print("length", len(line))
+                    actor_tree_print = "\n".join(actor_tree_print)
+                    data["extraInfo"] += "\n" + actor_tree_print
             D["actorInfo"] = actor_tree
             return await json_response(result=D)
 
