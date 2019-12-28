@@ -44,12 +44,13 @@ def accept_batch(f):
     to be passed into a list.
 
     Example:
-        @serve.accept_batch
+
+    >>> @serve.accept_batch
         def serving_func(flask_request):
             assert isinstance(flask_request, list)
             ...
 
-        class ServingActor:
+    >>> class ServingActor:
             @serve.accept_batch
             def __call__(self, *, python_arg=None):
                 assert isinstance(python_arg, list)
