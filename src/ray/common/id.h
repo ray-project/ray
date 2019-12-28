@@ -44,7 +44,7 @@ using ObjectIDFlagsType = uint16_t;
 using ObjectIDIndexType = uint32_t;
 
 // Declaration.
-uint64_t MurmurHash64B (const void * key, int len, uint64_t seed);
+uint64_t MurmurHash64B(const void *key, int len, uint64_t seed);
 
 // Change the compiler alignment to 1 byte (default is 8).
 #pragma pack(push, 1)
