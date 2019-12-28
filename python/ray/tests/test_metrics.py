@@ -13,7 +13,8 @@ from ray.core.generated import node_manager_pb2_grpc
 from ray.test_utils import RayTestTimeoutException
 
 
-def test_worker_stats(ray_start_regular):
+def test_worker_stats(shutdown_only):
+    ray.init(num_cpus=1, include_webui=False)
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],

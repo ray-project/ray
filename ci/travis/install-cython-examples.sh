@@ -9,14 +9,7 @@ echo "PYTHON is $PYTHON"
 
 cython_examples="$ROOT_DIR/../../doc/examples/cython"
 
-if [[ "$PYTHON" == "2.7" ]]; then
-
-   pushd $cython_examples
-   pip install --progress-bar=off scipy
-   python setup.py install --user
-   popd
-
-elif [[ "$PYTHON" == "3.5" ]]; then
+if [[ "$PYTHON" == "3.5" ]]; then
    export PATH="$HOME/miniconda/bin:$PATH"
 
    pushd $cython_examples
