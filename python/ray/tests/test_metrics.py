@@ -142,14 +142,13 @@ def test_raylet_info_endpoint(shutdown_only):
     while True:
         time.sleep(1)
         try:
-            node_info = requests.get(addresses["webui_url"] + "/api/node_info").json()
             raylet_info = requests.get(addresses["webui_url"] + "/api/raylet_info").json()
             actor_info = raylet_info["result"]["actorInfo"]
             try: 
                 assert len(actor_info) > 0
                 break
             except AssertionError:
-                if time.time() > start_time + 30: # 30:
+                if time.time() > start_time + 30: 
                     raise Exception(
                         "Timed out while waiting for actorInfo to show up.")
         except requests.exceptions.ConnectionError:

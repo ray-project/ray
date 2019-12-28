@@ -292,7 +292,6 @@ class NodeStats(threading.Thread):
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
         with self._node_stats_lock:
-            print("calling get_actor_tree, num_actors = ", len(self._addr_to_actor_id))
             for addr, actor_id in self._addr_to_actor_id.items():
                 flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
                 flattened_tree[actor_id]["children"] = {}
@@ -349,7 +348,6 @@ class NodeStats(threading.Thread):
                 with self._node_stats_lock:
                     channel = ray.utils.decode(x["channel"])
                     data = x["data"]
-                    print("listening to channel", channel)
                     if channel == log_channel:
                         data = json.loads(ray.utils.decode(data))
                         ip = data["ip"]
