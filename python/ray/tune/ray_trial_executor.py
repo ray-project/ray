@@ -24,6 +24,7 @@ from ray.tune.util import warn_if_slow
 from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
+logger.setLevel("DEBUG")
 
 RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
 BOTTLENECK_WARN_PERIOD_S = 60
@@ -213,7 +214,7 @@ class RayTrialExecutor(TrialExecutor):
             if hasattr(trial, "runner") and trial.runner:
                 if (not error and self._reuse_actors
                         and self._cached_actor is None):
-                    logger.debug("Reusing actor for {}".format(trial.runner))
+                    logger.debug("Reusing actor for %s", trial.runner)
                     self._cached_actor = trial.runner
                 else:
                     logger.debug("Trial %s: Destroying actor.", trial)
@@ -614,7 +615,8 @@ class RayTrialExecutor(TrialExecutor):
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
                 # case where a DurableTrainable is not provided.
-                logger.warning("Trial %s: Reading checkpoint into memory.")
+                logger.warning("Trial %s: Reading checkpoint into memory.",
+                               trial)
                 data_dict = TrainableUtil.pickle_checkpoint(value)
                 remote = trial.runner.restore_from_object.remote(data_dict)
             else:

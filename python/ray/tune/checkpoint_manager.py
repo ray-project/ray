@@ -89,8 +89,6 @@ class CheckpointManager(object):
         Args:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
-        # TODO(ujvl): MEMORY checkpoints shouldn't displace PERSISTENT ones
-        #  for the purposes of both fault tolerance and garbage collection.
         old_checkpoint = self.newest_checkpoint
         self.newest_checkpoint = checkpoint
 

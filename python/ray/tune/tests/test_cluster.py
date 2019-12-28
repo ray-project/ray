@@ -53,7 +53,7 @@ def _start_new_cluster():
             })
         })
     # Pytest doesn't play nicely with imports
-    register_trainable("__durable_fake", get_mock_durable_trainable_cls())
+    register_trainable("__fake_durable", get_mock_durable_trainable_cls())
     _register_all()
     return cluster
 
@@ -83,7 +83,7 @@ def start_connected_emptyhead_cluster():
         })
     # Pytest doesn't play nicely with imports
     _register_all()
-    register_trainable("__durable_fake", get_mock_durable_trainable_cls())
+    register_trainable("__fake_durable", get_mock_durable_trainable_cls())
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -243,7 +243,8 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
             "training_iteration": 3
         },
         "checkpoint_freq": 2,
-        "max_failures": 2
+        "max_failures": 2,
+        "remote_checkpoint_dir": "/tmp/tune/",
     }
 
     # Test recovery of trial that hasn't been checkpointed
@@ -256,6 +257,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     cluster.remove_node(node)
     cluster.wait_for_nodes()
     runner.step()  # Recovery step
+    runner.step()
 
     # TODO(rliaw): This assertion is not critical but will not pass
     #   because checkpoint handling is messy and should be refactored
@@ -279,6 +281,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     runner.step()  # Recovery step
     if t2.status != Trial.TERMINATED:
         runner.step()
+
     assert t2.status == Trial.TERMINATED, runner.debug_string()
 
     # Test recovery of trial that won't be checkpointed
@@ -314,7 +317,8 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
             "training_iteration": 5
         },
         "checkpoint_freq": 1,
-        "max_failures": 1
+        "max_failures": 1,
+        "remote_checkpoint_dir": "/tmp/tune/",
     }
 
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
@@ -347,7 +351,8 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
             "training_iteration": 3
         },
         "checkpoint_freq": 2,
-        "max_failures": 2
+        "max_failures": 2,
+        "remote_checkpoint_dir": "/tmp/tune/",
     }
 
     # Test recovery of trial that has been checkpointed
@@ -383,7 +388,8 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
             "training_iteration": 2
         },
         "checkpoint_freq": 1,
-        "max_failures": 1
+        "max_failures": 1,
+        "remote_checkpoint_dir": "/tmp/tune/",
     }
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:
@@ -424,17 +430,20 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
         run=trainable_id,
         stop=dict(training_iteration=3),
         local_dir=dirpath,
-        checkpoint_freq=1)
+        checkpoint_freq=1,
+        remote_checkpoint_dir="/tmp/tune/")
     exp2_args = dict(run=trainable_id, stop=dict(training_iteration=3))
     exp3_args = dict(
         run=trainable_id,
         stop=dict(training_iteration=3),
-        config=dict(mock_error=True))
+        config=dict(mock_error=True),
+        remote_checkpoint_dir="/tmp/tune/")
     exp4_args = dict(
         run=trainable_id,
         stop=dict(training_iteration=3),
         config=dict(mock_error=True),
-        checkpoint_freq=1)
+        checkpoint_freq=1,
+        remote_checkpoint_dir="/tmp/tune/")
     all_experiments = {
         "exp1": exp1_args,
         "exp2": exp2_args,

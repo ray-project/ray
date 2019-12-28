@@ -373,11 +373,11 @@ class Trial(object):
                         # to then this checkpoint may have been lost, so we
                         # shouldn't track it with the checkpoint_manager.
                         raise
-        self.checkpoint_manager.on_checkpoint(checkpoint)
+            self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def on_restore(self):
         """Handles restoration completion."""
-        assert self.status == Trial.RUNNING and self.is_restoring
+        assert self.is_restoring
         self.last_result = self.restoring_from.result
         self.restoring_from = None
 

@@ -11,7 +11,6 @@ from ray.tune.trainable import TrainableUtil
 
 
 class TrainableUtilApiTest(unittest.TestCase):
-
     def setUp(self):
         self.checkpoint_dir = "/tmp/tune/MyTrainable123/"
         TrainableUtil.make_checkpoint_dir(self.checkpoint_dir)

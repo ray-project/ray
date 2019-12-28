@@ -491,9 +491,12 @@ class TrialRunner(object):
         Args:
             trial: Trial being restored.
         """
+        logger.debug("Trial %s: Processing trial restore.", trial)
         try:
             self.trial_executor.fetch_result(trial)
             trial.on_restore()
+            logger.debug("Trial %s: Restore processed successfully", trial)
+            self.trial_executor.set_status(trial, Trial.RUNNING)
             self.trial_executor.continue_training(trial)
         except Exception:
             logger.exception("Trial %s: Error processing restore.", trial)
