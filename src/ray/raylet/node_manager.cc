@@ -2964,6 +2964,7 @@ void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &requ
     return;
   }
 
+  // Pin the requested objects.
   // TODO(edoakes): we should be batching these requests instead of sending one per
   // pinned object.
   size_t i = 0;
@@ -2977,6 +2978,8 @@ void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &requ
                        std::make_shared<PlasmaBuffer>(plasma_results[i].metadata))));
     i++;
 
+    // Send a long-running RPC request to the owner for each object. When we get a
+    // response or the RPC fails (due to the owner crashing), unpin the object.
     rpc::WaitForObjectEvictionRequest wait_request;
     wait_request.set_object_id(object_id_binary);
     wait_request.set_intended_worker_id(request.owner_address().worker_id());

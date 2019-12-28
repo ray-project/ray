@@ -1067,6 +1067,7 @@ void CoreWorker::HandleWaitForObjectEviction(
     return;
   }
 
+  // Send a response to trigger unpinning the object when it is no longer in scope.
   auto respond = [send_reply_callback](const ObjectID &object_id) {
     RAY_LOG(DEBUG) << "Replying to HandleWaitForObjectEviction for " << object_id;
     send_reply_callback(Status::OK(), nullptr, nullptr);

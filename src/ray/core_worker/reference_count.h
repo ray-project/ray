@@ -106,9 +106,6 @@ class ReferenceCounter {
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const
       LOCKS_EXCLUDED(mutex_);
 
-  /// Dumps information about all currently tracked references to RAY_LOG(DEBUG).
-  void LogDebugString() const LOCKS_EXCLUDED(mutex_);
-
  private:
   /// Metadata for an ObjectID reference in the language frontend.
   struct Reference {

@@ -8,6 +8,7 @@ import logging
 import os
 import setproctitle
 import shutil
+import json
 import sys
 import socket
 import subprocess
@@ -384,10 +385,13 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
     assert ray.is_initialized()
 
 
-# XXX: feature flag
-@pytest.mark.skip(reason="This test doesn't work with reference counting.")
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=1,
+        object_store_memory=int(10**8),
+        _internal_config=json.dumps({
+            "object_pinning_enabled": 0
+        }))
 
     @ray.remote
     def f():

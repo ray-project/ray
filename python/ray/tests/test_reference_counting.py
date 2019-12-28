@@ -208,7 +208,7 @@ def test_pending_task_dependency_pinning(shutdown_only):
     # store.
     np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
     random_id = ray.ObjectID.from_random()
-    oid = pending.remote(ray.put(np_array), slow.remote(random_id))
+    oid = pending.remote(np_array, slow.remote(random_id))
 
     for _ in range(2):
         ray.put(np_array)
