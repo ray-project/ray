@@ -27,6 +27,7 @@ class GcsRpcClient {
     job_info_stub_ = JobInfoGcsService::NewStub(channel);
     actor_info_stub_ = ActorInfoGcsService::NewStub(channel);
     node_info_stub_ = NodeInfoGcsService::NewStub(channel);
+    object_info_stub_ = ObjectInfoGcsService::NewStub(channel);
   };
 
   /// Add job info to gcs server.
@@ -122,11 +123,48 @@ class GcsRpcClient {
             request, callback);
   }
 
+  /// Get object's locations from GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void GetObjectLocations(const GetObjectLocationsRequest &request,
+                          const ClientCallback<GetObjectLocationsReply> &callback) {
+    client_call_manager_.CreateCall<ObjectInfoGcsService, GetObjectLocationsRequest,
+                                    GetObjectLocationsReply>(
+        *object_info_stub_, &ObjectInfoGcsService::Stub::PrepareAsyncGetObjectLocations,
+        request, callback);
+  }
+
+  /// Add location of object to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AddObjectLocation(const AddObjectLocationRequest &request,
+                         const ClientCallback<AddObjectLocationReply> &callback) {
+    client_call_manager_.CreateCall<ObjectInfoGcsService, AddObjectLocationRequest,
+                                    AddObjectLocationReply>(
+        *object_info_stub_, &ObjectInfoGcsService::Stub::PrepareAsyncAddObjectLocation,
+        request, callback);
+  }
+
+  /// Remove location of object to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void RemoveObjectLocation(const RemoveObjectLocationRequest &request,
+                            const ClientCallback<RemoveObjectLocationReply> &callback) {
+    client_call_manager_.CreateCall<ObjectInfoGcsService, RemoveObjectLocationRequest,
+                                    RemoveObjectLocationReply>(
+        *object_info_stub_, &ObjectInfoGcsService::Stub::PrepareAsyncRemoveObjectLocation,
+        request, callback);
+  }
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<ActorInfoGcsService::Stub> actor_info_stub_;
   std::unique_ptr<NodeInfoGcsService::Stub> node_info_stub_;
+  std::unique_ptr<ObjectInfoGcsService::Stub> object_info_stub_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
