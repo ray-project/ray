@@ -496,11 +496,6 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
                                           int64_t timeout_ms,
                                           uint64_t num_required_objects, bool wait_local,
                                           const WaitCallback &callback) {
-  if (wait_local) {
-    // TODO(ekl) for this pr
-    return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
-  }
-
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size())
@@ -515,6 +510,7 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
   wait_state.object_id_order = object_ids;
   wait_state.timeout_ms = timeout_ms;
   wait_state.num_required_objects = num_required_objects;
+  wait_state.wait_local = wait_local;
   for (const auto &object_id : object_ids) {
     if (local_objects_.count(object_id) > 0) {
       wait_state.found.insert(object_id);
@@ -544,7 +540,11 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
           object_id, [this, wait_id](const ObjectID &lookup_object_id,
                                      const std::unordered_set<ClientID> &client_ids) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
-            if (!client_ids.empty()) {
+            // Invariant: if we get an object notification for the local client, the
+            // object must already be in the local ids set, since that triggers the
+            // notification.
+            if (!client_ids.empty() &&
+                (!wait_state.wait_local || local_objects_.count(lookup_object_id) > 0)) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
             }
@@ -581,19 +581,23 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
           wait_id, object_id,
           [this, wait_id](const ObjectID &subscribe_object_id,
                           const std::unordered_set<ClientID> &client_ids) {
-            if (!client_ids.empty()) {
+            auto object_id_wait_state = active_wait_requests_.find(wait_id);
+            if (object_id_wait_state == active_wait_requests_.end()) {
+              // Depending on the timing of calls to the object directory, we
+              // may get a subscription notification after the wait call has
+              // already completed. If so, then don't process the
+              // notification.
+              return;
+            }
+            auto &wait_state = object_id_wait_state->second;
+            // Invariant: if we get an object notification for the local client, the
+            // object must already be in the local ids set, since that triggers the
+            // notification.
+            if (!client_ids.empty() && (!wait_state.wait_local ||
+                                        local_objects_.count(subscribe_object_id) > 0)) {
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;
-              auto object_id_wait_state = active_wait_requests_.find(wait_id);
-              if (object_id_wait_state == active_wait_requests_.end()) {
-                // Depending on the timing of calls to the object directory, we
-                // may get a subscription notification after the wait call has
-                // already completed. If so, then don't process the
-                // notification.
-                return;
-              }
-              auto &wait_state = object_id_wait_state->second;
               wait_state.remaining.erase(subscribe_object_id);
               wait_state.found.insert(subscribe_object_id);
               wait_state.requested_objects.erase(subscribe_object_id);
