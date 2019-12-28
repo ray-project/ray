@@ -88,6 +88,31 @@ matrix:
         - go get github.com/bazelbuild/buildtools/buildifier
         - ./ci/travis/bazel-format.sh
 
+    - os: linux
+      env: SANITIZER=1 PYTHON=3.5 PYTHONWARNINGS=ignore
+
+      install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+
+        - ./ci/suppress_output ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
+
+        # Run raylet integration tests with address sanitizer
+        - export RAY_BAZEL_CONFIG=--config=asan
+        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+        - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
+
+        # Run raylet integration tests with thread sanitizer
+        - export RAY_BAZEL_CONFIG=--config=tsan
+        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+        - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
+
+        # cc bazel tests
+        - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
+
     # Build Linux wheels.
     - os: linux
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
