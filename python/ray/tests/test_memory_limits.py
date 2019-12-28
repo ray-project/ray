@@ -29,9 +29,8 @@ class GreedyActor(object):
 
 class TestMemoryLimits(unittest.TestCase):
     def testWithoutQuota(self):
+        self._run(100 * MB, None, None)
         self.assertRaises(OBJECT_EVICTED, lambda: self._run(None, None, None))
-        self.assertRaises(OBJECT_EVICTED,
-                          lambda: self._run(100 * MB, None, None))
         self.assertRaises(OBJECT_EVICTED,
                           lambda: self._run(None, 100 * MB, None))
 
