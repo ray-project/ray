@@ -538,11 +538,10 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
           object_id, [this, wait_id](const ObjectID &lookup_object_id,
                                      const std::unordered_set<ClientID> &client_ids) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
-            // Invariant: if we get an object notification for the local client, the
-            // object must already be in the local ids set, since that triggers the
-            // notification.
-            if (!client_ids.empty() &&
-                (!wait_state.wait_local || local_objects_.count(lookup_object_id) > 0)) {
+            // Note that the object is guaranteed to be added to local_objects_ before
+            // the notification is triggered.
+            if (local_objects_.count(lookup_object_id) > 0 ||
+                (!wait_state.wait_local && !client_ids.empty())) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
             }
@@ -588,11 +587,10 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
               return;
             }
             auto &wait_state = object_id_wait_state->second;
-            // Invariant: if we get an object notification for the local client, the
-            // object must already be in the local ids set, since that triggers the
-            // notification.
-            if (!client_ids.empty() && (!wait_state.wait_local ||
-                                        local_objects_.count(subscribe_object_id) > 0)) {
+            // Note that the object is guaranteed to be added to local_objects_ before
+            // the notification is triggered.
+            if (local_objects_.count(subscribe_object_id) > 0 ||
+                (!wait_state.wait_local && !client_ids.empty())) {
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;
