@@ -9,6 +9,7 @@ from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.utils import BytesEncoder
 from urllib.parse import parse_qs
+from ray.experimental.serve.request_params import RequestParams
 
 
 class JSONResponse:
@@ -148,16 +149,24 @@ class HTTPProxy:
                 await JSONResponse({"error": str(e)})(scope, receive, send)
                 return
 
-        result_object_id_bytes = await (
-            self.serve_global_state.init_or_get_router()
-            .enqueue_request.remote(
-                service=endpoint_name,
-                request_args=(scope, http_body_bytes),
-                request_kwargs=dict(),
-                request_context=TaskContext.Web,
-                request_slo_ms=request_slo_ms))
+        # NOTE: For HTTP requests completely asynchronous call to enqueue
+        #       request is not supported!
+        request_params = RequestParams(
+            endpoint_name, TaskContext.Web, request_slo_ms=request_slo_ms)
 
-        result = await ray.ObjectID(result_object_id_bytes)
+        # TODO(alind): File a Ray issue if args contain b"" it is not
+        #              received.
+        # Hence enclosing http_body_bytes inside a list.
+        args = (scope, [http_body_bytes])
+        kwargs = dict()
+
+        # await for request info to get back
+        req_info = await (self.serve_global_state.init_or_get_router()
+                          .enqueue_request.remote(request_params, *args,
+                                                  **kwargs))
+
+        # await for result
+        result = await next(iter(req_info))
 
         if isinstance(result, ray.exceptions.RayTaskError):
             await JSONResponse({

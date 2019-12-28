@@ -18,3 +18,20 @@ API
 ---
 .. automodule:: ray.experimental.serve
     :members:
+
+Policies For Backend Selection
+------------------------------
+.. autoclass:: ray.experimental.serve.queues.RandomPolicyQueue
+.. autoclass:: ray.experimental.serve.queues.RoundRobinPolicyQueue
+.. autoclass:: ray.experimental.serve.queues.PowerOfTwoPolicyQueue
+.. autoclass:: ray.experimental.serve.queues.FixedPackingPolicyQueue
+
+Serve Request Classes
+---------------------
+.. autoclass:: ray.experimental.serve.request_params.RequestParams
+.. autoclass:: ray.experimental.serve.request_params.RequestInfo
+
+Serve Router
+------------
+.. autoclass:: ray.experimental.serve.queues.CentralizedQueues
+    :members:

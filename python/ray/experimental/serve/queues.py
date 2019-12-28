@@ -7,6 +7,7 @@ from ray.experimental.serve.utils import logger
 import itertools
 from blist import sortedlist
 import time
+from ray.experimental.serve.request_params import RequestInfo
 
 
 class Query:
@@ -21,7 +22,7 @@ class Query:
         self.request_context = request_context
 
         if result_object_id is None:
-            self.result_object_id = ray.ObjectID.from_random()
+            self.result_object_id = [ray.ObjectID.from_random()]
         else:
             self.result_object_id = result_object_id
 
@@ -113,24 +114,45 @@ class CentralizedQueues:
 
     # request_slo_ms is time specified in milliseconds till which the
     # answer of the query should be calculated
-    def enqueue_request(self,
-                        service,
-                        request_args,
-                        request_kwargs,
-                        request_context,
-                        request_slo_ms=None):
+    def enqueue_request(self, request_params, *request_args, **request_kwargs):
+        """
+        Enqueues a request in the service queue.
+
+        Args:
+            request_params(RequestParams): Argument specified for enqueuing
+                request and getting information correspondingly after the
+                enqueue is called.
+            *request_args(optional): The arguments that need to be passed to
+                backend class `__call__` method.
+            **request_kwargs(optional): The keyword arguments that need to be
+                passed to backend class `__call__` method.
+        :rtype:
+            RequestInfo
+        """
+        request_slo_ms = request_params.request_slo_ms
         if request_slo_ms is None:
             # if request_slo_ms is not specified then set it to a high level
             request_slo_ms = 1e9
 
         # add wall clock time to specify the deadline for completion of query
         # this also assures FIFO behaviour if request_slo_ms is not specified
-        request_slo_ms += (time.time() * 1000)
-        query = Query(request_args, request_kwargs, request_context,
-                      request_slo_ms)
-        self.queues[service].append(query)
+        # if request_slo_ms is not wall clock time
+        if not request_params.is_wall_clock_time:
+            request_slo_ms += (time.time() * 1000)
+        query = Query(
+            request_args,
+            request_kwargs,
+            request_params.request_context,
+            request_slo_ms,
+            result_object_id=request_params.return_object_ids)
+
+        self.queues[request_params.service].append(query)
         self.flush()
-        return query.result_object_id.binary()
+        # create request information to be returned
+        req_info = RequestInfo(
+            query.result_object_id, request_params.return_object_ids is None,
+            request_slo_ms, request_params.return_wall_clock_time)
+        return req_info
 
     def dequeue_request(self, backend, replica_handle):
         intention = WorkIntent(replica_handle)
@@ -183,6 +205,11 @@ class CentralizedQueues:
 
     # flushes the buffer queue and assigns work to workers
     def _flush_buffer(self):
+        """
+        Expected Behavior:
+            The buffer queue of every registered and linked backend should
+            be empty by the end of this function call.
+        """
         for service in self.queues.keys():
             ready_backends = self._get_available_backends(service)
             for backend in ready_backends:
@@ -229,6 +256,9 @@ class CentralizedQueues:
 
     # _flush function has to flush the service and buffer queues.
     def _flush(self):
+        """
+        Flush service and the buffer queues.
+        """
         self._flush_service_queue()
         self._flush_buffer()
 
@@ -252,7 +282,7 @@ class CentralizedQueuesActor(CentralizedQueues):
 
 class RandomPolicyQueue(CentralizedQueues):
     """
-    A wrapper class for Random policy.This backend selection policy is
+    A wrapper class for Random policy. This backend selection policy is
     `Stateless` meaning the current decisions of selecting backend are
     not dependent on previous decisions. Random policy (randomly) samples
     backends based on backend weights for every query. This policy uses the

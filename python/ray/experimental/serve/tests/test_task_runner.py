@@ -5,6 +5,7 @@ import ray.experimental.serve.context as context
 from ray.experimental.serve.queues import RoundRobinPolicyQueueActor
 from ray.experimental.serve.task_runner import (
     RayServeMixin, TaskRunner, TaskRunnerActor, wrap_to_ray_error)
+from ray.experimental.serve.request_params import RequestParams
 
 
 def test_runner_basic():
@@ -37,13 +38,10 @@ def test_runner_actor(serve_instance):
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
     for query in [333, 444, 555]:
-        result_token = ray.ObjectID(
-            ray.get(
-                q.enqueue_request.remote(
-                    PRODUCER_NAME,
-                    request_args=None,
-                    request_kwargs={"i": query},
-                    request_context=context.TaskContext.Python)))
+        query_param = RequestParams(PRODUCER_NAME, context.TaskContext.Python)
+        result_token = next(
+            iter(ray.get(q.enqueue_request.remote(query_param, i=query))))
+
         assert ray.get(result_token) == query
 
 
@@ -72,13 +70,9 @@ def test_ray_serve_mixin(serve_instance):
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
     for query in [333, 444, 555]:
-        result_token = ray.ObjectID(
-            ray.get(
-                q.enqueue_request.remote(
-                    PRODUCER_NAME,
-                    request_args=None,
-                    request_kwargs={"i": query},
-                    request_context=context.TaskContext.Python)))
+        query_param = RequestParams(PRODUCER_NAME, context.TaskContext.Python)
+        result_token = next(
+            iter(ray.get(q.enqueue_request.remote(query_param, i=query))))
         assert ray.get(result_token) == query + 3
 
 
@@ -98,13 +92,9 @@ def test_task_runner_check_context(serve_instance):
     runner._ray_serve_fetch.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
-    result_token = ray.ObjectID(
-        ray.get(
-            q.enqueue_request.remote(
-                PRODUCER_NAME,
-                request_args=None,
-                request_kwargs={"i": 42},
-                request_context=context.TaskContext.Python)))
+    query_param = RequestParams(PRODUCER_NAME, context.TaskContext.Python)
+    result_token = next(
+        iter(ray.get(q.enqueue_request.remote(query_param, i=42))))
 
     with pytest.raises(ray.exceptions.RayTaskError):
         ray.get(result_token)

@@ -3,14 +3,13 @@ from ray.experimental import serve
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.constants import DEFAULT_HTTP_ADDRESS
+from ray.experimental.serve.request_params import RequestParams, RequestInfo
 
 
 class RayServeHandle:
     """A handle to a service endpoint.
-
     Invoking this endpoint with .remote is equivalent to pinging
     an HTTP endpoint.
-
     Example:
        >>> handle = serve.get_handle("my_endpoint")
        >>> handle
@@ -27,6 +26,20 @@ class RayServeHandle:
        # raises RayTaskError Exception
     """
 
+    def _check_slo_ms(self, request_slo_ms):
+        if request_slo_ms is not None:
+            request_slo_ms = float(request_slo_ms)
+            if request_slo_ms < 0:
+                raise ValueError(
+                    "Request SLO must be positive, it is {}".format(
+                        request_slo_ms))
+        return request_slo_ms
+
+    def _fix_kwarg_name(self, name):
+        if name == "slo_ms":
+            return "request_slo_ms"
+        return name
+
     def __init__(self, router_handle, endpoint_name):
         self.router_handle = router_handle
         self.endpoint_name = endpoint_name
@@ -36,26 +49,37 @@ class RayServeHandle:
             raise RayServeException(
                 "handle.remote must be invoked with keyword arguments.")
 
-        # get slo_ms before enqueuing the query
-        request_slo_ms = kwargs.pop("slo_ms", None)
-        if request_slo_ms is not None:
-            try:
-                request_slo_ms = float(request_slo_ms)
-                if request_slo_ms < 0:
-                    raise ValueError(
-                        "Request SLO must be positive, it is {}".format(
-                            request_slo_ms))
-            except ValueError as e:
-                raise RayServeException(str(e))
+        # get request params defaults before enqueuing the query
+        default_kwargs = RequestParams.get_default_kwargs()
+        request_param_kwargs = {}
+        for k in default_kwargs.keys():
+            fixed_kwarg_name = self._fix_kwarg_name(k)
+            request_param_kwargs[fixed_kwarg_name] = kwargs.pop(
+                k, default_kwargs[k])
 
-        result_object_id_bytes = ray.get(
-            self.router_handle.enqueue_request.remote(
-                service=self.endpoint_name,
-                request_args=(),
-                request_kwargs=kwargs,
-                request_context=TaskContext.Python,
-                request_slo_ms=request_slo_ms))
-        return ray.ObjectID(result_object_id_bytes)
+        try:
+            # check if request_slo_ms specified is correct or not
+            slo_ms = request_param_kwargs["request_slo_ms"]
+            slo_ms = self._check_slo_ms(slo_ms)
+            request_param_kwargs["request_slo_ms"] = slo_ms
+        except ValueError as e:
+            raise RayServeException(str(e))
+
+        # create request parameters required for enqueuing the request
+        request_params = RequestParams(self.endpoint_name, TaskContext.Python,
+                                       **request_param_kwargs)
+        req_info_object_id = self.router_handle.enqueue_request.remote(
+            request_params, *args, **kwargs)
+
+        # check if it is necessary to wait for enqueue to be completed
+        # NOTE: This will make remote call completely non-blocking for
+        #       certain cases.
+        if RequestInfo.wait_for_requestInfo(request_params):
+            req_info = ray.get(req_info_object_id)
+            return_value = tuple(req_info)
+            if len(return_value) == 1:
+                return return_value[0]
+            return return_value
 
     def get_traffic_policy(self):
         # TODO(simon): This method is implemented via checking global state
