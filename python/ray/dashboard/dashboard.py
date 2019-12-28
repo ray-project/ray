@@ -158,7 +158,6 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            print("XXX")
             workers_info = sum([data["workersStats"] for data in D.values()], [])
             actor_tree = self.node_stats.get_actor_tree(workers_info)
             for address, data in D.items():
@@ -173,9 +172,8 @@ class Dashboard(object):
                     extra_info.append("{}: {} / {}".format(
                         resource_name, occupied, total))
                 data["extraInfo"] = ", ".join(extra_info)
-                # test logical view
-                print(actor_tree)
-                data["extraInfo"] += "\n" + json.dumps(actor_tree, indent=2)
+            print(actor_tree)
+            D["actorInfo"] = actor_tree
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:
@@ -294,6 +292,7 @@ class NodeStats(threading.Thread):
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
         with self._node_stats_lock:
+            print("calling get_actor_tree, num_actors = ", len(self._addr_to_actor_id))
             for addr, actor_id in self._addr_to_actor_id.items():
                 flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
                 flattened_tree[actor_id]["children"] = {}
@@ -350,6 +349,7 @@ class NodeStats(threading.Thread):
                 with self._node_stats_lock:
                     channel = ray.utils.decode(x["channel"])
                     data = x["data"]
+                    print("listening to channel", channel)
                     if channel == log_channel:
                         data = json.loads(ray.utils.decode(data))
                         ip = data["ip"]

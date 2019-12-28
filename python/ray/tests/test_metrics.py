@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import grpc
 import psutil
+import requests
 import time
 
 import ray
@@ -93,7 +94,6 @@ def test_worker_stats(ray_start_regular):
             continue
 
         # Check that the rest of the processes are workers, 1 for each CPU.
-        print(reply)
         assert len(reply.workers_stats) == num_cpus + 1
         views = [view.view_name for view in reply.view_data]
         assert "redis_latency" in views
@@ -109,6 +109,58 @@ def test_worker_stats(ray_start_regular):
             assert ("python" in process or "ray" in process
                     or "travis" in process)
         break
+
+
+def test_raylet_info_endpoint(shutdown_only):
+    addresses = ray.init(include_webui=True, num_cpus=6)
+
+    @ray.remote(num_cpus=2)
+    class A(object):
+        def __init__(self):
+            pass
+            
+        def f(self):
+            return os.getpid()
+
+    @ray.remote(num_cpus=2)
+    class B(object):
+        def __init__(self):
+            self.children = [A.remote(), A.remote()]
+
+    @ray.remote(num_cpus=2)
+    class C(object):
+        def __init__(self):
+            self.children = [A.remote(), B.remote()]
+            
+        def f(self):
+            return os.getpid()
+
+    c = A.remote()  
+    worker_pid_future = c.f.remote()
+
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            node_info = requests.get(addresses["webui_url"] + "/api/node_info").json()
+            raylet_info = requests.get(addresses["webui_url"] + "/api/raylet_info").json()
+            actor_info = raylet_info["result"]["actorInfo"]
+            try: 
+                assert len(actor_info) > 0
+                break
+            except AssertionError:
+                if time.time() > start_time + 30: # 30:
+                    raise Exception(
+                        "Timed out while waiting for actorInfo to show up.")
+        except requests.exceptions.ConnectionError:
+            if time.time() > start_time + 30:
+                raise Exception(
+                    "Timed out while waiting for dashboard to start.")
+
+    print(actor_info)
+    #response = requests.get(info["webui_url"] + "/api/raylet_info")
+    #print(node_info.content)
+    #print(type(response.content))
 
 
 if __name__ == "__main__":
