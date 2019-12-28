@@ -3,17 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import sys
 import time
 import unittest
+from unittest.mock import MagicMock
 
 from ray.tune.trial import Trial
 from ray.tune.progress_reporter import _fair_filter_trials
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
-else:
-    from mock import MagicMock
 
 
 class ProgressReporterTest(unittest.TestCase):

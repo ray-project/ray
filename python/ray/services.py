@@ -446,9 +446,7 @@ def start_ray_process(command,
     # in interactive sessions. This is only supported in Python 3.3 and above.
     def block_sigint():
         import signal
-        import sys
-        if sys.version_info >= (3, 3):
-            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
 
     process = subprocess.Popen(
         command,
@@ -1067,9 +1065,6 @@ def start_dashboard(require_webui,
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
-
-    if sys.version_info <= (3, 0):
-        return None, None
 
     webui_dependencies_present = True
     try:

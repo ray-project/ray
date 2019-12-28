@@ -61,8 +61,6 @@ LOCAL_MODE = 2
 
 ERROR_KEY_PREFIX = b"Error:"
 
-PY3 = sys.version_info.major >= 3
-
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -1456,7 +1454,7 @@ def get(object_ids, timeout=None):
     worker = global_worker
     worker.check_connected()
 
-    if PY3 and hasattr(
+    if hasattr(
             worker,
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         raise RayError("Using blocking ray.get inside async actor. "
@@ -1575,7 +1573,7 @@ def wait(object_ids, num_returns=1, timeout=None):
     """
     worker = global_worker
 
-    if PY3 and hasattr(
+    if hasattr(
             worker,
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         raise RayError("Using blocking ray.wait inside async method. "
