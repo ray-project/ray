@@ -5,7 +5,7 @@ load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 # TODO(mehrdadn): (How to) support dynamic linking?
 PROPAGATED_WINDOWS_DEFINES = ["RAY_STATIC"]
 
-COPTS = ["-DRAY_USE_GLOG", "-g"] + select({
+COPTS = ["-DRAY_USE_GLOG"] + select({
     "@bazel_tools//src/conditions:windows": [
         "-DWIN32_LEAN_AND_MEAN=",  # Block the inclusion of WinSock.h, which is obsolete and causes errors
         "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
