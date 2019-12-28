@@ -89,7 +89,7 @@ matrix:
         - ./ci/travis/bazel-format.sh
 
     - os: linux
-      env: SANITIZER=1 PYTHON=3.5 PYTHONWARNINGS=ignore
+      env: SANITIZER=1 CC=clang PYTHON=3.5 PYTHONWARNINGS=ignore
 
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
