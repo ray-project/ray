@@ -160,8 +160,8 @@ def cli(logging_level, logging_format):
     help="provide this argument for the head node")
 @click.option(
     "--include-webui",
-    is_flag=True,
-    default=False,
+    default=None,
+    type=bool,
     help="provide this argument if the UI should be started")
 @click.option(
     "--webui-host",
