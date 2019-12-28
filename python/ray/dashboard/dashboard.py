@@ -339,7 +339,7 @@ class NodeStats(threading.Thread):
         p.subscribe(error_channel)
         logger.info("NodeStats: subscribed to {}".format(error_channel))
 
-        actor_channel = ray.gcs_utils.TablePubsub.Value("DIRECT_ACTOR_PUBSUB")
+        actor_channel = ray.gcs_utils.TablePubsub.Value("ACTOR_PUBSUB")
         p.subscribe(actor_channel)
         logger.info("NodeStats: subscribed to {}".format(actor_channel))
 
