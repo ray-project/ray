@@ -547,7 +547,7 @@ def init(address=None,
          redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=False,
+         include_webui=None,
          webui_host="127.0.0.1",
          job_id=None,
          configure_logging=True,
@@ -627,7 +627,9 @@ def init(address=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which displays the status of the Ray cluster.
+            UI, which displays the status of the Ray cluster. If this argument
+            is None, then the UI will be started if the relevant dependencies
+            are present.
         webui_host: The host to bind the web UI server to. Can either be
             127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
             By default, this is set to 127.0.0.1 to prevent access from
@@ -1746,6 +1748,28 @@ def remote(*args, **kwargs):
         class Foo(object):
             def method(self):
                 return 1
+
+    Remote task and actor objects returned by @ray.remote can also be
+    dynamically modified with the same arguments as above using
+    ``.options()`` as follows:
+
+    .. code-block:: python
+
+        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        def f():
+            return 1, 2
+        g = f.options(num_gpus=2, max_calls=None)
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo(object):
+            def method(self):
+                return 1
+        Bar = Foo.options(num_cpus=1, resources=None)
+
+    Running remote actors will be terminated when the actor handle to them
+    in Python is deleted, which will cause them to complete any outstanding
+    work and then shut down. If you want to kill them immediately, you can
+    also call ``actor_handle.__ray_kill__()``.
     """
     worker = get_global_worker()
 
