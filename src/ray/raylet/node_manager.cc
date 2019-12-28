@@ -1139,7 +1139,6 @@ void NodeManager::ProcessDisconnectClientMessage(
     const std::shared_ptr<LocalClientConnection> &client, bool intentional_disconnect) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   bool is_worker = false, is_driver = false;
-  RAY_LOG(WARNING) << "ProcessDisconnectClientMessage xxxxxxxx ";
   if (worker) {
     // The client is a worker.
     is_worker = true;
@@ -1496,7 +1495,7 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 
     bool schedulable = new_resource_scheduler_->SubtractNodeAvailableResources(
        client_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
-    if (schedulable == false) {
+    if (!schedulable) {
       return;
     }
     // Handle the allocation to specific resource IDs.
@@ -1530,15 +1529,10 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
       break;
     } else {
       if (node_id_string == client_id_.Binary()) {
-        if (work.second.GetTaskSpecification().GetDependencies().size() == 0) {
-          tasks_to_dispatch_.push_back(work);
-        } else {
-          WaitForTaskArgsRequests(work);
-        }
+        WaitForTaskArgsRequests(work);
       } else {
         new_resource_scheduler_->SubtractNodeAvailableResources(node_id_string,
                                                                 request_resources);
-
         ClientID node_id = ClientID::FromBinary(node_id_string);
         GcsNodeInfo node_info;
         bool found = gcs_client_->client_table().GetClient(node_id, &node_info);
@@ -1557,24 +1551,19 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
 void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task>  &work) {
   RAY_CHECK(new_scheduler_enabled_);
   std::vector<ObjectID> object_ids = work.second.GetTaskSpecification().GetDependencies();
-  std::vector<ObjectID> required_object_ids;
-  for (auto const &object_id : object_ids) {
-    if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
-      // Add any missing objects to the list to subscribe to in the task
-      // dependency manager. These objects will be pulled from remote node
-      // managers and reconstructed if necessary.
-      required_object_ids.push_back(object_id);
-    }
-  }
 
-  ray::Status status = object_manager_.Wait(
-      object_ids, -1, object_ids.size(), false,
-      [this, work](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
-        RAY_CHECK(remaining.empty());
-        tasks_to_dispatch_.push_back(work);
-        DispatchScheduledTasksToWorkers();
-      });
-  RAY_CHECK_OK(status);
+  if (object_ids.size() > 0) {
+    ray::Status status = object_manager_.Wait(
+        object_ids, -1, object_ids.size(), false,
+        [this, work](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+          RAY_CHECK(remaining.empty());
+          tasks_to_dispatch_.push_back(work);
+          DispatchScheduledTasksToWorkers();
+        });
+    RAY_CHECK_OK(status);
+  } else {
+    tasks_to_dispatch_.push_back(work);
+  }
 };
 
 
@@ -1693,7 +1682,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     }
     leased_worker_resources_.erase(it);
 
-    // Update resource ids
+    // Update resource ids.
     auto const &task_resources = worker->GetTaskResourceIds();
       const ClientID &client_id = gcs_client_->client_table().GetLocalClientId();
     local_available_resources_.ReleaseConstrained(

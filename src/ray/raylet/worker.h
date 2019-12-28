@@ -69,8 +69,9 @@ class Worker {
   void WorkerLeaseGranted(const std::string &address, int port);
 
   /// Cpus borrowed by the worker. This happens when the machine is oversubscribed
-  /// and the worker does not get back the cpu resources when unblocked. 
+  /// and the worker does not get back the cpu resources when unblocked.
   /// TODO (ion): Add methods to access this variable.
+  /// TODO (ion): Investigate a more intuitive alternative to track these Cpus.
   ResourceSet borrowed_cpu_resources_;
  private:
   /// The worker's ID.

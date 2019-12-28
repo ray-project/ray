@@ -641,8 +641,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   /// Map of leased workers to their current resource usage.
-  // XXX std::unordered_map<WorkerID, std::unordered_map<std::string, double>>
-  // XXX    leased_worker_resources_;
+  /// TODO(ion): Check whether we can track these resources in the worker.
   std::unordered_map<WorkerID, ResourceSet> leased_worker_resources_;
 
   typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
