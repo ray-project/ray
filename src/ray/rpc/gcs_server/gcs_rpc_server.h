@@ -146,6 +146,14 @@ class NodeInfoHandler {
   virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportHeartbeat(const ReportHeartbeatRequest &request,
+                                     ReportHeartbeatReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportBatchHeartbeat(const ReportBatchHeartbeatRequest &request,
+                                          ReportBatchHeartbeatReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -168,6 +176,8 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode, 1);
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode, 1);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo, 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(ReportHeartbeat, 1);
+    NODE_INFO_SERVICE_RPC_HANDLER(ReportBatchHeartbeat, 1);
   }
 
  private:

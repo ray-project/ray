@@ -61,5 +61,22 @@ void DefaultNodeInfoHandler::HandleGetAllNodeInfo(
   RAY_LOG(DEBUG) << "Finished getting all node info.";
 }
 
+void DefaultNodeInfoHandler::HandleReportHeartbeat(
+    const ReportHeartbeatRequest &request, ReportHeartbeatReply *reply,
+    SendReplyCallback send_reply_callback) {
+  ClientID node_id = ClientID::FromBinary(request.heartbeat().client_id());
+  RAY_LOG(DEBUG) << "Reporting heartbeat, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Finished reporting heartbeat, node id = " << node_id;
+}
+
+void DefaultNodeInfoHandler::HandleReportBatchHeartbeat(
+    const ReportBatchHeartbeatRequest &request, ReportBatchHeartbeatReply *reply,
+    SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Reporting batch heartbeat, batch size is: "
+                 << request.heartbeat_batch().batch_size();
+  RAY_LOG(DEBUG) << "Finished reporting batch heartbeat, batch size is: "
+                 << request.heartbeat_batch().batch_size();
+}
+
 }  // namespace rpc
 }  // namespace ray

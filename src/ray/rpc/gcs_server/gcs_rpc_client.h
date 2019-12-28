@@ -156,6 +156,28 @@ class GcsRpcClient {
     client_call_manager_.CreateCall<ObjectInfoGcsService, RemoveObjectLocationRequest,
                                     RemoveObjectLocationReply>(
         *object_info_stub_, &ObjectInfoGcsService::Stub::PrepareAsyncRemoveObjectLocation,
+
+  /// Report heartbeat of a node to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void ReportHeartbeat(const ReportHeartbeatRequest &request,
+                       const ClientCallback<ReportHeartbeatReply> &callback) {
+    client_call_manager_
+        .CreateCall<NodeInfoGcsService, ReportHeartbeatRequest, ReportHeartbeatReply>(
+            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncReportHeartbeat,
+            request, callback);
+  }
+
+  /// Report state of all nodes to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void ReportBatchHeartbeat(const ReportBatchHeartbeatRequest &request,
+                            const ClientCallback<ReportBatchHeartbeatReply> &callback) {
+    client_call_manager_.CreateCall<NodeInfoGcsService, ReportBatchHeartbeatRequest,
+                                    ReportBatchHeartbeatReply>(
+        *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncReportBatchHeartbeat,
         request, callback);
   }
 
