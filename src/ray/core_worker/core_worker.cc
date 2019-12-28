@@ -496,8 +496,9 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
   for (const auto &mem_id : memory_object_ids) {
     if (ready.find(mem_id) != ready.end()) {
       std::vector<std::shared_ptr<RayObject>> found;
-      memory_store->Get({mem_id}, /*num_objects=*/1, /*timeout=*/0, worker_context,
-                        /*remote_after_get=*/false, &found);
+      RAY_CHECK_OK(memory_store->Get({mem_id}, /*num_objects=*/1, /*timeout=*/0,
+                                     worker_context,
+                                     /*remote_after_get=*/false, &found));
       if (found.size() == 1 && found[0]->IsInPlasmaError()) {
         memory_object_ids.erase(mem_id);
         ready.erase(mem_id);
@@ -538,16 +539,20 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
   if (memory_object_ids.size() > 0) {
-    RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids, num_objects,
-                                          /*timeout_ms=*/0, worker_context_, &ready));
+    RAY_RETURN_NOT_OK(memory_store_->Wait(
+        memory_object_ids,
+        std::min(static_cast<int>(memory_object_ids.size()), num_objects),
+        /*timeout_ms=*/0, worker_context_, &ready));
     RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
                               plasma_object_ids, ready);
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
     RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-        plasma_object_ids, num_objects - static_cast<int>(ready.size()), /*timeout_ms=*/0,
-        worker_context_, &ready));
+        plasma_object_ids,
+        std::min(static_cast<int>(plasma_object_ids.size()),
+                 num_objects - static_cast<int>(ready.size())),
+        /*timeout_ms=*/0, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
@@ -558,8 +563,10 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
     int64_t start_time = current_time_ms();
     if (memory_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids, num_objects, timeout_ms,
-                                            worker_context_, &ready));
+      RAY_RETURN_NOT_OK(memory_store_->Wait(
+          memory_object_ids,
+          std::min(static_cast<int>(memory_object_ids.size()), num_objects), timeout_ms,
+          worker_context_, &ready));
       RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
                                 plasma_object_ids, ready);
     }
@@ -570,8 +577,10 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
     }
     if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
       RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-          plasma_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
-          worker_context_, &ready));
+          plasma_object_ids,
+          std::min(static_cast<int>(plasma_object_ids.size()),
+                   num_objects - static_cast<int>(ready.size())),
+          timeout_ms, worker_context_, &ready));
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   }
