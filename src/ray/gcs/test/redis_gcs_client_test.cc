@@ -470,71 +470,341 @@ TEST_F(TestGcsWithAsio, TestLogAppendAt) {
   TestLogAppendAt(job_id_, client_);
 }
 
-void TestSet(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  // Add some entries to the set at an object ID.
-  ObjectID object_id = ObjectID::FromRandom();
-  std::vector<std::string> managers = {"abc", "def", "ghi"};
-  for (auto &manager : managers) {
-    auto data = std::make_shared<ObjectTableData>();
-    data->set_manager(manager);
-    // Check that we added the correct object entries.
-    auto add_callback = [object_id, data](gcs::RedisGcsClient *client, const ObjectID &id,
-                                          const ObjectTableData &d) {
+class SetTestHelper {
+ public:
+  static void TestSet(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
+    // Add some entries to the set at an object ID.
+    ObjectID object_id = ObjectID::FromRandom();
+    std::vector<std::string> managers = {"abc", "def", "ghi"};
+    for (auto &manager : managers) {
+      auto data = std::make_shared<ObjectTableData>();
+      data->set_manager(manager);
+      // Check that we added the correct object entries.
+      auto add_callback = [object_id, data](gcs::RedisGcsClient *client,
+                                            const ObjectID &id,
+                                            const ObjectTableData &d) {
+        ASSERT_EQ(id, object_id);
+        ASSERT_EQ(data->manager(), d.manager());
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, add_callback));
+    }
+
+    // Check that lookup returns the added object entries.
+    auto lookup_callback = [object_id, managers](
+                               gcs::RedisGcsClient *client, const ObjectID &id,
+                               const std::vector<ObjectTableData> &data) {
       ASSERT_EQ(id, object_id);
-      ASSERT_EQ(data->manager(), d.manager());
+      ASSERT_EQ(data.size(), managers.size());
       test->IncrementNumCallbacks();
     };
-    RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, add_callback));
-  }
 
-  // Check that lookup returns the added object entries.
-  auto lookup_callback = [object_id, managers](gcs::RedisGcsClient *client,
-                                               const ObjectID &id,
-                                               const std::vector<ObjectTableData> &data) {
-    ASSERT_EQ(id, object_id);
-    ASSERT_EQ(data.size(), managers.size());
-    test->IncrementNumCallbacks();
-  };
+    // Do a lookup at the object ID.
+    RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
 
-  // Do a lookup at the object ID.
-  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
+    for (auto &manager : managers) {
+      auto data = std::make_shared<ObjectTableData>();
+      data->set_manager(manager);
+      // Check that we added the correct object entries.
+      auto remove_entry_callback = [object_id, data](gcs::RedisGcsClient *client,
+                                                     const ObjectID &id,
+                                                     const ObjectTableData &d) {
+        ASSERT_EQ(id, object_id);
+        ASSERT_EQ(data->manager(), d.manager());
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(
+          client->object_table().Remove(job_id, object_id, data, remove_entry_callback));
+    }
 
-  for (auto &manager : managers) {
-    auto data = std::make_shared<ObjectTableData>();
-    data->set_manager(manager);
-    // Check that we added the correct object entries.
-    auto remove_entry_callback = [object_id, data](gcs::RedisGcsClient *client,
-                                                   const ObjectID &id,
-                                                   const ObjectTableData &d) {
+    // Check that the entries are removed.
+    auto lookup_callback2 = [object_id, managers](
+                                gcs::RedisGcsClient *client, const ObjectID &id,
+                                const std::vector<ObjectTableData> &data) {
       ASSERT_EQ(id, object_id);
-      ASSERT_EQ(data->manager(), d.manager());
+      ASSERT_EQ(data.size(), 0);
       test->IncrementNumCallbacks();
+      test->Stop();
     };
-    RAY_CHECK_OK(
-        client->object_table().Remove(job_id, object_id, data, remove_entry_callback));
+
+    // Do a lookup at the object ID.
+    RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback2));
+    // Run the event loop. The loop will only stop if the Lookup callback is
+    // called (or an assertion failure).
+    test->Start();
+    ASSERT_EQ(test->NumCallbacks(), managers.size() * 2 + 2);
   }
 
-  // Check that the entries are removed.
-  auto lookup_callback2 = [object_id, managers](
-                              gcs::RedisGcsClient *client, const ObjectID &id,
-                              const std::vector<ObjectTableData> &data) {
-    ASSERT_EQ(id, object_id);
-    ASSERT_EQ(data.size(), 0);
-    test->IncrementNumCallbacks();
-    test->Stop();
-  };
+  static void TestDeleteKeysFromSet(
+      const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client,
+      std::vector<std::shared_ptr<ObjectTableData>> &data_vector) {
+    std::vector<ObjectID> ids;
+    ObjectID object_id;
+    for (auto &data : data_vector) {
+      object_id = ObjectID::FromRandom();
+      ids.push_back(object_id);
+      // Check that we added the correct object entries.
+      auto add_callback = [object_id, data](gcs::RedisGcsClient *client,
+                                            const ObjectID &id,
+                                            const ObjectTableData &d) {
+        ASSERT_EQ(id, object_id);
+        ASSERT_EQ(data->manager(), d.manager());
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, add_callback));
+    }
+    for (const auto &object_id : ids) {
+      // Check that lookup returns the added object entries.
+      auto lookup_callback = [object_id, data_vector](
+                                 gcs::RedisGcsClient *client, const ObjectID &id,
+                                 const std::vector<ObjectTableData> &data) {
+        ASSERT_EQ(id, object_id);
+        ASSERT_EQ(data.size(), 1);
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
+    }
+    if (ids.size() == 1) {
+      client->object_table().Delete(job_id, ids[0]);
+    } else {
+      client->object_table().Delete(job_id, ids);
+    }
+    for (const auto &object_id : ids) {
+      auto lookup_callback = [object_id](gcs::RedisGcsClient *client, const ObjectID &id,
+                                         const std::vector<ObjectTableData> &data) {
+        ASSERT_EQ(id, object_id);
+        ASSERT_TRUE(data.size() == 0);
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
+    }
+  }
 
-  // Do a lookup at the object ID.
-  RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback2));
-  // Run the event loop. The loop will only stop if the Lookup callback is
-  // called (or an assertion failure).
-  test->Start();
-  ASSERT_EQ(test->NumCallbacks(), managers.size() * 2 + 2);
-}
+  static void TestSetSubscribeAll(const JobID &job_id,
+                                  std::shared_ptr<gcs::RedisGcsClient> client) {
+    std::vector<ObjectID> object_ids;
+    for (int i = 0; i < 3; i++) {
+      object_ids.emplace_back(ObjectID::FromRandom());
+    }
+    std::vector<std::string> managers = {"abc", "def", "ghi"};
+
+    // Callback for a notification.
+    auto notification_callback =
+        [object_ids, managers](
+            gcs::RedisGcsClient *client, const ObjectID &id,
+            const std::vector<ObjectChangeNotification> &notifications) {
+          if (test->NumCallbacks() < 3 * 3) {
+            ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
+          } else {
+            ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::REMOVE);
+          }
+          ASSERT_EQ(id, object_ids[test->NumCallbacks() / 3 % 3]);
+          // Check that we get notifications in the same order as the writes.
+          for (const auto &entry : notifications[0].GetData()) {
+            ASSERT_EQ(entry.manager(), managers[test->NumCallbacks() % 3]);
+            test->IncrementNumCallbacks();
+          }
+          if (test->NumCallbacks() == object_ids.size() * 3 * 2) {
+            test->Stop();
+          }
+        };
+
+    // Callback for subscription success. We are guaranteed to receive
+    // notifications after this is called.
+    auto subscribe_callback = [job_id, object_ids,
+                               managers](gcs::RedisGcsClient *client) {
+      // We have subscribed. Do the writes to the table.
+      for (size_t i = 0; i < object_ids.size(); i++) {
+        for (size_t j = 0; j < managers.size(); j++) {
+          auto data = std::make_shared<ObjectTableData>();
+          data->set_manager(managers[j]);
+          for (int k = 0; k < 3; k++) {
+            // Add the same entry several times.
+            // Expect no notification if the entry already exists.
+            RAY_CHECK_OK(
+                client->object_table().Add(job_id, object_ids[i], data, nullptr));
+          }
+        }
+      }
+      for (size_t i = 0; i < object_ids.size(); i++) {
+        for (size_t j = 0; j < managers.size(); j++) {
+          auto data = std::make_shared<ObjectTableData>();
+          data->set_manager(managers[j]);
+          for (int k = 0; k < 3; k++) {
+            // Remove the same entry several times.
+            // Expect no notification if the entry doesn't exist.
+            RAY_CHECK_OK(
+                client->object_table().Remove(job_id, object_ids[i], data, nullptr));
+          }
+        }
+      }
+    };
+
+    // Subscribe to all driver table notifications. Once we have successfully
+    // subscribed, we will append to the key several times and check that we get
+    // notified for each.
+    RAY_CHECK_OK(client->object_table().Subscribe(
+        job_id, ClientID::Nil(), notification_callback, subscribe_callback));
+
+    // Run the event loop. The loop will only stop if the registered subscription
+    // callback is called (or an assertion failure).
+    test->Start();
+    // Check that we received one notification callback for each write.
+    ASSERT_EQ(test->NumCallbacks(), object_ids.size() * 3 * 2);
+  }
+
+  static void TestSetSubscribeId(const JobID &job_id,
+                                 std::shared_ptr<gcs::RedisGcsClient> client) {
+    // Add a set entry.
+    ObjectID object_id1 = ObjectID::FromRandom();
+    std::vector<std::string> managers1 = {"abc", "def", "ghi"};
+    auto data1 = std::make_shared<ObjectTableData>();
+    data1->set_manager(managers1[0]);
+    RAY_CHECK_OK(client->object_table().Add(job_id, object_id1, data1, nullptr));
+
+    // Add a set entry at a second key.
+    ObjectID object_id2 = ObjectID::FromRandom();
+    std::vector<std::string> managers2 = {"jkl", "mno", "pqr"};
+    auto data2 = std::make_shared<ObjectTableData>();
+    data2->set_manager(managers2[0]);
+    RAY_CHECK_OK(client->object_table().Add(job_id, object_id2, data2, nullptr));
+
+    // The callback for a notification from the table. This should only be
+    // received for keys that we requested notifications for.
+    auto notification_callback =
+        [object_id2, managers2](
+            gcs::RedisGcsClient *client, const ObjectID &id,
+            const std::vector<ObjectChangeNotification> &notifications) {
+          ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
+          // Check that we only get notifications for the requested key.
+          ASSERT_EQ(id, object_id2);
+          // Check that we get notifications in the same order as the writes.
+          for (const auto &entry : notifications[0].GetData()) {
+            ASSERT_EQ(entry.manager(), managers2[test->NumCallbacks()]);
+            test->IncrementNumCallbacks();
+          }
+          if (test->NumCallbacks() == managers2.size()) {
+            test->Stop();
+          }
+        };
+
+    // The callback for subscription success. Once we've subscribed, request
+    // notifications for only one of the keys, then write to both keys.
+    auto subscribe_callback = [job_id, object_id1, object_id2, managers1,
+                               managers2](gcs::RedisGcsClient *client) {
+      // Request notifications for one of the keys.
+      RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id2,
+                                                               local_client_id, nullptr));
+      // Write both keys. We should only receive notifications for the key that
+      // we requested them for.
+      auto remaining = std::vector<std::string>(++managers1.begin(), managers1.end());
+      for (const auto &manager : remaining) {
+        auto data = std::make_shared<ObjectTableData>();
+        data->set_manager(manager);
+        RAY_CHECK_OK(client->object_table().Add(job_id, object_id1, data, nullptr));
+      }
+      remaining = std::vector<std::string>(++managers2.begin(), managers2.end());
+      for (const auto &manager : remaining) {
+        auto data = std::make_shared<ObjectTableData>();
+        data->set_manager(manager);
+        RAY_CHECK_OK(client->object_table().Add(job_id, object_id2, data, nullptr));
+      }
+    };
+
+    // Subscribe to notifications for this client. This allows us to request and
+    // receive notifications for specific keys.
+    RAY_CHECK_OK(client->object_table().Subscribe(
+        job_id, local_client_id, notification_callback, subscribe_callback));
+    // Run the event loop. The loop will only stop if the registered subscription
+    // callback is called for the requested key.
+    test->Start();
+    // Check that we received one notification callback for each write to the
+    // requested key.
+    ASSERT_EQ(test->NumCallbacks(), managers2.size());
+  }
+
+  static void TestSetSubscribeCancel(const JobID &job_id,
+                                     std::shared_ptr<gcs::RedisGcsClient> client) {
+    // Add a set entry.
+    ObjectID object_id = ObjectID::FromRandom();
+    std::vector<std::string> managers = {"jkl", "mno", "pqr"};
+    auto data = std::make_shared<ObjectTableData>();
+    data->set_manager(managers[0]);
+    RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, nullptr));
+
+    // The callback for a notification from the object table. This should only be
+    // received for the object that we requested notifications for.
+    auto notification_callback =
+        [object_id, managers](
+            gcs::RedisGcsClient *client, const ObjectID &id,
+            const std::vector<ObjectChangeNotification> &notifications) {
+          ASSERT_EQ(notifications[0].GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
+          ASSERT_EQ(id, object_id);
+          // Check that we get a duplicate notification for the first write. We get a
+          // duplicate notification because notifications
+          // are canceled after the first write, then requested again.
+          const std::vector<ObjectTableData> &data = notifications[0].GetData();
+          if (data.size() == 1) {
+            // first notification
+            ASSERT_EQ(data[0].manager(), managers[0]);
+            test->IncrementNumCallbacks();
+          } else {
+            // second notification
+            ASSERT_EQ(data.size(), managers.size());
+            std::unordered_set<std::string> managers_set(managers.begin(),
+                                                         managers.end());
+            std::unordered_set<std::string> data_managers_set;
+            for (const auto &entry : data) {
+              data_managers_set.insert(entry.manager());
+              test->IncrementNumCallbacks();
+            }
+            ASSERT_EQ(managers_set, data_managers_set);
+          }
+          if (test->NumCallbacks() == managers.size() + 1) {
+            test->Stop();
+          }
+        };
+
+    // The callback for a notification from the table. This should only be
+    // received for keys that we requested notifications for.
+    auto subscribe_callback = [job_id, object_id, managers](gcs::RedisGcsClient *client) {
+      // Request notifications, then cancel immediately. We should receive a
+      // notification for the current value at the key.
+      RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id,
+                                                               local_client_id, nullptr));
+      RAY_CHECK_OK(client->object_table().CancelNotifications(job_id, object_id,
+                                                              local_client_id, nullptr));
+      // Add to the key. Since we canceled notifications, we should not
+      // receive a notification for these writes.
+      auto remaining = std::vector<std::string>(++managers.begin(), managers.end());
+      for (const auto &manager : remaining) {
+        auto data = std::make_shared<ObjectTableData>();
+        data->set_manager(manager);
+        RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, nullptr));
+      }
+      // Request notifications again. We should receive a notification for the
+      // current values at the key.
+      RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id,
+                                                               local_client_id, nullptr));
+    };
+
+    // Subscribe to notifications for this client. This allows us to request and
+    // receive notifications for specific keys.
+    RAY_CHECK_OK(client->object_table().Subscribe(
+        job_id, local_client_id, notification_callback, subscribe_callback));
+    // Run the event loop. The loop will only stop if the registered subscription
+    // callback is called for the requested key.
+    test->Start();
+    // Check that we received a notification callback for the first append to the
+    // key, then a notification for all of the appends, because we cancel
+    // notifications in between.
+    ASSERT_EQ(test->NumCallbacks(), managers.size() + 1);
+  }
+};
 
 TEST_F(TestGcsWithAsio, TestSet) {
   test = this;
-  TestSet(job_id_, client_);
+  SetTestHelper::TestSet(job_id_, client_);
 }
 
 void TestDeleteKeysFromLog(
@@ -581,50 +851,6 @@ void TestDeleteKeysFromLog(
     };
     RAY_CHECK_OK(
         client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  }
-}
-
-void TestDeleteKeysFromSet(const JobID &job_id,
-                           std::shared_ptr<gcs::RedisGcsClient> client,
-                           std::vector<std::shared_ptr<ObjectTableData>> &data_vector) {
-  std::vector<ObjectID> ids;
-  ObjectID object_id;
-  for (auto &data : data_vector) {
-    object_id = ObjectID::FromRandom();
-    ids.push_back(object_id);
-    // Check that we added the correct object entries.
-    auto add_callback = [object_id, data](gcs::RedisGcsClient *client, const ObjectID &id,
-                                          const ObjectTableData &d) {
-      ASSERT_EQ(id, object_id);
-      ASSERT_EQ(data->manager(), d.manager());
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, add_callback));
-  }
-  for (const auto &object_id : ids) {
-    // Check that lookup returns the added object entries.
-    auto lookup_callback = [object_id, data_vector](
-                               gcs::RedisGcsClient *client, const ObjectID &id,
-                               const std::vector<ObjectTableData> &data) {
-      ASSERT_EQ(id, object_id);
-      ASSERT_EQ(data.size(), 1);
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
-  }
-  if (ids.size() == 1) {
-    client->object_table().Delete(job_id, ids[0]);
-  } else {
-    client->object_table().Delete(job_id, ids);
-  }
-  for (const auto &object_id : ids) {
-    auto lookup_callback = [object_id](gcs::RedisGcsClient *client, const ObjectID &id,
-                                       const std::vector<ObjectTableData> &data) {
-      ASSERT_EQ(id, object_id);
-      ASSERT_TRUE(data.size() == 0);
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(client->object_table().Lookup(job_id, object_id, lookup_callback));
   }
 }
 
@@ -695,20 +921,20 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cl
   // Test one element case.
   AppendObjectData(1);
   ASSERT_EQ(object_vector.size(), 1);
-  TestDeleteKeysFromSet(job_id, client, object_vector);
+  SetTestHelper::TestDeleteKeysFromSet(job_id, client, object_vector);
   // Test the case for more than one elements and less than
   // maximum_gcs_deletion_batch_size.
   AppendObjectData(RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
   ASSERT_GT(object_vector.size(), 1);
   ASSERT_LT(object_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
-  TestDeleteKeysFromSet(job_id, client, object_vector);
+  SetTestHelper::TestDeleteKeysFromSet(job_id, client, object_vector);
   // Test the case for more than maximum_gcs_deletion_batch_size.
   // The Delete function will split the data into two commands.
   AppendObjectData(RayConfig::instance().maximum_gcs_deletion_batch_size() / 2);
   ASSERT_GT(object_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
-  TestDeleteKeysFromSet(job_id, client, object_vector);
+  SetTestHelper::TestDeleteKeysFromSet(job_id, client, object_vector);
 }
 
 TEST_F(TestGcsWithAsio, TestDeleteKey) {
@@ -903,80 +1129,9 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeAll) {
   LogSubscribeTestHelper::TestLogSubscribeAll(job_id_, client_);
 }
 
-void TestSetSubscribeAll(const JobID &job_id,
-                         std::shared_ptr<gcs::RedisGcsClient> client) {
-  std::vector<ObjectID> object_ids;
-  for (int i = 0; i < 3; i++) {
-    object_ids.emplace_back(ObjectID::FromRandom());
-  }
-  std::vector<std::string> managers = {"abc", "def", "ghi"};
-
-  // Callback for a notification.
-  auto notification_callback = [object_ids, managers](
-                                   gcs::RedisGcsClient *client, const ObjectID &id,
-                                   const GcsChangeMode change_mode,
-                                   const std::vector<ObjectTableData> data) {
-    if (test->NumCallbacks() < 3 * 3) {
-      ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
-    } else {
-      ASSERT_EQ(change_mode, GcsChangeMode::REMOVE);
-    }
-    ASSERT_EQ(id, object_ids[test->NumCallbacks() / 3 % 3]);
-    // Check that we get notifications in the same order as the writes.
-    for (const auto &entry : data) {
-      ASSERT_EQ(entry.manager(), managers[test->NumCallbacks() % 3]);
-      test->IncrementNumCallbacks();
-    }
-    if (test->NumCallbacks() == object_ids.size() * 3 * 2) {
-      test->Stop();
-    }
-  };
-
-  // Callback for subscription success. We are guaranteed to receive
-  // notifications after this is called.
-  auto subscribe_callback = [job_id, object_ids, managers](gcs::RedisGcsClient *client) {
-    // We have subscribed. Do the writes to the table.
-    for (size_t i = 0; i < object_ids.size(); i++) {
-      for (size_t j = 0; j < managers.size(); j++) {
-        auto data = std::make_shared<ObjectTableData>();
-        data->set_manager(managers[j]);
-        for (int k = 0; k < 3; k++) {
-          // Add the same entry several times.
-          // Expect no notification if the entry already exists.
-          RAY_CHECK_OK(client->object_table().Add(job_id, object_ids[i], data, nullptr));
-        }
-      }
-    }
-    for (size_t i = 0; i < object_ids.size(); i++) {
-      for (size_t j = 0; j < managers.size(); j++) {
-        auto data = std::make_shared<ObjectTableData>();
-        data->set_manager(managers[j]);
-        for (int k = 0; k < 3; k++) {
-          // Remove the same entry several times.
-          // Expect no notification if the entry doesn't exist.
-          RAY_CHECK_OK(
-              client->object_table().Remove(job_id, object_ids[i], data, nullptr));
-        }
-      }
-    }
-  };
-
-  // Subscribe to all driver table notifications. Once we have successfully
-  // subscribed, we will append to the key several times and check that we get
-  // notified for each.
-  RAY_CHECK_OK(client->object_table().Subscribe(
-      job_id, ClientID::Nil(), notification_callback, subscribe_callback));
-
-  // Run the event loop. The loop will only stop if the registered subscription
-  // callback is called (or an assertion failure).
-  test->Start();
-  // Check that we received one notification callback for each write.
-  ASSERT_EQ(test->NumCallbacks(), object_ids.size() * 3 * 2);
-}
-
 TEST_F(TestGcsWithAsio, TestSetSubscribeAll) {
   test = this;
-  TestSetSubscribeAll(job_id_, client_);
+  SetTestHelper::TestSetSubscribeAll(job_id_, client_);
 }
 
 TEST_TASK_TABLE_MACRO(TestGcsWithAsio, TestTableSubscribeId);
@@ -986,79 +1141,9 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeId) {
   LogSubscribeTestHelper::TestLogSubscribeId(job_id_, client_);
 }
 
-void TestSetSubscribeId(const JobID &job_id,
-                        std::shared_ptr<gcs::RedisGcsClient> client) {
-  // Add a set entry.
-  ObjectID object_id1 = ObjectID::FromRandom();
-  std::vector<std::string> managers1 = {"abc", "def", "ghi"};
-  auto data1 = std::make_shared<ObjectTableData>();
-  data1->set_manager(managers1[0]);
-  RAY_CHECK_OK(client->object_table().Add(job_id, object_id1, data1, nullptr));
-
-  // Add a set entry at a second key.
-  ObjectID object_id2 = ObjectID::FromRandom();
-  std::vector<std::string> managers2 = {"jkl", "mno", "pqr"};
-  auto data2 = std::make_shared<ObjectTableData>();
-  data2->set_manager(managers2[0]);
-  RAY_CHECK_OK(client->object_table().Add(job_id, object_id2, data2, nullptr));
-
-  // The callback for a notification from the table. This should only be
-  // received for keys that we requested notifications for.
-  auto notification_callback = [object_id2, managers2](
-                                   gcs::RedisGcsClient *client, const ObjectID &id,
-                                   const GcsChangeMode change_mode,
-                                   const std::vector<ObjectTableData> &data) {
-    ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
-    // Check that we only get notifications for the requested key.
-    ASSERT_EQ(id, object_id2);
-    // Check that we get notifications in the same order as the writes.
-    for (const auto &entry : data) {
-      ASSERT_EQ(entry.manager(), managers2[test->NumCallbacks()]);
-      test->IncrementNumCallbacks();
-    }
-    if (test->NumCallbacks() == managers2.size()) {
-      test->Stop();
-    }
-  };
-
-  // The callback for subscription success. Once we've subscribed, request
-  // notifications for only one of the keys, then write to both keys.
-  auto subscribe_callback = [job_id, object_id1, object_id2, managers1,
-                             managers2](gcs::RedisGcsClient *client) {
-    // Request notifications for one of the keys.
-    RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id2,
-                                                             local_client_id, nullptr));
-    // Write both keys. We should only receive notifications for the key that
-    // we requested them for.
-    auto remaining = std::vector<std::string>(++managers1.begin(), managers1.end());
-    for (const auto &manager : remaining) {
-      auto data = std::make_shared<ObjectTableData>();
-      data->set_manager(manager);
-      RAY_CHECK_OK(client->object_table().Add(job_id, object_id1, data, nullptr));
-    }
-    remaining = std::vector<std::string>(++managers2.begin(), managers2.end());
-    for (const auto &manager : remaining) {
-      auto data = std::make_shared<ObjectTableData>();
-      data->set_manager(manager);
-      RAY_CHECK_OK(client->object_table().Add(job_id, object_id2, data, nullptr));
-    }
-  };
-
-  // Subscribe to notifications for this client. This allows us to request and
-  // receive notifications for specific keys.
-  RAY_CHECK_OK(client->object_table().Subscribe(
-      job_id, local_client_id, notification_callback, subscribe_callback));
-  // Run the event loop. The loop will only stop if the registered subscription
-  // callback is called for the requested key.
-  test->Start();
-  // Check that we received one notification callback for each write to the
-  // requested key.
-  ASSERT_EQ(test->NumCallbacks(), managers2.size());
-}
-
 TEST_F(TestGcsWithAsio, TestSetSubscribeId) {
   test = this;
-  TestSetSubscribeId(job_id_, client_);
+  SetTestHelper::TestSetSubscribeId(job_id_, client_);
 }
 
 TEST_TASK_TABLE_MACRO(TestGcsWithAsio, TestTableSubscribeCancel);
@@ -1068,85 +1153,9 @@ TEST_F(TestGcsWithAsio, TestLogSubscribeCancel) {
   LogSubscribeTestHelper::TestLogSubscribeCancel(job_id_, client_);
 }
 
-void TestSetSubscribeCancel(const JobID &job_id,
-                            std::shared_ptr<gcs::RedisGcsClient> client) {
-  // Add a set entry.
-  ObjectID object_id = ObjectID::FromRandom();
-  std::vector<std::string> managers = {"jkl", "mno", "pqr"};
-  auto data = std::make_shared<ObjectTableData>();
-  data->set_manager(managers[0]);
-  RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, nullptr));
-
-  // The callback for a notification from the object table. This should only be
-  // received for the object that we requested notifications for.
-  auto notification_callback = [object_id, managers](
-                                   gcs::RedisGcsClient *client, const ObjectID &id,
-                                   const GcsChangeMode change_mode,
-                                   const std::vector<ObjectTableData> &data) {
-    ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
-    ASSERT_EQ(id, object_id);
-    // Check that we get a duplicate notification for the first write. We get a
-    // duplicate notification because notifications
-    // are canceled after the first write, then requested again.
-    if (data.size() == 1) {
-      // first notification
-      ASSERT_EQ(data[0].manager(), managers[0]);
-      test->IncrementNumCallbacks();
-    } else {
-      // second notification
-      ASSERT_EQ(data.size(), managers.size());
-      std::unordered_set<std::string> managers_set(managers.begin(), managers.end());
-      std::unordered_set<std::string> data_managers_set;
-      for (const auto &entry : data) {
-        data_managers_set.insert(entry.manager());
-        test->IncrementNumCallbacks();
-      }
-      ASSERT_EQ(managers_set, data_managers_set);
-    }
-    if (test->NumCallbacks() == managers.size() + 1) {
-      test->Stop();
-    }
-  };
-
-  // The callback for a notification from the table. This should only be
-  // received for keys that we requested notifications for.
-  auto subscribe_callback = [job_id, object_id, managers](gcs::RedisGcsClient *client) {
-    // Request notifications, then cancel immediately. We should receive a
-    // notification for the current value at the key.
-    RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id,
-                                                             local_client_id, nullptr));
-    RAY_CHECK_OK(client->object_table().CancelNotifications(job_id, object_id,
-                                                            local_client_id, nullptr));
-    // Add to the key. Since we canceled notifications, we should not
-    // receive a notification for these writes.
-    auto remaining = std::vector<std::string>(++managers.begin(), managers.end());
-    for (const auto &manager : remaining) {
-      auto data = std::make_shared<ObjectTableData>();
-      data->set_manager(manager);
-      RAY_CHECK_OK(client->object_table().Add(job_id, object_id, data, nullptr));
-    }
-    // Request notifications again. We should receive a notification for the
-    // current values at the key.
-    RAY_CHECK_OK(client->object_table().RequestNotifications(job_id, object_id,
-                                                             local_client_id, nullptr));
-  };
-
-  // Subscribe to notifications for this client. This allows us to request and
-  // receive notifications for specific keys.
-  RAY_CHECK_OK(client->object_table().Subscribe(
-      job_id, local_client_id, notification_callback, subscribe_callback));
-  // Run the event loop. The loop will only stop if the registered subscription
-  // callback is called for the requested key.
-  test->Start();
-  // Check that we received a notification callback for the first append to the
-  // key, then a notification for all of the appends, because we cancel
-  // notifications in between.
-  ASSERT_EQ(test->NumCallbacks(), managers.size() + 1);
-}
-
 TEST_F(TestGcsWithAsio, TestSetSubscribeCancel) {
   test = this;
-  TestSetSubscribeCancel(job_id_, client_);
+  SetTestHelper::TestSetSubscribeCancel(job_id_, client_);
 }
 
 /// A helper class for ClientTable testing.

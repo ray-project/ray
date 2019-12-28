@@ -1,6 +1,7 @@
 #include "gcs_server.h"
 #include "actor_info_handler_impl.h"
 #include "job_info_handler_impl.h"
+#include "node_info_handler_impl.h"
 
 namespace ray {
 namespace gcs {
@@ -25,6 +26,11 @@ void GcsServer::Start() {
   actor_info_service_.reset(
       new rpc::ActorInfoGrpcService(main_service_, *actor_info_handler_));
   rpc_server_.RegisterService(*actor_info_service_);
+
+  node_info_handler_ = InitNodeInfoHandler();
+  node_info_service_.reset(
+      new rpc::NodeInfoGrpcService(main_service_, *node_info_handler_));
+  rpc_server_.RegisterService(*node_info_service_);
 
   // Run rpc server.
   rpc_server_.Run();
@@ -60,6 +66,11 @@ std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
 std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
   return std::unique_ptr<rpc::DefaultActorInfoHandler>(
       new rpc::DefaultActorInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
+  return std::unique_ptr<rpc::DefaultNodeInfoHandler>(
+      new rpc::DefaultNodeInfoHandler(*redis_gcs_client_));
 }
 
 }  // namespace gcs

@@ -46,14 +46,14 @@ master branch). To install these wheels, run the following command:
 Installing Ray with Anaconda
 ----------------------------
 
-If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands: 
+If you use `Anaconda`_ and want to use Ray in a defined environment, e.g, ``ray``, use these commands:
 
 .. code-block:: bash
 
   conda create --name ray
   conda activate ray
   conda install --name ray pip
-  pip install ray 
+  pip install ray
 
 Use ``pip list`` to confirm that ``ray`` is installed.
 
@@ -135,25 +135,35 @@ steps are included in the installation instructions above.
 
 .. _`Node.js`: https://nodejs.org/
 
-The dashboard also requires:
-
--  Python 3
--  aiohttp
--  psutil
-
-The latter two can be installed via pip:
+The dashboard requires a few additional Python packages, which can be installed
+via pip.
 
 .. code-block:: bash
 
-  pip install aiohttp psutil
- 
-The dashboard is enabled by setting
-``include_webui=True`` during initialization, i.e.
+  pip install ray[dashboard]
 
-.. code-block:: python
+If you are using Anaconda and have trouble installing ``psutil`` or
+``setproctitle``, the try
 
-  import ray
-  ray.init(include_webui=True)
+.. code-block:: bash
+
+  conda install psutil setproctitle
+
+The command ``ray.init()`` or ``ray start --head`` will print out the address of
+the dashboard. For example,
+
+.. code-block::
+
+  >>> import ray
+  >>> ray.init()
+  ======================================================================
+  View the dashboard at http://127.0.0.1:8265.
+  Note: If Ray is running on a remote node, you will need to set up an
+  SSH tunnel with local port forwarding in order to access the dashboard
+  in your browser, e.g. by running 'ssh -L 8265:127.0.0.1:8265
+  <username>@<host>'. Alternatively, you can set webui_host="0.0.0.0" in
+  the call to ray.init() to allow direct access from external machines.
+  ======================================================================
 
 
 Docker Source Images

@@ -768,12 +768,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
             "methods in the `Checkpointable` interface.")
 
     if max_reconstructions is None:
-        if ray_constants.direct_call_enabled():
-            # Allow the actor creation task to be resubmitted automatically
-            # by default.
-            max_reconstructions = 3
-        else:
-            max_reconstructions = 0
+        max_reconstructions = 0
 
     if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
             ray_constants.INFINITE_RECONSTRUCTION):
@@ -824,7 +819,6 @@ def exit_actor():
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
         # Intentionally disconnect the core worker from the raylet so the
         # raylet won't push an error message to the driver.
-        worker.core_worker.disconnect()
         ray.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
