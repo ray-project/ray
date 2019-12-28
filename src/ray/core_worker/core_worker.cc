@@ -293,8 +293,13 @@ void CoreWorker::RunIOService() {
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
+  bool not_actor_task = false;
+  {
+    absl::MutexLock lock(&mutex_);
+    not_actor_task = actor_id_.IsNil();
+  }
   // Clear all actor handles at the end of each non-actor task.
-  if (actor_id_.IsNil() && task_id.IsNil()) {
+  if (not_actor_task && task_id.IsNil()) {
     absl::MutexLock lock(&actor_handles_mutex_);
     for (const auto &handle : actor_handles_) {
       RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
@@ -875,7 +880,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
-    RAY_LOG(INFO) << "Creating actor: " << actor_id_;
+    RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
@@ -1111,8 +1116,8 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
 }
 
 void CoreWorker::SetActorId(const ActorID &actor_id) {
-  RAY_CHECK(actor_id_.IsNil());
   absl::MutexLock lock(&mutex_);
+  RAY_CHECK(actor_id_.IsNil());
   actor_id_ = actor_id;
 }
 
