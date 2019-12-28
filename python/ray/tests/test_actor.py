@@ -1440,7 +1440,7 @@ def test_kill(ray_start_regular):
     assert len(ready) == 0
     actor.__ray_kill__()
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(result, timeout=1)
+        ray.get(result)
 
 
 # This test verifies actor creation task failure will not
