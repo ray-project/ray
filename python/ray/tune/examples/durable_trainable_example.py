@@ -77,11 +77,13 @@ def get_optimus_trainable(parent_cls):
                 "func": cloudpickle.dumps(self.func),
                 "seed": np.random.get_state(),
                 "data": self.mock_data,
+                "iter": self.iter
             }
 
         def _restore(self, checkpoint):
             self.func = cloudpickle.loads(checkpoint["func"])
             self.data = checkpoint["data"]
+            self.iter = checkpoint["iter"]
             np.random.set_state(checkpoint["seed"])
 
     return OptimusTrainable
