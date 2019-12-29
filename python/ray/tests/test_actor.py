@@ -17,8 +17,7 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import run_string_as_driver
-
-RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -452,7 +451,7 @@ def test_multiple_actors(ray_start_regular):
         def reset(self):
             self.value = 0
 
-    num_actors = 20
+    num_actors = 5
     num_increases = 50
     # Create multiple actors.
     actors = [Counter.remote(i) for i in range(num_actors)]
@@ -773,7 +772,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
 
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Counter(object):
         def __init__(self):
             self.x = 0
@@ -809,7 +808,6 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no ft yet")
 def test_actor_init_fails(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     remote_node = cluster.add_node()
@@ -835,7 +833,6 @@ def test_actor_init_fails(ray_start_cluster_head):
     assert results == [1 for actor in actors]
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no ft yet")
 def test_reconstruction_suppression(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     num_nodes = 5
@@ -1152,7 +1149,6 @@ def setup_queue_actor():
     ray.shutdown()
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO support block/unblock")
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1171,7 +1167,6 @@ def test_fork(setup_queue_actor):
         assert filtered_items == list(range(1))
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO support block/unblock")
 def test_fork_consistency(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1183,7 +1178,7 @@ def test_fork_consistency(setup_queue_actor):
         return ray.get(x)
 
     # Fork num_iters times.
-    num_forks = 10
+    num_forks = 5
     num_items_per_fork = 100
 
     # Submit some tasks on new actor handles.
@@ -1203,7 +1198,6 @@ def test_fork_consistency(setup_queue_actor):
         assert filtered_items == list(range(num_items_per_fork))
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO support block/unblock")
 def test_pickled_handle_consistency(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1237,7 +1231,6 @@ def test_pickled_handle_consistency(setup_queue_actor):
         assert filtered_items == list(range(num_items_per_fork))
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO support block/unblock")
 def test_nested_fork(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1432,6 +1425,74 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.experimental.get_actor(actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+
+
+def test_kill(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def hang(self):
+            # Never returns.
+            ray.get(ray.ObjectID.from_random())
+
+    actor = Actor.remote()
+    result = actor.hang.remote()
+    ready, _ = ray.wait([result], timeout=0.1)
+    assert len(ready) == 0
+    actor.__ray_kill__()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(result)
+
+
+# This test verifies actor creation task failure will not
+# hang the caller.
+def test_actor_creation_task_crash(ray_start_regular):
+    # Test actor death in constructor.
+    @ray.remote(max_reconstructions=0)
+    class Actor(object):
+        def __init__(self):
+            print("crash")
+            os._exit(0)
+
+        def f(self):
+            return "ACTOR OK"
+
+    # Verify an exception is thrown.
+    a = Actor.remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.f.remote())
+
+    # Test an actor can be reconstructed successfully
+    # afte it dies in its constructor.
+    @ray.remote(max_reconstructions=3)
+    class ReconstructableActor(object):
+        def __init__(self):
+            count = self.get_count()
+            count += 1
+            # Make it die for the first 2 times.
+            if count < 3:
+                self.set_count(count)
+                print("crash: " + str(count))
+                os._exit(0)
+            else:
+                print("no crash")
+
+        def f(self):
+            return "ACTOR OK"
+
+        def get_count(self):
+            value = _internal_kv_get("count")
+            if value is None:
+                count = 0
+            else:
+                count = int(value)
+            return count
+
+        def set_count(self, count):
+            _internal_kv_put("count", count, True)
+
+    # Verify we can get the object successfully.
+    ra = ReconstructableActor.remote()
+    ray.get(ra.f.remote())
 
 
 if __name__ == "__main__":

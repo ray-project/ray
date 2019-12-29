@@ -20,6 +20,7 @@ from ray.tune.trial import Trial, Checkpoint, Location
 from ray.tune.resources import Resources
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.util import warn_if_slow
+from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ class RayTrialExecutor(TrialExecutor):
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
         trial.set_location(Location())
-        logger.info("Trial %s: Setting up new remote runner.", trial)
+        logger.debug("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         with self._switch_working_directory(trial):
@@ -129,6 +130,21 @@ class RayTrialExecutor(TrialExecutor):
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
+
+        if self._find_item(self._paused, trial):
+            raise TuneError(
+                "Should not call `train` on PAUSED trial {}. "
+                "This is an internal error - please file an issue "
+                "on https://github.com/ray-project/ray/issues/.".format(
+                    str(trial)))
+
+        if self._find_item(self._running, trial):
+            logging.debug(
+                "Trial {} already has a queued future. Skipping this "
+                "`train` call. This may occur if a trial has "
+                "been unpaused within a scheduler callback.".format(
+                    str(trial)))
+            return
 
         assert trial.status == Trial.RUNNING, trial.status
         with self._switch_working_directory(trial):
@@ -139,6 +155,8 @@ class RayTrialExecutor(TrialExecutor):
             remote = _LocalWrapper(remote)
 
         self._running[remote] = trial
+        trial_item = self._find_item(self._running, trial)
+        assert len(trial_item) < 2, trial_item
 
     def _start_trial(self, trial, checkpoint=None, runner=None):
         """Starts trial and restores last result if trial was paused.
@@ -315,7 +333,7 @@ class RayTrialExecutor(TrialExecutor):
                         trainable.reset_config.remote(new_config),
                         DEFAULT_GET_TIMEOUT)
             except RayTimeoutError:
-                logger.exception("Trial %s: reset_config timed out.")
+                logger.exception("Trial %s: reset_config timed out.", trial)
                 return False
         return reset_val
 
@@ -559,16 +577,18 @@ class RayTrialExecutor(TrialExecutor):
         """Before step() called, update the available resources."""
         self._update_avail_resources()
 
-    def save(self, trial, storage=Checkpoint.DISK):
+    def save(self, trial, storage=Checkpoint.DISK, result=None):
         """Saves the trial's state to a checkpoint."""
+        result = result or trial.last_result
+
         with self._switch_working_directory(trial):
             if storage == Checkpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
-                checkpoint = Checkpoint(storage, value, trial.last_result)
+                checkpoint = Checkpoint(storage, value, result)
             else:
                 with warn_if_slow("save_checkpoint_to_disk"):
                     value = ray.get(trial.runner.save.remote())
-                    checkpoint = Checkpoint(storage, value, trial.last_result)
+                    checkpoint = Checkpoint(storage, value, result)
 
         with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
             try:

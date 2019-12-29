@@ -49,4 +49,4 @@ Adding a Workload
 -----------------
 
 To create a new workload, simply add a new Python file under ``workloads/`` and
-add the workload in the run command in `.rayproject/project.yaml`.
+add the workload in the run command in `ray-project/project.yaml`.

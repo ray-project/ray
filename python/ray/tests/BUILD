@@ -7,16 +7,16 @@ py_test(
 )
 
 py_test(
-    name = "test_actor_direct",
-    size = "medium",
-    srcs = ["test_actor_direct.py", "test_actor.py"],
+    name = "test_actor_pool",
+    size = "small",
+    srcs = ["test_actor_pool.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_actor_resources",
-    size = "large",
+    size = "medium",
     srcs = ["test_actor_resources.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -24,9 +24,10 @@ py_test(
 
 py_test(
     name = "test_actor_failures",
-    size = "large",
+    size = "medium",
     srcs = ["test_actor_failures.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) enable this once we support actor reconstruction again
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -39,48 +40,72 @@ py_test(
 )
 
 py_test(
-    name = "test_basic_direct",
-    size = "medium",
-    srcs = ["test_basic_direct.py", "test_basic.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_advanced",
-    size = "large",
+    size = "medium",
     srcs = ["test_advanced.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_advanced_2",
+    size = "medium",
+    srcs = ["test_advanced_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_advanced_3",
+    size = "medium",
+    srcs = ["test_advanced_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_component_failures",
-    size = "large",
+    size = "small",
     srcs = ["test_component_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_component_failures_2",
+    size = "medium",
+    srcs = ["test_component_failures_2.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_component_failures_3",
+    size = "medium",
+    srcs = ["test_component_failures_3.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_multinode_failures",
-    size = "large",
+    size = "medium",
     srcs = ["test_multinode_failures.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
-    name = "test_multinode_failures_direct",
+    name = "test_multinode_failures_2",
     size = "medium",
-    srcs = ["test_multinode_failures_direct.py", "test_multinode_failures.py"],
-    tags = ["exclusive", "manual"],
+    srcs = ["test_multinode_failures_2.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_stress",
-    size = "large",
+    size = "medium",
     srcs = ["test_stress.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -88,7 +113,7 @@ py_test(
 
 py_test(
     name = "test_stress_sharded",
-    size = "large",
+    size = "medium",
     srcs = ["test_stress_sharded.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -98,7 +123,8 @@ py_test(
     name = "test_stress_failure",
     size = "large",
     srcs = ["test_stress_failure.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) enable again once we support direct call reconstruction
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -107,7 +133,6 @@ py_test(
     size = "medium",
     srcs = ["test_array.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -115,7 +140,6 @@ py_test(
     size = "small",
     srcs = ["test_autoscaler.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -137,7 +161,6 @@ py_test(
     size = "small",
     srcs = ["test_debug_tools.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
@@ -157,17 +180,8 @@ py_test(
 )
 
 py_test(
-    name = "test_failure_direct",
-    size = "medium",
-    srcs = ["test_failure_direct.py", "test_failure.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-    flaky = 1,
-)
-
-py_test(
     name = "test_garbage_collection",
-    size = "medium",
+    size = "small",
     srcs = ["test_garbage_collection.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -175,16 +189,8 @@ py_test(
 
 py_test(
     name = "test_global_state",
-    size = "medium",
+    size = "small",
     srcs = ["test_global_state.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_logical_graph",
-    size = "medium",
-    srcs = ["test_logical_graph.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -215,7 +221,7 @@ py_test(
 
 py_test(
     name = "test_microbenchmarks",
-    size = "medium",
+    size = "small",
     srcs = ["test_microbenchmarks.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -230,9 +236,10 @@ py_test(
 
 py_test(
     name = "test_monitors",
-    size = "medium",
+    size = "small",
     srcs = ["test_monitors.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) tasks() and objects() are different in direct call mode.
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -280,12 +287,11 @@ py_test(
     size = "small",
     srcs = ["test_queue.py"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
     name = "test_ray_init",
-    size = "medium",
+    size = "small",
     srcs = ["test_ray_init.py"],
     deps = ["//:ray_lib"],
 )
@@ -308,7 +314,7 @@ py_test(
 
 py_test(
     name = "test_tensorflow",
-    size = "medium",
+    size = "small",
     srcs = ["test_tensorflow.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -324,7 +330,7 @@ py_test(
 
 py_test(
     name = "test_webui",
-    size = "medium",
+    size = "small",
     srcs = ["test_webui.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],

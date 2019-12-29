@@ -23,7 +23,7 @@ from ray.test_utils import (
     RayTestTimeoutException,
 )
 
-RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_failed_task(ray_start_regular):
@@ -104,7 +104,7 @@ def temporary_helper_function():
     # Define a function that closes over this temporary module. This should
     # fail when it is unpickled.
     @ray.remote
-    def g():
+    def g(x, y=3):
         try:
             module.temporary_python_file()
         except Exception:
@@ -113,19 +113,20 @@ def temporary_helper_function():
             pass
 
     # Invoke the function so that the definition is exported.
-    g.remote()
+    g.remote(1, y=2)
 
     wait_for_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR)
-    assert len(errors) == 2
+    assert len(errors) >= 2, errors
     assert "No module named" in errors[0]["message"]
     assert "No module named" in errors[1]["message"]
 
     # Check that if we try to call the function it throws an exception and
     # does not hang.
     for _ in range(10):
-        with pytest.raises(Exception):
-            ray.get(g.remote())
+        with pytest.raises(
+                Exception, match="This function was not imported properly."):
+            ray.get(g.remote(1, y=2))
 
     f.close()
 
@@ -167,17 +168,17 @@ def temporary_helper_function():
     # fail when it is unpickled.
     @ray.remote
     class Foo(object):
-        def __init__(self):
+        def __init__(self, arg1, arg2=3):
             self.x = module.temporary_python_file()
 
-        def get_val(self):
+        def get_val(self, arg1, arg2=3):
             return 1
 
     # There should be no errors yet.
     assert len(ray.errors()) == 0
 
     # Create an actor.
-    foo = Foo.remote()
+    foo = Foo.remote(3, arg2=0)
 
     # Wait for the error to arrive.
     wait_for_errors(ray_constants.REGISTER_ACTOR_PUSH_ERROR, 1)
@@ -192,8 +193,8 @@ def temporary_helper_function():
 
     # Check that if we try to get the function it throws an exception and
     # does not hang.
-    with pytest.raises(Exception):
-        ray.get(foo.get_val.remote())
+    with pytest.raises(Exception, match="failed to be imported"):
+        ray.get(foo.get_val.remote(1, arg2=2))
 
     # Wait for the error from when the call to get_val.
     wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
@@ -342,7 +343,7 @@ def test_actor_worker_dying(ray_start_regular):
 
 
 def test_actor_worker_dying_future_tasks(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def getpid(self):
             return os.getpid()
@@ -364,7 +365,7 @@ def test_actor_worker_dying_future_tasks(ray_start_regular):
 
 
 def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
-    @ray.remote
+    @ray.remote(max_reconstructions=0)
     class Actor(object):
         def getpid(self):
             return os.getpid()
@@ -729,11 +730,17 @@ def test_redis_module_failure(ray_start_regular):
     def run_failure_test(expecting_message, *command):
         with pytest.raises(
                 Exception, match=".*{}.*".format(expecting_message)):
-            client = redis.StrictRedis(host=address[0], port=int(address[1]))
+            client = redis.StrictRedis(
+                host=address[0],
+                port=int(address[1]),
+                password=ray_constants.REDIS_DEFAULT_PASSWORD)
             client.execute_command(*command)
 
     def run_one_command(*command):
-        client = redis.StrictRedis(host=address[0], port=int(address[1]))
+        client = redis.StrictRedis(
+            host=address[0],
+            port=int(address[1]),
+            password=ray_constants.REDIS_DEFAULT_PASSWORD)
         client.execute_command(*command)
 
     run_failure_test("wrong number of arguments", "RAY.TABLE_ADD", 13)
@@ -881,9 +888,6 @@ def test_fill_object_store_exception(ray_start_cluster_head):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
 
 
-@pytest.mark.skipif(
-    not RAY_FORCE_DIRECT,
-    reason="raylet path attempts reconstruction for evicted objects")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_nodes": 1,
@@ -918,9 +922,6 @@ def test_direct_call_eviction(ray_start_cluster):
         ray.get(dependent_task.remote(obj))
 
 
-@pytest.mark.skipif(
-    not RAY_FORCE_DIRECT,
-    reason="raylet path attempts reconstruction for evicted objects")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_nodes": 1,

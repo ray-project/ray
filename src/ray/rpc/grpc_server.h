@@ -1,11 +1,11 @@
 #ifndef RAY_RPC_GRPC_SERVER_H
 #define RAY_RPC_GRPC_SERVER_H
 
+#include <grpcpp/grpcpp.h>
+
+#include <boost/asio.hpp>
 #include <thread>
 #include <utility>
-
-#include <grpcpp/grpcpp.h>
-#include <boost/asio.hpp>
 
 #include "ray/common/status.h"
 #include "ray/rpc/server_call.h"
@@ -42,7 +42,9 @@ class GrpcServer {
   // Shutdown this server
   void Shutdown() {
     if (!is_closed_) {
-      server_->Shutdown();
+      // Shutdown the server with an immediate deadline.
+      // TODO(edoakes): do we want to do this in all cases?
+      server_->Shutdown(gpr_now(GPR_CLOCK_REALTIME));
       for (const auto &cq : cqs_) {
         cq->Shutdown();
       }

@@ -32,6 +32,8 @@ message Address {
   bytes raylet_id = 1;
   string ip_address = 2;
   int32 port = 3;
+  // Optional unique id for the worker.
+  bytes worker_id = 4;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -142,4 +144,30 @@ message TaskExecutionSpec {
 message Task {
   TaskSpec task_spec = 1;
   TaskExecutionSpec task_execution_spec = 2;
+}
+
+// Represents a resource id.
+message ResourceId {
+  // The index of the resource (i.e., CPU #3).
+  int64 index = 1;
+  // The quantity of the resource assigned (i.e., 0.5 CPU).
+  double quantity = 2;
+}
+
+// Represents a set of resource ids.
+message ResourceMapEntry {
+  // The name of the resource (i.e., "CPU").
+  string name = 1;
+  // The set of resource ids assigned.
+  repeated ResourceId resource_ids = 2;
+}
+
+// Debug info returned from the core worker.
+message CoreWorkerStats {
+  // Debug string of the currently executing task.
+  string current_task_desc = 1;
+  // Number of pending normal and actor tasks.
+  int32 num_pending_tasks = 2;
+  // Number of object ids in local scope.
+  int32 num_object_ids_in_scope = 3;
 }

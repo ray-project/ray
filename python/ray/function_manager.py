@@ -390,7 +390,7 @@ class FunctionActorManager(object):
 
         # This is a placeholder in case the function can't be unpickled. This
         # will be overwritten if the function is successfully registered.
-        def f():
+        def f(*args, **kwargs):
             raise Exception("This function was not imported properly.")
 
         # This function is called by ImportThread. This operation needs to be
@@ -664,7 +664,7 @@ class FunctionActorManager(object):
         class TemporaryActor(object):
             pass
 
-        def temporary_actor_method(*xs):
+        def temporary_actor_method(*args, **kwargs):
             raise Exception(
                 "The actor with name {} failed to be imported, "
                 "and so cannot execute this method.".format(actor_class_name))

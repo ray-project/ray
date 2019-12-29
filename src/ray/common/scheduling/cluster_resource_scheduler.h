@@ -43,6 +43,10 @@ struct NodeResources {
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
+  /// Returns if this equals another node resources.
+  bool operator==(const NodeResources &other);
+  /// Returns human-readable string for these resources.
+  std::string DebugString();
 };
 
 struct TaskRequest {
@@ -55,6 +59,8 @@ struct TaskRequest {
   /// the task will run on a different node in the cluster, if none of the
   /// nodes in this list can schedule this task.
   absl::flat_hash_set<int64_t> placement_hints;
+  /// Returns human-readable string for this task request.
+  std::string DebugString();
 };
 
 /// Class encapsulating the cluster resources and the logic to assign
@@ -84,9 +90,8 @@ class ClusterResourceScheduler {
       const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
 
-  std::string TaskRequestDebugString(const TaskRequest &task_request);
-  std::string NodeResourcesDebugString(const NodeResources &node_resources);
-  std::string DebugString(void);
+  /// Returns human-readable string for this scheduler.
+  std::string DebugString();
 
  public:
   ClusterResourceScheduler(void){};

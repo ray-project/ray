@@ -41,7 +41,7 @@ ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
 
 
 cdef extern from "ray/raylet/raylet_client.h" nogil:
-    cdef cppclass CRayletClient "RayletClient":
+    cdef cppclass CRayletClient "ray::raylet::RayletClient":
         CRayletClient(const c_string &raylet_socket,
                       const CWorkerID &worker_id,
                       c_bool is_worker, const CJobID &job_id,
