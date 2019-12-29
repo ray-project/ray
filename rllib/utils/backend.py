@@ -38,7 +38,8 @@ def try_import_tfp():
         The tfp module.
     """
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
-        logger.warning("Not importing TensorFlow Probability for test purposes.")
+        logger.warning("Not importing TensorFlow Probability for test "
+                       "purposes.")
         return None
 
     try:

@@ -8,7 +8,8 @@ import numpy as np
 SMALL_NUMBER = 1e-6
 # Some large int number. May be increased here, if needed.
 LARGE_INTEGER = 100000000
-# Min and Max outputs (clipped) from an NN-output layer interpreted as the log(x) of some x (e.g. a stddev of a normal
+# Min and Max outputs (clipped) from an NN-output layer interpreted as the
+# log(x) of some x (e.g. a stddev of a normal
 # distribution).
 MIN_LOG_NN_OUTPUT = -20
 MAX_LOG_NN_OUTPUT = 2
@@ -21,7 +22,8 @@ def sigmoid(x, derivative=False):
 
     Args:
         x (np.ndarray): The input to the sigmoid function.
-        derivative (bool): Whether to return the derivative or not. Default: False.
+        derivative (bool): Whether to return the derivative or not.
+            Default: False.
 
     Returns:
         np.ndarray: The sigmoid function (or its derivative) applied to x.
@@ -85,11 +87,13 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
 
     if depth == 0:
         depth = np.max(x) + 1
-    assert np.max(x) < depth, "ERROR: The max. index of `x` ({}) is larger than depth ({})!".format(np.max(x), depth)
+    assert np.max(x) < depth, \
+        "ERROR: The max. index of `x` ({}) is larger than depth ({})!".\
+        format(np.max(x), depth)
     shape = x.shape
 
     # Python 2.7 compatibility, (*shape, depth) is not allowed.
-    shape_list = [dim for dim in shape]
+    shape_list = shape[:]
     shape_list.append(depth)
     out = np.ones(shape_list) * off_value
     indices = []
@@ -109,7 +113,8 @@ def one_hot(x, depth=0, on_value=1, off_value=0):
 
 def fc(x, weights, biases=None):
     """
-    Calculates the outputs of a fully-connected (dense) layer given weights/biases and an input.
+    Calculates the outputs of a fully-connected (dense) layer given
+    weights/biases and an input.
 
     Args:
         x (np.ndarray): The input to the dense layer.
@@ -122,23 +127,27 @@ def fc(x, weights, biases=None):
     return np.matmul(x, weights) + (0.0 if biases is None else biases)
 
 
-def lstm(x, weights, biases=None, initial_internal_states=None, time_major=False, forget_bias=1.0):
+def lstm(x, weights, biases=None, initial_internal_states=None,
+         time_major=False, forget_bias=1.0):
     """
-    Calculates the outputs of an LSTM layer given weights/biases, internal_states, and input.
+    Calculates the outputs of an LSTM layer given weights/biases,
+    internal_states, and input.
 
     Args:
-        x (np.ndarray): The inputs to the LSTM layer including time-rank (0th if time-major, else 1st) and
-            the batch-rank (1st if time-major, else 0th).
+        x (np.ndarray): The inputs to the LSTM layer including time-rank
+            (0th if time-major, else 1st) and the batch-rank
+            (1st if time-major, else 0th).
 
         weights (np.ndarray): The weights matrix.
         biases (Optional[np.ndarray]): The biases vector. All 0s if None.
 
-        initial_internal_states (Optional[np.ndarray]): The initial internal states to pass into the layer.
-            All 0s if None.
+        initial_internal_states (Optional[np.ndarray]): The initial internal
+            states to pass into the layer. All 0s if None.
 
         time_major (bool): Whether to use time-major or not. Default: False.
 
-        forget_bias (float): Gets added to first sigmoid (forget gate) output. Default: 1.0.
+        forget_bias (float): Gets added to first sigmoid (forget gate) output.
+            Default: 1.0.
 
     Returns:
         Tuple:
@@ -162,13 +171,15 @@ def lstm(x, weights, biases=None, initial_internal_states=None, time_major=False
     else:
         unrolled_outputs = np.zeros(shape=(batch_size, sequence_length, units))
 
-    # Push the batch 4 times through the LSTM cell and capture the outputs plus the final h- and c-states.
+    # Push the batch 4 times through the LSTM cell and capture the outputs plus
+    # the final h- and c-states.
     for t in range(sequence_length):
         input_matrix = x[t, :, :] if time_major else x[:, t, :]
         input_matrix = np.concatenate((input_matrix, h_states), axis=1)
         input_matmul_matrix = np.matmul(input_matrix, weights) + biases
         # Forget gate (3rd slot in tf output matrix). Add static forget bias.
-        sigmoid_1 = sigmoid(input_matmul_matrix[:, units*2:units*3] + forget_bias)
+        sigmoid_1 = sigmoid(input_matmul_matrix[:, units*2:units*3] +
+                            forget_bias)
         c_states = np.multiply(c_states, sigmoid_1)
         # Add gate (1st and 2nd slots in tf output matrix).
         sigmoid_2 = sigmoid(input_matmul_matrix[:, 0:units])
