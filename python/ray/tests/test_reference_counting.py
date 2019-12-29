@@ -168,8 +168,9 @@ def test_basic_pinning(shutdown_only):
     @ray.remote
     class Actor(object):
         def __init__(self):
-            # Hold a long-lived reference to a ray.put object. This should not
-            # be garbage collected while the actor is alive.
+            # Hold a long-lived reference to a ray.put object's ID. The object
+            # should not be garbage collected while the actor is alive because
+            # the object is pinned by the raylet.
             self.large_object = ray.put(
                 np.zeros(25 * 1024 * 1024, dtype=np.uint8))
 
@@ -231,8 +232,6 @@ def test_feature_flag(shutdown_only):
     @ray.remote
     class Actor(object):
         def __init__(self):
-            # Hold a long-lived reference to a ray.put object. This should not
-            # be garbage collected while the actor is alive.
             self.large_object = ray.put(
                 np.zeros(25 * 1024 * 1024, dtype=np.uint8))
 
