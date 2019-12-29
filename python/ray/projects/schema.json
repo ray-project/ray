@@ -170,7 +170,8 @@
         ],
         "additionalProperties": false
       }
-    }
+    },
+    "output_files": {}
   },
   "required": [
     "name",
