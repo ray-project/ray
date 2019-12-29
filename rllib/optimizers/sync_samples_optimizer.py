@@ -100,7 +100,8 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                                 }, minibatch.count)))[policy_id]
                         for k, v in batch_fetches[LEARNER_STATS_KEY].items():
                             iter_extra_fetches[k].append(v)
-                    logger.debug("{} {}".format(i, _averaged(iter_extra_fetches)))
+                    logger.debug("{} {}".format(i,
+                                                _averaged(iter_extra_fetches)))
                 fetches[policy_id] = _averaged(iter_extra_fetches)
 
         self.grad_timer.push_units_processed(samples.count)
