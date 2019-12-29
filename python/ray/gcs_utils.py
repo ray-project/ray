@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.core.generated.gcs_pb2 import (
+    ActorTableData,
     ActorCheckpointIdData,
     GcsNodeInfo,
     JobTableData,
@@ -59,6 +60,7 @@ TablePrefix_OBJECT_string = "OBJECT"
 TablePrefix_ERROR_INFO_string = "ERROR_INFO"
 TablePrefix_PROFILE_string = "PROFILE"
 TablePrefix_JOB_string = "JOB"
+TablePrefix_ACTOR_string = "ACTOR"
 
 
 def construct_error_message(job_id, error_type, message, timestamp):
