@@ -176,8 +176,7 @@ class RayServeMixin:
             for result, result_object_id in zip(result_list,
                                                 result_object_ids):
                 for return_id in result_object_id:
-                    ray.worker.global_worker.put_object(result,
-                                                        return_id)
+                    ray.worker.global_worker.put_object(result, return_id)
 
             self._serve_metric_latency_list.append(time.time() -
                                                    start_timestamp)
@@ -186,8 +185,8 @@ class RayServeMixin:
             self._serve_metric_error_counter += len(result_object_ids)
             for result_object_id in result_object_ids:
                 for return_id in result_object_id:
-                    ray.worker.global_worker.put_object(wrapped_exception,
-                                                        return_id)
+                    ray.worker.global_worker.put_object(
+                        wrapped_exception, return_id)
 
     def _ray_serve_call(self, request):
         work_item = request

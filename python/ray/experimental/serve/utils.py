@@ -15,7 +15,8 @@ def parse_request_item(request_item):
     if request_item.request_context == TaskContext.Web:
         is_web_context = True
         asgi_scope, body_bytes = request_item.request_args
-        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes[0]))
+        flask_request = build_flask_request(asgi_scope,
+                                            io.BytesIO(body_bytes[0]))
         args = (flask_request, )
         kwargs = {}
     else:
