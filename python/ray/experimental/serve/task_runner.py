@@ -106,8 +106,9 @@ class RayServeMixin:
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self._serve_metric_error_counter += 1
-            for rid in result_object_id:
-                ray.worker.global_worker.put_object(wrapped_exception, rid)
+            for return_id in result_object_id:
+                ray.worker.global_worker.put_object(wrapped_exception,
+                                                    return_id)
         self._serve_metric_latency_list.append(time.time() - start_timestamp)
 
     def invoke_batch(self, request_item_list):
@@ -171,17 +172,22 @@ class RayServeMixin:
                                         "Please return a list of result "
                                         "with length equals to the batch "
                                         "size.")
+
             for result, result_object_id in zip(result_list,
                                                 result_object_ids):
-                ray.worker.global_worker.put_object(result, result_object_id)
+                for return_id in result_object_id:
+                    ray.worker.global_worker.put_object(result,
+                                                        return_id)
+
             self._serve_metric_latency_list.append(time.time() -
                                                    start_timestamp)
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self._serve_metric_error_counter += len(result_object_ids)
             for result_object_id in result_object_ids:
-                ray.worker.global_worker.put_object(wrapped_exception,
-                                                    result_object_id)
+                for return_id in result_object_id:
+                    ray.worker.global_worker.put_object(wrapped_exception,
+                                                        return_id)
 
     def _ray_serve_call(self, request):
         work_item = request
