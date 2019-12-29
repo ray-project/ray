@@ -213,7 +213,6 @@ class Trial(object):
         self.extra_arg = None
 
         self._nonjson_fields = [
-            "checkpoint_manager",
             "loggers",
             "sync_to_driver_fn",
             "results",
@@ -281,8 +280,7 @@ class Trial(object):
 
     def set_runner(self, runner):
         self.runner = runner
-        if self.runner:
-            self.checkpoint_manager.delete = checkpoint_deleter(runner)
+        self.checkpoint_manager.delete = checkpoint_deleter(runner)
 
     def set_location(self, location):
         """Sets the location of the trial."""
@@ -463,8 +461,6 @@ class Trial(object):
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
-        # Avoid capturing the runner used in delete.
-        state["checkpoint_manager"].delete = None
 
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))

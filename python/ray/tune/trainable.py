@@ -467,7 +467,7 @@ class Trainable(object):
         Note that the current working directory will also be changed to this.
 
         """
-        return self._logdir
+        return os.path.join(self._logdir, "")
 
     @property
     def iteration(self):

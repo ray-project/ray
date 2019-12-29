@@ -124,3 +124,13 @@ class CheckpointManager(object):
     def _priority(self, checkpoint):
         priority = checkpoint.result[self._checkpoint_score_attr]
         return -priority if self._checkpoint_score_desc else priority
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # Avoid serializing lambda since it may capture cyclical dependencies.
+        state.pop("delete")
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.delete = None
