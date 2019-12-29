@@ -326,15 +326,16 @@ class RayTrialExecutor(TrialExecutor):
         trial.experiment_tag = new_experiment_tag
         trial.config = new_config
         trainable = trial.runner
-        with warn_if_slow("reset_config"):
-            try:
-                with self._switch_working_directory(trial):
+        with self._switch_working_directory(trial):
+            with warn_if_slow("reset_config"):
+                try:
                     reset_val = ray.get(
                         trainable.reset_config.remote(new_config),
                         DEFAULT_GET_TIMEOUT)
-            except RayTimeoutError:
-                logger.exception("Trial %s: reset_config timed out.", trial)
-                return False
+                except RayTimeoutError:
+                    logger.exception("Trial %s: reset_config timed out.",
+                                     trial)
+                    return False
         return reset_val
 
     def get_running_trials(self):
@@ -635,9 +636,10 @@ class RayTrialExecutor(TrialExecutor):
                                     DEFAULT_GET_TIMEOUT)
             with warn_if_slow("sync_to_new_location"):
                 trial.sync_logger_to_new_location(worker_ip)
-            with warn_if_slow("restore_from_disk"):
-                # TODO(ujvl): Take blocking restores out of the control loop.
-                with self._switch_working_directory(trial):
+            with self._switch_working_directory(trial):
+                with warn_if_slow("restore_from_disk"):
+                    # TODO(ujvl): Take blocking restores out of the control
+                    #  loop.
                     ray.get(trial.runner.restore.remote(value))
         trial.last_result = checkpoint.result
 
