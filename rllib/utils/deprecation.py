@@ -8,6 +8,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def deprecation_warning(old, new=None):
+    logger.warning("DeprecationWarning: `{}` has been deprecated.".format(old) +
+                   (" Use `{}` instead." if new else "") + " This will raise an error in the future!")
+
+
 def renamed_class(cls, old_name):
     """Helper class for renaming classes with a warning."""
 
@@ -15,9 +20,7 @@ def renamed_class(cls, old_name):
         # note: **kw not supported for ray.remote classes
         def __init__(self, *args, **kw):
             new_name = cls.__module__ + "." + cls.__name__
-            logger.warning("DeprecationWarning: {} has been renamed to {}. ".
-                           format(old_name, new_name) +
-                           "This will raise an error in the future.")
+            deprecation_warning(old_name, new_name)
             cls.__init__(self, *args, **kw)
 
     DeprecationWrapper.__name__ = cls.__name__
@@ -32,9 +35,7 @@ def renamed_agent(cls):
         def __init__(self, config=None, env=None, logger_creator=None):
             old_name = cls.__name__.replace("Trainer", "Agent")
             new_name = cls.__module__ + "." + cls.__name__
-            logger.warning("DeprecationWarning: {} has been renamed to {}. ".
-                           format(old_name, new_name) +
-                           "This will raise an error in the future.")
+            deprecation_warning(old_name, new_name)
             cls.__init__(self, config, env, logger_creator)
 
     DeprecationWrapper.__name__ = cls.__name__
@@ -47,10 +48,7 @@ def renamed_function(func, old_name):
 
     def deprecation_wrapper(*args, **kwargs):
         new_name = func.__module__ + "." + func.__name__
-        logger.warning(
-            "DeprecationWarning: {} has been renamed to {}. This will raise an error in the future.".
-            format(old_name, new_name)
-        )
+        deprecation_warning(old_name, new_name)
         return func(*args, **kwargs)
 
     deprecation_wrapper.__name__ = func.__name__
@@ -60,6 +58,6 @@ def renamed_function(func, old_name):
 
 def moved_function(func):
     new_location = func.__module__
-    logger.warning("DeprecationWarning: Function `{}}` has moved. Import from {}!".format(func.__name__, new_location))
+    deprecation_warning("import {}".format(func.__name__), "import {}".format(new_location))
     return func
 

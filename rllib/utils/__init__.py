@@ -2,7 +2,7 @@ import logging
 import os
 
 from ray.rllib.utils.backend import try_import_tf, try_import_tfp, try_import_torch
-from ray.rllib.utils.deprecation import renamed_agent, renamed_class, renamed_function
+from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, renamed_class, renamed_function
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, SMALL_NUMBER, LARGE_INTEGER
@@ -30,6 +30,7 @@ def add_mixins(base, mixins):
 __all__ = [
     "add_mixins",
     "check",
+    "deprecation_warning",
     "fc",
     "lstm",
     "one_hot",
