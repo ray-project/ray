@@ -10,7 +10,7 @@ import six
 import types
 
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable
+from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import sample_from
 
@@ -32,6 +32,22 @@ def _raise_deprecation_note(deprecated, replacement, soft=False):
         logger.warning(error_msg)
     else:
         raise DeprecationWarning(error_msg)
+
+
+def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
+    trainable_cls = get_trainable_cls(trainable_name)
+    from ray.tune.durable_trainable import DurableTrainable
+    if issubclass(trainable_cls, DurableTrainable):
+        if sync_to_driver is not False:
+            raise ValueError(
+                "EXPERIMENTAL: DurableTrainable will automatically sync "
+                "results to the provided upload_dir. "
+                "Set `sync_to_driver=False` to avoid data inconsistencies.")
+        if not upload_dir:
+            raise ValueError(
+                "EXPERIMENTAL: DurableTrainable will automatically sync "
+                "results to the provided upload_dir. "
+                "`upload_dir` must be provided.")
 
 
 class Experiment(object):
@@ -114,6 +130,8 @@ class Experiment(object):
             self.remote_checkpoint_dir = os.path.join(upload_dir, self.name)
         else:
             self.remote_checkpoint_dir = None
+
+        _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
         spec = {
             "run": self._run_identifier,

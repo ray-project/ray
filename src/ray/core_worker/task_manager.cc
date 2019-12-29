@@ -203,6 +203,12 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
         /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
     RAY_CHECK_OK(in_memory_store_->Put(RayObject(error_type), object_id));
   }
+
+  if (spec.IsActorCreationTask()) {
+    // Publish actor death if actor creation task failed after
+    // a number of retries.
+    actor_manager_->PublishTerminatedActor(spec);
+  }
 }
 
 TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {

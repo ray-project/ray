@@ -65,3 +65,36 @@ service ActorInfoGcsService {
   // Update actor info in GCS Service.
   rpc UpdateActorInfo(UpdateActorInfoRequest) returns (UpdateActorInfoReply);
 }
+
+message RegisterNodeRequest {
+  // Info of node.
+  GcsNodeInfo node_info = 1;
+}
+
+message RegisterNodeReply {
+}
+
+message UnregisterNodeRequest {
+  // The ID of node.
+  bytes node_id = 1;
+}
+
+message UnregisterNodeReply {
+}
+
+message GetAllNodeInfoRequest {
+}
+
+message GetAllNodeInfoReply {
+  repeated GcsNodeInfo node_info_list = 1;
+}
+
+// Service for node info access.
+service NodeInfoGcsService {
+  // Register a node to GCS Service.
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
+  // Unregister a node from GCS Service.
+  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
+  // Get information of all nodes from GCS Service.
+  rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+}

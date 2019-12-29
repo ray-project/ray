@@ -59,7 +59,9 @@ class RayParams(object):
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which displays the status of the Ray cluster.
+            UI, which displays the status of the Ray cluster. If this value is
+            None, then the UI will be started if the relevant dependencies are
+            present.
         webui_host: The host to bind the web UI server to. Can either be
             127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
             By default, this is set to 127.0.0.1 to prevent access from
