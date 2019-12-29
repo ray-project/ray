@@ -317,7 +317,8 @@ class GlobalState(object):
         """
         assert isinstance(actor_id, ray.ActorID)
         message = self.redis_client.execute_command(
-            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ACTOR"), "", actor_id.binary())
+            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ACTOR"), "",
+            actor_id.binary())
         if message is None:
             return {}
         gcs_entries = gcs_utils.GcsEntry.FromString(message)
@@ -345,8 +346,8 @@ class GlobalState(object):
         """Fetch and parse the actor table information for one or more actor IDs.
 
         Args:
-            actor_id: A hex string of the actor ID to fetch information about. If
-                this is None, then the actor table is fetched.
+            actor_id: A hex string of the actor ID to fetch information about.
+                If this is None, then the actor table is fetched.
 
         Returns:
             Information from the actor table.
@@ -356,8 +357,9 @@ class GlobalState(object):
             actor_id = ray.ActorID(hex_to_binary(actor_id))
             return self._actor_table(actor_id)
         else:
-            actor_table_keys = list(self.redis_client.scan_iter(
-                match=gcs_utils.TablePrefix_ACTOR_string + "*"))
+            actor_table_keys = list(
+                self.redis_client.scan_iter(
+                    match=gcs_utils.TablePrefix_ACTOR_string + "*"))
             actor_ids_binary = [
                 key[len(gcs_utils.TablePrefix_ACTOR_string):]
                 for key in actor_table_keys

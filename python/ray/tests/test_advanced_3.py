@@ -175,7 +175,7 @@ def test_global_state_api(shutdown_only):
         def __init__(self):
             pass
 
-    a = Actor.remote()
+    _ = Actor.remote()
     # Wait for actor to be created
     wait_for_num_actors(1)
 
@@ -202,7 +202,7 @@ def test_global_state_task_object_api(shutdown_only):
     ray.init()
 
     job_id = ray.utils.compute_job_id_from_driver(
-    ray.WorkerID(ray.worker.global_worker.worker_id))
+        ray.WorkerID(ray.worker.global_worker.worker_id))
     driver_task_id = ray.worker.global_worker.current_task_id.hex()
 
     nil_actor_id_hex = ray.ActorID.nil().hex()

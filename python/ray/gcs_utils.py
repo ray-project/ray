@@ -21,6 +21,7 @@ from ray.core.generated.gcs_pb2 import (
 )
 
 __all__ = [
+    "ActorTableData",
     "ActorCheckpointIdData",
     "GcsNodeInfo",
     "JobTableData",
