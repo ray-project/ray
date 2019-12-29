@@ -2,13 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import torch
-import torch.nn.functional as F
-from torch import nn
-
 import ray
-from ray.rllib.evaluation.postprocessing import compute_advantages, \
-    Postprocessing
+from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.backend import try_import_torch
