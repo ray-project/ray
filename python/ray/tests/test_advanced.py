@@ -749,6 +749,33 @@ def test_local_mode(shutdown_only):
     assert ray.get(indirect_dep.remote(["hello"])) == "hello"
 
 
+def test_wait_makes_object_local(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Foo(object):
+        def method(self):
+            return np.zeros(1024 * 1024)
+
+    a = Foo.remote()
+
+    # Test get makes the object local.
+    x_id = a.method.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
+    ray.get(x_id)
+    assert ray.worker.global_worker.core_worker.object_exists(x_id)
+
+    # Test wait makes the object local.
+    x_id = a.method.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
+    ok, _ = ray.wait([x_id])
+    assert len(ok) == 1
+    assert ray.worker.global_worker.core_worker.object_exists(x_id)
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
