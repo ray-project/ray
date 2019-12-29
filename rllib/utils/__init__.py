@@ -1,3 +1,4 @@
+from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.backend import try_import_tf, try_import_tfp, \
     try_import_torch
 from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, \
@@ -39,16 +40,19 @@ __all__ = [
     "softmax",
     "deep_update",
     "merge_dicts",
+    "override",
     "renamed_function",
     "renamed_agent",
     "renamed_class",
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
+    "DeveloperAPI",
     "Filter",
     "FilterManager",
     "LARGE_INTEGER",
     "PolicyClient",
     "PolicyServer",
+    "PublicAPI",
     "SMALL_NUMBER",
 ]

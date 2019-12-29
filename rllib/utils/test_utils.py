@@ -3,15 +3,18 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from ray.rllib.utils.backend import try_import_tf
+
+tf = try_import_tf()
 
 
 def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     """
-    Checks two structures (dict, DataOpDict, tuple, DataOpTuple, list,
+    Checks two structures (dict, tuple, list,
     np.array, float, int, etc..) for (almost) numeric identity.
     All numbers in the two structures have to match up to `decimal` digits
-    after the floating point. Uses assertions (not boolean return).
+    after the floating point. Uses assertions.
 
     Args:
         x (any): The first value to be compared (to `y`).
@@ -76,9 +79,9 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     # Everything else (assume numeric).
     else:
         # Numpyize tensors if necessary.
-        if isinstance(x, tf.Tensor):
+        if tf is not None and isinstance(x, tf.Tensor):
             x = x.numpy()
-        if isinstance(y, tf.Tensor):
+        if tf is not None and isinstance(y, tf.Tensor):
             y = y.numpy()
 
         # Using decimals.
