@@ -29,7 +29,7 @@ def _check_refcounts(expected):
         assert submitted == actual[object_id]["submitted"]
 
 
-def check_refcounts(expected, timeout=1):
+def check_refcounts(expected, timeout=10):
     start = time.time()
     while True:
         try:
