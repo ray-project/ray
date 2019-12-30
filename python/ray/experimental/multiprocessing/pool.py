@@ -106,8 +106,7 @@ class ResultThread(threading.Thread):
 
 
 class AsyncResult(object):
-    """A class that provides the interface to results from calls to
-    map_async or starmap_async.
+    """An asynchronous interface to task results.
 
     This should not be constructed directly.
     """
@@ -173,8 +172,6 @@ class IMapIterator(object):
     """Base class for OrderedIMapIterator and UnorderedIMapIterator."""
 
     def __init__(self, pool, func, iterable, chunksize=None):
-        self._pool = pool
-        self._func = func
         self._next_chunk_index = 0
         # List of bools indicating if the given chunk is ready or not for all
         # submitted chunks. Ordering mirrors that in the in the ResultThread.
