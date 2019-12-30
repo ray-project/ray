@@ -138,3 +138,8 @@ kubectl apply -f config/samples/ray_v1_raycluster.mini.yaml
 ```shell script
 kubectl delete -f config/samples/ray_v1_raycluster.mini.yaml
 ```
+
+### Build with bazel
+```shell script
+bazel build //:ray-operator
+```
