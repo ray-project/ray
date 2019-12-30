@@ -18,16 +18,18 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClient {
-  // TODO(micafan) Will remove those friend class / method after we replace RedisGcsClient
+  // TODO(micafan) Will remove those friend classes after we replace RedisGcsClient
   // with interface class GcsClient in raylet.
   friend class RedisActorInfoAccessor;
   friend class RedisJobInfoAccessor;
   friend class RedisTaskInfoAccessor;
   friend class RedisNodeInfoAccessor;
+  friend class RedisObjectInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
   friend class TaskTableTestHelper;
   friend class ClientTableTestHelper;
+  friend class SetTestHelper;
   friend class ActorCheckpointIdTable;
 
  public:
@@ -59,7 +61,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   void Disconnect();
 
   // TODO: Some API for getting the error on the driver
-  ObjectTable &object_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
   HeartbeatTable &heartbeat_table();
@@ -99,6 +100,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ActorCheckpointIdTable &actor_checkpoint_id_table();
   /// This method will be deprecated, use method Jobs() instead.
   JobTable &job_table();
+  /// This method will be deprecated, use method Objects() instead
+  ObjectTable &object_table();
   /// This method will be deprecated, use method Nodes() instead.
   ClientTable &client_table();
   /// This method will be deprecated, use method Tasks() instead.

@@ -650,8 +650,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   if (actor_creation_options.is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
-                                  actor_creation_options.max_reconstructions);
+    task_manager_->AddPendingTask(
+        GetCallerId(), rpc_address_, task_spec,
+        std::max(RayConfig::instance().actor_creation_min_retries(),
+                 actor_creation_options.max_reconstructions));
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
