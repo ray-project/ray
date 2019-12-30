@@ -8,8 +8,8 @@ tf = try_import_tf()
 torch, nn = try_import_torch()
 
 
-def explained_variance(y, pred, backend="tf"):
-    if backend == "tf":
+def explained_variance(y, pred, framework="tf"):
+    if framework == "tf":
         _, y_var = tf.nn.moments(y, axes=[0])
         _, diff_var = tf.nn.moments(y - pred, axes=[0])
         return tf.maximum(-1.0, 1 - (diff_var / y_var))

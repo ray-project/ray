@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.utils.backend import try_import_tf
+from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()
 

@@ -1,5 +1,5 @@
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.backend import try_import_tf, try_import_tfp, \
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
     try_import_torch
 from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, \
     renamed_class, renamed_function
