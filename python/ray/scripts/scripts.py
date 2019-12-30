@@ -71,12 +71,9 @@ def cli(logging_level, logging_format):
     type=str,
     help="the IP address of this node")
 @click.option(
-    "--redis-address",
-    required=False,
-    type=str,
-    help="the address to use for connecting to Redis")
+    "--redis-address", required=False, type=str, help="same as --address")
 @click.option(
-    "--address", required=False, type=str, help="same as --redis-address")
+    "--address", required=False, type=str, help="the address to use for Ray")
 @click.option(
     "--redis-port",
     required=False,
@@ -334,19 +331,18 @@ def start(node_ip_address, redis_address, address, redis_port,
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
-            "    ray start --redis-address {}{}{}\n\n"
+            "    ray start --address='{}'{}\n\n"
             "from the node you wish to add. You can connect a driver to the "
             "cluster from Python by running\n\n"
             "    import ray\n"
-            "    ray.init(redis_address=\"{}{}{}\")\n\n"
+            "    ray.init(address='auto'{})\n\n"
             "If you have trouble connecting from a different machine, check "
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
             "    ray stop".format(
-                redis_address, " --redis-password "
-                if redis_password else "", redis_password if redis_password
-                else "", redis_address, "\", redis_password=\""
-                if redis_password else "", redis_password
+                redis_address, " --redis-password='" + redis_password + "'"
+                if redis_password else "",
+                ", redis_password='" + redis_password + "'"
                 if redis_password else ""))
     else:
         # Start Ray on a non-head node.
