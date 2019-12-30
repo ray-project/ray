@@ -47,7 +47,7 @@ message ForwardTaskReply {
 
 message NodeStatsRequest {
 }
-    
+
 message WorkerStats {
   // PID of the worker process.
   uint32 pid = 1;
