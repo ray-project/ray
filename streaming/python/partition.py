@@ -6,8 +6,8 @@ class Partition(ABC):
 
     @abstractmethod
     def partition(self, record, num_partition: int):
-        """Given a record and downstream partitions, determine which partition(s) should
-         receive the record.
+        """Given a record and downstream partitions, determine which partition(s)
+         should receive the record.
 
         Args:
             record: The record.
