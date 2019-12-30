@@ -83,8 +83,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
-      num_tasks_accepted_(0),
-      num_tasks_executed_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
@@ -882,8 +880,6 @@ Status CoreWorker::AllocateReturnObjects(
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects) {
-  num_tasks_executed_ += 1;
-
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
   }
@@ -1044,7 +1040,6 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     return;
   }
 
-  num_tasks_accepted_ += 1;
   task_execution_service_.post([=] {
     direct_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
@@ -1132,7 +1127,6 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
       stats->add_current_task_func_desc(it);
     }
   }
-  stats->set_task_queue_length(num_tasks_accepted_ - num_tasks_executed_);
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_actor_id(actor_id_.Binary());

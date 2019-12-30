@@ -158,7 +158,7 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            workers_info = sum([data["workersStats"] for data in D.values()],
+            workers_info = sum((data["workersStats"] for data in D.values()),
                                [])
             actor_tree = self.node_stats.get_actor_tree(workers_info)
             for address, data in D.items():
@@ -318,8 +318,6 @@ class NodeStats(threading.Thread):
                         actor_id = self._addr_to_actor_id[addr]
                         if "currentTaskDesc" in core_worker_stats:
                             core_worker_stats.pop("currentTaskDesc")
-                        if "taskQueueLength" in core_worker_stats:
-                            core_worker_stats.pop("taskQueueLength")
                         flattened_tree[actor_id].update(core_worker_stats)
 
         # construct actor tree
