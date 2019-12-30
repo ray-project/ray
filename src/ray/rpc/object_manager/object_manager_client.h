@@ -11,7 +11,7 @@
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
-#include "src/ray/rpc/client_call.h"
+#include "src/ray/rpc/grpc_client.h"
 
 namespace ray {
 namespace rpc {
@@ -30,16 +30,9 @@ class ObjectManagerClient {
     push_rr_index_ = rand() % num_connections_;
     pull_rr_index_ = rand() % num_connections_;
     freeobjects_rr_index_ = rand() % num_connections_;
-    stubs_.reserve(num_connections_);
+    rpc_clients_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
-      grpc::ResourceQuota quota;
-      quota.SetMaxThreads(num_connections_);
-      grpc::ChannelArguments argument;
-      argument.SetResourceQuota(quota);
-      std::shared_ptr<grpc::Channel> channel =
-          grpc::CreateCustomChannel(address + ":" + std::to_string(port),
-                                    grpc::InsecureChannelCredentials(), argument);
-      stubs_.push_back(ObjectManagerService::NewStub(channel));
+      rpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(address, port, client_call_manager, num_connections_));
     }
   };
 
@@ -48,9 +41,8 @@ class ObjectManagerClient {
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server
   void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
-    client_call_manager_.CreateCall<ObjectManagerService, PushRequest, PushReply>(
-        *stubs_[push_rr_index_++ % num_connections_],
-        &ObjectManagerService::Stub::PrepareAsyncPush, request, callback);
+    RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, Push, request, callback,
+        rpc_clients_[push_rr_index_++ % num_connections_]);
   }
 
   /// Pull object from remote object manager
@@ -58,9 +50,8 @@ class ObjectManagerClient {
   /// \param request The request message
   /// \param callback The callback function that handles reply from server
   void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
-    client_call_manager_.CreateCall<ObjectManagerService, PullRequest, PullReply>(
-        *stubs_[pull_rr_index_++ % num_connections_],
-        &ObjectManagerService::Stub::PrepareAsyncPull, request, callback);
+    RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, Pull, request, callback,
+        rpc_clients_[push_rr_index_++ % num_connections_]);
   }
 
   /// Tell remote object manager to free objects
@@ -69,10 +60,8 @@ class ObjectManagerClient {
   /// \param callback  The callback function that handles reply
   void FreeObjects(const FreeObjectsRequest &request,
                    const ClientCallback<FreeObjectsReply> &callback) {
-    client_call_manager_
-        .CreateCall<ObjectManagerService, FreeObjectsRequest, FreeObjectsReply>(
-            *stubs_[freeobjects_rr_index_++ % num_connections_],
-            &ObjectManagerService::Stub::PrepareAsyncFreeObjects, request, callback);
+    RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, FreeObjects, request, callback,
+        rpc_clients_[push_rr_index_++ % num_connections_]);
   }
 
  private:
@@ -83,7 +72,7 @@ class ObjectManagerClient {
   std::atomic<unsigned int> freeobjects_rr_index_;
 
   /// The gRPC-generated stub.
-  std::vector<std::unique_ptr<ObjectManagerService::Stub>> stubs_;
+  std::vector<std::unique_ptr<GrpcClient<ObjectManagerService>>> rpc_clients_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

@@ -10,6 +10,15 @@
 namespace ray {
 namespace rpc {
 
+#define OLD_RPC_CALL_METHOD(SERVICE, METHOD, request, callback)                       \
+  ({                                                                              \
+      auto call = client_call_manager_                                            \
+                      .CreateCall<SERVICE, METHOD##Request, METHOD##Reply>(       \
+                          *stub_, &SERVICE::Stub::PrepareAsync##METHOD,       \
+                          request, callback);                                     \
+      call->GetStatus();                                                             \                             
+  })                                                                              \               
+
 /// Represents an outgoing gRPC request.
 ///
 /// NOTE(hchen): Compared to `ClientCallImpl`, this abstract interface doesn't use
