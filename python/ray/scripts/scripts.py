@@ -59,7 +59,8 @@ def __process_java_worker_classpath(java_options):
         from ray_java import resource_util
         ray_jars_dir = resource_util.get_ray_jars_dir()
     except ModuleNotFoundError:
-        raise Exception("Please install `ray-java` package when `--include-java` is enabled.")
+        raise Exception("Please install `ray-java` package "
+                        "when `--include-java` is enabled.")
     cp_sep = ":"
     import platform
     if platform.system() == "Windows":
@@ -302,7 +303,8 @@ def start(node_ip_address, redis_address, address, redis_port,
     redirect_worker_output = None if not no_redirect_worker_output else True
     redirect_output = None if not no_redirect_output else True
     if include_java:
-        java_worker_options = __process_java_worker_classpath(java_worker_options)
+        java_worker_options = __process_java_worker_classpath(
+            java_worker_options)
     ray_params = ray.parameter.RayParams(
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,
