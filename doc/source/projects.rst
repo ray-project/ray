@@ -38,6 +38,30 @@ for instructions on how to run these examples:
 - `PyTorch Transformers <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/pytorch-transformers/ray-project/project.yaml>`__:
   A library of state-of-the-art pretrained models for Natural Language Processing (NLP)
 
+Tutorial
+--------
+
+We will walk through how to use projects by executing the `streaming MapReduce example <auto_examples/plot_streaming.html>`_.
+Commands always apply to the project in the current directory.
+Let us switch into the project directory with
+
+.. code-block:: bash
+
+    cd ray/doc/examples/streaming
+
+
+A session represents a running instance of a project. Let's start one with
+
+.. code-block:: bash
+
+    ray session start
+
+
+The ``ray session start`` command
+will bring up a new cluster and initialize the environment of the cluster
+according to the `environment` section of the `project.yaml`, installing all
+dependencies of the project.
+
 Project file format (project.yaml)
 ----------------------------------
 
