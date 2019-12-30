@@ -170,4 +170,16 @@ message CoreWorkerStats {
   int32 num_pending_tasks = 2;
   // Number of object ids in local scope.
   int32 num_object_ids_in_scope = 3;
+  // Function descriptor of the currently executing task.
+  repeated string current_task_func_desc = 4;
+  // IP address of the core worker.
+  string ip_address = 6;
+  // Port of the core worker.
+  int64 port = 7;
+  // Actor ID.
+  bytes actor_id = 8;
+  // A map from the resource name (e.g. "CPU") to the amount of resource used.
+  map<string, double> used_resources = 9;
+  // A string displayed on Dashboard.
+  string webui_display = 10;
 }
