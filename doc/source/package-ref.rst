@@ -91,6 +91,10 @@ The Ray Command Line API
    :prog: ray stack
    :show-nested:
 
+.. click:: ray.scripts.scripts:stat
+   :prog: ray stat
+   :show-nested:
+
 .. click:: ray.scripts.scripts:timeline
    :prog: ray timeline
    :show-nested:

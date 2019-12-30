@@ -257,7 +257,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
       RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
     }
     RAY_RETURN_NOT_OK(
-        raylet_client_->Wait(id_vector, num_objects, call_timeout, false,
+        raylet_client_->Wait(id_vector, num_objects, call_timeout, /*wait_local*/ true,
                              /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
                              ctx.GetCurrentTaskID(), &result_pair));
 
