@@ -60,6 +60,11 @@ def test_async_iterator(ray_start_regular_shared):
     assert sorted(list(it.async_iterator())) == [0, 1, 2, 3]
 
 
+def test_sync_across_shards(ray_start_regular_shared):
+    it = from_generators([[0, 1], [2, 3]])
+    assert sorted(list(it.sync_iterator_across_shards())) == [[0, 2], [1, 3]]
+
+
 def test_remote(ray_start_regular_shared):
     it = from_generators([[0, 1], [3, 4], [5, 6, 7]])
     assert it.num_shards() == 3
