@@ -10,7 +10,7 @@ import org.ray.streaming.api.stream.Stream;
  * PythonEntryPoint using ray calls.
  */
 @RayRemote
-public class PythonEntryPoint {
+public class PythonGateway {
   private StreamingContext streamingContext;
   private Stream lastStream;
 
