@@ -3,8 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
-import math
-import pickle
 
 
 def from_items(items, num_shards=4):
@@ -13,7 +11,7 @@ def from_items(items, num_shards=4):
     Arguments:
         items (list): The list of items to iterate over.
         num_shards (int): The number of worker actors to create.
-    
+
     The objects will be divided round-robin among the number of shards."""
     shards = [[] for _ in range(num_shards)]
     for i, item in enumerate(items):
@@ -27,7 +25,7 @@ def from_range(n, num_shards=4):
     Arguments:
         n (int): The max end of the range of numbers.
         num_shards (int): The number of worker actors to create.
-    
+
     The range will be split sequentially among the number of shards."""
     generators = []
     for i in range(num_shards):
@@ -118,7 +116,7 @@ class ParIterator(object):
 
     def for_each(self, fn):
         """Remotely apply fn to each item in this iterator.
-        
+
         Arguments:
             fn (func): function to apply to each item.
 
@@ -134,7 +132,7 @@ class ParIterator(object):
 
     def filter(self, fn):
         """Remotely filter items from this iterator.
-        
+
         Arguments:
             fn (func): returns False for items to drop from the iterator.
 
@@ -150,7 +148,7 @@ class ParIterator(object):
 
     def batch(self, n):
         """Remotely batch together items in this iterator.
-        
+
         Arguments:
             n (int): Number of items to batch together.
 
@@ -231,17 +229,17 @@ class ParIterator(object):
 
     def num_shards(self):
         """Return the number of worker actors backing this iterator.
-        
+
         Returns: int
         """
         return len(self.actors)
 
     def get_shard(self, shard_index):
         """Return a local iterator for the given shard.
-        
+
         The iterator is guaranteed to be serializable and can be passed to
         remote tasks or actors.
-        
+
         Returns: LocalIterator[T].
         """
         a = self.actors[shard_index]
