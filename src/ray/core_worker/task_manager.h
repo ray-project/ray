@@ -84,6 +84,9 @@ class TaskManager : public TaskFinisherInterface {
   /// Return the spec for a pending task.
   TaskSpecification GetTaskSpec(const TaskID &task_id) const;
 
+  /// Return the number of pending tasks.
+  int NumPendingTasks() const { return pending_tasks_.size(); }
+
  private:
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.

@@ -53,14 +53,8 @@ message WorkerStats {
   uint32 pid = 1;
   // Whether this is a driver.
   bool is_driver = 2;
-  // String displayed on Web UI.
-  string webui_display = 3;
-  int64 task_queue_length = 4;
-  string current_executed_task = 5;
-  string ip_address = 6;
-  int64 port = 7;
-  bytes actor_id = 8;
-  map<string, double> used_resources = 9;
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 3;
 }
 
 message ViewData {

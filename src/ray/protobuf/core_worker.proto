@@ -131,20 +131,8 @@ message GetCoreWorkerStatsRequest {
 }
 
 message GetCoreWorkerStatsReply {
-  // String displayed on Web UI.
-  string webui_display = 1;
-  // Length of the task queue. 
-  int64 task_queue_length = 2;
-  // Name of the task currently being executed. 
-  string current_executed_task = 3;
-  // Ip address of the worker. 
-  string ip_address = 4;
-  // Port of the worker. 
-  int64 port = 5;
-  // Actor ID. 
-  bytes actor_id = 6;
-  // A map from resource name (e.g. "CPU") to the corresponding used quantity. 
-  map<string, double> used_resources = 7;
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 1;
 }
 
 service CoreWorkerService {

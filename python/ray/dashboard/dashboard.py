@@ -173,15 +173,12 @@ class Dashboard(object):
                         resource_name, occupied, total))
                 data["extraInfo"] = ", ".join(extra_info)
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
-                    print("dashboard debugging..")
                     actor_tree_str = json.dumps(actor_tree, indent=2)
                     actor_tree_lines = actor_tree_str.split("\n")
                     max_line_length = max(map(len, actor_tree_lines))
                     actor_tree_print = []
                     for line in actor_tree_lines:
                         actor_tree_print.append(line + (max_line_length - len(line)) * " ")
-                    for line in actor_tree_print:
-                        print("length", len(line))
                     actor_tree_print = "\n".join(actor_tree_print)
                     data["extraInfo"] += "\n" + actor_tree_print
             D["actorInfo"] = actor_tree
@@ -310,11 +307,14 @@ class NodeStats(threading.Thread):
                 child_to_parent[actor_id] = parent_id
         
             for worker_info in workers_info:
-                if not worker_info.get("isDriver", False):
-                    addr = (worker_info["ipAddress"], worker_info["port"])
+                if "coreWorkerStats" in worker_info:
+                    core_worker_stats = worker_info["coreWorkerStats"]
+                    addr = (core_worker_stats["ipAddress"], core_worker_stats["port"])
                     if addr in self._addr_to_actor_id:
                         actor_id = self._addr_to_actor_id[addr]
-                        flattened_tree[actor_id].update(worker_info)
+                        if 'currentTaskDesc' in core_worker_stats:
+                            core_worker_stats.pop('currentTaskDesc')
+                        flattened_tree[actor_id].update(core_worker_stats)
 
         # construct actor tree
         actor_tree = flattened_tree

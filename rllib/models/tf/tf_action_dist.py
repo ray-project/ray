@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import functools
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.policy import TupleActions
@@ -231,26 +232,25 @@ class MultiActionDistribution(TFActionDistribution):
             if isinstance(distribution, Categorical):
                 split_list[i] = tf.cast(
                     tf.squeeze(split_list[i], axis=-1), tf.int32)
-        log_list = np.asarray([
+        log_list = [
             distribution.logp(split_x) for distribution, split_x in zip(
                 self.child_distributions, split_list)
-        ])
-        return np.sum(log_list)
+        ]
+        return functools.reduce(lambda a, b: a + b, log_list)
 
     @override(ActionDistribution)
     def kl(self, other):
-        kl_list = np.asarray([
+        kl_list = [
             distribution.kl(other_distribution)
             for distribution, other_distribution in zip(
                 self.child_distributions, other.child_distributions)
-        ])
-        return np.sum(kl_list)
+        ]
+        return functools.reduce(lambda a, b: a + b, kl_list)
 
     @override(ActionDistribution)
     def entropy(self):
-        entropy_list = np.array(
-            [s.entropy() for s in self.child_distributions])
-        return np.sum(entropy_list)
+        entropy_list = [s.entropy() for s in self.child_distributions]
+        return functools.reduce(lambda a, b: a + b, entropy_list)
 
     @override(ActionDistribution)
     def sample(self):

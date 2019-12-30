@@ -115,11 +115,11 @@ def test_worker_stats(shutdown_only):
 def test_raylet_info_endpoint(shutdown_only):
     addresses = ray.init(include_webui=True, num_cpus=6)
 
-    @ray.remote(num_cpus=2)
+    @ray.remote(num_cpus=1)
     class A(object):
         def __init__(self):
             pass
-            
+
         def f(self):
             return os.getpid()
 
@@ -127,17 +127,17 @@ def test_raylet_info_endpoint(shutdown_only):
     class B(object):
         def __init__(self):
             self.children = [A.remote(), A.remote()]
-
-    @ray.remote(num_cpus=2)
-    class C(object):
-        def __init__(self):
-            self.children = [A.remote(), B.remote()]
             
         def f(self):
-            return os.getpid()
+            return os.getpid(), ray.get([child.f.remote() for child in self.children])
 
-    c = A.remote()  
-    worker_pid_future = c.f.remote()
+    # TODO: Currently there is a race condition of Dashboard subscription and actor 
+    # initialization. This will be fixed soon in another PR. 
+    time.sleep(10)
+
+    b = B.remote()  
+    pids = ray.get(b.f.remote())
+    assert len(pids) == 2 and len(pids[1]) == 2
 
     start_time = time.time()
     while True:
@@ -146,7 +146,11 @@ def test_raylet_info_endpoint(shutdown_only):
             raylet_info = requests.get(addresses["webui_url"] + "/api/raylet_info").json()
             actor_info = raylet_info["result"]["actorInfo"]
             try: 
-                assert len(actor_info) > 0
+                assert len(actor_info) == 1
+                print("actor_info", actor_info)
+                _, parent_actor_info = actor_info.popitem()
+                children = parent_actor_info["children"]
+                assert len(children) == 2
                 break
             except AssertionError:
                 if time.time() > start_time + 30: 
@@ -157,10 +161,10 @@ def test_raylet_info_endpoint(shutdown_only):
                 raise Exception(
                     "Timed out while waiting for dashboard to start.")
 
-    print(actor_info)
-    #response = requests.get(info["webui_url"] + "/api/raylet_info")
-    #print(node_info.content)
-    #print(type(response.content))
+    assert parent_actor_info["usedResources"]["CPU"] == 2
+    for _, child_actor_info in children.items():
+        assert len(child_actor_info["children"]) == 0
+        assert child_actor_info["usedResources"]["CPU"] == 1
 
 
 if __name__ == "__main__":
