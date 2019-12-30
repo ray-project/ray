@@ -24,10 +24,12 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class RedisJobInfoAccessor;
   friend class RedisTaskInfoAccessor;
   friend class RedisNodeInfoAccessor;
+  friend class RedisObjectInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
   friend class TaskTableTestHelper;
   friend class ClientTableTestHelper;
+  friend class SetTestHelper;
 
  public:
   /// Constructor of RedisGcsClient.
@@ -58,7 +60,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   void Disconnect();
 
   // TODO: Some API for getting the error on the driver
-  ObjectTable &object_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
   ErrorTable &error_table();
@@ -96,7 +97,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ActorTable &actor_table();
   /// This method will be deprecated, use method Jobs() instead.
   JobTable &job_table();
-  /// The following three method will be deprecated, use method Nodes() instead.
+  /// This method will be deprecated, use method Objects() instead
+  ObjectTable &object_table();
+  /// The following three methods will be deprecated, use method Nodes() instead.
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();

@@ -214,7 +214,7 @@ We specify inception score as the metric and start the tuning:
    :start-after: __tune_begin__
    :end-before: __tune_end__
 
-The trained Generator models can be loaded from checkpoints, and generate images
+The trained Generator models can be loaded from log directory, and generate images
 from noise signals.
 
 .. image:: images/tune_advanced_dcgan_generated.gif
