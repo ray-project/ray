@@ -11,6 +11,7 @@ from ray.tune.trial import ExportFormat
 
 import argparse
 import os
+from filelock import FileLock
 import random
 import torch
 import torch.nn as nn
@@ -248,7 +249,8 @@ class PytorchTrainable(tune.Trainable):
             self.netG.parameters(),
             lr=config.get("lr", 0.01),
             betas=(beta1, 0.999))
-        self.dataloader = get_data_loader()
+        with FileLock(os.path.expanduser("~/.data.lock")):
+            self.dataloader = get_data_loader()
 
     def _train(self):
         lossG, lossD, is_score = train(
@@ -304,10 +306,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
-    parser.add_argument(
-        "--address", type=str, default=None, help="Ray address.")
     args, _ = parser.parse_known_args()
-    ray.init(address=args.address)
+    ray.init(address="auto")
 
     dataloader = get_data_loader()
     if not args.smoke_test:
