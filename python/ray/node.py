@@ -86,7 +86,6 @@ class Node(object):
         ray_params.update_if_absent(
             include_log_monitor=True,
             resources={},
-            include_webui=False,
             temp_dir="/tmp/ray",
             worker_path=os.path.join(
                 os.path.dirname(os.path.abspath(__file__)),
@@ -142,7 +141,7 @@ class Node(object):
                 self._ray_params.raylet_socket_name, default_prefix="raylet")
 
         if head:
-            ray_params.update_if_absent(num_redis_shards=1, include_webui=True)
+            ray_params.update_if_absent(num_redis_shards=1)
             self._webui_url = None
         else:
             self._webui_url = (
@@ -478,10 +477,17 @@ class Node(object):
                 process_info
             ]
 
-    def start_dashboard(self):
-        """Start the dashboard."""
+    def start_dashboard(self, require_webui):
+        """Start the dashboard.
+
+        Args:
+            require_webui (bool): If true, this will raise an exception if we
+                fail to start the webui. Otherwise it will print a warning if
+                we fail to start the webui.
+        """
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
         self._webui_url, process_info = ray.services.start_dashboard(
+            require_webui,
             self._ray_params.webui_host,
             self.redis_address,
             self._temp_dir,
@@ -594,8 +600,11 @@ class Node(object):
         self.start_monitor()
         self.start_raylet_monitor()
         # The dashboard is Python3.x only.
-        if PY3 and self._ray_params.include_webui:
-            self.start_dashboard()
+        if PY3:
+            if self._ray_params.include_webui:
+                self.start_dashboard(require_webui=True)
+            elif self._ray_params.include_webui is None:
+                self.start_dashboard(require_webui=False)
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""

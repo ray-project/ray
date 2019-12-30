@@ -36,6 +36,15 @@ namespace rpc {
   server_call_factories_and_concurrencies->emplace_back(                               \
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
+#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                         \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                          \
+      new ServerCallFactoryImpl<ObjectInfoGcsService, ObjectInfoHandler,              \
+                                HANDLER##Request, HANDLER##Reply>(                    \
+          service_, &ObjectInfoGcsService::AsyncService::Request##HANDLER,            \
+          service_handler_, &ObjectInfoHandler::Handle##HANDLER, cq, main_service_)); \
+  server_call_factories_and_concurrencies->emplace_back(                              \
+      std::move(HANDLER##_call_factory), CONCURRENCY);
+
 class JobInfoHandler {
  public:
   virtual ~JobInfoHandler() = default;
@@ -166,6 +175,52 @@ class NodeInfoGrpcService : public GrpcService {
   NodeInfoGcsService::AsyncService service_;
   /// The service handler that actually handle the requests.
   NodeInfoHandler &service_handler_;
+};
+
+class ObjectInfoHandler {
+ public:
+  virtual ~ObjectInfoHandler() = default;
+
+  virtual void HandleGetObjectLocations(const GetObjectLocationsRequest &request,
+                                        GetObjectLocationsReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleAddObjectLocation(const AddObjectLocationRequest &request,
+                                       AddObjectLocationReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRemoveObjectLocation(const RemoveObjectLocationRequest &request,
+                                          RemoveObjectLocationReply *reply,
+                                          SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `ObjectInfoHandler`.
+class ObjectInfoGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit ObjectInfoGrpcService(boost::asio::io_service &io_service,
+                                 ObjectInfoHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+          *server_call_factories_and_concurrencies) override {
+    OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations, 1);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation, 1);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation, 1);
+  }
+
+ private:
+  /// The grpc async service object.
+  ObjectInfoGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  ObjectInfoHandler &service_handler_;
 };
 
 }  // namespace rpc
