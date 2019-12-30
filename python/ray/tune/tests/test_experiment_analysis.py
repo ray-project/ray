@@ -30,6 +30,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             name=self.test_name,
             local_dir=self.test_dir,
             stop={"training_iteration": 1},
+            checkpoint_freq=1,
             num_samples=self.num_samples,
             config={
                 "width": sample_from(
@@ -68,6 +69,22 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         logdir2 = self.ea.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_path))
         self.assertNotEquals(logdir, logdir2)
+
+    def testGetTrialCheckpointsPaths(self):
+        best_trial = self.ea.get_best_trial(self.metric)
+        checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
+        logdir = self.ea.get_best_logdir(self.metric)
+        expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
+        assert checkpoints_metrics[0][0] == expected_path
+        assert checkpoints_metrics[0][1] == 1
+
+    def testGetTrialCheckpointsPathsWithMetric(self):
+        best_trial = self.ea.get_best_trial(self.metric)
+        paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
+        logdir = self.ea.get_best_logdir(self.metric)
+        expected_path = os.path.join(logdir, "checkpoint_1", "checkpoint")
+        assert paths[0][0] == expected_path
+        assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 
     def testAllDataframes(self):
         dataframes = self.ea.trial_dataframes

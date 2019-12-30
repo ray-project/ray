@@ -8,7 +8,8 @@ except ImportError:
     pd = None
 
 from ray.tune.error import TuneError
-from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX
+from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
+    CONFIG_PREFIX, TRAINING_ITERATION
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,22 @@ class Analysis:
             logger.warning(
                 "Couldn't read config from {} paths".format(fail_count))
         return self._configs
+
+    @staticmethod
+    def get_trial_checkpoints_paths(trial, metric=TRAINING_ITERATION):
+        """Returns a list of (path, metric) pairs for all disk checkpoints of
+         a trial.
+
+        Parameters:
+            trial: getting the checkpoints for a specific trial.
+            metric (str): key for trial info to return, e.g. "mean_accuracy".
+            "training_iteration" is used by default.
+        """
+        from ray.tune.checkpoint_manager import Checkpoint
+
+        checkpoints = trial.checkpoint_manager.best_checkpoints()
+        return [(c.value, c.result[metric]) for c in checkpoints
+                if c.storage == Checkpoint.DISK]
 
     def _retrieve_rows(self, metric=None, mode=None):
         assert mode is None or mode in ["max", "min"]
