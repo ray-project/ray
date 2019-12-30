@@ -31,25 +31,35 @@ build --http_timeout_scaling=5.0
 build --incompatible_depset_is_not_iterable=false
 
 # Address sanitizer configuration:
+# Unfortunately using the function and vptr sanitizers of the
+# undefined sanitizer produces linker errors, so they are switched
+# off for now (see also https://github.com/google/oss-fuzz/issues/713)
 build:asan --strip=never
 build:asan --copt -fsanitize=address
 build:asan --copt -fsanitize=undefined
+build:asan --copt -fno-sanitize=function,vptr
 build:asan --copt -DADDRESS_SANITIZER
 build:asan --copt -O2
 build:asan --copt -g
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
 build:asan --linkopt -fsanitize=undefined
+build:asan --linkopt -fno-sanitize=function,vptr
 build:asan --copt -Wno-macro-redefined
 
 # Thread sanitizer configuration:
+# Unfortunately using the function and vptr sanitizers of the
+# undefined sanitizer produces linker errors, so they are switched
+# off for now (see also https://github.com/google/oss-fuzz/issues/713)
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
 build:tsan --copt -fsanitize=undefined
+build:tsan --copt -fno-sanitize=function,vptr
 build:tsan --copt -DTHREAD_SANITIZER
 build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
 build:tsan --linkopt -fsanitize=undefined
+build:tsan --linkopt -fno-sanitize=function,vptr
 build:tsan --copt -Wno-macro-redefined
