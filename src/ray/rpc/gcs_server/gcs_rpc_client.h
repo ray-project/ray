@@ -132,10 +132,10 @@ class GcsRpcClient {
 
  private:
   /// The gRPC-generated stub.
-  std::unique_ptr<JobInfoGcsService::Stub> job_info_rpc_client_;
-  std::unique_ptr<ActorInfoGcsService::Stub> actor_info_rpc_client_;
-  std::unique_ptr<NodeInfoGcsService::Stub> node_info_rpc_client_;
-  std::unique_ptr<ObjectInfoGcsService::Stub> object_info_rpc_client_;
+  std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_rpc_client_;
+  std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_rpc_client_;
+  std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_rpc_client_;
+  std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_rpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
