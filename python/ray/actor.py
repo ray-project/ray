@@ -2,12 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import copy
 import inspect
 import logging
 import six
-import sys
 import weakref
 
 from abc import ABCMeta, abstractmethod
@@ -396,7 +394,7 @@ class ActorClass(object):
         if kwargs is None:
             kwargs = {}
         if is_direct_call is None:
-            is_direct_call = bool(os.environ.get("RAY_FORCE_DIRECT"))
+            is_direct_call = ray_constants.direct_call_enabled()
         if max_concurrency is None:
             if is_asyncio:
                 max_concurrency = 100
@@ -644,7 +642,7 @@ class ActorHandle(object):
                                       self._actor_id.hex())
 
     def __del__(self):
-        """Kill the worker that is running this actor."""
+        """Terminate the worker that is running this actor."""
         # TODO(swang): Also clean up forked actor handles.
         # Kill the worker if this is the original actor handle, created
         # with Class.remote(). TODO(rkn): Even without passing handles around,
@@ -672,6 +670,20 @@ class ActorHandle(object):
                 self.__ray_terminate__.remote()
             finally:
                 self.__ray_terminate__._actor_hard_ref = None
+
+    def __ray_kill__(self):
+        """Kill the actor that this actor handle refers to immediately.
+
+        This will cause any outstanding tasks submitted to the actor to fail
+        and the actor to exit in the same way as if it crashed. In general,
+        you should prefer to just delete the actor handle and let it clean up
+        gracefull.
+
+        Returns:
+            None.
+        """
+        worker = ray.worker.get_global_worker()
+        worker.core_worker.kill_actor(self._ray_actor_id)
 
     @property
     def _actor_id(self):
@@ -807,11 +819,14 @@ def exit_actor():
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
         # Intentionally disconnect the core worker from the raylet so the
         # raylet won't push an error message to the driver.
-        worker.core_worker.disconnect()
         ray.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
-        sys.exit(0)
+        # Set a flag to indicate this is an intentional actor exit. This
+        # reduces log verbosity.
+        exit = SystemExit(0)
+        exit.is_ray_terminate = True
+        raise exit
         assert False, "This process should have terminated."
     else:
         raise Exception("exit_actor called on a non-actor worker.")

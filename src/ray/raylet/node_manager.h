@@ -72,8 +72,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(boost::asio::io_service &io_service, const NodeManagerConfig &config,
-              ObjectManager &object_manager,
+  NodeManager(boost::asio::io_service &io_service, const ClientID &self_node_id,
+              const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::RedisGcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
@@ -99,6 +99,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Status indicating whether this was done successfully or not.
   ray::Status RegisterGcs();
 
+  /// Get initial node manager configuration.
+  const NodeManagerConfig &GetInitialConfig() const;
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -113,16 +116,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
  private:
   /// Methods for handling clients.
 
-  /// Handler for the addition of a new GCS client.
+  /// Handler for the addition of a new node.
   ///
-  /// \param data Data associated with the new client.
+  /// \param data Data associated with the new node.
   /// \return Void.
-  void ClientAdded(const GcsNodeInfo &data);
+  void NodeAdded(const GcsNodeInfo &data);
 
-  /// Handler for the removal of a GCS client.
-  /// \param node_info Data associated with the removed client.
+  /// Handler for the removal of a GCS node.
+  /// \param node_info Data associated with the removed node.
   /// \return Void.
-  void ClientRemoved(const GcsNodeInfo &node_info);
+  void NodeRemoved(const GcsNodeInfo &node_info);
 
   /// Handler for the addition or updation of a resource in the GCS
   /// \param client_id ID of the node that created or updated resources.
@@ -231,7 +234,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// actor.
   /// \param worker The port that the actor is listening on.
   std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
-      const TaskSpecification &task_spec, int port);
+      const TaskSpecification &task_spec, int port, const WorkerID &worker_id);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
@@ -249,7 +252,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                        const TaskSpecification &task_spec,
-                                       bool resumed_from_checkpoint, int port);
+                                       bool resumed_from_checkpoint, int port,
+                                       const WorkerID &worker_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///
@@ -390,12 +394,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleObjectMissing(const ObjectID &object_id);
 
-  /// Handles updates to job table.
+  /// Handles the event that a job is finished.
   ///
-  /// \param id An unused value. TODO(rkn): Should this be removed?
-  /// \param job_data Data associated with a job table event.
+  /// \param job_id ID of the finished job.
+  /// \param job_data Data associated with the finished job.
   /// \return Void.
-  void HandleJobTableUpdate(const JobID &id, const std::vector<JobTableData> &job_data);
+  void HandleJobFinished(const JobID &job_id, const JobTableData &job_data);
 
   /// Check if certain invariants associated with the task dependency manager
   /// and the local queues are satisfied. This is only used for debugging
@@ -559,8 +563,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
 
-  // GCS client ID for this node.
-  ClientID client_id_;
+  /// ID of this node.
+  ClientID self_node_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new
@@ -633,7 +637,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       remote_node_manager_clients_;
 
   /// Map of workers leased out to direct call clients.
-  std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
+  std::unordered_map<WorkerID, std::shared_ptr<Worker>> leased_workers_;
 
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
@@ -641,7 +645,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   /// Map of leased workers to their current resource usage.
-  std::unordered_map<int, std::unordered_map<std::string, double>>
+  std::unordered_map<WorkerID, std::unordered_map<std::string, double>>
       leased_worker_resources_;
 
   typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,

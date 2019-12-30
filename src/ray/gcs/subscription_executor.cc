@@ -5,7 +5,7 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data, typename Table>
-Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
+Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
     const ClientID &client_id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
   // TODO(micafan) Optimize the lock when necessary.
@@ -51,8 +51,6 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     if (result.empty()) {
       return;
     }
-
-    RAY_LOG(DEBUG) << "Subscribe received update of id " << id;
 
     SubscribeCallback<ID, Data> sub_one_callback = nullptr;
     SubscribeCallback<ID, Data> sub_all_callback = nullptr;
@@ -138,7 +136,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     id_to_callback_map_[id] = subscribe;
   }
 
-  auto status = AsyncSubscribe(client_id, nullptr, on_subscribe_done);
+  auto status = AsyncSubscribeAll(client_id, nullptr, on_subscribe_done);
   if (!status.ok()) {
     std::unique_lock<std::mutex> lock(mutex_);
     id_to_callback_map_.erase(id);
@@ -187,6 +185,10 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
 }
 
 template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
+template class SubscriptionExecutor<ActorID, ActorTableData, DirectActorTable>;
+template class SubscriptionExecutor<JobID, JobTableData, JobTable>;
+template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;
+template class SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>;
 
 }  // namespace gcs
 

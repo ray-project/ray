@@ -32,18 +32,20 @@ class SimpleGcsFlushPolicy(GcsFlushPolicy):
     """A simple policy with constant flush rate, after a warmup period.
 
     Example policy values:
+
         flush_when_at_least_bytes 2GB
+
         flush_period_secs 10s
+
         flush_num_entries_each_time 10k
 
-    This means
-    (1) If the GCS shard uses less than 2GB of memory, no flushing would take
-        place.  This should cover most Ray runs.
-    (2) The GCS shard will only honor a flush request, if it's issued after 10
-        seconds since the last processed flush.  In particular this means it's
-        okay for the Monitor to issue requests more frequently than this param.
+    This means: (1) If the GCS shard uses less than 2GB of memory,
+    no flushing would take place.  This should cover most Ray runs. (2) The
+    GCS shard will only honor a flush request, if it's issued after 10
+    seconds since the last processed flush.  In particular this means it's
+    okay for the Monitor to issue requests more frequently than this param.
     (3) When processing a flush, the shard will flush at most 10k entries.
-        This is to control the latency of each request.
+    This is to control the latency of each request.
 
     Note, flush rate == (flush period) * (num entries each time).  So
     applications that have a heavier GCS load can tune these params.

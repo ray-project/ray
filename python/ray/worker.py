@@ -61,6 +61,8 @@ LOCAL_MODE = 2
 
 ERROR_KEY_PREFIX = b"Error:"
 
+PY3 = sys.version_info.major >= 3
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -431,6 +433,7 @@ class Worker(object):
 
         signal.signal(signal.SIGTERM, sigterm_handler)
         self.core_worker.run_task_loop()
+        sys.exit(0)
 
 
 def get_gpu_ids():
@@ -533,7 +536,7 @@ def init(address=None,
          driver_object_store_memory=None,
          redis_max_memory=None,
          log_to_driver=True,
-         node_ip_address=None,
+         node_ip_address=ray_constants.NODE_DEFAULT_IP,
          object_id_seed=None,
          local_mode=False,
          redirect_worker_output=None,
@@ -541,11 +544,11 @@ def init(address=None,
          ignore_reinit_error=False,
          num_redis_shards=None,
          redis_max_clients=None,
-         redis_password=None,
+         redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=False,
-         webui_host="127.0.0.1",
+         include_webui=None,
+         webui_host="localhost",
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -624,10 +627,12 @@ def init(address=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which displays the status of the Ray cluster.
+            UI, which displays the status of the Ray cluster. If this argument
+            is None, then the UI will be started if the relevant dependencies
+            are present.
         webui_host: The host to bind the web UI server to. Can either be
-            127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to 127.0.0.1 to prevent access from
+            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to localhost to prevent access from
             external machines.
         job_id: The ID of this job.
         configure_logging: True if allow the logging cofiguration here.
@@ -795,7 +800,9 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id)
+        job_id=job_id,
+        internal_config=json.loads(_internal_config)
+        if _internal_config else {})
 
     for hook in _post_init_hooks:
         hook()
@@ -832,6 +839,12 @@ def shutdown(exiting_interpreter=False):
 
     disconnect(exiting_interpreter)
 
+    # We need to destruct the core worker here because after this function,
+    # we will tear down any processes spawned by ray.init() and the background
+    # IO thread in the core worker doesn't currently handle that gracefully.
+    if hasattr(global_worker, "core_worker"):
+        del global_worker.core_worker
+
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
 
@@ -841,7 +854,7 @@ def shutdown(exiting_interpreter=False):
         _global_node.kill_all_processes(check_alive=False, allow_graceful=True)
         _global_node = None
 
-    # TODO(rkn): Instead of manually reseting some of the worker fields, we
+    # TODO(rkn): Instead of manually resetting some of the worker fields, we
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker._post_get_hooks = []
@@ -1064,7 +1077,8 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None):
+            job_id=None,
+            internal_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
     Args:
@@ -1077,6 +1091,8 @@ def connect(node,
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
+        internal_config: Dictionary of (str,str) containing internal config
+            options to override the defaults.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
     error_message = "Perhaps you called ray.init twice by accident?"
@@ -1086,6 +1102,8 @@ def connect(node,
     # Enable nice stack traces on SIGSEGV etc.
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
+
+    ray._raylet.set_internal_config(internal_config)
 
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
@@ -1104,9 +1122,8 @@ def connect(node,
         if setproctitle:
             setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
-        # Code path of local mode
         if job_id is None:
-            job_id = JobID.from_int(random.randint(1, 100000))
+            job_id = JobID.from_int(random.randint(1, 65535))
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
     else:
@@ -1326,12 +1343,6 @@ def disconnect(exiting_interpreter=False):
     worker.cached_functions_to_run = []
     worker.serialization_context_map.clear()
 
-    # We need to destruct the core worker here because after this function,
-    # we will tear down any processes spawned by ray.init() and the background
-    # threads in the core worker don't currently handle that gracefully.
-    if hasattr(worker, "core_worker"):
-        del worker.core_worker
-
 
 @contextmanager
 def _changeproctitle(title, next_title):
@@ -1403,6 +1414,21 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
+def show_in_webui(message):
+    """Display message in dashboard.
+
+    Display message for the current task or actor in the dashboard.
+    For example, this can be used to display the status of a long-running
+    computation.
+
+    Args:
+        message (str): Message to be displayed.
+    """
+    worker = global_worker
+    worker.check_connected()
+    worker.core_worker.set_webui_display(message.encode())
+
+
 def get(object_ids, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
@@ -1429,6 +1455,14 @@ def get(object_ids, timeout=None):
     """
     worker = global_worker
     worker.check_connected()
+
+    if PY3 and hasattr(
+            worker,
+            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+        raise RayError("Using blocking ray.get inside async actor. "
+                       "This blocks the event loop. Please "
+                       "use `await` on object id with asyncio.gather.")
+
     with profiling.profile("ray.get"):
         is_individual_id = isinstance(object_ids, ray.ObjectID)
         if is_individual_id:
@@ -1540,6 +1574,13 @@ def wait(object_ids, num_returns=1, timeout=None):
         IDs.
     """
     worker = global_worker
+
+    if PY3 and hasattr(
+            worker,
+            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+        raise RayError("Using blocking ray.wait inside async method. "
+                       "This blocks the event loop. Please use `await` "
+                       "on object id with asyncio.wait. ")
 
     if isinstance(object_ids, ObjectID):
         raise TypeError(
@@ -1707,6 +1748,28 @@ def remote(*args, **kwargs):
         class Foo(object):
             def method(self):
                 return 1
+
+    Remote task and actor objects returned by @ray.remote can also be
+    dynamically modified with the same arguments as above using
+    ``.options()`` as follows:
+
+    .. code-block:: python
+
+        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        def f():
+            return 1, 2
+        g = f.options(num_gpus=2, max_calls=None)
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo(object):
+            def method(self):
+                return 1
+        Bar = Foo.options(num_cpus=1, resources=None)
+
+    Running remote actors will be terminated when the actor handle to them
+    in Python is deleted, which will cause them to complete any outstanding
+    work and then shut down. If you want to kill them immediately, you can
+    also call ``actor_handle.__ray_kill__()``.
     """
     worker = get_global_worker()
 
