@@ -149,7 +149,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                    ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     rpc_client_ = std::unique_ptr<GrpcClient<CoreWorkerService>>(
-      new GrpcClient<CoreWorkerService>(address, port, client_call_manager));
+        new GrpcClient<CoreWorkerService>(address, port, client_call_manager));
   };
 
   ray::Status AssignTask(const AssignTaskRequest &request,
@@ -183,7 +183,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ray::Status DirectActorCallArgWaitComplete(
       const DirectActorCallArgWaitCompleteRequest &request,
       const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) override {
-    return RPC_CALL_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, request, callback);
+    return RPC_CALL_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, request,
+                           callback);
   }
 
   virtual ray::Status GetObjectStatus(
@@ -223,19 +224,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       request->set_client_processed_up_to(max_finished_seq_no_);
       rpc_bytes_in_flight_ += task_size;
 
-      auto rpc_callback = [this, this_ptr, seq_no, task_size, callback](Status status,
-                                                        const rpc::PushTaskReply &reply) {
-            {
-              std::lock_guard<std::mutex> lock(mutex_);
-              if (seq_no > max_finished_seq_no_) {
-                max_finished_seq_no_ = seq_no;
-              }
-              rpc_bytes_in_flight_ -= task_size;
-              RAY_CHECK(rpc_bytes_in_flight_ >= 0);
-            }
-            SendRequests();
-            callback(status, reply);
-          };
+      auto rpc_callback = [this, this_ptr, seq_no, task_size, callback](
+          Status status, const rpc::PushTaskReply &reply) {
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          if (seq_no > max_finished_seq_no_) {
+            max_finished_seq_no_ = seq_no;
+          }
+          rpc_bytes_in_flight_ -= task_size;
+          RAY_CHECK(rpc_bytes_in_flight_ >= 0);
+        }
+        SendRequests();
+        callback(status, reply);
+      };
 
       RPC_CALL_METHOD(CoreWorkerService, PushTask, *request, rpc_callback);
     }
@@ -250,7 +251,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   std::mutex mutex_;
 
   /// The RPC client.
-  std::unique_ptr<GrpcClient<CoreWorkerService>> rpc_client_;  
+  std::unique_ptr<GrpcClient<CoreWorkerService>> rpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

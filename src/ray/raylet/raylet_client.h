@@ -242,7 +242,8 @@ class RayletClient : public WorkerLeaseInterface {
   /// Implements WorkerLeaseInterface.
   ray::Status RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback) override;
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
+      override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,

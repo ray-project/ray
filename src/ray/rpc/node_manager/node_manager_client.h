@@ -26,7 +26,7 @@ class NodeManagerClient {
                     ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     rpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-      new GrpcClient<NodeManagerService>(address, port, client_call_manager));
+        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
   /// Forward a task and its uncommitted lineage.
@@ -46,7 +46,7 @@ class NodeManagerClient {
 
  private:
   /// The RPC client.
-  std::unique_ptr<GrpcClient<NodeManagerService>> rpc_client_;  
+  std::unique_ptr<GrpcClient<NodeManagerService>> rpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
@@ -69,8 +69,9 @@ class NodeManagerWorkerClient
   }
 
   /// Request a worker lease.
-  ray::Status RequestWorkerLease(const RequestWorkerLeaseRequest &request,
-                                 const ClientCallback<RequestWorkerLeaseReply> &callback) {
+  ray::Status RequestWorkerLease(
+      const RequestWorkerLeaseRequest &request,
+      const ClientCallback<RequestWorkerLeaseReply> &callback) {
     return RPC_CALL_METHOD(NodeManagerService, RequestWorkerLease, request, callback);
   }
 
@@ -89,11 +90,11 @@ class NodeManagerWorkerClient
                           ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     rpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
-      new GrpcClient<NodeManagerService>(address, port, client_call_manager));
+        new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
   /// The RPC client.
-  std::unique_ptr<GrpcClient<NodeManagerService>> rpc_client_;  
+  std::unique_ptr<GrpcClient<NodeManagerService>> rpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

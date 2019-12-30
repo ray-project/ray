@@ -32,7 +32,8 @@ class ObjectManagerClient {
     freeobjects_rr_index_ = rand() % num_connections_;
     rpc_clients_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
-      rpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(address, port, client_call_manager, num_connections_));
+      rpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(
+          address, port, client_call_manager, num_connections_));
     }
   };
 
@@ -42,7 +43,7 @@ class ObjectManagerClient {
   /// \param callback The callback function that handles reply from server
   void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
     RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, Push, request, callback,
-        rpc_clients_[push_rr_index_++ % num_connections_]);
+                                rpc_clients_[push_rr_index_++ % num_connections_]);
   }
 
   /// Pull object from remote object manager
@@ -51,7 +52,7 @@ class ObjectManagerClient {
   /// \param callback The callback function that handles reply from server
   void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
     RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, Pull, request, callback,
-        rpc_clients_[push_rr_index_++ % num_connections_]);
+                                rpc_clients_[push_rr_index_++ % num_connections_]);
   }
 
   /// Tell remote object manager to free objects
@@ -61,7 +62,7 @@ class ObjectManagerClient {
   void FreeObjects(const FreeObjectsRequest &request,
                    const ClientCallback<FreeObjectsReply> &callback) {
     RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, FreeObjects, request, callback,
-        rpc_clients_[push_rr_index_++ % num_connections_]);
+                                rpc_clients_[push_rr_index_++ % num_connections_]);
   }
 
  private:

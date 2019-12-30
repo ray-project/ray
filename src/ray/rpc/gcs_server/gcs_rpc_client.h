@@ -23,13 +23,13 @@ class GcsRpcClient {
                ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
     job_info_rpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
-      new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
+        new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
     actor_info_rpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
-      new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
+        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
     node_info_rpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
-      new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
     object_info_rpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
-      new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));    
+        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
   };
 
   /// Add job info to gcs server.
@@ -37,7 +37,7 @@ class GcsRpcClient {
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
   void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply> &callback) {
-    RPC_CALL_METHOD(JobInfoGcsService, AddJob, request, callback);        
+    RPC_CALL_METHOD(JobInfoGcsService, AddJob, request, callback);
   }
 
   /// Mark job as finished to gcs server.
