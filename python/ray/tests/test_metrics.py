@@ -61,11 +61,12 @@ def test_worker_stats(shutdown_only):
     reply = try_get_node_stats()
     target_worker_present = False
     for worker in reply.workers_stats:
-        if worker.webui_display == "test":
+        stats = worker.core_worker_stats
+        if stats.webui_display == "test":
             target_worker_present = True
             assert worker.pid == worker_pid
         else:
-            assert worker.webui_display == ""
+            assert stats.webui_display == ""
     assert target_worker_present
 
     # Test show_in_webui for remote actors.
@@ -74,11 +75,12 @@ def test_worker_stats(shutdown_only):
     reply = try_get_node_stats()
     target_worker_present = False
     for worker in reply.workers_stats:
-        if worker.webui_display == "test":
+        stats = worker.core_worker_stats
+        if stats.webui_display == "test":
             target_worker_present = True
             assert worker.pid == worker_pid
         else:
-            assert worker.webui_display == ""
+            assert stats.webui_display == ""
     assert target_worker_present
 
     timeout_seconds = 20
