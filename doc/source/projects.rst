@@ -78,6 +78,21 @@ wordcount with the default parameters by running
 
     ray session execute run
 
+
+You can attach to the running session by executing
+
+.. code-block:: bash
+
+    ray session attach --tmux
+
+
+The session can be terminated with
+
+.. code-block:: bash
+
+    ray session stop
+
+
 Project file format (project.yaml)
 ----------------------------------
 
