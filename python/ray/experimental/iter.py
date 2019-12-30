@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from typing import TypeVar, Generic, Generator, List
+from typing import TypeVar, Generic, Iterable, List, Callable
 
 import ray
 
@@ -10,7 +10,7 @@ import ray
 T = TypeVar("T")
 
 
-def from_items(items: List[T], num_shards: int = 4):
+def from_items(items: List[T], num_shards: int = 2) -> "ParIterator[T]":
     """Create a parallel iterator from an existing set of objects.
 
     Arguments:
@@ -24,7 +24,7 @@ def from_items(items: List[T], num_shards: int = 4):
     return from_generators(shards)
 
 
-def from_range(n: int, num_shards: int = 4):
+def from_range(n: int, num_shards: int = 2) -> "ParIterator[int]":
     """Create a parallel iterator over the range 0..n.
 
     Arguments:
@@ -43,7 +43,7 @@ def from_range(n: int, num_shards: int = 4):
     return from_generators(generators)
 
 
-def from_generators(generators):
+def from_generators(generators: List[Iterable[T]]) -> "ParIterator[T]":
     """Create a parallel iterator from a set of generators.
 
     Arguments:
@@ -55,7 +55,7 @@ def from_generators(generators):
     return from_actors(actors)
 
 
-def from_actors(actors):
+def from_actors(actors: List["ray.actor.ActorHandle"]) -> "ParIterator[T]":
     """Create a parallel iterator from an existing set of actors.
 
     Arguments:
@@ -66,7 +66,7 @@ def from_actors(actors):
     return ParIterator(actors)
 
 
-class ParIterator(object):
+class ParIterator(Generic[T]):
     """A parallel iterator over a set of remote actors.
 
     This can be used to iterate over a fixed set of task results
@@ -115,17 +115,18 @@ class ParIterator(object):
     process at a time.
     """
 
-    def __init__(self, actors, transforms=None):
+    def __init__(self,
+                 actors: List["ray.actor.ActorHandle"],
+                 transforms: List[Callable[["LocalIterator"],
+                                           "LocalIterator"]] = None):
         self.actors = actors
         self.transforms = transforms or []
 
-    def for_each(self, fn):
+    def for_each(self, fn: Callable[[T], T]) -> "ParIterator[T]":
         """Remotely apply fn to each item in this iterator.
 
         Arguments:
             fn (func): function to apply to each item.
-
-        Returns: ParIterator[T].
 
         Examples:
             >>> next(from_range(4).filter(lambda x: x * 2).sync_iterator())
@@ -135,13 +136,11 @@ class ParIterator(object):
             self.actors,
             self.transforms + [lambda local_it: local_it.for_each(fn)])
 
-    def filter(self, fn):
+    def filter(self, fn: Callable[[T], bool]) -> "ParIterator[T]":
         """Remotely filter items from this iterator.
 
         Arguments:
             fn (func): returns False for items to drop from the iterator.
-
-        Returns: ParIterator[T].
 
         Examples:
             >>> next(from_items([0, 1, 2]).filter(lambda x: x).sync_iterator())
@@ -151,13 +150,11 @@ class ParIterator(object):
             self.actors,
             self.transforms + [lambda local_it: local_it.filter(fn)])
 
-    def batch(self, n):
+    def batch(self, n: int) -> "ParIterator[List[T]]":
         """Remotely batch together items in this iterator.
 
         Arguments:
             n (int): Number of items to batch together.
-
-        Returns: ParIterator[List[T]].
 
         Examples:
             >>> next(from_range(10, 1).batch(4).sync_iterator())
@@ -167,10 +164,8 @@ class ParIterator(object):
             self.actors,
             self.transforms + [lambda local_it: local_it.batch(n)])
 
-    def flatten(self):
+    def flatten(self) -> "ParIterator[T[0]]":
         """Flatten batches of items into individual items.
-
-        Returns: ParIterator[T[0]].
 
         Examples:
             >>> next(from_range(10, 1).batch(4).flatten())
@@ -180,15 +175,13 @@ class ParIterator(object):
             self.actors,
             self.transforms + [lambda local_it: local_it.flatten()])
 
-    def sync_iterator(self):
+    def sync_iterator(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
 
         New items will be fetched from the shards on-demand as the iterator
         is stepped through.
 
         This is the equivalent of sync_iterator_across_shards().flatten().
-
-        Returns: LocalIterator[T].
 
         Examples:
             >>> it = from_range(100, 1).sync_iterator()
@@ -201,10 +194,8 @@ class ParIterator(object):
         """
         return self.sync_iterator_across_shards().flatten()
 
-    def sync_iterator_across_shards(self):
+    def sync_iterator_across_shards(self) -> "LocalIterator[List[T]]":
         """Iterate over the results of multiple shards in parallel.
-
-        Returns: LocalIterator[List[T]].
 
         Examples:
             >>> it = from_generators([range(3), range(3)])
@@ -213,13 +204,11 @@ class ParIterator(object):
         """
         return LocalIterator(self._sync_iterator_across_shards().__iter__())
 
-    def async_iterator(self):
+    def async_iterator(self) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
-
-        Returns: LocalIterator[T].
 
         Examples:
             >>> it = from_range(100, 1).sync_iterator()
@@ -232,20 +221,15 @@ class ParIterator(object):
         """
         return LocalIterator(self._async_iterator().__iter__())
 
-    def num_shards(self):
-        """Return the number of worker actors backing this iterator.
-
-        Returns: int
-        """
+    def num_shards(self) -> int:
+        """Return the number of worker actors backing this iterator."""
         return len(self.actors)
 
-    def get_shard(self, shard_index):
+    def get_shard(self, shard_index: int) -> "LocalIterator[T]":
         """Return a local iterator for the given shard.
 
         The iterator is guaranteed to be serializable and can be passed to
         remote tasks or actors.
-
-        Returns: LocalIterator[T].
         """
         a = self.actors[shard_index]
         return _SingleActorIterator(a, self.transforms)
@@ -293,8 +277,16 @@ class _ParIteratorWorker(object):
         return next(self.local_it)
 
 
-class LocalIterator(object):
-    def __init__(self, iterator):
+class LocalIterator(Generic[T]):
+    """An iterator over a single shard of data.
+
+    It implements similar transformations as ParIterator[T], but the transforms
+    will be applied locally and not remotely in parallel.
+
+    This type is returned by calling sync_iterator() or async_iterator() on
+    a ParIterator. It should not be created directly."""
+
+    def __init__(self, iterator: Iterable[T]):
         self.iterator = iter(iterator)
 
     def __iter__(self):
@@ -303,16 +295,16 @@ class LocalIterator(object):
     def __next__(self):
         return self.iterator.__next__()
 
-    def for_each(self, fn):
+    def for_each(self, fn: Callable[[T], T]) -> "LocalIterator[T]":
         return LocalIterator(self._for_each(fn))
 
-    def filter(self, fn):
+    def filter(self, fn: Callable[[T], bool]) -> "LocalIterator[T]":
         return LocalIterator(self._filter(fn))
 
-    def batch(self, n):
+    def batch(self, n: int) -> "LocalIterator[List[T]]":
         return LocalIterator(self._batch(n))
 
-    def flatten(self):
+    def flatten(self) -> "LocalIterator[T[0]]":
         return LocalIterator(self._flatten())
 
     def _for_each(self, fn):
@@ -341,6 +333,8 @@ class LocalIterator(object):
 
 
 class _SingleActorIterator(LocalIterator):
+    """Helper class for iterating over a single worker actor's results."""
+
     def __init__(self, actor, transforms):
         self.actor = actor
         self.transforms = transforms
