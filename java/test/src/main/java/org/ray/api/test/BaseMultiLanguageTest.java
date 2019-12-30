@@ -72,8 +72,6 @@ public abstract class BaseMultiLanguageTest {
     String nodeManagerPort = String.valueOf(NetworkUtil.getUnusedPort());
 
     // Start ray cluster.
-    String workerOptions =
-        " -classpath " + System.getProperty("java.class.path");
     List<String> startCommand = ImmutableList.of(
         "ray",
         "start",
@@ -83,8 +81,7 @@ public abstract class BaseMultiLanguageTest {
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
-        "--include-java",
-        "--java-worker-options=" + workerOptions
+        "--include-java" // classpath will use jars in `ray-java` wheel
     );
     String numWorkersPerProcessJava = System
         .getProperty("ray.raylet.config.num_workers_per_process_java");

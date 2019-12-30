@@ -46,3 +46,8 @@ else
   exit 1
 fi
 
+pushd "$ROOT_DIR/../../java/dist"
+echo "Install ray-java package"
+python setup.py install --user
+popd
+
