@@ -146,7 +146,9 @@ def test_raylet_info_endpoint(shutdown_only):
     while True:
         time.sleep(1)
         try:
-            raylet_info = requests.get(addresses["webui_url"] +
+            webui_url = addresses["webui_url"]
+            webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+            raylet_info = requests.get(webui_url +
                                        "/api/raylet_info").json()
             actor_info = raylet_info["result"]["actorInfo"]
             try:
