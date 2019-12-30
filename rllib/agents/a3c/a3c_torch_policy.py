@@ -7,7 +7,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.backend import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 F = nn.functional

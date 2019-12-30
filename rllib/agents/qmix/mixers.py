@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.utils.backend import try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
 F = nn.functional
