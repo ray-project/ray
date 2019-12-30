@@ -70,7 +70,25 @@ commands of the project, run
     ray session commands
 
 
-In this project there is only a single ``run`` command which has arguments
+which produces the following output:
+
+.. code-block::
+
+  Active project: ray-example-streaming
+
+  Command "run":
+    usage: run [--num-mappers NUM_MAPPERS] [--num-reducers NUM_REDUCERS]
+
+    Start the streaming example.
+
+    optional arguments:
+      --num-mappers NUM_MAPPERS
+                          Number of mapper actors used
+      --num-reducers NUM_REDUCERS
+                          Number of reducer actors used
+
+
+As you see, in this project there is only a single ``run`` command which has arguments
 ``--num-mappers`` and ``--num-reducers``. We can execute the streaming
 wordcount with the default parameters by running
 
@@ -79,7 +97,7 @@ wordcount with the default parameters by running
     ray session execute run
 
 
-You can attach to the running session by executing
+You can interrupt the command with ``<Control>-c`` and attach to the running session by executing
 
 .. code-block:: bash
 
