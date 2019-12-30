@@ -244,6 +244,14 @@ py_test(
 )
 
 py_test(
+    name = "test_multiprocessing",
+    size = "medium",
+    srcs = ["test_multiprocessing.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_multi_node_2",
     size = "medium",
     srcs = ["test_multi_node_2.py"],
