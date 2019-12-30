@@ -18,6 +18,8 @@ def normc_initializer(std=1.0):
 
 
 def get_activation_fn(name):
+    if name == "linear":
+        return None
     return getattr(tf.nn, name)
 
 

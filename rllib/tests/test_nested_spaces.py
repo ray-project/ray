@@ -7,7 +7,6 @@ import pickle
 from gym import spaces
 from gym.envs.registration import EnvSpec
 import gym
-import torch.nn as nn
 import unittest
 
 import ray
@@ -24,9 +23,11 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.rollout import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+_, nn = try_import_torch()
+
 
 DICT_SPACE = spaces.Dict({
     "sensors": spaces.Dict({
