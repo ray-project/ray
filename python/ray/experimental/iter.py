@@ -122,6 +122,11 @@ class ParIterator(Generic[T]):
         self.actors = actors
         self.transforms = transforms or []
 
+    def __iter__(self):
+        raise TypeError(
+            "You must use it.sync_iterator() or it.async_iterator() to "
+            "iterate over the results of a ParIterator.")
+
     def for_each(self, fn: Callable[[T], T]) -> "ParIterator[T]":
         """Remotely apply fn to each item in this iterator.
 
