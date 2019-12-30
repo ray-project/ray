@@ -8,6 +8,7 @@ import torch
 import torch.distributed as dist
 import logging
 import numbers
+import tempfile
 
 import ray
 
@@ -103,9 +104,10 @@ class PyTorchTrainer(object):
         self.backend = backend
         self.use_gpu = use_gpu
         self.max_replicas = num_replicas
-        self.start_workers(self.max_replicas)
+        self.tmpdir = tempfile.mkdtemp(prefix="raysgd")
+        self._start_workers(self.max_replicas)
 
-    def start_workers(self, num_replicas):
+    def _start_workers(self, num_replicas):
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(
@@ -129,7 +131,8 @@ class PyTorchTrainer(object):
         else:
             # Generate actor class
             Runner = ray.remote(
-                num_cpus=1, num_gpus=int(self.use_gpu))(DistributedPyTorchRunner)
+                num_cpus=1,
+                num_gpus=int(self.use_gpu))(DistributedPyTorchRunner)
             Runner = Runner.options(is_direct_call=True, max_concurrency=2)
             # Compute batch size per replica
             batch_size_per_replica = self.batch_size // num_replicas
@@ -169,23 +172,27 @@ class PyTorchTrainer(object):
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self, retries=0, last_checkpoint=None):
+    def train(self, retries=0, checkpoint="auto"):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers.
         """
         assert retries > 0, "`retries` must be non-negative."
-        attempts = retries + 1
+        if retries and checkpoint == "auto":
+            logger.info("Retrying detected. Automatically checkpointing.")
+            checkpoint_dir = self.save(
+                os.path.join(self.tmpdir, "tmp_checkpoint"))
         with self.optimizer_timer:
-            for i in range(attempts):
-                worker_stats = [w.step.remote() for w in self.workers]
-                success = check_for_failure(worker_stats)
+            worker_stats = [w.step.remote() for w in self.workers]
+            success = check_for_failure(worker_stats)
+            for i in range(retries):
                 if success:
                     break
-                else:
-                    self.shutdown(force=True)
-                    self.try_resize_workers()
-                    self.restore(last_checkpoint)
+                self._try_resize_workers(checkpoint=checkpoint_dir)
+                logger.info("Retrying training step with %d workers." % len(
+                    self.workers))
+                worker_stats = [w.step.remote() for w in self.workers]
+                success = check_for_failure(worker_stats)
 
         if not success:
             raise RuntimeError("Training run failed.")
@@ -256,21 +263,21 @@ class PyTorchTrainer(object):
                 worker.shutdown.remote()
             worker.__ray_terminate__.remote()
 
-    def resize_workers(self, retries=5):
+    def _try_resize_workers(self, checkpoint, retries=5):
         # check available resources
+        self.shutdown(force=True)
         for i in range(retries):
             resources = ray.available_resources()
-            new_workers = min(
-                resources.get("CPU", 0), self.max_replicas)
+            new_workers = min(resources.get("CPU", 0), self.max_replicas)
             if self.use_gpu:
                 new_workers = min(resources.get("GPU", 0), new_workers)
             if new_workers:
-                self.start_workers(new_workers)
+                self._start_workers(new_workers)
+                self.restore(checkpoint)
                 return
             else:
-                time.sleep(2 ** retries)
+                time.sleep(2**retries)
         raise RuntimeError("Exceeded max retries for relaunching workers.")
-
 
 
 class PyTorchTrainable(Trainable):
