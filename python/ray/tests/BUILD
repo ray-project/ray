@@ -15,6 +15,14 @@ py_test(
 )
 
 py_test(
+    name = "test_iter",
+    size = "small",
+    srcs = ["test_iter.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_resources",
     size = "medium",
     srcs = ["test_actor_resources.py"],

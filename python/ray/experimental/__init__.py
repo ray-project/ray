@@ -8,6 +8,7 @@ from .named_actors import get_actor, register_actor
 from .api import get, wait
 from .actor_pool import ActorPool
 from .dynamic_resources import set_resource
+import ray.experimental.iter
 
 
 def TensorFlowVariables(*args, **kwargs):

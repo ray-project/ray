@@ -2,10 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from typing import TypeVar, Generic, Generator, List
+
 import ray
 
+# The type of an iterator element.
+T = TypeVar("T")
 
-def from_items(items, num_shards=4):
+
+def from_items(items: List[T], num_shards: int = 4):
     """Create a parallel iterator from an existing set of objects.
 
     Arguments:
@@ -19,7 +24,7 @@ def from_items(items, num_shards=4):
     return from_generators(shards)
 
 
-def from_range(n, num_shards=4):
+def from_range(n: int, num_shards: int = 4):
     """Create a parallel iterator over the range 0..n.
 
     Arguments:
