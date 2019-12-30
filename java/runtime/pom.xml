@@ -53,6 +53,11 @@
   <version>2.57</version>
 </dependency>
 <dependency>
+  <groupId>net.java.dev.jna</groupId>
+  <artifactId>jna</artifactId>
+  <version>5.5.0</version>
+</dependency>
+<dependency>
   <groupId>org.apache.commons</groupId>
   <artifactId>commons-lang3</artifactId>
   <version>3.4</version>

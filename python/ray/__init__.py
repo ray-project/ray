@@ -121,6 +121,7 @@ from ray.worker import (
     register_custom_serializer,
     remote,
     shutdown,
+    show_in_webui,
     wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
@@ -169,6 +170,7 @@ __all__ = [
     "register_custom_serializer",
     "remote",
     "shutdown",
+    "show_in_webui",
     "wait",
 ]
 

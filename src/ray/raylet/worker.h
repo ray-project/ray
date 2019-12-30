@@ -73,6 +73,9 @@ class Worker {
   /// TODO (ion): Add methods to access this variable.
   /// TODO (ion): Investigate a more intuitive alternative to track these Cpus.
   ResourceSet borrowed_cpu_resources_;
+
+  rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
+
  private:
   /// The worker's ID.
   WorkerID worker_id_;
