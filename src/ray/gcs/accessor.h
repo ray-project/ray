@@ -82,6 +82,10 @@ class ActorInfoAccessor {
   /// \param data_ptr The checkpoint data that will be added to GCS.
   /// \param callback The callback that will be called after add finishes.
   /// \return Status
+  /// TODO(micafan) When the GCS backend is redis,
+  /// the checkpoint of the same actor needs to be updated serially,
+  /// otherwise the checkpoint may be overwritten. This issue will be resolved if
+  /// necessary.
   virtual Status AsyncAddCheckpoint(
       const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
       const StatusCallback &callback) = 0;
