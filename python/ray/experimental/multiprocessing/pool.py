@@ -301,7 +301,6 @@ class PoolActor(object):
 
 
 # https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
-# TODO(edoakes): cloudpickle can't pickle generator objects.
 class Pool(object):
     """A pool of actor processes that is used to process tasks in parallel.
 
@@ -390,7 +389,7 @@ class Pool(object):
         self._actor_deletion_ids.append(actor.__ray_terminate__.remote())
 
     def _new_actor_entry(self):
-        # TODO(edoakes): The initializer function can't currently be used to
+        # NOTE(edoakes): The initializer function can't currently be used to
         # modify the global namespace (e.g., import packages or set globals)
         # due to a limitation in cloudpickle.
         return (PoolActor.remote(self._initializer, self._initargs), 0)
