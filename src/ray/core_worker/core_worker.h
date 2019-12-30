@@ -33,6 +33,7 @@
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
   RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
+  RAY_CORE_WORKER_RPC_HANDLER(KillActor, 9999)                     \
   RAY_CORE_WORKER_RPC_HANDLER(GetCoreWorkerStats, 100)
 
 namespace ray {
@@ -97,12 +98,9 @@ class CoreWorker {
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
-  void SetActorId(const ActorID &actor_id) {
-    RAY_CHECK(actor_id_.IsNil());
-    actor_id_ = actor_id;
-  }
+  void SetActorId(const ActorID &actor_id);
 
-  void SetWebuiDisplay(const std::string &message) { webui_display_ = message; }
+  void SetWebuiDisplay(const std::string &message);
 
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
@@ -324,6 +322,12 @@ class CoreWorker {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
+  /// Tell an actor to exit immediately, without completing outstanding work.
+  ///
+  /// \param[in] actor_id ID of the actor to kill.
+  /// \param[out] Status
+  Status KillActor(const ActorID &actor_id);
+
   /// Add an actor handle from a serialized string.
   ///
   /// This should be called when an actor handle is given to us by another task
@@ -405,6 +409,10 @@ class CoreWorker {
   void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback);
+
+  /// Implements gRPC server handler.
+  void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
+                       rpc::SendReplyCallback send_reply_callback);
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
@@ -575,11 +583,6 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
-  // Client to listen to direct actor events.
-  std::unique_ptr<
-      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>
-      direct_actor_table_subscriber_;
-
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
@@ -611,7 +614,7 @@ class CoreWorker {
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
 
-  // Interface for publishing actor creation.
+  // Interface for publishing actor death event for actor creation failure.
   std::shared_ptr<ActorManager> actor_manager_;
 
   // Interface to submit tasks directly to other actors.
@@ -632,11 +635,19 @@ class CoreWorker {
   /// Fields related to task execution.
   ///
 
+  /// Protects around accesses to fields below. This should only ever be held
+  /// for short-running periods of time.
+  mutable absl::Mutex mutex_;
+
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
-  ActorID actor_id_;
+  ActorID actor_id_ GUARDED_BY(mutex_);
+
+  /// The currently executing task spec. We have to track this separately since
+  /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
+  TaskSpecification current_task_ GUARDED_BY(mutex_);
 
   /// String to be displayed on Web UI.
-  std::string webui_display_;
+  std::string webui_display_ GUARDED_BY(mutex_);
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
@@ -665,7 +676,7 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 
   // Queue of tasks to resubmit when the specified time passes.
-  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_;
+  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
   friend class CoreWorkerTest;
 };

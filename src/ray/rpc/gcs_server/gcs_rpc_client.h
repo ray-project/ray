@@ -26,6 +26,8 @@ class GcsRpcClient {
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
     job_info_stub_ = JobInfoGcsService::NewStub(channel);
     actor_info_stub_ = ActorInfoGcsService::NewStub(channel);
+    node_info_stub_ = NodeInfoGcsService::NewStub(channel);
+    object_info_stub_ = ObjectInfoGcsService::NewStub(channel);
   };
 
   /// Add job info to gcs server.
@@ -85,10 +87,84 @@ class GcsRpcClient {
             request, callback);
   }
 
+  /// Register a node to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void RegisterNode(const RegisterNodeRequest &request,
+                    const ClientCallback<RegisterNodeReply> &callback) {
+    client_call_manager_
+        .CreateCall<NodeInfoGcsService, RegisterNodeRequest, RegisterNodeReply>(
+            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncRegisterNode,
+            request, callback);
+  }
+
+  /// Unregister a node from GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void UnregisterNode(const UnregisterNodeRequest &request,
+                      const ClientCallback<UnregisterNodeReply> &callback) {
+    client_call_manager_
+        .CreateCall<NodeInfoGcsService, UnregisterNodeRequest, UnregisterNodeReply>(
+            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncUnregisterNode,
+            request, callback);
+  }
+
+  /// Get information of all nodes from GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void GetAllNodeInfo(const GetAllNodeInfoRequest &request,
+                      const ClientCallback<GetAllNodeInfoReply> &callback) {
+    client_call_manager_
+        .CreateCall<NodeInfoGcsService, GetAllNodeInfoRequest, GetAllNodeInfoReply>(
+            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncGetAllNodeInfo,
+            request, callback);
+  }
+
+  /// Get object's locations from GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void GetObjectLocations(const GetObjectLocationsRequest &request,
+                          const ClientCallback<GetObjectLocationsReply> &callback) {
+    client_call_manager_.CreateCall<ObjectInfoGcsService, GetObjectLocationsRequest,
+                                    GetObjectLocationsReply>(
+        *object_info_stub_, &ObjectInfoGcsService::Stub::PrepareAsyncGetObjectLocations,
+        request, callback);
+  }
+
+  /// Add location of object to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AddObjectLocation(const AddObjectLocationRequest &request,
+                         const ClientCallback<AddObjectLocationReply> &callback) {
+    client_call_manager_.CreateCall<ObjectInfoGcsService, AddObjectLocationRequest,
+                                    AddObjectLocationReply>(
+        *object_info_stub_, &ObjectInfoGcsService::Stub::PrepareAsyncAddObjectLocation,
+        request, callback);
+  }
+
+  /// Remove location of object to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void RemoveObjectLocation(const RemoveObjectLocationRequest &request,
+                            const ClientCallback<RemoveObjectLocationReply> &callback) {
+    client_call_manager_.CreateCall<ObjectInfoGcsService, RemoveObjectLocationRequest,
+                                    RemoveObjectLocationReply>(
+        *object_info_stub_, &ObjectInfoGcsService::Stub::PrepareAsyncRemoveObjectLocation,
+        request, callback);
+  }
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<JobInfoGcsService::Stub> job_info_stub_;
   std::unique_ptr<ActorInfoGcsService::Stub> actor_info_stub_;
+  std::unique_ptr<NodeInfoGcsService::Stub> node_info_stub_;
+  std::unique_ptr<ObjectInfoGcsService::Stub> object_info_stub_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

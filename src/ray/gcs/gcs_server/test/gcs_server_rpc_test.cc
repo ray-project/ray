@@ -11,25 +11,8 @@ static std::string redis_server_executable;
 static std::string redis_client_executable;
 static std::string libray_redis_module_path;
 
-class GcsServerTest : public ::testing::Test {
+class GcsServerTest : public RedisServiceManagerForTest {
  public:
-  using CallFunction = std::function<void(std::promise<bool> &promise)>;
-
-  static void SetUpTestCase() {
-    std::string start_redis_command = redis_server_executable +
-                                      " --loglevel warning --loadmodule " +
-                                      libray_redis_module_path + " --port 6379 &";
-    RAY_LOG(INFO) << "Start redis command is: " << start_redis_command;
-    RAY_CHECK(system(start_redis_command.c_str()) == 0);
-    usleep(200 * 1000);
-  }
-
-  static void TearDownTestCase() {
-    std::string stop_redis_command = redis_client_executable + " -p 6379 shutdown";
-    RAY_LOG(INFO) << "Stop redis command is: " << stop_redis_command;
-    RAY_CHECK(system(stop_redis_command.c_str()) == 0);
-  }
-
   void SetUp() override {
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
@@ -37,6 +20,7 @@ class GcsServerTest : public ::testing::Test {
     config.grpc_server_thread_num = 1;
     config.redis_address = "127.0.0.1";
     config.is_test = true;
+    config.redis_port = REDIS_SERVER_PORT;
     gcs_server_.reset(new gcs::GcsServer(config));
 
     thread_io_service_.reset(new std::thread([this] {
@@ -65,74 +49,147 @@ class GcsServerTest : public ::testing::Test {
     thread_gcs_server_->join();
   }
 
-  void TestAddJob(const rpc::AddJobRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->AddJob(request,
-                      [&promise](const Status &status, const rpc::AddJobReply &reply) {
-                        RAY_CHECK_OK(status);
-                        promise.set_value(true);
-                      });
-    };
-    AsyncCall(call_function, timeout_ms_);
+  bool AddJob(const rpc::AddJobRequest &request) {
+    std::promise<bool> promise;
+    client_->AddJob(request,
+                    [&promise](const Status &status, const rpc::AddJobReply &reply) {
+                      RAY_CHECK_OK(status);
+                      promise.set_value(true);
+                    });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void TestMarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->MarkJobFinished(
-          request,
-          [&promise](const Status &status, const rpc::MarkJobFinishedReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-          });
-    };
-    AsyncCall(call_function, timeout_ms_);
+  bool MarkJobFinished(const rpc::MarkJobFinishedRequest &request) {
+    std::promise<bool> promise;
+    client_->MarkJobFinished(request, [&promise](const Status &status,
+                                                 const rpc::MarkJobFinishedReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void TestRegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->RegisterActorInfo(
-          request,
-          [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-          });
-    };
-    AsyncCall(call_function, timeout_ms_);
+  bool RegisterActorInfo(const rpc::RegisterActorInfoRequest &request) {
+    std::promise<bool> promise;
+    client_->RegisterActorInfo(
+        request,
+        [&promise](const Status &status, const rpc::RegisterActorInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void TestUpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
-    auto call_function = [this, request](std::promise<bool> &promise) {
-      client_->UpdateActorInfo(
-          request,
-          [&promise](const Status &status, const rpc::UpdateActorInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-          });
-    };
-    AsyncCall(call_function, timeout_ms_);
+  bool UpdateActorInfo(const rpc::UpdateActorInfoRequest &request) {
+    std::promise<bool> promise;
+    client_->UpdateActorInfo(request, [&promise](const Status &status,
+                                                 const rpc::UpdateActorInfoReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void TestGetActorInfo(const rpc::ActorTableData &expected) {
+  rpc::ActorTableData GetActorInfo(const std::string &actor_id) {
     rpc::GetActorInfoRequest request;
-    request.set_actor_id(expected.actor_id());
-    auto call_function = [this, request, expected](std::promise<bool> &promise) {
-      client_->GetActorInfo(
-          request, [&promise, &expected](const Status &status,
-                                         const rpc::GetActorInfoReply &reply) {
-            RAY_CHECK_OK(status);
-            promise.set_value(true);
-            ASSERT_TRUE(reply.actor_table_data().state() == expected.state());
-          });
-    };
-    AsyncCall(call_function, timeout_ms_);
+    request.set_actor_id(actor_id);
+    rpc::ActorTableData actor_table_data;
+    std::promise<bool> promise;
+    client_->GetActorInfo(
+        request, [&actor_table_data, &promise](const Status &status,
+                                               const rpc::GetActorInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          actor_table_data.CopyFrom(reply.actor_table_data());
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return actor_table_data;
   }
 
-  void AsyncCall(const CallFunction &function, uint64_t timeout_ms) {
-    std::promise<bool> promise_;
-    auto future = promise_.get_future();
-    function(promise_);
+  bool RegisterNode(const rpc::RegisterNodeRequest &request) {
+    std::promise<bool> promise;
+    client_->RegisterNode(
+        request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool UnregisterNode(const rpc::UnregisterNodeRequest &request) {
+    std::promise<bool> promise;
+    client_->UnregisterNode(
+        request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  std::vector<rpc::GcsNodeInfo> GetAllNodeInfo() {
+    std::vector<rpc::GcsNodeInfo> node_info_list;
+    rpc::GetAllNodeInfoRequest request;
+    std::promise<bool> promise;
+    client_->GetAllNodeInfo(
+        request, [&node_info_list, &promise](const Status &status,
+                                             const rpc::GetAllNodeInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          for (int index = 0; index < reply.node_info_list_size(); ++index) {
+            node_info_list.push_back(reply.node_info_list(index));
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return node_info_list;
+  }
+
+  bool AddObjectLocation(const rpc::AddObjectLocationRequest &request) {
+    std::promise<bool> promise;
+    client_->AddObjectLocation(
+        request,
+        [&promise](const Status &status, const rpc::AddObjectLocationReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool RemoveObjectLocation(const rpc::RemoveObjectLocationRequest &request) {
+    std::promise<bool> promise;
+    client_->RemoveObjectLocation(
+        request,
+        [&promise](const Status &status, const rpc::RemoveObjectLocationReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  std::vector<rpc::ObjectTableData> GetObjectLocations(const std::string &object_id) {
+    std::vector<rpc::ObjectTableData> object_locations;
+    rpc::GetObjectLocationsRequest request;
+    request.set_object_id(object_id);
+    std::promise<bool> promise;
+    client_->GetObjectLocations(
+        request, [&object_locations, &promise](
+                     const Status &status, const rpc::GetObjectLocationsReply &reply) {
+          RAY_CHECK_OK(status);
+          for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
+            object_locations.push_back(reply.object_table_data_list(index));
+          }
+          promise.set_value(true);
+        });
+
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return object_locations;
+  }
+
+  bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
-    ASSERT_EQ(status, std::future_status::ready);
+    return status == std::future_status::ready;
   }
 
   rpc::JobTableData GenJobTableData(JobID job_id) {
@@ -155,6 +212,13 @@ class GcsServerTest : public ::testing::Test {
     actor_table_data.set_max_reconstructions(1);
     actor_table_data.set_remaining_reconstructions(1);
     return actor_table_data;
+  }
+
+  rpc::GcsNodeInfo GenGcsNodeInfo(const std::string &node_id) {
+    rpc::GcsNodeInfo gcs_node_info;
+    gcs_node_info.set_node_id(node_id);
+    gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
+    return gcs_node_info;
   }
 
  protected:
@@ -180,8 +244,10 @@ TEST_F(GcsServerTest, TestActorInfo) {
   // Register actor
   rpc::RegisterActorInfoRequest register_actor_info_request;
   register_actor_info_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
-  TestRegisterActorInfo(register_actor_info_request);
-  TestGetActorInfo(actor_table_data);
+  ASSERT_TRUE(RegisterActorInfo(register_actor_info_request));
+  rpc::ActorTableData result = GetActorInfo(actor_table_data.actor_id());
+  ASSERT_TRUE(result.state() ==
+              rpc::ActorTableData_ActorState::ActorTableData_ActorState_ALIVE);
 
   // Update actor state
   rpc::UpdateActorInfoRequest update_actor_info_request;
@@ -189,8 +255,10 @@ TEST_F(GcsServerTest, TestActorInfo) {
       rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
   update_actor_info_request.set_actor_id(actor_table_data.actor_id());
   update_actor_info_request.mutable_actor_table_data()->CopyFrom(actor_table_data);
-  TestUpdateActorInfo(update_actor_info_request);
-  TestGetActorInfo(actor_table_data);
+  ASSERT_TRUE(UpdateActorInfo(update_actor_info_request));
+  result = GetActorInfo(actor_table_data.actor_id());
+  ASSERT_TRUE(result.state() ==
+              rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {
@@ -201,12 +269,67 @@ TEST_F(GcsServerTest, TestJobInfo) {
   // Add job
   rpc::AddJobRequest add_job_request;
   add_job_request.mutable_data()->CopyFrom(job_table_data);
-  TestAddJob(add_job_request);
+  ASSERT_TRUE(AddJob(add_job_request));
 
   // Mark job finished
   rpc::MarkJobFinishedRequest mark_job_finished_request;
   mark_job_finished_request.set_job_id(job_table_data.job_id());
-  TestMarkJobFinished(mark_job_finished_request);
+  ASSERT_TRUE(MarkJobFinished(mark_job_finished_request));
+}
+
+TEST_F(GcsServerTest, TestNodeInfo) {
+  // Create gcs node info
+  ClientID node_id = ClientID::FromRandom();
+  rpc::GcsNodeInfo gcs_node_info = GenGcsNodeInfo(node_id.Binary());
+
+  // Register node info
+  rpc::RegisterNodeRequest register_node_info_request;
+  register_node_info_request.mutable_node_info()->CopyFrom(gcs_node_info);
+  ASSERT_TRUE(RegisterNode(register_node_info_request));
+  std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+
+  // Unregister node info
+  rpc::UnregisterNodeRequest unregister_node_info_request;
+  unregister_node_info_request.set_node_id(node_id.Binary());
+  ASSERT_TRUE(UnregisterNode(unregister_node_info_request));
+  node_info_list = GetAllNodeInfo();
+  ASSERT_TRUE(node_info_list.size() == 1);
+  ASSERT_TRUE(node_info_list[0].state() ==
+              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+}
+
+TEST_F(GcsServerTest, TestObjectInfo) {
+  // Create object table data
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node1_id = ClientID::FromRandom();
+  ClientID node2_id = ClientID::FromRandom();
+
+  // Add object location
+  rpc::AddObjectLocationRequest add_object_location_request;
+  add_object_location_request.set_object_id(object_id.Binary());
+  add_object_location_request.set_node_id(node1_id.Binary());
+  ASSERT_TRUE(AddObjectLocation(add_object_location_request));
+  std::vector<rpc::ObjectTableData> object_locations =
+      GetObjectLocations(object_id.Binary());
+  ASSERT_TRUE(object_locations.size() == 1);
+  ASSERT_TRUE(object_locations[0].manager() == node1_id.Binary());
+
+  add_object_location_request.set_node_id(node2_id.Binary());
+  ASSERT_TRUE(AddObjectLocation(add_object_location_request));
+  object_locations = GetObjectLocations(object_id.Binary());
+  ASSERT_TRUE(object_locations.size() == 2);
+
+  // Remove object location
+  rpc::RemoveObjectLocationRequest remove_object_location_request;
+  remove_object_location_request.set_object_id(object_id.Binary());
+  remove_object_location_request.set_node_id(node1_id.Binary());
+  ASSERT_TRUE(RemoveObjectLocation(remove_object_location_request));
+  object_locations = GetObjectLocations(object_id.Binary());
+  ASSERT_TRUE(object_locations.size() == 1);
+  ASSERT_TRUE(object_locations[0].manager() == node2_id.Binary());
 }
 
 }  // namespace ray
@@ -214,8 +337,8 @@ TEST_F(GcsServerTest, TestJobInfo) {
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 4);
-  ray::redis_server_executable = argv[1];
-  ray::redis_client_executable = argv[2];
-  ray::libray_redis_module_path = argv[3];
+  ray::REDIS_SERVER_EXEC_PATH = argv[1];
+  ray::REDIS_CLIENT_EXEC_PATH = argv[2];
+  ray::REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

@@ -96,17 +96,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
     RayLog::InstallFailureSignalHandler();
   }
+  RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
 
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-  direct_actor_table_subscriber_ = std::unique_ptr<
-      gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>>(
-      new gcs::SubscriptionExecutor<ActorID, gcs::ActorTableData, gcs::DirectActorTable>(
-          gcs_client_->direct_actor_table()));
 
-  actor_manager_ =
-      std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->direct_actor_table()));
+  actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
@@ -199,6 +195,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         // behaviour. TODO(ekl) backoff exponentially.
         RAY_LOG(ERROR) << "Will resubmit task after a 5 second delay: "
                        << spec.DebugString();
+        absl::MutexLock lock(&mutex_);
         to_resubmit_.push_back(std::make_pair(current_time_ms() + 5000, spec));
       }));
 
@@ -296,12 +293,16 @@ void CoreWorker::RunIOService() {
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
+  bool not_actor_task = false;
+  {
+    absl::MutexLock lock(&mutex_);
+    not_actor_task = actor_id_.IsNil();
+  }
   // Clear all actor handles at the end of each non-actor task.
-  if (actor_id_.IsNil() && task_id.IsNil()) {
+  if (not_actor_task && task_id.IsNil()) {
     absl::MutexLock lock(&actor_handles_mutex_);
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncUnsubscribe(
-          gcs_client_->client_table().GetLocalClientId(), handle.first, nullptr));
+      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
     actor_handles_.clear();
   }
@@ -332,6 +333,7 @@ void CoreWorker::ReportActiveObjectIDs() {
 }
 
 void CoreWorker::InternalHeartbeat() {
+  absl::MutexLock lock(&mutex_);
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
     to_resubmit_.pop_front();
@@ -491,6 +493,28 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   return Status::OK();
 }
 
+// For any objects that are ErrorType::OBJECT_IN_PLASMA, we need to move them from
+// the ready set into the plasma_object_ids set to wait on them there.
+void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
+                               WorkerContext &worker_context,
+                               absl::flat_hash_set<ObjectID> &memory_object_ids,
+                               absl::flat_hash_set<ObjectID> &plasma_object_ids,
+                               absl::flat_hash_set<ObjectID> &ready) {
+  for (const auto &mem_id : memory_object_ids) {
+    if (ready.find(mem_id) != ready.end()) {
+      std::vector<std::shared_ptr<RayObject>> found;
+      RAY_CHECK_OK(memory_store->Get({mem_id}, /*num_objects=*/1, /*timeout=*/0,
+                                     worker_context,
+                                     /*remote_after_get=*/false, &found));
+      if (found.size() == 1 && found[0]->IsInPlasmaError()) {
+        memory_object_ids.erase(mem_id);
+        ready.erase(mem_id);
+        plasma_object_ids.insert(mem_id);
+      }
+    }
+  }
+}
+
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
                         int64_t timeout_ms, std::vector<bool> *results) {
   results->resize(ids.size(), false);
@@ -521,17 +545,21 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // Wait from both store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
-  if (plasma_object_ids.size() > 0) {
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-        plasma_object_ids, num_objects, /*timeout_ms=*/0, worker_context_, &ready));
+  if (memory_object_ids.size() > 0) {
+    RAY_RETURN_NOT_OK(memory_store_->Wait(
+        memory_object_ids,
+        std::min(static_cast<int>(memory_object_ids.size()), num_objects),
+        /*timeout_ms=*/0, worker_context_, &ready));
+    RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
+                              plasma_object_ids, ready);
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-  if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
-    // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
-    // consider waiting on them in plasma as well to ensure they are local.
-    RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids,
-                                          num_objects - static_cast<int>(ready.size()),
-                                          /*timeout_ms=*/0, worker_context_, &ready));
+  if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+        plasma_object_ids,
+        std::min(static_cast<int>(plasma_object_ids.size()),
+                 num_objects - static_cast<int>(ready.size())),
+        /*timeout_ms=*/0, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
@@ -541,19 +569,25 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
     ready.clear();
 
     int64_t start_time = current_time_ms();
-    if (plasma_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-          plasma_object_ids, num_objects, timeout_ms, worker_context_, &ready));
+    if (memory_object_ids.size() > 0) {
+      RAY_RETURN_NOT_OK(memory_store_->Wait(
+          memory_object_ids,
+          std::min(static_cast<int>(memory_object_ids.size()), num_objects), timeout_ms,
+          worker_context_, &ready));
+      RetryObjectInPlasmaErrors(memory_store_, worker_context_, memory_object_ids,
+                                plasma_object_ids, ready);
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
     if (timeout_ms > 0) {
       timeout_ms =
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
-    if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids,
-                                            num_objects - static_cast<int>(ready.size()),
-                                            timeout_ms, worker_context_, &ready));
+    if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+          plasma_object_ids,
+          std::min(static_cast<int>(plasma_object_ids.size()),
+                   num_objects - static_cast<int>(ready.size())),
+          timeout_ms, worker_context_, &ready));
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   }
@@ -658,8 +692,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   if (actor_creation_options.is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec,
-                                  actor_creation_options.max_reconstructions);
+    task_manager_->AddPendingTask(
+        GetCallerId(), rpc_address_, task_spec,
+        std::max(RayConfig::instance().actor_creation_min_retries(),
+                 actor_creation_options.max_reconstructions));
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
@@ -715,6 +751,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   return status;
 }
 
+Status CoreWorker::KillActor(const ActorID &actor_id) {
+  ActorHandle *actor_handle = nullptr;
+  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  RAY_CHECK(actor_handle->IsDirectCallActor());
+  return direct_actor_submitter_->KillActor(actor_id);
+}
+
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const ActorID actor_id = actor_handle->GetActorID();
@@ -741,8 +784,20 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
-      RAY_CHECK(actor_data.state() != gcs::ActorTableData::RECONSTRUCTING);
-      if (actor_data.state() == gcs::ActorTableData::DEAD) {
+      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+        absl::MutexLock lock(&actor_handles_mutex_);
+        auto it = actor_handles_.find(actor_id);
+        RAY_CHECK(it != actor_handles_.end());
+        if (it->second->IsDirectCallActor()) {
+          // We have to reset the actor handle since the next instance of the
+          // actor will not have the last sequence number that we sent.
+          // TODO: Remove the check for direct calls. We do not reset for the
+          // raylet codepath because it tries to replay all tasks since the
+          // last actor checkpoint.
+          it->second->Reset();
+        }
+        direct_actor_submitter_->DisconnectActor(actor_id, false);
+      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
 
         ActorHandle *actor_handle = nullptr;
@@ -764,9 +819,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                     << ClientID::FromBinary(actor_data.address().raylet_id());
     };
 
-    RAY_CHECK_OK(direct_actor_table_subscriber_->AsyncSubscribe(
-        gcs_client_->client_table().GetLocalClientId(), actor_id,
-        actor_notification_callback, nullptr));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+        actor_id, actor_notification_callback, nullptr));
   }
   return inserted;
 }
@@ -832,6 +886,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
 
+  {
+    absl::MutexLock lock(&mutex_);
+    current_task_ = task_spec;
+  }
+
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
   std::vector<std::shared_ptr<RayObject>> args;
@@ -853,6 +912,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_CREATION_TASK;
     SetActorId(task_spec.ActorCreationId());
+    RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
@@ -892,6 +952,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
+  {
+    absl::MutexLock lock(&mutex_);
+    current_task_ = TaskSpecification();
+  }
   return status;
 }
 
@@ -1032,10 +1096,35 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   }
 }
 
+void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
+                                 rpc::KillActorReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
+  ActorID intended_actor_id = ActorID::FromBinary(request.intended_actor_id());
+  if (intended_actor_id != worker_context_.GetCurrentActorID()) {
+    std::ostringstream stream;
+    stream << "Mismatched ActorID: ignoring KillActor for previous actor "
+           << intended_actor_id
+           << ", current actor ID: " << worker_context_.GetCurrentActorID();
+    auto msg = stream.str();
+    RAY_LOG(ERROR) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return;
+  }
+  RAY_LOG(INFO) << "Got KillActor, shutting down...";
+  Shutdown();
+}
+
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&mutex_);
   reply->set_webui_display(webui_display_);
+  auto stats = reply->mutable_core_worker_stats();
+  stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
+  if (!current_task_.TaskId().IsNil()) {
+    stats->set_current_task_desc(current_task_.DebugString());
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1056,6 +1145,17 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
       success_callback(ray_object, object_id, python_future);
     }
   });
+}
+
+void CoreWorker::SetActorId(const ActorID &actor_id) {
+  absl::MutexLock lock(&mutex_);
+  RAY_CHECK(actor_id_.IsNil());
+  actor_id_ = actor_id;
+}
+
+void CoreWorker::SetWebuiDisplay(const std::string &message) {
+  absl::MutexLock lock(&mutex_);
+  webui_display_ = message;
 }
 
 }  // namespace ray

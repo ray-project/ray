@@ -45,10 +45,7 @@ void DefaultActorInfoHandler::HandleRegisterActorInfo(
     send_reply_callback(status, nullptr, nullptr);
   };
 
-  Status status = gcs_client_.Actors().AsyncRegister(
-      actor_table_data, [send_reply_callback](Status status) {
-        send_reply_callback(status, nullptr, nullptr);
-      });
+  Status status = gcs_client_.Actors().AsyncRegister(actor_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -70,10 +67,7 @@ void DefaultActorInfoHandler::HandleUpdateActorInfo(
     send_reply_callback(status, nullptr, nullptr);
   };
 
-  Status status = gcs_client_.Actors().AsyncUpdate(
-      actor_id, actor_table_data, [send_reply_callback](Status status) {
-        send_reply_callback(status, nullptr, nullptr);
-      });
+  Status status = gcs_client_.Actors().AsyncUpdate(actor_id, actor_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }

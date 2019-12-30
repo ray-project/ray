@@ -85,7 +85,8 @@ Status RedisActorInfoAccessor::AsyncUpdate(
     // RECONSTRUCTING or DEAD entries have an odd index.
     log_length += 1;
   }
-
+  RAY_LOG(DEBUG) << "AsyncUpdate actor state to " << data_ptr->state()
+                 << ", actor id: " << actor_id << ", log_length: " << log_length;
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
     // If we successfully appended a record to the GCS table of the actor that
@@ -125,12 +126,12 @@ Status RedisActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, subscribe, done);
+  return actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
 }
 
 Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
                                                 const StatusCallback &done) {
-  return actor_sub_executor_.AsyncUnsubscribe(node_id_, actor_id, done);
+  return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
 }
 
 RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)
@@ -225,6 +226,156 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
 Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
                                                const StatusCallback &done) {
   return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+}
+
+RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl), object_sub_executor_(client_impl->object_table()) {}
+
+Status RedisObjectInfoAccessor::AsyncGetLocations(
+    const ObjectID &object_id, const MultiItemCallback<ObjectTableData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
+                            const std::vector<ObjectTableData> &data) {
+    callback(Status::OK(), data);
+  };
+
+  ObjectTable &object_table = client_impl_->object_table();
+  return object_table.Lookup(JobID::Nil(), object_id, on_done);
+}
+
+Status RedisObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_id,
+                                                 const ClientID &node_id,
+                                                 const StatusCallback &callback) {
+  std::function<void(RedisGcsClient * client, const ObjectID &id,
+                     const ObjectTableData &data)>
+      on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
+                         const ObjectTableData &data) { callback(Status::OK()); };
+  }
+
+  std::shared_ptr<ObjectTableData> data_ptr = std::make_shared<ObjectTableData>();
+  data_ptr->set_manager(node_id.Binary());
+
+  ObjectTable &object_table = client_impl_->object_table();
+  return object_table.Add(JobID::Nil(), object_id, data_ptr, on_done);
+}
+
+Status RedisObjectInfoAccessor::AsyncRemoveLocation(const ObjectID &object_id,
+                                                    const ClientID &node_id,
+                                                    const StatusCallback &callback) {
+  std::function<void(RedisGcsClient * client, const ObjectID &id,
+                     const ObjectTableData &data)>
+      on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
+                         const ObjectTableData &data) { callback(Status::OK()); };
+  }
+
+  std::shared_ptr<ObjectTableData> data_ptr = std::make_shared<ObjectTableData>();
+  data_ptr->set_manager(node_id.Binary());
+
+  ObjectTable &object_table = client_impl_->object_table();
+  return object_table.Remove(JobID::Nil(), object_id, data_ptr, on_done);
+}
+
+Status RedisObjectInfoAccessor::AsyncSubscribeToLocations(
+    const ObjectID &object_id,
+    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+}
+
+Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &object_id,
+                                                            const StatusCallback &done) {
+  return object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
+}
+
+RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.Connect(local_node_info);
+}
+
+Status RedisNodeInfoAccessor::UnregisterSelf() {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.Disconnect();
+}
+
+const ClientID &RedisNodeInfoAccessor::GetSelfId() const {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.GetLocalClientId();
+}
+
+const GcsNodeInfo &RedisNodeInfoAccessor::GetSelfInfo() const {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.GetLocalClient();
+}
+
+Status RedisNodeInfoAccessor::Register(const GcsNodeInfo &node_info) {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.Register(node_info);
+}
+
+Status RedisNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
+                                              const StatusCallback &callback) {
+  ClientTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ClientID &id,
+                         const GcsNodeInfo &data) { callback(Status::OK()); };
+  }
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.MarkDisconnected(node_id, on_done);
+}
+
+Status RedisNodeInfoAccessor::AsyncSubscribeToNodeChange(
+    const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.SubscribeToNodeChange(subscribe, done);
+}
+
+Status RedisNodeInfoAccessor::AsyncGetAll(
+    const MultiItemCallback<GcsNodeInfo> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_done = [callback](RedisGcsClient *client, const ClientID &id,
+                            const std::vector<GcsNodeInfo> &data) {
+    std::vector<GcsNodeInfo> result;
+    std::set<std::string> node_ids;
+    for (int index = data.size() - 1; index >= 0; --index) {
+      if (node_ids.insert(data[index].node_id()).second) {
+        result.emplace_back(data[index]);
+      }
+    }
+    callback(Status::OK(), result);
+  };
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.Lookup(on_done);
+}
+
+boost::optional<GcsNodeInfo> RedisNodeInfoAccessor::Get(const ClientID &node_id) const {
+  GcsNodeInfo node_info;
+  ClientTable &client_table = client_impl_->client_table();
+  bool found = client_table.GetClient(node_id, &node_info);
+  boost::optional<GcsNodeInfo> optional_node;
+  if (found) {
+    optional_node = std::move(node_info);
+  }
+  return optional_node;
+}
+
+const std::unordered_map<ClientID, GcsNodeInfo> &RedisNodeInfoAccessor::GetAll() const {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.GetAllClients();
+}
+
+bool RedisNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.IsRemoved(node_id);
 }
 
 }  // namespace gcs

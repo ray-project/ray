@@ -32,9 +32,11 @@ from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
     summarize, enable_periodic_logging
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+torch, _ = try_import_torch()
+
 logger = logging.getLogger(__name__)
 
 # Handle to the current rollout worker, which will be set to the most recently
@@ -321,9 +323,9 @@ class RolloutWorker(EvaluatorInterface):
                     self.env))
             self.env.seed(seed)
             try:
-                import torch
+                assert torch is not None
                 torch.manual_seed(seed)
-            except ImportError:
+            except AssertionError:
                 logger.info("Could not seed torch")
         if _has_tensorflow_graph(policy_dict) and not (tf and
                                                        tf.executing_eagerly()):

@@ -5,14 +5,7 @@ dist: xenial
 matrix:
   include:
     - os: linux
-      env: BAZEL_PYTHON_VERSION=PY2 PYTHON=2.7 PYTHONWARNINGS=ignore
-
-    - os: linux
       env: BAZEL_PYTHON_VERSION=PY3 PYTHON=3.5 PYTHONWARNINGS=ignore
-
-    - os: osx
-      osx_image: xcode7
-      env: BAZEL_PYTHON_VERSION=PY2 PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
@@ -143,7 +136,6 @@ script:
   - export PATH="$HOME/miniconda/bin:$PATH"
 
   # raylet integration tests
-  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
