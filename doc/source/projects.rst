@@ -62,6 +62,22 @@ will bring up a new cluster and initialize the environment of the cluster
 according to the `environment` section of the `project.yaml`, installing all
 dependencies of the project.
 
+Now we can execute a command in the session. To see a list of all available
+commands of the project, run
+
+.. code-block:: bash
+
+    ray session commands
+
+
+In this project there is only a single ``run`` command which has arguments
+``--num-mappers`` and ``--num-reducers``. We can execute the streaming
+wordcount with the default parameters by running
+
+.. code-block:: bash
+
+    ray session execute run
+
 Project file format (project.yaml)
 ----------------------------------
 
