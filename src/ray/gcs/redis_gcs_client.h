@@ -30,6 +30,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class TaskTableTestHelper;
   friend class ClientTableTestHelper;
   friend class SetTestHelper;
+  friend class HashTableTestHelper;
 
  public:
   /// Constructor of RedisGcsClient.
@@ -68,7 +69,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ProfileTable &profile_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
-  DynamicResourceTable &resource_table();
+
   /// Used only for direct calls. Tasks submitted through the raylet transport
   /// should use Actors(), which has a requirement on the order in which
   /// entries can be appended to the log.
@@ -101,8 +102,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   JobTable &job_table();
   /// This method will be deprecated, use method Objects() instead
   ObjectTable &object_table();
-  /// This method will be deprecated, use method Nodes() instead.
+  /// The following two methods will be deprecated, use method Nodes() instead.
   ClientTable &client_table();
+  DynamicResourceTable &resource_table();
   /// This method will be deprecated, use method Tasks() instead.
   raylet::TaskTable &raylet_task_table();
 
