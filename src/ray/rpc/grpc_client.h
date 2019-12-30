@@ -12,21 +12,15 @@ namespace ray {
 namespace rpc {
 
 // Call a specific rpc method.
-#define RPC_CALL_METHOD(SERVICE, METHOD, request, callback)                   \
-  RPC_CALL_METHOD_WITH_CLIENT(SERVICE, METHOD, request, callback, rpc_client_)            \
-/*  
-  ({                                                                          \
-      rpc_client_->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>(       \
-                        &SERVICE::Stub::PrepareAsync##METHOD,                 \
-                        request, callback);                                   \
-  })                                                                          \
-*/
-#define RPC_CALL_METHOD_WITH_CLIENT(SERVICE, METHOD, request, callback, rpc_client)      \
-  ({                                                                         \
-      rpc_client->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>(       \
-                        &SERVICE::Stub::PrepareAsync##METHOD,                \
-                        request, callback);                                  \
-  })                                                                         \
+#define RPC_CALL_METHOD(SERVICE, METHOD, request, callback)                           \
+  RPC_CALL_METHOD_WITH_CLIENT(SERVICE, METHOD, request, callback, rpc_client_)        \
+
+#define RPC_CALL_METHOD_WITH_CLIENT(SERVICE, METHOD, request, callback, rpc_client)   \
+  ({                                                                                  \
+      rpc_client->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>(                \
+                        &SERVICE::Stub::PrepareAsync##METHOD,                         \
+                        request, callback);                                           \
+  })                                                                                  \
 
 template <class GrpcService>
 class GrpcClient {
