@@ -83,7 +83,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
-      num_tasks_accepted_(0), num_tasks_executed_(0),
+      num_tasks_accepted_(0),
+      num_tasks_executed_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
@@ -1136,9 +1137,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_port(rpc_address_.port());
   stats->set_actor_id(actor_id_.Binary());
   auto used_resources_map = stats->mutable_used_resources();
-  for (auto const& it : *resource_ids_) {
+  for (auto const &it : *resource_ids_) {
     double quantity = 0;
-    for (auto const& pair : it.second) {
+    for (auto const &pair : it.second) {
       quantity += pair.second;
     }
     (*used_resources_map)[it.first] = quantity;

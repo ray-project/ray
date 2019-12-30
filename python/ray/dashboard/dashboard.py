@@ -158,7 +158,8 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            workers_info = sum([data["workersStats"] for data in D.values()], [])
+            workers_info = sum([data["workersStats"] for data in D.values()],
+                               [])
             actor_tree = self.node_stats.get_actor_tree(workers_info)
             for address, data in D.items():
                 available_resources = data["availableResources"]
@@ -178,7 +179,8 @@ class Dashboard(object):
                     max_line_length = max(map(len, actor_tree_lines))
                     actor_tree_print = []
                     for line in actor_tree_lines:
-                        actor_tree_print.append(line + (max_line_length - len(line)) * " ")
+                        actor_tree_print.append(
+                            line + (max_line_length - len(line)) * " ")
                     actor_tree_print = "\n".join(actor_tree_print)
                     data["extraInfo"] += "\n" + actor_tree_print
             D["actorInfo"] = actor_tree
@@ -303,17 +305,19 @@ class NodeStats(threading.Thread):
             for addr, actor_id in self._addr_to_actor_id.items():
                 flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
                 flattened_tree[actor_id]["children"] = {}
-                parent_id = self._addr_to_actor_id.get(self._addr_to_owner_addr[addr], "root")
+                parent_id = self._addr_to_actor_id.get(
+                    self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
-        
+
             for worker_info in workers_info:
                 if "coreWorkerStats" in worker_info:
                     core_worker_stats = worker_info["coreWorkerStats"]
-                    addr = (core_worker_stats["ipAddress"], core_worker_stats["port"])
+                    addr = (core_worker_stats["ipAddress"],
+                            core_worker_stats["port"])
                     if addr in self._addr_to_actor_id:
                         actor_id = self._addr_to_actor_id[addr]
-                        if 'currentTaskDesc' in core_worker_stats:
-                            core_worker_stats.pop('currentTaskDesc')
+                        if "currentTaskDesc" in core_worker_stats:
+                            core_worker_stats.pop("currentTaskDesc")
                         flattened_tree[actor_id].update(core_worker_stats)
 
         # construct actor tree
@@ -383,11 +387,17 @@ class NodeStats(threading.Thread):
                         gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
                         actor_data = ray.gcs_utils.ActorTableData.FromString(
                             gcs_entry.entries[0])
-                        addr = (str(actor_data.address.ip_address), str(actor_data.address.port))
-                        owner_addr = (str(actor_data.owner_address.ip_address), str(actor_data.owner_address.port))
+                        addr = (str(actor_data.address.ip_address),
+                                str(actor_data.address.port))
+                        owner_addr = (str(actor_data.owner_address.ip_address),
+                                      str(actor_data.owner_address.port))
                         self._addr_to_owner_addr[addr] = owner_addr
-                        self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(actor_data.actor_id)
-                        self._addr_to_extra_info_dict[addr] = {"job_id": ray.utils.binary_to_hex(actor_data.job_id)}
+                        self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(
+                            actor_data.actor_id)
+                        self._addr_to_extra_info_dict[addr] = {
+                            "job_id": ray.utils.binary_to_hex(
+                                actor_data.job_id)
+                        }
                     else:
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
