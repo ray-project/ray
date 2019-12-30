@@ -322,7 +322,8 @@ class NodeInfoAccessor {
   virtual bool IsRemoved(const ClientID &node_id) const = 0;
 
   // TODO(micafan) Define ResourceMap in GCS proto.
-  typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>> ResourceMap;
+  typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+      ResourceMap;
 
   /// Get node's dynamic resources from GCS asynchronously.
   ///
