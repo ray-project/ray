@@ -280,11 +280,11 @@ Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **MuJoCo results @500k steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 
-=============  =========================  =============================
-MuJoCo env     RLlib SAC                  Haarnoja et al SAC
-=============  =========================  =============================
-HalfCheetah    8752                       ~9000
-=============  =========================  =============================
+=============  ==========  ===================
+MuJoCo env     RLlib SAC   Haarnoja et al SAC
+=============  ==========  ===================
+HalfCheetah    8752        ~9000
+=============  ==========  ===================
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
