@@ -703,6 +703,40 @@ cc_test(
 )
 
 cc_library(
+    name = "service_based_gcs_client_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/gcs_client/*.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/gcs/gcs_client/*.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+    ],
+)
+
+cc_test(
+    name = "gcs_server_test",
+    srcs = ["src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":service_based_gcs_client_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "object_manager",
     srcs = glob([
         "src/ray/object_manager/*.cc",

@@ -69,6 +69,8 @@ class GcsServer {
   virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
 
  private:
+  void SetGcsServerAddress();
+
   /// Gcs server configuration
   GcsServerConfig config_;
   /// The grpc server
