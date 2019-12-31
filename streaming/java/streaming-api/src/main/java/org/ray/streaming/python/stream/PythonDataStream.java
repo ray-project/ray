@@ -8,12 +8,12 @@ import org.ray.streaming.python.descriptor.DescriptorPartition;
 
 public class PythonDataStream extends Stream implements PythonStream {
 
-  public PythonDataStream(StreamingContext streamingContext,
+  protected PythonDataStream(StreamingContext streamingContext,
                           DescriptorOperator descriptorOperator) {
     super(streamingContext, descriptorOperator);
   }
 
-  public PythonDataStream(Stream inputStream, DescriptorOperator descriptorOperator) {
+  protected PythonDataStream(Stream inputStream, DescriptorOperator descriptorOperator) {
     super(inputStream, descriptorOperator);
   }
 
