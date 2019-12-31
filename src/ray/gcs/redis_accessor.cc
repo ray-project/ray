@@ -293,7 +293,9 @@ Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &obje
 }
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
-    : client_impl_(client_impl) {}
+    : client_impl_(client_impl),
+      heartbeat_sub_executor_(client_impl->heartbeat_table()),
+      heartbeat_batch_sub_executor_(client_impl->heartbeat_batch_table()) {}
 
 Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   ClientTable &client_table = client_impl_->client_table();
@@ -376,6 +378,55 @@ const std::unordered_map<ClientID, GcsNodeInfo> &RedisNodeInfoAccessor::GetAll()
 bool RedisNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
   ClientTable &client_table = client_impl_->client_table();
   return client_table.IsRemoved(node_id);
+}
+Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
+    const std::shared_ptr<HeartbeatTableData> &data_ptr, const StatusCallback &callback) {
+  HeartbeatTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
+                         const HeartbeatTableData &data) { callback(Status::OK()); };
+  }
+
+  ClientID node_id = ClientID::FromBinary(data_ptr->client_id());
+  HeartbeatTable &heartbeat_table = client_impl_->heartbeat_table();
+  return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
+}
+
+Status RedisNodeInfoAccessor::AsyncSubscribeHeartbeat(
+    const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  auto on_subscribe = [subscribe](const ClientID &node_id,
+                                  const HeartbeatTableData &data) {
+    subscribe(node_id, data);
+  };
+
+  return heartbeat_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+}
+
+Status RedisNodeInfoAccessor::AsyncReportBatchHeartbeat(
+    const std::shared_ptr<HeartbeatBatchTableData> &data_ptr,
+    const StatusCallback &callback) {
+  HeartbeatBatchTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
+                         const HeartbeatBatchTableData &data) { callback(Status::OK()); };
+  }
+
+  HeartbeatBatchTable &hb_batch_table = client_impl_->heartbeat_batch_table();
+  return hb_batch_table.Add(JobID::Nil(), ClientID::Nil(), data_ptr, on_done);
+}
+
+Status RedisNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
+    const ItemCallback<HeartbeatBatchTableData> &subscribe, const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  auto on_subscribe = [subscribe](const ClientID &node_id,
+                                  const HeartbeatBatchTableData &data) {
+    subscribe(data);
+  };
+
+  return heartbeat_batch_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe,
+                                                         done);
 }
 
 }  // namespace gcs
