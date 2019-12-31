@@ -22,120 +22,67 @@ class GcsRpcClient {
   GcsRpcClient(const std::string &address, const int port,
                ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
-    job_info_rpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
+    job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
         new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
-    actor_info_rpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
+    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
         new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
-    node_info_rpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
+    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
         new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
-    object_info_rpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
+    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
         new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
   };
 
+  /// Note the following functions are defined using macros to simply code.
+  /// The semantics are these functions are like this:
+  ///
   /// Add job info to gcs server.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply> &callback) {
-    RPC_CALL_METHOD(JobInfoGcsService, AddJob, request, callback);
-  }
+  // 
+  // void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply> &callback) {
+  //   INVOKE_RPC_CALL(JobInfoGcsService, AddJob, request, callback, job_info_grpc_client_);
+  // }
+
+  /// Add job info to gcs server.
+  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, request, callback, job_info_grpc_client_)
 
   /// Mark job as finished to gcs server.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void MarkJobFinished(const MarkJobFinishedRequest &request,
-                       const ClientCallback<MarkJobFinishedReply> &callback) {
-    RPC_CALL_METHOD(JobInfoGcsService, MarkJobFinished, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, request, callback, job_info_grpc_client_)
 
   /// Get actor data from GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void GetActorInfo(const GetActorInfoRequest &request,
-                    const ClientCallback<GetActorInfoReply> &callback) {
-    RPC_CALL_METHOD(ActorInfoGcsService, GetActorInfo, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, request, callback, actor_info_grpc_client_)
 
   /// Register an actor to GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void RegisterActorInfo(const RegisterActorInfoRequest &request,
-                         const ClientCallback<RegisterActorInfoReply> &callback) {
-    RPC_CALL_METHOD(ActorInfoGcsService, RegisterActorInfo, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo, request, callback, actor_info_grpc_client_)
 
   ///  Update actor info in GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void UpdateActorInfo(const UpdateActorInfoRequest &request,
-                       const ClientCallback<UpdateActorInfoReply> &callback) {
-    RPC_CALL_METHOD(ActorInfoGcsService, UpdateActorInfo, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo, request, callback, actor_info_grpc_client_)
 
   /// Register a node to GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void RegisterNode(const RegisterNodeRequest &request,
-                    const ClientCallback<RegisterNodeReply> &callback) {
-    RPC_CALL_METHOD(NodeInfoGcsService, RegisterNode, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, request, callback, node_info_grpc_client_)
 
   /// Unregister a node from GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void UnregisterNode(const UnregisterNodeRequest &request,
-                      const ClientCallback<UnregisterNodeReply> &callback) {
-    RPC_CALL_METHOD(NodeInfoGcsService, UnregisterNode, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, UnregisterNode, request, callback, node_info_grpc_client_)
 
   /// Get information of all nodes from GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void GetAllNodeInfo(const GetAllNodeInfoRequest &request,
-                      const ClientCallback<GetAllNodeInfoReply> &callback) {
-    RPC_CALL_METHOD(NodeInfoGcsService, GetAllNodeInfo, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, request, callback, node_info_grpc_client_)
 
   /// Get object's locations from GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void GetObjectLocations(const GetObjectLocationsRequest &request,
-                          const ClientCallback<GetObjectLocationsReply> &callback) {
-    RPC_CALL_METHOD(ObjectInfoGcsService, GetObjectLocations, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations, request, callback, object_info_grpc_client_)
 
   /// Add location of object to GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void AddObjectLocation(const AddObjectLocationRequest &request,
-                         const ClientCallback<AddObjectLocationReply> &callback) {
-    RPC_CALL_METHOD(ObjectInfoGcsService, AddObjectLocation, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectLocation, request, callback, object_info_grpc_client_)
 
   /// Remove location of object to GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void RemoveObjectLocation(const RemoveObjectLocationRequest &request,
-                            const ClientCallback<RemoveObjectLocationReply> &callback) {
-    RPC_CALL_METHOD(ObjectInfoGcsService, RemoveObjectLocation, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation, request, callback, object_info_grpc_client_)
 
  private:
   /// The gRPC-generated stub.
-  std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_rpc_client_;
-  std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_rpc_client_;
-  std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_rpc_client_;
-  std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_rpc_client_;
+  std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
+  std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
+  std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
+  std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

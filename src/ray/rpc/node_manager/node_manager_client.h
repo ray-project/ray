@@ -25,7 +25,7 @@ class NodeManagerClient {
   NodeManagerClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
-    rpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
+    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
         new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
@@ -33,20 +33,19 @@ class NodeManagerClient {
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  void ForwardTask(const ForwardTaskRequest &request,
-                   const ClientCallback<ForwardTaskReply> &callback) {
-    RPC_CALL_METHOD(NodeManagerService, ForwardTask, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, request, callback, grpc_client_)
 
   /// Get current node stats.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, request, callback, grpc_client_)
+
   void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
     GetNodeStatsRequest request;
-    RPC_CALL_METHOD(NodeManagerService, GetNodeStats, request, callback);
+    GetNodeStats(request, callback);
   }
 
  private:
   /// The RPC client.
-  std::unique_ptr<GrpcClient<NodeManagerService>> rpc_client_;
+  std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
@@ -69,16 +68,10 @@ class NodeManagerWorkerClient
   }
 
   /// Request a worker lease.
-  ray::Status RequestWorkerLease(
-      const RequestWorkerLeaseRequest &request,
-      const ClientCallback<RequestWorkerLeaseReply> &callback) {
-    return RPC_CALL_METHOD(NodeManagerService, RequestWorkerLease, request, callback);
-  }
+  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, request, callback, grpc_client_)
 
-  ray::Status ReturnWorker(const ReturnWorkerRequest &request,
-                           const ClientCallback<ReturnWorkerReply> &callback) {
-    return RPC_CALL_METHOD(NodeManagerService, ReturnWorker, request, callback);
-  }
+  /// Return a worker lease.
+  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, request, callback, grpc_client_)
 
  private:
   /// Constructor.
@@ -89,12 +82,12 @@ class NodeManagerWorkerClient
   NodeManagerWorkerClient(const std::string &address, const int port,
                           ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
-    rpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
+    grpc_client_ = std::unique_ptr<GrpcClient<NodeManagerService>>(
         new GrpcClient<NodeManagerService>(address, port, client_call_manager));
   };
 
   /// The RPC client.
-  std::unique_ptr<GrpcClient<NodeManagerService>> rpc_client_;
+  std::unique_ptr<GrpcClient<NodeManagerService>> grpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

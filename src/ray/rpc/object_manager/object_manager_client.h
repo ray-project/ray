@@ -30,9 +30,9 @@ class ObjectManagerClient {
     push_rr_index_ = rand() % num_connections_;
     pull_rr_index_ = rand() % num_connections_;
     freeobjects_rr_index_ = rand() % num_connections_;
-    rpc_clients_.reserve(num_connections_);
+    grpc_clients_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
-      rpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(
+      grpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(
           address, port, client_call_manager, num_connections_));
     }
   };
@@ -41,39 +41,37 @@ class ObjectManagerClient {
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server
-  void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
-    RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, Push, request, callback,
-                                rpc_clients_[push_rr_index_++ % num_connections_]);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, Push, request, callback,
+      grpc_clients_[push_rr_index_++ % num_connections_])
 
   /// Pull object from remote object manager
   ///
   /// \param request The request message
   /// \param callback The callback function that handles reply from server
-  void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
-    RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, Pull, request, callback,
-                                rpc_clients_[push_rr_index_++ % num_connections_]);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, Pull, request, callback,
+      grpc_clients_[pull_rr_index_++ % num_connections_])  
 
   /// Tell remote object manager to free objects
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  void FreeObjects(const FreeObjectsRequest &request,
-                   const ClientCallback<FreeObjectsReply> &callback) {
-    RPC_CALL_METHOD_WITH_CLIENT(ObjectManagerService, FreeObjects, request, callback,
-                                rpc_clients_[push_rr_index_++ % num_connections_]);
-  }
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, FreeObjects, request, callback,
+      grpc_clients_[freeobjects_rr_index_++ % num_connections_])
 
  private:
+  /// To optimize object manager performance we create multiple concurrent
+  /// GRPC connections, and use these connections in a round-robin way.
   int num_connections_;
 
+  /// Current connection index for `Push`.
   std::atomic<unsigned int> push_rr_index_;
+  /// Current connection index for `Pull`.
   std::atomic<unsigned int> pull_rr_index_;
+  /// Current connection index for `FreeObjects`.
   std::atomic<unsigned int> freeobjects_rr_index_;
 
-  /// The gRPC-generated stub.
-  std::vector<std::unique_ptr<GrpcClient<ObjectManagerService>>> rpc_clients_;
+  /// The RPC clients.
+  std::vector<std::unique_ptr<GrpcClient<ObjectManagerService>>> grpc_clients_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;

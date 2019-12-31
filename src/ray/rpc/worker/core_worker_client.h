@@ -148,14 +148,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   CoreWorkerClient(const std::string &address, const int port,
                    ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
-    rpc_client_ = std::unique_ptr<GrpcClient<CoreWorkerService>>(
+    grpc_client_ = std::unique_ptr<GrpcClient<CoreWorkerService>>(
         new GrpcClient<CoreWorkerService>(address, port, client_call_manager));
   };
 
-  ray::Status AssignTask(const AssignTaskRequest &request,
-                         const ClientCallback<AssignTaskReply> &callback) override {
-    return RPC_CALL_METHOD(CoreWorkerService, AssignTask, request, callback);
-  }
+  RPC_CLIENT_METHOD(CoreWorkerService, AssignTask, request, callback, grpc_client_)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, request, callback, grpc_client_)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, GetObjectStatus, request, callback, grpc_client_)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, KillActor, request, callback, grpc_client_)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, request, callback, grpc_client_)
 
   ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
                             const ClientCallback<PushTaskReply> &callback) override {
@@ -177,31 +182,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                              const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
-    return RPC_CALL_METHOD(CoreWorkerService, PushTask, *request, callback);
-  }
-
-  ray::Status DirectActorCallArgWaitComplete(
-      const DirectActorCallArgWaitCompleteRequest &request,
-      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) override {
-    return RPC_CALL_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, request,
-                           callback);
-  }
-
-  virtual ray::Status GetObjectStatus(
-      const GetObjectStatusRequest &request,
-      const ClientCallback<GetObjectStatusReply> &callback) override {
-    return RPC_CALL_METHOD(CoreWorkerService, GetObjectStatus, request, callback);
-  }
-
-  virtual ray::Status KillActor(const KillActorRequest &request,
-                                const ClientCallback<KillActorReply> &callback) override {
-    return RPC_CALL_METHOD(CoreWorkerService, KillActor, request, callback);
-  }
-
-  virtual ray::Status GetCoreWorkerStats(
-      const GetCoreWorkerStatsRequest &request,
-      const ClientCallback<GetCoreWorkerStatsReply> &callback) override {
-    return RPC_CALL_METHOD(CoreWorkerService, GetCoreWorkerStats, request, callback);
+    return INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, callback, grpc_client_);
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.
@@ -238,7 +219,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         callback(status, reply);
       };
 
-      RPC_CALL_METHOD(CoreWorkerService, PushTask, *request, rpc_callback);
+      INVOKE_RPC_CALL(CoreWorkerService, PushTask, *request, rpc_callback, grpc_client_);
     }
 
     if (!send_queue_.empty()) {
@@ -251,7 +232,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   std::mutex mutex_;
 
   /// The RPC client.
-  std::unique_ptr<GrpcClient<CoreWorkerService>> rpc_client_;
+  std::unique_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
