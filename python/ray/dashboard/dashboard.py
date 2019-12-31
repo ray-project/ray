@@ -158,8 +158,9 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            workers_info = sum((data["workersStats"] for data in D.values()),
+            workers_info = sum([data.get("workersStats", []) for data in D.values()],
                                [])
+            infeasible_tasks = sum([data.get("infeasibleTasks", []) for data in D.values()], [])
             actor_tree = self.node_stats.get_actor_tree(workers_info)
             for address, data in D.items():
                 available_resources = data["availableResources"]
@@ -176,14 +177,17 @@ class Dashboard(object):
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
                     actor_tree_str = json.dumps(actor_tree, indent=2)
                     actor_tree_lines = actor_tree_str.split("\n")
-                    max_line_length = max(map(len, actor_tree_lines))
-                    actor_tree_print = []
-                    for line in actor_tree_lines:
-                        actor_tree_print.append(
+                    infeasible_tasks_str = json.dumps(infeasible_tasks, indent=2)
+                    infeasible_tasks_lines = infeasible_tasks_str.split("\n")
+                    lines = actor_tree_lines + infeasible_tasks_lines
+                    max_line_length = max(map(len, lines))
+                    to_print = []
+                    for line in lines:
+                        to_print.append(
                             line + (max_line_length - len(line)) * " ")
-                    actor_tree_print = "\n".join(actor_tree_print)
-                    data["extraInfo"] += "\n" + actor_tree_print
+                    data["extraInfo"] += "\n" + "\n".join(to_print)
             D["actorInfo"] = actor_tree
+            D["infeasibleTasks"] = infeasible_tasks
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:
@@ -318,6 +322,8 @@ class NodeStats(threading.Thread):
                         actor_id = self._addr_to_actor_id[addr]
                         if "currentTaskDesc" in core_worker_stats:
                             core_worker_stats.pop("currentTaskDesc")
+                        if "numPendingTasks" in core_worker_stats:
+                            core_worker_stats.pop("numPendingTasks")
                         flattened_tree[actor_id].update(core_worker_stats)
 
         # construct actor tree
@@ -396,7 +402,9 @@ class NodeStats(threading.Thread):
                             actor_data.actor_id)
                         self._addr_to_extra_info_dict[addr] = {
                             "job_id": ray.utils.binary_to_hex(
-                                actor_data.job_id)
+                                actor_data.job_id),
+                            "state": actor_data.state, 
+                            "is_direct_call": actor_data.is_direct_call
                         }
                     else:
                         data = json.loads(ray.utils.decode(data))
