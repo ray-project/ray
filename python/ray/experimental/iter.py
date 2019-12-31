@@ -14,7 +14,8 @@ class NextValueNotReady(Exception):
     pass
 
 
-def from_items(items: List[T], num_shards: int = 2) -> "ParallelIterator[T]":
+def from_items(items: List[T], num_shards: int = 2,
+               repeat: bool = False) -> "ParallelIterator[T]":
     """Create a parallel iterator from an existing set of objects.
 
     The objects will be divided round-robin among the number of shards.
@@ -22,16 +23,19 @@ def from_items(items: List[T], num_shards: int = 2) -> "ParallelIterator[T]":
     Arguments:
         items (list): The list of items to iterate over.
         num_shards (int): The number of worker actors to create.
+        repeat (bool): Whether to cycle over the items forever.
     """
     shards = [[] for _ in range(num_shards)]
     for i, item in enumerate(items):
         shards[i % num_shards].append(item)
-    name = "from_items[{}, {}, shards={}]".format(
-        items and type(items[0]).__name__ or "None", len(items), num_shards)
-    return from_iterators(shards, name=name)
+    name = "from_items[{}, {}, shards={}{}]".format(
+        items and type(items[0]).__name__ or "None", len(items), num_shards,
+        ", repeat=True" if repeat else "")
+    return from_iterators(shards, repeat=repeat, name=name)
 
 
-def from_range(n: int, num_shards: int = 2) -> "ParallelIterator[int]":
+def from_range(n: int, num_shards: int = 2,
+               repeat: bool = False) -> "ParallelIterator[int]":
     """Create a parallel iterator over the range 0..n.
 
     The range will be partitioned sequentially among the number of shards.
@@ -39,6 +43,7 @@ def from_range(n: int, num_shards: int = 2) -> "ParallelIterator[int]":
     Arguments:
         n (int): The max end of the range of numbers.
         num_shards (int): The number of worker actors to create.
+        repeat (bool): Whether to cycle over the range forever.
     """
     generators = []
     shard_size = n // num_shards
@@ -49,11 +54,13 @@ def from_range(n: int, num_shards: int = 2) -> "ParallelIterator[int]":
         else:
             end = (i + 1) * shard_size
         generators.append(range(start, end))
-    name = "from_range[{}, shards={}]".format(n, num_shards)
-    return from_iterators(generators, name=name)
+    name = "from_range[{}, shards={}{}]".format(
+        n, num_shards, ", repeat=True" if repeat else "")
+    return from_iterators(generators, repeat=repeat, name=name)
 
 
 def from_iterators(generators: List[Iterable[T]],
+                   repeat: bool = False,
                    name=None) -> "ParallelIterator[T]":
     """Create a parallel iterator from a set of iterators.
 
@@ -71,12 +78,14 @@ def from_iterators(generators: List[Iterable[T]],
             functions that produced a generator when called. We allow lambda
             functions since the generator itself might not be serializable,
             but a lambda that returns it can be.
+        repeat (bool): Whether to cycle over the iterators forever.
         name (str): Optional name to give the iterator.
     """
     worker_cls = ray.remote(_ParallelIteratorWorker)
-    actors = [worker_cls.remote(g) for g in generators]
+    actors = [worker_cls.remote(g, repeat) for g in generators]
     if not name:
-        name = "from_iterators[shards={}]".format(len(generators))
+        name = "from_iterators[shards={}{}]".format(
+            len(generators), ", repeat=True" if repeat else "")
     return from_actors(actors, name=name)
 
 
@@ -338,6 +347,14 @@ class ParallelIterator(Generic[T]):
         name = "{}.gather_async()".format(self)
         return LocalIterator(base_iterator, name=name)
 
+    def take(self, n: int) -> List[T]:
+        """Return up to the first n items from this iterator."""
+        return self.gather_sync().take(n)
+
+    def show(self, n: int):
+        """Print up to the first n items from this iterator."""
+        return self.gather_sync().show(n)
+
     def union(self, other: "ParallelIterator[T]") -> "ParallelIterator[T]":
         """Return an iterator that is the union of this and the other."""
         actor_sets = []
@@ -502,6 +519,20 @@ class LocalIterator(Generic[T]):
             self.local_transforms + [apply_flatten],
             name=self.name + ".flatten()")
 
+    def take(self, n: int) -> List[T]:
+        """Return up to the first n items from this iterator."""
+        out = []
+        for item in self:
+            out.append(item)
+            if len(out) >= n:
+                break
+        return out
+
+    def show(self, n: int):
+        """Print up to the first n items from this iterator."""
+        for item in self.take(n):
+            print(item)
+
     def union(self, other: "LocalIterator[T]") -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the other.
 
@@ -546,11 +577,25 @@ class LocalIterator(Generic[T]):
 class _ParallelIteratorWorker(object):
     """Worker actor for a ParallelIterator."""
 
-    def __init__(self, item_generator):
-        if callable(item_generator):
-            self.item_generator = item_generator()
+    def __init__(self, item_generator, repeat):
+        def make_iterator():
+            if callable(item_generator):
+                return item_generator()
+            else:
+                return item_generator
+
+        if repeat:
+
+            def cycle():
+                while True:
+                    it = make_iterator()
+                    for item in it:
+                        yield item
+
+            self.item_generator = cycle()
         else:
-            self.item_generator = item_generator
+            self.item_generator = make_iterator()
+
         self.transforms = []
         self.local_it = None
 

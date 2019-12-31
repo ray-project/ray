@@ -16,6 +16,12 @@ def test_from_items(ray_start_regular_shared):
     assert next(it.gather_sync()) == 1
 
 
+def test_from_items_repeat(ray_start_regular_shared):
+    it = from_items([1, 2, 3, 4], repeat=True)
+    assert repr(it) == "from_items[int, 4, shards=2, repeat=True]"
+    assert it.take(8) == [1, 2, 3, 4, 1, 2, 3, 4]
+
+
 def test_from_iterators(ray_start_regular_shared):
     it = from_iterators([range(2), range(2)])
     assert repr(it) == "from_iterators[shards=2]"
@@ -30,8 +36,8 @@ def test_from_range(ray_start_regular_shared):
 
 def test_from_actors(ray_start_regular_shared):
     worker = ray.remote(_ParallelIteratorWorker)
-    a = worker.remote([1, 2])
-    b = worker.remote([3, 4])
+    a = worker.remote([1, 2], False)
+    b = worker.remote([3, 4], False)
     it = from_actors([a, b])
     assert repr(it) == "from_actors[shards=2]"
     assert list(it.gather_sync()) == [1, 3, 2, 4]
