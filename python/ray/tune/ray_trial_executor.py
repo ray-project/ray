@@ -24,7 +24,6 @@ from ray.tune.util import warn_if_slow
 from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
 
 RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
 BOTTLENECK_WARN_PERIOD_S = 60

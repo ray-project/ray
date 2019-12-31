@@ -3,49 +3,64 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import pickle
 import sys
 
+from ray.rllib.agents.mock import _MockTrainer
 from ray.tune import DurableTrainable
 from ray.tune.sync_client import get_sync_client
+from ray.tune.syncer import NodeSyncer
 
 if sys.version_info >= (3, 3):
     from unittest.mock import patch
 else:
     from mock import patch
 
+MOCK_REMOTE_DIR = "/tmp/mock-tune-remote/"
+# Sync and delete templates that operate on local directories.
+LOCAL_SYNC_TEMPLATE = "mkdir -p {target} && rsync -avz {source}/ {target}/"
+LOCAL_DELETE_TEMPLATE = "rm -rf {target}"
+
 
 def mock_storage_client():
-    """Mock storage client that treats a local dir as durable storage."""
-    sync = "mkdir -p {target} && rsync -avz {source}/ {target}/"
-    delete = "rm -rf {target}"
-    return get_sync_client(sync, delete)
+    """Mocks storage client that treats a local dir as durable storage."""
+    return get_sync_client(LOCAL_SYNC_TEMPLATE, LOCAL_DELETE_TEMPLATE)
 
 
-class MockDurableTrainable(DurableTrainable):
-    """Mock Trainable used for tests."""
+class MockNodeSyncer(NodeSyncer):
+    """Mock NodeSyncer that syncs to and from /tmp"""
+
+    def has_remote_target(self):
+        return True
+
+    @property
+    def _remote_path(self):
+        if self._remote_dir.startswith('/'):
+            self._remote_dir = self._remote_dir[1:]
+        return os.path.join(MOCK_REMOTE_DIR, self._remote_dir)
+
+
+class MockRemoteTrainer(_MockTrainer):
+    """Mock Trainable that saves at tmp for simulated clusters."""
+
+    def __init__(self, *args, **kwargs):
+        super(MockRemoteTrainer, self).__init__(*args, **kwargs)
+        if self._logdir.startswith('/'):
+            self._logdir = self._logdir[1:]
+        self._logdir = os.path.join(MOCK_REMOTE_DIR, self._logdir)
+        if not os.path.exists(self._logdir):
+            os.makedirs(self._logdir)
+
+
+class MockDurableTrainer(DurableTrainable, _MockTrainer):
+    """Mock DurableTrainable that saves at tmp for simulated clusters."""
+
+    # TODO(ujvl): This class uses multiple inheritance; it should be cleaned
+    #  up once the durable training API converges.
 
     def __init__(self, remote_checkpoint_dir, *args, **kwargs):
         mock_module = "ray.tune.durable_trainable.get_cloud_sync_client"
         with patch(mock_module) as mock_get_cloud_client:
             mock_get_cloud_client.return_value = mock_storage_client()
-            super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,
-                                                       *args, **kwargs)
-
-    def _setup(self, config):
-        self.info = config.get("info", 0)
-
-    def _train(self):
-        result = dict(mean_accuracy=0.9, timesteps_this_iter=10)
-        return result
-
-    def _save(self, checkpoint_dir):
-        path = os.path.join(checkpoint_dir, "mock_agent.pkl")
-        with open(path, "wb") as f:
-            pickle.dump(self.info, f)
-        return path
-
-    def _restore(self, checkpoint_path):
-        with open(checkpoint_path, "rb") as f:
-            info = pickle.load(f)
-        self.info = info
+            _MockTrainer.__init__(self, *args, **kwargs)
+            DurableTrainable.__init__(self, remote_checkpoint_dir, *args,
+                                      **kwargs)

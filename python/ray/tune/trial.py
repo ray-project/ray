@@ -355,35 +355,42 @@ class Trial(object):
         Args:
             checkpoint (Checkpoint): Checkpoint taken.
         """
-        if checkpoint.storage == Checkpoint.PERSISTENT:
-            if self.sync_on_checkpoint:
+        if checkpoint.storage == Checkpoint.MEMORY:
+            return
+        if self.sync_on_checkpoint:
+            try:
                 # Wait for any other syncs to finish. We need to sync again
                 # after this to handle checkpoints taken mid-sync.
                 self.result_logger.wait()
-                # Force sync down and wait before tracking the new checkpoint.
-                try:
-                    if self.result_logger.sync_down():
-                        self.result_logger.wait()
-                    else:
-                        logger.error(
-                            "Trial %s: Checkpoint sync skipped. "
-                            "This should not happen.", self)
-                except TuneError as e:
-                    if issubclass(self.get_trainable_cls(), DurableTrainable):
-                        # Even though rsync failed the trainable can restore
-                        # from remote durable storage.
-                        logger.error("Trial %s: Sync error - %s", self, str(e))
-                    else:
-                        # If the trainable didn't have remote storage to upload
-                        # to then this checkpoint may have been lost, so we
-                        # shouldn't track it with the checkpoint_manager.
-                        raise e
-                if not issubclass(self.get_trainable_cls(), DurableTrainable):
-                    if not os.path.exists(checkpoint.value):
-                        raise TuneError("Trial {}: Checkpoint path {} not "
-                                        "found after successful sync down."
-                                        .format(self, checkpoint.value))
-            self.checkpoint_manager.on_checkpoint(checkpoint)
+            except TuneError as e:
+                # If an error occurs
+                logger.error(
+                    "Trial %s: An error occurred during the "
+                    "checkpoint pre-sync wait.", str(e))
+            # Force sync down and wait before tracking the new checkpoint.
+            try:
+                if self.result_logger.sync_down():
+                    self.result_logger.wait()
+                else:
+                    logger.error(
+                        "Trial %s: Checkpoint sync skipped. "
+                        "This should not happen.", self)
+            except TuneError as e:
+                if issubclass(self.get_trainable_cls(), DurableTrainable):
+                    # Even though rsync failed the trainable can restore
+                    # from remote durable storage.
+                    logger.error("Trial %s: Sync error - %s", self, str(e))
+                else:
+                    # If the trainable didn't have remote storage to upload
+                    # to then this checkpoint may have been lost, so we
+                    # shouldn't track it with the checkpoint_manager.
+                    raise e
+            if not issubclass(self.get_trainable_cls(), DurableTrainable):
+                if not os.path.exists(checkpoint.value):
+                    raise TuneError("Trial {}: Checkpoint path {} not "
+                                    "found after successful sync down.".format(
+                                        self, checkpoint.value))
+        self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def on_restore(self):
         """Handles restoration completion."""
