@@ -5,7 +5,7 @@ from __future__ import print_function
 import time
 
 import ray
-from ray.experimental.iter import from_items, from_generators, from_range, \
+from ray.experimental.iter import from_items, from_iterators, from_range, \
     from_actors, _ParIteratorWorker
 
 
@@ -16,9 +16,9 @@ def test_from_items(ray_start_regular_shared):
     assert next(it.sync_iterator()) == 1
 
 
-def test_from_generators(ray_start_regular_shared):
-    it = from_generators([range(2), range(2)])
-    assert repr(it) == "from_generators[shards=2]"
+def test_from_iterators(ray_start_regular_shared):
+    it = from_iterators([range(2), range(2)])
+    assert repr(it) == "from_iterators[shards=2]"
     assert list(it.sync_iterator()) == [0, 0, 1, 1]
 
 
@@ -82,14 +82,14 @@ def test_async_iterator(ray_start_regular_shared):
 
 
 def test_batch_across_shards(ray_start_regular_shared):
-    it = from_generators([[0, 1], [2, 3]])
+    it = from_iterators([[0, 1], [2, 3]])
     it = it.batch_across_shards()
-    assert repr(it) == "from_generators[shards=2].batch_across_shards()"
+    assert repr(it) == "from_iterators[shards=2].batch_across_shards()"
     assert sorted(list(it)) == [[0, 2], [1, 3]]
 
 
 def test_remote(ray_start_regular_shared):
-    it = from_generators([[0, 1], [3, 4], [5, 6, 7]])
+    it = from_iterators([[0, 1], [3, 4], [5, 6, 7]])
     assert it.num_shards() == 3
 
     @ray.remote
@@ -139,8 +139,8 @@ def test_union_async(ray_start_regular_shared):
             print("PRODUCE SLOW", i)
             yield i
 
-    it1 = from_generators([gen_fast]).for_each(lambda x: ("fast", x))
-    it2 = from_generators([gen_slow]).for_each(lambda x: ("slow", x))
+    it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([gen_slow]).for_each(lambda x: ("slow", x))
     it = it1.union(it2)
     results = list(it.async_iterator())
     assert all(x[0] == "slow" for x in results[-3:]), results
@@ -159,13 +159,12 @@ def test_union_local_async(ray_start_regular_shared):
             print("PRODUCE SLOW", i)
             yield i
 
-    it1 = from_generators([gen_fast]).for_each(lambda x: ("fast", x))
-    it2 = from_generators([gen_slow]).for_each(lambda x: ("slow", x))
+    it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
+    it2 = from_iterators([gen_slow]).for_each(lambda x: ("slow", x))
     it = it1.async_iterator().union(it2.async_iterator())
-    assert (
-        repr(it) ==
-        "LocalUnion[from_generators[shards=1].for_each().async_iterator(), "
-        "from_generators[shards=1].for_each().async_iterator()]")
+    assert (repr(it) ==
+            "LocalUnion[from_iterators[shards=1].for_each().async_iterator(), "
+            "from_iterators[shards=1].for_each().async_iterator()]")
     results = list(it)
     assert all(x[0] == "slow" for x in results[-3:]), results
 

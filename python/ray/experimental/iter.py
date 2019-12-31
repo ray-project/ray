@@ -21,27 +21,29 @@ class YieldIterator(Exception):
 def from_items(items: List[T], num_shards: int = 2) -> "ParIterator[T]":
     """Create a parallel iterator from an existing set of objects.
 
+    The objects will be divided round-robin among the number of shards.
+
     Arguments:
         items (list): The list of items to iterate over.
         num_shards (int): The number of worker actors to create.
-
-    The objects will be divided round-robin among the number of shards."""
+    """
     shards = [[] for _ in range(num_shards)]
     for i, item in enumerate(items):
         shards[i % num_shards].append(item)
     name = "from_items[{}, {}, shards={}]".format(
         items and type(items[0]).__name__ or "None", len(items), num_shards)
-    return from_generators(shards, name=name)
+    return from_iterators(shards, name=name)
 
 
 def from_range(n: int, num_shards: int = 2) -> "ParIterator[int]":
     """Create a parallel iterator over the range 0..n.
 
+    The range will be partitioned sequentially among the number of shards.
+
     Arguments:
         n (int): The max end of the range of numbers.
         num_shards (int): The number of worker actors to create.
-
-    The range will be split sequentially among the number of shards."""
+    """
     generators = []
     for i in range(num_shards):
         start = i * (n // num_shards)
@@ -51,23 +53,24 @@ def from_range(n: int, num_shards: int = 2) -> "ParIterator[int]":
             end = (i + 1) * (n // num_shards)
         generators.append(range(start, end))
     name = "from_range[{}, shards={}]".format(n, num_shards)
-    return from_generators(generators, name=name)
+    return from_iterators(generators, name=name)
 
 
-def from_generators(generators: List[Iterable[T]],
-                    name=None) -> "ParIterator[T]":
-    """Create a parallel iterator from a set of generators.
+def from_iterators(generators: List[Iterable[T]],
+                   name=None) -> "ParIterator[T]":
+    """Create a parallel iterator from a set of iterators.
+
+    An actor will be created for each iterator.
 
     Arguments:
         generators (list): A list of Python generator objects or lambda
             functions that produced a generator when called.
         name (str): Optional name to give the iterator.
-
-    An actor will be created for each generator."""
+    """
     worker_cls = ray.remote(_ParIteratorWorker)
     actors = [worker_cls.remote(g) for g in generators]
     if not name:
-        name = "from_generators[shards={}]".format(len(generators))
+        name = "from_iterators[shards={}]".format(len(generators))
     return from_actors(actors, name=name)
 
 
@@ -75,12 +78,13 @@ def from_actors(actors: List["ray.actor.ActorHandle"],
                 name=None) -> "ParIterator[T]":
     """Create a parallel iterator from an existing set of actors.
 
+    Each actor must implement the par_iter_init() and par_iter_next() methods
+    from the _ParIteratorWorker interface.
+
     Arguments:
         actors (list): List of actors that each implement _ParIteratorWorker.
         name (str): Optional name to give the iterator.
-
-    Each actor must implement the par_iter_init() and par_iter_next() methods
-    from the _ParIteratorWorker interface."""
+    """
     if not name:
         name = "from_actors[shards={}]".format(len(actors))
     return ParIterator([_ActorSet(actors, [])], name)
@@ -107,7 +111,7 @@ class ParIterator(Generic[T]):
         ... [2, 4, 6]
 
         # Creating from generators.
-        >>> it = ray.experimental.iter.from_generators([range(3), range(3)])
+        >>> it = ray.experimental.iter.from_iterators([range(3), range(3)])
         ... <__main__.ParIterator object>
         >>> print(list(it.sync_iterator()))
         ... [0, 0, 1, 1, 2, 2]
@@ -240,7 +244,7 @@ class ParIterator(Generic[T]):
         """Iterate over the results of multiple shards in parallel.
 
         Examples:
-            >>> it = from_generators([range(3), range(3)])
+            >>> it = from_iterators([range(3), range(3)])
             >>> next(it.batch_across_shards())
             ... [0, 0]
         """
