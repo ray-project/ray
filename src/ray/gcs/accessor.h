@@ -190,7 +190,7 @@ class TaskInfoAccessor {
   /// \return Status
   virtual Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
-      const SubscribeCallback<TaskID, boost::optional<rpc::TaskTableData>> &subscribe,
+      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
       const StatusCallback &done) = 0;
 
   /// Cancel subscription to a task lease asynchronously.

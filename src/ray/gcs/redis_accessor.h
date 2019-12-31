@@ -123,7 +123,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
 
   Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
-      const SubscribeCallback<TaskID, boost::optional<rpc::TaskTableData>> &subscribe,
+      const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
       const StatusCallback &done) override;
 
   Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
@@ -143,7 +143,7 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
       TaskSubscriptionExecutor;
   TaskSubscriptionExecutor task_sub_executor_;
 
-  typedef SubscriptionExecutor<TaskID, TaskLeaseData, raylet::TaskLeaseTable>
+  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
       TaskLeaseSubscriptionExecutor;
   TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
