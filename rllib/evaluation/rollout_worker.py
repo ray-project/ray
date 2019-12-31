@@ -666,10 +666,18 @@ class RolloutWorker(EvaluatorInterface):
 
     @DeveloperAPI
     def foreach_trainable_policy(self, func):
-        """Apply the given function to each (policy, policy_id) tuple.
+        """
+        Applies the given function to each (policy, policy_id) tuple, which
+        can be found in `self.policies_to_train`.
 
-        This only applies func to policies in `self.policies_to_train`."""
+        Args:
+            func (callable): A function - taking a Policy and its ID - that is
+                called on all Policies within `self.policies_to_train`.
 
+        Returns:
+            List[any]: The list of n return values of all
+                `func([policy], [ID])`-calls.
+        """
         return [
             func(policy, pid) for pid, policy in self.policy_map.items()
             if pid in self.policies_to_train
