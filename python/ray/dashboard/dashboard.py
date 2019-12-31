@@ -175,7 +175,7 @@ class Dashboard(object):
                         resource_name, occupied, total))
                 data["extraInfo"] = ", ".join(extra_info)
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
-                    actor_tree_str = json.dumps(actor_tree, indent=2)
+                    actor_tree_str = json.dumps(actor_tree, indent=2, sort_keys=True)
                     lines = actor_tree_str.split("\n")
                     max_line_length = max(map(len, lines))
                     to_print = []
@@ -326,10 +326,11 @@ class NodeStats(threading.Thread):
             for infeasible_task in infeasible_tasks:
                 actor_id = infeasible_task["actorCreationTaskSpec"]["actorId"]
                 caller_addr = (infeasible_task["callerAddress"]["ipAddress"],
-                               str(infeasible_task["callerAddress"]["ipAddress"]))
+                               str(infeasible_task["callerAddress"]["port"]))
                 caller_id = self._addr_to_actor_id.get(
                     caller_addr, "root")
                 child_to_parent[actor_id] = caller_id
+                infeasible_task["state"] = -1
                 flattened_tree[actor_id] = infeasible_task
 
         # construct actor tree
