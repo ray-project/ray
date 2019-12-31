@@ -52,3 +52,11 @@ class RoundRobinPartition(Partition):
         self.seq = (self.seq + 1) % num_partition
         self.__partitions[0] = self.seq
         return self.__partitions
+
+
+class SimplePartition(Partition):
+    def __init__(self, func):
+        self.func = func
+
+    def partition(self, record, num_partition: int):
+        return self.func(record, num_partition)

@@ -49,6 +49,10 @@ public class PythonGateway {
     }
   }
 
+  public void execute() {
+    streamingContext.execute();
+  }
+
   public byte[] createPyFunc(byte[] pyFunc) {
     DescriptorFunction function = new DescriptorFunction(pyFunc);
     objectMap.put(getRefId(function), function);
@@ -59,18 +63,6 @@ public class PythonGateway {
     DescriptorPartition partition = new DescriptorPartition(pyPartition);
     objectMap.put(getRefId(partition), partition);
     return serializer.serialize(getRefId(partition));
-  }
-
-  public void setParallelism(byte[] paramsBytes) {
-    try {
-      List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
-      int objId = (int) params.get(0);
-      int parallelism = (int) params.get(1);
-      Stream stream = (Stream) objectMap.get(objId);
-      stream.setParallelism(parallelism);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
   }
 
   public byte[] createPythonStreamSource(byte[] pySourceFunc) {
