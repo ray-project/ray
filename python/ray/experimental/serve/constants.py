@@ -15,3 +15,6 @@ DEFAULT_HTTP_HOST = "0.0.0.0"
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
+
+#: Default path for profiling services
+SERVE_PROFILE_PATH = "/RayServeProfile"

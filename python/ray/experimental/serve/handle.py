@@ -1,5 +1,4 @@
 import ray
-from ray.experimental import serve
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.constants import DEFAULT_HTTP_ADDRESS
@@ -27,9 +26,15 @@ class RayServeHandle:
        # raises RayTaskError Exception
     """
 
-    def __init__(self, router_handle, endpoint_name):
+    def __init__(self, router_handle, policy_table, endpoint_name,
+                 http_enabled):
         self.router_handle = router_handle
+
+        # TODO(alind): Need to find a better way for passing policy
+        # information. Right now handle has access to all the policies.
+        self.policy_table = policy_table
         self.endpoint_name = endpoint_name
+        self.http_enabled = http_enabled
 
     def remote(self, *args, **kwargs):
         if len(args) != 0:
@@ -62,25 +67,33 @@ class RayServeHandle:
         # because we are sure handle and global_state are in the same process.
         # However, once global_state is deprecated, this method need to be
         # updated accordingly.
-        history = serve.global_state.policy_action_history[self.endpoint_name]
-        if len(history):
-            return history[-1]
-        else:
-            return None
+        traffic_d = self.policy_table.list_traffic_policy()
+        return traffic_d[self.endpoint_name]
 
     def get_http_endpoint(self):
         return DEFAULT_HTTP_ADDRESS
 
     def __repr__(self):
+        if self.http_enabled:
+            return """
+                    RayServeHandle(
+                        Endpoint="{endpoint_name}",
+                        URL="{http_endpoint}/{endpoint_name}",
+                        Traffic={traffic_policy}
+                    )
+                    """.format(
+                endpoint_name=self.endpoint_name,
+                http_endpoint=self.get_http_endpoint(),
+                traffic_policy=self.get_traffic_policy())
+
         return """
-RayServeHandle(
-    Endpoint="{endpoint_name}",
-    URL="{http_endpoint}/{endpoint_name}",
-    Traffic={traffic_policy}
-)
-""".format(endpoint_name=self.endpoint_name,
-           http_endpoint=self.get_http_endpoint(),
-           traffic_policy=self.get_traffic_policy())
+                RayServeHandle(
+                    Endpoint="{endpoint_name}",
+                    Traffic={traffic_policy}
+                )
+                """.format(
+            endpoint_name=self.endpoint_name,
+            traffic_policy=self.get_traffic_policy())
 
     # TODO(simon): a convenience function that dumps equivalent requests
     # code for a given call.

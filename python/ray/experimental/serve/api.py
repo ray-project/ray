@@ -1,12 +1,13 @@
 import inspect
 from functools import wraps
 from tempfile import mkstemp
-
 import numpy as np
+import os
 
 import ray
 from ray.experimental.serve.constants import (
-    DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT, SERVE_NURSERY_NAME)
+    DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT, SERVE_NURSERY_NAME,
+    SERVE_PROFILE_PATH)
 from ray.experimental.serve.global_state import (GlobalState,
                                                  start_initial_state)
 from ray.experimental.serve.kv_store_service import SQLiteKVStore
@@ -134,7 +135,10 @@ def init(kv_store_connector=None,
 
 
 @_ensure_connected
-def create_endpoint(endpoint_name, route, blocking=True):
+def create_endpoint(endpoint_name,
+                    route=None,
+                    kwargs_creator=None,
+                    blocking=True):
     """Create a service endpoint given route_expression.
 
     Args:
@@ -142,10 +146,21 @@ def create_endpoint(endpoint_name, route, blocking=True):
             used as key to set traffic policy.
         route (str): A string begin with "/". HTTP server will use
             the string to match the path.
+        kwargs_creator(lambda fn): A lambda function which returns a kwargs
+            list for profiling the service.
         blocking (bool): If true, the function will wait for service to be
             registered before returning
     """
-    global_state.route_table.register_service(route, endpoint_name)
+    if route is None:
+        global_state.route_table.register_no_route_service(endpoint_name)
+    else:
+        global_state.route_table.register_service(route, endpoint_name)
+
+    if kwargs_creator is not None:
+        global_state.route_table.register_service(
+            os.path.join(SERVE_PROFILE_PATH, endpoint_name), endpoint_name)
+        global_state.route_table.register_kwargs_creator(
+            endpoint_name, kwargs_creator)
 
 
 @_ensure_connected
@@ -237,6 +252,7 @@ def create_backend(func_or_class,
 
         # arg list for a fn is function itself
         arg_list = [func_or_class]
+
         # ignore lint on lambda expression
         creator = lambda kwrgs: TaskRunnerActor._remote(**kwrgs)  # noqa: E731
     elif inspect.isclass(func_or_class):
@@ -251,6 +267,7 @@ def create_backend(func_or_class,
             pass
 
         arg_list = actor_init_args
+
         # ignore lint on lambda expression
         creator = lambda kwargs: CustomActor._remote(**kwargs)  # noqa: E731
     else:
@@ -387,7 +404,9 @@ def split(endpoint_name, traffic_policy_dictionary):
         traffic_policy_dictionary (dict): a dictionary maps backend names
             to their traffic weights. The weights must sum to 1.
     """
-    assert endpoint_name in global_state.route_table.list_service().values()
+    assert (endpoint_name in global_state.route_table.list_service().values()
+            or
+            endpoint_name in global_state.route_table.get_no_route_services())
 
     assert isinstance(traffic_policy_dictionary,
                       dict), "Traffic policy must be dictionary"
@@ -417,12 +436,18 @@ def get_handle(endpoint_name):
     Returns:
         RayServeHandle
     """
-    assert endpoint_name in global_state.route_table.list_service().values()
+    assert (endpoint_name in global_state.route_table.list_service().values()
+            or
+            endpoint_name in global_state.route_table.get_no_route_services())
 
     # Delay import due to it's dependency on global_state
     from ray.experimental.serve.handle import RayServeHandle
 
-    return RayServeHandle(global_state.init_or_get_router(), endpoint_name)
+    http_enabled = (
+        endpoint_name in global_state.route_table.list_service().values())
+    return RayServeHandle(global_state.init_or_get_router(),
+                          global_state.policy_table, endpoint_name,
+                          http_enabled)
 
 
 @_ensure_connected
