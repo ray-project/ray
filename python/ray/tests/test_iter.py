@@ -6,7 +6,7 @@ import time
 
 import ray
 from ray.experimental.iter import from_items, from_iterators, from_range, \
-    from_actors, _ParIteratorWorker
+    from_actors, _ParallelIteratorWorker
 
 
 def test_from_items(ray_start_regular_shared):
@@ -29,7 +29,7 @@ def test_from_range(ray_start_regular_shared):
 
 
 def test_from_actors(ray_start_regular_shared):
-    worker = ray.remote(_ParIteratorWorker)
+    worker = ray.remote(_ParallelIteratorWorker)
     a = worker.remote([1, 2])
     b = worker.remote([3, 4])
     it = from_actors([a, b])
