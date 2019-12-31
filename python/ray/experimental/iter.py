@@ -266,7 +266,7 @@ class ParIterator(Generic[T]):
                 except TimeoutError:
                     yield YieldIterator()
                 except StopIteration:
-                    done = []
+                    # Find and remove the actor that produced StopIteration.
                     results = []
                     for a, f in zip(list(active), futures):
                         try:
