@@ -178,14 +178,15 @@ class TaskInfoAccessor {
   /// \param callback Callback that will be called after task lease has been added
   /// to GCS.
   /// \return Status
-  virtual Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &data_ptr,
+  virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
                                    const StatusCallback &callback) = 0;
 
   /// Subscribe asynchronously to the event that the given task lease is added in GCS.
   ///
   /// \param task_id The ID of the task to be subscribed to.
   /// \param subscribe Callback that will be called each time when the task lease is
-  /// updated. \param done Callback that will be called when subscription is complete.
+  /// updated or the task lease is empty currently.
+  /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   virtual Status AsyncSubscribeTaskLease(
       const TaskID &task_id,
