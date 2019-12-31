@@ -18,7 +18,7 @@ def torch_pg_loss(policy, model, dist_class, train_batch):
     action_dist = dist_class(logits, model)
     log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
     # Save the error in the policy object.
-    #policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
+    # policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
     # log_probs.reshape(-1)) / len(log_probs)
     policy.pi_err = -torch.mean(
         log_probs * train_batch[Postprocessing.ADVANTAGES]

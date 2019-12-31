@@ -47,7 +47,11 @@ class TestPGFunctionality(unittest.TestCase):
 
         # Fake CartPole episode of n timesteps.
         train_batch = {
-            SampleBatch.CUR_OBS: np.array([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]]),
+            SampleBatch.CUR_OBS: np.array([
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2]
+            ]),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
             SampleBatch.DONES: np.array([False, False, True])
@@ -58,21 +62,34 @@ class TestPGFunctionality(unittest.TestCase):
         policy = trainer.get_policy()
         vars = policy.model.trainable_variables()
 
-        # Post-process (calculate simple (non-GAE) advantages) and attach to train_batch dict.
-        # A = [0.99^2 * 1.0 + 0.99 * 1.0 + 1.0, 0.99 * 1.0 + 1.0, 1.0] = [2.9701, 1.99, 1.0]
+        # Post-process (calculate simple (non-GAE) advantages) and attach to
+        # train_batch dict.
+        # A = [0.99^2 * 1.0 + 0.99 * 1.0 + 1.0, 0.99 * 1.0 + 1.0, 1.0] =
+        # [2.9701, 1.99, 1.0]
         train_batch = pg.post_process_advantages(policy, train_batch)
         # Check Advantage values.
         check(train_batch[Postprocessing.ADVANTAGES], [2.9701, 1.99, 1.0])
 
         # Actual loss results.
-        results = pg.tf_pg_loss(policy, policy.model, dist_class=Categorical, train_batch=train_batch)
+        results = pg.tf_pg_loss(
+            policy, policy.model, dist_class=Categorical,
+            train_batch=train_batch
+        )
 
         # Calculate expected results.
         expected_logits = fc(
-            fc(train_batch[SampleBatch.CUR_OBS], vars[0].numpy(), vars[1].numpy()), vars[2].numpy(), vars[3].numpy()
+            fc(
+                train_batch[SampleBatch.CUR_OBS],
+                vars[0].numpy(), vars[1].numpy()
+            ),
+            vars[2].numpy(), vars[3].numpy()
         )
-        expected_logp = Categorical(expected_logits, policy.model).logp(train_batch[SampleBatch.ACTIONS])
-        expected_loss = -np.mean(expected_logp * train_batch[Postprocessing.ADVANTAGES])
+        expected_logp = Categorical(expected_logits, policy.model).logp(
+            train_batch[SampleBatch.ACTIONS]
+        )
+        expected_loss = -np.mean(
+            expected_logp * train_batch[Postprocessing.ADVANTAGES]
+        )
         check(results.numpy(), expected_loss, decimals=4)
 
         # Torch.
@@ -80,8 +97,16 @@ class TestPGFunctionality(unittest.TestCase):
         trainer = pg.PGTrainer(config=config, env="CartPole-v0")
         policy = trainer.get_policy()
         train_batch = policy._lazy_tensor_dict(train_batch)
-        results = pg.torch_pg_loss(policy, policy.model, dist_class=TorchCategorical, train_batch=train_batch)
+        results = pg.torch_pg_loss(
+            policy, policy.model, dist_class=TorchCategorical,
+            train_batch=train_batch
+        )
         expected_logits = policy.model._last_output
-        expected_logp = TorchCategorical(expected_logits, policy.model).logp(train_batch[SampleBatch.ACTIONS])
-        expected_loss = -np.mean(expected_logp.detach().numpy() * train_batch[Postprocessing.ADVANTAGES].numpy())
+        expected_logp = TorchCategorical(expected_logits, policy.model).logp(
+            train_batch[SampleBatch.ACTIONS]
+        )
+        expected_loss = -np.mean(
+            expected_logp.detach().numpy() *
+            train_batch[Postprocessing.ADVANTAGES].numpy()
+        )
         check(results.detach().numpy(), expected_loss, decimals=4)
