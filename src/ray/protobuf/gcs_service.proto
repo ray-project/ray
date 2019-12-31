@@ -113,7 +113,7 @@ service NodeInfoGcsService {
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
   // Report heartbeat of a node to GCS Service.
   rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
-  // Report state of all nodes to GCS Service.
+  // Report batch heartbeat to GCS Service.
   rpc ReportBatchHeartbeat(ReportBatchHeartbeatRequest)
       returns (ReportBatchHeartbeatReply);
 }

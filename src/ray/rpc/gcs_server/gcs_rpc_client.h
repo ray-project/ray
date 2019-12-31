@@ -171,7 +171,7 @@ class GcsRpcClient {
             request, callback);
   }
 
-  /// Report state of all nodes to GCS Service.
+  /// Report batch heartbeat to GCS Service.
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
