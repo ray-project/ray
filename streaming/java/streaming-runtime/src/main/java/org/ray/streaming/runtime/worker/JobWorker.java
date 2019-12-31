@@ -6,6 +6,7 @@ import org.ray.api.Ray;
 import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
+import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
@@ -36,7 +37,7 @@ public class JobWorker implements Serializable {
   }
 
   private int taskId;
-  private Map<String, Object> config;
+  private Map<String, String> config;
   private WorkerContext workerContext;
   private ExecutionNode executionNode;
   private ExecutionTask executionTask;
@@ -88,7 +89,7 @@ public class JobWorker implements Serializable {
     return taskId;
   }
 
-  public Map<String, Object> getConfig() {
+  public Map<String, String> getConfig() {
     return config;
   }
 

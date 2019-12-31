@@ -22,7 +22,7 @@ import org.ray.streaming.schedule.JobScheduler;
  */
 public class JobSchedulerImpl implements JobScheduler {
   private Plan plan;
-  private Map<String, Object> jobConfig;
+  private Map<String, String> jobConfig;
   private ResourceManager resourceManager;
   private ITaskAssign taskAssign;
 
@@ -35,7 +35,7 @@ public class JobSchedulerImpl implements JobScheduler {
    * Schedule physical plan to execution graph, and call streaming worker to init and run.
    */
   @Override
-  public void schedule(Plan plan, Map<String, Object> jobConfig) {
+  public void schedule(Plan plan, Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
     this.plan = plan;
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");

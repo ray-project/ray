@@ -24,7 +24,7 @@ public class StreamingContext implements Serializable {
    * The sinks of this streaming job.
    */
   private List<StreamSink> streamSinks;
-  private Map<String, Object> jobConfig;
+  private Map<String, String> jobConfig;
   /**
    * The logic plan.
    */
@@ -64,7 +64,7 @@ public class StreamingContext implements Serializable {
     streamSinks.add(streamSink);
   }
 
-  public void withConfig(Map<String, Object> jobConfig) {
+  public void withConfig(Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
   }
 }

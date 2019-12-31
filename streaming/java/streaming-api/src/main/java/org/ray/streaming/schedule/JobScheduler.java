@@ -15,5 +15,5 @@ public interface JobScheduler {
    *
    * @param plan The logical plan.
    */
-  void schedule(Plan plan, Map<String, Object> conf);
+  void schedule(Plan plan, Map<String, String> conf);
 }

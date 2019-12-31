@@ -149,8 +149,8 @@ public class StreamingQueueTest implements Serializable {
 
     Map<String, Integer> wordCount = new ConcurrentHashMap<>();
     StreamingContext streamingContext = StreamingContext.buildContext();
-    Map<String, Object> config = new HashMap<>();
-    config.put(Config.STREAMING_BATCH_MAX_COUNT, 1);
+    Map<String, String> config = new HashMap<>();
+    config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
     config.put(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL);
     config.put(Config.CHANNEL_SIZE, "100000");
     streamingContext.withConfig(config);
