@@ -4,6 +4,9 @@ from __future__ import print_function
 
 import unittest
 
+import ray
+from ray.rllib import _register_all
+from ray.tune import register_trainable
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.error import TuneError
 
