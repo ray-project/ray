@@ -25,8 +25,9 @@ from ray.tune.syncer import Syncer
 from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.tests.mock import MockDurableTrainer, MockRemoteTrainer, MockNodeSyncer, \
-    mock_storage_client, MOCK_REMOTE_DIR
+from ray.tune.tests.mock import (MockDurableTrainer, MockRemoteTrainer,
+                                 MockNodeSyncer, mock_storage_client,
+                                 MOCK_REMOTE_DIR)
 
 if sys.version_info >= (3, 3):
     from unittest.mock import MagicMock, patch

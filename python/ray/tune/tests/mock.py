@@ -34,7 +34,7 @@ class MockNodeSyncer(NodeSyncer):
 
     @property
     def _remote_path(self):
-        if self._remote_dir.startswith('/'):
+        if self._remote_dir.startswith("/"):
             self._remote_dir = self._remote_dir[1:]
         return os.path.join(MOCK_REMOTE_DIR, self._remote_dir)
 
@@ -44,7 +44,7 @@ class MockRemoteTrainer(_MockTrainer):
 
     def __init__(self, *args, **kwargs):
         super(MockRemoteTrainer, self).__init__(*args, **kwargs)
-        if self._logdir.startswith('/'):
+        if self._logdir.startswith("/"):
             self._logdir = self._logdir[1:]
         self._logdir = os.path.join(MOCK_REMOTE_DIR, self._logdir)
         if not os.path.exists(self._logdir):

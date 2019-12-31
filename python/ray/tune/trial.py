@@ -356,6 +356,7 @@ class Trial(object):
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
+            self.checkpoint_manager.on_checkpoint(checkpoint)
             return
         if self.sync_on_checkpoint:
             try:
@@ -363,7 +364,8 @@ class Trial(object):
                 # after this to handle checkpoints taken mid-sync.
                 self.result_logger.wait()
             except TuneError as e:
-                # If an error occurs
+                # Errors occurring during this wait are not fatal for this
+                # checkpoint, so it should just be logged.
                 logger.error(
                     "Trial %s: An error occurred during the "
                     "checkpoint pre-sync wait.", str(e))
