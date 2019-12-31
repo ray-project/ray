@@ -39,43 +39,56 @@ class GcsRpcClient {
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server.
-  // 
-  // void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply> &callback) {
-  //   INVOKE_RPC_CALL(JobInfoGcsService, AddJob, request, callback, job_info_grpc_client_);
+  //
+  // void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply>
+  // &callback) {
+  //   INVOKE_RPC_CALL(JobInfoGcsService, AddJob, request, callback,
+  //   job_info_grpc_client_);
   // }
 
   /// Add job info to gcs server.
-  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, request, callback, job_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, request, callback,
+                         job_info_grpc_client_)
 
   /// Mark job as finished to gcs server.
-  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, request, callback, job_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, request, callback,
+                         job_info_grpc_client_)
 
   /// Get actor data from GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, request, callback, actor_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, request, callback,
+                         actor_info_grpc_client_)
 
   /// Register an actor to GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo, request, callback, actor_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo, request, callback,
+                         actor_info_grpc_client_)
 
   ///  Update actor info in GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo, request, callback, actor_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo, request, callback,
+                         actor_info_grpc_client_)
 
   /// Register a node to GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, request, callback, node_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, request, callback,
+                         node_info_grpc_client_)
 
   /// Unregister a node from GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, UnregisterNode, request, callback, node_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, UnregisterNode, request, callback,
+                         node_info_grpc_client_)
 
   /// Get information of all nodes from GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, request, callback, node_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, request, callback,
+                         node_info_grpc_client_)
 
   /// Get object's locations from GCS Service.
-  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations, request, callback, object_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations, request, callback,
+                         object_info_grpc_client_)
 
   /// Add location of object to GCS Service.
-  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectLocation, request, callback, object_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectLocation, request, callback,
+                         object_info_grpc_client_)
 
   /// Remove location of object to GCS Service.
-  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation, request, callback, object_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation, request, callback,
+                         object_info_grpc_client_)
 
  private:
   /// The gRPC-generated stub.

@@ -154,13 +154,15 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   RPC_CLIENT_METHOD(CoreWorkerService, AssignTask, request, callback, grpc_client_)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, request, callback, grpc_client_)
+  RPC_CLIENT_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, request, callback,
+                    grpc_client_)
 
   RPC_CLIENT_METHOD(CoreWorkerService, GetObjectStatus, request, callback, grpc_client_)
 
   RPC_CLIENT_METHOD(CoreWorkerService, KillActor, request, callback, grpc_client_)
 
-  RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, request, callback, grpc_client_)
+  RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, request, callback,
+                    grpc_client_)
 
   ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
                             const ClientCallback<PushTaskReply> &callback) override {
@@ -206,7 +208,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       rpc_bytes_in_flight_ += task_size;
 
       auto rpc_callback = [this, this_ptr, seq_no, task_size, callback](
-                              Status status, const rpc::PushTaskReply &reply) {
+          Status status, const rpc::PushTaskReply &reply) {
         {
           std::lock_guard<std::mutex> lock(mutex_);
           if (seq_no > max_finished_seq_no_) {
