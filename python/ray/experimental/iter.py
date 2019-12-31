@@ -140,6 +140,7 @@ class ParIterator(Generic[T]):
     """
 
     def __init__(self, actor_sets: List["_ActorSet"], name: str):
+        # We track multiple sets of actors to support parallel .union().
         self.actor_sets = actor_sets
         self.name = name
 
