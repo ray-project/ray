@@ -547,12 +547,6 @@ class LocalIterator(Generic[T]):
         There are no ordering guarantees between the two iterators. We make a
         best-effort attempt to return items from both as they become ready,
         preventing starvation of any particular iterator.
-
-        **Implementation note**: This works by alternating waits/gets between
-        the iterators with timeout=0. This may be less efficient that calling
-        union on the underlying ParIterators, but is more flexible in that
-        local transformations can be made at the local iterator level prior to
-        the union call.
         """
 
         if not isinstance(other, LocalIterator):

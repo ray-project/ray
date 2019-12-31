@@ -1,10 +1,6 @@
 Parallel Iterator API (Experimental)
 ====================================
 
-.. warning::
-
-  This API is experimental and may be changed at any time.
-
 Ray offers a parallel iterator API for simple data ingest and processing. It
 can be thought of as syntactic sugar around Ray actors and ``ray.wait`` loops.
 
@@ -13,7 +9,7 @@ Concepts
 
 **Parallel Iterators**: You can create a ``ParIterator`` object from an existing
 set of items, range of numbers, set of iterators, or set of worker actors. Ray will
-create a worker actor for each shard of the iterator:
+create a worker actor that produces the data for each shard of the iterator:
 
 .. code-block:: python
 
@@ -52,7 +48,8 @@ filtering, and batching:
     ParIterator[...].for_each().batch(32).filter()
 
 **Local Iterators**: To read elements from a parallel iterator, it has to be converted
-to a ``LocalIterator`` by calling ``gather_sync()`` or ``gather_async``:
+to a ``LocalIterator`` by calling ``gather_sync()`` or ``gather_async()``. These
+correspond to ``ray.get`` and ``ray.wait`` loops over the actors respectively:
 
 .. code-block:: python
 
@@ -69,6 +66,11 @@ to a ``LocalIterator`` by calling ``gather_sync()`` or ``gather_async``:
     # applied on a ParIterator, they will be executed in the current process.
     >>> it.filter(lambda x: x % 2 == 0).take(5)
     [0, 2, 4, 6, 8]
+
+    # Async gather can be used for better performance, but it is non-deterministic.
+    >>> it = ray.experimental.iter.from_range(1000, 4).gather_async()
+    >>> it.take(5)
+    [0, 250, 500, 750, 1]
 
 **Passing iterators to remote functions**: Both ``ParIterator`` and ``LocalIterator``
 are serializable. They can be passed to any Ray remote function. However, note that
@@ -93,7 +95,7 @@ only one process should read from a shard of the iterator:
 
 
 Example: Passing iterator shards to remote functions
-----------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Both parallel iterators and local iterators are fully serializable, so once
 created you can pass them to Ray tasks and actors. This can be useful for
@@ -121,7 +123,7 @@ distributed training:
     ray.get(work)
 
 Example: Streaming word frequency count
----------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Parallel iterators can be used for simple data processing use cases such as
 streaming grep:
