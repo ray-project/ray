@@ -5,6 +5,7 @@ from __future__ import print_function
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     ActorCheckpointIdData,
+    ActorTableData,
     GcsNodeInfo,
     JobTableData,
     ErrorTableData,
@@ -23,6 +24,7 @@ from ray.core.generated.gcs_pb2 import (
 __all__ = [
     "ActorTableData",
     "ActorCheckpointIdData",
+    "ActorTableData",
     "GcsNodeInfo",
     "JobTableData",
     "ErrorTableData",

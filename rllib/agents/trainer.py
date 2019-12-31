@@ -158,7 +158,7 @@ COMMON_CONFIG = {
     # after the initial eager pass.
     "eager_tracing": False,
     # Disable eager execution on workers (but allow it on the driver). This
-    # only has an effect is eager is enabled.
+    # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
 
     # === Evaluation Settings ===

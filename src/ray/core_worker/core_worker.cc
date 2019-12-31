@@ -1118,13 +1118,27 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
-  reply->set_webui_display(webui_display_);
   auto stats = reply->mutable_core_worker_stats();
   stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
   if (!current_task_.TaskId().IsNil()) {
     stats->set_current_task_desc(current_task_.DebugString());
+    for (auto const it : current_task_.FunctionDescriptor()) {
+      stats->add_current_task_func_desc(it);
+    }
   }
+  stats->set_ip_address(rpc_address_.ip_address());
+  stats->set_port(rpc_address_.port());
+  stats->set_actor_id(actor_id_.Binary());
+  auto used_resources_map = stats->mutable_used_resources();
+  for (auto const &it : *resource_ids_) {
+    double quantity = 0;
+    for (auto const &pair : it.second) {
+      quantity += pair.second;
+    }
+    (*used_resources_map)[it.first] = quantity;
+  }
+  stats->set_webui_display(webui_display_);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
