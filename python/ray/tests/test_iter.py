@@ -16,6 +16,13 @@ def test_union(ray_start_regular_shared):
     assert list(it.sync_iterator()) == ["a", "x", "b", "y", "c", "z"]
 
 
+def test_union_local(ray_start_regular_shared):
+    it1 = from_items(["a", "b", "c"], 1).async_iterator()
+    it2 = from_items(["x", "y", "z"], 1).async_iterator()
+    it = it1.union(it2)
+    assert sorted(list(it.async_iterator())) == ["a", "b", "c", "x", "y", "z"]
+
+
 def test_from_nested(ray_start_regular_shared):
     it1 = from_items(["a", "b", "c"], 1)
     it2 = from_items(["x", "y", "z"], 1)
@@ -108,9 +115,9 @@ def test_async_iterator(ray_start_regular_shared):
     assert sorted(list(it.async_iterator())) == [0, 1, 2, 3]
 
 
-def test_sync_across_shards(ray_start_regular_shared):
+def test_batch_across_shards(ray_start_regular_shared):
     it = from_generators([[0, 1], [2, 3]])
-    assert sorted(list(it.sync_iterator_across_shards())) == [[0, 2], [1, 3]]
+    assert sorted(list(it.batch_across_shards())) == [[0, 2], [1, 3]]
 
 
 def test_remote(ray_start_regular_shared):

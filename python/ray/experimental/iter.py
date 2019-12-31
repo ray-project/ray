@@ -123,7 +123,7 @@ class ParIterator(Generic[T]):
         # Gathering results from actors synchronously in parallel.
         >>> it = ray.experimental.iter.from_actors(workers)
         ... <__main__.ParIterator object>
-        >>> it = it.sync_iterator_across_shards()
+        >>> it = it.batch_across_shards()
         ... <__main__.LocalIterator object>
         >>> print(next(it))
         ... [worker_1_result_1, worker_2_result_1]
@@ -202,7 +202,7 @@ class ParIterator(Generic[T]):
         New items will be fetched from the shards on-demand as the iterator
         is stepped through.
 
-        This is the equivalent of sync_iterator_across_shards().flatten().
+        This is the equivalent of batch_across_shards().flatten().
 
         Examples:
             >>> it = from_range(100, 1).sync_iterator()
@@ -213,14 +213,14 @@ class ParIterator(Generic[T]):
             >>> next(it)
             ... 2
         """
-        return self.sync_iterator_across_shards().flatten()
+        return self.batch_across_shards().flatten()
 
-    def sync_iterator_across_shards(self) -> "LocalIterator[List[T]]":
+    def batch_across_shards(self) -> "LocalIterator[List[T]]":
         """Iterate over the results of multiple shards in parallel.
 
         Examples:
             >>> it = from_generators([range(3), range(3)])
-            >>> next(it.sync_iterator_across_shards())
+            >>> next(it.batch_across_shards())
             ... [0, 0]
         """
 
@@ -376,6 +376,10 @@ class LocalIterator(Generic[T]):
 
         return LocalIterator(self.base_iterator,
                              self.local_transforms + [apply_flatten])
+
+    def union(self, other: "LocalIterator[T]") -> "LocalIterator[T]":
+        """Return an iterator that is the union of this and the other."""
+        raise NotImplementedError
 
 
 class _ParIteratorWorker(object):
