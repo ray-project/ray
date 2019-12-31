@@ -9,6 +9,17 @@ from ray.tune.error import TuneError
 
 
 class ExperimentTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def testDict(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        register_trainable("f1", train)
+
     def testConvertExperimentFromExperiment(self):
         exp1 = Experiment(**{
             "name": "foo",
