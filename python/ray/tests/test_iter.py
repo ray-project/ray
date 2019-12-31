@@ -2,16 +2,45 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 import ray
 from ray.experimental.iter import from_items, from_generators, from_range, \
-    from_actors, _ParIteratorWorker
+    from_actors, from_nested_iterators, _ParIteratorWorker
 
 
 def test_union(ray_start_regular_shared):
-    it1 = from_items(["a", "b", "c"], 1).sync_iterator()
-    it2 = from_items(["x", "y", "z"], 1).sync_iterator()
-    it = from_generators([it1, it2])
+    it1 = from_items(["a", "b", "c"], 1)
+    it2 = from_items(["x", "y", "z"], 1)
+    it = it1.union(it2)
     assert list(it.sync_iterator()) == ["a", "x", "b", "y", "c", "z"]
+
+
+def test_from_nested(ray_start_regular_shared):
+    it1 = from_items(["a", "b", "c"], 1)
+    it2 = from_items(["x", "y", "z"], 1)
+    it = from_nested_iterators([it1, it2])
+    assert sorted(list(it.async_iterator())) == ["a", "b", "c", "x", "y", "z"]
+
+
+def test_union_async(ray_start_regular_shared):
+    def gen_fast():
+        for i in range(10):
+            time.sleep(0.05)
+            print("PRODUCE FAST", i)
+            yield i
+
+    def gen_slow():
+        for i in range(10):
+            time.sleep(0.3)
+            print("PRODUCE SLOW", i)
+            yield i
+
+    it1 = from_generators([gen_fast]).for_each(lambda x: ("fast", x))
+    it2 = from_generators([gen_slow]).for_each(lambda x: ("slow", x))
+    it = it1.union(it2)
+    results = list(it.async_iterator())
+    assert all(x[0] == "slow" for x in results[-3:]), results
 
 
 def test_serialization(ray_start_regular_shared):
