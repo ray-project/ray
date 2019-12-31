@@ -156,6 +156,8 @@ class GcsRpcClient {
     client_call_manager_.CreateCall<ObjectInfoGcsService, RemoveObjectLocationRequest,
                                     RemoveObjectLocationReply>(
         *object_info_stub_, &ObjectInfoGcsService::Stub::PrepareAsyncRemoveObjectLocation,
+        request, callback);
+  }
 
   /// Report heartbeat of a node to GCS Service.
   ///
