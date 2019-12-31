@@ -528,8 +528,12 @@ class LocalIterator(Generic[T]):
 
     def show(self, n: int = 20):
         """Print up to the first n items from this iterator."""
-        for item in self.take(n):
+        i = 0
+        for item in self:
             print(item)
+            i += 1
+            if i >= n:
+                break
 
     def union(self, other: "LocalIterator[T]") -> "LocalIterator[T]":
         """Return an iterator that is the union of this and the other.
