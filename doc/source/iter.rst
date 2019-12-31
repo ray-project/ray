@@ -163,4 +163,3 @@ API Reference
     :members:
     :show-inheritance:
     :special-members:
-    :exclude-members: NextValueNotReady

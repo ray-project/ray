@@ -6,14 +6,6 @@ import ray
 T = TypeVar("T")
 
 
-class NextValueNotReady(Exception):
-    """Indicates that a local iterator has no value currently available.
-
-    This is used internally to implement the union() of multiple blocking
-    local generators."""
-    pass
-
-
 def from_items(items: List[T], num_shards: int = 2,
                repeat: bool = False) -> "ParallelIterator[T]":
     """Create a parallel iterator from an existing set of objects.
@@ -278,9 +270,9 @@ class ParallelIterator(Generic[T]):
                     futures = [a.par_iter_next.remote() for a in active]
                     # Always yield after each round of gets with timeout.
                     if timeout is not None:
-                        yield NextValueNotReady()
+                        yield _NextValueNotReady()
                 except TimeoutError:
-                    yield NextValueNotReady()
+                    yield _NextValueNotReady()
                 except StopIteration:
                     # Find and remove the actor that produced StopIteration.
                     results = []
@@ -341,7 +333,7 @@ class ParallelIterator(Generic[T]):
                         pass
                 # Always yield after each round of wait with timeout.
                 if timeout is not None:
-                    yield NextValueNotReady()
+                    yield _NextValueNotReady()
 
         name = "{}.gather_async()".format(self)
         return LocalIterator(base_iterator, name=name)
@@ -400,9 +392,9 @@ class ParallelIterator(Generic[T]):
                     yield ray.get(a.par_iter_next.remote(), timeout=timeout)
                     # Always yield after each round of gets with timeout.
                     if timeout is not None:
-                        yield NextValueNotReady()
+                        yield _NextValueNotReady()
                 except TimeoutError:
-                    yield NextValueNotReady()
+                    yield _NextValueNotReady()
                 except StopIteration:
                     break
 
@@ -425,7 +417,7 @@ class LocalIterator(Generic[T]):
                  local_transforms: List[Callable[[Iterable], Any]] = None,
                  timeout: int = None,
                  name=None):
-        """Create a local iterator.
+        """Create a local iterator (this is an internal function).
 
         Arguments:
             base_iterator (func): A function that produces the base iterator.
@@ -437,16 +429,15 @@ class LocalIterator(Generic[T]):
                 creation ensures LocalIterator is serializable until you start
                 iterating over it.
             timeout (int): Optional timeout in seconds for this iterator, after
-                which NextValueNotReady will be returned. This avoids blocking.
+                which _NextValueNotReady will be returned. This avoids
+                blocking.
             name (str): Optional name for this iterator.
         """
         self.base_iterator = base_iterator
         self.built_iterator = None
         self.local_transforms = local_transforms or []
         self.timeout = timeout
-        if name is None:
-            name = "LocalIterator[?]"
-        self.name = name
+        self.name = name or "LocalIterator[?]"
 
     def _build_once(self):
         if self.built_iterator is None:
@@ -472,7 +463,7 @@ class LocalIterator(Generic[T]):
     def for_each(self, fn: Callable[[T], T]) -> "LocalIterator[T]":
         def apply_foreach(it):
             for item in it:
-                if isinstance(item, NextValueNotReady):
+                if isinstance(item, _NextValueNotReady):
                     yield item
                 else:
                     yield fn(item)
@@ -485,7 +476,7 @@ class LocalIterator(Generic[T]):
     def filter(self, fn: Callable[[T], bool]) -> "LocalIterator[T]":
         def apply_filter(it):
             for item in it:
-                if isinstance(item, NextValueNotReady) or fn(item):
+                if isinstance(item, _NextValueNotReady) or fn(item):
                     yield item
 
         return LocalIterator(
@@ -497,7 +488,7 @@ class LocalIterator(Generic[T]):
         def apply_batch(it):
             batch = []
             for item in it:
-                if isinstance(item, NextValueNotReady):
+                if isinstance(item, _NextValueNotReady):
                     yield item
                 else:
                     batch.append(item)
@@ -515,7 +506,7 @@ class LocalIterator(Generic[T]):
     def flatten(self) -> "LocalIterator[T[0]]":
         def apply_flatten(it):
             for item in it:
-                if isinstance(item, NextValueNotReady):
+                if isinstance(item, _NextValueNotReady):
                     yield item
                 else:
                     for subitem in item:
@@ -562,12 +553,12 @@ class LocalIterator(Generic[T]):
         def build_union(timeout=None):
             while True:
                 for it in list(active):
-                    # Yield items from the iterator until NextValueNotReady is
+                    # Yield items from the iterator until _NextValueNotReady is
                     # found, then switch to the next iterator.
                     try:
                         while True:
                             item = next(it)
-                            if isinstance(item, NextValueNotReady):
+                            if isinstance(item, _NextValueNotReady):
                                 break
                             else:
                                 yield item
@@ -632,6 +623,14 @@ class ParallelIteratorWorker(object):
         """Implements ParallelIterator worker item fetch."""
         assert self.local_it is not None, "must call par_iterator_init()"
         return next(self.local_it)
+
+
+class _NextValueNotReady(Exception):
+    """Indicates that a local iterator has no value currently available.
+
+    This is used internally to implement the union() of multiple blocking
+    local generators."""
+    pass
 
 
 class _ActorSet(object):
