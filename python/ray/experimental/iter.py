@@ -295,28 +295,27 @@ class ParIterator(Generic[T]):
             for a in all_actors:
                 futures[a.par_iter_next.remote()] = a
             while futures:
-                if timeout is not None:
-                    pending = list(futures)
+                pending = list(futures)
+                if timeout is None:
+                    # First try to do a batch wait for efficiency.
+                    ready, _ = ray.wait(
+                        pending, num_returns=len(pending), timeout=0)
+                    # Fall back to a blocking wait.
+                    if not ready:
+                        ready, _ = ray.wait(pending, num_returns=1)
+                else:
                     ready, _ = ray.wait(
                         pending, num_returns=len(pending), timeout=timeout)
-                    if ready:
-                        for obj_id in ready:
-                            actor = futures.pop(obj_id)
-                            try:
-                                yield ray.get(obj_id)
-                                futures[actor.par_iter_next.remote()] = actor
-                            except StopIteration:
-                                pass
-                    # Always yield after each round of wait with timeout.
-                    yield YieldIterator()
-                else:
-                    [obj_id], _ = ray.wait(list(futures), num_returns=1)
+                for obj_id in ready:
                     actor = futures.pop(obj_id)
                     try:
                         yield ray.get(obj_id)
                         futures[actor.par_iter_next.remote()] = actor
                     except StopIteration:
                         pass
+                # Always yield after each round of wait with timeout.
+                if timeout is not None:
+                    yield YieldIterator()
 
         name = "{}.async_iterator()".format(self)
         return LocalIterator(base_iterator, name=name)
