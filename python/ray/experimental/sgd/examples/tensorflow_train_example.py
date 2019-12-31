@@ -107,10 +107,10 @@ def tune_example(num_replicas=1, use_gpu=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--redis-address",
+        "--address",
         required=False,
         type=str,
-        help="the address to use for Redis")
+        help="the address to use for Ray")
     parser.add_argument(
         "--num-replicas",
         "-n",
@@ -127,7 +127,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(redis_address=args.redis_address)
+    ray.init(address=args.address)
 
     if args.tune:
         tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
