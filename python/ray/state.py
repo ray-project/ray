@@ -306,6 +306,71 @@ class GlobalState(object):
                     self._object_table(binary_to_object_id(object_id_binary)))
             return results
 
+    def _actor_table(self, actor_id):
+        """Fetch and parse the actor table information for a single actor ID.
+
+        Args:
+            actor_id: A actor ID to get information about.
+
+        Returns:
+            A dictionary with information about the actor ID in question.
+        """
+        assert isinstance(actor_id, ray.ActorID)
+        message = self.redis_client.execute_command(
+            "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("ACTOR"), "",
+            actor_id.binary())
+        if message is None:
+            return {}
+        gcs_entries = gcs_utils.GcsEntry.FromString(message)
+
+        assert len(gcs_entries.entries) == 1
+        actor_table_data = gcs_utils.ActorTableData.FromString(
+            gcs_entries.entries[0])
+
+        actor_info = {
+            "JobID": binary_to_hex(actor_table_data.job_id),
+            "Address": {
+                "IPAddress": actor_table_data.address.ip_address,
+                "Port": actor_table_data.address.port
+            },
+            "OwnerAddress": {
+                "IPAddress": actor_table_data.owner_address.ip_address,
+                "Port": actor_table_data.owner_address.port
+            },
+            "IsDirectCall": actor_table_data.is_direct_call
+        }
+
+        return actor_info
+
+    def actor_table(self, actor_id=None):
+        """Fetch and parse the actor table information for one or more actor IDs.
+
+        Args:
+            actor_id: A hex string of the actor ID to fetch information about.
+                If this is None, then the actor table is fetched.
+
+        Returns:
+            Information from the actor table.
+        """
+        self._check_connected()
+        if actor_id is not None:
+            actor_id = ray.ActorID(hex_to_binary(actor_id))
+            return self._actor_table(actor_id)
+        else:
+            actor_table_keys = list(
+                self.redis_client.scan_iter(
+                    match=gcs_utils.TablePrefix_ACTOR_string + "*"))
+            actor_ids_binary = [
+                key[len(gcs_utils.TablePrefix_ACTOR_string):]
+                for key in actor_table_keys
+            ]
+
+            results = {}
+            for actor_id_binary in actor_ids_binary:
+                results[binary_to_hex(actor_id_binary)] = self._actor_table(
+                    ray.ActorID(actor_id_binary))
+            return results
+
     def _task_table(self, task_id):
         """Fetch and parse the task table information for a single task ID.
 
@@ -1118,6 +1183,19 @@ def node_ids():
             if k.startswith(ray.resource_spec.NODE_ID_PREFIX):
                 node_ids.append(k)
     return node_ids
+
+
+def actors(actor_id=None):
+    """Fetch and parse the actor info for one or more actor IDs.
+
+    Args:
+        actor_id: A hex string of the actor ID to fetch information about. If
+            this is None, then all actor information is fetched.
+
+    Returns:
+        Information about the actors.
+    """
+    return state.actor_table(actor_id=actor_id)
 
 
 def tasks(task_id=None):

@@ -89,6 +89,15 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
+def wait_for_num_actors(num_actors, timeout=10):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if len(ray.actors()) >= num_actors:
+            return
+        time.sleep(0.1)
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
+
+
 def wait_for_num_tasks(num_tasks, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -107,11 +116,6 @@ def wait_for_num_objects(num_objects, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
-@pytest.mark.skipif(
-    ray_constants.direct_call_enabled(), reason="state API not supported")
 def test_global_state_api(shutdown_only):
 
     error_message = ("The ray global state API cannot be used "
@@ -119,6 +123,9 @@ def test_global_state_api(shutdown_only):
 
     with pytest.raises(Exception, match=error_message):
         ray.objects()
+
+    with pytest.raises(Exception, match=error_message):
+        ray.actors()
 
     with pytest.raises(Exception, match=error_message):
         ray.tasks()
@@ -162,6 +169,43 @@ def test_global_state_api(shutdown_only):
 
     assert len(client_table) == 1
     assert client_table[0]["NodeManagerAddress"] == node_ip_address
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+    _ = Actor.remote()
+    # Wait for actor to be created
+    wait_for_num_actors(1)
+
+    actor_table = ray.actors()
+    assert len(actor_table) == 1
+
+    actor_info, = actor_table.values()
+    assert actor_info["JobID"] == job_id.hex()
+    assert "IPAddress" in actor_info["Address"]
+    assert "IPAddress" in actor_info["OwnerAddress"]
+    assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
+
+    job_table = ray.jobs()
+
+    assert len(job_table) == 1
+    assert job_table[0]["JobID"] == job_id.hex()
+    assert job_table[0]["NodeManagerAddress"] == node_ip_address
+
+
+@pytest.mark.skipif(
+    ray_constants.direct_call_enabled(),
+    reason="object and task API not supported")
+def test_global_state_task_object_api(shutdown_only):
+    ray.init()
+
+    job_id = ray.utils.compute_job_id_from_driver(
+        ray.WorkerID(ray.worker.global_worker.worker_id))
+    driver_task_id = ray.worker.global_worker.current_task_id.hex()
+
+    nil_actor_id_hex = ray.ActorID.nil().hex()
 
     @ray.remote
     def f(*xs):
@@ -212,12 +256,6 @@ def test_global_state_api(shutdown_only):
     assert object_table[x_id] == ray.objects(x_id)
     object_table_entry = ray.objects(result_id)
     assert object_table[result_id] == object_table_entry
-
-    job_table = ray.jobs()
-
-    assert len(job_table) == 1
-    assert job_table[0]["JobID"] == job_id.hex()
-    assert job_table[0]["NodeManagerAddress"] == node_ip_address
 
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
