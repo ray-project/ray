@@ -274,9 +274,17 @@ Soft Actor Critic (SAC)
 
     SAC architecture (same as DQN)
 
-RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, and currently has no support for non-continuous action distributions. It is also currently *experimental*.
+RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, and currently has no support for non-continuous action distributions.
 
-Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/pendulum-sac.yaml>`__
+Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/pendulum-sac.yaml>`__, `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/halfcheetah-sac.yaml>`__
+
+**MuJoCo results @500k steps:** `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  ==========  ===================
+MuJoCo env     RLlib SAC   Haarnoja et al SAC
+=============  ==========  ===================
+HalfCheetah    8752        ~9000
+=============  ==========  ===================
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 

@@ -98,3 +98,44 @@ service NodeInfoGcsService {
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
 }
+
+message GetObjectLocationsRequest {
+  // The ID of object to lookup in GCS Service.
+  bytes object_id = 1;
+}
+
+message GetObjectLocationsReply {
+  // Data of object
+  repeated ObjectTableData object_table_data_list = 1;
+}
+
+message AddObjectLocationRequest {
+  // The ID of object which location will be added to GCS Service.
+  bytes object_id = 1;
+  // The location that will be added to GCS Service.
+  bytes node_id = 2;
+}
+
+message AddObjectLocationReply {
+}
+
+message RemoveObjectLocationRequest {
+  // The ID of object which location will be removed from GCS Service.
+  bytes object_id = 1;
+  // The location that will be removed from GCS Service.
+  bytes node_id = 2;
+}
+
+message RemoveObjectLocationReply {
+}
+
+// Service for object info access.
+service ObjectInfoGcsService {
+  // Get object's locations from GCS Service.
+  rpc GetObjectLocations(GetObjectLocationsRequest) returns (GetObjectLocationsReply);
+  // Add location of object to GCS Service.
+  rpc AddObjectLocation(AddObjectLocationRequest) returns (AddObjectLocationReply);
+  // Remove location of object from GCS Service.
+  rpc RemoveObjectLocation(RemoveObjectLocationRequest)
+      returns (RemoveObjectLocationReply);
+}

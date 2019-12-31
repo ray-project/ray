@@ -38,7 +38,7 @@ const styles = (theme: Theme) =>
     },
     extraInfo: {
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      whiteSpace: "pre-wrap"
+      whiteSpace: "pre"
     }
   });
 

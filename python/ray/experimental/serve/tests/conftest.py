@@ -10,7 +10,10 @@ from ray.experimental import serve
 @pytest.fixture(scope="session")
 def serve_instance():
     _, new_db_path = tempfile.mkstemp(suffix=".test.db")
-    serve.init(kv_store_path=new_db_path, blocking=True)
+    serve.init(
+        kv_store_path=new_db_path,
+        blocking=True,
+        ray_init_kwargs={"num_cpus": 36})
     yield
     os.remove(new_db_path)
 

@@ -1,4 +1,5 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "name": {
@@ -13,16 +14,16 @@
       "description": "The URL of the repo this project is part of",
       "type": "string"
     },
+    "documentation": {
+      "description": "Link to the documentation of this project",
+      "type": "string"
+    },
     "tags": {
       "description": "Relevant tags for this project",
       "type": "array",
       "items": {
         "type": "string"
       }
-    },
-    "documentation": {
-      "description": "Link to the documentation of this project",
-      "type": "string"
     },
     "cluster": {
       "type": "object",
@@ -91,7 +92,8 @@
             "type": "string"
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "commands": {
       "type": "array",
@@ -103,11 +105,15 @@
             "description": "Name of the command",
             "type": "string"
           },
+          "help": {
+            "description": "Help string for the command",
+            "type": "string"
+          },
           "command": {
             "description": "Shell command to run on the cluster",
             "type": "string"
           },
-          "params" : {
+          "params": {
             "type": "array",
             "items": {
               "description": "Possible parameters in the command",
@@ -124,8 +130,23 @@
                 "choices": {
                   "description": "Possible values the parameter can take",
                   "type": "array"
+                },
+                "default": {
+                },
+                "type": {
+                  "description": "Required type for the parameter",
+                  "type": "string",
+                  "enum": [
+                    "int",
+                    "float",
+                    "str"
+                  ]
                 }
-              }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
             }
           },
           "config": {
@@ -142,12 +163,19 @@
               "additionalProperties": false
             }
           }
-        }
+        },
+        "required": [
+          "name",
+          "command"
+        ],
+        "additionalProperties": false
       }
-    }
+    },
+    "output_files": {}
   },
   "required": [
     "name",
     "cluster"
-  ]
+  ],
+  "additionalProperties": false
 }

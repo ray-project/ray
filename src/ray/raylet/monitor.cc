@@ -30,12 +30,11 @@ void Monitor::HandleHeartbeat(const ClientID &node_id,
 }
 
 void Monitor::Start() {
-  const auto heartbeat_callback = [this](gcs::RedisGcsClient *client, const ClientID &id,
+  const auto heartbeat_callback = [this](const ClientID &id,
                                          const HeartbeatTableData &heartbeat_data) {
     HandleHeartbeat(id, heartbeat_data);
   };
-  RAY_CHECK_OK(gcs_client_.heartbeat_table().Subscribe(
-      JobID::Nil(), ClientID::Nil(), heartbeat_callback, nullptr, nullptr));
+  RAY_CHECK_OK(gcs_client_.Nodes().AsyncSubscribeHeartbeat(heartbeat_callback, nullptr));
   Tick();
 }
 
@@ -88,8 +87,7 @@ void Monitor::Tick() {
     for (const auto &heartbeat : heartbeat_buffer_) {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
-    RAY_CHECK_OK(gcs_client_.heartbeat_batch_table().Add(JobID::Nil(), ClientID::Nil(),
-                                                         batch, nullptr));
+    RAY_CHECK_OK(gcs_client_.Nodes().AsyncReportBatchHeartbeat(batch, nullptr));
     heartbeat_buffer_.clear();
   }
 

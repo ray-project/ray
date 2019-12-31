@@ -283,6 +283,7 @@ Getting Involved
    signals.rst
    async_api.rst
    serve.rst
+   multiprocessing.rst
 
 .. toctree::
    :maxdepth: -1
