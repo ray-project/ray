@@ -330,11 +330,11 @@ class GlobalState(object):
         actor_info = {
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
-                "IpAddress": actor_table_data.address.ip_address,
+                "IPAddress": actor_table_data.address.ip_address,
                 "Port": actor_table_data.address.port
             },
             "OwnerAddress": {
-                "IpAddress": actor_table_data.owner_address.ip_address,
+                "IPAddress": actor_table_data.owner_address.ip_address,
                 "Port": actor_table_data.owner_address.port
             },
             "IsDirectCall": actor_table_data.is_direct_call
@@ -1186,14 +1186,14 @@ def node_ids():
 
 
 def actors(actor_id=None):
-    """Fetch and parse the actor table info for one or more actor IDs.
+    """Fetch and parse the actor info for one or more actor IDs.
 
     Args:
         actor_id: A hex string of the actor ID to fetch information about. If
-            this is None, then the actor table is fetched.
+            this is None, then all actor information is fetched.
 
     Returns:
-        Information from the actor table.
+        Information about the actors.
     """
     return state.actor_table(actor_id=actor_id)
 
