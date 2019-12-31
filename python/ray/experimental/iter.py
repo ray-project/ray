@@ -251,22 +251,31 @@ class ParIterator(Generic[T]):
         """
 
         def base_iterator(timeout=None):
-            all_actors = []
+            active = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
-                all_actors.extend(actor_set.actors)
-            futures = [a.par_iter_next.remote() for a in all_actors]
-            while True:
+                active.extend(actor_set.actors)
+            futures = [a.par_iter_next.remote() for a in active]
+            while active:
                 try:
                     yield ray.get(futures, timeout=timeout)
-                    futures = [a.par_iter_next.remote() for a in all_actors]
+                    futures = [a.par_iter_next.remote() for a in active]
                     # Always yield after each round of gets with timeout.
                     if timeout is not None:
                         yield YieldIterator()
                 except TimeoutError:
                     yield YieldIterator()
                 except StopIteration:
-                    break
+                    done = []
+                    results = []
+                    for a, f in zip(list(active), futures):
+                        try:
+                            results.append(ray.get(f))
+                        except StopIteration:
+                            active.remove(a)
+                    if results:
+                        yield results
+                    futures = [a.par_iter_next.remote() for a in active]
 
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, name=name)

@@ -52,7 +52,7 @@ def test_chain(ray_start_regular_shared):
 def test_filter(ray_start_regular_shared):
     it = from_range(4).filter(lambda x: x < 3)
     assert repr(it) == "from_range[4, shards=2].filter()"
-    assert list(it.sync_iterator()) == [0, 2]
+    assert list(it.sync_iterator()) == [0, 2, 1]
 
 
 def test_batch(ray_start_regular_shared):
