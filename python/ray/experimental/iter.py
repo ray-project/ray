@@ -1,4 +1,4 @@
-from typing import TypeVar, Generic, Iterable, List, Callable, Any, Union
+from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
 

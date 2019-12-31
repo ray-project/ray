@@ -36,9 +36,13 @@ def test_from_range(ray_start_regular_shared):
 
 
 def test_from_actors(ray_start_regular_shared):
-    worker = ray.remote(ParallelIteratorWorker)
-    a = worker.remote([1, 2], False)
-    b = worker.remote([3, 4], False)
+    @ray.remote
+    class CustomWorker(ParallelIteratorWorker):
+        def __init__(self, data):
+            ParallelIteratorWorker.__init__(self, data, False)
+
+    a = CustomWorker.remote([1, 2])
+    b = CustomWorker.remote([3, 4])
     it = from_actors([a, b])
     assert repr(it) == "ParallelIterator[from_actors[shards=2]]"
     assert list(it.gather_sync()) == [1, 3, 2, 4]
