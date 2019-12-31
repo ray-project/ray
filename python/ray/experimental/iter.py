@@ -15,7 +15,7 @@ class NextValueNotReady(Exception):
 
 
 def from_items(items: List[T], num_shards: int = 2,
-               repeat: bool = False) -> "ParallelIterator[T]":
+               repeat: bool = False) -> "ParIterator[T]":
     """Create a parallel iterator from an existing set of objects.
 
     The objects will be divided round-robin among the number of shards.
@@ -35,7 +35,7 @@ def from_items(items: List[T], num_shards: int = 2,
 
 
 def from_range(n: int, num_shards: int = 2,
-               repeat: bool = False) -> "ParallelIterator[int]":
+               repeat: bool = False) -> "ParIterator[int]":
     """Create a parallel iterator over the range 0..n.
 
     The range will be partitioned sequentially among the number of shards.
@@ -61,16 +61,16 @@ def from_range(n: int, num_shards: int = 2,
 
 def from_iterators(generators: List[Iterable[T]],
                    repeat: bool = False,
-                   name=None) -> "ParallelIterator[T]":
+                   name=None) -> "ParIterator[T]":
     """Create a parallel iterator from a set of iterators.
 
     An actor will be created for each iterator.
 
     Examples:
-        # Create using a list of generators.
+        >>> # Create using a list of generators.
         >>> from_iterators([range(100), range(100)])
 
-        # Equivalent to the above.
+        >>> # Equivalent to the above.
         >>> from_iterators([lambda: range(100), lambda: range(100)])
 
     Arguments:
@@ -81,7 +81,7 @@ def from_iterators(generators: List[Iterable[T]],
         repeat (bool): Whether to cycle over the iterators forever.
         name (str): Optional name to give the iterator.
     """
-    worker_cls = ray.remote(_ParallelIteratorWorker)
+    worker_cls = ray.remote(_ParIteratorWorker)
     actors = [worker_cls.remote(g, repeat) for g in generators]
     if not name:
         name = "from_iterators[shards={}{}]".format(
@@ -90,23 +90,23 @@ def from_iterators(generators: List[Iterable[T]],
 
 
 def from_actors(actors: List["ray.actor.ActorHandle"],
-                name=None) -> "ParallelIterator[T]":
+                name=None) -> "ParIterator[T]":
     """Create a parallel iterator from an existing set of actors.
 
     Each actor must implement the par_iter_init() and par_iter_next() methods
-    from the _ParallelIteratorWorker interface.
+    from the _ParIteratorWorker interface.
 
     Arguments:
         actors (list): List of actors that each implement
-            _ParallelIteratorWorker.
+            _ParIteratorWorker.
         name (str): Optional name to give the iterator.
     """
     if not name:
         name = "from_actors[shards={}]".format(len(actors))
-    return ParallelIterator([_ActorSet(actors, [])], name)
+    return ParIterator([_ActorSet(actors, [])], name)
 
 
-class ParallelIterator(Generic[T]):
+class ParIterator(Generic[T]):
     """A parallel iterator over a set of remote actors.
 
     This can be used to iterate over a fixed set of task results
@@ -118,23 +118,23 @@ class ParallelIterator(Generic[T]):
     process at a time.
 
     Examples:
-        # Applying a function over items in parallel.
+        >>> # Applying a function over items in parallel.
         >>> it = ray.experimental.iter.from_items([1, 2, 3], num_shards=2)
-        ... <__main__.ParallelIterator object>
+        ... <__main__.ParIterator object>
         >>> it = it.for_each(lambda x: x * 2).gather_sync()
         ... <__main__.LocalIterator object>
         >>> print(list(it))
         ... [2, 4, 6]
 
-        # Creating from generators.
+        >>> # Creating from generators.
         >>> it = ray.experimental.iter.from_iterators([range(3), range(3)])
-        ... <__main__.ParallelIterator object>
+        ... <__main__.ParIterator object>
         >>> print(list(it.gather_sync()))
         ... [0, 0, 1, 1, 2, 2]
 
-        # Accessing the individual shards of an iterator.
+        >>> # Accessing the individual shards of an iterator.
         >>> it = ray.experimental.iter.from_range(10, num_shards=2)
-        ... <__main__.ParallelIterator object>
+        ... <__main__.ParIterator object>
         >>> it0 = it.get_shard(0)
         ... <__main__.LocalIterator object>
         >>> print(list(it0))
@@ -144,9 +144,9 @@ class ParallelIterator(Generic[T]):
         >>> print(list(it1))
         ... [5, 6, 7, 8, 9]
 
-        # Gathering results from actors synchronously in parallel.
+        >>> # Gathering results from actors synchronously in parallel.
         >>> it = ray.experimental.iter.from_actors(workers)
-        ... <__main__.ParallelIterator object>
+        ... <__main__.ParIterator object>
         >>> it = it.batch_across_shards()
         ... <__main__.LocalIterator object>
         >>> print(next(it))
@@ -163,15 +163,15 @@ class ParallelIterator(Generic[T]):
     def __iter__(self):
         raise TypeError(
             "You must use it.gather_sync() or it.gather_async() to "
-            "iterate over the results of a ParallelIterator.")
+            "iterate over the results of a ParIterator.")
 
     def __str__(self):
         return repr(self)
 
     def __repr__(self):
-        return "ParallelIterator[{}]".format(self.name)
+        return "ParIterator[{}]".format(self.name)
 
-    def for_each(self, fn: Callable[[T], T]) -> "ParallelIterator[T]":
+    def for_each(self, fn: Callable[[T], T]) -> "ParIterator[T]":
         """Remotely apply fn to each item in this iterator.
 
         Arguments:
@@ -181,14 +181,14 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(4).for_each(lambda x: x * 2).gather_sync())
             ... [0, 2, 4, 8]
         """
-        return ParallelIterator(
+        return ParIterator(
             [
                 a.with_transform(lambda local_it: local_it.for_each(fn))
                 for a in self.actor_sets
             ],
             name=self.name + ".for_each()")
 
-    def filter(self, fn: Callable[[T], bool]) -> "ParallelIterator[T]":
+    def filter(self, fn: Callable[[T], bool]) -> "ParIterator[T]":
         """Remotely filter items from this iterator.
 
         Arguments:
@@ -199,14 +199,14 @@ class ParallelIterator(Generic[T]):
             >>> next(it.gather_sync())
             ... [1, 2]
         """
-        return ParallelIterator(
+        return ParIterator(
             [
                 a.with_transform(lambda local_it: local_it.filter(fn))
                 for a in self.actor_sets
             ],
             name=self.name + ".filter()")
 
-    def batch(self, n: int) -> "ParallelIterator[List[T]]":
+    def batch(self, n: int) -> "ParIterator[List[T]]":
         """Remotely batch together items in this iterator.
 
         Arguments:
@@ -216,21 +216,21 @@ class ParallelIterator(Generic[T]):
             >>> next(from_range(10, 1).batch(4).gather_sync())
             ... [0, 1, 2, 3]
         """
-        return ParallelIterator(
+        return ParIterator(
             [
                 a.with_transform(lambda local_it: local_it.batch(n))
                 for a in self.actor_sets
             ],
             name=self.name + ".batch({})".format(n))
 
-    def flatten(self) -> "ParallelIterator[T[0]]":
+    def flatten(self) -> "ParIterator[T[0]]":
         """Flatten batches of items into individual items.
 
         Examples:
             >>> next(from_range(10, 1).batch(4).flatten())
             ... 0
         """
-        return ParallelIterator(
+        return ParIterator(
             [
                 a.with_transform(lambda local_it: local_it.flatten())
                 for a in self.actor_sets
@@ -355,16 +355,16 @@ class ParallelIterator(Generic[T]):
         """Print up to the first n items from this iterator."""
         return self.gather_sync().show(n)
 
-    def union(self, other: "ParallelIterator[T]") -> "ParallelIterator[T]":
+    def union(self, other: "ParIterator[T]") -> "ParIterator[T]":
         """Return an iterator that is the union of this and the other."""
-        if not isinstance(other, ParallelIterator):
+        if not isinstance(other, ParIterator):
             raise ValueError(
-                "other must be of type ParallelIterator, got {}".format(
+                "other must be of type ParIterator, got {}".format(
                     type(other)))
         actor_sets = []
         actor_sets.extend(self.actor_sets)
         actor_sets.extend(other.actor_sets)
-        return ParallelIterator(actor_sets, "ParallelUnion[{}, {}]".format(
+        return ParIterator(actor_sets, "ParallelUnion[{}, {}]".format(
             self, other))
 
     def num_shards(self) -> int:
@@ -414,7 +414,7 @@ class ParallelIterator(Generic[T]):
 class LocalIterator(Generic[T]):
     """An iterator over a single shard of data.
 
-    It implements similar transformations as ParallelIterator[T], but the
+    It implements similar transformations as ParIterator[T], but the
     transforms will be applied locally and not remotely in parallel.
 
     This class is **serializable** and can be passed to other remote
@@ -550,7 +550,7 @@ class LocalIterator(Generic[T]):
 
         **Implementation note**: This works by alternating waits/gets between
         the iterators with timeout=0. This may be less efficient that calling
-        union on the underlying ParallelIterators, but is more flexible in that
+        union on the underlying ParIterators, but is more flexible in that
         local transformations can be made at the local iterator level prior to
         the union call.
         """
@@ -587,8 +587,8 @@ class LocalIterator(Generic[T]):
             build_union, [], name="LocalUnion[{}, {}]".format(self, other))
 
 
-class _ParallelIteratorWorker(object):
-    """Worker actor for a ParallelIterator."""
+class _ParIteratorWorker(object):
+    """Worker actor for a ParIterator."""
 
     def __init__(self, item_generator, repeat):
         def make_iterator():

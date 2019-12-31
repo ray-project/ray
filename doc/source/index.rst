@@ -284,6 +284,7 @@ Getting Involved
    async_api.rst
    serve.rst
    multiprocessing.rst
+   iter.rst
 
 .. toctree::
    :maxdepth: -1
