@@ -158,10 +158,10 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            workers_info = sum([data.get("workersStats", []) for data in D.values()],
+            workers_info = sum((data.get("workersStats", []) for data in D.values()),
                                [])
-            infeasible_tasks = sum([data.get("infeasibleTasks", []) for data in D.values()], [])
-            actor_tree = self.node_stats.get_actor_tree(workers_info)
+            infeasible_tasks = sum((data.get("infeasibleTasks", []) for data in D.values()), [])
+            actor_tree = self.node_stats.get_actor_tree(workers_info, infeasible_tasks)
             for address, data in D.items():
                 available_resources = data["availableResources"]
                 total_resources = data["totalResources"]
@@ -176,10 +176,7 @@ class Dashboard(object):
                 data["extraInfo"] = ", ".join(extra_info)
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
                     actor_tree_str = json.dumps(actor_tree, indent=2)
-                    actor_tree_lines = actor_tree_str.split("\n")
-                    infeasible_tasks_str = json.dumps(infeasible_tasks, indent=2)
-                    infeasible_tasks_lines = infeasible_tasks_str.split("\n")
-                    lines = actor_tree_lines + infeasible_tasks_lines
+                    lines = actor_tree_str.split("\n")
                     max_line_length = max(map(len, lines))
                     to_print = []
                     for line in lines:
@@ -301,7 +298,7 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
-    def get_actor_tree(self, workers_info) -> Dict:
+    def get_actor_tree(self, workers_info, infeasible_tasks) -> Dict:
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
@@ -317,7 +314,7 @@ class NodeStats(threading.Thread):
                 if "coreWorkerStats" in worker_info:
                     core_worker_stats = worker_info["coreWorkerStats"]
                     addr = (core_worker_stats["ipAddress"],
-                            core_worker_stats["port"])
+                            str(core_worker_stats["port"]))
                     if addr in self._addr_to_actor_id:
                         actor_id = self._addr_to_actor_id[addr]
                         if "currentTaskDesc" in core_worker_stats:
@@ -325,6 +322,15 @@ class NodeStats(threading.Thread):
                         if "numPendingTasks" in core_worker_stats:
                             core_worker_stats.pop("numPendingTasks")
                         flattened_tree[actor_id].update(core_worker_stats)
+
+            for infeasible_task in infeasible_tasks:
+                actor_id = infeasible_task["actorCreationTaskSpec"]["actorId"]
+                caller_addr = (infeasible_task["callerAddress"]["ipAddress"],
+                               str(infeasible_task["callerAddress"]["ipAddress"]))
+                caller_id = self._addr_to_actor_id.get(
+                    caller_addr, "root")
+                child_to_parent[actor_id] = caller_id
+                flattened_tree[actor_id] = infeasible_task
 
         # construct actor tree
         actor_tree = flattened_tree
@@ -393,9 +399,9 @@ class NodeStats(threading.Thread):
                         gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
                         actor_data = ray.gcs_utils.ActorTableData.FromString(
                             gcs_entry.entries[0])
-                        addr = (str(actor_data.address.ip_address),
+                        addr = (actor_data.address.ip_address,
                                 str(actor_data.address.port))
-                        owner_addr = (str(actor_data.owner_address.ip_address),
+                        owner_addr = (actor_data.owner_address.ip_address,
                                       str(actor_data.owner_address.port))
                         self._addr_to_owner_addr[addr] = owner_addr
                         self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(
