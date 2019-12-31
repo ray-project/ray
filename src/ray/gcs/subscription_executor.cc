@@ -189,6 +189,9 @@ template class SubscriptionExecutor<ActorID, ActorTableData, DirectActorTable>;
 template class SubscriptionExecutor<JobID, JobTableData, JobTable>;
 template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;
 template class SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>;
+template class SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>;
+template class SubscriptionExecutor<ClientID, HeartbeatBatchTableData,
+                                    HeartbeatBatchTable>;
 
 }  // namespace gcs
 

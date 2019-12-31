@@ -254,7 +254,8 @@ class NodeStats(threading.Thread):
         # Mapping from IP address to PID to list of error messages
         self._errors = defaultdict(lambda: defaultdict(list))
 
-        ray.init(redis_address=redis_address, redis_password=redis_password)
+        ray.state.state._initialize_global_state(
+            redis_address=redis_address, redis_password=redis_password)
 
         super().__init__()
 

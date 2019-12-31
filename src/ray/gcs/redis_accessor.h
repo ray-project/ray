@@ -208,8 +208,31 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   bool IsRemoved(const ClientID &node_id) const override;
 
+  Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
+                              const StatusCallback &callback) override;
+
+  Status AsyncSubscribeHeartbeat(
+      const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncReportBatchHeartbeat(
+      const std::shared_ptr<HeartbeatBatchTableData> &data_ptr,
+      const StatusCallback &callback) override;
+
+  Status AsyncSubscribeBatchHeartbeat(
+      const ItemCallback<HeartbeatBatchTableData> &subscribe,
+      const StatusCallback &done) override;
+
  private:
   RedisGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
+      HeartbeatSubscriptionExecutor;
+  HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
+
+  typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
+      HeartbeatBatchSubscriptionExecutor;
+  HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
 };
 
 }  // namespace gcs
