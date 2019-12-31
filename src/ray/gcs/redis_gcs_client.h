@@ -61,7 +61,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   // TODO: Some API for getting the error on the driver
   TaskReconstructionLog &task_reconstruction_log();
-  TaskLeaseTable &task_lease_table();
   ErrorTable &error_table();
   ProfileTable &profile_table();
   ActorCheckpointTable &actor_checkpoint_table();
@@ -103,8 +102,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
-  /// This method will be deprecated, use method Tasks() instead.
+  /// The following two methods will be deprecated, use method Tasks() instead.
   raylet::TaskTable &raylet_task_table();
+  TaskLeaseTable &task_lease_table();
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.
