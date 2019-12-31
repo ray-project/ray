@@ -62,7 +62,7 @@ class TrainableUtil(object):
                 break
             checkpoint_dir = os.path.dirname(checkpoint_dir)
         else:
-            raise FileNotFoundError("Checkpoint directory not found for {}."
+            raise FileNotFoundError("Checkpoint directory not found for {}"
                                     .format(checkpoint_path))
         return checkpoint_dir
 
@@ -376,14 +376,15 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored from checkpoint: %s", checkpoint_path)
+        logger.info("Restored on %s from checkpoint: %s", self.current_ip(),
+                    checkpoint_path)
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
             "_time_total": self._time_total,
             "_episodes_total": self._episodes_total,
         }
-        logger.info("Current state after restoring: {}".format(state))
+        logger.info("Current state after restoring: %s", state)
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
@@ -413,7 +414,13 @@ class Trainable(object):
         Args:
             checkpoint_path (str): Path to checkpoint.
         """
-        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        try:
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        except FileNotFoundError:
+            # The checkpoint won't exist locally if the
+            # trial was rescheduled to another worker.
+            logger.debug("Checkpoint not found during garbage collection.")
+            return
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
 

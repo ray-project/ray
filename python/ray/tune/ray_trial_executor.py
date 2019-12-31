@@ -604,12 +604,12 @@ class RayTrialExecutor(TrialExecutor):
                 "Trial {}: Unable to restore - no runner found.".format(trial))
         value = checkpoint.value
         if checkpoint.storage == Checkpoint.MEMORY:
-            logger.info("Trial %s: Attempting restore from object", trial)
+            logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.
             trial.runner.restore_from_object.remote(value)
         else:
-            logger.info("Trial %s: Attempting restore from %s", trial, value)
+            logger.debug("Trial %s: Attempting restore from %s", trial, value)
             if issubclass(trial.get_trainable_cls(), DurableTrainable):
                 remote = trial.runner.restore.remote(value)
             elif trial.sync_on_checkpoint:

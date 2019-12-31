@@ -191,6 +191,8 @@ class NodeSyncer(Syncer):
     def sync_down(self):
         if not self.has_remote_target():
             return True
+        logger.debug("Syncing from %s to %s", self._remote_path,
+                     self._local_dir)
         return super(NodeSyncer, self).sync_down()
 
     @property
@@ -264,10 +266,9 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
     elif sync_function and sync_function is not True:
         sync_client = get_sync_client(sync_function)
     else:
-        sync_up = log_sync_template()
-        sync_down = log_sync_template(options="--remove-source-files")
-        if sync_up and sync_down:
-            sync_client = CommandBasedClient(sync_up, sync_down)
+        sync = log_sync_template()
+        if sync:
+            sync_client = CommandBasedClient(sync, sync)
             sync_client.set_logdir(local_dir)
         else:
             sync_client = NOOP

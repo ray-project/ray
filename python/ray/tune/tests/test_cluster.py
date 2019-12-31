@@ -31,15 +31,17 @@ else:
     from mock import MagicMock, patch
 
 
-class MockDurableTrainable(DurableTrainable):
-    def __init__(self, remote_checkpoint_dir, *args, **kwargs):
-        super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,
-                                                   *args, **kwargs)
-        local_dir_suffix = remote_checkpoint_dir.split("://")[1]
-        self.remote_checkpoint_dir = os.path.join("/tmp", local_dir_suffix)
-        sync = "mkdir -p {target} && rsync -avz {source} {target}"
-        delete = "rm -rf {target}"
-        self.storage_client = CommandBasedClient(sync, sync, delete)
+def create_mock_durable():
+    class MockDurableTrainable(DurableTrainable):
+        def __init__(self, remote_checkpoint_dir, *args, **kwargs):
+            super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,
+                                                       *args, **kwargs)
+            local_dir_suffix = remote_checkpoint_dir.split("://")[1]
+            self.remote_checkpoint_dir = os.path.join("/tmp", local_dir_suffix)
+            sync = "mkdir -p {target} && rsync -avz {source} {target}"
+            delete = "rm -rf {target}"
+            self.storage_client = CommandBasedClient(sync, sync, delete)
+    return MockDurableTrainable
 
 
 def _start_new_cluster():
@@ -53,6 +55,7 @@ def _start_new_cluster():
             })
         })
     # Pytest doesn't play nicely with imports
+    MockDurableTrainable = create_mock_durable()
     register_trainable("__fake_durable", MockDurableTrainable)
     _register_all()
     return cluster
@@ -83,6 +86,7 @@ def start_connected_emptyhead_cluster():
         })
     # Pytest doesn't play nicely with imports
     _register_all()
+    MockDurableTrainable = create_mock_durable()
     register_trainable("__fake_durable", MockDurableTrainable)
     yield cluster
     # The code after the yield will run as teardown code.

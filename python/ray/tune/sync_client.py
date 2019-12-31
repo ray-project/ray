@@ -206,9 +206,12 @@ class CommandBasedClient(SyncClient):
             _, error_msg = self.cmd_process.communicate()
             error_msg = error_msg.decode("ascii")
             code = self.cmd_process.returncode
+            args = self.cmd_process.args
             self.cmd_process = None
             if code != 0:
-                raise TuneError("Sync error ({}): {}".format(code, error_msg))
+                raise TuneError(
+                    "Sync error. Ran command: {}\n"
+                    "Error message ({}): {}".format(args, code, error_msg))
 
     def reset(self):
         if self.is_running:

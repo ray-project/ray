@@ -74,7 +74,7 @@ class ExportFormat(object):
                                 export_formats[i])
 
 
-def checkpoint_deleter(runner):
+def checkpoint_deleter(trial_id, runner):
     """Returns a checkpoint deleter callback for a runner."""
     if not runner:
         return lambda checkpoint: None
@@ -86,6 +86,8 @@ def checkpoint_deleter(runner):
             checkpoint (Checkpoint): Checkpoint to delete.
         """
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+            logger.debug("Trial %s: Deleting checkpoint %s", trial_id,
+                         checkpoint.value)
             checkpoint_path = checkpoint.value
             # Delete local copy, if any exists.
             if os.path.exists(checkpoint_path):
@@ -198,7 +200,7 @@ class Trial(object):
         newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            checkpoint_deleter(self.runner))
+            checkpoint_deleter(str(self), self.runner))
         self.checkpoint_manager.newest_checkpoint = newest_checkpoint
 
         # Restoration fields
@@ -237,7 +239,9 @@ class Trial(object):
 
     @property
     def remote_checkpoint_dir(self):
-        assert self.logdir and self.remote_checkpoint_dir_prefix
+        assert self.logdir, "Trial {}: logdir not initialized.".format(self)
+        if not self.remote_checkpoint_dir_prefix:
+            return None
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
@@ -252,7 +256,6 @@ class Trial(object):
 
     def init_logger(self):
         """Init logger."""
-
         if not self.result_logger:
             if not self.logdir:
                 self.logdir = Trial.create_logdir(str(self), self.local_dir)
@@ -280,7 +283,7 @@ class Trial(object):
 
     def set_runner(self, runner):
         self.runner = runner
-        self.checkpoint_manager.delete = checkpoint_deleter(runner)
+        self.checkpoint_manager.delete = checkpoint_deleter(str(self), runner)
 
     def set_location(self, location):
         """Sets the location of the trial."""
@@ -311,7 +314,6 @@ class Trial(object):
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
-
         if result.get(DONE):
             return True
 
@@ -365,12 +367,19 @@ class Trial(object):
                         logger.error(
                             "Trial %s: Checkpoint sync skipped. "
                             "This should not happen.", self)
-                except TuneError:
-                    if not self.remote_checkpoint_dir:
+                except TuneError as e:
+                    if self.remote_checkpoint_dir:
+                        logger.error("Trial %s: Sync error - %s", self, str(e))
+                    else:
                         # If the trainable didn't have remote storage to upload
                         # to then this checkpoint may have been lost, so we
                         # shouldn't track it with the checkpoint_manager.
-                        raise
+                        raise e
+                if not self.remote_checkpoint_dir:
+                    if not os.path.exists(checkpoint.value):
+                        raise TuneError("Trial {}: Checkpoint path {} not "
+                                        "found after successful sync down."
+                                        .format(self, checkpoint.value))
             self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def on_restore(self):
