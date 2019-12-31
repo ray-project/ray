@@ -221,6 +221,8 @@ message TaskLeaseData {
   uint64 acquired_at = 2;
   // The period that the lease is active for.
   uint64 timeout = 3;
+  // The task ID.
+  bytes task_id = 4;
 }
 
 message JobTableData {
