@@ -211,14 +211,11 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Subscribe to heartbeat batches from the monitor.
   const auto &heartbeat_batch_added =
-      [this](gcs::RedisGcsClient *client, const ClientID &id,
-             const HeartbeatBatchTableData &heartbeat_batch) {
+      [this](const HeartbeatBatchTableData &heartbeat_batch) {
         HeartbeatBatchAdded(heartbeat_batch);
       };
-  RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
-      JobID::Nil(), ClientID::Nil(), heartbeat_batch_added,
-      /*subscribe_callback=*/nullptr,
-      /*done_callback=*/nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
+      heartbeat_batch_added, /*done*/ nullptr));
 
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
@@ -297,7 +294,6 @@ void NodeManager::Heartbeat() {
   }
   last_heartbeat_at_ms_ = now_ms;
 
-  auto &heartbeat_table = gcs_client_->heartbeat_table();
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   heartbeat_data->set_client_id(self_node_id_.Binary());
@@ -338,8 +334,8 @@ void NodeManager::Heartbeat() {
     }
   }
 
-  ray::Status status = heartbeat_table.Add(JobID::Nil(), self_node_id_, heartbeat_data,
-                                           /*success_callback=*/nullptr);
+  ray::Status status = gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data,
+                                                                 /*done*/ nullptr);
   RAY_CHECK_OK_PREPEND(status, "Heartbeat failed");
 
   if (debug_dump_period_ > 0 &&
