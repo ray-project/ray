@@ -19,6 +19,9 @@ from ray.tune.suggest import BasicVariantGenerator
 
 
 class TrialRunnerTest(unittest.TestCase):
+    def setUp(self):
+        ray.shutdown()
+
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
