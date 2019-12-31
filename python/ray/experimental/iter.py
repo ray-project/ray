@@ -166,10 +166,10 @@ class ParallelIterator(Generic[T]):
             "iterate over the results of a ParallelIterator.")
 
     def __str__(self):
-        return self.name
+        return repr(self)
 
     def __repr__(self):
-        return self.name
+        return "ParallelIterator[{}]".format(self.name)
 
     def for_each(self, fn: Callable[[T], T]) -> "ParallelIterator[T]":
         """Remotely apply fn to each item in this iterator.
@@ -351,21 +351,29 @@ class ParallelIterator(Generic[T]):
         """Return up to the first n items from this iterator."""
         return self.gather_sync().take(n)
 
-    def show(self, n: int):
+    def show(self, n: int = 20):
         """Print up to the first n items from this iterator."""
         return self.gather_sync().show(n)
 
     def union(self, other: "ParallelIterator[T]") -> "ParallelIterator[T]":
         """Return an iterator that is the union of this and the other."""
+        if not isinstance(other, ParallelIterator):
+            raise ValueError(
+                "other must be of type ParallelIterator, got {}".format(
+                    type(other)))
         actor_sets = []
         actor_sets.extend(self.actor_sets)
         actor_sets.extend(other.actor_sets)
-        return ParallelIterator(actor_sets, "ParUnion[{}, {}]".format(
+        return ParallelIterator(actor_sets, "ParallelUnion[{}, {}]".format(
             self, other))
 
     def num_shards(self) -> int:
         """Return the number of worker actors backing this iterator."""
         return sum(len(a.actors) for a in self.actor_sets)
+
+    def shards(self) -> List["LocalIterator[T]"]:
+        """Return the list of all shards."""
+        return [self.get_shard(i) for i in range(self.num_shards())]
 
     def get_shard(self, shard_index: int) -> "LocalIterator[T]":
         """Return a local iterator for the given shard.
@@ -457,10 +465,10 @@ class LocalIterator(Generic[T]):
         return next(self.built_iterator)
 
     def __str__(self):
-        return self.name
+        return repr(self)
 
     def __repr__(self):
-        return self.name
+        return "LocalIterator[{}]".format(self.name)
 
     def for_each(self, fn: Callable[[T], T]) -> "LocalIterator[T]":
         def apply_foreach(it):
@@ -528,7 +536,7 @@ class LocalIterator(Generic[T]):
                 break
         return out
 
-    def show(self, n: int):
+    def show(self, n: int = 20):
         """Print up to the first n items from this iterator."""
         for item in self.take(n):
             print(item)
@@ -546,6 +554,11 @@ class LocalIterator(Generic[T]):
         local transformations can be made at the local iterator level prior to
         the union call.
         """
+
+        if not isinstance(other, LocalIterator):
+            raise ValueError(
+                "other must be of type LocalIterator, got {}".format(
+                    type(other)))
 
         it1 = LocalIterator(
             self.base_iterator, self.local_transforms, timeout=0)
