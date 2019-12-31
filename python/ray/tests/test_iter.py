@@ -9,58 +9,6 @@ from ray.experimental.iter import from_items, from_generators, from_range, \
     from_actors, from_nested_iterators, _ParIteratorWorker
 
 
-def test_union(ray_start_regular_shared):
-    it1 = from_items(["a", "b", "c"], 1)
-    it2 = from_items(["x", "y", "z"], 1)
-    it = it1.union(it2)
-    assert list(it.sync_iterator()) == ["a", "x", "b", "y", "c", "z"]
-
-
-def test_union_local(ray_start_regular_shared):
-    it1 = from_items(["a", "b", "c"], 1).async_iterator()
-    it2 = from_items(["x", "y", "z"], 1).async_iterator()
-    it = it1.union(it2)
-    assert sorted(list(it.async_iterator())) == ["a", "b", "c", "x", "y", "z"]
-
-
-def test_from_nested(ray_start_regular_shared):
-    it1 = from_items(["a", "b", "c"], 1)
-    it2 = from_items(["x", "y", "z"], 1)
-    it = from_nested_iterators([it1, it2])
-    assert sorted(list(it.async_iterator())) == ["a", "b", "c", "x", "y", "z"]
-
-
-def test_union_async(ray_start_regular_shared):
-    def gen_fast():
-        for i in range(10):
-            time.sleep(0.05)
-            print("PRODUCE FAST", i)
-            yield i
-
-    def gen_slow():
-        for i in range(10):
-            time.sleep(0.3)
-            print("PRODUCE SLOW", i)
-            yield i
-
-    it1 = from_generators([gen_fast]).for_each(lambda x: ("fast", x))
-    it2 = from_generators([gen_slow]).for_each(lambda x: ("slow", x))
-    it = it1.union(it2)
-    results = list(it.async_iterator())
-    assert all(x[0] == "slow" for x in results[-3:]), results
-
-
-def test_serialization(ray_start_regular_shared):
-    it = (from_items([1, 2, 3, 4]).sync_iterator().for_each(lambda x: x)
-          .filter(lambda x: True).batch(2).flatten())
-
-    @ray.remote
-    def get(it):
-        return list(it)
-
-    assert ray.get(get.remote(it)) == [1, 2, 3, 4]
-
-
 def test_from_items(ray_start_regular_shared):
     it = from_items([1, 2, 3, 4])
     assert list(it.sync_iterator()) == [1, 2, 3, 4]
@@ -139,6 +87,78 @@ def test_remote(ray_start_regular_shared):
         assert ray.get(get_shard.remote(it, 2)) == [5, 6, 7]
 
     ray.get(check_remote.remote(it))
+
+
+def test_union(ray_start_regular_shared):
+    it1 = from_items(["a", "b", "c"], 1)
+    it2 = from_items(["x", "y", "z"], 1)
+    it = it1.union(it2)
+    assert list(it.sync_iterator()) == ["a", "x", "b", "y", "c", "z"]
+
+
+def test_union_local(ray_start_regular_shared):
+    it1 = from_items(["a", "b", "c"], 1).async_iterator()
+    it2 = from_range(5, 2).for_each(str).async_iterator()
+    it = it1.union(it2)
+    assert sorted(list(it)) == ["0", "1", "2", "3", "4", "a", "b", "c"]
+
+
+def test_from_nested(ray_start_regular_shared):
+    it1 = from_items(["a", "b", "c"], 1)
+    it2 = from_items(["x", "y", "z"], 1)
+    it = from_nested_iterators([it1, it2])
+    assert sorted(list(it.async_iterator())) == ["a", "b", "c", "x", "y", "z"]
+
+
+def test_union_async(ray_start_regular_shared):
+    def gen_fast():
+        for i in range(10):
+            time.sleep(0.05)
+            print("PRODUCE FAST", i)
+            yield i
+
+    def gen_slow():
+        for i in range(10):
+            time.sleep(0.3)
+            print("PRODUCE SLOW", i)
+            yield i
+
+    it1 = from_generators([gen_fast]).for_each(lambda x: ("fast", x))
+    it2 = from_generators([gen_slow]).for_each(lambda x: ("slow", x))
+    it = it1.union(it2)
+    results = list(it.async_iterator())
+    assert all(x[0] == "slow" for x in results[-3:]), results
+
+
+def test_union_local_async(ray_start_regular_shared):
+    def gen_fast():
+        for i in range(10):
+            time.sleep(0.05)
+            print("PRODUCE FAST", i)
+            yield i
+
+    def gen_slow():
+        for i in range(10):
+            time.sleep(0.3)
+            print("PRODUCE SLOW", i)
+            yield i
+
+    it1 = from_generators([gen_fast]).for_each(lambda x: ("fast", x))
+    it2 = from_generators([gen_slow]).for_each(lambda x: ("slow", x))
+    it = it1.async_iterator().union(it2.async_iterator())
+    results = list(it)
+    assert all(x[0] == "slow" for x in results[-3:]), results
+
+
+def test_serialization(ray_start_regular_shared):
+    it = (from_items([1, 2, 3, 4]).sync_iterator().for_each(lambda x: x)
+          .filter(lambda x: True).batch(2).flatten())
+
+    @ray.remote
+    def get(it):
+        return list(it)
+
+    assert ray.get(get.remote(it)) == [1, 2, 3, 4]
 
 
 if __name__ == "__main__":

@@ -10,6 +10,14 @@ import ray
 T = TypeVar("T")
 
 
+class YieldIterator(Exception):
+    """Indicates that a local iterator has no value available.
+
+    This is used internally to implement the union() of multiple blocking
+    generators."""
+    pass
+
+
 def from_items(items: List[T], num_shards: int = 2) -> "ParIterator[T]":
     """Create a parallel iterator from an existing set of objects.
 
@@ -224,15 +232,21 @@ class ParIterator(Generic[T]):
             ... [0, 0]
         """
 
-        def base_iterator():
+        def base_iterator(timeout=None):
             all_actors = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
                 all_actors.extend(actor_set.actors)
+            futures = [a.par_iter_next.remote() for a in all_actors]
             while True:
                 try:
-                    yield ray.get(
-                        [a.par_iter_next.remote() for a in all_actors])
+                    yield ray.get(futures, timeout=timeout)
+                    futures = [a.par_iter_next.remote() for a in all_actors]
+                    # Always yield after each round of gets with timeout.
+                    if timeout is not None:
+                        yield YieldIterator()
+                except TimeoutError:
+                    yield YieldIterator()
                 except StopIteration:
                     break
 
@@ -254,7 +268,7 @@ class ParIterator(Generic[T]):
             ... 1
         """
 
-        def base_iterator():
+        def base_iterator(timeout=None):
             all_actors = []
             for actor_set in self.actor_sets:
                 actor_set.init_actors()
@@ -263,13 +277,28 @@ class ParIterator(Generic[T]):
             for a in all_actors:
                 futures[a.par_iter_next.remote()] = a
             while futures:
-                [obj_id], _ = ray.wait(list(futures), num_returns=1)
-                actor = futures.pop(obj_id)
-                try:
-                    yield ray.get(obj_id)
-                    futures[actor.par_iter_next.remote()] = actor
-                except StopIteration:
-                    pass
+                if timeout is not None:
+                    pending = list(futures)
+                    ready, _ = ray.wait(
+                        pending, num_returns=len(pending), timeout=timeout)
+                    if ready:
+                        for obj_id in ready:
+                            actor = futures.pop(obj_id)
+                            try:
+                                yield ray.get(obj_id)
+                                futures[actor.par_iter_next.remote()] = actor
+                            except StopIteration:
+                                pass
+                    # Always yield after each round of wait with timeout.
+                    yield YieldIterator()
+                else:
+                    [obj_id], _ = ray.wait(list(futures), num_returns=1)
+                    actor = futures.pop(obj_id)
+                    try:
+                        yield ray.get(obj_id)
+                        futures[actor.par_iter_next.remote()] = actor
+                    except StopIteration:
+                        pass
 
         return LocalIterator(base_iterator)
 
@@ -317,14 +346,16 @@ class LocalIterator(Generic[T]):
 
     def __init__(self,
                  base_iterator: Callable[[], Iterable[T]],
-                 local_transforms: List[Callable[[Iterable], Any]] = None):
+                 local_transforms: List[Callable[[Iterable], Any]] = None,
+                 timeout: int = None):
         self.base_iterator = base_iterator
         self.built_iterator = None
         self.local_transforms = local_transforms or []
+        self.timeout = timeout
 
     def _build_once(self):
         if self.built_iterator is None:
-            it = iter(self.base_iterator())
+            it = iter(self.base_iterator(self.timeout))
             for fn in self.local_transforms:
                 it = fn(it)
             self.built_iterator = it
@@ -340,7 +371,10 @@ class LocalIterator(Generic[T]):
     def for_each(self, fn: Callable[[T], T]) -> "LocalIterator[T]":
         def apply_foreach(it):
             for item in it:
-                yield fn(item)
+                if isinstance(item, YieldIterator):
+                    yield item
+                else:
+                    yield fn(item)
 
         return LocalIterator(self.base_iterator,
                              self.local_transforms + [apply_foreach])
@@ -348,7 +382,9 @@ class LocalIterator(Generic[T]):
     def filter(self, fn: Callable[[T], bool]) -> "LocalIterator[T]":
         def apply_filter(it):
             for item in it:
-                if fn(item):
+                if isinstance(item, YieldIterator):
+                    yield item
+                elif fn(item):
                     yield item
 
         return LocalIterator(self.base_iterator,
@@ -358,10 +394,13 @@ class LocalIterator(Generic[T]):
         def apply_batch(it):
             batch = []
             for item in it:
-                batch.append(item)
-                if len(batch) >= n:
-                    yield batch
-                    batch = []
+                if isinstance(item, YieldIterator):
+                    yield item
+                else:
+                    batch.append(item)
+                    if len(batch) >= n:
+                        yield batch
+                        batch = []
             if batch:
                 yield batch
 
@@ -371,30 +410,63 @@ class LocalIterator(Generic[T]):
     def flatten(self) -> "LocalIterator[T[0]]":
         def apply_flatten(it):
             for item in it:
-                for subitem in item:
-                    yield subitem
+                if isinstance(item, YieldIterator):
+                    yield item
+                else:
+                    for subitem in item:
+                        yield subitem
 
         return LocalIterator(self.base_iterator,
                              self.local_transforms + [apply_flatten])
 
     def union(self, other: "LocalIterator[T]") -> "LocalIterator[T]":
-        """Return an iterator that is the union of this and the other."""
-        raise NotImplementedError
+        """Return an iterator that is the union of this and the other.
+
+        This works by alternating waits/gets between the two iterators with
+        timeout=0. This may be less efficient that calling union on the
+        underlying ParIterators, but is more flexible in that local
+        transformations can be made at the local iterator level prior to the
+        union call."""
+
+        it1 = LocalIterator(
+            self.base_iterator, self.local_transforms, timeout=0)
+        it2 = LocalIterator(
+            other.base_iterator, other.local_transforms, timeout=0)
+        active = [it1, it2]
+
+        def build_union(timeout=None):
+            while True:
+                for it in list(active):
+                    # Yield items from the iterator until YieldIterator is
+                    # found, then switch to the next iterator.
+                    try:
+                        while True:
+                            item = next(it)
+                            if isinstance(item, YieldIterator):
+                                break
+                            else:
+                                yield item
+                    except StopIteration:
+                        active.remove(it)
+                if not active:
+                    break
+
+        return LocalIterator(build_union, [])
 
 
 class _ParIteratorWorker(object):
     """Worker actor for a ParIterator."""
 
-    def __init__(self, items):
-        if callable(items):
-            self.items = items()
+    def __init__(self, item_generator):
+        if callable(item_generator):
+            self.item_generator = item_generator()
         else:
-            self.items = items
+            self.item_generator = item_generator
         self.transforms = []
         self.local_it = None
 
     def par_iter_init(self, transforms):
-        it = LocalIterator(lambda: self.items)
+        it = LocalIterator(lambda timeout: self.item_generator)
         for fn in transforms:
             it = fn(it)
             assert it is not None, fn
