@@ -14,7 +14,7 @@ class YieldIterator(Exception):
     """Indicates that a local iterator has no value available.
 
     This is used internally to implement the union() of multiple blocking
-    generators."""
+    local generators."""
     pass
 
 
@@ -84,22 +84,6 @@ def from_actors(actors: List["ray.actor.ActorHandle"],
     if not name:
         name = "from_actors[shards={}]".format(len(actors))
     return ParIterator([_ActorSet(actors, [])], name)
-
-
-def from_nested_iterators(iters: List["ParIterator[T]"]) -> "ParIterator[T]":
-    """Create a parallel iterator from existing par iters.
-
-    Note that this differs from calling it1.union(it2) to combine the iterators
-    in that we create an set of intermediate actors that aggregate the data
-    in the middle (i.e., creating a tree of iterators). Depending on the
-    workload, this may be faster or slower than using union().
-
-    Arguments:
-        iters (list): A list of ParIters to be combined.
-
-    A new aggregation actor will be created for each iterator."""
-    name = "from_nested_iterators[shards={}]".format(len(iters))
-    return from_generators([it.async_iterator() for it in iters], name=name)
 
 
 class ParIterator(Generic[T]):

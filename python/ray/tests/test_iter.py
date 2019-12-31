@@ -6,7 +6,7 @@ import time
 
 import ray
 from ray.experimental.iter import from_items, from_generators, from_range, \
-    from_actors, from_nested_iterators, _ParIteratorWorker
+    from_actors, _ParIteratorWorker
 
 
 def test_from_items(ray_start_regular_shared):
@@ -124,14 +124,6 @@ def test_union_local(ray_start_regular_shared):
     it2 = from_range(5, 2).for_each(str).async_iterator()
     it = it1.union(it2)
     assert sorted(list(it)) == ["0", "1", "2", "3", "4", "a", "b", "c"]
-
-
-def test_from_nested(ray_start_regular_shared):
-    it1 = from_items(["a", "b", "c"], 1)
-    it2 = from_items(["x", "y", "z"], 1)
-    it = from_nested_iterators([it1, it2])
-    assert repr(it) == "from_nested_iterators[shards=2]"
-    assert sorted(list(it.async_iterator())) == ["a", "b", "c", "x", "y", "z"]
 
 
 def test_union_async(ray_start_regular_shared):
