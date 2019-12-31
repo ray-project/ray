@@ -15,33 +15,21 @@ from ray import tune
 from ray.rllib import _register_all
 from ray.cluster_utils import Cluster
 from ray.test_utils import run_string_as_driver_nonblocking
-from ray.tune import DurableTrainable, register_trainable
+from ray.tune import register_trainable
 from ray.tune.experiment import Experiment
 from ray.tune.error import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.sync_client import CommandBasedClient
+from ray.tune.syncer import Syncer
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.tests.mock import MockDurableTrainable, mock_storage_client
 
 if sys.version_info >= (3, 3):
     from unittest.mock import MagicMock, patch
 else:
     from mock import MagicMock, patch
-
-
-def create_mock_durable():
-    class MockDurableTrainable(DurableTrainable):
-        def __init__(self, remote_checkpoint_dir, *args, **kwargs):
-            super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,
-                                                       *args, **kwargs)
-            local_dir_suffix = remote_checkpoint_dir.split("://")[1]
-            self.remote_checkpoint_dir = os.path.join("/tmp", local_dir_suffix)
-            sync = "mkdir -p {target} && rsync -avz {source} {target}"
-            delete = "rm -rf {target}"
-            self.storage_client = CommandBasedClient(sync, sync, delete)
-    return MockDurableTrainable
 
 
 def _start_new_cluster():
@@ -55,7 +43,6 @@ def _start_new_cluster():
             })
         })
     # Pytest doesn't play nicely with imports
-    MockDurableTrainable = create_mock_durable()
     register_trainable("__fake_durable", MockDurableTrainable)
     _register_all()
     return cluster
@@ -74,7 +61,6 @@ def start_connected_cluster():
 @pytest.fixture
 def start_connected_emptyhead_cluster():
     """Starts head with no resources."""
-
     cluster = Cluster(
         initialize_head=True,
         connect=True,
@@ -86,7 +72,6 @@ def start_connected_emptyhead_cluster():
         })
     # Pytest doesn't play nicely with imports
     _register_all()
-    MockDurableTrainable = create_mock_durable()
     register_trainable("__fake_durable", MockDurableTrainable)
     yield cluster
     # The code after the yield will run as teardown code.
@@ -248,7 +233,8 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         },
         "checkpoint_freq": 2,
         "max_failures": 2,
-        "remote_checkpoint_dir": "s3://tune-test-cluster/",
+        "remote_checkpoint_dir": "/tmp/tune-test-cluster/exp/",
+        "sync_to_driver_fn": trainable_id == "__fake",
     }
 
     # Test recovery of trial that hasn't been checkpointed
@@ -289,10 +275,14 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     assert t2.status == Trial.TERMINATED, runner.debug_string()
 
     # Test recovery of trial that won't be checkpointed
-    t3 = Trial(trainable_id,
-               **{"stopping_criterion": {
-                   "training_iteration": 3
-               }})
+    kwargs = {
+        "stopping_criterion": {
+            "training_iteration": 3
+        },
+        "remote_checkpoint_dir": "/tmp/tune-test-cluster/exp/",
+        "sync_to_driver_fn": trainable_id == "__fake",
+    }
+    t3 = Trial(trainable_id, **kwargs)
     runner.add_trial(t3)
     runner.step()  # start
     runner.step()  # 1 result
@@ -322,7 +312,8 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
         },
         "checkpoint_freq": 1,
         "max_failures": 1,
-        "remote_checkpoint_dir": "s3://tune-test-cluster/",
+        "remote_checkpoint_dir": "/tmp/tune-test-cluster/exp/",
+        "sync_to_driver_fn": trainable_id == "__fake",
     }
 
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
@@ -356,7 +347,8 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
         },
         "checkpoint_freq": 2,
         "max_failures": 2,
-        "remote_checkpoint_dir": "s3://tune-test-cluster/",
+        "remote_checkpoint_dir": "/tmp/tune-test-cluster/exp/",
+        "sync_to_driver_fn": trainable_id == "__fake",
     }
 
     # Test recovery of trial that has been checkpointed
@@ -369,9 +361,11 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
     cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
     cluster.wait_for_nodes()
+    print("rm ckpt", os.path.dirname(t1.checkpoint.value))
     shutil.rmtree(os.path.dirname(t1.checkpoint.value))
 
     runner.step()  # Recovery step
+    runner.step()  # Process recovery
     for i in range(3):
         if t1.status != Trial.TERMINATED:
             runner.step()
@@ -393,7 +387,8 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
         },
         "checkpoint_freq": 1,
         "max_failures": 1,
-        "remote_checkpoint_dir": "s3://tune-test-cluster/",
+        "remote_checkpoint_dir": "/tmp/tune-test-cluster/exp/",
+        "sync_to_driver_fn": trainable_id == "__fake",
     }
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:
@@ -431,24 +426,25 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
     cluster = start_connected_cluster
     dirpath = str(tmpdir)
 
-    exp1_args = dict(
+    use_default_sync = trainable_id == "__fake"
+    from ray.tune.result import DEFAULT_RESULTS_DIR
+    local_dir = DEFAULT_RESULTS_DIR
+    upload_dir = None if use_default_sync else "/tmp/tune-test-cluster/"
+
+    base_dict = dict(
         run=trainable_id,
         stop=dict(training_iteration=3),
-        local_dir=dirpath,
-        checkpoint_freq=1,
-        remote_checkpoint_dir="s3://tune-test-cluster/")
-    exp2_args = dict(run=trainable_id, stop=dict(training_iteration=3))
-    exp3_args = dict(
-        run=trainable_id,
-        stop=dict(training_iteration=3),
-        config=dict(mock_error=True),
-        remote_checkpoint_dir="s3://tune-test-cluster/")
+        local_dir=local_dir,
+        upload_dir=upload_dir,
+        sync_to_driver=use_default_sync,
+    )
+
+    exp1_args = base_dict
+    exp2_args = dict(base_dict.items(), local_dir=dirpath, checkpoint_freq=1)
+    exp3_args = dict(base_dict.items(), config=dict(mock_error=True))
     exp4_args = dict(
-        run=trainable_id,
-        stop=dict(training_iteration=3),
-        config=dict(mock_error=True),
-        checkpoint_freq=1,
-        remote_checkpoint_dir="s3://tune-test-cluster/")
+        base_dict.items(), config=dict(mock_error=True), checkpoint_freq=1)
+
     all_experiments = {
         "exp1": exp1_args,
         "exp2": exp2_args,
@@ -456,14 +452,20 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
         "exp4": exp4_args
     }
 
-    tune.run_experiments(all_experiments, raise_on_failed_trial=False)
+    mock_get_client = "ray.tune.trial_runner.get_cloud_syncer"
+    with patch(mock_get_client) as mock_get_cloud_syncer:
+        mock_syncer = Syncer(local_dir, upload_dir, mock_storage_client())
+        mock_get_cloud_syncer.return_value = mock_syncer
 
-    ray.shutdown()
-    cluster.shutdown()
-    cluster = _start_new_cluster()
+        tune.run_experiments(all_experiments, raise_on_failed_trial=False)
 
-    trials = tune.run_experiments(
-        all_experiments, resume=True, raise_on_failed_trial=False)
+        ray.shutdown()
+        cluster.shutdown()
+        cluster = _start_new_cluster()
+
+        trials = tune.run_experiments(
+            all_experiments, resume=True, raise_on_failed_trial=False)
+
     assert len(trials) == 4
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
     ray.shutdown()

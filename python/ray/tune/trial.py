@@ -14,6 +14,7 @@ import os
 from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.logger import pretty_print, UnifiedLogger
 from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -368,14 +369,16 @@ class Trial(object):
                             "Trial %s: Checkpoint sync skipped. "
                             "This should not happen.", self)
                 except TuneError as e:
-                    if self.remote_checkpoint_dir:
+                    if issubclass(self.get_trainable_cls(), DurableTrainable):
+                        # Even though rsync failed the trainable can restore
+                        # from remote durable storage.
                         logger.error("Trial %s: Sync error - %s", self, str(e))
                     else:
                         # If the trainable didn't have remote storage to upload
                         # to then this checkpoint may have been lost, so we
                         # shouldn't track it with the checkpoint_manager.
                         raise e
-                if not self.remote_checkpoint_dir:
+                if not issubclass(self.get_trainable_cls(), DurableTrainable):
                     if not os.path.exists(checkpoint.value):
                         raise TuneError("Trial {}: Checkpoint path {} not "
                                         "found after successful sync down."

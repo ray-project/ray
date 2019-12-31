@@ -53,6 +53,8 @@ class TrainableUtil(object):
         Raises:
             FileNotFoundError if the directory is not found.
         """
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError("Path does not exist", checkpoint_path)
         if os.path.isdir(checkpoint_path):
             checkpoint_dir = checkpoint_path
         else:
