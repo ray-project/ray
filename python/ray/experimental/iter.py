@@ -93,8 +93,7 @@ def from_actors(actors: List["ray.actor.ActorHandle"],
                 name=None) -> "ParallelIterator[T]":
     """Create a parallel iterator from an existing set of actors.
 
-    Each actor must implement the par_iter_init() and par_iter_next() methods
-    from the ParallelIteratorWorker interface.
+    Each actor must subclass the ParallelIteratorWorker interface.
 
     Arguments:
         actors (list): List of actors that each implement
