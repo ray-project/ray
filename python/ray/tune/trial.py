@@ -356,6 +356,7 @@ class Trial(object):
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
+            # TODO(ujvl): Handle this separately to avoid restoration failure.
             self.checkpoint_manager.on_checkpoint(checkpoint)
             return
         if self.sync_on_checkpoint:

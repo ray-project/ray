@@ -40,7 +40,7 @@ class DurableTrainable(Trainable):
         """
         super(DurableTrainable, self).__init__(*args, **kwargs)
         self.remote_checkpoint_dir = remote_checkpoint_dir
-        self.storage_client = get_cloud_sync_client(self.remote_checkpoint_dir)
+        self.storage_client = self._create_storage_client()
 
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint, persisted remotely.
@@ -88,6 +88,10 @@ class DurableTrainable(Trainable):
         super(DurableTrainable, self).delete_checkpoint(checkpoint_path)
         local_dirpath = os.path.join(os.path.dirname(checkpoint_path), "")
         self.storage_client.delete(self._storage_path(local_dirpath))
+
+    def _create_storage_client(self):
+        """Returns a storage client."""
+        return get_cloud_sync_client(self.remote_checkpoint_dir)
 
     def _storage_path(self, local_path):
         rel_local_path = os.path.relpath(local_path, self.logdir)

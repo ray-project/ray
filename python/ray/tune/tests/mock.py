@@ -3,17 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
 
 from ray.rllib.agents.mock import _MockTrainer
 from ray.tune import DurableTrainable
 from ray.tune.sync_client import get_sync_client
 from ray.tune.syncer import NodeSyncer
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch
-else:
-    from mock import patch
 
 MOCK_REMOTE_DIR = "/tmp/mock-tune-remote/"
 # Sync and delete templates that operate on local directories.
@@ -58,9 +52,8 @@ class MockDurableTrainer(DurableTrainable, _MockTrainer):
     #  up once the durable training API converges.
 
     def __init__(self, remote_checkpoint_dir, *args, **kwargs):
-        mock_module = "ray.tune.durable_trainable.get_cloud_sync_client"
-        with patch(mock_module) as mock_get_cloud_client:
-            mock_get_cloud_client.return_value = mock_storage_client()
-            _MockTrainer.__init__(self, *args, **kwargs)
-            DurableTrainable.__init__(self, remote_checkpoint_dir, *args,
-                                      **kwargs)
+        _MockTrainer.__init__(self, *args, **kwargs)
+        DurableTrainable.__init__(self, remote_checkpoint_dir, *args, **kwargs)
+
+    def _create_storage_client(self):
+        return mock_storage_client()

@@ -134,8 +134,8 @@ def run(run_or_experiment,
         sync_to_driver (func|str|bool): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template
             that includes `{source}` and `{target}` for the syncer to run.
-            If True or not provided, defaults to using rsync. If False, syncing
-            to driver is disabled.
+            If True or not provided, it defaults to using rsync. If False,
+            syncing to driver is disabled.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the

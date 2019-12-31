@@ -10,9 +10,9 @@ import unittest
 from ray.tune.trainable import TrainableUtil
 
 
-class TrainableUtilApiTest(unittest.TestCase):
+class TrainableUtilTest(unittest.TestCase):
     def setUp(self):
-        self.checkpoint_dir = "/tmp/tune/MyTrainable123/"
+        self.checkpoint_dir = "/tmp/tune/MyTrainable123"
         TrainableUtil.make_checkpoint_dir(self.checkpoint_dir)
 
     def tearDown(self):
@@ -22,10 +22,10 @@ class TrainableUtilApiTest(unittest.TestCase):
         checkpoint_path = os.path.join(self.checkpoint_dir, "my/nested/chkpt")
         os.makedirs(checkpoint_path)
         found_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
-        self.assertTrue(self.checkpoint_dir, found_dir)
+        self.assertEquals(self.checkpoint_dir, found_dir)
 
         with self.assertRaises(FileNotFoundError):
-            parent = os.path.dirname(self.checkpoint_dir)
+            parent = os.path.dirname(found_dir)
             TrainableUtil.find_checkpoint_dir(parent)
 
     def testPickleCheckpoint(self):
@@ -41,7 +41,6 @@ class TrainableUtilApiTest(unittest.TestCase):
 
         checkpoint_name = os.path.basename(checkpoint_path)
         self.assertEqual(loaded["checkpoint_name"], checkpoint_name)
-        print(loaded["data"])
 
         for i in range(5):
             path = os.path.join(self.checkpoint_dir, str(i))

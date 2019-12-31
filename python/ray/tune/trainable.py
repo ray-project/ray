@@ -308,8 +308,6 @@ class Trainable(object):
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
                         checkpoint_dir, checkpoint))
-            if os.path.isdir(checkpoint):
-                checkpoint = os.path.join(checkpoint, "")  # trailing slash
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
@@ -320,7 +318,7 @@ class Trainable(object):
             raise ValueError("Returned unexpected type {}. "
                              "Expected str or dict.".format(type(checkpoint)))
 
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
+        with open(os.path.join(checkpoint_dir, ".tune_metadata"), "wb") as f:
             pickle.dump({
                 "experiment_id": self._experiment_id,
                 "iteration": self._iteration,
@@ -359,7 +357,8 @@ class Trainable(object):
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
-        with open(checkpoint_path + ".tune_metadata", "rb") as f:
+        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        with open(os.path.join(checkpoint_dir, ".tune_metadata"), "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]

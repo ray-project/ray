@@ -6,33 +6,31 @@ import os
 import ray
 from ray import tune
 from ray.tune import DurableTrainable
-from ray.tune.sync_client import CommandBasedClient
+from ray.tune.sync_client import get_sync_client
 
 import cloudpickle
 
 logger = logging.getLogger(__name__)
 
 
-def get_mock_storage_client():
-    sync = "mkdir -p {target} && rsync -avz {source} {target}"
-    delete = "rm -rf {target}"
-    return CommandBasedClient(sync, sync, delete)
-
-
 class MockDurableTrainable(DurableTrainable):
     """Mocks the storage client on initialization to store data locally."""
 
     def __init__(self, remote_checkpoint_dir, *args, **kwargs):
-        super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,
-                                                   *args, **kwargs)
         # Mock the path as a local path.
         local_dir_suffix = remote_checkpoint_dir.split("://")[1]
-        self.remote_checkpoint_dir = os.path.join("/tmp", local_dir_suffix)
+        remote_checkpoint_dir = os.path.join("/tmp", local_dir_suffix)
         # Disallow malformed relative paths for delete safety.
-        assert os.path.abspath(self.remote_checkpoint_dir).startswith("/tmp")
+        assert os.path.abspath(remote_checkpoint_dir).startswith("/tmp")
         logger.info("Using %s as the mocked remote checkpoint directory.",
                     self.remote_checkpoint_dir)
-        self.storage_client = get_mock_storage_client()
+        super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,
+                                                   *args, **kwargs)
+
+    def _create_storage_client(self):
+        sync = "mkdir -p {target} && rsync -avz {source} {target}"
+        delete = "rm -rf {target}"
+        return get_sync_client(sync, delete)
 
 
 class OptimusFn(object):

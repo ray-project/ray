@@ -374,6 +374,8 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
                 checkpoint_path = os.path.join("/", checkpoint_path)
                 return find_checkpoint_dir(checkpoint_path)
 
+            # __fake_remote trainables save to a separate "remote" directory.
+            # TrainableUtil will not check this path unless we mock it.
             mock_find_dir.side_effect = mock_find_dir_fn
 
             # Test recovery of trial that has been checkpointed
