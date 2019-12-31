@@ -1390,11 +1390,11 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
       checkpoint_data, [worker, checkpoint_data](Status status) {
         ActorCheckpointID checkpoint_id =
             ActorCheckpointID::FromBinary(checkpoint_data->checkpoint_id());
-        RAY_LOG(DEBUG) << "Checkpoint " << checkpoint_id << " saved for actor "
-                       << worker->GetActorId();
         RAY_CHECK(status.ok()) << "Add checkpoint failed, actor is "
                                << worker->GetActorId() << " checkpoint_id is "
                                << checkpoint_id;
+        RAY_LOG(DEBUG) << "Checkpoint " << checkpoint_id << " saved for actor "
+                       << worker->GetActorId();
         // Send reply to worker.
         flatbuffers::FlatBufferBuilder fbb;
         auto reply = ray::protocol::CreatePrepareActorCheckpointReply(
