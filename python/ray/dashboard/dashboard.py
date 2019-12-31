@@ -158,10 +158,12 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            workers_info = sum((data.get("workersStats", []) for data in D.values()),
-                               [])
-            infeasible_tasks = sum((data.get("infeasibleTasks", []) for data in D.values()), [])
-            actor_tree = self.node_stats.get_actor_tree(workers_info, infeasible_tasks)
+            workers_info = sum(
+                (data.get("workersStats", []) for data in D.values()), [])
+            infeasible_tasks = sum(
+                (data.get("infeasibleTasks", []) for data in D.values()), [])
+            actor_tree = self.node_stats.get_actor_tree(
+                workers_info, infeasible_tasks)
             for address, data in D.items():
                 available_resources = data["availableResources"]
                 total_resources = data["totalResources"]
@@ -175,13 +177,14 @@ class Dashboard(object):
                         resource_name, occupied, total))
                 data["extraInfo"] = ", ".join(extra_info)
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
-                    actor_tree_str = json.dumps(actor_tree, indent=2, sort_keys=True)
+                    actor_tree_str = json.dumps(
+                        actor_tree, indent=2, sort_keys=True)
                     lines = actor_tree_str.split("\n")
                     max_line_length = max(map(len, lines))
                     to_print = []
                     for line in lines:
-                        to_print.append(
-                            line + (max_line_length - len(line)) * " ")
+                        to_print.append(line +
+                                        (max_line_length - len(line)) * " ")
                     data["extraInfo"] += "\n" + "\n".join(to_print)
             D["actorInfo"] = actor_tree
             D["infeasibleTasks"] = infeasible_tasks
@@ -327,8 +330,7 @@ class NodeStats(threading.Thread):
                 actor_id = infeasible_task["actorCreationTaskSpec"]["actorId"]
                 caller_addr = (infeasible_task["callerAddress"]["ipAddress"],
                                str(infeasible_task["callerAddress"]["port"]))
-                caller_id = self._addr_to_actor_id.get(
-                    caller_addr, "root")
+                caller_id = self._addr_to_actor_id.get(caller_addr, "root")
                 child_to_parent[actor_id] = caller_id
                 infeasible_task["state"] = -1
                 flattened_tree[actor_id] = infeasible_task
@@ -410,7 +412,7 @@ class NodeStats(threading.Thread):
                         self._addr_to_extra_info_dict[addr] = {
                             "job_id": ray.utils.binary_to_hex(
                                 actor_data.job_id),
-                            "state": actor_data.state, 
+                            "state": actor_data.state,
                             "is_direct_call": actor_data.is_direct_call
                         }
                     else:

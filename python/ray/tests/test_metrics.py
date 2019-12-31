@@ -139,7 +139,7 @@ def test_raylet_info_endpoint(shutdown_only):
     # and actor initialization. This will be fixed after #6629 is merged.
     time.sleep(10)
 
-    c = C.remote()
+    _ = C.remote()
 
     start_time = time.time()
     while True:
@@ -169,7 +169,7 @@ def test_raylet_info_endpoint(shutdown_only):
         if child_actor_info["state"] == -1:
             assert child_actor_info["requiredResources"]["CustomResource"] == 1
         else:
-            assert child_actor_info["state"] == 0;
+            assert child_actor_info["state"] == 0
             assert len(child_actor_info["children"]) == 0
             assert child_actor_info["usedResources"]["CPU"] == 1
 
