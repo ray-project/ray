@@ -12,20 +12,20 @@ from ray.experimental.iter import from_items, from_iterators, from_range, \
 def test_from_items(ray_start_regular_shared):
     it = from_items([1, 2, 3, 4])
     assert repr(it) == "from_items[int, 4, shards=2]"
-    assert list(it.sync_iterator()) == [1, 2, 3, 4]
-    assert next(it.sync_iterator()) == 1
+    assert list(it.gather_sync()) == [1, 2, 3, 4]
+    assert next(it.gather_sync()) == 1
 
 
 def test_from_iterators(ray_start_regular_shared):
     it = from_iterators([range(2), range(2)])
     assert repr(it) == "from_iterators[shards=2]"
-    assert list(it.sync_iterator()) == [0, 0, 1, 1]
+    assert list(it.gather_sync()) == [0, 0, 1, 1]
 
 
 def test_from_range(ray_start_regular_shared):
     it = from_range(4)
     assert repr(it) == "from_range[4, shards=2]"
-    assert list(it.sync_iterator()) == [0, 2, 1, 3]
+    assert list(it.gather_sync()) == [0, 2, 1, 3]
 
 
 def test_from_actors(ray_start_regular_shared):
@@ -34,50 +34,50 @@ def test_from_actors(ray_start_regular_shared):
     b = worker.remote([3, 4])
     it = from_actors([a, b])
     assert repr(it) == "from_actors[shards=2]"
-    assert list(it.sync_iterator()) == [1, 3, 2, 4]
+    assert list(it.gather_sync()) == [1, 3, 2, 4]
 
 
 def test_for_each(ray_start_regular_shared):
     it = from_range(4).for_each(lambda x: x * 2)
     assert repr(it) == "from_range[4, shards=2].for_each()"
-    assert list(it.sync_iterator()) == [0, 4, 2, 6]
+    assert list(it.gather_sync()) == [0, 4, 2, 6]
 
 
 def test_chain(ray_start_regular_shared):
     it = from_range(4).for_each(lambda x: x * 2).for_each(lambda x: x * 2)
     assert repr(it) == "from_range[4, shards=2].for_each().for_each()"
-    assert list(it.sync_iterator()) == [0, 8, 4, 12]
+    assert list(it.gather_sync()) == [0, 8, 4, 12]
 
 
 def test_filter(ray_start_regular_shared):
     it = from_range(4).filter(lambda x: x < 3)
     assert repr(it) == "from_range[4, shards=2].filter()"
-    assert list(it.sync_iterator()) == [0, 2, 1]
+    assert list(it.gather_sync()) == [0, 2, 1]
 
 
 def test_batch(ray_start_regular_shared):
     it = from_range(4, 1).batch(2)
     assert repr(it) == "from_range[4, shards=1].batch(2)"
-    assert list(it.sync_iterator()) == [[0, 1], [2, 3]]
+    assert list(it.gather_sync()) == [[0, 1], [2, 3]]
 
 
 def test_flatten(ray_start_regular_shared):
     it = from_items([[1, 2], [3, 4]], 1).flatten()
     assert repr(it) == "from_items[list, 2, shards=1].flatten()"
-    assert list(it.sync_iterator()) == [1, 2, 3, 4]
+    assert list(it.gather_sync()) == [1, 2, 3, 4]
 
 
-def test_sync_iterator(ray_start_regular_shared):
+def test_gather_sync(ray_start_regular_shared):
     it = from_range(4)
-    it = it.sync_iterator()
-    assert repr(it) == "from_range[4, shards=2].sync_iterator()"
+    it = it.gather_sync()
+    assert repr(it) == "from_range[4, shards=2].gather_sync()"
     assert sorted(list(it)) == [0, 1, 2, 3]
 
 
-def test_async_iterator(ray_start_regular_shared):
+def test_gather_async(ray_start_regular_shared):
     it = from_range(4)
-    it = it.async_iterator()
-    assert repr(it) == "from_range[4, shards=2].async_iterator()"
+    it = it.gather_async()
+    assert repr(it) == "from_range[4, shards=2].gather_async()"
     assert sorted(list(it)) == [0, 1, 2, 3]
 
 
@@ -116,12 +116,12 @@ def test_union(ray_start_regular_shared):
     assert (
         repr(it) ==
         "ParUnion[from_items[str, 3, shards=1], from_items[str, 3, shards=1]]")
-    assert list(it.sync_iterator()) == ["a", "x", "b", "y", "c", "z"]
+    assert list(it.gather_sync()) == ["a", "x", "b", "y", "c", "z"]
 
 
 def test_union_local(ray_start_regular_shared):
-    it1 = from_items(["a", "b", "c"], 1).async_iterator()
-    it2 = from_range(5, 2).for_each(str).async_iterator()
+    it1 = from_items(["a", "b", "c"], 1).gather_async()
+    it2 = from_range(5, 2).for_each(str).gather_async()
     it = it1.union(it2)
     assert sorted(list(it)) == ["0", "1", "2", "3", "4", "a", "b", "c"]
 
@@ -142,7 +142,7 @@ def test_union_async(ray_start_regular_shared):
     it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
     it2 = from_iterators([gen_slow]).for_each(lambda x: ("slow", x))
     it = it1.union(it2)
-    results = list(it.async_iterator())
+    results = list(it.gather_async())
     assert all(x[0] == "slow" for x in results[-3:]), results
 
 
@@ -161,18 +161,18 @@ def test_union_local_async(ray_start_regular_shared):
 
     it1 = from_iterators([gen_fast]).for_each(lambda x: ("fast", x))
     it2 = from_iterators([gen_slow]).for_each(lambda x: ("slow", x))
-    it = it1.async_iterator().union(it2.async_iterator())
+    it = it1.gather_async().union(it2.gather_async())
     assert (repr(it) ==
-            "LocalUnion[from_iterators[shards=1].for_each().async_iterator(), "
-            "from_iterators[shards=1].for_each().async_iterator()]")
+            "LocalUnion[from_iterators[shards=1].for_each().gather_async(), "
+            "from_iterators[shards=1].for_each().gather_async()]")
     results = list(it)
     assert all(x[0] == "slow" for x in results[-3:]), results
 
 
 def test_serialization(ray_start_regular_shared):
-    it = (from_items([1, 2, 3, 4]).sync_iterator().for_each(lambda x: x)
+    it = (from_items([1, 2, 3, 4]).gather_sync().for_each(lambda x: x)
           .filter(lambda x: True).batch(2).flatten())
-    assert (repr(it) == "from_items[int, 4, shards=2].sync_iterator()."
+    assert (repr(it) == "from_items[int, 4, shards=2].gather_sync()."
             "for_each().filter().batch(2).flatten()")
 
     @ray.remote

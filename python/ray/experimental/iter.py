@@ -105,7 +105,7 @@ class ParIterator(Generic[T]):
         # Applying a function over items in parallel.
         >>> it = ray.experimental.iter.from_items([1, 2, 3], num_shards=2)
         ... <__main__.ParIterator object>
-        >>> it = it.for_each(lambda x: x * 2).sync_iterator()
+        >>> it = it.for_each(lambda x: x * 2).gather_sync()
         ... <__main__.LocalIterator object>
         >>> print(list(it))
         ... [2, 4, 6]
@@ -113,7 +113,7 @@ class ParIterator(Generic[T]):
         # Creating from generators.
         >>> it = ray.experimental.iter.from_iterators([range(3), range(3)])
         ... <__main__.ParIterator object>
-        >>> print(list(it.sync_iterator()))
+        >>> print(list(it.gather_sync()))
         ... [0, 0, 1, 1, 2, 2]
 
         # Accessing the individual shards of an iterator.
@@ -146,7 +146,7 @@ class ParIterator(Generic[T]):
 
     def __iter__(self):
         raise TypeError(
-            "You must use it.sync_iterator() or it.async_iterator() to "
+            "You must use it.gather_sync() or it.gather_async() to "
             "iterate over the results of a ParIterator.")
 
     def __str__(self):
@@ -162,7 +162,7 @@ class ParIterator(Generic[T]):
             fn (func): function to apply to each item.
 
         Examples:
-            >>> next(from_range(4).filter(lambda x: x * 2).sync_iterator())
+            >>> next(from_range(4).filter(lambda x: x * 2).gather_sync())
             ... [0, 2, 4, 8]
         """
         return ParIterator(
@@ -179,7 +179,7 @@ class ParIterator(Generic[T]):
             fn (func): returns False for items to drop from the iterator.
 
         Examples:
-            >>> next(from_items([0, 1, 2]).filter(lambda x: x).sync_iterator())
+            >>> next(from_items([0, 1, 2]).filter(lambda x: x).gather_sync())
             ... [1, 2]
         """
         return ParIterator(
@@ -196,7 +196,7 @@ class ParIterator(Generic[T]):
             n (int): Number of items to batch together.
 
         Examples:
-            >>> next(from_range(10, 1).batch(4).sync_iterator())
+            >>> next(from_range(10, 1).batch(4).gather_sync())
             ... [0, 1, 2, 3]
         """
         return ParIterator(
@@ -220,7 +220,7 @@ class ParIterator(Generic[T]):
             ],
             name=self.name + ".flatten()")
 
-    def sync_iterator(self) -> "LocalIterator[T]":
+    def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
 
         New items will be fetched from the shards on-demand as the iterator
@@ -229,7 +229,7 @@ class ParIterator(Generic[T]):
         This is the equivalent of batch_across_shards().flatten().
 
         Examples:
-            >>> it = from_range(100, 1).sync_iterator()
+            >>> it = from_range(100, 1).gather_sync()
             >>> next(it)
             ... 0
             >>> next(it)
@@ -238,7 +238,7 @@ class ParIterator(Generic[T]):
             ... 2
         """
         it = self.batch_across_shards().flatten()
-        it.name = "{}.sync_iterator()".format(self)
+        it.name = "{}.gather_sync()".format(self)
         return it
 
     def batch_across_shards(self) -> "LocalIterator[List[T]]":
@@ -280,14 +280,14 @@ class ParIterator(Generic[T]):
         name = "{}.batch_across_shards()".format(self)
         return LocalIterator(base_iterator, name=name)
 
-    def async_iterator(self) -> "LocalIterator[T]":
+    def gather_async(self) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
 
         New items will be fetched from the shards asynchronously as soon as
         the previous one is computed. Items arrive in non-deterministic order.
 
         Examples:
-            >>> it = from_range(100, 1).sync_iterator()
+            >>> it = from_range(100, 1).gather_sync()
             >>> next(it)
             ... 3
             >>> next(it)
@@ -327,7 +327,7 @@ class ParIterator(Generic[T]):
                 if timeout is not None:
                     yield YieldIterator()
 
-        name = "{}.async_iterator()".format(self)
+        name = "{}.gather_async()".format(self)
         return LocalIterator(base_iterator, name=name)
 
     def union(self, other: "ParIterator[T]") -> "ParIterator[T]":
