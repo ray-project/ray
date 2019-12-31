@@ -7,9 +7,28 @@ from ray.experimental.iter import from_items, from_generators, from_range, \
     from_actors, _ParIteratorWorker
 
 
+def test_union(ray_start_regular_shared):
+    it1 = from_items(["a", "b", "c"], 1).sync_iterator()
+    it2 = from_items(["x", "y", "z"], 1).sync_iterator()
+    it = from_generators([it1, it2])
+    assert list(it.sync_iterator()) == ["a", "x", "b", "y", "c", "z"]
+
+
+def test_serialization(ray_start_regular_shared):
+    it = (from_items([1, 2, 3, 4]).sync_iterator().for_each(lambda x: x)
+          .filter(lambda x: True).batch(2).flatten())
+
+    @ray.remote
+    def get(it):
+        return list(it)
+
+    assert ray.get(get.remote(it)) == [1, 2, 3, 4]
+
+
 def test_from_items(ray_start_regular_shared):
     it = from_items([1, 2, 3, 4])
     assert list(it.sync_iterator()) == [1, 2, 3, 4]
+    assert next(it.sync_iterator()) == 1
 
 
 def test_from_generators(ray_start_regular_shared):

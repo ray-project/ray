@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from typing import TypeVar, Generic, Iterable, List, Callable
+from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
 
@@ -207,7 +207,18 @@ class ParIterator(Generic[T]):
             >>> next(it.sync_iterator_across_shards())
             ... [0, 0]
         """
-        return LocalIterator(self._sync_iterator_across_shards().__iter__())
+
+        def base_iterator():
+            ray.get(
+                [a.par_iter_init.remote(self.transforms) for a in self.actors])
+            while True:
+                try:
+                    yield ray.get(
+                        [a.par_iter_next.remote() for a in self.actors])
+                except StopIteration:
+                    break
+
+        return LocalIterator(base_iterator)
 
     def async_iterator(self) -> "LocalIterator[T]":
         """Returns a local iterable for asynchronous iteration.
@@ -224,7 +235,23 @@ class ParIterator(Generic[T]):
             >>> next(it)
             ... 1
         """
-        return LocalIterator(self._async_iterator().__iter__())
+
+        def base_iterator():
+            ray.get(
+                [a.par_iter_init.remote(self.transforms) for a in self.actors])
+            futures = {}
+            for a in self.actors:
+                futures[a.par_iter_next.remote()] = a
+            while futures:
+                [obj_id], _ = ray.wait(list(futures), num_returns=1)
+                actor = futures.pop(obj_id)
+                try:
+                    yield ray.get(obj_id)
+                    futures[actor.par_iter_next.remote()] = actor
+                except StopIteration:
+                    pass
+
+        return LocalIterator(base_iterator)
 
     def num_shards(self) -> int:
         """Return the number of worker actors backing this iterator."""
@@ -239,28 +266,6 @@ class ParIterator(Generic[T]):
         a = self.actors[shard_index]
         return _SingleActorIterator(a, self.transforms)
 
-    def _sync_iterator_across_shards(self):
-        ray.get([a.par_iter_init.remote(self.transforms) for a in self.actors])
-        while True:
-            try:
-                yield ray.get([a.par_iter_next.remote() for a in self.actors])
-            except StopIteration:
-                break
-
-    def _async_iterator(self):
-        ray.get([a.par_iter_init.remote(self.transforms) for a in self.actors])
-        futures = {}
-        for a in self.actors:
-            futures[a.par_iter_next.remote()] = a
-        while futures:
-            [obj_id], _ = ray.wait(list(futures), num_returns=1)
-            actor = futures.pop(obj_id)
-            try:
-                yield ray.get(obj_id)
-                futures[actor.par_iter_next.remote()] = actor
-            except StopIteration:
-                pass
-
 
 class _ParIteratorWorker(object):
     """Worker actor for a ParIterator."""
@@ -271,7 +276,7 @@ class _ParIteratorWorker(object):
         self.local_it = None
 
     def par_iter_init(self, transforms):
-        it = LocalIterator(self.items)
+        it = LocalIterator(lambda: self.items)
         for fn in transforms:
             it = fn(it)
             assert it is not None, fn
@@ -288,53 +293,71 @@ class LocalIterator(Generic[T]):
     It implements similar transformations as ParIterator[T], but the transforms
     will be applied locally and not remotely in parallel.
 
-    This type is returned by calling sync_iterator() or async_iterator() on
-    a ParIterator. It should not be created directly."""
+    This class is serializable and can be passed to other remote
+    tasks and actors. However, it should be read from at most one process at
+    a time."""
 
-    def __init__(self, iterator: Iterable[T]):
-        self.iterator = iter(iterator)
+    def __init__(self,
+                 base_iterator: Callable[[], Iterable[T]],
+                 local_transforms: List[Callable[[Iterable], Any]] = None):
+        self.base_iterator = base_iterator
+        self.built_iterator = None
+        self.local_transforms = local_transforms or []
+
+    def _build_once(self):
+        if self.built_iterator is None:
+            it = iter(self.base_iterator())
+            for fn in self.local_transforms:
+                it = fn(it)
+            self.built_iterator = it
 
     def __iter__(self):
-        return self.iterator.__iter__()
+        self._build_once()
+        return self.built_iterator
 
     def __next__(self):
-        return self.iterator.__next__()
+        self._build_once()
+        return next(self.built_iterator)
 
     def for_each(self, fn: Callable[[T], T]) -> "LocalIterator[T]":
-        return LocalIterator(self._for_each(fn))
+        def apply_foreach(it):
+            for item in it:
+                yield fn(item)
+
+        return LocalIterator(self.base_iterator,
+                             self.local_transforms + [apply_foreach])
 
     def filter(self, fn: Callable[[T], bool]) -> "LocalIterator[T]":
-        return LocalIterator(self._filter(fn))
+        def apply_filter(it):
+            for item in it:
+                if fn(item):
+                    yield item
+
+        return LocalIterator(self.base_iterator,
+                             self.local_transforms + [apply_filter])
 
     def batch(self, n: int) -> "LocalIterator[List[T]]":
-        return LocalIterator(self._batch(n))
+        def apply_batch(it):
+            batch = []
+            for item in it:
+                batch.append(item)
+                if len(batch) >= n:
+                    yield batch
+                    batch = []
+            if batch:
+                yield batch
+
+        return LocalIterator(self.base_iterator,
+                             self.local_transforms + [apply_batch])
 
     def flatten(self) -> "LocalIterator[T[0]]":
-        return LocalIterator(self._flatten())
+        def apply_flatten(it):
+            for item in it:
+                for subitem in item:
+                    yield subitem
 
-    def _for_each(self, fn):
-        for item in self:
-            yield fn(item)
-
-    def _filter(self, fn):
-        for item in self:
-            if fn(item):
-                yield item
-
-    def _batch(self, n):
-        batch = []
-        for item in self:
-            batch.append(item)
-            if len(batch) >= n:
-                yield batch
-                batch = []
-        if batch:
-            yield batch
-
-    def _flatten(self):
-        for item in self:
-            for subitem in item:
-                yield subitem
+        return LocalIterator(self.base_iterator,
+                             self.local_transforms + [apply_flatten])
 
 
 class _SingleActorIterator(LocalIterator):
