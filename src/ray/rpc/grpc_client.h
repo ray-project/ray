@@ -15,7 +15,7 @@ namespace rpc {
 // to make it easier to implement a new RPC client.
 #define INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client) \
   ({                                                                    \
-    rpc_client->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>(    \
+    rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(             \
         &SERVICE::Stub::PrepareAsync##METHOD, request, callback);       \
   })
 
@@ -58,18 +58,16 @@ class GrpcClient {
 
   /// Create a new `ClientCall` and send request.
   ///
-  /// \tparam GrpcService Type of the gRPC-generated service class.
   /// \tparam Request Type of the request message.
   /// \tparam Reply Type of the reply message.
   ///
-  /// \param[in] stub The gRPC-generated stub.
   /// \param[in] prepare_async_function Pointer to the gRPC-generated
   /// `FooService::Stub::PrepareAsyncBar` function.
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   ///
-  /// \return A `ClientCall` representing the request that was just sent.
-  template <class Method, class Request, class Reply>
+  /// \return Status.
+  template <class Request, class Reply>
   ray::Status CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request, const ClientCallback<Reply> &callback) {

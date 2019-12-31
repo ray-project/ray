@@ -32,20 +32,6 @@ class GcsRpcClient {
         new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
   };
 
-  /// Note the following functions are defined using macros to simply code.
-  /// The semantics are these functions are like this:
-  ///
-  /// Add job info to gcs server.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  //
-  // void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply>
-  // &callback) {
-  //   INVOKE_RPC_CALL(JobInfoGcsService, AddJob, request, callback,
-  //   job_info_grpc_client_);
-  // }
-
   /// Add job info to gcs server.
   VOID_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, request, callback,
                          job_info_grpc_client_)
