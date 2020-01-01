@@ -344,13 +344,17 @@ class NodeStats(threading.Thread):
                         flattened_tree[actor_id].update(core_worker_stats)
 
             for infeasible_task in infeasible_tasks:
-                actor_id = ray.utils.binary_to_hex(b64decode(infeasible_task["actorCreationTaskSpec"]["actorId"]))
+                actor_id = ray.utils.binary_to_hex(
+                    b64decode(
+                        infeasible_task["actorCreationTaskSpec"]["actorId"]))
                 caller_addr = (infeasible_task["callerAddress"]["ipAddress"],
                                str(infeasible_task["callerAddress"]["port"]))
                 caller_id = self._addr_to_actor_id.get(caller_addr, "root")
                 child_to_parent[actor_id] = caller_id
                 infeasible_task["state"] = -1
-                infeasible_task["functionDescriptor"] = list(map(lambda desc: b64decode(desc).decode("utf-8"), infeasible_task["functionDescriptor"]))
+                infeasible_task["functionDescriptor"] = list(
+                    map(lambda desc: b64decode(desc).decode("utf-8"),
+                        infeasible_task["functionDescriptor"]))
                 format_reply(infeasible_tasks)
                 flattened_tree[actor_id] = infeasible_task
 
@@ -429,7 +433,8 @@ class NodeStats(threading.Thread):
                         self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(
                             actor_data.actor_id)
                         self._addr_to_extra_info_dict[addr] = {
-                            "jobId": ray.utils.binary_to_hex(actor_data.job_id),
+                            "jobId": ray.utils.binary_to_hex(
+                                actor_data.job_id),
                             "state": actor_data.state,
                             "isDirectCall": actor_data.is_direct_call,
                         }
