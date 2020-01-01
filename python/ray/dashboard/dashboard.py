@@ -396,6 +396,19 @@ class NodeStats(threading.Thread):
         p.subscribe(actor_channel)
         logger.info("NodeStats: subscribed to {}".format(actor_channel))
 
+        current_actor_table = ray.actors()
+        with self._node_stats_lock:
+            for actor_data in current_actor_table.values():
+                addr = (actor_data["Address"]["IPAddress"], str(actor_data["Address"]["Port"]))
+                owner_addr = (actor_data["OwnerAddress"]["IPAddress"], str(actor_data["OwnerAddress"]["Port"]))
+                self._addr_to_owner_addr[addr] = owner_addr
+                self._addr_to_actor_id[addr] = actor_data["ActorID"]
+                self._addr_to_extra_info_dict[addr] = {
+                    "jobId": actor_data["JobID"],
+                    "state": actor_data["State"],
+                    "isDirectCall": actor_data["IsDirectCall"],
+                }
+
         for x in p.listen():
             try:
                 with self._node_stats_lock:

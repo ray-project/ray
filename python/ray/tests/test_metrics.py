@@ -118,7 +118,7 @@ def test_raylet_info_endpoint(shutdown_only):
     addresses = ray.init(include_webui=True, num_cpus=6)
 
     @ray.remote(num_cpus=1)
-    class A(object):
+    class ActorA(object):
         def __init__(self):
             pass
 
@@ -126,20 +126,16 @@ def test_raylet_info_endpoint(shutdown_only):
             return os.getpid()
 
     @ray.remote(resources={"CustomResource": 1})
-    class B(object):
+    class ActorB(object):
         def __init__(self):
             pass
 
     @ray.remote(num_cpus=2)
-    class C(object):
+    class ActorC(object):
         def __init__(self):
-            self.children = [A.remote(), B.remote()]
+            self.children = [ActorA.remote(), ActorB.remote()]
 
-    # TODO: Currently there is a race condition of Dashboard subscription
-    # and actor initialization. This will be fixed after #6629 is merged.
-    time.sleep(10)
-
-    _ = C.remote()
+    _ = ActorC.remote()
 
     start_time = time.time()
     while True:
