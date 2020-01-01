@@ -490,7 +490,7 @@ class Trial(object):
         state["runner"] = None
         state["result_logger"] = None
         if self.result_logger:
-            self.result_logger.flush()
+            self.result_logger.flush(sync_down=False)
             state["__logger_started__"] = True
         else:
             state["__logger_started__"] = False
