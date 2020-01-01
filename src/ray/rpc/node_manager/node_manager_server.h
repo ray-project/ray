@@ -10,6 +10,12 @@
 namespace ray {
 namespace rpc {
 
+#define RAY_NODE_MANAGER_RPC_HANDLERS                                   \
+    RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, 100)    \
+    RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, 100)          \
+    RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask, 100)           \
+    RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, 1)
+
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
  public:
@@ -24,7 +30,7 @@ class NodeManagerServiceHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
 
-  virtual void HandleWorkerLeaseRequest(const RequestWorkerLeaseRequest &request,
+  virtual void HandleRequestWorkerLease(const RequestWorkerLeaseRequest &request,
                                         RequestWorkerLeaseReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
@@ -36,7 +42,7 @@ class NodeManagerServiceHandler {
                                  ForwardTaskReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleNodeStatsRequest(const GetNodeStatsRequest &request,
+  virtual void HandleGetNodeStats(const GetNodeStatsRequest &request,
                                       GetNodeStatsReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
 };
@@ -59,11 +65,7 @@ class NodeManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    // Initialize the factory for requests.
-    RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, 100)
-    RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, 100)
-    RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask, 100)
-    RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, 1)
+    RAY_NODE_MANAGER_RPC_HANDLERS
   }
 
  private:

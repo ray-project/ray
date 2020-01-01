@@ -1497,7 +1497,7 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
   DispatchScheduledTasksToWorkers();
 }
 
-void NodeManager::HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest &request,
+void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
@@ -2924,7 +2924,7 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request,
+void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                                          rpc::GetNodeStatsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
@@ -2987,11 +2987,11 @@ void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request
       }
     }
   }
-  // As a result of the HandleNodeStatsRequest, we are collecting information from all
+  // As a result of the HandleGetNodeStats, we are collecting information from all
   // workers on this node. This is done by calling GetCoreWorkerStats on each worker. In
   // order to send up-to-date information back, we wait until all workers have replied,
   // and return the information from HandleNodesStatsRequest. The caller of
-  // HandleNodeStatsRequest should set a timeout so that the rpc finishes even if not all
+  // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
   auto all_workers = worker_pool_.GetAllWorkers();
   for (const auto &worker : all_workers) {

@@ -10,6 +10,11 @@
 namespace ray {
 namespace rpc {
 
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS                             \
+    RPC_SERVICE_HANDLER(ObjectManagerService, Push, 5)              \
+    RPC_SERVICE_HANDLER(ObjectManagerService, Pull, 5)              \
+    RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, 2)       \
+
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
 class ObjectManagerServiceHandler {
@@ -21,13 +26,13 @@ class ObjectManagerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandlePushRequest(const PushRequest &request, PushReply *reply,
+  virtual void HandlePush(const PushRequest &request, PushReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
   /// Handle a `Pull` request
-  virtual void HandlePullRequest(const PullRequest &request, PullReply *reply,
+  virtual void HandlePull(const PullRequest &request, PullReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
   /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjectsRequest(const FreeObjectsRequest &request,
+  virtual void HandleFreeObjects(const FreeObjectsRequest &request,
                                         FreeObjectsReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
 };
@@ -50,12 +55,7 @@ class ObjectManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    // Initialize the factory for `Push` requests.
-    RPC_SERVICE_HANDLER(ObjectManagerService, Push, 5)
-    // Initialize the factory for `Pull` requests.
-    RPC_SERVICE_HANDLER(ObjectManagerService, Pull, 5)
-    // Initialize the factory for `FreeObjects` requests.
-    RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, 2)
+    RAY_OBJECT_MANAGER_RPC_HANDLERS
   }
 
  private:
