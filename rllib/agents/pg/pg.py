@@ -1,7 +1,6 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.evaluation.postprocessing import compute_advantages
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -15,13 +14,6 @@ DEFAULT_CONFIG = with_common_config({
 })
 # __sphinx_doc_end__
 # yapf: enable
-
-
-def post_process_advantages(policy, sample_batch, other_agent_batches=None,
-                            episode=None):
-    """This adds the "advantages" column to the sample train_batch."""
-    return compute_advantages(sample_batch, 0.0, policy.config["gamma"],
-                              use_gae=False)
 
 
 def get_policy_class(config):
