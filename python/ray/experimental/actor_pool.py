@@ -102,7 +102,7 @@ class ActorPool:
             fn (func): Function that takes (actor, value) as argument and
                 returns an ObjectID computing the result over the value. The
                 actor will be considered busy until the ObjectID completes.
-            value : Value to compute a result for.
+            value (object): Value to compute a result for.
 
         Examples:
             >>> pool = ActorPool(...)
