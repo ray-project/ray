@@ -71,7 +71,7 @@ class TestPGFunctionality(unittest.TestCase):
         check(train_batch[Postprocessing.ADVANTAGES], [2.9701, 1.99, 1.0])
 
         # Actual loss results.
-        results = pg.tf_pg_loss(
+        results = pg.pg_tf_loss(
             policy, policy.model, dist_class=Categorical,
             train_batch=train_batch
         )
@@ -97,7 +97,7 @@ class TestPGFunctionality(unittest.TestCase):
         trainer = pg.PGTrainer(config=config, env="CartPole-v0")
         policy = trainer.get_policy()
         train_batch = policy._lazy_tensor_dict(train_batch)
-        results = pg.torch_pg_loss(
+        results = pg.pg_torch_loss(
             policy, policy.model, dist_class=TorchCategorical,
             train_batch=train_batch
         )

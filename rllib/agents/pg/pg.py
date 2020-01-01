@@ -4,7 +4,7 @@ from __future__ import print_function
 
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.agents.pg.tf_pg_policy import PGTFPolicy
+from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -22,7 +22,7 @@ DEFAULT_CONFIG = with_common_config({
 
 def get_policy_class(config):
     if config["use_pytorch"]:
-        from ray.rllib.agents.pg.torch_pg_policy import PGTorchPolicy
+        from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
         return PGTorchPolicy
     else:
         return PGTFPolicy
