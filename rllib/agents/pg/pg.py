@@ -1,6 +1,7 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
+from ray.rllib.evaluation.postprocessing import compute_advantages
 
 # yapf: disable
 # __sphinx_doc_begin__

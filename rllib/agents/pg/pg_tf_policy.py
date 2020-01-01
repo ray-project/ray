@@ -1,7 +1,6 @@
 import ray
 from ray.rllib.agents.pg.pg import post_process_advantages
-from ray.rllib.evaluation.postprocessing import compute_advantages, \
-    Postprocessing
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_tf
