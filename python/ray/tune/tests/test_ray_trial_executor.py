@@ -6,6 +6,7 @@ from __future__ import print_function
 import json
 import sys
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.exceptions import RayTimeoutError
@@ -17,11 +18,6 @@ from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch
-else:
-    from mock import patch
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -220,5 +216,4 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))
