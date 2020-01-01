@@ -15,12 +15,12 @@ transport = None
 protocol = None
 
 
-class _ThreadSafeProxy(object):
+class _ThreadSafeProxy:
     """This class is used to create a thread-safe proxy for a given object.
         Every method call will be guarded with a lock.
 
     Attributes:
-        orig_obj (object): the original object.
+        orig_obj : the original object.
         lock (threading.Lock): the lock object.
         _wrapper_cache (dict): a cache from original object's methods to
             the proxy methods.

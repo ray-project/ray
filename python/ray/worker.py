@@ -72,7 +72,7 @@ except ImportError:
     setproctitle = None
 
 
-class ActorCheckpointInfo(object):
+class ActorCheckpointInfo:
     """Information used to maintain actor checkpoints."""
 
     __slots__ = [
@@ -91,7 +91,7 @@ class ActorCheckpointInfo(object):
         self.checkpoint_ids = checkpoint_ids
 
 
-class Worker(object):
+class Worker:
     """A class used to define the control flow of a worker process.
 
     Note:
@@ -1707,7 +1707,7 @@ def remote(*args, **kwargs):
             return 1
 
         @ray.remote
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
 
@@ -1743,7 +1743,7 @@ def remote(*args, **kwargs):
             return 1, 2
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
 
@@ -1759,7 +1759,7 @@ def remote(*args, **kwargs):
         g = f.options(num_gpus=2, max_calls=None)
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
         Bar = Foo.options(num_cpus=1, resources=None)

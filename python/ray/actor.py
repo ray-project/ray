@@ -27,7 +27,7 @@ def method(*args, **kwargs):
     .. code-block:: python
 
         @ray.remote
-        class Foo(object):
+        class Foo:
             @ray.method(num_return_vals=2)
             def bar(self):
                 return 1, 2
@@ -54,7 +54,7 @@ def method(*args, **kwargs):
 
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
-class ActorMethod(object):
+class ActorMethod:
     """A class used to invoke an actor method.
 
     Note: This class only keeps a weak ref to the actor, unless it has been
@@ -143,7 +143,7 @@ class ActorMethod(object):
             hardref=True)
 
 
-class ActorClassMetadata(object):
+class ActorClassMetadata:
     """Metadata for an actor class.
 
     Attributes:
@@ -234,7 +234,7 @@ class ActorClassMetadata(object):
                     method.__ray_invocation_decorator__)
 
 
-class ActorClass(object):
+class ActorClass:
     """An actor class.
 
     This is a decorated class. It can be used to create actors.
@@ -339,7 +339,7 @@ class ActorClass(object):
 
         actor_cls = self
 
-        class ActorOptionWrapper(object):
+        class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **options)
 
@@ -518,7 +518,7 @@ class ActorClass(object):
         return actor_handle
 
 
-class ActorHandle(object):
+class ActorHandle:
     """A handle to an actor.
 
     The fields in this class are prefixed with _ray_ to hide them from the user

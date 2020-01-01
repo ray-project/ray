@@ -10,7 +10,7 @@ OBJECT_TOO_LARGE = ray.exceptions.ObjectStoreFullError
 
 
 @ray.remote
-class LightActor(object):
+class LightActor:
     def __init__(self):
         pass
 
@@ -19,7 +19,7 @@ class LightActor(object):
 
 
 @ray.remote
-class GreedyActor(object):
+class GreedyActor:
     def __init__(self):
         pass
 

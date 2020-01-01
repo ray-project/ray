@@ -26,7 +26,7 @@ REPORTED_REPRESENTATIONS = {
 }
 
 
-class ProgressReporter(object):
+class ProgressReporter:
     # TODO(ujvl): Expose ProgressReporter in tune.run for custom reporting.
 
     def report(self, trial_runner):

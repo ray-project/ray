@@ -29,7 +29,7 @@ Attributes:
     name (str): The name of the parameter as a string.
     kind (int): Describes how argument values are bound to the parameter. See
         funcsigs.Parameter and `_convert_to_parameter_kind`.
-    default (object): The default value for the parameter if specified. If the
+    default : The default value for the parameter if specified. If the
         parameter has no default value, this attribute is not set.
     annotation: The annotation for the parameter if specified.  If the
         parameter has no annotation, this attribute is not set.

@@ -44,7 +44,7 @@ class NamespacedKVStore(ABC):
 
         Args:
             key (str)
-            value (object): any serializable object. The serialization method
+            value : any serializable object. The serialization method
                 is determined by the subclass implementation.
         """
         raise NotImplementedError()

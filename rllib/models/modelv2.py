@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import PublicAPI
 
 
 @PublicAPI
-class ModelV2(object):
+class ModelV2:
     """Defines a Keras-style abstract network model for use with RLlib.
 
     Custom models should extend either TFModelV2 or TorchModelV2 instead of
@@ -205,7 +205,7 @@ class ModelV2(object):
         return NullContextManager()
 
 
-class NullContextManager(object):
+class NullContextManager:
     """No-op context manager"""
 
     def __init__(self):

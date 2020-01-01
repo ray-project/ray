@@ -92,7 +92,7 @@ MODEL_DEFAULTS = {
 
 
 @PublicAPI
-class ModelCatalog(object):
+class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 
     Examples:

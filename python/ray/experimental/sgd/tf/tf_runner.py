@@ -20,7 +20,7 @@ def _try_import_strategy():
     return tf.distribute.experimental.MultiWorkerMirroredStrategy
 
 
-class TFRunner(object):
+class TFRunner:
     """Manages a TensorFlow model for training."""
 
     def __init__(self, model_creator, data_creator, config=None,

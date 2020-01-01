@@ -294,7 +294,7 @@ class HyperBandScheduler(FIFOScheduler):
         trial_runner.trial_executor.unpause_trial(trial)
 
 
-class Bracket(object):
+class Bracket:
     """Logical object for tracking Hyperband bracket progress. Keeps track
     of proper parameters as designated by HyperBand.
 

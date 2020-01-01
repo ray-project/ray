@@ -100,7 +100,7 @@ def test_args_intertwined(ray_start_regular):
 
 def test_asyncio_actor(ray_start_regular_shared):
     @ray.remote
-    class AsyncBatcher(object):
+    class AsyncBatcher:
         def __init__(self):
             self.batch = []
             self.event = asyncio.Event()

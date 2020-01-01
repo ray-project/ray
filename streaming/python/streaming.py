@@ -34,7 +34,7 @@ all_to_all_strategies = [
 
 
 # Environment configuration
-class Conf(object):
+class Conf:
     """Environment configuration.
 
     This class includes all information about the configuration of the
@@ -253,7 +253,7 @@ class ExecutionGraph:
 
 
 # The execution environment for a streaming job
-class Environment(object):
+class Environment:
     """A streaming environment.
 
     This class is responsible for constructing the logical and the
@@ -394,7 +394,7 @@ class Environment(object):
 
 
 # A DataStream corresponds to an edge in the logical dataflow
-class DataStream(object):
+class DataStream:
     """A data stream.
 
     This class contains all information about a logical stream, i.e. an edge

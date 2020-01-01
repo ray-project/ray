@@ -5,7 +5,7 @@ from __future__ import print_function
 import ray
 
 
-class ActorPool(object):
+class ActorPool:
     """Utility class to operate on a fixed pool of actors.
 
     Arguments:
@@ -102,7 +102,7 @@ class ActorPool(object):
             fn (func): Function that takes (actor, value) as argument and
                 returns an ObjectID computing the result over the value. The
                 actor will be considered busy until the ObjectID completes.
-            value (object): Value to compute a result for.
+            value : Value to compute a result for.
 
         Examples:
             >>> pool = ActorPool(...)
