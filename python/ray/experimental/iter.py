@@ -4,6 +4,7 @@ import ray
 
 # The type of an iterator element.
 T = TypeVar("T")
+U = TypeVar("U")
 
 
 def from_items(items: List[T], num_shards: int = 2,
@@ -162,7 +163,7 @@ class ParallelIterator(Generic[T]):
     def __repr__(self):
         return "ParallelIterator[{}]".format(self.name)
 
-    def for_each(self, fn: Callable[[T], T]) -> "ParallelIterator[T]":
+    def for_each(self, fn: Callable[[T], U]) -> "ParallelIterator[U]":
         """Remotely apply fn to each item in this iterator.
 
         Arguments:
@@ -227,6 +228,15 @@ class ParallelIterator(Generic[T]):
                 for a in self.actor_sets
             ],
             name=self.name + ".flatten()")
+
+    def combine(self, fn: Callable[[T], List[U]]) -> "ParallelIterator[U]":
+        """Transform and then combine items horizontally.
+
+        This is the equivalent of for_each(fn).flatten() (flat map).
+        """
+        it = self.for_each(fn).flatten()
+        it.name = self.name + ".combine()"
+        return it
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
@@ -460,7 +470,7 @@ class LocalIterator(Generic[T]):
     def __repr__(self):
         return "LocalIterator[{}]".format(self.name)
 
-    def for_each(self, fn: Callable[[T], T]) -> "LocalIterator[T]":
+    def for_each(self, fn: Callable[[T], U]) -> "LocalIterator[U]":
         def apply_foreach(it):
             for item in it:
                 if isinstance(item, _NextValueNotReady):
@@ -516,6 +526,11 @@ class LocalIterator(Generic[T]):
             self.base_iterator,
             self.local_transforms + [apply_flatten],
             name=self.name + ".flatten()")
+
+    def combine(self, fn: Callable[[T], List[U]]) -> "LocalIterator[U]":
+        it = self.for_each(fn).flatten()
+        it.name = self.name + ".combine()"
+        return it
 
     def take(self, n: int) -> List[T]:
         """Return up to the first n items from this iterator."""
