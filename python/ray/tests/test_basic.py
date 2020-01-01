@@ -63,9 +63,6 @@ def test_simple_serialization(ray_start_regular):
         np.float64(1.9),
     ]
 
-    if sys.version_info < (3, 0):
-        primitive_objects.append(long(0))  # noqa: E501,F821
-
     composite_objects = (
         [[obj]
          for obj in primitive_objects] + [(obj, )
@@ -185,17 +182,7 @@ def complex_serialization(use_pickle):
             assert obj1 == obj2, "Objects {} and {} are different.".format(
                 obj1, obj2)
 
-    if sys.version_info >= (3, 0):
-        long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
-    else:
-
-        long_extras = [
-            long(0),  # noqa: E501,F821
-            np.array([
-                ["hi", u"hi"],
-                [1.3, long(1)]  # noqa: E501,F821
-            ])
-        ]
+    long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
 
     PRIMITIVE_OBJECTS = [
         0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
@@ -810,8 +797,6 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -847,8 +832,6 @@ def test_args_starkwargs(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -890,8 +873,6 @@ def test_args_named_and_star(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -1655,5 +1636,4 @@ def test_wait(ray_start_regular):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

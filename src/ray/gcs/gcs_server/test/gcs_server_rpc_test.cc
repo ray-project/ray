@@ -144,6 +144,49 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return node_info_list;
   }
 
+  bool AddObjectLocation(const rpc::AddObjectLocationRequest &request) {
+    std::promise<bool> promise;
+    client_->AddObjectLocation(
+        request,
+        [&promise](const Status &status, const rpc::AddObjectLocationReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool RemoveObjectLocation(const rpc::RemoveObjectLocationRequest &request) {
+    std::promise<bool> promise;
+    client_->RemoveObjectLocation(
+        request,
+        [&promise](const Status &status, const rpc::RemoveObjectLocationReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  std::vector<rpc::ObjectTableData> GetObjectLocations(const std::string &object_id) {
+    std::vector<rpc::ObjectTableData> object_locations;
+    rpc::GetObjectLocationsRequest request;
+    request.set_object_id(object_id);
+    std::promise<bool> promise;
+    client_->GetObjectLocations(
+        request, [&object_locations, &promise](
+                     const Status &status, const rpc::GetObjectLocationsReply &reply) {
+          RAY_CHECK_OK(status);
+          for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
+            object_locations.push_back(reply.object_table_data_list(index));
+          }
+          promise.set_value(true);
+        });
+
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return object_locations;
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
@@ -256,6 +299,37 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(node_info_list.size() == 1);
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+}
+
+TEST_F(GcsServerTest, TestObjectInfo) {
+  // Create object table data
+  ObjectID object_id = ObjectID::FromRandom();
+  ClientID node1_id = ClientID::FromRandom();
+  ClientID node2_id = ClientID::FromRandom();
+
+  // Add object location
+  rpc::AddObjectLocationRequest add_object_location_request;
+  add_object_location_request.set_object_id(object_id.Binary());
+  add_object_location_request.set_node_id(node1_id.Binary());
+  ASSERT_TRUE(AddObjectLocation(add_object_location_request));
+  std::vector<rpc::ObjectTableData> object_locations =
+      GetObjectLocations(object_id.Binary());
+  ASSERT_TRUE(object_locations.size() == 1);
+  ASSERT_TRUE(object_locations[0].manager() == node1_id.Binary());
+
+  add_object_location_request.set_node_id(node2_id.Binary());
+  ASSERT_TRUE(AddObjectLocation(add_object_location_request));
+  object_locations = GetObjectLocations(object_id.Binary());
+  ASSERT_TRUE(object_locations.size() == 2);
+
+  // Remove object location
+  rpc::RemoveObjectLocationRequest remove_object_location_request;
+  remove_object_location_request.set_object_id(object_id.Binary());
+  remove_object_location_request.set_node_id(node1_id.Binary());
+  ASSERT_TRUE(RemoveObjectLocation(remove_object_location_request));
+  object_locations = GetObjectLocations(object_id.Binary());
+  ASSERT_TRUE(object_locations.size() == 1);
+  ASSERT_TRUE(object_locations[0].manager() == node2_id.Binary());
 }
 
 }  // namespace ray

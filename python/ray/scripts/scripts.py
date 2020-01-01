@@ -71,12 +71,9 @@ def cli(logging_level, logging_format):
     type=str,
     help="the IP address of this node")
 @click.option(
-    "--redis-address",
-    required=False,
-    type=str,
-    help="the address to use for connecting to Redis")
+    "--redis-address", required=False, type=str, help="same as --address")
 @click.option(
-    "--address", required=False, type=str, help="same as --redis-address")
+    "--address", required=False, type=str, help="the address to use for Ray")
 @click.option(
     "--redis-port",
     required=False,
@@ -166,11 +163,10 @@ def cli(logging_level, logging_format):
 @click.option(
     "--webui-host",
     required=False,
-    type=click.Choice(["127.0.0.1", "0.0.0.0"]),
-    default="127.0.0.1",
-    help="The host to bind the web UI server to. Can either be 127.0.0.1 "
-    "(localhost) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is set to 127.0.0.1 to prevent access from external machines.")
+    default="localhost",
+    help="The host to bind the web UI server to. Can either be localhost "
+    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
+    "is set to localhost to prevent access from external machines.")
 @click.option(
     "--block",
     is_flag=True,
@@ -335,19 +331,18 @@ def start(node_ip_address, redis_address, address, redis_port,
         logger.info(
             "\nStarted Ray on this node. You can add additional nodes to "
             "the cluster by calling\n\n"
-            "    ray start --redis-address {}{}{}\n\n"
+            "    ray start --address='{}'{}\n\n"
             "from the node you wish to add. You can connect a driver to the "
             "cluster from Python by running\n\n"
             "    import ray\n"
-            "    ray.init(redis_address=\"{}{}{}\")\n\n"
+            "    ray.init(address='auto'{})\n\n"
             "If you have trouble connecting from a different machine, check "
             "that your firewall is configured properly. If you wish to "
             "terminate the processes that have been started, run\n\n"
             "    ray stop".format(
-                redis_address, " --redis-password "
-                if redis_password else "", redis_password if redis_password
-                else "", redis_address, "\", redis_password=\""
-                if redis_password else "", redis_password
+                redis_address, " --redis-password='" + redis_password + "'"
+                if redis_password else "",
+                ", redis_password='" + redis_password + "'"
                 if redis_password else ""))
     else:
         # Start Ray on a non-head node.
@@ -823,15 +818,15 @@ def clusterbenchmark():
 
 @cli.command()
 @click.option(
-    "--redis-address",
+    "--address",
     required=False,
     type=str,
     help="Override the redis address to connect to.")
-def timeline(redis_address):
-    if not redis_address:
-        redis_address = services.find_redis_address_or_die()
-    logger.info("Connecting to Ray instance at {}.".format(redis_address))
-    ray.init(redis_address=redis_address)
+def timeline(address):
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = "/tmp/ray-timeline-{}.json".format(time)
     ray.timeline(filename=filename)
@@ -839,6 +834,34 @@ def timeline(redis_address):
     logger.info("Trace file written to {} ({} bytes).".format(filename, size))
     logger.info(
         "You can open this with chrome://tracing in the Chrome browser.")
+
+
+@cli.command()
+@click.option(
+    "--address",
+    required=False,
+    type=str,
+    help="Override the address to connect to.")
+def stat(address):
+    if not address:
+        address = services.find_redis_address_or_die()
+    logger.info("Connecting to Ray instance at {}.".format(address))
+    ray.init(address=address)
+
+    import grpc
+    from ray.core.generated import node_manager_pb2
+    from ray.core.generated import node_manager_pb2_grpc
+
+    for raylet in ray.nodes():
+        raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                        ray.nodes()[0]["NodeManagerPort"])
+        logger.info("Querying raylet {}".format(raylet_address))
+
+        channel = grpc.insecure_channel(raylet_address)
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        reply = stub.GetNodeStats(
+            node_manager_pb2.NodeStatsRequest(), timeout=2.0)
+        print(reply)
 
 
 cli.add_command(start)
@@ -856,6 +879,7 @@ cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
 cli.add_command(microbenchmark)
 cli.add_command(stack)
+cli.add_command(stat)
 cli.add_command(timeline)
 cli.add_command(project_cli)
 cli.add_command(session_cli)

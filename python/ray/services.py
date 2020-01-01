@@ -12,10 +12,10 @@ import resource
 import socket
 import subprocess
 import sys
-import textwrap
 import time
 import redis
 
+import colorama
 import pyarrow
 # Ray modules
 import ray
@@ -446,9 +446,7 @@ def start_ray_process(command,
     # in interactive sessions. This is only supported in Python 3.3 and above.
     def block_sigint():
         import signal
-        import sys
-        if sys.version_info >= (3, 3):
-            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
 
     process = subprocess.Popen(
         command,
@@ -1068,9 +1066,6 @@ def start_dashboard(require_webui,
     if redis_password:
         command += ["--redis-password", redis_password]
 
-    if sys.version_info <= (3, 0):
-        return None, None
-
     webui_dependencies_present = True
     try:
         import aiohttp  # noqa: F401
@@ -1094,21 +1089,11 @@ def start_dashboard(require_webui,
             stdout_file=stdout_file,
             stderr_file=stderr_file)
 
-        dashboard_url = "http://{}:{}".format(
-            host if host == "127.0.0.1" else get_node_ip_address(), port)
-        print("\n" + "=" * 70)
-        print("View the dashboard at {}.".format(dashboard_url))
-        if host == "127.0.0.1":
-            note = (
-                "Note: If Ray is running on a remote node, you will need to "
-                "set up an SSH tunnel with local port forwarding in order to "
-                "access the dashboard in your browser, e.g. by running "
-                "'ssh -L {}:{}:{} <username>@<host>'. Alternatively, you can "
-                "set webui_host=\"0.0.0.0\" in the call to ray.init() to "
-                "allow direct access from external machines.")
-            note = note.format(port, host, port)
-            print("\n".join(textwrap.wrap(note, width=70)))
-        print("=" * 70 + "\n")
+        dashboard_url = "{}:{}".format(
+            host if host != "0.0.0.0" else get_node_ip_address(), port)
+        logger.info("View the Ray dashboard at {}{}{}{}{}.".format(
+            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+            colorama.Fore.RESET, colorama.Style.NORMAL))
         return dashboard_url, process_info
     else:
         return None, None

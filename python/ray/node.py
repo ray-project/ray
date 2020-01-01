@@ -27,7 +27,6 @@ from ray.utils import try_to_create_directory, try_to_symlink
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
-PY3 = sys.version_info.major >= 3
 SESSION_LATEST = "session_latest"
 
 
@@ -599,12 +598,10 @@ class Node(object):
         self.start_redis()
         self.start_monitor()
         self.start_raylet_monitor()
-        # The dashboard is Python3.x only.
-        if PY3:
-            if self._ray_params.include_webui:
-                self.start_dashboard(require_webui=True)
-            elif self._ray_params.include_webui is None:
-                self.start_dashboard(require_webui=False)
+        if self._ray_params.include_webui:
+            self.start_dashboard(require_webui=True)
+        elif self._ray_params.include_webui is None:
+            self.start_dashboard(require_webui=False)
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
@@ -614,8 +611,7 @@ class Node(object):
 
         self.start_plasma_store()
         self.start_raylet()
-        if PY3:
-            self.start_reporter()
+        self.start_reporter()
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
@@ -755,10 +751,8 @@ class Node(object):
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        # reporter is started only in PY3.
-        if PY3:
-            self._kill_process_type(
-                ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
 
     def kill_dashboard(self, check_alive=True):
         """Kill the dashboard.

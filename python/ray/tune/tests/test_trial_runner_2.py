@@ -5,6 +5,7 @@ from __future__ import print_function
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -17,11 +18,6 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.resources import Resources
 from ray.tune.suggest import BasicVariantGenerator
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch
-else:
-    from mock import patch
 
 
 def create_mock_components():
@@ -330,5 +326,4 @@ class TrialRunnerTest2(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

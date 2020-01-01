@@ -60,9 +60,9 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext(true).SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                              ? TaskID::ForDriverTask(job_id)
-                                              : TaskID::Nil());
+  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
+                                          ? TaskID::ForDriverTask(job_id)
+                                          : TaskID::Nil());
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -148,7 +148,7 @@ int WorkerContext::CurrentActorMaxConcurrency() const {
 
 bool WorkerContext::CurrentActorIsAsync() const { return current_actor_is_asyncio_; }
 
-WorkerThreadContext &WorkerContext::GetThreadContext(bool for_main_thread) {
+WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {
     thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
   }

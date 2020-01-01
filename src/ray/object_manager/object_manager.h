@@ -265,6 +265,8 @@ class ObjectManager : public ObjectManagerInterface,
           callback(callback) {}
     /// The period of time to wait before invoking the callback.
     int64_t timeout_ms;
+    /// Whether to wait for objects to become local before returning.
+    bool wait_local;
     /// The timer used whenever wait_ms > 0.
     std::unique_ptr<boost::asio::deadline_timer> timeout_timer;
     /// The callback invoked when WaitCallback is complete.
@@ -273,7 +275,8 @@ class ObjectManager : public ObjectManagerInterface,
     std::vector<ObjectID> object_id_order;
     /// The objects that have not yet been found.
     std::unordered_set<ObjectID> remaining;
-    /// The objects that have been found.
+    /// The objects that have been found. Note that if wait_local is true, then
+    /// this will only contain objects that are in local_objects_ too.
     std::unordered_set<ObjectID> found;
     /// Objects that have been requested either by Lookup or Subscribe.
     std::unordered_set<ObjectID> requested_objects;

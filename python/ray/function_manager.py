@@ -326,17 +326,14 @@ class FunctionActorManager(object):
                 unnecessarily or fail to give warnings, but the application's
                 behavior won't change.
         """
-        if sys.version_info[0] >= 3:
-            import io
-            string_file = io.StringIO()
-            if sys.version_info[1] >= 7:
-                dis.dis(function_or_class, file=string_file, depth=2)
-            else:
-                dis.dis(function_or_class, file=string_file)
-            collision_identifier = (
-                function_or_class.__name__ + ":" + string_file.getvalue())
+        import io
+        string_file = io.StringIO()
+        if sys.version_info[1] >= 7:
+            dis.dis(function_or_class, file=string_file, depth=2)
         else:
-            collision_identifier = function_or_class.__name__
+            dis.dis(function_or_class, file=string_file)
+        collision_identifier = (
+            function_or_class.__name__ + ":" + string_file.getvalue())
 
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("ascii")).digest()

@@ -25,7 +25,6 @@ class MockActorManager : public ActorManagerInterface {
     num_terminations += 1;
   }
 
-  int num_publishes = 0;
   int num_terminations = 0;
 };
 

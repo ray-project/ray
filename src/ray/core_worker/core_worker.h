@@ -98,12 +98,9 @@ class CoreWorker {
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
-  void SetActorId(const ActorID &actor_id) {
-    RAY_CHECK(actor_id_.IsNil());
-    actor_id_ = actor_id;
-  }
+  void SetActorId(const ActorID &actor_id);
 
-  void SetWebuiDisplay(const std::string &message) { webui_display_ = message; }
+  void SetWebuiDisplay(const std::string &message);
 
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
@@ -638,11 +635,19 @@ class CoreWorker {
   /// Fields related to task execution.
   ///
 
+  /// Protects around accesses to fields below. This should only ever be held
+  /// for short-running periods of time.
+  mutable absl::Mutex mutex_;
+
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
-  ActorID actor_id_;
+  ActorID actor_id_ GUARDED_BY(mutex_);
+
+  /// The currently executing task spec. We have to track this separately since
+  /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
+  TaskSpecification current_task_ GUARDED_BY(mutex_);
 
   /// String to be displayed on Web UI.
-  std::string webui_display_;
+  std::string webui_display_ GUARDED_BY(mutex_);
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
@@ -671,7 +676,7 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 
   // Queue of tasks to resubmit when the specified time passes.
-  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_;
+  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
   friend class CoreWorkerTest;
 };

@@ -321,6 +321,44 @@ class NodeInfoAccessor {
   /// \return Whether the node is removed.
   virtual bool IsRemoved(const ClientID &node_id) const = 0;
 
+  /// Report heartbeat of a node to GCS asynchronously.
+  ///
+  /// \param data_ptr The heartbeat that will be reported to GCS.
+  /// \param callback Callback that will be called after report finishes.
+  /// \return Status
+  // TODO(micafan) NodeStateAccessor will call this method to report heartbeat.
+  virtual Status AsyncReportHeartbeat(
+      const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+  /// Subscribe to the heartbeat of each node from GCS.
+  ///
+  /// \param subscribe Callback that will be called each time when heartbeat is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeHeartbeat(
+      const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+      const StatusCallback &done) = 0;
+
+  /// Report state of all nodes to GCS asynchronously.
+  ///
+  /// \param data_ptr The heartbeats that will be reported to GCS.
+  /// \param callback Callback that will be called after report finishes.
+  /// \return Status
+  virtual Status AsyncReportBatchHeartbeat(
+      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+  /// Subscribe batched state of all nodes from GCS.
+  ///
+  /// \param subscribe Callback that will be called each time when batch heartbeat is
+  /// updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeBatchHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+      const StatusCallback &done) = 0;
+
  protected:
   NodeInfoAccessor() = default;
 };

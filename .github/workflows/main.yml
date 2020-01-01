@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  LLVM_VERSION_WINDOWS: 9.0.0
+
 on: [push]
 
 jobs:
@@ -29,8 +32,20 @@ jobs:
       if: matrix.compiler == 'clang' || matrix.compiler == 'clang-cl'
       shell: bash
       run: |
+        set -euo pipefail
         if [ "${OSTYPE}" = "msys" ]; then
-          choco install --no-progress llvm
+          export MSYS2_ARG_CONV_EXCL="*"  # Don't let MSYS2 attempt to auto-translate arguments that look like paths
+          # Ideally we should be able to use the Chocolatey package manager:
+          #   choco install --no-progress llvm
+          # However, it frequently gives HTTP 503 errors, so we just download and install manually.
+          urldir="https://releases.llvm.org"
+          arch=64
+          if [ "${HOSTTYPE}" = "${HOSTTYPE%64}" ]; then arch=32; fi
+          target="./LLVM-${LLVM_VERSION_WINDOWS}-win${arch}.exe"
+          curl -s -L -R -o "${target}" "http://releases.llvm.org/${LLVM_VERSION_WINDOWS}/${target##*/}"
+          chmod +x "${target}"
+          "${target}" /S
+          rm -f -- "${target}"
         elif 1>&- command -v pacman; then
           sudo pacman -S --needed --noconfirm --noprogressbar clang
         elif 1>&- command -v apt-get; then
