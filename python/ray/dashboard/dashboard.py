@@ -21,6 +21,7 @@ import time
 import traceback
 import yaml
 
+from base64 import b64decode
 from collections import defaultdict
 from operator import itemgetter
 from typing import Dict
@@ -55,6 +56,20 @@ def format_resource(resource_name, quantity):
         quantity = quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)
         return "{} GiB".format(round_resource_value(quantity))
     return "{}".format(round_resource_value(quantity))
+
+
+def format_reply(reply):
+    if isinstance(reply, dict):
+        for k, v in reply.items():
+            if isinstance(v, dict) or isinstance(v, list):
+                format_reply(v)
+            else:
+                if k.endswith("Id"):
+                    v = b64decode(v)
+                    reply[k] = ray.utils.binary_to_hex(v)
+    elif isinstance(reply, list):
+        for item in reply:
+            format_reply(item)
 
 
 class Dashboard(object):
@@ -325,15 +340,18 @@ class NodeStats(threading.Thread):
                             core_worker_stats.pop("currentTaskDesc")
                         if "numPendingTasks" in core_worker_stats:
                             core_worker_stats.pop("numPendingTasks")
+                        format_reply(core_worker_stats)
                         flattened_tree[actor_id].update(core_worker_stats)
 
             for infeasible_task in infeasible_tasks:
-                actor_id = infeasible_task["actorCreationTaskSpec"]["actorId"]
+                actor_id = ray.utils.binary_to_hex(b64decode(infeasible_task["actorCreationTaskSpec"]["actorId"]))
                 caller_addr = (infeasible_task["callerAddress"]["ipAddress"],
                                str(infeasible_task["callerAddress"]["port"]))
                 caller_id = self._addr_to_actor_id.get(caller_addr, "root")
                 child_to_parent[actor_id] = caller_id
                 infeasible_task["state"] = -1
+                infeasible_task["functionDescriptor"] = list(map(lambda desc: b64decode(desc).decode("utf-8"), infeasible_task["functionDescriptor"]))
+                format_reply(infeasible_tasks)
                 flattened_tree[actor_id] = infeasible_task
 
         # construct actor tree
@@ -411,10 +429,9 @@ class NodeStats(threading.Thread):
                         self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(
                             actor_data.actor_id)
                         self._addr_to_extra_info_dict[addr] = {
-                            "job_id": ray.utils.binary_to_hex(
-                                actor_data.job_id),
+                            "jobId": ray.utils.binary_to_hex(actor_data.job_id),
                             "state": actor_data.state,
-                            "is_direct_call": actor_data.is_direct_call
+                            "isDirectCall": actor_data.is_direct_call,
                         }
                     else:
                         data = json.loads(ray.utils.decode(data))
