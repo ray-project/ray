@@ -29,7 +29,7 @@ def test_worker_stats(shutdown_only):
         for _ in range(num_retry):
             try:
                 reply = stub.GetNodeStats(
-                    node_manager_pb2.NodeStatsRequest(), timeout=timeout)
+                    node_manager_pb2.GetNodeStatsRequest(), timeout=timeout)
                 break
             except grpc.RpcError:
                 continue
