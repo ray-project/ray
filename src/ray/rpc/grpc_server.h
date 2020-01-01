@@ -13,13 +13,13 @@
 namespace ray {
 namespace rpc {
 
-#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, CONCURRENCY)                            \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                          \
-      new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,          \
-                                HANDLER##Reply>(                                      \
-          service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_,       \
-          &SERVICE##Handler::Handle##HANDLER, cq, main_service_));                    \
-  server_call_factories_and_concurrencies->emplace_back(                              \
+#define RPC_SERVICE_HANDLER(SERVICE, HANDLER, CONCURRENCY)                      \
+  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
+      new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,    \
+                                HANDLER##Reply>(                                \
+          service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
+          &SERVICE##Handler::Handle##HANDLER, cq, main_service_));              \
+  server_call_factories_and_concurrencies->emplace_back(                        \
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
 class GrpcService;

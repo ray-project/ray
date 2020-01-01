@@ -10,11 +10,11 @@
 namespace ray {
 namespace rpc {
 
-#define RAY_NODE_MANAGER_RPC_HANDLERS                                   \
-    RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, 100)    \
-    RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, 100)          \
-    RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask, 100)           \
-    RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, 1)
+#define RAY_NODE_MANAGER_RPC_HANDLERS                              \
+  RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, 100) \
+  RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, 100)       \
+  RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask, 100)        \
+  RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, 1)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
@@ -43,8 +43,8 @@ class NodeManagerServiceHandler {
                                  SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetNodeStats(const GetNodeStatsRequest &request,
-                                      GetNodeStatsReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
+                                  GetNodeStatsReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.

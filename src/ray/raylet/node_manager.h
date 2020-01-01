@@ -547,8 +547,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
-                              rpc::GetNodeStatsReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) override;
+                          rpc::GetNodeStatsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.

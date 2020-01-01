@@ -2925,8 +2925,8 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
 }
 
 void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
-                                         rpc::GetNodeStatsReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+                                     rpc::GetNodeStatsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
     auto worker_stats = reply->add_workers_stats();
     worker_stats->set_pid(driver->Pid());

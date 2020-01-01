@@ -665,9 +665,8 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 }
 
 /// Implementation of ObjectManagerServiceHandler
-void ObjectManager::HandlePush(const rpc::PushRequest &request,
-                                      rpc::PushReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
+void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
 
@@ -712,9 +711,8 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
   return status;
 }
 
-void ObjectManager::HandlePull(const rpc::PullRequest &request,
-                                      rpc::PullReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
+void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
   RAY_LOG(DEBUG) << "Received pull request from client " << client_id << " for object ["
@@ -736,8 +734,8 @@ void ObjectManager::HandlePull(const rpc::PullRequest &request,
 }
 
 void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
-                                             rpc::FreeObjectsReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
+                                      rpc::FreeObjectsReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   for (const auto &e : request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));

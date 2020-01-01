@@ -10,10 +10,10 @@
 namespace ray {
 namespace rpc {
 
-#define RAY_OBJECT_MANAGER_RPC_HANDLERS                             \
-    RPC_SERVICE_HANDLER(ObjectManagerService, Push, 5)              \
-    RPC_SERVICE_HANDLER(ObjectManagerService, Pull, 5)              \
-    RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, 2)       \
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS              \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Push, 5) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Pull, 5) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, 2)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
@@ -27,14 +27,14 @@ class ObjectManagerServiceHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   virtual void HandlePush(const PushRequest &request, PushReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
+                          SendReplyCallback send_reply_callback) = 0;
   /// Handle a `Pull` request
   virtual void HandlePull(const PullRequest &request, PullReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
+                          SendReplyCallback send_reply_callback) = 0;
   /// Handle a `FreeObjects` request
   virtual void HandleFreeObjects(const FreeObjectsRequest &request,
-                                        FreeObjectsReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
+                                 FreeObjectsReply *reply,
+                                 SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ObjectManagerGrpcService`.
