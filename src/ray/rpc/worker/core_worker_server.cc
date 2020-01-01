@@ -5,13 +5,7 @@ namespace ray {
 namespace rpc {
 
 #define RAY_CORE_WORKER_RPC_HANDLER(HANDLER, CONCURRENCY)                             \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                          \
-      new ServerCallFactoryImpl<CoreWorkerService, CoreWorker, HANDLER##Request,      \
-                                HANDLER##Reply>(                                      \
-          service_, &CoreWorkerService::AsyncService::Request##HANDLER, core_worker_, \
-          &CoreWorker::Handle##HANDLER, cq, main_service_));                          \
-  server_call_factories_and_concurrencies->emplace_back(                              \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+    RPC_SERVICE_HANDLER(CoreWorkerService, HANDLER, CONCURRENCY)
 
 CoreWorkerGrpcService::CoreWorkerGrpcService(boost::asio::io_service &main_service,
                                              CoreWorker &core_worker)

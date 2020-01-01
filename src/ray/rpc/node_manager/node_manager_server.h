@@ -60,43 +60,10 @@ class NodeManagerGrpcService : public GrpcService {
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
     // Initialize the factory for requests.
-    std::unique_ptr<ServerCallFactory> request_worker_lease_call_factory(
-        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
-                                  RequestWorkerLeaseRequest, RequestWorkerLeaseReply>(
-            service_, &NodeManagerService::AsyncService::RequestRequestWorkerLease,
-            service_handler_, &NodeManagerServiceHandler::HandleWorkerLeaseRequest, cq,
-            main_service_));
-
-    std::unique_ptr<ServerCallFactory> release_worker_call_factory(
-        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
-                                  ReturnWorkerRequest, ReturnWorkerReply>(
-            service_, &NodeManagerService::AsyncService::RequestReturnWorker,
-            service_handler_, &NodeManagerServiceHandler::HandleReturnWorker, cq,
-            main_service_));
-
-    std::unique_ptr<ServerCallFactory> forward_task_call_factory(
-        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
-                                  ForwardTaskRequest, ForwardTaskReply>(
-            service_, &NodeManagerService::AsyncService::RequestForwardTask,
-            service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq,
-            main_service_));
-
-    std::unique_ptr<ServerCallFactory> node_stats_call_factory(
-        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
-                                  GetNodeStatsRequest, GetNodeStatsReply>(
-            service_, &NodeManagerService::AsyncService::RequestGetNodeStats,
-            service_handler_, &NodeManagerServiceHandler::HandleNodeStatsRequest, cq,
-            main_service_));
-
-    // Set accept concurrency.
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(request_worker_lease_call_factory), 100);
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(release_worker_call_factory), 100);
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(forward_task_call_factory), 100);
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(node_stats_call_factory), 1);
+    RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, 100)
+    RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, 100)
+    RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask, 100)
+    RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, 1)
   }
 
  private:

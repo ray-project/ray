@@ -9,41 +9,17 @@
 namespace ray {
 namespace rpc {
 
-#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                           \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                         \
-      new ServerCallFactoryImpl<JobInfoGcsService, JobInfoHandler, HANDLER##Request, \
-                                HANDLER##Reply>(                                     \
-          service_, &JobInfoGcsService::AsyncService::Request##HANDLER,              \
-          service_handler_, &JobInfoHandler::Handle##HANDLER, cq, main_service_));   \
-  server_call_factories_and_concurrencies->emplace_back(                             \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                             \
+    RPC_SERVICE_HANDLER(JobInfoGcsService, HANDLER, CONCURRENCY)
 
-#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                             \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                             \
-      new ServerCallFactoryImpl<ActorInfoGcsService, ActorInfoHandler, HANDLER##Request, \
-                                HANDLER##Reply>(                                         \
-          service_, &ActorInfoGcsService::AsyncService::Request##HANDLER,                \
-          service_handler_, &ActorInfoHandler::Handle##HANDLER, cq, main_service_));     \
-  server_call_factories_and_concurrencies->emplace_back(                                 \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                           \
+    RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, CONCURRENCY)
 
 #define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                            \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                           \
-      new ServerCallFactoryImpl<NodeInfoGcsService, NodeInfoHandler, HANDLER##Request, \
-                                HANDLER##Reply>(                                       \
-          service_, &NodeInfoGcsService::AsyncService::Request##HANDLER,               \
-          service_handler_, &NodeInfoHandler::Handle##HANDLER, cq, main_service_));    \
-  server_call_factories_and_concurrencies->emplace_back(                               \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+    RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER, CONCURRENCY)
 
-#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                         \
-  std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                          \
-      new ServerCallFactoryImpl<ObjectInfoGcsService, ObjectInfoHandler,              \
-                                HANDLER##Request, HANDLER##Reply>(                    \
-          service_, &ObjectInfoGcsService::AsyncService::Request##HANDLER,            \
-          service_handler_, &ObjectInfoHandler::Handle##HANDLER, cq, main_service_)); \
-  server_call_factories_and_concurrencies->emplace_back(                              \
-      std::move(HANDLER##_call_factory), CONCURRENCY);
+#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY)                          \
+    RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER, CONCURRENCY)
 
 class JobInfoHandler {
  public:
@@ -74,8 +50,8 @@ class JobInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    JOB_INFO_SERVICE_RPC_HANDLER(AddJob, 1);
-    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished, 1);
+    RPC_SERVICE_HANDLER(AddJob, 1);
+    RPC_SERVICE_HANDLER(MarkJobFinished, 1);
   }
 
  private:
@@ -119,9 +95,9 @@ class ActorInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorInfo, 1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActorInfo, 1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo, 1);
+    RPC_SERVICE_HANDLER(GetActorInfo, 1);
+    RPC_SERVICE_HANDLER(RegisterActorInfo, 1);
+    RPC_SERVICE_HANDLER(UpdateActorInfo, 1);
   }
 
  private:
@@ -165,9 +141,9 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode, 1);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo, 1);
+    RPC_SERVICE_HANDLER(NodeInfoGrpcService, RegisterNode, 1);
+    RPC_SERVICE_HANDLER(NodeInfoGrpcService, UnregisterNode, 1);
+    RPC_SERVICE_HANDLER(NodeInfoGrpcService, GetAllNodeInfo, 1);
   }
 
  private:
@@ -211,9 +187,9 @@ class ObjectInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations, 1);
-    OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation, 1);
-    OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation, 1);
+    RPC_SERVICE_HANDLER(ObjectInfoGrpcService, GetObjectLocations, 1);
+    RPC_SERVICE_HANDLER(ObjectInfoGrpcService, AddObjectLocation, 1);
+    RPC_SERVICE_HANDLER(ObjectInfoGrpcService, RemoveObjectLocation, 1);
   }
 
  private:
