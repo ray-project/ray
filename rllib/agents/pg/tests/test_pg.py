@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import unittest
 
@@ -14,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import check, fc
 
 
-class TestPGFunctionality(unittest.TestCase):
+class TestPG(unittest.TestCase):
 
     ray.init()
 
