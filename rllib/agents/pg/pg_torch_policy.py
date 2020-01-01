@@ -1,5 +1,5 @@
 import ray
-from ray.rllib.agents.pg.pg_tf_policy import post_process_advantages
+from ray.rllib.agents.pg.pg import post_process_advantages
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy

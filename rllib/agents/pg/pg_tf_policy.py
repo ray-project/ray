@@ -1,4 +1,5 @@
 import ray
+from ray.rllib.agents.pg.pg import post_process_advantages
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -14,13 +15,6 @@ def pg_tf_loss(policy, model, dist_class, train_batch):
     action_dist = dist_class(logits, model)
     return -tf.reduce_mean(action_dist.logp(train_batch[SampleBatch.ACTIONS])
                            * train_batch[Postprocessing.ADVANTAGES])
-
-
-def post_process_advantages(policy, sample_batch, other_agent_batches=None,
-                            episode=None):
-    """This adds the "advantages" column to the sample train_batch."""
-    return compute_advantages(sample_batch, 0.0, policy.config["gamma"],
-                              use_gae=False)
 
 
 PGTFPolicy = build_tf_policy(
