@@ -24,6 +24,22 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
                              UpdateActorInfoReply *reply,
                              SendReplyCallback send_reply_callback) override;
 
+  void HandleAddActorCheckpoint(const AddActorCheckpointRequest &request,
+                                AddActorCheckpointReply *reply,
+                                SendReplyCallback send_reply_callback) override;
+
+  void HandleGetActorCheckpoint(const GetActorCheckpointRequest &request,
+                                GetActorCheckpointReply *reply,
+                                SendReplyCallback send_reply_callback) override;
+
+  void HandleAddActorCheckpointID(const AddActorCheckpointIDRequest &request,
+                                  AddActorCheckpointIDReply *reply,
+                                  SendReplyCallback send_reply_callback) override;
+
+  void HandleGetActorCheckpointID(const GetActorCheckpointIDRequest &request,
+                                  GetActorCheckpointIDReply *reply,
+                                  SendReplyCallback send_reply_callback) override;
+
  private:
   gcs::RedisGcsClient &gcs_client_;
 };

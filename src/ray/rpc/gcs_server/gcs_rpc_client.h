@@ -52,6 +52,54 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo, request, callback,
                          actor_info_grpc_client_)
 
+  ///  Add actor checkpoint data to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AddActorCheckpoint(const AddActorCheckpointRequest &request,
+                          const ClientCallback<AddActorCheckpointReply> &callback) {
+    client_call_manager_.CreateCall<ActorInfoGcsService, AddActorCheckpointRequest,
+                                    AddActorCheckpointReply>(
+        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAddActorCheckpoint,
+        request, callback);
+  }
+
+  ///  Get actor checkpoint data from GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void GetActorCheckpoint(const GetActorCheckpointRequest &request,
+                          const ClientCallback<GetActorCheckpointReply> &callback) {
+    client_call_manager_.CreateCall<ActorInfoGcsService, GetActorCheckpointRequest,
+                                    GetActorCheckpointReply>(
+        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncGetActorCheckpoint,
+        request, callback);
+  }
+
+  ///  Add actor checkpoint id data to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void AddActorCheckpointID(const AddActorCheckpointIDRequest &request,
+                            const ClientCallback<AddActorCheckpointIDReply> &callback) {
+    client_call_manager_.CreateCall<ActorInfoGcsService, AddActorCheckpointIDRequest,
+                                    AddActorCheckpointIDReply>(
+        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAddActorCheckpointID,
+        request, callback);
+  }
+
+  ///  Get actor checkpoint id data from GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void GetActorCheckpointID(const GetActorCheckpointIDRequest &request,
+                            const ClientCallback<GetActorCheckpointIDReply> &callback) {
+    client_call_manager_.CreateCall<ActorInfoGcsService, GetActorCheckpointIDRequest,
+                                    GetActorCheckpointIDReply>(
+        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncGetActorCheckpointID,
+        request, callback);
+  }
+
   /// Register a node to GCS Service.
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, request, callback,
                          node_info_grpc_client_)
