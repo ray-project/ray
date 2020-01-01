@@ -5,12 +5,12 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 
 // Request a worker from the raylet with the specified resources.
-message WorkerLeaseRequest {
+message RequestWorkerLeaseRequest {
   // TaskSpec containing the requested resources.
   TaskSpec resource_spec = 1;
 }
 
-message WorkerLeaseReply {
+message RequestWorkerLeaseReply {
   // Address of the leased worker. If this is empty, then the request should be
   // retried at the provided raylet address.
   Address worker_address = 1;
@@ -45,7 +45,7 @@ message ForwardTaskRequest {
 message ForwardTaskReply {
 }
 
-message NodeStatsRequest {
+message GetNodeStatsRequest {
 }
 
 message WorkerStats {
@@ -81,7 +81,7 @@ message ViewData {
   repeated Measure measures = 2;
 }
 
-message NodeStatsReply {
+message GetNodeStatsReply {
   repeated WorkerStats workers_stats = 1;
   repeated ViewData view_data = 2;
   map<string, double> available_resources = 3;
@@ -92,11 +92,11 @@ message NodeStatsReply {
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
-  rpc RequestWorkerLease(WorkerLeaseRequest) returns (WorkerLeaseReply);
+  rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
   // Release a worker back to its raylet.
   rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Get the current node stats.
-  rpc GetNodeStats(NodeStatsRequest) returns (NodeStatsReply);
+  rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
 }

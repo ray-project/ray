@@ -1497,8 +1497,8 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
   DispatchScheduledTasksToWorkers();
 }
 
-void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
-                                           rpc::WorkerLeaseReply *reply,
+void NodeManager::HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest &request,
+                                           rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
@@ -2924,8 +2924,8 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
-                                         rpc::NodeStatsReply *reply,
+void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request,
+                                         rpc::GetNodeStatsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
     auto worker_stats = reply->add_workers_stats();
