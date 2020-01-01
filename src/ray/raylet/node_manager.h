@@ -4,7 +4,7 @@
 #include <boost/asio/steady_timer.hpp>
 
 // clang-format off
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/task/task.h"
@@ -531,8 +531,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                         bool success);
 
   /// Handle a `WorkerLease` request.
-  void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
-                                rpc::WorkerLeaseReply *reply,
+  void HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest &request,
+                                rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
@@ -546,8 +546,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
-  void HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
-                              rpc::NodeStatsReply *reply,
+  void HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request,
+                              rpc::GetNodeStatsReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Push an error to the driver if this node is full of actors and so we are

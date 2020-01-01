@@ -9,6 +9,7 @@ import os
 import pytest
 import shutil
 import sys
+from unittest.mock import MagicMock, patch
 
 import ray
 from ray import tune
@@ -28,12 +29,6 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.tests.mock import (MockDurableTrainer, MockRemoteTrainer,
                                  MockNodeSyncer, mock_storage_client,
                                  MOCK_REMOTE_DIR)
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock, patch
-else:
-    from mock import MagicMock, patch
-
 
 def _start_new_cluster():
     cluster = Cluster(
@@ -666,5 +661,4 @@ tune.run(
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

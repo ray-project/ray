@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import json
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -191,5 +192,4 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

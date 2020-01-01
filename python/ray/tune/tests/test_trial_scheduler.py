@@ -10,8 +10,9 @@ import numpy as np
 import sys
 import tempfile
 import shutil
-import ray
+from unittest.mock import MagicMock
 
+import ray
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
@@ -24,11 +25,6 @@ from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
 _register_all()
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
-else:
-    from mock import MagicMock
 
 
 def result(t, rew):
@@ -1195,5 +1191,4 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))
