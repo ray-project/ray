@@ -348,7 +348,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
         "stopping_criterion": {
-            "training_iteration": 3
+            "training_iteration": 4
         },
         "checkpoint_freq": 2,
         "max_failures": 2,
@@ -390,8 +390,9 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
             cluster.wait_for_nodes()
             shutil.rmtree(os.path.dirname(t1.checkpoint.value))
 
+            runner.step()  # collect result 3, kick off + fail result 4
             runner.step()  # Recovery step
-            runner.step()  # Process recovery
+            runner.step()  # Process Recovery + step 4
             for i in range(3):
                 if t1.status != Trial.TERMINATED:
                     runner.step()
