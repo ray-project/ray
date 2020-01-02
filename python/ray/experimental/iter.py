@@ -447,7 +447,7 @@ class LocalIterator(Generic[T]):
         self.built_iterator = None
         self.local_transforms = local_transforms or []
         self.timeout = timeout
-        self.name = name or "LocalIterator[?]"
+        self.name = name or "unknown"
 
     def _build_once(self):
         if self.built_iterator is None:
@@ -640,7 +640,7 @@ class ParallelIteratorWorker(object):
 
     def par_iter_next(self):
         """Implements ParallelIterator worker item fetch."""
-        assert self.local_it is not None, "must call par_iterator_init()"
+        assert self.local_it is not None, "must call par_iter_init()"
         return next(self.local_it)
 
 

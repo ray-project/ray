@@ -4,7 +4,7 @@ Parallel Iterator API (Experimental)
 ``ray.experimental.iter`` provides a parallel iterator API for simple data ingest
 and processing. It can be thought of as syntactic sugar around Ray actors and ``ray.wait`` loops.
 
-Parallel iterators are lazy, and can operate over infinite sequences of items. Iterator
+Parallel iterators are lazy and can operate over infinite sequences of items. Iterator
 transformations are only executed when the user calls ``next()`` to fetch the next output
 item from the iterator.
 
