@@ -58,8 +58,7 @@ void ReconstructionPolicy::SetTaskTimeout(
             // task is still required after this initial period, then we now
             // subscribe to task lease notifications.
             RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(
-                task_id, task_lease_notification_callback,
-                /*done*/ nullptr));
+                task_id, task_lease_notification_callback, /*done*/ nullptr));
             it->second.subscribed = true;
           }
         } else {
