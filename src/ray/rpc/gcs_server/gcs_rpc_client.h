@@ -76,6 +76,30 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation, request, callback,
                          object_info_grpc_client_)
 
+  /// Report heartbeat of a node to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void ReportHeartbeat(const ReportHeartbeatRequest &request,
+                       const ClientCallback<ReportHeartbeatReply> &callback) {
+    client_call_manager_
+        .CreateCall<NodeInfoGcsService, ReportHeartbeatRequest, ReportHeartbeatReply>(
+            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncReportHeartbeat,
+            request, callback);
+  }
+
+  /// Report batch heartbeat to GCS Service.
+  ///
+  /// \param request The request message.
+  /// \param callback The callback function that handles reply from server.
+  void ReportBatchHeartbeat(const ReportBatchHeartbeatRequest &request,
+                            const ClientCallback<ReportBatchHeartbeatReply> &callback) {
+    client_call_manager_.CreateCall<NodeInfoGcsService, ReportBatchHeartbeatRequest,
+                                    ReportBatchHeartbeatReply>(
+        *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncReportBatchHeartbeat,
+        request, callback);
+  }
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
