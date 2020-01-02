@@ -78,7 +78,7 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   ray::Status RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,
-      const rpc::ClientCallback<rpc::WorkerLeaseReply> &callback) override {
+      const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
     return Status::OK();
@@ -87,7 +87,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   // Trigger reply to RequestWorkerLease.
   bool GrantWorkerLease(const std::string &address, int port,
                         const ClientID &retry_at_raylet_id) {
-    rpc::WorkerLeaseReply reply;
+    rpc::RequestWorkerLeaseReply reply;
     if (!retry_at_raylet_id.IsNil()) {
       reply.mutable_retry_at_raylet_address()->set_ip_address(address);
       reply.mutable_retry_at_raylet_address()->set_port(port);
@@ -112,7 +112,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   int num_workers_requested = 0;
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
-  std::list<rpc::ClientCallback<rpc::WorkerLeaseReply>> callbacks = {};
+  std::list<rpc::ClientCallback<rpc::RequestWorkerLeaseReply>> callbacks = {};
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {

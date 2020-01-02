@@ -644,8 +644,6 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
     ray.init(num_cpus=1)
 

@@ -4,21 +4,15 @@ from __future__ import print_function
 
 import json
 import logging
-import sys
 import threading
+
+from urllib.parse import urljoin, urlparse
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.suggest import BasicVariantGenerator
 from ray.utils import binary_to_hex, hex_to_binary
-
-if sys.version_info[0] == 2:
-    from urlparse import urljoin, urlparse
-    from SimpleHTTPServer import SimpleHTTPRequestHandler
-    from SocketServer import TCPServer as HTTPServer
-elif sys.version_info[0] == 3:
-    from urllib.parse import urljoin, urlparse
-    from http.server import SimpleHTTPRequestHandler, HTTPServer
 
 logger = logging.getLogger(__name__)
 
