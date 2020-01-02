@@ -93,7 +93,7 @@ def test_gather_sync(ray_start_regular_shared):
     assert (
         repr(it) == "LocalIterator[ParallelIterator[from_range[4, shards=2]]"
         ".gather_sync()]")
-    assert sorted(list(it)) == [0, 1, 2, 3]
+    assert sorted(it) == [0, 1, 2, 3]
 
 
 def test_gather_async(ray_start_regular_shared):
@@ -102,7 +102,7 @@ def test_gather_async(ray_start_regular_shared):
     assert (
         repr(it) == "LocalIterator[ParallelIterator[from_range[4, shards=2]]"
         ".gather_async()]")
-    assert sorted(list(it)) == [0, 1, 2, 3]
+    assert sorted(it) == [0, 1, 2, 3]
 
 
 def test_batch_across_shards(ray_start_regular_shared):
@@ -111,7 +111,7 @@ def test_batch_across_shards(ray_start_regular_shared):
     assert (
         repr(it) == "LocalIterator[ParallelIterator[from_iterators[shards=2]]"
         ".batch_across_shards()]")
-    assert sorted(list(it)) == [[0, 2], [1, 3]]
+    assert sorted(it) == [[0, 2], [1, 3]]
 
 
 def test_remote(ray_start_regular_shared):
@@ -149,7 +149,7 @@ def test_union_local(ray_start_regular_shared):
     it1 = from_items(["a", "b", "c"], 1).gather_async()
     it2 = from_range(5, 2).for_each(str).gather_async()
     it = it1.union(it2)
-    assert sorted(list(it)) == ["0", "1", "2", "3", "4", "a", "b", "c"]
+    assert sorted(it) == ["0", "1", "2", "3", "4", "a", "b", "c"]
 
 
 def test_union_async(ray_start_regular_shared):
