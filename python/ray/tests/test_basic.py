@@ -63,6 +63,9 @@ def test_simple_serialization(ray_start_regular):
         np.float64(1.9),
     ]
 
+    if sys.version_info < (3, 0):
+        primitive_objects.append(long(0))  # noqa: E501,F821
+
     composite_objects = (
         [[obj]
          for obj in primitive_objects] + [(obj, )
@@ -86,25 +89,6 @@ def test_simple_serialization(ray_start_regular):
         if type(obj).__module__ != "numpy":
             assert type(obj) == type(new_obj_1)
             assert type(obj) == type(new_obj_2)
-
-
-def test_background_tasks_with_max_calls(shutdown_only):
-    ray.init(num_cpus=2)
-
-    @ray.remote
-    def g():
-        time.sleep(.1)
-        return 0
-
-    @ray.remote(max_calls=1, max_retries=0)
-    def f():
-        return [g.remote()]
-
-    nested = ray.get([f.remote() for _ in range(10)])
-
-    # Should still be able to retrieve these objects, since f's workers will
-    # wait for g to finish before exiting.
-    ray.get([x[0] for x in nested])
 
 
 def test_fair_queueing(shutdown_only):
@@ -182,7 +166,17 @@ def complex_serialization(use_pickle):
             assert obj1 == obj2, "Objects {} and {} are different.".format(
                 obj1, obj2)
 
-    long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
+    if sys.version_info >= (3, 0):
+        long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
+    else:
+
+        long_extras = [
+            long(0),  # noqa: E501,F821
+            np.array([
+                ["hi", u"hi"],
+                [1.3, long(1)]  # noqa: E501,F821
+            ])
+        ]
 
     PRIMITIVE_OBJECTS = [
         0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
@@ -797,6 +791,8 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -832,6 +828,8 @@ def test_args_starkwargs(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -873,6 +871,8 @@ def test_args_named_and_star(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -1636,4 +1636,5 @@ def test_wait(ray_start_regular):
 
 if __name__ == "__main__":
     import pytest
+    import sys
     sys.exit(pytest.main(["-v", __file__]))
