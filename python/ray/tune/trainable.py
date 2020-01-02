@@ -254,8 +254,7 @@ class Trainable(object):
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
 
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        os.makedirs(checkpoint_dir, exist_ok=True)
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
@@ -366,8 +365,7 @@ class Trainable(object):
             path = os.path.join(tmpdir, relpath_name)
 
             # This may be a subdirectory, hence not just using tmpdir
-            if not os.path.exists(os.path.dirname(path)):
-                os.makedirs(os.path.dirname(path))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
                 f.write(file_contents)
 

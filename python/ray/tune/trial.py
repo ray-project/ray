@@ -205,8 +205,7 @@ class Trial(object):
     @classmethod
     def create_logdir(cls, identifier, local_dir):
         local_dir = os.path.expanduser(local_dir)
-        if not os.path.exists(local_dir):
-            os.makedirs(local_dir)
+        os.makedirs(local_dir, exist_ok=True)
         return tempfile.mkdtemp(
             prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
             dir=local_dir)
@@ -217,8 +216,8 @@ class Trial(object):
         if not self.result_logger:
             if not self.logdir:
                 self.logdir = Trial.create_logdir(str(self), self.local_dir)
-            elif not os.path.exists(self.logdir):
-                os.makedirs(self.logdir)
+            else:
+                os.makedirs(self.logdir, exist_ok=True)
 
             self.result_logger = UnifiedLogger(
                 self.config,

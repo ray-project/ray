@@ -154,9 +154,8 @@ class TrialRunner(object):
         self._stop_queue = []
         self._local_checkpoint_dir = local_checkpoint_dir
 
-        if self._local_checkpoint_dir and not os.path.exists(
-                self._local_checkpoint_dir):
-            os.makedirs(self._local_checkpoint_dir)
+        if self._local_checkpoint_dir:
+            os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
