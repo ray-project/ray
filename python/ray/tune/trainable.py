@@ -40,8 +40,11 @@ class TrainableUtil(object):
                 path = os.path.join(basedir, file_name)
                 with open(path, "rb") as f:
                     data[os.path.relpath(path, checkpoint_dir)] = f.read()
+        # Use normpath so that a directory path isn't mapped to empty string.
+        name = os.path.basename(os.path.normpath(checkpoint_path))
+        name += os.path.sep if os.path.isdir(checkpoint_path) else ""
         data_dict = pickle.dumps({
-            "checkpoint_name": os.path.basename(checkpoint_path),
+            "checkpoint_name": name,
             "data": data,
         })
         return data_dict
