@@ -728,8 +728,9 @@ std::string ClientTable::DebugString() const {
 
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id) {
-  auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
+                                               const ActorCheckpointID &checkpoint_id,
+                                               const WriteCallback &done) {
+  auto lookup_callback = [this, checkpoint_id, job_id, actor_id, done](
                              ray::gcs::RedisGcsClient *client, const ActorID &id,
                              const ActorCheckpointIdData &data) {
     std::shared_ptr<ActorCheckpointIdData> copy =
@@ -744,16 +745,16 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
       copy->mutable_timestamps()->erase(copy->mutable_timestamps()->begin());
       client_->actor_checkpoint_table().Delete(job_id, to_delete);
     }
-    RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
+    RAY_CHECK_OK(Add(job_id, actor_id, copy, done));
   };
-  auto failure_callback = [this, checkpoint_id, job_id, actor_id](
+  auto failure_callback = [this, checkpoint_id, job_id, actor_id, done](
                               ray::gcs::RedisGcsClient *client, const ActorID &id) {
     std::shared_ptr<ActorCheckpointIdData> data =
         std::make_shared<ActorCheckpointIdData>();
     data->set_actor_id(id.Binary());
     data->add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
     *data->add_checkpoint_ids() = checkpoint_id.Binary();
-    RAY_CHECK_OK(Add(job_id, actor_id, data, nullptr));
+    RAY_CHECK_OK(Add(job_id, actor_id, data, done));
   };
   return Lookup(job_id, actor_id, lookup_callback, failure_callback);
 }
