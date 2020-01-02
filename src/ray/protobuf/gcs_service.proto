@@ -89,6 +89,20 @@ message GetAllNodeInfoReply {
   repeated GcsNodeInfo node_info_list = 1;
 }
 
+message ReportHeartbeatRequest {
+  HeartbeatTableData heartbeat = 1;
+}
+
+message ReportHeartbeatReply {
+}
+
+message ReportBatchHeartbeatRequest {
+  HeartbeatBatchTableData heartbeat_batch = 1;
+}
+
+message ReportBatchHeartbeatReply {
+}
+
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a node to GCS Service.
@@ -97,6 +111,11 @@ service NodeInfoGcsService {
   rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Report heartbeat of a node to GCS Service.
+  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
+  // Report batch heartbeat to GCS Service.
+  rpc ReportBatchHeartbeat(ReportBatchHeartbeatRequest)
+      returns (ReportBatchHeartbeatReply);
 }
 
 message GetObjectLocationsRequest {
