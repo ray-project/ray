@@ -141,10 +141,16 @@ java_proto_compile(
     deps = ["//streaming:streaming_proto"],
 )
 
+java_proto_compile(
+    name = "remote_call_java_proto",
+    deps = ["//streaming:remote_call_proto"],
+)
+
 filegroup(
     name = "all_java_proto",
     srcs = [
         ":streaming_java_proto",
+        ":remote_call_java_proto",
     ],
 )
 

@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package ray.streaming.proto;
+
+option java_package = "org.ray.streaming.runtime.generated";
+
+message ExecutionGraph {
+    enum NodeType {
+        SOURCE = 0;
+        TRANSFORM = 1;
+        SINK = 2;
+    }
+
+    message ExecutionNode {
+        int32 node_id = 1;
+        NodeType node_type = 2;
+        bytes stream_operator = 3;
+        repeated ExecutionTask execution_tasks = 4;
+        repeated ExecutionEdge inputs_edges = 5;
+        repeated ExecutionEdge output_edges = 6;
+    }
+
+    message ExecutionEdge {
+        int32 src_node_id = 1;
+        int32 target_node_id = 2;
+        bytes partition = 3;
+    }
+
+    message ExecutionTask {
+        int32 task_id = 1;
+        int32 task_index = 2;
+        bytes worker_actor_id = 3;
+    }
+
+    uint64 build_time = 1;
+    repeated ExecutionEdge execution_nodes = 2;
+}
+
+message WorkerContext {
+    string job_name = 1;
+    int32 task_id = 2;
+    map<string, string> conf = 3;
+    bytes master_actor_id = 4;
+    ExecutionGraph graph = 5;
+}
