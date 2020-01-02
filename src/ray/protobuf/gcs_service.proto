@@ -138,12 +138,12 @@ message GetResourcesRequest {
 }
 
 message GetResourcesReply {
-  map<string, ResourceTableData> resource = 1;
+  map<string, ResourceTableData> resources = 1;
 }
 
 message UpdateResourcesRequest {
   bytes node_id = 1;
-  map<string, ResourceTableData> resource = 2;
+  map<string, ResourceTableData> resources = 2;
 }
 
 message UpdateResourcesReply {

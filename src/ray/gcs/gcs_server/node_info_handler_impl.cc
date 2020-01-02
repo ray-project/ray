@@ -115,6 +115,28 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
                                                 SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
   RAY_LOG(DEBUG) << "Getting node resource, node id = " << node_id;
+
+  auto on_done = [node_id, reply, send_reply_callback](
+                     Status status,
+                     const boost::optional<gcs::NodeInfoAccessor::ResourceMap> &result) {
+    if (status.ok()) {
+      if (result) {
+        for (auto &resource : *result) {
+          (*reply->mutable_resources())[resource.first] = *resource.second;
+        }
+      }
+    } else {
+      RAY_LOG(ERROR) << "Failed to get node resource: " << status.ToString()
+                     << ", node id = " << node_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status = gcs_client_.Nodes().AsyncGetResource(node_id, on_done);
+  if (!status.ok()) {
+    on_done(status, boost::none);
+  }
+
   RAY_LOG(DEBUG) << "Finished getting node resource, node id = " << node_id;
 }
 
@@ -122,7 +144,25 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
     const UpdateResourcesRequest &request, UpdateResourcesReply *reply,
     SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
+  gcs::NodeInfoAccessor::ResourceMap resources;
+  for (auto resource : request.resources()) {
+    resources[resource.first] = std::make_shared<rpc::ResourceTableData>(resource.second);
+  }
+
   RAY_LOG(DEBUG) << "Updating node resource, node id = " << node_id;
+  auto on_done = [node_id, send_reply_callback](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to update node resource: " << status.ToString()
+                     << ", node id = " << node_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status = gcs_client_.Nodes().AsyncUpdateResource(node_id, resources, on_done);
+  if (!status.ok()) {
+    on_done(status);
+  }
+
   RAY_LOG(DEBUG) << "Finished updating node resource, node id = " << node_id;
 }
 
@@ -130,7 +170,26 @@ void DefaultNodeInfoHandler::HandleDeleteResources(
     const DeleteResourcesRequest &request, DeleteResourcesReply *reply,
     SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
+  std::vector<std::string> resource_names;
+  for (int index = 0; index < request.resource_name_list_size(); ++index) {
+    resource_names.push_back(request.resource_name_list(index));
+  }
   RAY_LOG(DEBUG) << "Deleting node resource, node id = " << node_id;
+
+  auto on_done = [node_id, send_reply_callback](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to delete node resource: " << status.ToString()
+                     << ", node id = " << node_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status =
+      gcs_client_.Nodes().AsyncDeleteResource(node_id, resource_names, on_done);
+  if (!status.ok()) {
+    on_done(status);
+  }
+
   RAY_LOG(DEBUG) << "Finished deleting node resource, node id = " << node_id;
 }
 
