@@ -136,6 +136,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
+  // The TaskLease subscription is done on demand in reconstruction policy.
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &data) {

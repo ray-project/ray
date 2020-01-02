@@ -43,6 +43,11 @@ void ReconstructionPolicy::SetTaskTimeout(
             // received. The current lease is now considered expired.
             HandleTaskLeaseExpired(task_id);
           } else {
+            const auto task_lease_notification_callback =
+                [this](const TaskID &task_id,
+                       const boost::optional<rpc::TaskLeaseData> &task_lease) {
+                  HandleTaskLeaseNotification(task_id, task_lease);
+                };
             // This task is still required, so subscribe to task lease
             // notifications.  Reconstruction will be triggered if the current
             // task lease expires, or if no one has acquired the task lease.
@@ -52,31 +57,9 @@ void ReconstructionPolicy::SetTaskTimeout(
             // required by the task are no longer needed soon after.  If the
             // task is still required after this initial period, then we now
             // subscribe to task lease notifications.
-            const auto task_lease_notification_callback =
-                [this](const TaskID &task_id,
-                       const boost::optional<rpc::TaskLeaseData> &task_lease) {
-                  if (!task_lease) {
-                    // Task lease not exist.
-                    HandleTaskLeaseNotification(task_id, 0);
-                    return;
-                  }
-
-                  const ClientID node_manager_id =
-                      ClientID::FromBinary(task_lease->node_manager_id());
-                  if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
-                    // The node manager that added the task lease is already removed. The
-                    // lease is considered inactive.
-                    HandleTaskLeaseNotification(task_id, 0);
-                  } else {
-                    // NOTE(swang): The task_lease.timeout is an overestimate of the
-                    // lease's expiration period since the entry may have been in the GCS
-                    // for some time already. For a more accurate estimate, the age of the
-                    // entry in the GCS should be subtracted from task_lease.timeout.
-                    HandleTaskLeaseNotification(task_id, task_lease->timeout());
-                  }
-                };
             RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(
-                task_id, task_lease_notification_callback, /*done*/ nullptr));
+                task_id, task_lease_notification_callback,
+                /*done*/ nullptr));
             it->second.subscribed = true;
           }
         } else {
@@ -84,6 +67,28 @@ void ReconstructionPolicy::SetTaskTimeout(
           RAY_CHECK(error == boost::asio::error::operation_aborted);
         }
       });
+}
+
+void ReconstructionPolicy::HandleTaskLeaseNotification(
+    const TaskID &task_id, const boost::optional<rpc::TaskLeaseData> &task_lease) {
+  if (!task_lease) {
+    // Task lease not exist.
+    HandleTaskLeaseNotification(task_id, 0);
+    return;
+  }
+
+  const ClientID node_manager_id = ClientID::FromBinary(task_lease->node_manager_id());
+  if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
+    // The node manager that added the task lease is already removed. The
+    // lease is considered inactive.
+    HandleTaskLeaseNotification(task_id, 0);
+  } else {
+    // NOTE(swang): The task_lease.timeout is an overestimate of the
+    // lease's expiration period since the entry may have been in the GCS
+    // for some time already. For a more accurate estimate, the age of the
+    // entry in the GCS should be subtracted from task_lease.timeout.
+    HandleTaskLeaseNotification(task_id, task_lease->timeout());
+  }
 }
 
 void ReconstructionPolicy::HandleReconstructionLogAppend(
