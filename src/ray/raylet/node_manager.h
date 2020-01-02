@@ -659,7 +659,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
 
   /// XXX
-  void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task>  &work);
+  void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 };
 
 }  // namespace raylet

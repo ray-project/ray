@@ -1444,20 +1444,19 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
     auto task = tasks_to_dispatch_.front();
     auto reply = task.first;
     auto spec = task.second.GetTaskSpecification();
-    std::shared_ptr<Worker> worker =
-        worker_pool_.PopWorker(spec);
+    std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
     if (worker == nullptr) {
       return;
     }
 
     bool schedulable = new_resource_scheduler_->SubtractNodeAvailableResources(
-       self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
+        self_node_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
     if (!schedulable) {
       return;
     }
     // Handle the allocation to specific resource IDs.
     auto acquired_resources =
-          local_available_resources_.Acquire(spec.GetRequiredResources());
+        local_available_resources_.Acquire(spec.GetRequiredResources());
     cluster_resource_map_[self_node_id_].Acquire(spec.GetRequiredResources());
     if (spec.IsActorCreationTask()) {
       worker->SetLifetimeResourceIds(acquired_resources);
@@ -1503,7 +1502,7 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
   DispatchScheduledTasksToWorkers();
 }
 
-void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task>  &work) {
+void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   RAY_CHECK(new_scheduler_enabled_);
   std::vector<ObjectID> object_ids = work.second.GetTaskSpecification().GetDependencies();
 
@@ -1541,8 +1540,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest 
   }
 
   if (new_scheduler_enabled_) {
-    auto request_resources =
-        task.GetTaskSpecification().GetRequiredResources();
+    auto request_resources = task.GetTaskSpecification().GetRequiredResources();
     auto work = std::make_pair(
         [this, request_resources, reply, send_reply_callback](
             std::shared_ptr<Worker> worker, ClientID spillback_to, std::string address,
@@ -1634,14 +1632,14 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     RAY_CHECK(it != leased_worker_resources_.end());
 
     new_resource_scheduler_->AddNodeAvailableResources(self_node_id_.Binary(),
-      it->second.GetResourceMap());
+                                                       it->second.GetResourceMap());
 
     if (worker->borrowed_cpu_resources_.GetResourceMap().size()) {
-      // This machine is oversubscribed, so the worker didn't get back cpus when unblocked.
-      // Thus we need to substract these cpus, as the previous "AddNodeAvailableResources" call
-      // assumed they were allocated to this worker.
-      new_resource_scheduler_->SubtractNodeAvailableResources(self_node_id_.Binary(),
-          worker->borrowed_cpu_resources_.GetResourceMap());
+      // This machine is oversubscribed, so the worker didn't get back cpus when
+      // unblocked. Thus we need to substract these cpus, as the previous
+      // "AddNodeAvailableResources" call assumed they were allocated to this worker.
+      new_resource_scheduler_->SubtractNodeAvailableResources(
+          self_node_id_.Binary(), worker->borrowed_cpu_resources_.GetResourceMap());
       worker->borrowed_cpu_resources_ = ResourceSet();
     }
     leased_worker_resources_.erase(it);
@@ -1678,7 +1676,6 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   }
   send_reply_callback(status, nullptr, nullptr);
 }
-
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
                                     rpc::ForwardTaskReply *reply,
@@ -2063,7 +2060,8 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
     auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
     local_available_resources_.Release(cpu_resource_ids);
     cluster_resource_map_[self_node_id_].Release(cpu_resource_ids.ToResourceSet());
-    new_resource_scheduler_->AddNodeAvailableResources(self_node_id_.Binary(),  // A
+    new_resource_scheduler_->AddNodeAvailableResources(
+        self_node_id_.Binary(),  // A
         cpu_resource_ids.ToResourceSet().GetResourceMap());
 
     worker->MarkBlocked();
@@ -2097,11 +2095,12 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
       auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
       worker->AcquireTaskCpuResources(resource_ids);
       cluster_resource_map_[self_node_id_].Acquire(cpu_resources);
-      new_resource_scheduler_->SubtractNodeAvailableResources(self_node_id_.Binary(),
-          cpu_resources.GetResourceMap());
+      new_resource_scheduler_->SubtractNodeAvailableResources(
+          self_node_id_.Binary(), cpu_resources.GetResourceMap());
       worker->borrowed_cpu_resources_ = ResourceSet();
     } else {
-      // Remember these are borrowed cpus resources, i.e., we did not return then to the worker.
+      // Remember these are borrowed cpus resources, i.e., we did not return then to the
+      // worker.
       worker->borrowed_cpu_resources_ = cpu_resources;
     }
     worker->MarkUnblocked();
