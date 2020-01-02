@@ -9,7 +9,6 @@ import logging
 import pickle
 
 import ray
-from ray.experimental.iter import ParallelIteratorWorker
 from ray.rllib.env.atari_wrappers import wrap_deepmind, is_atari
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
@@ -55,7 +54,7 @@ def get_global_worker():
 
 
 @DeveloperAPI
-class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
+class RolloutWorker(EvaluatorInterface):
     """Common experience collection class.
 
     This class wraps a policy instance and an environment class to
@@ -240,12 +239,6 @@ class RolloutWorker(EvaluatorInterface, ParallelIteratorWorker):
 
         global _global_worker
         _global_worker = self
-
-        def gen_rollouts():
-            while True:
-                yield self.sample()
-
-        ParallelIteratorWorker.__init__(self, gen_rollouts, False)
 
         policy_config = policy_config or {}
         if (tf and policy_config.get("eager")
