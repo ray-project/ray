@@ -6,13 +6,9 @@ from __future__ import print_function
 import random
 import sys
 import unittest
+from unittest.mock import patch
 
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager, logger
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch
-else:
-    from mock import patch
 
 
 class CheckpointManagerTest(unittest.TestCase):
@@ -113,5 +109,4 @@ class CheckpointManagerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

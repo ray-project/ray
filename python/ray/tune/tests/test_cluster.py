@@ -9,6 +9,7 @@ import os
 import pytest
 import shutil
 import sys
+from unittest.mock import MagicMock, patch
 
 import ray
 from ray import tune
@@ -28,11 +29,6 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.tests.mock import (MockDurableTrainer, MockRemoteTrainer,
                                  MockNodeSyncer, mock_storage_client,
                                  MOCK_REMOTE_DIR)
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock, patch
-else:
-    from mock import MagicMock, patch
 
 
 def _start_new_cluster():
@@ -234,7 +230,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     runner = TrialRunner(BasicVariantGenerator())
     kwargs = {
         "stopping_criterion": {
-            "training_iteration": 3
+            "training_iteration": 4
         },
         "checkpoint_freq": 2,
         "max_failures": 2,
@@ -257,7 +253,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     #   because checkpoint handling is messy and should be refactored
     #   rather than hotfixed.
     # assert t.last_result is None, "Trial result not restored correctly."
-    for i in range(3):
+    for i in range(4):
         runner.step()
 
     assert t.status == Trial.TERMINATED
@@ -272,11 +268,12 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     node3 = cluster.add_node(num_cpus=1)
     cluster.remove_node(node2)
     cluster.wait_for_nodes()
+    runner.step()  # 3 result + start and fail 4 result
     runner.step()  # Recovery step
-    runner.step()
+    runner.step()  # Process recovery
+    runner.step()  # result
     if t2.status != Trial.TERMINATED:
         runner.step()
-
     assert t2.status == Trial.TERMINATED, runner.debug_string()
 
     # Test recovery of trial that won't be checkpointed
@@ -666,5 +663,4 @@ tune.run(
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

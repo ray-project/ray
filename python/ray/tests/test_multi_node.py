@@ -380,7 +380,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test starting Ray with invalid arguments.
     with pytest.raises(subprocess.CalledProcessError):
         subprocess.check_output(
-            ["ray", "start", "--head", "--redis-address", "127.0.0.1:6379"])
+            ["ray", "start", "--head", "--address", "127.0.0.1:6379"])
     subprocess.check_output(["ray", "stop"])
 
     # Test --block. Killing a child process should cause the command to exit.
