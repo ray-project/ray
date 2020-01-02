@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import os
 
-from ray.tune.trainable import Trainable
+from ray.tune.trainable import Trainable, TrainableUtil
 from ray.tune.syncer import get_cloud_sync_client
 
 
@@ -86,7 +86,7 @@ class DurableTrainable(Trainable):
             checkpoint_path (str): Local path to checkpoint.
         """
         super(DurableTrainable, self).delete_checkpoint(checkpoint_path)
-        local_dirpath = os.path.join(os.path.dirname(checkpoint_path), "")
+        local_dirpath = TrainableUtil.find_checkpoint_dir(checkpoint_path)
         self.storage_client.delete(self._storage_path(local_dirpath))
 
     def _create_storage_client(self):

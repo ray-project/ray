@@ -2,9 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import shutil
+
 import copy
 import os
-import shutil
 import time
 import unittest
 import sys
@@ -16,6 +17,7 @@ from ray import tune
 from ray.tune import DurableTrainable, Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.tests.mock import mock_storage_client, MOCK_REMOTE_DIR
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
@@ -725,18 +727,18 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def _restore(self, state):
                 self.state = state
 
-        sync_client = MagicMock()
-        sync_client.sync_up = lambda s, t: shutil.move(s, t)
-        sync_client.sync_down = lambda s, t: shutil.move(s, t)
+        sync_client = mock_storage_client()
         mock_get_client = "ray.tune.durable_trainable.get_cloud_sync_client"
         with patch(mock_get_client) as mock_get_cloud_sync_client:
             mock_get_cloud_sync_client.return_value = sync_client
-            test_trainable = TestTrain(remote_checkpoint_dir="/tmp/tune")
+            test_trainable = TestTrain(remote_checkpoint_dir=MOCK_REMOTE_DIR)
             checkpoint_path = test_trainable.save()
             test_trainable.train()
             test_trainable.state["hi"] = 2
             test_trainable.restore(checkpoint_path)
             self.assertEqual(test_trainable.state["hi"], 1)
+
+        self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):
