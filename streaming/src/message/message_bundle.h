@@ -48,6 +48,8 @@ class StreamingMessageBundleMeta {
   /// To speed up memory copy and serilization, we use memory layout of compiler related
   /// member variables. It's must be modified if any field is going to be inserted before
   /// first member property.
+  /// Reference
+  /// :/http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p1113r0.html#2254).
   inline uint8_t *GetFirstMemberAddress() {
     return reinterpret_cast<uint8_t *>(&message_bundle_ts_);
   }
