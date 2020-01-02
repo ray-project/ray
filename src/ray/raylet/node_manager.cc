@@ -207,14 +207,11 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Subscribe to heartbeat batches from the monitor.
   const auto &heartbeat_batch_added =
-      [this](gcs::RedisGcsClient *client, const ClientID &id,
-             const HeartbeatBatchTableData &heartbeat_batch) {
+      [this](const HeartbeatBatchTableData &heartbeat_batch) {
         HeartbeatBatchAdded(heartbeat_batch);
       };
-  RAY_RETURN_NOT_OK(gcs_client_->heartbeat_batch_table().Subscribe(
-      JobID::Nil(), ClientID::Nil(), heartbeat_batch_added,
-      /*subscribe_callback=*/nullptr,
-      /*done_callback=*/nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
+      heartbeat_batch_added, /*done*/ nullptr));
 
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
@@ -293,7 +290,6 @@ void NodeManager::Heartbeat() {
   }
   last_heartbeat_at_ms_ = now_ms;
 
-  auto &heartbeat_table = gcs_client_->heartbeat_table();
   auto heartbeat_data = std::make_shared<HeartbeatTableData>();
   SchedulingResources &local_resources = cluster_resource_map_[self_node_id_];
   heartbeat_data->set_client_id(self_node_id_.Binary());
@@ -334,8 +330,8 @@ void NodeManager::Heartbeat() {
     }
   }
 
-  ray::Status status = heartbeat_table.Add(JobID::Nil(), self_node_id_, heartbeat_data,
-                                           /*success_callback=*/nullptr);
+  ray::Status status = gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data,
+                                                                 /*done*/ nullptr);
   RAY_CHECK_OK_PREPEND(status, "Heartbeat failed");
 
   if (debug_dump_period_ > 0 &&
@@ -1369,7 +1365,6 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker && worker->GetActorId() == actor_id);
 
-  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
   std::shared_ptr<ActorCheckpointData> checkpoint_data;
   if (actor_entry->second.GetTableData().is_direct_call()) {
     checkpoint_data =
@@ -1384,17 +1379,15 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   }
 
   // Write checkpoint data to GCS.
-  RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Add(
-      JobID::Nil(), checkpoint_id, checkpoint_data,
-      [worker, actor_id, this](ray::gcs::RedisGcsClient *client,
-                               const ActorCheckpointID &checkpoint_id,
-                               const ActorCheckpointData &data) {
+  RAY_CHECK_OK(gcs_client_->Actors().AsyncAddCheckpoint(
+      checkpoint_data, [worker, checkpoint_data](Status status) {
+        ActorCheckpointID checkpoint_id =
+            ActorCheckpointID::FromBinary(checkpoint_data->checkpoint_id());
+        RAY_CHECK(status.ok()) << "Add checkpoint failed, actor is "
+                               << worker->GetActorId() << " checkpoint_id is "
+                               << checkpoint_id;
         RAY_LOG(DEBUG) << "Checkpoint " << checkpoint_id << " saved for actor "
                        << worker->GetActorId();
-        // Save this actor-to-checkpoint mapping, and remove old checkpoints associated
-        // with this actor.
-        RAY_CHECK_OK(gcs_client_->actor_checkpoint_id_table().AddCheckpointId(
-            JobID::Nil(), actor_id, checkpoint_id));
         // Send reply to worker.
         flatbuffers::FlatBufferBuilder fbb;
         auto reply = ray::protocol::CreatePrepareActorCheckpointReply(
@@ -1498,8 +1491,8 @@ void NodeManager::NewSchedulerSchedulePendingTasks() {
   DispatchScheduledTasksToWorkers();
 }
 
-void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
-                                           rpc::WorkerLeaseReply *reply,
+void NodeManager::HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest &request,
+                                           rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
@@ -2487,15 +2480,16 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     checkpoint_id_to_restore_.erase(actor_id);
     RAY_LOG(DEBUG) << "Looking up checkpoint " << checkpoint_id << " for actor "
                    << actor_id;
-    RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
-        JobID::Nil(), checkpoint_id,
-        [this, actor_id, new_actor_info, update_callback](
-            ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id,
-            const ActorCheckpointData &checkpoint_data) {
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
+        checkpoint_id,
+        [this, checkpoint_id, actor_id, new_actor_info, update_callback](
+            Status status, const boost::optional<ActorCheckpointData> &checkpoint_data) {
+          RAY_CHECK(checkpoint_data) << "Couldn't find checkpoint " << checkpoint_id
+                                     << " for actor " << actor_id << " in GCS.";
           RAY_LOG(INFO) << "Restoring registration for actor " << actor_id
                         << " from checkpoint " << checkpoint_id;
           ActorRegistration actor_registration =
-              ActorRegistration(*new_actor_info, checkpoint_data);
+              ActorRegistration(*new_actor_info, *checkpoint_data);
           // Mark the unreleased dummy objects in the checkpoint frontier as local.
           for (const auto &entry : actor_registration.GetDummyObjects()) {
             HandleObjectLocal(entry.first);
@@ -2504,10 +2498,6 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
           // The actor was created before.
           RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, new_actor_info,
                                                          update_callback));
-        },
-        [actor_id](ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id) {
-          RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id << " for actor "
-                         << actor_id << " in GCS.";
         }));
   } else {
     // The actor did not resume from a checkpoint. Immediately notify the
@@ -2924,8 +2914,8 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
-                                         rpc::NodeStatsReply *reply,
+void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request,
+                                         rpc::GetNodeStatsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
     auto worker_stats = reply->add_workers_stats();
@@ -3008,7 +2998,7 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
             worker_stats->set_pid(worker->Pid());
             worker_stats->set_is_driver(false);
             reply->set_num_workers(reply->num_workers() + 1);
-            worker_stats->set_webui_display(r.webui_display());
+            worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());
             if (reply->num_workers() == all_workers.size()) {
               send_reply_callback(Status::OK(), nullptr, nullptr);
             }

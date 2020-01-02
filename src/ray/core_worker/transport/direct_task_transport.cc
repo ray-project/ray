@@ -108,7 +108,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto status = lease_client->RequestWorkerLease(
       resource_spec,
       [this, lease_client, task_id, scheduling_key](
-          const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
+          const Status &status, const rpc::RequestWorkerLeaseReply &reply) mutable {
         absl::MutexLock lock(&mu_);
         pending_lease_requests_.erase(scheduling_key);
         if (status.ok()) {

@@ -77,6 +77,37 @@ class ActorInfoAccessor {
   virtual Status AsyncUnsubscribe(const ActorID &actor_id,
                                   const StatusCallback &done) = 0;
 
+  /// Add actor checkpoint data to GCS asynchronously.
+  ///
+  /// \param data_ptr The checkpoint data that will be added to GCS.
+  /// \param callback The callback that will be called after add finishes.
+  /// \return Status
+  /// TODO(micafan) When the GCS backend is redis,
+  /// the checkpoint of the same actor needs to be updated serially,
+  /// otherwise the checkpoint may be overwritten. This issue will be resolved if
+  /// necessary.
+  virtual Status AsyncAddCheckpoint(
+      const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+  /// Get actor checkpoint data from GCS asynchronously.
+  ///
+  /// \param checkpoint_id The ID of checkpoint to lookup in GCS.
+  /// \param callback The callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetCheckpoint(
+      const ActorCheckpointID &checkpoint_id,
+      const OptionalItemCallback<rpc::ActorCheckpointData> &callback) = 0;
+
+  /// Get actor checkpoint id data from GCS asynchronously.
+  ///
+  /// \param actor_id The ID of actor to lookup in GCS.
+  /// \param callback The callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetCheckpointID(
+      const ActorID &actor_id,
+      const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) = 0;
+
  protected:
   ActorInfoAccessor() = default;
 };
@@ -358,6 +389,44 @@ class NodeInfoAccessor {
   /// \return Status
   virtual Status AsyncSubscribeResource(
       const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+      const StatusCallback &done) = 0;
+
+  /// Report heartbeat of a node to GCS asynchronously.
+  ///
+  /// \param data_ptr The heartbeat that will be reported to GCS.
+  /// \param callback Callback that will be called after report finishes.
+  /// \return Status
+  // TODO(micafan) NodeStateAccessor will call this method to report heartbeat.
+  virtual Status AsyncReportHeartbeat(
+      const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+  /// Subscribe to the heartbeat of each node from GCS.
+  ///
+  /// \param subscribe Callback that will be called each time when heartbeat is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeHeartbeat(
+      const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+      const StatusCallback &done) = 0;
+
+  /// Report state of all nodes to GCS asynchronously.
+  ///
+  /// \param data_ptr The heartbeats that will be reported to GCS.
+  /// \param callback Callback that will be called after report finishes.
+  /// \return Status
+  virtual Status AsyncReportBatchHeartbeat(
+      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+  /// Subscribe batched state of all nodes from GCS.
+  ///
+  /// \param subscribe Callback that will be called each time when batch heartbeat is
+  /// updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeBatchHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
       const StatusCallback &done) = 0;
 
  protected:

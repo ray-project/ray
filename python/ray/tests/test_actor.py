@@ -17,6 +17,7 @@ import ray
 import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import run_string_as_driver
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -35,16 +36,6 @@ def test_actor_init_error_propagated(ray_start_regular):
     actor = Actor.remote(error=True)
     with pytest.raises(Exception, match=".*oops.*"):
         ray.get(actor.foo.remote())
-
-
-@pytest.mark.skipif(
-    sys.version_info >= (3, 0), reason="This test requires Python 2.")
-def test_old_style_error(ray_start_regular):
-    with pytest.raises(TypeError):
-
-        @ray.remote
-        class Actor:
-            pass
 
 
 def test_keyword_args(ray_start_regular):
@@ -188,8 +179,6 @@ def test_custom_classes(ray_start_regular):
     assert results2[2].x == 3
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_actor_class_attributes(ray_start_regular):
     class Grandparent(object):
         GRANDPARENT = 2
@@ -422,8 +411,6 @@ def test_actor_deletion(ray_start_regular):
     [ray.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_actor_method_deletion(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1439,10 +1426,61 @@ def test_kill(ray_start_regular):
     assert len(ready) == 0
     actor.__ray_kill__()
     with pytest.raises(ray.exceptions.RayActorError):
-        ray.get(result, timeout=1)
+        ray.get(result)
+
+
+# This test verifies actor creation task failure will not
+# hang the caller.
+def test_actor_creation_task_crash(ray_start_regular):
+    # Test actor death in constructor.
+    @ray.remote(max_reconstructions=0)
+    class Actor(object):
+        def __init__(self):
+            print("crash")
+            os._exit(0)
+
+        def f(self):
+            return "ACTOR OK"
+
+    # Verify an exception is thrown.
+    a = Actor.remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.f.remote())
+
+    # Test an actor can be reconstructed successfully
+    # afte it dies in its constructor.
+    @ray.remote(max_reconstructions=3)
+    class ReconstructableActor(object):
+        def __init__(self):
+            count = self.get_count()
+            count += 1
+            # Make it die for the first 2 times.
+            if count < 3:
+                self.set_count(count)
+                print("crash: " + str(count))
+                os._exit(0)
+            else:
+                print("no crash")
+
+        def f(self):
+            return "ACTOR OK"
+
+        def get_count(self):
+            value = _internal_kv_get("count")
+            if value is None:
+                count = 0
+            else:
+                count = int(value)
+            return count
+
+        def set_count(self, count):
+            _internal_kv_put("count", count, True)
+
+    # Verify we can get the object successfully.
+    ra = ReconstructableActor.remote()
+    ray.get(ra.f.remote())
 
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

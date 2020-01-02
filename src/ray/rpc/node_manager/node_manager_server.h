@@ -24,8 +24,8 @@ class NodeManagerServiceHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
 
-  virtual void HandleWorkerLeaseRequest(const WorkerLeaseRequest &request,
-                                        WorkerLeaseReply *reply,
+  virtual void HandleWorkerLeaseRequest(const RequestWorkerLeaseRequest &request,
+                                        RequestWorkerLeaseReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReturnWorker(const ReturnWorkerRequest &request,
@@ -36,8 +36,8 @@ class NodeManagerServiceHandler {
                                  ForwardTaskReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleNodeStatsRequest(const NodeStatsRequest &request,
-                                      NodeStatsReply *reply,
+  virtual void HandleNodeStatsRequest(const GetNodeStatsRequest &request,
+                                      GetNodeStatsReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
 };
 
@@ -62,7 +62,7 @@ class NodeManagerGrpcService : public GrpcService {
     // Initialize the factory for requests.
     std::unique_ptr<ServerCallFactory> request_worker_lease_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
-                                  WorkerLeaseRequest, WorkerLeaseReply>(
+                                  RequestWorkerLeaseRequest, RequestWorkerLeaseReply>(
             service_, &NodeManagerService::AsyncService::RequestRequestWorkerLease,
             service_handler_, &NodeManagerServiceHandler::HandleWorkerLeaseRequest, cq,
             main_service_));
@@ -83,7 +83,7 @@ class NodeManagerGrpcService : public GrpcService {
 
     std::unique_ptr<ServerCallFactory> node_stats_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
-                                  NodeStatsRequest, NodeStatsReply>(
+                                  GetNodeStatsRequest, GetNodeStatsReply>(
             service_, &NodeManagerService::AsyncService::RequestGetNodeStats,
             service_handler_, &NodeManagerServiceHandler::HandleNodeStatsRequest, cq,
             main_service_));

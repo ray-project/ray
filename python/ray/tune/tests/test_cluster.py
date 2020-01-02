@@ -9,6 +9,7 @@ import os
 import pytest
 import shutil
 import sys
+from unittest.mock import MagicMock
 
 import ray
 from ray import tune
@@ -22,11 +23,6 @@ from ray.tune.trial import Trial
 from ray.tune.resources import Resources
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import BasicVariantGenerator
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
-else:
-    from mock import MagicMock
 
 
 def _start_new_cluster():
@@ -599,5 +595,4 @@ tune.run(
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))
