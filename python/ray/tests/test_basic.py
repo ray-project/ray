@@ -1060,6 +1060,7 @@ def test_redefining_remote_functions(shutdown_only):
     for i in range(20):
         assert ray.get(ray.get(h.remote(i))) == i
 
+
 def test_submit_api(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
@@ -1079,8 +1080,8 @@ def test_submit_api(shutdown_only):
     id1, id2, id3 = f._remote(args=[3], num_return_vals=3)
     assert ray.get([id1, id2, id3]) == [0, 1, 2]
     assert ray.get(
-       g._remote(args=[], num_cpus=1, num_gpus=1,
-                 resources={"Custom": 1})) == [0]
+        g._remote(args=[], num_cpus=1, num_gpus=1,
+                  resources={"Custom": 1})) == [0]
     infeasible_id = g._remote(args=[], resources={"NonexistentCustom": 1})
     assert ray.get(g._remote()) == []
     ready_ids, remaining_ids = ray.wait([infeasible_id], timeout=0.05)
@@ -1117,7 +1118,7 @@ def test_submit_api(shutdown_only):
         args=["test"], kwargs={"b": 2}, num_return_vals=4)
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
-    
+
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -1179,7 +1180,8 @@ def test_many_fractional_resources(shutdown_only):
             break
     if not correct_available_resources:
         assert False, "Did not get correct available resources."
-    
+
+
 def test_get_multiple(ray_start_regular):
     object_ids = [ray.put(i) for i in range(10)]
     assert ray.get(object_ids) == list(range(10))
