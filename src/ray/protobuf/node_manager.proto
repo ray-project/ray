@@ -87,6 +87,7 @@ message GetNodeStatsReply {
   map<string, double> available_resources = 3;
   map<string, double> total_resources = 4;
   uint32 num_workers = 5;
+  repeated TaskSpec infeasible_tasks = 6;
 }
 
 // Service for inter-node-manager communication.

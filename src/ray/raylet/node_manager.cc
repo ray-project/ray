@@ -3018,6 +3018,10 @@ void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request
       (*available_resources_map)[pair.first] = 0.0;
     }
   }
+  for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
+    auto infeasible_task = reply->add_infeasible_tasks();
+    infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
+  }
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {
     RecordMetrics();
