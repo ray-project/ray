@@ -860,7 +860,7 @@ def stat(address):
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         reply = stub.GetNodeStats(
-            node_manager_pb2.NodeStatsRequest(), timeout=2.0)
+            node_manager_pb2.GetNodeStatsRequest(), timeout=2.0)
         print(reply)
 
 

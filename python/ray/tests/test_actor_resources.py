@@ -403,8 +403,6 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     assert ready_ids == []
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_actors_and_tasks_with_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -638,9 +636,6 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0),
-    reason="This test is currently failing on Python 2.7.")
 def test_lifetime_and_transient_resources(ray_start_regular):
     # This actor acquires resources only when running methods.
     @ray.remote
@@ -743,5 +738,4 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

@@ -272,14 +272,9 @@ class CaptureOutputAndError(object):
     """
 
     def __init__(self, captured_output_and_error):
-        if sys.version_info >= (3, 0):
-            import io
-            self.output_buffer = io.StringIO()
-            self.error_buffer = io.StringIO()
-        else:
-            import cStringIO
-            self.output_buffer = cStringIO.StringIO()
-            self.error_buffer = cStringIO.StringIO()
+        import io
+        self.output_buffer = io.StringIO()
+        self.error_buffer = io.StringIO()
         self.captured_output_and_error = captured_output_and_error
 
     def __enter__(self):
