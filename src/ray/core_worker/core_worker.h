@@ -76,7 +76,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
              std::function<Status()> check_signals = nullptr,
              bool ref_counting_enabled = false);
 
-  ~CoreWorker();
+  virtual ~CoreWorker();
 
   void Disconnect();
 
