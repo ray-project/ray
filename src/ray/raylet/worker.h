@@ -116,7 +116,6 @@ class Worker {
   /// Whether the worker is detached. This is applies when the worker is actor.
   /// Detached actor means the actor's creator can exit without killing this actor.
   bool is_detached_actor_;
-
 };
 
 }  // namespace raylet
