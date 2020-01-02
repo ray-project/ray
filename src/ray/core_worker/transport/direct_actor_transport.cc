@@ -186,7 +186,7 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
   }
 }
 
-void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
+void CoreWorkerDirectTaskReceiver::SetActorAsAsync(int max_concurrency) {
   if (!is_asyncio_) {
     RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
 
@@ -204,7 +204,8 @@ void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
       // immediately start working on any ready fibers.
       fiber_shutdown_event_.Wait();
     });
-    fiber_rate_limiter_.reset(new FiberRateLimiter(max_concurrency_));
+    fiber_rate_limiter_.reset(new FiberRateLimiter(max_concurrency));
+    max_concurrency_ = max_concurrency;
     is_asyncio_ = true;
   }
 };
@@ -220,9 +221,13 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                         nullptr, nullptr);
     return;
   }
-  SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
+
+  // Only call SetMaxActorConcurrency to configure threadpool size when the
+  // actor is not async actor. Async actor is single threaded.
   if (worker_context_.CurrentActorIsAsync()) {
-    SetActorAsAsync();
+    SetActorAsAsync(worker_context_.CurrentActorMaxConcurrency());
+  } else {
+    SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
   }
 
   std::vector<ObjectID> dependencies;
