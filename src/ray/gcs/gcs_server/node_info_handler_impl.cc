@@ -110,5 +110,29 @@ void DefaultNodeInfoHandler::HandleReportBatchHeartbeat(
                  << request.heartbeat_batch().batch_size();
 }
 
+void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &request,
+                                                GetResourcesReply *reply,
+                                                SendReplyCallback send_reply_callback) {
+  ClientID node_id = ClientID::FromBinary(request.node_id());
+  RAY_LOG(DEBUG) << "Getting node resource, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Finished getting node resource, node id = " << node_id;
+}
+
+void DefaultNodeInfoHandler::HandleUpdateResources(
+    const UpdateResourcesRequest &request, UpdateResourcesReply *reply,
+    SendReplyCallback send_reply_callback) {
+  ClientID node_id = ClientID::FromBinary(request.node_id());
+  RAY_LOG(DEBUG) << "Updating node resource, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Finished updating node resource, node id = " << node_id;
+}
+
+void DefaultNodeInfoHandler::HandleDeleteResources(
+    const DeleteResourcesRequest &request, DeleteResourcesReply *reply,
+    SendReplyCallback send_reply_callback) {
+  ClientID node_id = ClientID::FromBinary(request.node_id());
+  RAY_LOG(DEBUG) << "Deleting node resource, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Finished deleting node resource, node id = " << node_id;
+}
+
 }  // namespace rpc
 }  // namespace ray
