@@ -8,7 +8,7 @@ import copy
 import os
 import time
 import unittest
-import sys
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -29,11 +29,6 @@ from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
 from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock, patch
-else:
-    from mock import MagicMock, patch
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
