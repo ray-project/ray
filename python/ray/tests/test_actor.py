@@ -38,16 +38,6 @@ def test_actor_init_error_propagated(ray_start_regular):
         ray.get(actor.foo.remote())
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 0), reason="This test requires Python 2.")
-def test_old_style_error(ray_start_regular):
-    with pytest.raises(TypeError):
-
-        @ray.remote
-        class Actor:
-            pass
-
-
 def test_keyword_args(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -189,8 +179,6 @@ def test_custom_classes(ray_start_regular):
     assert results2[2].x == 3
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_actor_class_attributes(ray_start_regular):
     class Grandparent(object):
         GRANDPARENT = 2
@@ -423,8 +411,6 @@ def test_actor_deletion(ray_start_regular):
     [ray.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_actor_method_deletion(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1497,5 +1483,4 @@ def test_actor_creation_task_crash(ray_start_regular):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

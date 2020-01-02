@@ -9,16 +9,12 @@ import subprocess
 import yaml
 from click.testing import CliRunner
 import sys
+from unittest.mock import patch, DEFAULT
 
 from contextlib import contextmanager
 
 from ray.projects.scripts import session_start, session_execute
 import ray
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch, DEFAULT
-else:
-    from mock import patch, DEFAULT
 
 TEST_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "project_files")
@@ -240,7 +236,6 @@ def test_session_create_multiple():
 
 
 if __name__ == "__main__":
-    import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"

@@ -106,6 +106,49 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return actor_table_data;
   }
 
+  bool AddActorCheckpoint(const rpc::AddActorCheckpointRequest &request) {
+    std::promise<bool> promise;
+    client_->AddActorCheckpoint(
+        request,
+        [&promise](const Status &status, const rpc::AddActorCheckpointReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  rpc::ActorCheckpointData GetActorCheckpoint(const std::string &checkpoint_id) {
+    rpc::GetActorCheckpointRequest request;
+    request.set_checkpoint_id(checkpoint_id);
+    rpc::ActorCheckpointData checkpoint_data;
+    std::promise<bool> promise;
+    client_->GetActorCheckpoint(
+        request, [&checkpoint_data, &promise](const Status &status,
+                                              const rpc::GetActorCheckpointReply &reply) {
+          RAY_CHECK_OK(status);
+          checkpoint_data.CopyFrom(reply.checkpoint_data());
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return checkpoint_data;
+  }
+
+  rpc::ActorCheckpointIdData GetActorCheckpointID(const std::string &actor_id) {
+    rpc::GetActorCheckpointIDRequest request;
+    request.set_actor_id(actor_id);
+    rpc::ActorCheckpointIdData checkpoint_id_data;
+    std::promise<bool> promise;
+    client_->GetActorCheckpointID(
+        request, [&checkpoint_id_data, &promise](
+                     const Status &status, const rpc::GetActorCheckpointIDReply &reply) {
+          RAY_CHECK_OK(status);
+          checkpoint_id_data.CopyFrom(reply.checkpoint_id_data());
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return checkpoint_id_data;
+  }
+
   bool RegisterNode(const rpc::RegisterNodeRequest &request) {
     std::promise<bool> promise;
     client_->RegisterNode(
@@ -142,6 +185,27 @@ class GcsServerTest : public RedisServiceManagerForTest {
         });
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return node_info_list;
+  }
+
+  bool ReportHeartbeat(const rpc::ReportHeartbeatRequest &request) {
+    std::promise<bool> promise;
+    client_->ReportHeartbeat(request, [&promise](const Status &status,
+                                                 const rpc::ReportHeartbeatReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportBatchHeartbeat(const rpc::ReportBatchHeartbeatRequest &request) {
+    std::promise<bool> promise;
+    client_->ReportBatchHeartbeat(
+        request,
+        [&promise](const Status &status, const rpc::ReportBatchHeartbeatReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool AddObjectLocation(const rpc::AddObjectLocationRequest &request) {
@@ -259,6 +323,24 @@ TEST_F(GcsServerTest, TestActorInfo) {
   result = GetActorInfo(actor_table_data.actor_id());
   ASSERT_TRUE(result.state() ==
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
+
+  // Add actor checkpoint
+  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
+  rpc::ActorCheckpointData checkpoint;
+  checkpoint.set_actor_id(actor_table_data.actor_id());
+  checkpoint.set_checkpoint_id(checkpoint_id.Binary());
+  checkpoint.set_execution_dependency(checkpoint_id.Binary());
+
+  rpc::AddActorCheckpointRequest add_actor_checkpoint_request;
+  add_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(checkpoint);
+  ASSERT_TRUE(AddActorCheckpoint(add_actor_checkpoint_request));
+  rpc::ActorCheckpointData checkpoint_result = GetActorCheckpoint(checkpoint_id.Binary());
+  ASSERT_TRUE(checkpoint_result.actor_id() == actor_table_data.actor_id());
+  ASSERT_TRUE(checkpoint_result.checkpoint_id() == checkpoint_id.Binary());
+  rpc::ActorCheckpointIdData checkpoint_id_result =
+      GetActorCheckpointID(actor_table_data.actor_id());
+  ASSERT_TRUE(checkpoint_id_result.actor_id() == actor_table_data.actor_id());
+  ASSERT_TRUE(checkpoint_id_result.checkpoint_ids_size() == 1);
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {
@@ -290,6 +372,15 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(node_info_list.size() == 1);
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+
+  // Report heartbeat
+  rpc::ReportHeartbeatRequest report_heartbeat_request;
+  report_heartbeat_request.mutable_heartbeat()->set_client_id(node_id.Binary());
+  ASSERT_TRUE(ReportHeartbeat(report_heartbeat_request));
+  rpc::ReportBatchHeartbeatRequest report_batch_heartbeat_request;
+  report_batch_heartbeat_request.mutable_heartbeat_batch()->add_batch()->set_client_id(
+      node_id.Binary());
+  ASSERT_TRUE(ReportBatchHeartbeat(report_batch_heartbeat_request));
 
   // Unregister node info
   rpc::UnregisterNodeRequest unregister_node_info_request;

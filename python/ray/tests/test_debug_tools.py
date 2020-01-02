@@ -51,7 +51,6 @@ def test_raylet_gdb(ray_gdb_start):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"
     os.environ["LANG"] = "en_US.UTF-8"
