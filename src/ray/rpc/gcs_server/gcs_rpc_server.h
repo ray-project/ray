@@ -9,18 +9,6 @@
 namespace ray {
 namespace rpc {
 
-#define JOB_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(JobInfoGcsService, HANDLER, CONCURRENCY)
-
-#define ACTOR_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(ActorInfoGcsService, HANDLER, CONCURRENCY)
-
-#define NODE_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, HANDLER, CONCURRENCY)
-
-#define OBJECT_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
-  RPC_SERVICE_HANDLER(ObjectInfoGcsService, HANDLER, CONCURRENCY)
-
 class JobInfoHandler {
  public:
   virtual ~JobInfoHandler() = default;
@@ -50,8 +38,8 @@ class JobInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    RPC_SERVICE_HANDLER(AddJob, 1);
-    RPC_SERVICE_HANDLER(MarkJobFinished, 1);
+    RPC_SERVICE_HANDLER(JobInfoGrpcService, AddJob, 1);
+    RPC_SERVICE_HANDLER(JobInfoGrpcService, MarkJobFinished, 1);
   }
 
  private:
@@ -95,9 +83,9 @@ class ActorInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    RPC_SERVICE_HANDLER(GetActorInfo, 1);
-    RPC_SERVICE_HANDLER(RegisterActorInfo, 1);
-    RPC_SERVICE_HANDLER(UpdateActorInfo, 1);
+    RPC_SERVICE_HANDLER(ActorInfoGrpcService, GetActorInfo, 1);
+    RPC_SERVICE_HANDLER(ActorInfoGrpcService, RegisterActorInfo, 1);
+    RPC_SERVICE_HANDLER(ActorInfoGrpcService, UpdateActorInfo, 1);
   }
 
  private:
