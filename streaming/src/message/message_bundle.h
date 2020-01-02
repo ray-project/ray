@@ -44,22 +44,27 @@ class StreamingMessageBundleMeta {
 
   StreamingMessageBundleType bundle_type_;
 
- public:
-  explicit StreamingMessageBundleMeta(const uint64_t &message_bunddle_tes,
-                                      const uint64_t &last_offset_seq_id,
-                                      const uint32_t &message_list_size,
-                                      const StreamingMessageBundleType &bundle_type);
+ private:
+  /// To speed up memory copy and serilization, we use memory layout of compiler related
+  /// member variables. It's must be modified if any field is going to be inserted before
+  /// first member property.
+  inline uint8_t *GetFirstMemberAddress() {
+    return reinterpret_cast<uint8_t *>(&message_bundle_ts_);
+  }
 
-  explicit StreamingMessageBundleMeta(const uint64_t &&message_bunddle_tes,
-                                      const uint64_t &&last_offset_seq_id,
-                                      const uint32_t &&message_list_size,
-                                      const StreamingMessageBundleType &&bundle_type);
+ public:
+  explicit StreamingMessageBundleMeta(const uint8_t *bytes);
+
+  explicit StreamingMessageBundleMeta(const uint64_t message_bunddle_tes,
+                                      const uint64_t last_offset_seq_id,
+                                      const uint32_t message_list_size,
+                                      const StreamingMessageBundleType bundle_type);
 
   explicit StreamingMessageBundleMeta(StreamingMessageBundleMeta *);
 
   explicit StreamingMessageBundleMeta();
 
-  virtual ~StreamingMessageBundleMeta(){};
+  virtual ~StreamingMessageBundleMeta() = default;
 
   bool operator==(StreamingMessageBundleMeta &) const;
 
