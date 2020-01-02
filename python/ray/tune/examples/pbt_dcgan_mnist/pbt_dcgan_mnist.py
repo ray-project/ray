@@ -307,7 +307,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
     args, _ = parser.parse_known_args()
-    ray.init(address="auto")
+    ray.init()
 
     dataloader = get_data_loader()
     if not args.smoke_test:
