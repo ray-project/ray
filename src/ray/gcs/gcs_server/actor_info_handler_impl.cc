@@ -89,9 +89,7 @@ void DefaultActorInfoHandler::HandleAddActorCheckpoint(
     send_reply_callback(status, nullptr, nullptr);
   };
 
-  //  Status status = gcs_client_.Actors().AsyncAddCheckpoint(actor_checkpoint_data,
-  //  on_done);
-  Status status;
+  Status status = gcs_client_.Actors().AsyncAddCheckpoint(actor_checkpoint_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -116,40 +114,12 @@ void DefaultActorInfoHandler::HandleGetActorCheckpoint(
     send_reply_callback(status, nullptr, nullptr);
   };
 
-  //  Status status = gcs_client_.Actors().AsyncGetCheckpoint(checkpoint_id, on_done);
-  Status status;
+  Status status = gcs_client_.Actors().AsyncGetCheckpoint(checkpoint_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }
   RAY_LOG(DEBUG) << "Finished getting actor checkpoint, checkpoint id = "
                  << checkpoint_id;
-}
-
-void DefaultActorInfoHandler::HandleAddActorCheckpointID(
-    const AddActorCheckpointIDRequest &request, AddActorCheckpointIDReply *reply,
-    SendReplyCallback send_reply_callback) {
-  ActorID actor_id = ActorID::FromBinary(request.actor_id());
-  ActorCheckpointID checkpoint_id =
-      ActorCheckpointID::FromBinary(request.checkpoint_id());
-  RAY_LOG(DEBUG) << "Adding actor checkpoint id, actor id = " << actor_id
-                 << ", checkpoint id = " << checkpoint_id;
-  auto on_done = [actor_id, checkpoint_id, send_reply_callback](Status status) {
-    if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to add actor checkpoint id: " << status.ToString()
-                     << ", actor id = " << actor_id
-                     << ", checkpoint id = " << checkpoint_id;
-    }
-    send_reply_callback(status, nullptr, nullptr);
-  };
-
-  //  Status status = gcs_client_.Actors().AsyncAddCheckpointID(actor_id, checkpoint_id,
-  //  on_done);
-  Status status;
-  if (!status.ok()) {
-    on_done(status);
-  }
-  RAY_LOG(DEBUG) << "Finished adding actor checkpoint id, actor id = " << actor_id
-                 << ", checkpoint id = " << checkpoint_id;
 }
 
 void DefaultActorInfoHandler::HandleGetActorCheckpointID(
@@ -170,8 +140,7 @@ void DefaultActorInfoHandler::HandleGetActorCheckpointID(
     send_reply_callback(status, nullptr, nullptr);
   };
 
-  //  Status status = gcs_client_.Actors().AsyncGetCheckpointID(actor_id, on_done);
-  Status status;
+  Status status = gcs_client_.Actors().AsyncGetCheckpointID(actor_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }

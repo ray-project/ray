@@ -53,52 +53,16 @@ class GcsRpcClient {
                          actor_info_grpc_client_)
 
   ///  Add actor checkpoint data to GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void AddActorCheckpoint(const AddActorCheckpointRequest &request,
-                          const ClientCallback<AddActorCheckpointReply> &callback) {
-    client_call_manager_.CreateCall<ActorInfoGcsService, AddActorCheckpointRequest,
-                                    AddActorCheckpointReply>(
-        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAddActorCheckpoint,
-        request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, AddActorCheckpoint, request, callback,
+                         actor_info_grpc_client_)
 
   ///  Get actor checkpoint data from GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void GetActorCheckpoint(const GetActorCheckpointRequest &request,
-                          const ClientCallback<GetActorCheckpointReply> &callback) {
-    client_call_manager_.CreateCall<ActorInfoGcsService, GetActorCheckpointRequest,
-                                    GetActorCheckpointReply>(
-        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncGetActorCheckpoint,
-        request, callback);
-  }
-
-  ///  Add actor checkpoint id data to GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void AddActorCheckpointID(const AddActorCheckpointIDRequest &request,
-                            const ClientCallback<AddActorCheckpointIDReply> &callback) {
-    client_call_manager_.CreateCall<ActorInfoGcsService, AddActorCheckpointIDRequest,
-                                    AddActorCheckpointIDReply>(
-        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncAddActorCheckpointID,
-        request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpoint, request, callback,
+                         actor_info_grpc_client_)
 
   ///  Get actor checkpoint id data from GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void GetActorCheckpointID(const GetActorCheckpointIDRequest &request,
-                            const ClientCallback<GetActorCheckpointIDReply> &callback) {
-    client_call_manager_.CreateCall<ActorInfoGcsService, GetActorCheckpointIDRequest,
-                                    GetActorCheckpointIDReply>(
-        *actor_info_stub_, &ActorInfoGcsService::Stub::PrepareAsyncGetActorCheckpointID,
-        request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpointID, request, callback,
+                         actor_info_grpc_client_)
 
   /// Register a node to GCS Service.
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, request, callback,
@@ -112,6 +76,14 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, request, callback,
                          node_info_grpc_client_)
 
+  /// Report heartbeat of a node to GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat, request, callback,
+                         node_info_grpc_client_)
+
+  /// Report batch heartbeat to GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat, request, callback,
+                         node_info_grpc_client_)
+
   /// Get object's locations from GCS Service.
   VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations, request, callback,
                          object_info_grpc_client_)
@@ -123,30 +95,6 @@ class GcsRpcClient {
   /// Remove location of object to GCS Service.
   VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation, request, callback,
                          object_info_grpc_client_)
-
-  /// Report heartbeat of a node to GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void ReportHeartbeat(const ReportHeartbeatRequest &request,
-                       const ClientCallback<ReportHeartbeatReply> &callback) {
-    client_call_manager_
-        .CreateCall<NodeInfoGcsService, ReportHeartbeatRequest, ReportHeartbeatReply>(
-            *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncReportHeartbeat,
-            request, callback);
-  }
-
-  /// Report batch heartbeat to GCS Service.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void ReportBatchHeartbeat(const ReportBatchHeartbeatRequest &request,
-                            const ClientCallback<ReportBatchHeartbeatReply> &callback) {
-    client_call_manager_.CreateCall<NodeInfoGcsService, ReportBatchHeartbeatRequest,
-                                    ReportBatchHeartbeatReply>(
-        *node_info_stub_, &NodeInfoGcsService::Stub::PrepareAsyncReportBatchHeartbeat,
-        request, callback);
-  }
 
  private:
   /// The gRPC-generated stub.

@@ -133,17 +133,6 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return checkpoint_data;
   }
 
-  bool AddActorCheckpointID(const rpc::AddActorCheckpointIDRequest &request) {
-    std::promise<bool> promise;
-    client_->AddActorCheckpointID(
-        request,
-        [&promise](const Status &status, const rpc::AddActorCheckpointIDReply &reply) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        });
-    return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
   rpc::ActorCheckpointIdData GetActorCheckpointID(const std::string &actor_id) {
     rpc::GetActorCheckpointIDRequest request;
     request.set_actor_id(actor_id);
@@ -289,18 +278,6 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return actor_table_data;
   }
 
-  rpc::ActorCheckpointData GenActorCheckpointData(const std::string &actor_id) {
-    rpc::ActorCheckpointData actor_checkpoint_data;
-    actor_checkpoint_data.set_actor_id(actor_id);
-    return actor_checkpoint_data;
-  }
-
-  rpc::ActorCheckpointIdData GenActorCheckpointIdData(const std::string &actor_id) {
-    rpc::ActorCheckpointIdData actor_checkpoint_id_data;
-    actor_checkpoint_id_data.set_actor_id(actor_id);
-    return actor_checkpoint_id_data;
-  }
-
   rpc::GcsNodeInfo GenGcsNodeInfo(const std::string &node_id) {
     rpc::GcsNodeInfo gcs_node_info;
     gcs_node_info.set_node_id(node_id);
@@ -348,24 +325,22 @@ TEST_F(GcsServerTest, TestActorInfo) {
               rpc::ActorTableData_ActorState::ActorTableData_ActorState_DEAD);
 
   // Add actor checkpoint
-  rpc::ActorCheckpointData actor_checkpoint_data =
-      GenActorCheckpointData(actor_table_data.actor_id());
-  rpc::AddActorCheckpointRequest add_actor_checkpoint_request;
-  add_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(actor_checkpoint_data);
-  ASSERT_TRUE(AddActorCheckpoint(add_actor_checkpoint_request));
-  rpc::ActorCheckpointData checkpoint = GetActorCheckpoint("");
-  ASSERT_TRUE(checkpoint.actor_id() == actor_table_data.actor_id());
+  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
+  rpc::ActorCheckpointData checkpoint;
+  checkpoint.set_actor_id(actor_table_data.actor_id());
+  checkpoint.set_checkpoint_id(checkpoint_id.Binary());
+  checkpoint.set_execution_dependency(checkpoint_id.Binary());
 
-  // Add actor checkpoint id
-  rpc::ActorCheckpointIdData actor_checkpoint_id_data =
-      GenActorCheckpointIdData(actor_table_data.actor_id());
-  rpc::AddActorCheckpointIDRequest add_actor_checkpoint_id_request;
-  add_actor_checkpoint_id_request.set_actor_id(actor_table_data.actor_id());
-  add_actor_checkpoint_id_request.set_checkpoint_id("");
-  ASSERT_TRUE(AddActorCheckpointID(add_actor_checkpoint_id_request));
-  rpc::ActorCheckpointIdData checkpoint_id =
+  rpc::AddActorCheckpointRequest add_actor_checkpoint_request;
+  add_actor_checkpoint_request.mutable_checkpoint_data()->CopyFrom(checkpoint);
+  ASSERT_TRUE(AddActorCheckpoint(add_actor_checkpoint_request));
+  rpc::ActorCheckpointData checkpoint_result = GetActorCheckpoint(checkpoint_id.Binary());
+  ASSERT_TRUE(checkpoint_result.actor_id() == actor_table_data.actor_id());
+  ASSERT_TRUE(checkpoint_result.checkpoint_id() == checkpoint_id.Binary());
+  rpc::ActorCheckpointIdData checkpoint_id_result =
       GetActorCheckpointID(actor_table_data.actor_id());
-  ASSERT_TRUE(checkpoint_id.actor_id() == actor_table_data.actor_id());
+  ASSERT_TRUE(checkpoint_id_result.actor_id() == actor_table_data.actor_id());
+  ASSERT_TRUE(checkpoint_id_result.checkpoint_ids_size() == 1);
 }
 
 TEST_F(GcsServerTest, TestJobInfo) {

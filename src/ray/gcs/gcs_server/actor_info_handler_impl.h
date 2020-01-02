@@ -32,10 +32,6 @@ class DefaultActorInfoHandler : public rpc::ActorInfoHandler {
                                 GetActorCheckpointReply *reply,
                                 SendReplyCallback send_reply_callback) override;
 
-  void HandleAddActorCheckpointID(const AddActorCheckpointIDRequest &request,
-                                  AddActorCheckpointIDReply *reply,
-                                  SendReplyCallback send_reply_callback) override;
-
   void HandleGetActorCheckpointID(const GetActorCheckpointIDRequest &request,
                                   GetActorCheckpointIDReply *reply,
                                   SendReplyCallback send_reply_callback) override;

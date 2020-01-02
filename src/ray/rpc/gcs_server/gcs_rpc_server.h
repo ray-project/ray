@@ -109,10 +109,6 @@ class ActorInfoHandler {
                                         GetActorCheckpointReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleAddActorCheckpointID(const AddActorCheckpointIDRequest &request,
-                                          AddActorCheckpointIDReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleGetActorCheckpointID(const GetActorCheckpointIDRequest &request,
                                           GetActorCheckpointIDReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
@@ -140,7 +136,6 @@ class ActorInfoGrpcService : public GrpcService {
     ACTOR_INFO_SERVICE_RPC_HANDLER(UpdateActorInfo, 1);
     ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpoint, 1);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpoint, 1);
-    ACTOR_INFO_SERVICE_RPC_HANDLER(AddActorCheckpointID, 1);
     ACTOR_INFO_SERVICE_RPC_HANDLER(GetActorCheckpointID, 1);
   }
 
