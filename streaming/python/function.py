@@ -60,6 +60,19 @@ class SinkFunction(Function):
         pass
 
 
+class ListSourceFunction(SourceFunction):
+
+    def __init__(self, values):
+        self.values = values
+
+    def init(self, parallel, index):
+        pass
+
+    def run(self, ctx: SourceContext):
+        for v in self.values:
+            ctx.collect(v)
+
+
 class SimpleMapFunction(MapFunction):
     def __init__(self, func):
         self.func = func

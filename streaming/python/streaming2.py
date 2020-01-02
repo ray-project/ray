@@ -6,7 +6,7 @@ class StreamingContext:
 
     def __init__(self):
         self._python_gateway_actor = self.__create_python_gateway_actor()
-        self._gateway_client = GatewayClient(self._python_gateway_actor)
+        self.__gateway_client = GatewayClient(self._python_gateway_actor)
         self._j_ctx = self._gateway_client.create_streaming_context()
 
     @staticmethod
@@ -27,5 +27,8 @@ class StreamingContext:
     def __create_python_gateway_actor(self):
         pass
 
+    @property
+    def _gateway_client(self):
+        return self.__gateway_client
 
 

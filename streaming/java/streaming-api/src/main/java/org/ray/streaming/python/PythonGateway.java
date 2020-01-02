@@ -8,7 +8,6 @@ import java.util.Map;
 import org.msgpack.core.Preconditions;
 import org.ray.api.annotation.RayRemote;
 import org.ray.streaming.api.context.StreamingContext;
-import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.python.descriptor.DescriptorFunction;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 import org.ray.streaming.python.stream.PythonStreamSource;
@@ -19,7 +18,7 @@ import org.ray.streaming.util.ReflectionUtils;
  * All calls on DataStream in python will be mapped to DataStream call in java by this
  * PythonGateway using ray calls.
  * <p>
- * FIXME Do we need use py4j as GatewayServer
+ * Note: this class needs to be in sync with `ray.streaming.gateway_client.GatewayClient.py`
  */
 @SuppressWarnings("unchecked")
 @RayRemote
@@ -49,6 +48,18 @@ public class PythonGateway {
     }
   }
 
+  public byte[] createPythonStreamSource(byte[] pySourceFunc) {
+    Preconditions.checkNotNull(streamingContext);
+    try {
+      PythonStreamSource pythonStreamSource = new PythonStreamSource(
+          streamingContext, new DescriptorFunction(pySourceFunc));
+      objectMap.put(getRefId(pythonStreamSource), pythonStreamSource);
+      return serializer.serialize(getRefId(pythonStreamSource));
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
   public void execute() {
     streamingContext.execute();
   }
@@ -63,18 +74,6 @@ public class PythonGateway {
     DescriptorPartition partition = new DescriptorPartition(pyPartition);
     objectMap.put(getRefId(partition), partition);
     return serializer.serialize(getRefId(partition));
-  }
-
-  public byte[] createPythonStreamSource(byte[] pySourceFunc) {
-    Preconditions.checkNotNull(streamingContext);
-    try {
-      PythonStreamSource pythonStreamSource = new PythonStreamSource(
-          streamingContext, new DescriptorFunction(pySourceFunc));
-      objectMap.put(getRefId(pythonStreamSource), pythonStreamSource);
-      return serializer.serialize(getRefId(pythonStreamSource));
-    } catch (Exception e) {
-      throw new RuntimeException(e);
-    }
   }
 
   public byte[] funcCall(byte[] paramsBytes) {
