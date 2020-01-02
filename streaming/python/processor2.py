@@ -1,0 +1,88 @@
+from abc import ABC, abstractmethod
+import logging
+import ray.streaming as streaming
+import ray.streaming.context as context
+import ray.streaming.message as message
+
+logger = logging.getLogger(__name__)
+
+
+class Processor(ABC):
+    @abstractmethod
+    def open(self, collectors, runtime_context):
+        pass
+
+    @abstractmethod
+    def process(self, record: message.Record):
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
+
+
+class StreamingProcessor(Processor, ABC):
+    """StreamingProcessor is a process unit for a operator."""
+
+    def __init__(self, operator: streaming.operator2.Operator):
+        self.operator = operator
+        self.collectors = None
+        self.runtime_context = None
+
+    def open(self, collectors, runtime_context: context.RuntimeContext):
+        self.collectors = collectors
+        self.runtime_context = runtime_context
+        if self.operator is not None:
+            self.operator.open(collectors, runtime_context)
+        logger.info("Opened Processor {}", self)
+
+    def close(self):
+        pass
+
+
+class SourceProcessor(StreamingProcessor):
+    def __init__(self, operator):
+        super().__init__(operator)
+
+    def process(self, record):
+        raise Exception("SourceProcessor should not process record")
+
+    def run(self):
+        self.operator.run()
+
+
+class OneInputProcessor(StreamingProcessor):
+    def __init__(self, operator):
+        super().__init__(operator)
+
+    def process(self, record):
+        self.operator.process_elelemt(record)
+
+
+class TwoInputProcessor(StreamingProcessor):
+    def __init__(self, operator):
+        super().__init__(operator)
+        self.left_stream = None
+        self.right_stream = None
+
+    def process(self, record: message.Record):
+        if record.stream == self.left_stream:
+            self.operator.process_element(record, None)
+        else:
+            self.operator.process_elelemt(None, record)
+
+    @property
+    def left_stream(self):
+        return self.left_stream
+
+    @left_stream.setter
+    def left_stream(self, value):
+        self._left_stream = value
+
+    @property
+    def right_stream(self):
+        return self.right_stream
+
+    @right_stream.setter
+    def right_stream(self, value):
+        self.right_stream = value
