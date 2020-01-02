@@ -2953,6 +2953,8 @@ void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
     auto infeasible_task = reply->add_infeasible_tasks();
     infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
   }
+  reply->set_num_object_ids(object_manager_.Size());
+  reply->set_used_memory(object_manager_.UsedMemory());
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {
     RecordMetrics();

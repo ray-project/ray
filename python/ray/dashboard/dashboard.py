@@ -180,18 +180,23 @@ class Dashboard(object):
             actor_tree = self.node_stats.get_actor_tree(
                 workers_info, infeasible_tasks)
             for address, data in D.items():
+                # process resources info
                 available_resources = data["availableResources"]
                 total_resources = data["totalResources"]
-                extra_info = []
+                resources_info = []
                 for resource_name in sorted(available_resources.keys()):
                     total = total_resources[resource_name]
                     occupied = total - available_resources[resource_name]
                     total = format_resource(resource_name, total)
                     occupied = format_resource(resource_name, occupied)
-                    extra_info.append("{}: {} / {}".format(
+                    resources_info.append("{}: {} / {}".format(
                         resource_name, occupied, total))
-                data["extraInfo"] = ", ".join(extra_info)
+                data["extraInfo"] = ", ".join(resources_info)
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
+                    # process memory info
+                    if "numObjectIds" in data:
+                        data["extraInfo"] += "\n" + "node_num_object_ids: {}, node_used_memory: {}".format(data["numObjectIds"], data["usedMemory"])
+                    # process actor info
                     actor_tree_str = json.dumps(
                         actor_tree, indent=2, sort_keys=True)
                     lines = actor_tree_str.split("\n")

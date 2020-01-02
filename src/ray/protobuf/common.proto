@@ -182,4 +182,6 @@ message CoreWorkerStats {
   map<string, double> used_resources = 9;
   // A string displayed on Dashboard.
   string webui_display = 10;
+  // Used local memory.
+  uint64 used_memory = 11;
 }

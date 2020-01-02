@@ -1139,6 +1139,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     (*used_resources_map)[it.first] = quantity;
   }
   stats->set_webui_display(webui_display_);
+  stats->set_used_memory(memory_store_->UsedMemory());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

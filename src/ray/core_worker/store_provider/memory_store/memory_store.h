@@ -117,6 +117,11 @@ class CoreWorkerMemoryStore {
     return objects_.size();
   }
 
+  /// Returns the memory usage of this store.
+  ///
+  /// \return Total size of objects in the store.
+  uint64_t UsedMemory();
+
  private:
   /// Optional callback for putting objects into the plasma store.
   std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;

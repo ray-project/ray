@@ -850,4 +850,13 @@ void ObjectManager::RecordMetrics() const {
                                      {{stats::ValueTypeKey, "num_profile_events"}});
 }
 
+int64_t ObjectManager::UsedMemory() const {
+  int64_t used_memory = 0;
+  for (const auto &it : local_objects_) {
+    object_manager::protocol::ObjectInfoT object_info = it.second.object_info;
+    used_memory += object_info.data_size + object_info.metadata_size;
+  }
+  return used_memory;
+}
+
 }  // namespace ray

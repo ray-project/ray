@@ -396,4 +396,13 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   return false;
 }
 
+uint64_t CoreWorkerMemoryStore::UsedMemory() {
+  absl::MutexLock lock(&mu_);
+  uint64_t used_memory = 0;
+  for (const auto &it : objects_) {
+    used_memory += it.second->GetSize();
+  }
+  return used_memory;
+}
+
 }  // namespace ray
