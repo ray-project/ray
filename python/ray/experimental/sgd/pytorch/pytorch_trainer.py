@@ -9,6 +9,7 @@ import torch.distributed as dist
 import logging
 import numbers
 import tempfile
+import time
 
 import ray
 
@@ -30,7 +31,7 @@ def check_for_failure(remote_values):
             finished, unfinished = ray.wait(unfinished)
             finished = ray.get(finished)
         success = True
-    except Exception as inst:
+    except Exception:
         logger.exception()
     return success
 
@@ -94,6 +95,7 @@ class PyTorchTrainer:
         self.model_creator = model_creator
         self.train_function = train_function
         self.validation_function = validation_function
+        self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
@@ -124,8 +126,8 @@ class PyTorchTrainer:
                     config=self.config,
                     batch_size=self.batch_size)
             ]
-            if initialization_hook:
-                self.apply_all_workers(initialization_hook)
+            if self.initialization_hook:
+                self.apply_all_workers(self.initialization_hook)
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
         else:
@@ -136,31 +138,31 @@ class PyTorchTrainer:
             Runner = Runner.options(is_direct_call=True, max_concurrency=2)
             # Compute batch size per replica
             batch_size_per_replica = self.batch_size // num_replicas
-            if batch_size % num_replicas > 0:
+            if self.batch_size % num_replicas > 0:
                 new_batch_size = batch_size_per_replica * num_replicas
                 logger.warning(
                     ("Changing batch size from {old_batch_size} to "
                      "{new_batch_size} to evenly distribute batches across "
                      "{num_replicas} replicas.").format(
-                         old_batch_size=batch_size,
+                         old_batch_size=self.batch_size,
                          new_batch_size=new_batch_size,
                          num_replicas=num_replicas))
             # Start workers
             self.workers = [
                 Runner.remote(
-                    model_creator,
-                    data_creator,
-                    optimizer_creator,
-                    loss_creator,
-                    backend=backend,
-                    train_function=train_function,
-                    validation_function=validation_function,
+                    self.model_creator,
+                    self.data_creator,
+                    self.optimizer_creator,
+                    self.loss_creator,
+                    backend=self.backend,
+                    train_function=self.train_function,
+                    validation_function=self.validation_function,
                     config=self.config,
                     batch_size=batch_size_per_replica)
                 for i in range(num_replicas)
             ]
-            if initialization_hook:
-                self.apply_all_workers(initialization_hook)
+            if self.initialization_hook:
+                self.apply_all_workers(self.initialization_hook)
 
             # Compute URL for initializing distributed PyTorch
             ip = ray.get(self.workers[0].get_node_ip.remote())
@@ -179,12 +181,14 @@ class PyTorchTrainer:
         """
         assert retries > 0, "`retries` must be non-negative."
         if retries and checkpoint == "auto":
-            logger.info("Retrying detected. Automatically checkpointing.")
+            logger.debug("Retrying detected. Automatically checkpointing.")
             checkpoint_dir = self.save(
                 os.path.join(self.tmpdir, "tmp_checkpoint"))
         with self.optimizer_timer:
             worker_stats = [w.step.remote() for w in self.workers]
             success = check_for_failure(worker_stats)
+
+            # Fault handling
             for i in range(retries):
                 if success:
                     break
