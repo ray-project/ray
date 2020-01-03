@@ -65,7 +65,7 @@ class RayOutOfMemoryError(Exception):
                 "these memory limits to a lower value.")
 
 
-class MemoryMonitor(object):
+class MemoryMonitor:
     """Helper class for raising errors on low memory.
 
     This presents a much cleaner error message to users than what would happen

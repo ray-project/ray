@@ -13,7 +13,7 @@ from ray import ray_constants
 logger = logging.getLogger(__name__)
 
 
-class Cluster(object):
+class Cluster:
     def __init__(self,
                  initialize_head=False,
                  connect=False,

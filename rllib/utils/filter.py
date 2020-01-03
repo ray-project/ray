@@ -9,7 +9,7 @@ import threading
 logger = logging.getLogger(__name__)
 
 
-class Filter(object):
+class Filter:
     """Processes input, possibly statefully."""
 
     def apply_changes(self, other, *args, **kwargs):
@@ -65,7 +65,7 @@ class NoFilter(Filter):
 
 
 # http://www.johndcook.com/blog/standard_deviation/
-class RunningStat(object):
+class RunningStat:
     def __init__(self, shape=None):
         self._n = 0
         self._M = np.zeros(shape)

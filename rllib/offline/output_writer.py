@@ -7,7 +7,7 @@ from ray.rllib.utils.annotations import PublicAPI
 
 
 @PublicAPI
-class OutputWriter(object):
+class OutputWriter:
     """Writer object for saving experiences from policy evaluation."""
 
     @PublicAPI

@@ -30,7 +30,7 @@ def test_basic_gc(shutdown_only):
         return np.random.shuffle(input)
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self):
             # Hold a long-lived reference to a ray.put object. This should not
             # be garbage collected while the actor is alive.

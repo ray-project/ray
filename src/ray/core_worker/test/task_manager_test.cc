@@ -21,16 +21,10 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 }
 
 class MockActorManager : public ActorManagerInterface {
-  void PublishCreatedActor(const TaskSpecification &actor_creation_task,
-                           const rpc::Address &address) override {
-    num_publishes += 1;
-  }
-
   void PublishTerminatedActor(const TaskSpecification &actor_creation_task) override {
     num_terminations += 1;
   }
 
-  int num_publishes = 0;
   int num_terminations = 0;
 };
 

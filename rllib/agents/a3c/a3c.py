@@ -12,7 +12,7 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer
 DEFAULT_CONFIG = with_common_config({
     # Size of rollout batch
     "sample_batch_size": 10,
-    # Use PyTorch as backend - no LSTM support
+    # Use PyTorch as framework - no LSTM support
     "use_pytorch": False,
     # GAE(gamma) parameter
     "lambda": 1.0,

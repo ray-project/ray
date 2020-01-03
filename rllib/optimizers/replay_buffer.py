@@ -13,7 +13,7 @@ from ray.rllib.utils.window_stat import WindowStat
 
 
 @DeveloperAPI
-class ReplayBuffer(object):
+class ReplayBuffer:
     @DeveloperAPI
     def __init__(self, size):
         """Create Prioritized Replay buffer.

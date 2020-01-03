@@ -368,8 +368,8 @@ Status Set<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   auto on_subscribe = [subscribe](RedisGcsClient *client, const ID &id,
                                   const GcsChangeMode change_mode,
                                   const std::vector<Data> &data) {
-    EntryChangeNotification<Data> change_notification(change_mode, data);
-    std::vector<EntryChangeNotification<Data>> notification_vec;
+    ArrayNotification<Data> change_notification(change_mode, data);
+    std::vector<ArrayNotification<Data>> notification_vec;
     notification_vec.emplace_back(std::move(change_notification));
     subscribe(client, id, notification_vec);
   };
@@ -498,7 +498,11 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
             data_map.emplace(key, std::move(value));
           }
         }
-        subscribe(client_, id, gcs_entry.change_mode(), data_map);
+        MapNotification<std::string, Data> notification(gcs_entry.change_mode(),
+                                                        data_map);
+        std::vector<MapNotification<std::string, Data>> notification_vec;
+        notification_vec.emplace_back(std::move(notification));
+        subscribe(client_, id, notification_vec);
       }
     }
   };
@@ -728,8 +732,9 @@ std::string ClientTable::DebugString() const {
 
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
-                                               const ActorCheckpointID &checkpoint_id) {
-  auto lookup_callback = [this, checkpoint_id, job_id, actor_id](
+                                               const ActorCheckpointID &checkpoint_id,
+                                               const WriteCallback &done) {
+  auto lookup_callback = [this, checkpoint_id, job_id, actor_id, done](
                              ray::gcs::RedisGcsClient *client, const ActorID &id,
                              const ActorCheckpointIdData &data) {
     std::shared_ptr<ActorCheckpointIdData> copy =
@@ -744,16 +749,16 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
       copy->mutable_timestamps()->erase(copy->mutable_timestamps()->begin());
       client_->actor_checkpoint_table().Delete(job_id, to_delete);
     }
-    RAY_CHECK_OK(Add(job_id, actor_id, copy, nullptr));
+    RAY_CHECK_OK(Add(job_id, actor_id, copy, done));
   };
-  auto failure_callback = [this, checkpoint_id, job_id, actor_id](
+  auto failure_callback = [this, checkpoint_id, job_id, actor_id, done](
                               ray::gcs::RedisGcsClient *client, const ActorID &id) {
     std::shared_ptr<ActorCheckpointIdData> data =
         std::make_shared<ActorCheckpointIdData>();
     data->set_actor_id(id.Binary());
     data->add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
     *data->add_checkpoint_ids() = checkpoint_id.Binary();
-    RAY_CHECK_OK(Add(job_id, actor_id, data, nullptr));
+    RAY_CHECK_OK(Add(job_id, actor_id, data, done));
   };
   return Lookup(job_id, actor_id, lookup_callback, failure_callback);
 }
