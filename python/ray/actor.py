@@ -377,7 +377,7 @@ class ActorClass:
             is_direct_call: Use direct actor calls.
             max_concurrency: The max number of concurrent calls to allow for
                 this actor. This only works with direct actor calls. The max
-                concurrency defaults to 1 for threaded execution, and 100 for
+                concurrency defaults to 1 for threaded execution, and 1000 for
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
@@ -397,7 +397,7 @@ class ActorClass:
             is_direct_call = ray_constants.direct_call_enabled()
         if max_concurrency is None:
             if is_asyncio:
-                max_concurrency = 100
+                max_concurrency = 1000
             else:
                 max_concurrency = 1
 
