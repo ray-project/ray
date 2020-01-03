@@ -13,6 +13,7 @@ class CoreWorker;
 
 namespace rpc {
 
+/// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_CORE_WORKER_RPC_HANDLERS                                          \
   RPC_SERVICE_HANDLER(CoreWorkerService, AssignTask, 5)                       \
   RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, 9999)                      \
@@ -20,6 +21,14 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, 9999)               \
   RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, 9999)                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, 100)
+
+#define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                                  \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignTask)                         \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete)     \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                    \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                          \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
 class CoreWorkerServiceHandler {
@@ -34,31 +43,7 @@ class CoreWorkerServiceHandler {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-
-  virtual void HandleAssignTask(const rpc::AssignTaskRequest &request,
-                                rpc::AssignTaskReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandlePushTask(const rpc::PushTaskRequest &request,
-                              rpc::PushTaskReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDirectActorCallArgWaitComplete(
-      const rpc::DirectActorCallArgWaitCompleteRequest &request,
-      rpc::DirectActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
-                                     rpc::GetObjectStatusReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleKillActor(const rpc::KillActorRequest &request,
-                               rpc::KillActorReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
-                                        rpc::GetCoreWorkerStatsReply *reply,
-                                        rpc::SendReplyCallback send_reply_callback) = 0;
+  RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
 };
 
 /// The `GrpcServer` for `CoreWorkerService`.
