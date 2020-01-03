@@ -6,6 +6,9 @@ import org.ray.streaming.python.descriptor.DescriptorFunction;
 import org.ray.streaming.python.descriptor.DescriptorOperator;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 
+/**
+ * Represents a python DataStream returned by a key-by operation.
+ */
 public class PythonKeyDataStream extends Stream implements PythonStream  {
 
   public PythonKeyDataStream(PythonDataStream input, StreamOperator streamOperator) {

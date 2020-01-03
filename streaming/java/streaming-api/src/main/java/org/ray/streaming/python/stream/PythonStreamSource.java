@@ -6,6 +6,9 @@ import org.ray.streaming.python.descriptor.DescriptorFunction;
 import org.ray.streaming.python.descriptor.DescriptorOperator;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 
+/**
+ * Represents a source of the PythonStream.
+ */
 public class PythonStreamSource extends PythonDataStream implements StreamSource {
 
   public PythonStreamSource(StreamingContext streamingContext, DescriptorFunction sourceFunction) {

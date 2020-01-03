@@ -3,10 +3,19 @@ package org.ray.streaming.python.descriptor;
 import org.ray.streaming.operator.OperatorType;
 import org.ray.streaming.operator.StreamOperator;
 
+/**
+ * DescriptorOperator is used to describe python operator class.
+ * <p>Python worker will use `importlib` to load python Operator class.</p>
+ */
 public class DescriptorOperator extends StreamOperator implements Descriptor {
   private String moduleName;
   private String className;
 
+  /**
+   * @param moduleName python module name
+   * @param className python class name
+   * @param function a DescriptorFunction which is used to describe a python function
+   */
   private DescriptorOperator(String moduleName,
                              String className,
                              DescriptorFunction function) {
