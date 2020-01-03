@@ -1,13 +1,7 @@
-#include <boost/none.hpp>
-#include "ray/gcs/pb_util.h"
-#include "ray/gcs/redis_gcs_client.h"
-#include "ray/util/logging.h"
-
 #include "ray/gcs/gcs_server/service_based_accessor.h"
 #include "ray/gcs/gcs_server/service_based_gcs_client.h"
 
 namespace ray {
-
 namespace gcs {
 
 ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
@@ -182,6 +176,7 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
 }
 
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
+  RAY_CHECK(!local_node_id_.IsNil()) << "This node is disconnected.";
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
   std::promise<Status> promise;
@@ -316,5 +311,4 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
 }
 
 }  // namespace gcs
-
 }  // namespace ray

@@ -1,20 +1,13 @@
-#include <unistd.h>
-
-#include "ray/common/ray_config.h"
-#include "ray/gcs/redis_accessor.h"
-#include "ray/gcs/redis_context.h"
-#include "ray/gcs/redis_gcs_client.h"
-//#include "ray/gcs/gcs_server/job_info_handler_impl.h"
-#include "ray/gcs/gcs_server/service_based_accessor.h"
 #include "ray/gcs/gcs_server/service_based_gcs_client.h"
-#include "ray/rpc/gcs_server/gcs_rpc_client.h"
+#include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_server/service_based_accessor.h"
 
 static void GetGcsServerAddress(redisContext *context,
                                 std::pair<std::string, int> &addresses) {
   // Get gcs server address.
   int num_attempts = 0;
   redisReply *reply = nullptr;
-  while (num_attempts < RayConfig::instance().redis_db_connect_retries()) {
+  while (num_attempts < RayConfig::instance().gcs_service_connect_retries()) {
     reply = reinterpret_cast<redisReply *>(redisCommand(context, "GET GcsServerAddress"));
     if (reply->type != REDIS_REPLY_NIL) {
       break;
@@ -22,10 +15,10 @@ static void GetGcsServerAddress(redisContext *context,
 
     // Sleep for a little, and try again if the entry isn't there yet.
     freeReplyObject(reply);
-    usleep(RayConfig::instance().redis_db_connect_wait_milliseconds() * 1000);
+    usleep(RayConfig::instance().gcs_service_connect_wait_milliseconds() * 1000);
     num_attempts++;
   }
-  RAY_CHECK(num_attempts < RayConfig::instance().redis_db_connect_retries())
+  RAY_CHECK(num_attempts < RayConfig::instance().gcs_service_connect_retries())
       << "No entry found for GcsServerAddress";
   RAY_CHECK(reply->type == REDIS_REPLY_STRING)
       << "Expected string, found Redis type " << reply->type << " for GcsServerAddress";
@@ -41,7 +34,6 @@ static void GetGcsServerAddress(redisContext *context,
 }
 
 namespace ray {
-
 namespace gcs {
 
 ServiceBasedGcsClient::ServiceBasedGcsClient(const GcsClientOptions &options)
@@ -75,7 +67,6 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   is_connected_ = true;
 
   RAY_LOG(INFO) << "ServiceBasedGcsClient Connected.";
-
   return Status::OK();
 }
 
@@ -83,9 +74,7 @@ void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
   RAY_LOG(INFO) << "ServiceBasedGcsClient Disconnected.";
-  // TODO(micafan): Synchronously unregister node if this client is Raylet.
 }
 
 }  // namespace gcs
-
 }  // namespace ray

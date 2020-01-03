@@ -1,12 +1,8 @@
 #ifndef RAY_GCS_SERVICE_BASED_ACCESSOR_H
 #define RAY_GCS_SERVICE_BASED_ACCESSOR_H
 
-#include "src/ray/common/id.h"
-#include "src/ray/common/task/task_spec.h"
 #include "src/ray/gcs/accessor.h"
-#include "src/ray/gcs/callback.h"
 #include "src/ray/gcs/subscription_executor.h"
-#include "src/ray/gcs/tables.h"
 
 namespace ray {
 
@@ -154,7 +150,6 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 };
 
 }  // namespace gcs
-
 }  // namespace ray
 
 #endif  // RAY_GCS_SERVICE_BASED_ACCESSOR_H
