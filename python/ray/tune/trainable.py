@@ -29,6 +29,57 @@ logger = logging.getLogger(__name__)
 SETUP_TIME_THRESHOLD = 10
 
 
+class TrainableUtil:
+    @staticmethod
+    def pickle_checkpoint(checkpoint_path):
+        """Pickles checkpoint data."""
+        checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        data = {}
+        for basedir, _, file_names in os.walk(checkpoint_dir):
+            for file_name in file_names:
+                path = os.path.join(basedir, file_name)
+                with open(path, "rb") as f:
+                    data[os.path.relpath(path, checkpoint_dir)] = f.read()
+        # Use normpath so that a directory path isn't mapped to empty string.
+        name = os.path.basename(os.path.normpath(checkpoint_path))
+        name += os.path.sep if os.path.isdir(checkpoint_path) else ""
+        data_dict = pickle.dumps({
+            "checkpoint_name": name,
+            "data": data,
+        })
+        return data_dict
+
+    @staticmethod
+    def find_checkpoint_dir(checkpoint_path):
+        """Returns the directory containing the checkpoint path.
+
+        Raises:
+            FileNotFoundError if the directory is not found.
+        """
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError("Path does not exist", checkpoint_path)
+        if os.path.isdir(checkpoint_path):
+            checkpoint_dir = checkpoint_path
+        else:
+            checkpoint_dir = os.path.dirname(checkpoint_path)
+        while checkpoint_dir != os.path.dirname(checkpoint_dir):
+            if os.path.exists(os.path.join(checkpoint_dir, ".is_checkpoint")):
+                break
+            checkpoint_dir = os.path.dirname(checkpoint_dir)
+        else:
+            raise FileNotFoundError("Checkpoint directory not found for {}"
+                                    .format(checkpoint_path))
+        return checkpoint_dir
+
+    @staticmethod
+    def make_checkpoint_dir(checkpoint_dir):
+        """Creates a checkpoint directory at the provided path."""
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+        # Drop marker in directory to identify it as a checkpoint dir.
+        open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+
 class Trainable:
     """Abstract class for trainable models, functions, etc.
 
@@ -119,17 +170,14 @@ class Trainable:
             >>>         extra_cpu=config["workers"],
             >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
         """
-
         return None
 
     @classmethod
     def resource_help(cls, config):
-        """
+        """Returns a help string for configuring this trainable's resources.
+
         Args:
             config (dict): The Trainer's config dict.
-
-        Returns:
-             str: A help string for configuring this trainable's resources.
         """
         return ""
 
@@ -258,9 +306,7 @@ class Trainable:
         """
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
-
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        TrainableUtil.make_checkpoint_dir(checkpoint_dir)
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
@@ -270,6 +316,10 @@ class Trainable:
                     "given checkpoint dir {}: {}".format(
                         checkpoint_dir, checkpoint))
             checkpoint_path = checkpoint
+            if os.path.isdir(checkpoint_path):
+                # Add trailing slash to prevent tune metadata from
+                # being written outside the directory.
+                checkpoint_path = os.path.join(checkpoint_path, "")
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
             checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
@@ -302,19 +352,8 @@ class Trainable:
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
         # Save all files in subtree.
-        data = {}
-        for basedir, _, file_names in os.walk(tmpdir):
-            for file_name in file_names:
-                path = os.path.join(basedir, file_name)
-
-                with open(path, "rb") as f:
-                    data[os.path.relpath(path, tmpdir)] = f.read()
-
+        data_dict = TrainableUtil.pickle_checkpoint(checkpoint_path)
         out = io.BytesIO()
-        data_dict = pickle.dumps({
-            "checkpoint_name": os.path.relpath(checkpoint_path, tmpdir),
-            "data": data,
-        })
         if len(data_dict) > 10e6:  # getting pretty large
             logger.info("Checkpoint size is {} bytes".format(len(data_dict)))
         out.write(data_dict)
@@ -348,14 +387,15 @@ class Trainable:
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored from checkpoint: %s", checkpoint_path)
+        logger.info("Restored on %s from checkpoint: %s", self.current_ip(),
+                    checkpoint_path)
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
             "_time_total": self._time_total,
             "_episodes_total": self._episodes_total,
         }
-        logger.info("Current state after restoring: {}".format(state))
+        logger.info("Current state after restoring: %s", state)
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
@@ -378,6 +418,22 @@ class Trainable:
 
         self.restore(checkpoint_path)
         shutil.rmtree(tmpdir)
+
+    def delete_checkpoint(self, checkpoint_path):
+        """Deletes local copy of checkpoint.
+
+        Args:
+            checkpoint_path (str): Path to checkpoint.
+        """
+        try:
+            checkpoint_dir = TrainableUtil.find_checkpoint_dir(checkpoint_path)
+        except FileNotFoundError:
+            # The checkpoint won't exist locally if the
+            # trial was rescheduled to another worker.
+            logger.debug("Checkpoint not found during garbage collection.")
+            return
+        if os.path.exists(checkpoint_dir):
+            shutil.rmtree(checkpoint_dir)
 
     def export_model(self, export_formats, export_dir=None):
         """Exports model based on export_formats.
@@ -429,7 +485,7 @@ class Trainable:
         Note that the current working directory will also be changed to this.
 
         """
-        return self._logdir
+        return os.path.join(self._logdir, "")
 
     @property
     def iteration(self):
