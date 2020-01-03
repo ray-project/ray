@@ -152,6 +152,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
+      resource_sub_executor_(client_impl->GetRedisGcsClient().resource_table()),
       heartbeat_sub_executor_(client_impl->GetRedisGcsClient().heartbeat_table()),
       heartbeat_batch_sub_executor_(
           client_impl->GetRedisGcsClient().heartbeat_batch_table()) {}
@@ -264,6 +265,59 @@ const std::unordered_map<ClientID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::G
 bool ServiceBasedNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
   ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
   return client_table.IsRemoved(node_id);
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncGetResources(
+    const ClientID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
+  rpc::GetResourcesRequest request;
+  request.set_node_id(node_id.Binary());
+  client_impl_->GetGcsRpcClient().GetResources(
+      request, [callback](const Status &status, const rpc::GetResourcesReply &reply) {
+        ResourceMap resource_map;
+        for (auto resource : reply.resources()) {
+          resource_map[resource.first] =
+              std::make_shared<rpc::ResourceTableData>(resource.second);
+        }
+        callback(status, resource_map);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
+    const ClientID &node_id, const ResourceMap &resources,
+    const StatusCallback &callback) {
+  rpc::UpdateResourcesRequest request;
+  request.set_node_id(node_id.Binary());
+  for (auto resource : resources) {
+    (*request.mutable_resources())[resource.first] = *resource.second;
+  }
+  client_impl_->GetGcsRpcClient().UpdateResources(
+      request, [callback](const Status &status, const rpc::UpdateResourcesReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
+    const ClientID &node_id, const std::vector<std::string> &resource_names,
+    const StatusCallback &callback) {
+  rpc::DeleteResourcesRequest request;
+  request.set_node_id(node_id.Binary());
+  for (auto resource_name : resource_names) {
+    request.add_resource_name_list(resource_name);
+  }
+  client_impl_->GetGcsRpcClient().DeleteResources(
+      request, [callback](const Status &status, const rpc::DeleteResourcesReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncSubscribeToResources(
+    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
