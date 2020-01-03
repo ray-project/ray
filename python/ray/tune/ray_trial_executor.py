@@ -552,14 +552,14 @@ class RayTrialExecutor(TrialExecutor):
         """Saves the trial's state to a checkpoint.
 
         Args:
-            trial (Trial): The state of this trial to be saved.
+            trial (Trial): The trial to be saved.
             storage (str): Where to store the checkpoint. Defaults to
                 PERSISTENT.
             result (dict): The state of this trial as a dictionary to be saved.
                 If result is None, the trial's last result will be used.
 
         Returns:
-             Checkpoint future, or None if an Exception occurs.
+             Checkpoint object, or None if an Exception occurs.
         """
         result = result or trial.last_result
         if storage == Checkpoint.MEMORY:
@@ -570,23 +570,29 @@ class RayTrialExecutor(TrialExecutor):
                 # TODO(ujvl): Make this asynchronous.
                 value = ray.get(trial.runner.save.remote())
                 checkpoint = Checkpoint(storage, value, result)
-        with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
-            try:
-                trial.on_checkpoint(checkpoint)
-            except Exception:
-                logger.exception("Trial %s: Error handling checkpoint %s",
-                                 trial, checkpoint.value)
-                return None
-        if profile.too_slow and trial.sync_on_checkpoint:
-            logger.warning(
-                "Consider turning off forced head-worker trial checkpoint "
-                "syncs by setting sync_on_checkpoint=False. Note that this "
-                "might result in faulty trial restoration for some worker "
-                "failure modes.")
-        return checkpoint.value
+            with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
+                try:
+                    trial.on_checkpoint(checkpoint)
+                except Exception:
+                    logger.exception("Trial %s: Error handling checkpoint %s",
+                                     trial, checkpoint.value)
+                    return None
+            if profile.too_slow and trial.sync_on_checkpoint:
+                logger.warning(
+                    "Consider turning off forced head-worker trial checkpoint "
+                    "syncs by setting sync_on_checkpoint=False. Note that "
+                    "this might result in faulty trial restoration for some "
+                    "worker failure modes.")
+        return checkpoint
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a given model checkpoint.
+
+        Args:
+            trial (Trial): The trial to be restored.
+            checkpoint (Checkpoint): The checkpoint to restore from. If None,
+                the most recent PERSISTENT checkpoint is used. Defaults to
+                None.
 
         Raises:
             RuntimeError: This error is raised if no runner is found.

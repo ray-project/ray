@@ -352,12 +352,9 @@ class Trial:
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint taken.
+            checkpoint (Checkpoint): PERSISTENT Checkpoint taken.
         """
-        if checkpoint.storage == Checkpoint.MEMORY:
-            # TODO(ujvl): Handle this separately to avoid restoration failure.
-            self.checkpoint_manager.on_checkpoint(checkpoint)
-            return
+        assert checkpoint.storage == Checkpoint.PERSISTENT
         if self.sync_on_checkpoint:
             try:
                 # Wait for any other syncs to finish. We need to sync again
@@ -368,7 +365,7 @@ class Trial:
                 # checkpoint, so it should just be logged.
                 logger.error(
                     "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait.", str(e))
+                    "checkpoint pre-sync wait - %s", self, str(e))
             # Force sync down and wait before tracking the new checkpoint.
             try:
                 if self.result_logger.sync_down():

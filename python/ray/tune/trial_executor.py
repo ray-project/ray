@@ -27,6 +27,7 @@ class TrialExecutor:
         """
         self._queue_trials = queue_trials
         self._cached_trial_state = {}
+        self._temporary_checkpoints = {}
 
     def set_status(self, trial, status):
         """Sets status and checkpoints metadata if needed.
@@ -112,7 +113,8 @@ class TrialExecutor:
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            self.save(trial, Checkpoint.MEMORY)
+            checkpoint = self.save(trial, Checkpoint.MEMORY)
+            self._temporary_checkpoints[trial] = checkpoint
             self.stop_trial(trial, stop_logger=False)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -127,7 +129,8 @@ class TrialExecutor:
     def resume_trial(self, trial):
         """Resumes PAUSED trials. This is a blocking call."""
         assert trial.status == Trial.PAUSED, trial.status
-        self.start_trial(trial)
+        self.start_trial(trial, self._temporary_checkpoints[trial])
+        self._temporary_checkpoints[trial] = None
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         """Tries to invoke `Trainable.reset_config()` to reset trial.
@@ -200,7 +203,7 @@ class TrialExecutor:
 
         Assumes the trial is running.
 
-        Return:
+        Returns:
             Result object for the trial.
         """
         raise NotImplementedError
@@ -223,7 +226,7 @@ class TrialExecutor:
             trial (Trial): Trial to be restored.
             checkpoint (Checkpoint): Checkpoint to restore from.
 
-        Return:
+        Returns:
             False if error occurred, otherwise return True.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
@@ -240,9 +243,8 @@ class TrialExecutor:
                 PERSISTENT.
             result (dict): The state of this trial as a dictionary to be saved.
 
-        Return:
-            A Python object if storage==Checkpoint.MEMORY otherwise
-            a path to the checkpoint.
+        Returns:
+            A Checkpoint object.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "save() method")
@@ -253,7 +255,7 @@ class TrialExecutor:
         Args:
             trial (Trial): The state of this trial to be saved.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
