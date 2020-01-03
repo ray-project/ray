@@ -25,9 +25,9 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class TaskAssignImplTest {
+public class TaskAssignerImplTest {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(TaskAssignImplTest.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(TaskAssignerImplTest.class);
 
   @Test
   public void testTaskAssignImpl() {
@@ -38,8 +38,8 @@ public class TaskAssignImplTest {
       workers.add(new LocalModeRayActor(ActorId.fromRandom(), ObjectId.fromRandom()));
     }
 
-    ITaskAssign taskAssign = new TaskAssignImpl();
-    ExecutionGraph executionGraph = taskAssign.assign(plan, workers);
+    TaskAssigner taskAssigner = new TaskAssignerImpl();
+    ExecutionGraph executionGraph = taskAssigner.assign(plan, workers);
 
     List<ExecutionNode> executionNodeList = executionGraph.getExecutionNodeList();
 
