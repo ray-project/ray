@@ -132,7 +132,7 @@ void DefaultNodeInfoHandler::HandleGetResources(const GetResourcesRequest &reque
     send_reply_callback(status, nullptr, nullptr);
   };
 
-  Status status = gcs_client_.Nodes().AsyncGetResource(node_id, on_done);
+  Status status = gcs_client_.Nodes().AsyncGetResources(node_id, on_done);
   if (!status.ok()) {
     on_done(status, boost::none);
   }
@@ -158,7 +158,7 @@ void DefaultNodeInfoHandler::HandleUpdateResources(
     send_reply_callback(status, nullptr, nullptr);
   };
 
-  Status status = gcs_client_.Nodes().AsyncUpdateResource(node_id, resources, on_done);
+  Status status = gcs_client_.Nodes().AsyncUpdateResources(node_id, resources, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -185,7 +185,7 @@ void DefaultNodeInfoHandler::HandleDeleteResources(
   };
 
   Status status =
-      gcs_client_.Nodes().AsyncDeleteResource(node_id, resource_names, on_done);
+      gcs_client_.Nodes().AsyncDeleteResources(node_id, resource_names, on_done);
   if (!status.ok()) {
     on_done(status);
   }

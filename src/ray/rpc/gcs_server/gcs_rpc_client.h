@@ -95,7 +95,7 @@ class GcsRpcClient {
   /// Delete dynamic resources of node in GCS Service.
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources, request, callback,
                          node_info_grpc_client_)
-                         
+
   /// Get object's locations from GCS Service.
   VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations, request, callback,
                          object_info_grpc_client_)
