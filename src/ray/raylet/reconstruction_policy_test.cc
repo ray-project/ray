@@ -147,39 +147,6 @@ class MockGcs : public gcs::RedisGcsClient,
     node_accessor_.reset(node_accessor);
   }
 
-  void Subscribe(const gcs::TaskLeaseTable::WriteCallback &notification_callback,
-                 const gcs::TaskLeaseTable::FailureCallback &failure_callback) {
-    notification_callback_ = notification_callback;
-    failure_callback_ = failure_callback;
-  }
-
-  void Add(const JobID &job_id, const TaskID &task_id,
-           const std::shared_ptr<TaskLeaseData> &task_lease_data) {
-    task_lease_table_[task_id] = task_lease_data;
-    if (subscribed_tasks_.count(task_id) == 1) {
-      notification_callback_(nullptr, task_id, *task_lease_data);
-    }
-  }
-
-  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
-                              const ClientID &client_id,
-                              const gcs::StatusCallback &done) {
-    subscribed_tasks_.insert(task_id);
-    auto entry = task_lease_table_.find(task_id);
-    if (entry == task_lease_table_.end()) {
-      failure_callback_(nullptr, task_id);
-    } else {
-      notification_callback_(nullptr, task_id, *entry->second);
-    }
-    return ray::Status::OK();
-  }
-
-  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
-                             const ClientID &client_id, const gcs::StatusCallback &done) {
-    subscribed_tasks_.erase(task_id);
-    return ray::Status::OK();
-  }
-
   Status AppendAt(
       const JobID &job_id, const TaskID &task_id,
       const std::shared_ptr<TaskReconstructionData> &task_data,
@@ -208,10 +175,6 @@ class MockGcs : public gcs::RedisGcsClient,
           const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
 
  private:
-  gcs::TaskLeaseTable::WriteCallback notification_callback_;
-  gcs::TaskLeaseTable::FailureCallback failure_callback_;
-  std::unordered_map<TaskID, std::shared_ptr<TaskLeaseData>> task_lease_table_;
-  std::unordered_set<TaskID> subscribed_tasks_;
   std::unordered_map<TaskID, std::vector<TaskReconstructionData>>
       task_reconstruction_log_;
 };
@@ -244,16 +207,6 @@ class ReconstructionPolicyTest : public ::testing::Test {
     };
 
     mock_gcs_->Init(task_accessor_, node_accessor_);
-
-    mock_gcs_->Subscribe(
-        [this](gcs::RedisGcsClient *client, const TaskID &task_id,
-               const TaskLeaseData &task_lease) {
-          reconstruction_policy_->HandleTaskLeaseNotification(task_id,
-                                                              task_lease.timeout());
-        },
-        [this](gcs::RedisGcsClient *client, const TaskID &task_id) {
-          reconstruction_policy_->HandleTaskLeaseNotification(task_id, 0);
-        });
   }
 
   void TriggerReconstruction(const TaskID &task_id) { reconstructed_tasks_[task_id]++; }
