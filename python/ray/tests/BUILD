@@ -15,6 +15,14 @@ py_test(
 )
 
 py_test(
+    name = "test_iter",
+    size = "small",
+    srcs = ["test_iter.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_resources",
     size = "medium",
     srcs = ["test_actor_resources.py"],
@@ -240,6 +248,14 @@ py_test(
     srcs = ["test_monitors.py"],
     # TODO(ekl) tasks() and objects() are different in direct call mode.
     tags = ["exclusive", "manual"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_multiprocessing",
+    size = "medium",
+    srcs = ["test_multiprocessing.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 

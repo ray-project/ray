@@ -106,7 +106,7 @@ def _summarize(obj):
         return obj
 
 
-class _StringValue(object):
+class _StringValue:
     def __init__(self, value):
         self.value = value
 

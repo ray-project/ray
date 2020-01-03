@@ -17,7 +17,7 @@ parser.add_argument("--input-file", required=True, help="the input text file")
 
 
 # A class used to check attribute-based key selection
-class Record(object):
+class Record:
     def __init__(self, record):
         k, _ = record
         self.word = k

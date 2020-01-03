@@ -119,8 +119,8 @@ def run(run_or_experiment,
             `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results to
-            (e.g. ``s3://bucket``).
+        upload_dir (str): Optional URI to sync training results and checkpoints
+            to (e.g. ``s3://bucket`` or ``gs://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
         loggers (list): List of logger creators to be used with
@@ -130,20 +130,20 @@ def run(run_or_experiment,
             from upload_dir. If string, then it must be a string template that
             includes `{source}` and `{target}` for the syncer to run. If not
             provided, the sync command defaults to standard S3 or gsutil sync
-            comamnds.
-        sync_to_driver (func|str): Function for syncing trial logdir from
+            commands.
+        sync_to_driver (func|str|bool): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template
             that includes `{source}` and `{target}` for the syncer to run.
-            If not provided, defaults to using rsync.
+            If True or not provided, it defaults to using rsync. If False,
+            syncing to driver is disabled.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
-        sync_on_checkpoint (bool): Force sync-down of trial checkpoint, to
-            guarantee recoverability. If set to False, checkpoint syncing from
-            worker to driver is asynchronous. Set this to False only if
-            synchronous checkpointing is too slow and trial restoration
-            failures can be tolerated. Defaults to True.
+        sync_on_checkpoint (bool): Force sync-down of trial checkpoint to
+            driver. If set to False, checkpoint syncing from worker to driver
+            is asynchronous and best-effort. This does not affect persistent
+            storage syncing. Defaults to True.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.

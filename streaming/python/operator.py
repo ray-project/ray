@@ -12,7 +12,7 @@ logger.setLevel("DEBUG")
 
 
 # Stream partitioning schemes
-class PScheme(object):
+class PScheme:
     def __init__(self, strategy, partition_fn=None):
         self.strategy = strategy
         self.partition_fn = partition_fn
@@ -51,7 +51,7 @@ class OpType(enum.Enum):
 
 
 # A logical dataflow operator
-class Operator(object):
+class Operator:
     def __init__(self,
                  id,
                  op_type,

@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class VectorEnv(object):
+class VectorEnv:
     """An environment that supports batch evaluation.
 
     Subclasses must define the following attributes:

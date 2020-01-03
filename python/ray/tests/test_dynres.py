@@ -580,7 +580,7 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
         return 100
 
     @ray.remote(num_cpus=1)
-    class A(object):
+    class A:
         def __init__(self):
             self.num = ray.get(get_100.remote())
 

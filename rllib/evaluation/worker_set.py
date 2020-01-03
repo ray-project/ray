@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class WorkerSet(object):
+class WorkerSet:
     """Represents a set of RolloutWorkers.
 
     There must be one local worker copy, and zero or more remote workers.

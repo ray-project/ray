@@ -3,17 +3,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import sys
 import torch
 import torch.nn as nn
 import unittest
+from unittest.mock import MagicMock
 
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
-else:
-    from mock import MagicMock
 
 
 class LinearDataset(torch.utils.data.Dataset):

@@ -8,7 +8,7 @@ from ray.rllib.evaluation import SampleBatch
 from ray.rllib.utils.filter import MeanStdFilter
 
 
-class _MockWorker(object):
+class _MockWorker:
     def __init__(self, sample_count=10):
         self._weights = np.array([-10, -10, -10, -10])
         self._grad = np.array([1, 1, 1, 1])

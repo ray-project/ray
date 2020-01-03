@@ -2,12 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import time
 
-import numpy as np
 
-
-class TimerStat(object):
+class TimerStat:
     """A running stat for conveniently logging the duration of a code block.
 
     Example:

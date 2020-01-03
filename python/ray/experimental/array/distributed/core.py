@@ -9,7 +9,7 @@ import ray
 BLOCK_SIZE = 10
 
 
-class DistArray(object):
+class DistArray:
     def __init__(self, shape, objectids=None):
         self.shape = shape
         self.ndim = len(shape)

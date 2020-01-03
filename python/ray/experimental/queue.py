@@ -16,7 +16,7 @@ class Full(Exception):
     pass
 
 
-class Queue(object):
+class Queue:
     """Queue implementation on Ray.
 
     Args:
@@ -132,7 +132,7 @@ class Queue(object):
 
 
 @ray.remote
-class _QueueActor(object):
+class _QueueActor:
     def __init__(self, maxsize):
         self.maxsize = maxsize
         self._init(maxsize)
