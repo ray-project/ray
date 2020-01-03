@@ -17,7 +17,6 @@ from ray import tune
 from ray.tune import DurableTrainable, Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
-from ray.tune.tests.mock import mock_storage_client, MOCK_REMOTE_DIR
 from ray.tune.trial import Trial
 from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              EPISODES_TOTAL, TRAINING_ITERATION,
@@ -29,6 +28,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
 from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
+from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
