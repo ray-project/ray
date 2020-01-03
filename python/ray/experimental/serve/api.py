@@ -443,11 +443,7 @@ def get_handle(endpoint_name):
     # Delay import due to it's dependency on global_state
     from ray.experimental.serve.handle import RayServeHandle
 
-    http_enabled = (
-        endpoint_name in global_state.route_table.list_service().values())
-    return RayServeHandle(global_state.init_or_get_router(),
-                          global_state.policy_table, endpoint_name,
-                          http_enabled)
+    return RayServeHandle(global_state.init_or_get_router(), endpoint_name)
 
 
 @_ensure_connected

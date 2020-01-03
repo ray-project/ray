@@ -26,15 +26,9 @@ class RayServeHandle:
        # raises RayTaskError Exception
     """
 
-    def __init__(self, router_handle, policy_table, endpoint_name,
-                 http_enabled):
+    def __init__(self, router_handle, endpoint_name):
         self.router_handle = router_handle
-
-        # TODO(alind): Need to find a better way for passing policy
-        # information. Right now handle has access to all the policies.
-        self.policy_table = policy_table
         self.endpoint_name = endpoint_name
-        self.http_enabled = http_enabled
 
     def remote(self, *args, **kwargs):
         if len(args) != 0:
@@ -67,33 +61,8 @@ class RayServeHandle:
         # because we are sure handle and global_state are in the same process.
         # However, once global_state is deprecated, this method need to be
         # updated accordingly.
-        traffic_d = self.policy_table.list_traffic_policy()
-        return traffic_d[self.endpoint_name]
-
-    def get_http_endpoint(self):
-        return DEFAULT_HTTP_ADDRESS
-
-    def __repr__(self):
-        if self.http_enabled:
-            return """
-                    RayServeHandle(
-                        Endpoint="{endpoint_name}",
-                        URL="{http_endpoint}/{endpoint_name}",
-                        Traffic={traffic_policy}
-                    )
-                    """.format(
-                endpoint_name=self.endpoint_name,
-                http_endpoint=self.get_http_endpoint(),
-                traffic_policy=self.get_traffic_policy())
-
-        return """
-                RayServeHandle(
-                    Endpoint="{endpoint_name}",
-                    Traffic={traffic_policy}
-                )
-                """.format(
-            endpoint_name=self.endpoint_name,
-            traffic_policy=self.get_traffic_policy())
+        return ray.get(self.router_handle.get_traffic.remote
+                       (self.endpoint_name))
 
     # TODO(simon): a convenience function that dumps equivalent requests
     # code for a given call.
