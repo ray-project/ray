@@ -1,6 +1,6 @@
-#include "ray/gcs/gcs_server/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/test_util.h"

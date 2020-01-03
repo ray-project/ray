@@ -1,6 +1,6 @@
-#include "ray/gcs/gcs_server/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_server/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
 
 static void GetGcsServerAddress(redisContext *context,
                                 std::pair<std::string, int> &addresses) {

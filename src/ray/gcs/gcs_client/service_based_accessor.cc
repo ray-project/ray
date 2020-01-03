@@ -1,5 +1,5 @@
-#include "ray/gcs/gcs_server/service_based_accessor.h"
-#include "ray/gcs/gcs_server/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/service_based_accessor.h"
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace ray {
 namespace gcs {

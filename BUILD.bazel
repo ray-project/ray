@@ -308,16 +308,12 @@ cc_library(
         ],
         exclude = [
             "src/ray/gcs/gcs_server/gcs_server_main.cc",
-            "src/ray/gcs/gcs_server/service_based_*.cc",
             "src/ray/gcs/gcs_server/test/*.cc",
         ],
     ),
     hdrs = glob(
         [
             "src/ray/gcs/gcs_server/*.h",
-        ],
-        exclude = [
-            "src/ray/gcs/gcs_server/service_based_*.h",
         ],
     ),
     copts = COPTS,
@@ -710,12 +706,12 @@ cc_library(
     name = "service_based_gcs_client_lib",
     srcs = glob(
         [
-            "src/ray/gcs/gcs_server/service_based_*.cc",
+            "src/ray/gcs/gcs_client/service_based_*.cc",
         ],
     ),
     hdrs = glob(
         [
-            "src/ray/gcs/gcs_server/service_based_*.h",
+            "src/ray/gcs/gcs_client/service_based_*.h",
         ],
     ),
     copts = COPTS,
@@ -726,7 +722,7 @@ cc_library(
 
 cc_test(
     name = "gcs_server_test",
-    srcs = ["src/ray/gcs/gcs_server/test/service_based_gcs_client_test.cc"],
+    srcs = ["src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc"],
     args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
     copts = COPTS,
     data = [
