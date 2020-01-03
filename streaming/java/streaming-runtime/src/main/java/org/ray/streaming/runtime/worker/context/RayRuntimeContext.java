@@ -16,9 +16,9 @@ public class RayRuntimeContext implements RuntimeContext {
   private int parallelism;
   private Long batchId;
   private final Long maxBatch;
-  private Map<String, Object> config;
+  private Map<String, String> config;
 
-  public RayRuntimeContext(ExecutionTask executionTask, Map<String, Object> config,
+  public RayRuntimeContext(ExecutionTask executionTask, Map<String, String> config,
       int parallelism) {
     this.taskId = executionTask.getTaskId();
     this.config = config;

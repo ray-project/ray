@@ -13,13 +13,13 @@ import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.jobgraph.JobGraph;
+import org.ray.streaming.jobgraph.JobGraphBuilder;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
 import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -31,15 +31,15 @@ public class TaskAssignImplTest {
 
   @Test
   public void testTaskAssignImpl() {
-    Plan plan = buildDataSyncPlan();
+    JobGraph jobGraph = buildDataSyncJobGraph();
 
     List<RayActor<JobWorker>> workers = new ArrayList<>();
-    for(int i = 0; i < plan.getPlanVertexList().size(); i++) {
+    for(int i = 0; i < jobGraph.getJobVertexList().size(); i++) {
       workers.add(new LocalModeRayActor(ActorId.fromRandom(), ObjectId.fromRandom()));
     }
 
     ITaskAssign taskAssign = new TaskAssignImpl();
-    ExecutionGraph executionGraph = taskAssign.assign(plan, workers);
+    ExecutionGraph executionGraph = taskAssign.assign(jobGraph, workers);
 
     List<ExecutionNode> executionNodeList = executionGraph.getExecutionNodeList();
 
@@ -62,14 +62,14 @@ public class TaskAssignImplTest {
     Assert.assertEquals(sinkNode.getOutputEdges().size(), 0);
   }
 
-  public Plan buildDataSyncPlan() {
+  public JobGraph buildDataSyncJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
     DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
-    PlanBuilder planBuilder = new PlanBuilder(Lists.newArrayList(streamSink));
+    JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
-    Plan plan = planBuilder.buildPlan();
-    return plan;
+    JobGraph jobGraph = jobGraphBuilder.buildJobGraph();
+    return jobGraph;
   }
 }
