@@ -130,7 +130,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(msg.ToBytes(), nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, true, resources};
+    TaskOptions options{0, true, false, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"init"}};
 
@@ -144,7 +144,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, true, resources};
+    TaskOptions options{0, true, false, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"execute_test", test}};
 
@@ -158,7 +158,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{1, true, resources};
+    TaskOptions options{1, true, false, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"check_current_test_status"}};
 

@@ -28,6 +28,7 @@ class TaskSpecBuilder {
       const std::vector<std::string> &function_descriptor, const JobID &job_id,
       const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
       const rpc::Address &caller_address, uint64_t num_returns, bool is_direct_call,
+      bool is_cross_language,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
     message_->set_type(TaskType::NORMAL_TASK);
@@ -43,6 +44,7 @@ class TaskSpecBuilder {
     message_->mutable_caller_address()->CopyFrom(caller_address);
     message_->set_num_returns(num_returns);
     message_->set_is_direct_call(is_direct_call);
+    message_->set_is_cross_language(is_cross_language);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(

@@ -12,7 +12,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import ActorID, ActorClassID
+from ray import ActorID, ActorClassID, Language
 
 logger = logging.getLogger(__name__)
 
@@ -172,11 +172,23 @@ class ActorClassMetadata:
             each actor method.
     """
 
-    def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
+    def __init__(self, language, modified_class_or_descriptor_list,
+                 class_id, max_reconstructions, num_cpus,
                  num_gpus, memory, object_store_memory, resources):
-        self.modified_class = modified_class
+        # We do not set self.is_cross_language if self.language != Language.PYTHON
+        # in order to test cross language feature by cross calling PYTHON from PYTHON.
+        self.language = language
+        if inspect.isclass(modified_class_or_descriptor_list):
+            self.modified_class = modified_class_or_descriptor_list
+            self.descriptor_list = None
+            self.class_name = modified_class_or_descriptor_list.__name__
+            self.is_cross_language = False
+        else:
+            self.modified_class = None
+            self.descriptor_list = modified_class_or_descriptor_list
+            self.class_name = b'.'.join(modified_class_or_descriptor_list).decode('ascii')
+            self.is_cross_language = True
         self.class_id = class_id
-        self.class_name = modified_class.__name__
         self.max_reconstructions = max_reconstructions
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
@@ -192,7 +204,7 @@ class ActorClassMetadata:
         ]
 
         constructor_name = "__init__"
-        if constructor_name not in self.actor_method_names:
+        if not self.is_cross_language and constructor_name not in self.actor_method_names:
             # Add __init__ if it does not exist.
             # Actor creation will be executed with __init__ together.
 
@@ -283,7 +295,7 @@ class ActorClass:
     def _ray_from_modified_class(cls, modified_class, class_id,
                                  max_reconstructions, num_cpus, num_gpus,
                                  memory, object_store_memory, resources):
-        for attribute in ["remote", "_remote", "_ray_from_modified_class"]:
+        for attribute in ["remote", "_remote", "_ray_from_modified_class", "_ray_from_descriptor_list"]:
             if hasattr(modified_class, attribute):
                 logger.warning("Creating an actor from class {} overwrites "
                                "attribute {} of that class".format(
@@ -302,8 +314,20 @@ class ActorClass:
         self = DerivedActorClass.__new__(DerivedActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
-            modified_class, class_id, max_reconstructions, num_cpus, num_gpus,
-            memory, object_store_memory, resources)
+            Language.PYTHON, modified_class, class_id, max_reconstructions,
+            num_cpus, num_gpus, memory, object_store_memory, resources)
+
+        return self
+
+    @classmethod
+    def _ray_from_descriptor_list(cls, language, descriptor_list,
+                                  max_reconstructions, num_cpus, num_gpus,
+                                  memory, object_store_memory, resources):
+        self = ActorClass.__new__(ActorClass)
+
+        self.__ray_metadata__ = ActorClassMetadata(
+            language, descriptor_list, None, max_reconstructions,
+            num_cpus, num_gpus, memory, object_store_memory, resources)
 
         return self
 
@@ -451,20 +475,28 @@ class ActorClass:
             actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
         function_name = "__init__"
-        function_descriptor = FunctionDescriptor(
-            meta.modified_class.__module__, function_name,
-            meta.modified_class.__name__)
+        if meta.is_cross_language:
+            function_descriptor_list = meta.descriptor_list
+            module_name = ''
+        else:
+            function_descriptor = FunctionDescriptor(
+                meta.modified_class.__module__, function_name,
+                meta.modified_class.__name__)
+            function_descriptor_list = function_descriptor.get_function_descriptor_list()
+            module_name = meta.modified_class.__module__
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
+            if meta.is_cross_language:
+                raise Exception('Cross-lang ActorClass cannot be executed locally.')
             actor_id = ActorID.from_random()
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if (meta.last_export_session_and_job !=
+            if not meta.is_cross_language and (meta.last_export_session_and_job !=
                     worker.current_session_and_job):
                 # If this actor class was not exported in this session and job,
                 # we need to export this function again, because current GCS
@@ -487,24 +519,32 @@ class ActorClass:
             if actor_method_cpu == 1:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
-            function_signature = meta.method_signatures[function_name]
-            creation_args = signature.flatten_args(function_signature, args,
-                                                   kwargs)
+            if meta.is_cross_language:
+                if kwargs:
+                    raise Exception('Cross-lang remote actor creation not support kwargs.')
+                if not worker.load_code_from_local:
+                    raise Exception('Cross-lang feature needs --load-code-from-local to be set.')
+                creation_args = args
+            else:
+                function_signature = meta.method_signatures[function_name]
+                creation_args = signature.flatten_args(function_signature, args, kwargs)
             actor_id = worker.core_worker.create_actor(
-                function_descriptor.get_function_descriptor_list(),
+                meta.language, function_descriptor_list,
                 creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources, is_direct_call, max_concurrency,
-                detached, is_asyncio)
+                actor_placement_resources, is_direct_call, meta.is_cross_language,
+                max_concurrency, detached, is_asyncio)
 
         actor_handle = ActorHandle(
+            meta.language,
             actor_id,
-            meta.modified_class.__module__,
+            module_name,
             meta.class_name,
             meta.actor_method_names,
             meta.method_decorators,
             meta.method_signatures,
             meta.actor_method_num_return_vals,
             actor_method_cpu,
+            meta.is_cross_language,
             worker.current_session_and_job,
             original_handle=True)
 
@@ -544,6 +584,7 @@ class ActorHandle:
     """
 
     def __init__(self,
+                 language,
                  actor_id,
                  module_name,
                  class_name,
@@ -552,8 +593,10 @@ class ActorHandle:
                  method_signatures,
                  method_num_return_vals,
                  actor_method_cpus,
+                 is_cross_language,
                  session_and_job,
                  original_handle=False):
+        self._ray_actor_language = language
         self._ray_actor_id = actor_id
         self._ray_module_name = module_name
         self._ray_original_handle = original_handle
@@ -564,6 +607,7 @@ class ActorHandle:
         self._ray_class_name = class_name
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
+        self._ray_is_cross_language = is_cross_language
         self._ray_function_descriptor_lists = {
             method_name: FunctionDescriptor(
                 self._ray_module_name, method_name,
@@ -605,22 +649,35 @@ class ActorHandle:
 
         args = args or []
         kwargs = kwargs or {}
-        function_signature = self._ray_method_signatures[method_name]
-
-        if not args and not kwargs and not function_signature:
-            list_args = []
+        if self._ray_is_cross_language:
+            if kwargs:
+                raise Exception('Cross-lang remote actor method not support kwargs.')
+            if not worker.load_code_from_local:
+                raise Exception('Cross-lang feature needs --load-code-from-local to be set.')
+            list_args = args
+            function_descriptor_list = [method_name.encode('ascii')]
         else:
-            list_args = signature.flatten_args(function_signature, args,
-                                               kwargs)
+            function_signature = self._ray_method_signatures[method_name]
+
+            if not args and not kwargs and not function_signature:
+                list_args = []
+            else:
+                list_args = signature.flatten_args(function_signature, args,
+                                                   kwargs)
+            function_descriptor_list = self._ray_function_descriptor_lists[method_name]
+
         if worker.mode == ray.LOCAL_MODE:
+            if self._ray_is_cross_language:
+                raise Exception('Cross-lang remote actor method cannot be executed locally.')
             function = getattr(worker.actors[self._actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
                 function, method_name, args, kwargs, num_return_vals)
         else:
             object_ids = worker.core_worker.submit_actor_task(
+                self._ray_actor_language,
                 self._ray_actor_id,
-                self._ray_function_descriptor_lists[method_name], list_args,
-                num_return_vals, self._ray_actor_method_cpus)
+                function_descriptor_list, list_args,
+                num_return_vals, self._ray_actor_method_cpus, self._ray_is_cross_language)
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -628,6 +685,16 @@ class ActorHandle:
             object_ids = None
 
         return object_ids
+
+    def __getattr__(self, item):
+        if not self._ray_is_cross_language:
+            raise AttributeError("'{}' object has no attribute '{}'".format(type(self).__name__, item))
+
+        return ActorMethod(
+                self,
+                item,
+                ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,  # Currently, we use default num returns
+                decorator=None)  # Currently, cross-lang actor method not support decorator
 
     # Make tab completion work.
     def __dir__(self):
@@ -698,6 +765,7 @@ class ActorHandle:
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         state = {
+            "actor_language": self._ray_actor_language,
             # Local mode just uses the actor ID.
             "core_handle": worker.core_worker.serialize_actor_handle(
                 self._ray_actor_id)
@@ -708,7 +776,8 @@ class ActorHandle:
             "method_decorators": self._ray_method_decorators,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
-            "actor_method_cpus": self._ray_actor_method_cpus
+            "actor_method_cpus": self._ray_actor_method_cpus,
+            "is_cross_language": self._ray_is_cross_language,
         }
 
         return state
@@ -728,6 +797,7 @@ class ActorHandle:
             # TODO(swang): Accessing the worker's current task ID is not
             # thread-safe.
             # Local mode just uses the actor ID.
+            state["actor_language"],
             worker.core_worker.deserialize_and_register_actor_handle(
                 state["core_handle"])
             if hasattr(worker, "core_worker") else state["core_handle"],
@@ -738,6 +808,7 @@ class ActorHandle:
             state["method_signatures"],
             state["method_num_return_vals"],
             state["actor_method_cpus"],
+            state["is_cross_language"],
             worker.current_session_and_job)
 
     def __getstate__(self):

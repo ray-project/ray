@@ -85,14 +85,17 @@ class TaskArg {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, bool is_direct_call,
+  TaskOptions(int num_returns, bool is_direct_call, bool is_cross_language,
               std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), is_direct_call(is_direct_call), resources(resources) {}
+      : num_returns(num_returns), is_direct_call(is_direct_call),
+        is_cross_language(is_cross_language), resources(resources) {}
 
   /// Number of returns of this task.
   int num_returns = 1;
   /// Whether to use the direct task transport.
   bool is_direct_call = false;
+  /// Whether this task is a cross language task.
+  bool is_cross_language = false;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
 };
@@ -101,13 +104,14 @@ struct TaskOptions {
 struct ActorCreationOptions {
   ActorCreationOptions() {}
   ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
-                       int max_concurrency,
+                       bool is_cross_language, int max_concurrency,
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
                        bool is_detached, bool is_asyncio)
       : max_reconstructions(max_reconstructions),
         is_direct_call(is_direct_call),
+        is_cross_language(is_cross_language),
         max_concurrency(max_concurrency),
         resources(resources),
         placement_resources(placement_resources),
@@ -121,6 +125,8 @@ struct ActorCreationOptions {
   /// Whether to use direct actor call. If this is set to true, callers will submit
   /// tasks directly to the created actor without going through raylet.
   const bool is_direct_call = false;
+  /// Whether this task is a cross language task.
+  const bool is_cross_language = false;
   /// The max number of concurrent tasks to run on this direct call actor.
   const int max_concurrency = 1;
   /// Resources required by the whole lifetime of this actor.

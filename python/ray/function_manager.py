@@ -84,6 +84,16 @@ class FunctionDescriptor:
         if len(function_descriptor_list) == 0:
             # This is a function descriptor of driver task.
             return FunctionDescriptor.for_driver_task()
+        elif len(function_descriptor_list) == 1:
+            # This is a function descriptor for actor method
+            worker = ray.worker.get_global_worker()
+            actor_id = worker.core_worker.get_actor_id()
+            actor = worker.actors[actor_id]
+            function_descriptor = actor.__ray_function_descriptor__
+            return FunctionDescriptor(
+                    function_descriptor.module_name,
+                    function_descriptor_list[0].decode('ascii'),
+                    function_descriptor.class_name)
         elif (len(function_descriptor_list) == 3
               or len(function_descriptor_list) == 4):
             module_name = ensure_str(function_descriptor_list[0])
@@ -487,7 +497,7 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
         except Exception:
             logger.exception(
-                "Failed to load function %s.".format(function_name))
+                "Failed to load function {}.".format(function_name))
             raise Exception(
                 "Function {} failed to be loaded from local code.".format(
                     function_descriptor))
@@ -632,6 +642,7 @@ class FunctionActorManager:
                     ))
                 self._num_task_executions[job_id][method_id] = 0
             self._num_task_executions[job_id][function_id] = 0
+        actor_class.__ray_function_descriptor__ = function_descriptor
         return actor_class
 
     def _load_actor_from_local(self, job_id, function_descriptor):

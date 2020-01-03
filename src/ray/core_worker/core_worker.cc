@@ -22,12 +22,14 @@ void BuildCommonTaskSpec(
     const std::vector<ray::TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
+    ray::TaskTransportType transport_type, bool is_cross_language,
+    std::vector<ObjectID> *return_ids) {
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
                             task_index, caller_id, address, num_returns,
                             transport_type == ray::TaskTransportType::DIRECT,
+                            is_cross_language,
                             required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -214,7 +216,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     builder.SetCommonTaskSpec(
         task_id, language_, empty_descriptor, worker_context_.GetCurrentJobID(),
         TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()), 0, GetCallerId(),
-        rpc_address_, 0, false, empty_resources, empty_resources);
+        rpc_address_, 0, false, false, empty_resources, empty_resources);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
@@ -663,6 +665,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       function, args, task_options.num_returns, task_options.resources,
       required_resources,
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
+      task_options.is_cross_language,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
@@ -691,6 +694,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.placement_resources,
                       actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
                                                             : TaskTransportType::RAYLET,
+                      actor_creation_options.is_cross_language,
                       &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
@@ -741,7 +745,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, transport_type, return_ids);
+                      required_resources, transport_type,
+                      task_options.is_cross_language, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);

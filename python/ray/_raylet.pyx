@@ -320,11 +320,9 @@ cdef class Language:
         else:
             raise Exception("Unexpected error")
 
-
-# Programming language enum values.
-cdef Language LANG_PYTHON = Language.from_native(LANGUAGE_PYTHON)
-cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
-cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
+    PYTHON = Language.from_native(LANGUAGE_PYTHON)
+    CPP = Language.from_native(LANGUAGE_CPP)
+    JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
 cdef int prepare_resources(
@@ -375,7 +373,7 @@ cdef:
             <uint8_t*>(raw_meta_str.data()),
             raw_meta_str.size(), True))
 
-cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
+cdef void prepare_args(args, c_vector[CTaskArg] *args_vector):
     cdef:
         c_string pickled_str
         const unsigned char[:] buffer
@@ -951,10 +949,12 @@ cdef class CoreWorker:
             message.decode("utf-8")))
 
     def submit_task(self,
+                    Language language,
                     function_descriptor,
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
+                    c_bool is_cross_language,
                     resources,
                     int max_retries):
         cdef:
@@ -967,9 +967,9 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, is_direct_call, c_resources)
+                num_return_vals, is_direct_call, is_cross_language, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
 
             with nogil:
@@ -980,12 +980,14 @@ cdef class CoreWorker:
             return VectorToObjectIDs(return_ids)
 
     def create_actor(self,
+                     Language language,
                      function_descriptor,
                      args,
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
                      c_bool is_direct_call,
+                     c_bool is_cross_language,
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_bool is_asyncio):
@@ -1001,14 +1003,15 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, max_concurrency,
+                        max_reconstructions, is_direct_call,
+                        is_cross_language, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     &c_actor_id))
@@ -1016,11 +1019,13 @@ cdef class CoreWorker:
             return ActorID(c_actor_id.Binary())
 
     def submit_actor_task(self,
+                          Language language,
                           ActorID actor_id,
                           function_descriptor,
                           args,
                           int num_return_vals,
-                          double num_method_cpus):
+                          double num_method_cpus,
+                          c_bool is_cross_language):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -1033,9 +1038,9 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_return_vals, False, c_resources)
+            task_options = CTaskOptions(num_return_vals, False, is_cross_language, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
 
             with nogil:
