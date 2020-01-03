@@ -1,7 +1,6 @@
 import ray
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.exceptions import RayServeException
-from ray.experimental.serve.constants import DEFAULT_HTTP_ADDRESS
 
 
 class RayServeHandle:
