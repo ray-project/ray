@@ -1,4 +1,4 @@
-from ray.streaming.gateway_client import GatewayClient
+from ray.streaming.runtime.gateway_client import GatewayClient
 
 
 class StreamingContext:

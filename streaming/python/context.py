@@ -16,9 +16,9 @@ class RuntimeContext(ABC):
 
 
 class RuntimeContextImpl(RuntimeContext):
-    def __init__(self, execution_task, parallelism: int):
-        self.task_id = execution_task.get_task_id()
-        self.task_index = execution_task.get_task_index()
+    def __init__(self, task_id, task_index, parallelism):
+        self.task_id = task_id
+        self.task_index = task_index
         self.parallelism = parallelism
 
     def get_task_id(self):

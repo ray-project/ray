@@ -13,11 +13,12 @@ message ExecutionGraph {
 
     message ExecutionNode {
         int32 node_id = 1;
-        NodeType node_type = 2;
-        bytes stream_operator = 3;
-        repeated ExecutionTask execution_tasks = 4;
-        repeated ExecutionEdge inputs_edges = 5;
-        repeated ExecutionEdge output_edges = 6;
+        int32 parallelism = 2;
+        NodeType node_type = 3;
+        bytes stream_operator = 4;
+        repeated ExecutionTask execution_tasks = 5;
+        repeated ExecutionEdge inputs_edges = 6;
+        repeated ExecutionEdge output_edges = 7;
     }
 
     message ExecutionEdge {
@@ -33,7 +34,7 @@ message ExecutionGraph {
     }
 
     uint64 build_time = 1;
-    repeated ExecutionEdge execution_nodes = 2;
+    repeated ExecutionNode execution_nodes = 2;
 }
 
 message WorkerContext {
