@@ -147,7 +147,7 @@ def load_project_or_throw():
             "`ray project validate` to inspect the error.")
 
 
-class SessionRunner(object):
+class SessionRunner:
     """Class for setting up a session and executing commands in it."""
 
     def __init__(self, session_name=None):

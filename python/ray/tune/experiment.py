@@ -34,7 +34,7 @@ def _raise_deprecation_note(deprecated, replacement, soft=False):
         raise DeprecationWarning(error_msg)
 
 
-class Experiment(object):
+class Experiment:
     """Tracks experiment specifications.
 
     Implicitly registers the Trainable if needed.

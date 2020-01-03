@@ -260,7 +260,7 @@ def test_global_state_task_object_api(shutdown_only):
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
 # should use those, but they seem to conflict with Ray's use of faulthandler.
-class CaptureOutputAndError(object):
+class CaptureOutputAndError:
     """Capture stdout and stderr of some span.
 
     This can be used as follows.
@@ -434,7 +434,7 @@ def test_wait_reconstruction(shutdown_only):
 
 def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
-    class UniqueName(object):
+    class UniqueName:
         def __init__(self):
             assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
 
@@ -667,7 +667,7 @@ def test_export_after_shutdown(ray_start_regular):
         pass
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def method(self):
             pass
 
@@ -731,7 +731,7 @@ def test_move_log_files_to_old(shutdown_only):
     logs_dir = os.path.join(info["session_dir"], "logs")
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def f(self):
             print("function f finished")
 

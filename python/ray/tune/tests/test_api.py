@@ -192,7 +192,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         def train(config, reporter):
             pass
 
-        class A(object):
+        class A:
             pass
 
         class B(Trainable):

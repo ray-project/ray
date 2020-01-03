@@ -16,7 +16,7 @@ TOWER_SCOPE_NAME = "tower"
 logger = logging.getLogger(__name__)
 
 
-class LocalSyncParallelOptimizer(object):
+class LocalSyncParallelOptimizer:
     """Optimizer that runs in parallel across multiple local devices.
 
     LocalSyncParallelOptimizer automatically splits up and loads training data

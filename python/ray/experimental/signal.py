@@ -18,7 +18,7 @@ ACTOR_DIED_STR = "ACTOR_DIED_SIGNAL"
 logger = logging.getLogger(__name__)
 
 
-class Signal(object):
+class Signal:
     """Base class for Ray signals."""
     pass
 

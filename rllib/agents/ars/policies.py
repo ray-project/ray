@@ -56,7 +56,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
     return rews, t
 
 
-class GenericPolicy(object):
+class GenericPolicy:
     def __init__(self,
                  sess,
                  action_space,

@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 SESSION_LATEST = "session_latest"
 
 
-class Node(object):
+class Node:
     """An encapsulation of the Ray processes on a single node.
 
     This class is responsible for starting Ray processes and killing them,
@@ -882,7 +882,7 @@ class Node(object):
         return not any(self.dead_processes())
 
 
-class LocalNode(object):
+class LocalNode:
     """Imitate the node that manages the processes in local mode."""
 
     def kill_all_processes(self, *args, **kwargs):

@@ -10,7 +10,7 @@ from packaging import version
 import ray.ray_constants as ray_constants
 
 
-class RayParams(object):
+class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:

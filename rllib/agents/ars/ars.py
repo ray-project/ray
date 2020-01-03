@@ -55,7 +55,7 @@ def create_shared_noise(count):
     return noise
 
 
-class SharedNoiseTable(object):
+class SharedNoiseTable:
     def __init__(self, noise):
         self.noise = noise
         assert self.noise.dtype == np.float32
@@ -72,7 +72,7 @@ class SharedNoiseTable(object):
 
 
 @ray.remote
-class Worker(object):
+class Worker:
     def __init__(self, config, env_creator, noise, min_task_runtime=0.2):
         self.min_task_runtime = min_task_runtime
         self.config = config

@@ -72,7 +72,7 @@ def format_reply(reply):
             format_reply(item)
 
 
-class Dashboard(object):
+class Dashboard:
     """A dashboard process for monitoring Ray nodes.
 
     This dashboard is made up of a REST API which collates data published by

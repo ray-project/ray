@@ -24,7 +24,7 @@ except ImportError:
                      "Be sure to install it on the client side.")
 
 
-class TuneClient(object):
+class TuneClient:
     """Client to interact with an ongoing Tune experiment.
 
     Requires a TuneServer to have started running.

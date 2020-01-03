@@ -30,7 +30,7 @@ Q_TARGET_SCOPE = "target_q_func"
 PRIO_WEIGHTS = "weights"
 
 
-class QLoss(object):
+class QLoss:
     def __init__(self,
                  q_t_selected,
                  q_logits_t_selected,
@@ -107,7 +107,7 @@ class QLoss(object):
             }
 
 
-class QValuePolicy(object):
+class QValuePolicy:
     def __init__(self, q_values, observations, num_actions, cur_epsilon,
                  softmax, softmax_temp, model_config):
         if softmax:
@@ -135,7 +135,7 @@ class QValuePolicy(object):
         self.action_prob = None
 
 
-class ComputeTDErrorMixin(object):
+class ComputeTDErrorMixin:
     def __init__(self):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,

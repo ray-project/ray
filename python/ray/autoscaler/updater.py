@@ -37,7 +37,7 @@ def with_interactive(cmd):
     return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 
-class KubernetesCommandRunner(object):
+class KubernetesCommandRunner:
     def __init__(self, log_prefix, namespace, node_id, auth_config,
                  process_runner):
 
@@ -149,7 +149,7 @@ class KubernetesCommandRunner(object):
                                             self.node_id)
 
 
-class SSHCommandRunner(object):
+class SSHCommandRunner:
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
 
@@ -284,7 +284,7 @@ class SSHCommandRunner(object):
                                           self.ssh_ip)
 
 
-class NodeUpdater(object):
+class NodeUpdater:
     """A process for syncing files and running init commands on a node."""
 
     def __init__(self,

@@ -13,7 +13,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.memory import ray_get_and_free
 
 
-class Aggregator(object):
+class Aggregator:
     """An aggregator collects and processes samples from workers.
 
     This class is used to abstract away the strategy for sample collection.
@@ -52,7 +52,7 @@ class Aggregator(object):
         raise NotImplementedError
 
 
-class AggregationWorkerBase(object):
+class AggregationWorkerBase:
     """Aggregators should extend from this class."""
 
     def __init__(self, initial_weights_obj_id, remote_workers,

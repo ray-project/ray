@@ -48,7 +48,7 @@ def test_submitting_many_tasks(ray_start_sharded):
 
 def test_submitting_many_actors_to_one(ray_start_sharded):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
@@ -56,7 +56,7 @@ def test_submitting_many_actors_to_one(ray_start_sharded):
             return
 
     @ray.remote
-    class Worker(object):
+    class Worker:
         def __init__(self, actor):
             self.actor = actor
 

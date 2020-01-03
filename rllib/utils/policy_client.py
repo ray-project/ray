@@ -19,7 +19,7 @@ except ImportError:
 
 
 @PublicAPI
-class PolicyClient(object):
+class PolicyClient:
     """REST client to interact with a RLlib policy server."""
 
     START_EPISODE = "START_EPISODE"

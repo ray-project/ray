@@ -39,7 +39,7 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 logger = logging.getLogger(__name__)
 
 
-class FunctionDescriptor(object):
+class FunctionDescriptor:
     """A class used to describe a python function.
 
     Attributes:
@@ -259,7 +259,7 @@ class FunctionDescriptor(object):
         return len(self._class_name) > 0
 
 
-class FunctionActorManager(object):
+class FunctionActorManager:
     """A class used to export/load remote functions and actors.
 
     Attributes:
@@ -658,7 +658,7 @@ class FunctionActorManager(object):
                     class_name))
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
-        class TemporaryActor(object):
+        class TemporaryActor:
             pass
 
         def temporary_actor_method(*args, **kwargs):

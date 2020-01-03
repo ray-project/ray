@@ -121,7 +121,7 @@ def _parse_resource_table(redis_client, client_id):
     return resources
 
 
-class GlobalState(object):
+class GlobalState:
     """A class used to interface with the Ray control state.
 
     # TODO(zongheng): In the future move this to use Ray's redis module in the
