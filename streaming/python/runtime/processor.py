@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import logging
 import ray.streaming as streaming
+from ray.streaming.operator import OperatorType
 import ray.streaming.context as context
 import ray.streaming.message as message
 
@@ -24,7 +25,7 @@ class Processor(ABC):
 class StreamingProcessor(Processor, ABC):
     """StreamingProcessor is a process unit for a operator."""
 
-    def __init__(self, operator: streaming.operator.Operator):
+    def __init__(self, operator):
         self.operator = operator
         self.collectors = None
         self.runtime_context = None
@@ -92,11 +93,11 @@ def build_processor(operator_instance):
     operator_type = operator_instance.operator_type()
     logger.info("Building StreamProcessor, operator type = {}, operator = {}.",
                 operator_type, operator_instance)
-    if operator_type == streaming.operator.SOURCE:
+    if operator_type == OperatorType.SOURCE:
         return SourceProcessor(operator_instance)
-    elif operator_type == streaming.operator.ONE_INPUT:
+    elif operator_type == OperatorType.ONE_INPUT:
         return OneInputProcessor(operator_instance)
-    elif operator_type == streaming.operator.TWO_INPUT:
+    elif operator_type == OperatorType.TWO_INPUT:
         return TwoInputProcessor(operator_instance)
     else:
         raise Exception("Current operator type is not supported")

@@ -29,10 +29,3 @@ class RuntimeContextImpl(RuntimeContext):
 
     def get_parallelism(self):
         return self.parallelism
-
-
-class WorkerContext:
-    def __init__(self, task_id: int, execution_graph, job_config):
-        self.task_id = task_id
-        self.execution_graph = execution_graph
-        self.job_config = job_config

@@ -5,8 +5,8 @@ import ray
 import ray.streaming._streaming as _streaming
 from ray.streaming.config import Config
 from ray.function_manager import FunctionDescriptor
-import ray.streaming.processor as processor
-from ray.streaming.graph import ExecutionGraph
+import ray.streaming.runtime.processor as processor
+from ray.streaming.runtime.graph import ExecutionGraph
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 
 logger = logging.getLogger(__name__)
@@ -36,9 +36,9 @@ class JobWorker(object):
         self.config = worker_context.config
         execution_graph = ExecutionGraph(worker_context.execution_graph)
         self.execution_graph = execution_graph
-        self.execution_task = self.execution_graph.\
+        self.execution_task = self.execution_graph. \
             get_execution_task_by_task_id(self.task_id)
-        self.execution_node = self.execution_graph.\
+        self.execution_node = self.execution_graph. \
             get_execution_node_by_task_id(self.task_id)
         operator = None
         self.stream_processor = processor.build_processor(operator)
@@ -92,3 +92,10 @@ class JobWorker(object):
             return b" " * 4  # special flag to indicate this actor not ready
         result = self.writer_client.on_writer_message_sync(buffer)
         return result.to_pybytes()
+
+
+class WorkerContext:
+    def __init__(self, task_id: int, execution_graph, job_config):
+        self.task_id = task_id
+        self.execution_graph = execution_graph
+        self.job_config = job_config
