@@ -48,8 +48,7 @@ fi
 
 if [ "$RAY_INSTALL_JAVA" == "1" ]; then
   pushd "$ROOT_DIR/../../java/dist"
-  echo "Install ray-java package"
+  echo "Installing ray-java package."
   python setup.py install --user
   popd
 fi
-
