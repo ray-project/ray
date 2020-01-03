@@ -52,6 +52,18 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo, request, callback,
                          actor_info_grpc_client_)
 
+  ///  Add actor checkpoint data to GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, AddActorCheckpoint, request, callback,
+                         actor_info_grpc_client_)
+
+  ///  Get actor checkpoint data from GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpoint, request, callback,
+                         actor_info_grpc_client_)
+
+  ///  Get actor checkpoint id data from GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpointID, request, callback,
+                         actor_info_grpc_client_)
+
   /// Register a node to GCS Service.
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, request, callback,
                          node_info_grpc_client_)
@@ -62,6 +74,14 @@ class GcsRpcClient {
 
   /// Get information of all nodes from GCS Service.
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, request, callback,
+                         node_info_grpc_client_)
+
+  /// Report heartbeat of a node to GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat, request, callback,
+                         node_info_grpc_client_)
+
+  /// Report batch heartbeat to GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat, request, callback,
                          node_info_grpc_client_)
 
   /// Get object's locations from GCS Service.

@@ -118,29 +118,24 @@ def test_raylet_info_endpoint(shutdown_only):
     addresses = ray.init(include_webui=True, num_cpus=6)
 
     @ray.remote(num_cpus=1)
-    class A(object):
+    class ActorA(object):
         def __init__(self):
             pass
 
         def f(self):
             return os.getpid()
 
-    @ray.remote(num_cpus=2)
-    class B(object):
+    @ray.remote(resources={"CustomResource": 1})
+    class ActorB(object):
         def __init__(self):
-            self.children = [A.remote(), A.remote()]
+            pass
 
-        def f(self):
-            return os.getpid(), ray.get(
-                [child.f.remote() for child in self.children])
+    @ray.remote(num_cpus=2)
+    class ActorC(object):
+        def __init__(self):
+            self.children = [ActorA.remote(), ActorB.remote()]
 
-    # TODO: Currently there is a race condition of Dashboard subscription
-    # and actor initialization. This will be fixed after #6629 is merged.
-    time.sleep(10)
-
-    b = B.remote()
-    pids = ray.get(b.f.remote())
-    assert len(pids) == 2 and len(pids[1]) == 2
+    _ = ActorC.remote()
 
     start_time = time.time()
     while True:
@@ -152,7 +147,6 @@ def test_raylet_info_endpoint(shutdown_only):
             actor_info = raylet_info["result"]["actorInfo"]
             try:
                 assert len(actor_info) == 1
-                print("actor_info", actor_info)
                 _, parent_actor_info = actor_info.popitem()
                 children = parent_actor_info["children"]
                 assert len(children) == 2
@@ -168,8 +162,12 @@ def test_raylet_info_endpoint(shutdown_only):
 
     assert parent_actor_info["usedResources"]["CPU"] == 2
     for _, child_actor_info in children.items():
-        assert len(child_actor_info["children"]) == 0
-        assert child_actor_info["usedResources"]["CPU"] == 1
+        if child_actor_info["state"] == -1:
+            assert child_actor_info["requiredResources"]["CustomResource"] == 1
+        else:
+            assert child_actor_info["state"] == 0
+            assert len(child_actor_info["children"]) == 0
+            assert child_actor_info["usedResources"]["CPU"] == 1
 
 
 if __name__ == "__main__":

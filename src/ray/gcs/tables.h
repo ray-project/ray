@@ -786,7 +786,8 @@ class ActorCheckpointIdTable : public Table<ActorID, ActorCheckpointIdData> {
   /// \param checkpoint_id ID of the checkpoint.
   /// \return Status.
   Status AddCheckpointId(const JobID &job_id, const ActorID &actor_id,
-                         const ActorCheckpointID &checkpoint_id);
+                         const ActorCheckpointID &checkpoint_id,
+                         const WriteCallback &done);
 };
 
 namespace raylet {

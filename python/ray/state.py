@@ -328,6 +328,7 @@ class GlobalState(object):
             gcs_entries.entries[0])
 
         actor_info = {
+            "ActorID": binary_to_hex(actor_table_data.actor_id),
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {
                 "IPAddress": actor_table_data.address.ip_address,
@@ -337,7 +338,8 @@ class GlobalState(object):
                 "IPAddress": actor_table_data.owner_address.ip_address,
                 "Port": actor_table_data.owner_address.port
             },
-            "IsDirectCall": actor_table_data.is_direct_call
+            "IsDirectCall": actor_table_data.is_direct_call,
+            "State": actor_table_data.state,
         }
 
         return actor_info
