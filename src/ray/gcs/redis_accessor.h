@@ -229,6 +229,20 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   bool IsRemoved(const ClientID &node_id) const override;
 
+  Status AsyncGetResources(const ClientID &node_id,
+                           const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+                              const StatusCallback &callback) override;
+
+  Status AsyncDeleteResources(const ClientID &node_id,
+                              const std::vector<std::string> &resource_names,
+                              const StatusCallback &callback) override;
+
+  Status AsyncSubscribeToResources(
+      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+      const StatusCallback &done) override;
+
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
 
@@ -246,6 +260,10 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
  private:
   RedisGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
+      DynamicResourceSubscriptionExecutor;
+  DynamicResourceSubscriptionExecutor resource_sub_executor_;
 
   typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
       HeartbeatSubscriptionExecutor;
