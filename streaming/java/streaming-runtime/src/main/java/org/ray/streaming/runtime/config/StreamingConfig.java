@@ -11,7 +11,7 @@ public class StreamingConfig implements Serializable {
   public StreamingMasterConfig masterConfig;
   public StreamingWorkerConfig workerConfigTemplate;
 
-  public StreamingConfig(Map<String, String> conf) {
+  public StreamingConfig(final Map<String, String> conf) {
     masterConfig = new StreamingMasterConfig(conf);
     workerConfigTemplate = new StreamingWorkerConfig(conf);
   }

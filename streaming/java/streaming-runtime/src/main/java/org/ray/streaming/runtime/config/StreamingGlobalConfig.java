@@ -23,11 +23,16 @@ public class StreamingGlobalConfig implements Serializable {
 
   public Map<String, String> configMap;
 
-  public StreamingGlobalConfig(Map<String, String> conf) {
+  public StreamingGlobalConfig(final Map<String, String> conf) {
     configMap = new HashMap<>(conf);
 
     commonConfig = ConfigFactory.create(CommonConfig.class, conf);
     globalConfig2Map();
+  }
+
+  @Override
+  public String toString() {
+    return configMap.toString();
   }
 
   public void globalConfig2Map() {
