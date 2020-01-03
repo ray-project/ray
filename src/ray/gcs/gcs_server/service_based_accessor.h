@@ -5,7 +5,6 @@
 #include "src/ray/gcs/subscription_executor.h"
 
 namespace ray {
-
 namespace gcs {
 
 class ServiceBasedGcsClient;

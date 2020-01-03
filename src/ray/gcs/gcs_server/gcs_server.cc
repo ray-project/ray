@@ -126,6 +126,7 @@ void GcsServer::SetGcsServerAddress() {
       break;
     }
   }
+  RAY_CHECK(iter != end);
   std::string address =
       primary_endpoint.address().to_string() + ":" + std::to_string(GetPort());
   RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
