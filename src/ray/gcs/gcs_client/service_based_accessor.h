@@ -68,6 +68,17 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
   Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done);
 
+  Status AsyncAddCheckpoint(const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
+                            const StatusCallback &callback);
+
+  Status AsyncGetCheckpoint(
+      const ActorCheckpointID &checkpoint_id,
+      const OptionalItemCallback<rpc::ActorCheckpointData> &callback);
+
+  Status AsyncGetCheckpointID(
+      const ActorID &actor_id,
+      const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback);
+
  private:
   ServiceBasedGcsClient *client_impl_{nullptr};
 
@@ -111,8 +122,31 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
   bool IsRemoved(const ClientID &node_id) const;
 
+  Status AsyncReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+                              const StatusCallback &callback);
+
+  Status AsyncSubscribeHeartbeat(
+      const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+      const StatusCallback &done);
+
+  Status AsyncReportBatchHeartbeat(
+      const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
+      const StatusCallback &callback);
+
+  Status AsyncSubscribeBatchHeartbeat(
+      const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+      const StatusCallback &done);
+
  private:
   ServiceBasedGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
+      HeartbeatSubscriptionExecutor;
+  HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
+
+  typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
+      HeartbeatBatchSubscriptionExecutor;
+  HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
 
   GcsNodeInfo local_node_info;
   ClientID local_node_id;

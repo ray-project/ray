@@ -112,6 +112,49 @@ Status ServiceBasedActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
   return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
 }
 
+Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
+    const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
+    const StatusCallback &callback) {
+  rpc::AddActorCheckpointRequest request;
+  request.mutable_checkpoint_data()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().AddActorCheckpoint(
+      request,
+      [callback](const Status &status, const rpc::AddActorCheckpointReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
+    const ActorCheckpointID &checkpoint_id,
+    const OptionalItemCallback<rpc::ActorCheckpointData> &callback) {
+  rpc::GetActorCheckpointRequest request;
+  request.set_checkpoint_id(checkpoint_id.Binary());
+  client_impl_->GetGcsRpcClient().GetActorCheckpoint(
+      request,
+      [callback](const Status &status, const rpc::GetActorCheckpointReply &reply) {
+        rpc::ActorCheckpointData checkpoint_data;
+        checkpoint_data.CopyFrom(reply.checkpoint_data());
+        callback(status, checkpoint_data);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
+    const ActorID &actor_id,
+    const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) {
+  rpc::GetActorCheckpointIDRequest request;
+  request.set_actor_id(actor_id.Binary());
+  client_impl_->GetGcsRpcClient().GetActorCheckpointID(
+      request,
+      [callback](const Status &status, const rpc::GetActorCheckpointIDReply &reply) {
+        rpc::ActorCheckpointIdData checkpoint_id_data;
+        checkpoint_id_data.CopyFrom(reply.checkpoint_id_data());
+        callback(status, checkpoint_id_data);
+      });
+  return Status::OK();
+}
+
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
@@ -145,7 +188,10 @@ Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
 
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl) {}
+    : client_impl_(client_impl),
+      heartbeat_sub_executor_(client_impl->GetRedisGcsClient().heartbeat_table()),
+      heartbeat_batch_sub_executor_(
+          client_impl->GetRedisGcsClient().heartbeat_batch_table()) {}
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   rpc::RegisterNodeRequest request;
@@ -245,6 +291,50 @@ const std::unordered_map<ClientID, GcsNodeInfo> &ServiceBasedNodeInfoAccessor::G
 bool ServiceBasedNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
   ClientTable &client_table = client_impl_->GetRedisGcsClient().client_table();
   return client_table.IsRemoved(node_id);
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
+    const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
+    const StatusCallback &callback) {
+  rpc::ReportHeartbeatRequest request;
+  request.mutable_heartbeat()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportHeartbeat(
+      request, [callback](const Status &status, const rpc::ReportHeartbeatReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncSubscribeHeartbeat(
+    const SubscribeCallback<ClientID, rpc::HeartbeatTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return heartbeat_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncReportBatchHeartbeat(
+    const std::shared_ptr<rpc::HeartbeatBatchTableData> &data_ptr,
+    const StatusCallback &callback) {
+  rpc::ReportBatchHeartbeatRequest request;
+  request.mutable_heartbeat_batch()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportBatchHeartbeat(
+      request,
+      [callback](const Status &status, const rpc::ReportBatchHeartbeatReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
+    const ItemCallback<rpc::HeartbeatBatchTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  auto on_subscribe = [subscribe](const ClientID &node_id,
+                                  const HeartbeatBatchTableData &data) {
+    subscribe(data);
+  };
+  return heartbeat_batch_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe,
+                                                         done);
 }
 
 }  // namespace gcs
