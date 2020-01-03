@@ -98,7 +98,7 @@ def _make_key(category, key):
             key.encode("ascii"))
 
 
-class _Registry(object):
+class _Registry:
     def __init__(self):
         self._to_flush = {}
 

@@ -182,9 +182,11 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[0].num_failures, 1)
+        runner.step()  # Restore step
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(trials[0].num_failures, 2)
+        runner.step()  # Restore step
         runner.step()
         self.assertEqual(trials[0].status, Trial.ERROR)
         self.assertEqual(trials[0].num_failures, 3)
@@ -242,6 +244,7 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
+        runner.step()  # Restore step
         runner.step()
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 10)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 1)

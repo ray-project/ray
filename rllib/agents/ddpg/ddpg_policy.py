@@ -32,7 +32,7 @@ TWIN_Q_TARGET_SCOPE = "twin_target_critic"
 PRIO_WEIGHTS = "weights"
 
 
-class DDPGPostprocessing(object):
+class DDPGPostprocessing:
     """Implements n-step learning and param noise adjustments."""
 
     @override(Policy)

@@ -48,7 +48,7 @@ def test_worker_stats(shutdown_only):
         return os.getpid()
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
@@ -118,7 +118,7 @@ def test_raylet_info_endpoint(shutdown_only):
     addresses = ray.init(include_webui=True, num_cpus=6)
 
     @ray.remote(num_cpus=1)
-    class ActorA(object):
+    class ActorA:
         def __init__(self):
             pass
 
@@ -126,12 +126,12 @@ def test_raylet_info_endpoint(shutdown_only):
             return os.getpid()
 
     @ray.remote(resources={"CustomResource": 1})
-    class ActorB(object):
+    class ActorB:
         def __init__(self):
             pass
 
     @ray.remote(num_cpus=2)
-    class ActorC(object):
+    class ActorC:
         def __init__(self):
             self.children = [ActorA.remote(), ActorB.remote()]
 

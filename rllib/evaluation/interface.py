@@ -8,7 +8,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class EvaluatorInterface(object):
+class EvaluatorInterface:
     """This is the interface between policy optimizers and policy evaluation.
 
     See also: RolloutWorker

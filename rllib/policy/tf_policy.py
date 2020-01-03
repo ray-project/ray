@@ -564,7 +564,7 @@ class TFPolicy(Policy):
 
 
 @DeveloperAPI
-class LearningRateSchedule(object):
+class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
@@ -589,7 +589,7 @@ class LearningRateSchedule(object):
 
 
 @DeveloperAPI
-class EntropyCoeffSchedule(object):
+class EntropyCoeffSchedule:
     """Mixin for TFPolicy that adds entropy coeff decay."""
 
     @DeveloperAPI

@@ -53,7 +53,7 @@ def test_put_api(ray_start_regular):
 
 def test_actor_api(ray_start_regular):
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self, val):
             self.x = val
 

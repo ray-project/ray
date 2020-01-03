@@ -40,7 +40,7 @@ class DeserializationError(Exception):
     pass
 
 
-class SerializedObject(object):
+class SerializedObject:
     def __init__(self, metadata):
         self._metadata = metadata
 
@@ -132,7 +132,7 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
     return hashlib.sha1(new_class_id).digest()
 
 
-class SerializationContext(object):
+class SerializationContext:
     """Initialize the serialization library.
 
     This defines a custom serializer for object IDs and also tells ray to
