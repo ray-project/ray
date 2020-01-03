@@ -245,18 +245,6 @@ class ObjectManager : public ObjectManagerInterface,
   /// Record metrics.
   void RecordMetrics() const;
 
-  /// Returns the number of objects in this object manager.
-  ///
-  /// \return Count of objects in the object manager.
-  int Size() {
-    return local_objects_.size();
-  }
-
-  /// Returns total memory used to store objects.
-  ///
-  /// \return uint64_t.
-  int64_t UsedMemory() const;
-
  private:
   friend class TestObjectManager;
 
