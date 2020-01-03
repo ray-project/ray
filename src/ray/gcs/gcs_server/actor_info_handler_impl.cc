@@ -107,7 +107,7 @@ void DefaultActorInfoHandler::HandleGetActorCheckpoint(
       ActorCheckpointID::FromBinary(request.checkpoint_id());
   RAY_LOG(DEBUG) << "Getting actor checkpoint, checkpoint id = " << checkpoint_id;
   auto on_done = [checkpoint_id, reply, send_reply_callback](
-      Status status, const boost::optional<ActorCheckpointData> &result) {
+                     Status status, const boost::optional<ActorCheckpointData> &result) {
     if (status.ok()) {
       RAY_DCHECK(result);
       reply->mutable_checkpoint_data()->CopyFrom(*result);
@@ -132,7 +132,8 @@ void DefaultActorInfoHandler::HandleGetActorCheckpointID(
   ActorID actor_id = ActorID::FromBinary(request.actor_id());
   RAY_LOG(DEBUG) << "Getting actor checkpoint id, actor id = " << actor_id;
   auto on_done = [actor_id, reply, send_reply_callback](
-      Status status, const boost::optional<ActorCheckpointIdData> &result) {
+                     Status status,
+                     const boost::optional<ActorCheckpointIdData> &result) {
     if (status.ok()) {
       RAY_DCHECK(result);
       reply->mutable_checkpoint_id_data()->CopyFrom(*result);
