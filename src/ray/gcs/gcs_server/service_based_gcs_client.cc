@@ -5,8 +5,8 @@
 #include "ray/gcs/redis_context.h"
 #include "ray/gcs/redis_gcs_client.h"
 //#include "ray/gcs/gcs_server/job_info_handler_impl.h"
-#include "ray/gcs/gcs_client/service_based_accessor.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_server/service_based_accessor.h"
+#include "ray/gcs/gcs_server/service_based_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
 static void GetGcsServerAddress(redisContext *context,
