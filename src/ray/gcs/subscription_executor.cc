@@ -191,6 +191,8 @@ template class SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>;
 template class SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>;
 template class SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>,
                                     TaskLeaseTable>;
+template class SubscriptionExecutor<ClientID, ResourceChangeNotification,
+                                    DynamicResourceTable>;
 template class SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>;
 template class SubscriptionExecutor<ClientID, HeartbeatBatchTableData,
                                     HeartbeatBatchTable>;

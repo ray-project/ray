@@ -41,7 +41,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False):
     return rews, t
 
 
-class GenericPolicy(object):
+class GenericPolicy:
     def __init__(self, sess, action_space, obs_space, preprocessor,
                  observation_filter, model_options, action_noise_std):
         self.sess = sess

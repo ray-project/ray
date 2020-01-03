@@ -24,11 +24,11 @@ public class JobSchedulerImpl implements JobScheduler {
   private Plan plan;
   private Map<String, Object> jobConfig;
   private ResourceManager resourceManager;
-  private ITaskAssign taskAssign;
+  private TaskAssigner taskAssigner;
 
   public JobSchedulerImpl() {
     this.resourceManager = new ResourceManager();
-    this.taskAssign = new TaskAssignImpl();
+    this.taskAssigner = new TaskAssignerImpl();
   }
 
   /**
@@ -42,7 +42,7 @@ public class JobSchedulerImpl implements JobScheduler {
     Ray.init();
 
     List<RayActor<JobWorker>> workers = this.resourceManager.createWorkers(getPlanWorker());
-    ExecutionGraph executionGraph = this.taskAssign.assign(this.plan, workers);
+    ExecutionGraph executionGraph = this.taskAssigner.assign(this.plan, workers);
 
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
     List<RayObject<Boolean>> waits = new ArrayList<>();

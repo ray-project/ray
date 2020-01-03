@@ -8,7 +8,7 @@ import socket
 import time
 
 
-class TimerStat(object):
+class TimerStat:
     """A running stat for conveniently logging the duration of a code block.
 
     Note that this class is *not* thread-safe.
@@ -108,7 +108,7 @@ def find_free_port():
         return s.getsockname()[1]
 
 
-class AverageMeter(object):
+class AverageMeter:
     """Computes and stores the average and current value."""
 
     def __init__(self):

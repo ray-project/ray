@@ -8,7 +8,7 @@ from ray.rllib.utils.memory import ray_get_and_free
 
 
 @DeveloperAPI
-class FilterManager(object):
+class FilterManager:
     """Manages filters and coordination across remote evaluators that expose
         `get_filters` and `sync_filters`.
     """

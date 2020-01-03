@@ -14,7 +14,7 @@ namespace gcs {
 template <typename Data>
 class EntryChangeNotification {
  public:
-  EntryChangeNotification(rpc::GcsChangeMode change_mode, std::vector<Data> data)
+  EntryChangeNotification(rpc::GcsChangeMode change_mode, Data data)
       : change_mode_(change_mode), data_(std::move(data)) {}
 
   EntryChangeNotification(EntryChangeNotification &&other) {
@@ -41,14 +41,23 @@ class EntryChangeNotification {
   /// Get data of this notification.
   ///
   /// \return Data
-  const std::vector<Data> &GetData() const { return data_; }
+  const Data &GetData() const { return data_; }
 
  private:
   rpc::GcsChangeMode change_mode_;
-  std::vector<Data> data_;
+  Data data_;
 };
 
-typedef EntryChangeNotification<rpc::ObjectTableData> ObjectChangeNotification;
+template <typename Data>
+using ArrayNotification = EntryChangeNotification<std::vector<Data>>;
+
+typedef ArrayNotification<rpc::ObjectTableData> ObjectChangeNotification;
+
+template <typename key, typename Value>
+using MapNotification =
+    EntryChangeNotification<std::unordered_map<key, std::shared_ptr<Value>>>;
+
+typedef MapNotification<std::string, rpc::ResourceTableData> ResourceChangeNotification;
 
 }  // namespace gcs
 
