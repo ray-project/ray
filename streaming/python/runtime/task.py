@@ -1,6 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 import threading
+import pickle
 
 import ray
 from ray.streaming.config import Config
@@ -88,5 +89,51 @@ class StreamTask(ABC):
         pass
 
     @abstractmethod
+    def cancel_task(self):
+        pass
+
+
+class InputStreamTask(StreamTask):
+    def __init__(self, task_id, processor_instance, worker):
+        super().__init__(task_id, processor_instance, worker)
+        self.running = True
+        self.stopped = False
+        self.read_timeout_millis = \
+            int(worker.config.get(Config.READ_TIMEOUT_MS, Config.DEFAULT_READ_TIMEOUT_MS))
+
+    def init(self):
+        pass
+
+    def run(self):
+        while self.running:
+            item = self.reader.read(self.read_timeout_millis)
+            if item is not None:
+                msg_data = item.body()
+                msg = pickle.loads(msg_data)
+                self.processor.process(msg)
+        self.stopped = True
+
+    def cancel_task(self):
+        self.running = False
+        while not self.stopped:
+            pass
+
+
+class OneInputStreamTask(InputStreamTask):
+    def __init__(self, task_id, processor_instance, worker):
+        super().__init__(task_id, processor_instance, worker)
+
+
+class SourceStreamTask(StreamTask):
+
+    def __init__(self, task_id, processor_instance, worker):
+        super().__init__(task_id, processor_instance, worker)
+
+    def init(self):
+        pass
+
+    def run(self):
+        self.processor.run()
+
     def cancel_task(self):
         pass
