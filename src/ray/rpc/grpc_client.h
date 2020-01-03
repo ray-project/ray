@@ -20,14 +20,14 @@ namespace rpc {
   })
 
 // Define a void RPC client method.
-#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, request, callback, rpc_client)   \
+#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client)                      \
   void METHOD(const METHOD##Request &request,                                    \
               const ClientCallback<METHOD##Reply> &callback) {                   \
     RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client)); \
   }
 
 // Define a RPC client method that returns ray::Status.
-#define RPC_CLIENT_METHOD(SERVICE, METHOD, request, callback, rpc_client)   \
+#define RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client)                      \
   ray::Status METHOD(const METHOD##Request &request,                        \
                      const ClientCallback<METHOD##Reply> &callback) {       \
     return INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
