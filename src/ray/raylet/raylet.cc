@@ -104,7 +104,7 @@ ray::Status Raylet::RegisterGcs() {
     resources.emplace(resource_pair.first, resource);
   }
   RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().AsyncUpdateResource(self_node_id_, resources, nullptr));
+      gcs_client_->Nodes().AsyncUpdateResources(self_node_id_, resources, nullptr));
 
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
 

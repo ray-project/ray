@@ -503,7 +503,7 @@ Status RedisNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
                                                          done);
 }
 
-Status RedisNodeInfoAccessor::AsyncGetResource(
+Status RedisNodeInfoAccessor::AsyncGetResources(
     const ClientID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ClientID &id,
@@ -519,9 +519,9 @@ Status RedisNodeInfoAccessor::AsyncGetResource(
   return resource_table.Lookup(JobID::Nil(), node_id, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncUpdateResource(const ClientID &node_id,
-                                                  const ResourceMap &resources,
-                                                  const StatusCallback &callback) {
+Status RedisNodeInfoAccessor::AsyncUpdateResources(const ClientID &node_id,
+                                                   const ResourceMap &resources,
+                                                   const StatusCallback &callback) {
   Hash<ClientID, ResourceTableData>::HashCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
@@ -532,7 +532,7 @@ Status RedisNodeInfoAccessor::AsyncUpdateResource(const ClientID &node_id,
   return resource_table.Update(JobID::Nil(), node_id, resources, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncDeleteResource(
+Status RedisNodeInfoAccessor::AsyncDeleteResources(
     const ClientID &node_id, const std::vector<std::string> &resource_names,
     const StatusCallback &callback) {
   Hash<ClientID, ResourceTableData>::HashRemoveCallback on_done = nullptr;
@@ -547,7 +547,7 @@ Status RedisNodeInfoAccessor::AsyncDeleteResource(
   return resource_table.RemoveEntries(JobID::Nil(), node_id, resource_names, on_done);
 }
 
-Status RedisNodeInfoAccessor::AsyncSubscribeResource(
+Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
     const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);

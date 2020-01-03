@@ -229,17 +229,17 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   bool IsRemoved(const ClientID &node_id) const override;
 
-  Status AsyncGetResource(const ClientID &node_id,
-                          const OptionalItemCallback<ResourceMap> &callback) override;
+  Status AsyncGetResources(const ClientID &node_id,
+                           const OptionalItemCallback<ResourceMap> &callback) override;
 
-  Status AsyncUpdateResource(const ClientID &node_id, const ResourceMap &resources,
-                             const StatusCallback &callback) override;
+  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+                              const StatusCallback &callback) override;
 
-  Status AsyncDeleteResource(const ClientID &node_id,
-                             const std::vector<std::string> &resource_names,
-                             const StatusCallback &callback) override;
+  Status AsyncDeleteResources(const ClientID &node_id,
+                              const std::vector<std::string> &resource_names,
+                              const StatusCallback &callback) override;
 
-  Status AsyncSubscribeResource(
+  Status AsyncSubscribeToResources(
       const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
       const StatusCallback &done) override;
 

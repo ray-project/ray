@@ -356,38 +356,38 @@ class NodeInfoAccessor {
   typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
       ResourceMap;
 
-  /// Get node's dynamic resources from GCS asynchronously.
+  /// Get node's resources from GCS asynchronously.
   ///
   /// \param node_id The ID of node to lookup dynamic resources.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetResource(const ClientID &node_id,
-                                  const OptionalItemCallback<ResourceMap> &callback) = 0;
+  virtual Status AsyncGetResources(const ClientID &node_id,
+                                   const OptionalItemCallback<ResourceMap> &callback) = 0;
 
-  /// Update dynamic resources of node in GCS asynchronously.
+  /// Update resources of node in GCS asynchronously.
   ///
   /// \param node_id The ID of node to update dynamic resources.
   /// \param resources The dynamic resources of node to be updated.
   /// \param callback Callback that will be called after update finishes.
-  virtual Status AsyncUpdateResource(const ClientID &node_id,
-                                     const ResourceMap &resources,
-                                     const StatusCallback &callback) = 0;
+  virtual Status AsyncUpdateResources(const ClientID &node_id,
+                                      const ResourceMap &resources,
+                                      const StatusCallback &callback) = 0;
 
-  /// Delete resources of an node from GCS asynchronously.
+  /// Delete resources of a node from GCS asynchronously.
   ///
   /// \param node_id The ID of node to delete resources from GCS.
   /// \param resource_names The names of resource to be deleted.
   /// \param callback Callback that will be called after delete finishes.
-  virtual Status AsyncDeleteResource(const ClientID &node_id,
-                                     const std::vector<std::string> &resource_names,
-                                     const StatusCallback &callback) = 0;
+  virtual Status AsyncDeleteResources(const ClientID &node_id,
+                                      const std::vector<std::string> &resource_names,
+                                      const StatusCallback &callback) = 0;
 
-  /// Subscribe to any update operations of dynamic resources.
+  /// Subscribe to node resource changes.
   ///
   /// \param subscribe Callback that will be called when any resource is updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  virtual Status AsyncSubscribeResource(
+  virtual Status AsyncSubscribeToResources(
       const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
       const StatusCallback &done) = 0;
 

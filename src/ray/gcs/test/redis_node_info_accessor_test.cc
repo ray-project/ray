@@ -46,7 +46,7 @@ TEST_F(NodeDynamicResourceTest, UpdateAndGet) {
     ++pending_count_;
     const ClientID &id = node_rs.first;
     // Update
-    Status status = node_accessor.AsyncUpdateResource(
+    Status status = node_accessor.AsyncUpdateResources(
         node_rs.first, node_rs.second, [this, &node_accessor, id](Status status) {
           RAY_CHECK_OK(status);
           auto get_callback = [this, id](Status status,
@@ -58,7 +58,7 @@ TEST_F(NodeDynamicResourceTest, UpdateAndGet) {
             ASSERT_EQ(it->second.size(), result->size());
           };
           // Get
-          status = node_accessor.AsyncGetResource(id, get_callback);
+          status = node_accessor.AsyncGetResources(id, get_callback);
           RAY_CHECK_OK(status);
         });
   }
@@ -70,11 +70,11 @@ TEST_F(NodeDynamicResourceTest, Delete) {
   for (const auto &node_rs : id_to_resource_map_) {
     ++pending_count_;
     // Update
-    Status status = node_accessor.AsyncUpdateResource(node_rs.first, node_rs.second,
-                                                      [this](Status status) {
-                                                        RAY_CHECK_OK(status);
-                                                        --pending_count_;
-                                                      });
+    Status status = node_accessor.AsyncUpdateResources(node_rs.first, node_rs.second,
+                                                       [this](Status status) {
+                                                         RAY_CHECK_OK(status);
+                                                         --pending_count_;
+                                                       });
   }
   WaitPendingDone(wait_pending_timeout_);
 
@@ -82,11 +82,11 @@ TEST_F(NodeDynamicResourceTest, Delete) {
     ++pending_count_;
     const ClientID &id = node_rs.first;
     // Delete
-    Status status = node_accessor.AsyncDeleteResource(
+    Status status = node_accessor.AsyncDeleteResources(
         id, resource_to_delete_, [this, &node_accessor, id](Status status) {
           RAY_CHECK_OK(status);
           // Get
-          status = node_accessor.AsyncGetResource(
+          status = node_accessor.AsyncGetResources(
               id, [this, id](Status status, const boost::optional<ResourceMap> &result) {
                 --pending_count_;
                 RAY_CHECK_OK(status);
@@ -104,11 +104,11 @@ TEST_F(NodeDynamicResourceTest, Subscribe) {
   for (const auto &node_rs : id_to_resource_map_) {
     ++pending_count_;
     // Update
-    Status status = node_accessor.AsyncUpdateResource(node_rs.first, node_rs.second,
-                                                      [this](Status status) {
-                                                        RAY_CHECK_OK(status);
-                                                        --pending_count_;
-                                                      });
+    Status status = node_accessor.AsyncUpdateResources(node_rs.first, node_rs.second,
+                                                       [this](Status status) {
+                                                         RAY_CHECK_OK(status);
+                                                         --pending_count_;
+                                                       });
   }
   WaitPendingDone(wait_pending_timeout_);
 
@@ -132,18 +132,18 @@ TEST_F(NodeDynamicResourceTest, Subscribe) {
 
   // Subscribe
   ++pending_count_;
-  Status status = node_accessor.AsyncSubscribeResource(subscribe, done);
+  Status status = node_accessor.AsyncSubscribeToResources(subscribe, done);
   RAY_CHECK_OK(status);
 
   for (const auto &node_rs : id_to_resource_map_) {
     // Delete
     ++pending_count_;
     ++sub_pending_count_;
-    Status status = node_accessor.AsyncDeleteResource(node_rs.first, resource_to_delete_,
-                                                      [this](Status status) {
-                                                        RAY_CHECK_OK(status);
-                                                        --pending_count_;
-                                                      });
+    Status status = node_accessor.AsyncDeleteResources(node_rs.first, resource_to_delete_,
+                                                       [this](Status status) {
+                                                         RAY_CHECK_OK(status);
+                                                         --pending_count_;
+                                                       });
     RAY_CHECK_OK(status);
   }
 
