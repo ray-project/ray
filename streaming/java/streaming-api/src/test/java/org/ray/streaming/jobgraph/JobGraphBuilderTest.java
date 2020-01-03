@@ -1,4 +1,4 @@
-package org.ray.streaming.plan;
+package org.ray.streaming.jobgraph;
 
 
 import com.google.common.collect.Lists;
@@ -14,74 +14,74 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class PlanBuilderTest {
+public class JobGraphBuilderTest {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(PlanBuilderTest.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(JobGraphBuilderTest.class);
 
   @Test
   public void testDataSync() {
-    Plan plan = buildDataSyncPlan();
-    List<PlanVertex> planVertexList = plan.getPlanVertexList();
-    List<PlanEdge> planEdgeList = plan.getPlanEdgeList();
+    JobGraph jobGraph = buildDataSyncJobGraph();
+    List<JobVertex> jobVertexList = jobGraph.getJobVertexList();
+    List<JobEdge> jobEdgeList = jobGraph.getJobEdgeList();
 
-    Assert.assertEquals(planVertexList.size(), 2);
-    Assert.assertEquals(planEdgeList.size(), 1);
+    Assert.assertEquals(jobVertexList.size(), 2);
+    Assert.assertEquals(jobEdgeList.size(), 1);
 
-    PlanEdge planEdge = planEdgeList.get(0);
-    Assert.assertEquals(planEdge.getPartition().getClass(), RoundRobinPartition.class);
+    JobEdge jobEdge = jobEdgeList.get(0);
+    Assert.assertEquals(jobEdge.getPartition().getClass(), RoundRobinPartition.class);
 
-    PlanVertex sinkVertex = planVertexList.get(1);
-    PlanVertex sourceVertex = planVertexList.get(0);
+    JobVertex sinkVertex = jobVertexList.get(1);
+    JobVertex sourceVertex = jobVertexList.get(0);
     Assert.assertEquals(sinkVertex.getVertexType(), VertexType.SINK);
     Assert.assertEquals(sourceVertex.getVertexType(), VertexType.SOURCE);
 
   }
 
-  public Plan buildDataSyncPlan() {
+  public JobGraph buildDataSyncJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
     DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
-    PlanBuilder planBuilder = new PlanBuilder(Lists.newArrayList(streamSink));
+    JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
-    Plan plan = planBuilder.buildPlan();
-    return plan;
+    JobGraph jobGraph = jobGraphBuilder.build();
+    return jobGraph;
   }
 
   @Test
-  public void testKeyByPlan() {
-    Plan plan = buildKeyByPlan();
-    List<PlanVertex> planVertexList = plan.getPlanVertexList();
-    List<PlanEdge> planEdgeList = plan.getPlanEdgeList();
+  public void testKeyByJobGraph() {
+    JobGraph jobGraph = buildKeyByJobGraph();
+    List<JobVertex> jobVertexList = jobGraph.getJobVertexList();
+    List<JobEdge> jobEdgeList = jobGraph.getJobEdgeList();
 
-    Assert.assertEquals(planVertexList.size(), 3);
-    Assert.assertEquals(planEdgeList.size(), 2);
+    Assert.assertEquals(jobVertexList.size(), 3);
+    Assert.assertEquals(jobEdgeList.size(), 2);
 
-    PlanVertex source = planVertexList.get(0);
-    PlanVertex map = planVertexList.get(1);
-    PlanVertex sink = planVertexList.get(2);
+    JobVertex source = jobVertexList.get(0);
+    JobVertex map = jobVertexList.get(1);
+    JobVertex sink = jobVertexList.get(2);
 
     Assert.assertEquals(source.getVertexType(), VertexType.SOURCE);
     Assert.assertEquals(map.getVertexType(), VertexType.PROCESS);
     Assert.assertEquals(sink.getVertexType(), VertexType.SINK);
 
-    PlanEdge keyBy2Sink = planEdgeList.get(0);
-    PlanEdge source2KeyBy = planEdgeList.get(1);
+    JobEdge keyBy2Sink = jobEdgeList.get(0);
+    JobEdge source2KeyBy = jobEdgeList.get(1);
 
     Assert.assertEquals(keyBy2Sink.getPartition().getClass(), KeyPartition.class);
     Assert.assertEquals(source2KeyBy.getPartition().getClass(), RoundRobinPartition.class);
   }
 
-  public Plan buildKeyByPlan() {
+  public JobGraph buildKeyByJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
     DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
         Lists.newArrayList("1", "2", "3", "4"));
     StreamSink streamSink = dataStream.keyBy(x -> x)
         .sink(x -> LOGGER.info(x));
-    PlanBuilder planBuilder = new PlanBuilder(Lists.newArrayList(streamSink));
+    JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
-    Plan plan = planBuilder.buildPlan();
-    return plan;
+    JobGraph jobGraph = jobGraphBuilder.build();
+    return jobGraph;
   }
 
 }

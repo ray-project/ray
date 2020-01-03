@@ -10,8 +10,8 @@ import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanBuilder;
+import org.ray.streaming.jobgraph.JobGraph;
+import org.ray.streaming.jobgraph.JobGraphBuilder;
 import org.ray.streaming.schedule.JobScheduler;
 
 /**
@@ -28,7 +28,7 @@ public class StreamingContext implements Serializable {
   /**
    * The logic plan.
    */
-  private Plan plan;
+  private JobGraph jobGraph;
 
   private StreamingContext() {
     this.idGenerator = new AtomicInteger(0);
@@ -44,16 +44,16 @@ public class StreamingContext implements Serializable {
    * Construct job DAG, and execute the job.
    */
   public void execute() {
-    PlanBuilder planBuilder = new PlanBuilder(this.streamSinks);
-    this.plan = planBuilder.buildPlan();
-    plan.printPlan();
+    JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(this.streamSinks);
+    this.jobGraph = jobGraphBuilder.build();
+    jobGraph.printJobGraph();
 
     ServiceLoader<JobScheduler> serviceLoader = ServiceLoader.load(JobScheduler.class);
     Iterator<JobScheduler> iterator = serviceLoader.iterator();
     Preconditions.checkArgument(iterator.hasNext(),
         "No JobScheduler implementation has been provided.");
     JobScheduler jobSchedule = iterator.next();
-    jobSchedule.schedule(plan, jobConfig);
+    jobSchedule.schedule(jobGraph, jobConfig);
   }
 
   public int generateId() {
