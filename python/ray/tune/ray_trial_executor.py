@@ -14,14 +14,13 @@ from ray.exceptions import RayTimeoutError
 from ray import ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.durable_trainable import DurableTrainable
-from ray.tune.error import AbortTrialExecution
+from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.resources import Resources
 from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location
 from ray.tune.trial_executor import TrialExecutor
-from ray.tune.util import warn_if_slow
-from ray.tune.error import TuneError
+from ray.tune.utils import warn_if_slow
 
 logger = logging.getLogger(__name__)
 

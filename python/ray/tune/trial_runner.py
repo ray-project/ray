@@ -21,9 +21,9 @@ from ray.tune.syncer import get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.util import warn_if_slow, flatten_dict
-from ray.utils import binary_to_hex, hex_to_binary
+from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.web_server import TuneServer
+from ray.utils import binary_to_hex, hex_to_binary
 
 MAX_DEBUG_TRIALS = 20
 
