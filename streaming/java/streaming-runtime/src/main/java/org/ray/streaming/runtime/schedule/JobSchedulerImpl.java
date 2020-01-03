@@ -32,7 +32,7 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   /**
-   * Schedule physical plan to execution graph, and call streaming worker to init and run.
+   * Schedule logical plan to execution graph, and call streaming worker to init and run.
    */
   @Override
   public void schedule(JobGraph jobGraph, Map<String, String> jobConfig) {
@@ -42,7 +42,7 @@ public class JobSchedulerImpl implements JobScheduler {
     Ray.init();
 
     List<RayActor<JobWorker>> workers = this.resourceManager.createWorkers(getPlanWorker());
-    ExecutionGraph executionGraph = this.taskAssigner.assign(this.plan, workers);
+    ExecutionGraph executionGraph = this.taskAssigner.assign(this.jobGraph, workers);
 
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
     List<RayObject<Boolean>> waits = new ArrayList<>();
