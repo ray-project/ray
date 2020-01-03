@@ -86,8 +86,7 @@ setup(
     name="ray-java",
     packages=["ray_java"],
     version=find_version(),
-    description="Package all ray java jars into a wheel so that ray can"
-    " create java actor in python code based on jars in the wheel.",
+    description="A package that contains all Ray Java jars.",
     long_description=open("README.rst").read(),
     url="https://github.com/ray-project/ray",
     author="Ray Team",
