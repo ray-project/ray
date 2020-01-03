@@ -74,8 +74,7 @@ class TrainableUtil:
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir):
         """Creates a checkpoint directory at the provided path."""
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
 
