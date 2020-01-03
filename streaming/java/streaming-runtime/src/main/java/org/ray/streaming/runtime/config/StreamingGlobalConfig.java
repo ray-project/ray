@@ -1,6 +1,7 @@
 package org.ray.streaming.runtime.config;
 
 import com.google.common.base.Preconditions;
+import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,7 +15,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Streaming general config. May used by both JobMaster and JobWorker.
  */
-public class StreamingGlobalConfig {
+public class StreamingGlobalConfig implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingGlobalConfig.class);
 

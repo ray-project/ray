@@ -4,6 +4,7 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 import org.aeonbits.owner.ConfigFactory;
+import org.nustaq.serialization.FSTConfiguration;
 import org.ray.streaming.runtime.config.global.CommonConfig;
 import org.ray.streaming.runtime.util.TestHelper;
 import org.slf4j.Logger;
@@ -68,5 +69,21 @@ public class ConfigTest {
     conf.put(customKey, customValue);
     StreamingConfig config = new StreamingConfig(conf);
     Assert.assertEquals(config.getMap().get(customKey), customValue);
+  }
+
+  @Test
+  public void testSerialization() {
+    Map<String, String> conf = new HashMap<>();
+    String customKey = "test_key";
+    String customValue = "test_value";
+    conf.put(customKey, customValue);
+    StreamingConfig config = new StreamingConfig(conf);
+
+    FSTConfiguration fstConf = FSTConfiguration.createDefaultConfiguration();
+    byte[] configBytes = fstConf.asByteArray(config);
+    StreamingConfig deserializedConfig = (StreamingConfig) fstConf.asObject(configBytes);
+
+    Assert.assertEquals(deserializedConfig.masterConfig.commonConfig.fileEncoding(), "UTF-8");
+    Assert.assertEquals(deserializedConfig.getMap().get(customKey), customValue);
   }
 }
