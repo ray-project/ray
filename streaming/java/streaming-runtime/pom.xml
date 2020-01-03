@@ -47,6 +47,11 @@
   <version>3.8.0</version>
 </dependency>
 <dependency>
+  <groupId>org.aeonbits.owner</groupId>
+  <artifactId>owner</artifactId>
+  <version>1.0.10</version>
+</dependency>
+<dependency>
   <groupId>org.slf4j</groupId>
   <artifactId>slf4j-api</artifactId>
   <version>1.7.25</version>
