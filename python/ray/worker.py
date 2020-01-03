@@ -658,6 +658,10 @@ def init(address=None,
             arguments is passed in.
     """
 
+    if redis_address is not None:
+        raise DeprecationWarning("The redis_address argument is deprecated. "
+                                 "Please use address instead.")
+
     if redis_address is not None or address is not None:
         redis_address, _, _ = services.validate_redis_address(
             address, redis_address)
