@@ -33,56 +33,44 @@ class GcsRpcClient {
   };
 
   /// Add job info to gcs server.
-  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob,
-                         job_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, job_info_grpc_client_)
 
   /// Mark job as finished to gcs server.
-  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished,
-                         job_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, job_info_grpc_client_)
 
   /// Get actor data from GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo,
-                         actor_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, actor_info_grpc_client_)
 
   /// Register an actor to GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo,
-                         actor_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo, actor_info_grpc_client_)
 
   ///  Update actor info in GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo,
-                         actor_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo, actor_info_grpc_client_)
 
   ///  Add actor checkpoint data to GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, AddActorCheckpoint,
-                         actor_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, AddActorCheckpoint, actor_info_grpc_client_)
 
   ///  Get actor checkpoint data from GCS Service.
-  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpoint,
-                         actor_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpoint, actor_info_grpc_client_)
 
   ///  Get actor checkpoint id data from GCS Service.
   VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpointID,
                          actor_info_grpc_client_)
 
   /// Register a node to GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode,
-                         node_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, node_info_grpc_client_)
 
   /// Unregister a node from GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, UnregisterNode,
-                         node_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, UnregisterNode, node_info_grpc_client_)
 
   /// Get information of all nodes from GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo,
-                         node_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_)
 
   /// Report heartbeat of a node to GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat,
-                         node_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat, node_info_grpc_client_)
 
   /// Report batch heartbeat to GCS Service.
-  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat,
-                         node_info_grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat, node_info_grpc_client_)
 
   /// Get object's locations from GCS Service.
   VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
