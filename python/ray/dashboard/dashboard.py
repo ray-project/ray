@@ -72,6 +72,16 @@ def format_reply(reply):
             format_reply(item)
 
 
+def measures_to_dict(measures):
+    measures_dict = {}
+    for measure in measures:
+        if "intValue" in measure:
+            measures_dict[measure["tags"]] = measure["intValue"]
+        elif "doubleValue" in measure:
+            measures_dict[measure["tags"]] = measure["doubleValue"]
+    return measures_dict
+
+
 class Dashboard(object):
     """A dashboard process for monitoring Ray nodes.
 
@@ -180,22 +190,46 @@ class Dashboard(object):
             actor_tree = self.node_stats.get_actor_tree(
                 workers_info, infeasible_tasks)
             for address, data in D.items():
+                # process view data
+                measures_dicts = {}
+                for view_data in data["viewData"]:
+                    view_name = view_data["viewName"]
+                    if view_name in ("local_available_resource",
+                                     "local_total_resource",
+                                     "object_manager_stats"):
+                        measures_dicts[view_name] = measures_to_dict(
+                            view_data["measures"])
                 # process resources info
-                available_resources = data["availableResources"]
-                total_resources = data["totalResources"]
-                resources_info = []
-                for resource_name in sorted(available_resources.keys()):
-                    total = total_resources[resource_name]
-                    occupied = total - available_resources[resource_name]
-                    total = format_resource(resource_name, total)
-                    occupied = format_resource(resource_name, occupied)
-                    resources_info.append("{}: {} / {}".format(
-                        resource_name, occupied, total))
-                data["extraInfo"] = ", ".join(resources_info)
+                extra_info_strings = []
+                prefix = "ResourceName:"
+                for stats_name in [
+                        "CPU", "node:{}".format(address), "memory",
+                        "object_store_memory"
+                ]:
+                    total_resource = measures_dicts[
+                        "local_total_resource"].get(prefix + stats_name, .0)
+                    available_resource = measures_dicts[
+                        "local_available_resource"].get(
+                            prefix + stats_name, .0)
+                    extra_info_strings.append("{}: {} / {}".format(
+                        stats_name,
+                        format_resource(stats_name,
+                                        total_resource - available_resource),
+                        format_resource(stats_name, total_resource)))
+                data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
-                    # process memory info
-                    if "numObjectIds" in data:
-                        data["extraInfo"] += "\n" + "node_num_object_ids: {}, node_used_memory: {}".format(data["numObjectIds"], data["usedMemory"])
+                    # process object store info
+                    extra_info_strings = []
+                    prefix = "ValueType:"
+                    for stats_name in [
+                            "used_object_store_memory", "num_local_objects"
+                    ]:
+                        stats_value = measures_dicts[
+                            "object_manager_stats"].get(
+                                prefix + stats_name, .0)
+                        extra_info_strings.append("{}: {}".format(
+                            stats_name, stats_value))
+                    data["extraInfo"] += ", ".join(extra_info_strings)
                     # process actor info
                     actor_tree_str = json.dumps(
                         actor_tree, indent=2, sort_keys=True)
