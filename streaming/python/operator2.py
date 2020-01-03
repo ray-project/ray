@@ -25,8 +25,12 @@ class Operator(ABC):
     def close(self):
         pass
 
+    @abstractmethod
+    def operator_type(self):
+        pass
 
-class OneInputOperator(ABC, Operator):
+
+class OneInputOperator(Operator, ABC):
     @abstractmethod
     def process_element(self, record):
         pass
@@ -35,7 +39,7 @@ class OneInputOperator(ABC, Operator):
         return OperatorType.ONE_INPUT
 
 
-class TwoInputOperator(ABC, Operator):
+class TwoInputOperator(Operator, ABC):
     @abstractmethod
     def process_element(self, record1, record2):
         pass
@@ -44,7 +48,7 @@ class TwoInputOperator(ABC, Operator):
         return OperatorType.TWO_INPUT
 
 
-class StreamOperator(Operator):
+class StreamOperator(Operator, ABC):
 
     def __init__(self, func):
         self.func = func
@@ -87,6 +91,9 @@ class SourceOperator(StreamOperator):
 
     def run(self):
         self.func.run(self.source_context)
+
+    def operator_type(self):
+        return OperatorType.SOURCE
 
 
 class MapOperator(StreamOperator, OneInputOperator):

@@ -86,3 +86,17 @@ class TwoInputProcessor(StreamingProcessor):
     @right_stream.setter
     def right_stream(self, value):
         self.right_stream = value
+
+
+def build_processor(operator_instance):
+    operator_type = operator_instance.operator_type()
+    logger.info("Building StreamProcessor, operator type = {}, operator = {}.",
+                operator_type, operator_instance)
+    if operator_type == streaming.operator2.SOURCE:
+        return SourceProcessor(operator_instance)
+    elif operator_type == streaming.operator2.ONE_INPUT:
+        return OneInputProcessor(operator_instance)
+    elif operator_type == streaming.operator2.TWO_INPUT:
+        return TwoInputProcessor(operator_instance)
+    else:
+        raise Exception("Current operator type is not supported")
