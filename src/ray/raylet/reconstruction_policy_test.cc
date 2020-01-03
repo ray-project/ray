@@ -165,37 +165,6 @@ class MockGcs : public gcs::RedisGcsClient {
     task_accessor_.reset(task_accessor);
     node_accessor_.reset(node_accessor);
   }
-
-  Status AppendAt(
-      const JobID &job_id, const TaskID &task_id,
-      const std::shared_ptr<TaskReconstructionData> &task_data,
-      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
-          &success_callback,
-      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
-          &failure_callback,
-      int log_index) {
-    if (task_reconstruction_log_[task_id].size() == static_cast<size_t>(log_index)) {
-      task_reconstruction_log_[task_id].push_back(*task_data);
-      if (success_callback != nullptr) {
-        success_callback(nullptr, task_id, *task_data);
-      }
-    } else {
-      if (failure_callback != nullptr) {
-        failure_callback(nullptr, task_id, *task_data);
-      }
-    }
-    return Status::OK();
-  }
-
-  MOCK_METHOD4(
-      Append,
-      ray::Status(
-          const JobID &, const TaskID &, const std::shared_ptr<TaskReconstructionData> &,
-          const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
-
- private:
-  std::unordered_map<TaskID, std::vector<TaskReconstructionData>>
-      task_reconstruction_log_;
 };
 
 class ReconstructionPolicyTest : public ::testing::Test {
