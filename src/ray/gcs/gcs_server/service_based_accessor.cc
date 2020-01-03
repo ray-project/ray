@@ -155,37 +155,6 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
   return Status::OK();
 }
 
-ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
-    ServiceBasedGcsClient *client_impl)
-    : client_impl_(client_impl),
-      task_sub_executor_(client_impl->GetRedisGcsClient().raylet_task_table()) {}
-
-Status ServiceBasedTaskInfoAccessor::AsyncAdd(
-    const std::shared_ptr<rpc::TaskTableData> &data_ptr, const StatusCallback &callback) {
-  return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncGet(
-    const TaskID &task_id, const OptionalItemCallback<rpc::TaskTableData> &callback) {
-  return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
-                                                 const StatusCallback &callback) {
-  return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
-    const TaskID &task_id, const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
-    const StatusCallback &done) {
-  return Status::OK();
-}
-
-Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
-                                                      const StatusCallback &done) {
-  return Status::OK();
-}
-
 ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
@@ -194,47 +163,55 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
           client_impl->GetRedisGcsClient().heartbeat_batch_table()) {}
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
+  RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
+  RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
-  this->local_node_info.CopyFrom(local_node_info);
-  local_node_id = ClientID::FromBinary(local_node_info.node_id());
-  std::promise<bool> promise;
+  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().RegisterNode(
       request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
-        promise.set_value(true);
+        promise.set_value(status);
       });
-  promise.get_future().get();
-  return Status::OK();
+
+  Status ret = promise.get_future().get();
+  if (ret.ok()) {
+    local_node_info_.CopyFrom(local_node_info);
+    local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
+  }
+  return ret;
 }
 
 Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   rpc::UnregisterNodeRequest request;
-  request.set_node_id(local_node_info.node_id());
-  std::promise<bool> promise;
+  request.set_node_id(local_node_info_.node_id());
+  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().UnregisterNode(
       request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
-        promise.set_value(true);
+        promise.set_value(status);
       });
-  promise.get_future().get();
-  return Status::OK();
+  Status ret = promise.get_future().get();
+  if (ret.ok()) {
+    local_node_info_.set_state(GcsNodeInfo::DEAD);
+    local_node_id_ = ClientID::Nil();
+  }
+  return ret;
 }
 
-const ClientID &ServiceBasedNodeInfoAccessor::GetSelfId() const { return local_node_id; }
+const ClientID &ServiceBasedNodeInfoAccessor::GetSelfId() const { return local_node_id_; }
 
 const GcsNodeInfo &ServiceBasedNodeInfoAccessor::GetSelfInfo() const {
-  return local_node_info;
+  return local_node_info_;
 }
 
 Status ServiceBasedNodeInfoAccessor::Register(const GcsNodeInfo &node_info) {
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(node_info);
-  std::promise<bool> promise;
+  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().RegisterNode(
       request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
-        promise.set_value(true);
+        promise.set_value(status);
       });
-  promise.get_future().get();
-  return Status::OK();
+  return promise.get_future().get();
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
@@ -254,6 +231,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncGetAll(
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       request, [callback](const Status &status, const rpc::GetAllNodeInfoReply &reply) {
         std::vector<GcsNodeInfo> result;
+        result.reserve((reply.node_info_list_size()));
         for (int index = 0; index < reply.node_info_list_size(); ++index) {
           result.emplace_back(reply.node_info_list(index));
         }
