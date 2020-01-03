@@ -97,7 +97,7 @@ class RayTrialExecutor(TrialExecutor):
         if self._cached_actor:
             logger.debug("Cannot reuse cached runner {} for new trial".format(
                 self._cached_actor))
-            with self._switch_working_directory(trial):
+            with self._change_working_directory(trial):
                 self._cached_actor.stop.remote()
                 self._cached_actor.__ray_terminate__.remote()
             self._cached_actor = None
@@ -124,7 +124,7 @@ class RayTrialExecutor(TrialExecutor):
         logger.debug("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
-        with self._switch_working_directory(trial):
+        with self._change_working_directory(trial):
             return cls.remote(
                 config=trial.config, logger_creator=logger_creator)
 
@@ -147,7 +147,7 @@ class RayTrialExecutor(TrialExecutor):
             return
 
         assert trial.status == Trial.RUNNING, trial.status
-        with self._switch_working_directory(trial):
+        with self._change_working_directory(trial):
             remote = trial.runner.train.remote()
 
         # Local Mode
@@ -215,7 +215,7 @@ class RayTrialExecutor(TrialExecutor):
                     self._cached_actor = trial.runner
                 else:
                     logger.debug("Trial %s: Destroying actor.", trial)
-                    with self._switch_working_directory(trial):
+                    with self._change_working_directory(trial):
                         trial.runner.stop.remote()
                         trial.runner.__ray_terminate__.remote()
         except Exception:
@@ -326,7 +326,7 @@ class RayTrialExecutor(TrialExecutor):
         trial.experiment_tag = new_experiment_tag
         trial.config = new_config
         trainable = trial.runner
-        with self._switch_working_directory(trial):
+        with self._change_working_directory(trial):
             with warn_if_slow("reset_config"):
                 try:
                     reset_val = ray.get(
@@ -582,7 +582,7 @@ class RayTrialExecutor(TrialExecutor):
         """Saves the trial's state to a checkpoint."""
         result = result or trial.last_result
 
-        with self._switch_working_directory(trial):
+        with self._change_working_directory(trial):
             if storage == Checkpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
                 checkpoint = Checkpoint(storage, value, result)
@@ -627,7 +627,7 @@ class RayTrialExecutor(TrialExecutor):
         value = checkpoint.value
         if checkpoint.storage == Checkpoint.MEMORY:
             assert not isinstance(value, Checkpoint), type(value)
-            with self._switch_working_directory(trial):
+            with self._change_working_directory(trial):
                 trial.runner.restore_from_object.remote(value)
         else:
             logger.info("Trial %s: Attempting restore from %s", trial, value)
@@ -636,7 +636,7 @@ class RayTrialExecutor(TrialExecutor):
                                     DEFAULT_GET_TIMEOUT)
             with warn_if_slow("sync_to_new_location"):
                 trial.sync_logger_to_new_location(worker_ip)
-            with self._switch_working_directory(trial):
+            with self._change_working_directory(trial):
                 with warn_if_slow("restore_from_disk"):
                     # TODO(ujvl): Take blocking restores out of the control
                     #  loop.
@@ -650,7 +650,7 @@ class RayTrialExecutor(TrialExecutor):
             A dict that maps ExportFormats to successfully exported models.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
-            with self._switch_working_directory(trial):
+            with self._change_working_directory(trial):
                 return ray.get(
                     trial.runner.export_model.remote(trial.export_formats),
                     DEFAULT_GET_TIMEOUT)
@@ -662,7 +662,7 @@ class RayTrialExecutor(TrialExecutor):
             return self._avail_resources.gpu > 0
 
     @contextmanager
-    def _switch_working_directory(self, trial):
+    def _change_working_directory(self, trial):
         """Context manager changing working directory to trial logdir.
         Used in local mode.
 
