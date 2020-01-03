@@ -108,6 +108,7 @@ std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
   return std::unique_ptr<rpc::DefaultObjectInfoHandler>(
       new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
+}
 
 void GcsServer::SetGcsServerAddress() {
   RAY_LOG(INFO) << "Setting gcs server address.";
