@@ -46,7 +46,7 @@ void ReconstructionPolicy::SetTaskTimeout(
             const auto task_lease_notification_callback =
                 [this](const TaskID &task_id,
                        const boost::optional<rpc::TaskLeaseData> &task_lease) {
-                  HandleTaskLeaseNotification(task_id, task_lease);
+                  OnTaskLeaseNotification(task_id, task_lease);
                 };
             // This task is still required, so subscribe to task lease
             // notifications.  Reconstruction will be triggered if the current
@@ -68,7 +68,7 @@ void ReconstructionPolicy::SetTaskTimeout(
       });
 }
 
-void ReconstructionPolicy::HandleTaskLeaseNotification(
+void ReconstructionPolicy::OnTaskLeaseNotification(
     const TaskID &task_id, const boost::optional<rpc::TaskLeaseData> &task_lease) {
   if (!task_lease) {
     // Task lease not exist.

@@ -110,8 +110,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
                       int64_t timeout_ms);
 
   /// Handle task lease notification from GCS.
-  void HandleTaskLeaseNotification(const TaskID &task_id,
-                                   const boost::optional<rpc::TaskLeaseData> &task_lease);
+  void OnTaskLeaseNotification(const TaskID &task_id,
+                               const boost::optional<rpc::TaskLeaseData> &task_lease);
 
   /// Attempt to re-execute a task to reconstruct the required object.
   ///
