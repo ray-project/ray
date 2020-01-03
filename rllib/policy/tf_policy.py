@@ -9,7 +9,8 @@ import os
 import numpy as np
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, \
+    ACTION_PROB, ACTION_LOGP
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
@@ -21,9 +22,6 @@ from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
-
-ACTION_PROB = "action_prob"
-ACTION_LOGP = "action_logp"
 
 
 @DeveloperAPI
@@ -106,9 +104,9 @@ class TFPolicy(Policy):
                 applying gradients. Otherwise we run all update ops found in
                 the current variable scope.
         """
-
-        self.observation_space = observation_space
-        self.action_space = action_space
+        super(TFPolicy, self).__init__(
+            observation_space, action_space, config=None
+        )
         self.model = model
         self._sess = sess
         self._obs_input = obs_input
