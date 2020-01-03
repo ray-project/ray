@@ -172,9 +172,9 @@ service NodeInfoGcsService {
       returns (ReportBatchHeartbeatReply);
   // Get node's resources from GCS Service.
   rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
-  // Update resources of node in GCS Service.
+  // Update resources of a node in GCS Service.
   rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
-  // Delete resources of node in GCS Service.
+  // Delete resources of a node in GCS Service.
   rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
 }
 

@@ -84,15 +84,15 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat, request, callback,
                          node_info_grpc_client_)
 
-  /// Get node's dynamic resources from GCS Service.
+  /// Get node's resources from GCS Service.
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, request, callback,
                          node_info_grpc_client_)
 
-  /// Update dynamic resources of node in GCS Service.
+  /// Update resources of a node in GCS Service.
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, UpdateResources, request, callback,
                          node_info_grpc_client_)
 
-  /// Delete dynamic resources of node in GCS Service.
+  /// Delete resources of a node in GCS Service.
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources, request, callback,
                          node_info_grpc_client_)
 

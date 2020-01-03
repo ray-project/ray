@@ -170,11 +170,7 @@ void DefaultNodeInfoHandler::HandleDeleteResources(
     const DeleteResourcesRequest &request, DeleteResourcesReply *reply,
     SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.node_id());
-  std::vector<std::string> resource_names;
-  resource_names.reserve(request.resource_name_list_size());
-  for (int index = 0; index < request.resource_name_list_size(); ++index) {
-    resource_names.push_back(request.resource_name_list(index));
-  }
+  auto resource_names = VectorFromProtobuf(request.resource_name_list());
   RAY_LOG(DEBUG) << "Deleting node resources, node id = " << node_id;
 
   auto on_done = [node_id, send_reply_callback](Status status) {
