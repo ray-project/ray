@@ -17,7 +17,7 @@ from ray.experimental.sgd import utils
 logger = logging.getLogger(__name__)
 
 
-class PyTorchRunner(object):
+class PyTorchRunner:
     """Manages a PyTorch model for training."""
 
     def __init__(self,

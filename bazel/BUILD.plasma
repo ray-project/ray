@@ -32,6 +32,7 @@ cc_library(
         "cpp/src/arrow/util/string.cc",
         "cpp/src/arrow/util/string_builder.cc",
         "cpp/src/arrow/util/thread_pool.cc",
+        "cpp/src/arrow/util/utf8.cc",
     ],
     hdrs = [
         "cpp/src/arrow/buffer.h",
@@ -64,6 +65,8 @@ cc_library(
         "cpp/src/arrow/util/visibility.h",
         "cpp/src/arrow/util/windows_compatibility.h",
         "cpp/src/arrow/vendored/string_view.hpp",
+        "cpp/src/arrow/vendored/utf8cpp/checked.h",
+        "cpp/src/arrow/vendored/utf8cpp/core.h",
         "cpp/src/arrow/vendored/variant.hpp",
         "cpp/src/arrow/vendored/xxhash.h",
         "cpp/src/arrow/vendored/xxhash/xxh3.h",
@@ -116,6 +119,7 @@ cc_library(
         ":common_fbs",
         ":plasma_fbs",
         "@com_github_google_glog//:glog",
+        "@com_github_ray_project_ray//:platform_shims",
     ],
 )
 
@@ -182,6 +186,9 @@ cc_library(
     ],
     strip_include_prefix = "cpp/src",
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_github_ray_project_ray//:platform_shims",
+    ],
 )
 
 cc_library(
@@ -210,6 +217,7 @@ cc_library(
         ":ae",
         ":plasma_client",
         "@com_github_google_glog//:glog",
+        "@com_github_ray_project_ray//:platform_shims",
     ],
 )
 

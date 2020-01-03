@@ -28,6 +28,7 @@ from ray.tune.trial import ExportFormat
 from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 
 tf = try_import_tf()
 
@@ -101,6 +102,8 @@ COMMON_CONFIG = {
     "env_config": {},
     # Environment name can also be passed via config.
     "env": None,
+    # Unsquash actions to the upper and lower bounds of env's action space
+    "normalize_actions": False,
     # Whether to clip rewards prior to experience postprocessing. Setting to
     # None means clip for Atari only.
     "clip_rewards": None,
@@ -155,7 +158,7 @@ COMMON_CONFIG = {
     # after the initial eager pass.
     "eager_tracing": False,
     # Disable eager execution on workers (but allow it on the driver). This
-    # only has an effect is eager is enabled.
+    # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
 
     # === Evaluation Settings ===
@@ -504,6 +507,12 @@ class Trainer(Trainable):
                                     self._allow_unknown_subkeys)
         self.raw_user_config = config
         self.config = merged_config
+
+        if self.config["normalize_actions"]:
+            inner = self.env_creator
+            self.env_creator = (
+                lambda env_config: NormalizeActionWrapper(inner(env_config)))
+
         Trainer._validate_config(self.config)
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:

@@ -24,7 +24,7 @@ class TupleActions(namedtuple("TupleActions", ["batches"])):
 
 
 @DeveloperAPI
-class Policy(object):
+class Policy:
     """An agent policy and loss, i.e., a TFPolicy or other subclass.
 
     This object defines how to act in the environment, and also losses used to

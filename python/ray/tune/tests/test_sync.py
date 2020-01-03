@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -15,11 +16,6 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune import TuneError
 from ray.tune.syncer import CommandBasedClient
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch
-else:
-    from mock import patch
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -30,7 +26,7 @@ class TestSyncFunctionality(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    @patch("ray.tune.syncer.S3_PREFIX", "test")
+    @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testNoUploadDir(self):
         """No Upload Dir is given."""
         with self.assertRaises(AssertionError):
@@ -45,7 +41,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_cloud": "echo {source} {target}"
                 }).trials
 
-    @patch("ray.tune.syncer.S3_PREFIX", "test")
+    @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testCloudProperString(self):
         with self.assertRaises(ValueError):
             [trial] = tune.run(
@@ -120,7 +116,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {source}"
                 }).trials
 
-        with patch.object(CommandBasedClient, "execute") as mock_fn:
+        with patch.object(CommandBasedClient, "_execute") as mock_fn:
             with patch("ray.services.get_node_ip_address") as mock_sync:
                 mock_sync.return_value = "0.0.0.0"
                 [trial] = tune.run(
@@ -198,7 +194,7 @@ class TestSyncFunctionality(unittest.TestCase):
         def sync_func(source, target):
             pass
 
-        with patch.object(CommandBasedClient, "execute") as mock_sync:
+        with patch.object(CommandBasedClient, "_execute") as mock_sync:
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -214,5 +210,4 @@ class TestSyncFunctionality(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

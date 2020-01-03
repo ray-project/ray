@@ -17,7 +17,7 @@ from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX
 logger = logging.getLogger(__name__)
 
 
-class Analysis(object):
+class Analysis:
     """Analyze all results from a directory of experiments."""
 
     def __init__(self, experiment_dir):

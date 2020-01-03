@@ -35,7 +35,7 @@ def check_for_failure(remote_values):
     return success
 
 
-class PyTorchTrainer(object):
+class PyTorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
     Launches a set of actors which connect via distributed PyTorch and

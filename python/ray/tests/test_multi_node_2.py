@@ -60,7 +60,8 @@ def test_internal_config(ray_start_cluster_head):
 
 
 def setup_monitor(address):
-    monitor = Monitor(address, None)
+    monitor = Monitor(
+        address, None, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
     monitor.update_raylet_map(_append_port=True)
@@ -137,7 +138,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(work_handle)
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def work(self, timeout):
             time.sleep(timeout)
             return True

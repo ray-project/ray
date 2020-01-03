@@ -17,7 +17,12 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `RLlib`_: Scalable Reinforcement Learning
 - `Distributed Training <https://ray.readthedocs.io/en/latest/distributed_training.html>`__
 
-Install Ray with: ``pip install ray``. For nightly wheels, see the `Installation page <https://ray.readthedocs.io/en/latest/installation.html>`__.
+Install Ray with: ``pip install ray``. For nightly wheels, see the
+`Installation page <https://ray.readthedocs.io/en/latest/installation.html>`__.
+
+**NOTE:** `We are deprecating Python 2 support soon.`_
+
+.. _`We are deprecating Python 2 support soon.`: https://github.com/ray-project/ray/issues/6580
 
 Quick Start
 -----------

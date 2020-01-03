@@ -21,7 +21,7 @@ from ray.test_utils import RayTestTimeoutException
 import pytest
 
 
-class MockNode(object):
+class MockNode:
     def __init__(self, node_id, tags):
         self.node_id = node_id
         self.state = "pending"
@@ -36,7 +36,7 @@ class MockNode(object):
         return True
 
 
-class MockProcessRunner(object):
+class MockProcessRunner:
     def __init__(self, fail_cmds=[]):
         self.calls = []
         self.fail_cmds = fail_cmds

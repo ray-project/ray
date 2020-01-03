@@ -8,9 +8,10 @@
 #include <queue>
 #include <set>
 #include <utility>
-#include "absl/container/flat_hash_map.h"
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -39,7 +40,7 @@ class CoreWorkerDirectActorTaskSubmitter {
                                      std::shared_ptr<CoreWorkerMemoryStore> store,
                                      std::shared_ptr<TaskFinisherInterface> task_finisher)
       : client_factory_(client_factory),
-        resolver_(store),
+        resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
   /// Submit a task to an actor for execution.
@@ -47,6 +48,12 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task The task spec to submit.
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
+
+  /// Tell this actor to exit immediately.
+  ///
+  /// \param[in] actor_id The actor_id of the actor to kill.
+  /// \return Status::Invalid if the actor could not be killed.
+  Status KillActor(const ActorID &actor_id);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -106,6 +113,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Map from actor ids to worker ids. TODO(ekl) consider unifying this with the
   /// rpc_clients_ map.
   absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
+
+  /// Set of actor ids that should be force killed once a client is available.
+  absl::flat_hash_set<ActorID> pending_force_kills_ GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
@@ -275,7 +285,7 @@ class FiberRateLimiter {
  private:
   boost::fibers::condition_variable cond_;
   boost::fibers::mutex mutex_;
-  int num_;
+  int num_ = 1;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -423,7 +433,7 @@ class CoreWorkerDirectTaskReceiver {
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
-                               const std::function<void()> &exit_handler)
+                               const std::function<void(bool)> &exit_handler)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         exit_handler_(exit_handler),
@@ -462,7 +472,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
 
-  void SetActorAsAsync();
+  /// Set the max concurrency and start async actor context.
+  void SetActorAsAsync(int max_concurrency);
 
  private:
   // Worker context.
@@ -470,7 +481,7 @@ class CoreWorkerDirectTaskReceiver {
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The callback function to exit the worker.
-  std::function<void()> exit_handler_;
+  std::function<void(bool)> exit_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
   /// Factory for producing new core worker clients.
@@ -499,6 +510,8 @@ class CoreWorkerDirectTaskReceiver {
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
   std::shared_ptr<FiberRateLimiter> fiber_rate_limiter_;
+
+  boost::optional<raylet::RayletClient &> local_raylet_client_;
 };
 
 }  // namespace ray

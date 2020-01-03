@@ -13,7 +13,7 @@ from ray.rllib.utils.window_stat import WindowStat
 
 
 @DeveloperAPI
-class ReplayBuffer(object):
+class ReplayBuffer:
     @DeveloperAPI
     def __init__(self, size):
         """Create Prioritized Replay buffer.
@@ -70,10 +70,7 @@ class ReplayBuffer(object):
 
     @DeveloperAPI
     def sample_idxes(self, batch_size):
-        return [
-            random.randint(0,
-                           len(self._storage) - 1) for _ in range(batch_size)
-        ]
+        return np.random.randint(0, len(self._storage), batch_size)
 
     @DeveloperAPI
     def sample_with_idxes(self, idxes):

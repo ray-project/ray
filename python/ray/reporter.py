@@ -56,7 +56,7 @@ def to_posix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
 
 
-class Reporter(object):
+class Reporter:
     """A monitor process for monitoring Ray nodes.
 
     Attributes:
@@ -112,8 +112,12 @@ class Reporter(object):
     def get_workers():
         return [
             x.as_dict(attrs=[
-                "pid", "create_time", "cpu_percent", "cpu_times", "name",
-                "cmdline", "memory_info", "memory_full_info"
+                "pid",
+                "create_time",
+                "cpu_percent",
+                "cpu_times",
+                "cmdline",
+                "memory_info",
             ]) for x in psutil.process_iter(attrs=["cmdline"])
             if is_worker(x.info["cmdline"])
         ]

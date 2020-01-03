@@ -46,8 +46,12 @@ RAY_CONFIG(bool, fair_queueing_enabled, true)
 RAY_CONFIG(bool, new_scheduler_enabled, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
-// Objects larger than this size will be spilled to plasma.
+// Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
+
+// The min number of retries for direct actor creation tasks. The actual number
+// of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
+RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// The initial period for a task execution lease. The lease will expire this
 /// many milliseconds after the first acquisition of the lease. Nodes that

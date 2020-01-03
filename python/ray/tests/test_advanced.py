@@ -373,7 +373,7 @@ def test_multithreading(ray_start_2_cpus):
         """Test using Ray api in multiple threads."""
 
         @ray.remote
-        class Echo(object):
+        class Echo:
             def echo(self, value):
                 return value
 
@@ -433,7 +433,7 @@ def test_multithreading(ray_start_2_cpus):
 
     # Test actor that runs background threads.
     @ray.remote
-    class MultithreadedActor(object):
+    class MultithreadedActor:
         def __init__(self):
             self.lock = threading.Lock()
             self.thread_results = []
@@ -504,7 +504,7 @@ def test_free_objects_multi_node(ray_start_cluster):
             _internal_config=config)
     ray.init(address=cluster.address)
 
-    class RawActor(object):
+    class RawActor:
         def get(self):
             return ray.worker.global_worker.node.unique_id
 
@@ -633,7 +633,7 @@ def test_local_mode(shutdown_only):
     # Test actors in LOCAL_MODE.
 
     @ray.remote
-    class LocalModeTestClass(object):
+    class LocalModeTestClass:
         def __init__(self, array):
             self.array = array
 
@@ -718,7 +718,7 @@ def test_local_mode(shutdown_only):
     # Check that Actors are not overwritten by remote calls from different
     # classes.
     @ray.remote
-    class RemoteActor1(object):
+    class RemoteActor1:
         def __init__(self):
             pass
 
@@ -726,7 +726,7 @@ def test_local_mode(shutdown_only):
             return 0
 
     @ray.remote
-    class RemoteActor2(object):
+    class RemoteActor2:
         def __init__(self):
             pass
 
@@ -747,6 +747,33 @@ def test_local_mode(shutdown_only):
         return ray.get(direct_dep.remote(input[0]))
 
     assert ray.get(indirect_dep.remote(["hello"])) == "hello"
+
+
+def test_wait_makes_object_local(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=2)
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    class Foo:
+        def method(self):
+            return np.zeros(1024 * 1024)
+
+    a = Foo.remote()
+
+    # Test get makes the object local.
+    x_id = a.method.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
+    ray.get(x_id)
+    assert ray.worker.global_worker.core_worker.object_exists(x_id)
+
+    # Test wait makes the object local.
+    x_id = a.method.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
+    ok, _ = ray.wait([x_id])
+    assert len(ok) == 1
+    assert ray.worker.global_worker.core_worker.object_exists(x_id)
 
 
 if __name__ == "__main__":

@@ -72,7 +72,7 @@ except ImportError:
     setproctitle = None
 
 
-class ActorCheckpointInfo(object):
+class ActorCheckpointInfo:
     """Information used to maintain actor checkpoints."""
 
     __slots__ = [
@@ -91,7 +91,7 @@ class ActorCheckpointInfo(object):
         self.checkpoint_ids = checkpoint_ids
 
 
-class Worker(object):
+class Worker:
     """A class used to define the control flow of a worker process.
 
     Note:
@@ -534,7 +534,7 @@ def init(address=None,
          driver_object_store_memory=None,
          redis_max_memory=None,
          log_to_driver=True,
-         node_ip_address=None,
+         node_ip_address=ray_constants.NODE_DEFAULT_IP,
          object_id_seed=None,
          local_mode=False,
          redirect_worker_output=None,
@@ -542,11 +542,11 @@ def init(address=None,
          ignore_reinit_error=False,
          num_redis_shards=None,
          redis_max_clients=None,
-         redis_password=None,
+         redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=False,
-         webui_host="127.0.0.1",
+         include_webui=None,
+         webui_host="localhost",
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -625,10 +625,12 @@ def init(address=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which displays the status of the Ray cluster.
+            UI, which displays the status of the Ray cluster. If this argument
+            is None, then the UI will be started if the relevant dependencies
+            are present.
         webui_host: The host to bind the web UI server to. Can either be
-            127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to 127.0.0.1 to prevent access from
+            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to localhost to prevent access from
             external machines.
         job_id: The ID of this job.
         configure_logging: True if allow the logging cofiguration here.
@@ -655,6 +657,10 @@ def init(address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if redis_address is not None:
+        raise DeprecationWarning("The redis_address argument is deprecated. "
+                                 "Please use address instead.")
 
     if redis_address is not None or address is not None:
         redis_address, _, _ = services.validate_redis_address(
@@ -1410,6 +1416,21 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
+def show_in_webui(message):
+    """Display message in dashboard.
+
+    Display message for the current task or actor in the dashboard.
+    For example, this can be used to display the status of a long-running
+    computation.
+
+    Args:
+        message (str): Message to be displayed.
+    """
+    worker = global_worker
+    worker.check_connected()
+    worker.core_worker.set_webui_display(message.encode())
+
+
 def get(object_ids, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
@@ -1436,6 +1457,14 @@ def get(object_ids, timeout=None):
     """
     worker = global_worker
     worker.check_connected()
+
+    if hasattr(
+            worker,
+            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+        raise RayError("Using blocking ray.get inside async actor. "
+                       "This blocks the event loop. Please "
+                       "use `await` on object id with asyncio.gather.")
+
     with profiling.profile("ray.get"):
         is_individual_id = isinstance(object_ids, ray.ObjectID)
         if is_individual_id:
@@ -1547,6 +1576,13 @@ def wait(object_ids, num_returns=1, timeout=None):
         IDs.
     """
     worker = global_worker
+
+    if hasattr(
+            worker,
+            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+        raise RayError("Using blocking ray.wait inside async method. "
+                       "This blocks the event loop. Please use `await` "
+                       "on object id with asyncio.wait. ")
 
     if isinstance(object_ids, ObjectID):
         raise TypeError(
@@ -1675,7 +1711,7 @@ def remote(*args, **kwargs):
             return 1
 
         @ray.remote
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
 
@@ -1711,9 +1747,31 @@ def remote(*args, **kwargs):
             return 1, 2
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
+
+    Remote task and actor objects returned by @ray.remote can also be
+    dynamically modified with the same arguments as above using
+    ``.options()`` as follows:
+
+    .. code-block:: python
+
+        @ray.remote(num_gpus=1, max_calls=1, num_return_vals=2)
+        def f():
+            return 1, 2
+        g = f.options(num_gpus=2, max_calls=None)
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo:
+            def method(self):
+                return 1
+        Bar = Foo.options(num_cpus=1, resources=None)
+
+    Running remote actors will be terminated when the actor handle to them
+    in Python is deleted, which will cause them to complete any outstanding
+    work and then shut down. If you want to kill them immediately, you can
+    also call ``actor_handle.__ray_kill__()``.
     """
     worker = get_global_worker()
 

@@ -6,7 +6,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include "src/ray/protobuf/gcs_service.pb.h"
-#include "src/ray/rpc/client_call.h"
+#include "src/ray/rpc/grpc_client.h"
 
 namespace ray {
 namespace rpc {
@@ -22,35 +22,86 @@ class GcsRpcClient {
   GcsRpcClient(const std::string &address, const int port,
                ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = JobInfoGcsService::NewStub(channel);
+    job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
+        new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
+    actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
+        new GrpcClient<ActorInfoGcsService>(address, port, client_call_manager));
+    node_info_grpc_client_ = std::unique_ptr<GrpcClient<NodeInfoGcsService>>(
+        new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
+    object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
+        new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
   };
 
   /// Add job info to gcs server.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void AddJob(const AddJobRequest &request, const ClientCallback<AddJobReply> &callback) {
-    client_call_manager_.CreateCall<JobInfoGcsService, AddJobRequest, AddJobReply>(
-        *stub_, &JobInfoGcsService::Stub::PrepareAsyncAddJob, request, callback);
-  }
+  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, AddJob, request, callback,
+                         job_info_grpc_client_)
 
   /// Mark job as finished to gcs server.
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server.
-  void MarkJobFinished(const MarkJobFinishedRequest &request,
-                       const ClientCallback<MarkJobFinishedReply> &callback) {
-    client_call_manager_
-        .CreateCall<JobInfoGcsService, MarkJobFinishedRequest, MarkJobFinishedReply>(
-            *stub_, &JobInfoGcsService::Stub::PrepareAsyncMarkJobFinished, request,
-            callback);
-  }
+  VOID_RPC_CLIENT_METHOD(JobInfoGcsService, MarkJobFinished, request, callback,
+                         job_info_grpc_client_)
+
+  /// Get actor data from GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorInfo, request, callback,
+                         actor_info_grpc_client_)
+
+  /// Register an actor to GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, RegisterActorInfo, request, callback,
+                         actor_info_grpc_client_)
+
+  ///  Update actor info in GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, UpdateActorInfo, request, callback,
+                         actor_info_grpc_client_)
+
+  ///  Add actor checkpoint data to GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, AddActorCheckpoint, request, callback,
+                         actor_info_grpc_client_)
+
+  ///  Get actor checkpoint data from GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpoint, request, callback,
+                         actor_info_grpc_client_)
+
+  ///  Get actor checkpoint id data from GCS Service.
+  VOID_RPC_CLIENT_METHOD(ActorInfoGcsService, GetActorCheckpointID, request, callback,
+                         actor_info_grpc_client_)
+
+  /// Register a node to GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, request, callback,
+                         node_info_grpc_client_)
+
+  /// Unregister a node from GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, UnregisterNode, request, callback,
+                         node_info_grpc_client_)
+
+  /// Get information of all nodes from GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, request, callback,
+                         node_info_grpc_client_)
+
+  /// Report heartbeat of a node to GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportHeartbeat, request, callback,
+                         node_info_grpc_client_)
+
+  /// Report batch heartbeat to GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat, request, callback,
+                         node_info_grpc_client_)
+
+  /// Get object's locations from GCS Service.
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations, request, callback,
+                         object_info_grpc_client_)
+
+  /// Add location of object to GCS Service.
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectLocation, request, callback,
+                         object_info_grpc_client_)
+
+  /// Remove location of object to GCS Service.
+  VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation, request, callback,
+                         object_info_grpc_client_)
 
  private:
   /// The gRPC-generated stub.
-  std::unique_ptr<JobInfoGcsService::Stub> stub_;
+  std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
+  std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
+  std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
+  std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
@@ -59,4 +110,4 @@ class GcsRpcClient {
 }  // namespace rpc
 }  // namespace ray
 
-#endif
+#endif  // RAY_RPC_GCS_RPC_CLIENT_H

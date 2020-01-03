@@ -29,6 +29,8 @@ DEFAULT_CONFIG = with_common_config({
         "hidden_activation": "relu",
         "hidden_layer_sizes": (256, 256),
     },
+    # Unsquash actions to the upper and lower bounds of env's action space
+    "normalize_actions": True,
 
     # === Learning ===
     # Update the target by \tau * policy + (1-\tau) * target_policy

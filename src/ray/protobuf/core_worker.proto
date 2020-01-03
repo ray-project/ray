@@ -86,6 +86,8 @@ message PushTaskRequest {
 message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
+  // Set to true if the worker will be exiting.
+  bool worker_exiting = 2;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -115,6 +117,24 @@ message GetObjectStatusReply {
   ObjectStatus status = 1;
 }
 
+message KillActorRequest {
+  // ID of the actor that is intended to be killed.
+  bytes intended_actor_id = 1;
+}
+
+message KillActorReply {
+}
+
+message GetCoreWorkerStatsRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+}
+
+message GetCoreWorkerStatsReply {
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 1;
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -125,4 +145,8 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Request that the worker shut down without completing outstanding work.
+  rpc KillActor(KillActorRequest) returns (KillActorReply);
+  // Get metrics from core workers.
+  rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
 }

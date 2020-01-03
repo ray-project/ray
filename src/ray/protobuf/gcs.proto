@@ -240,20 +240,22 @@ message JobTableData {
 // is the snapshot of an actor's state in the actor registration.
 // See `actor_registration.h` for more detailed explanation of these fields.
 message ActorCheckpointData {
+  // ID of this checkpoint.
+  bytes checkpoint_id = 1;
   // ID of this actor.
-  bytes actor_id = 1;
+  bytes actor_id = 2;
   // The dummy object ID of actor's most recently executed task.
-  bytes execution_dependency = 2;
+  bytes execution_dependency = 3;
   // A list of IDs of this actor's handles.
-  repeated bytes handle_ids = 3;
+  repeated bytes handle_ids = 4;
   // The task counters of the above handles.
-  repeated uint64 task_counters = 4;
+  repeated uint64 task_counters = 5;
   // The frontier dependencies of the above handles.
-  repeated bytes frontier_dependencies = 5;
+  repeated bytes frontier_dependencies = 6;
   // A list of unreleased dummy objects from this actor.
-  repeated bytes unreleased_dummy_objects = 6;
+  repeated bytes unreleased_dummy_objects = 7;
   // The numbers of dependencies for the above unreleased dummy objects.
-  repeated uint32 num_dummy_object_dependencies = 7;
+  repeated uint32 num_dummy_object_dependencies = 8;
 }
 
 // This table stores the actor-to-available-checkpoint-ids mapping.

@@ -14,7 +14,7 @@ import numpy as np
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.util import flatten_dict
-from ray.tune.syncer import get_log_syncer
+from ray.tune.syncer import get_node_syncer
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
@@ -26,7 +26,7 @@ tf = None
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
 
 
-class Logger(object):
+class Logger:
     """Logging interface for ray.tune.
 
     By default, the UnifiedLogger implementation is used which logs results in
@@ -385,7 +385,7 @@ class UnifiedLogger(Logger):
         loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
             and JSON loggers.
         sync_function (func|str): Optional function for syncer to run.
-            See ray/python/ray/tune/log_sync.py
+            See ray/python/ray/tune/syncer.py
     """
 
     def __init__(self,
@@ -411,7 +411,7 @@ class UnifiedLogger(Logger):
             except Exception as exc:
                 logger.warning("Could not instantiate %s: %s.", cls.__name__,
                                str(exc))
-        self._log_syncer = get_log_syncer(
+        self._log_syncer = get_node_syncer(
             self.logdir,
             remote_dir=self.logdir,
             sync_function=self._sync_function)
@@ -430,11 +430,13 @@ class UnifiedLogger(Logger):
         for _logger in self._loggers:
             _logger.close()
 
-    def flush(self):
+    def flush(self, sync_down=True):
         for _logger in self._loggers:
             _logger.flush()
-        if not self._log_syncer.sync_down():
-            logger.warning("Trial %s: Post-flush sync skipped.", self.trial)
+        if sync_down:
+            if not self._log_syncer.sync_down():
+                logger.warning("Trial %s: Post-flush sync skipped.",
+                               self.trial)
 
     def sync_up(self):
         return self._log_syncer.sync_up()

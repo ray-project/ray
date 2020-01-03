@@ -80,7 +80,6 @@ class GcsClient {
   }
   // Register the ip and port of the connecting client.
   ClientID Register(const std::string &ip, uint16_t port);
-  ObjectTable &object_table();
   ClientTable &client_table();
 
  private:

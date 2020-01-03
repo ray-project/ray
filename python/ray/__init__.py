@@ -102,7 +102,7 @@ from ray._raylet import (
 _config = _Config()
 
 from ray.profiling import profile  # noqa: E402
-from ray.state import (global_state, jobs, nodes, tasks, objects, timeline,
+from ray.state import (jobs, nodes, actors, tasks, objects, timeline,
                        object_transfer_timeline, cluster_resources,
                        available_resources, errors)  # noqa: E402
 from ray.worker import (
@@ -121,6 +121,7 @@ from ray.worker import (
     register_custom_serializer,
     remote,
     shutdown,
+    show_in_webui,
     wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
@@ -132,12 +133,12 @@ from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 
 # Ray version string.
-__version__ = "0.8.0.dev7"
+__version__ = "0.9.0.dev0"
 
 __all__ = [
-    "global_state",
     "jobs",
     "nodes",
+    "actors",
     "tasks",
     "objects",
     "timeline",
@@ -169,6 +170,7 @@ __all__ = [
     "register_custom_serializer",
     "remote",
     "shutdown",
+    "show_in_webui",
     "wait",
 ]
 

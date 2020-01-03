@@ -39,7 +39,7 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 logger = logging.getLogger(__name__)
 
 
-class FunctionDescriptor(object):
+class FunctionDescriptor:
     """A class used to describe a python function.
 
     Attributes:
@@ -259,7 +259,7 @@ class FunctionDescriptor(object):
         return len(self._class_name) > 0
 
 
-class FunctionActorManager(object):
+class FunctionActorManager:
     """A class used to export/load remote functions and actors.
 
     Attributes:
@@ -326,17 +326,14 @@ class FunctionActorManager(object):
                 unnecessarily or fail to give warnings, but the application's
                 behavior won't change.
         """
-        if sys.version_info[0] >= 3:
-            import io
-            string_file = io.StringIO()
-            if sys.version_info[1] >= 7:
-                dis.dis(function_or_class, file=string_file, depth=2)
-            else:
-                dis.dis(function_or_class, file=string_file)
-            collision_identifier = (
-                function_or_class.__name__ + ":" + string_file.getvalue())
+        import io
+        string_file = io.StringIO()
+        if sys.version_info[1] >= 7:
+            dis.dis(function_or_class, file=string_file, depth=2)
         else:
-            collision_identifier = function_or_class.__name__
+            dis.dis(function_or_class, file=string_file)
+        collision_identifier = (
+            function_or_class.__name__ + ":" + string_file.getvalue())
 
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("ascii")).digest()
@@ -390,7 +387,7 @@ class FunctionActorManager(object):
 
         # This is a placeholder in case the function can't be unpickled. This
         # will be overwritten if the function is successfully registered.
-        def f():
+        def f(*args, **kwargs):
             raise Exception("This function was not imported properly.")
 
         # This function is called by ImportThread. This operation needs to be
@@ -661,10 +658,10 @@ class FunctionActorManager(object):
                     class_name))
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
-        class TemporaryActor(object):
+        class TemporaryActor:
             pass
 
-        def temporary_actor_method(*xs):
+        def temporary_actor_method(*args, **kwargs):
             raise Exception(
                 "The actor with name {} failed to be imported, "
                 "and so cannot execute this method.".format(actor_class_name))
