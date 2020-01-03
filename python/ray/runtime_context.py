@@ -5,7 +5,7 @@ from __future__ import print_function
 import ray.worker
 
 
-class RuntimeContext(object):
+class RuntimeContext:
     """A class used for getting runtime context."""
 
     def __init__(self, worker=None):

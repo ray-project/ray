@@ -26,7 +26,7 @@ tf = None
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
 
 
-class Logger(object):
+class Logger:
     """Logging interface for ray.tune.
 
     By default, the UnifiedLogger implementation is used which logs results in

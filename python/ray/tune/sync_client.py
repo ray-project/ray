@@ -76,7 +76,7 @@ def get_cloud_sync_client(remote_path):
     return CommandBasedClient(template, template)
 
 
-class SyncClient(object):
+class SyncClient:
     """Client interface for interacting with remote storage options."""
 
     def sync_up(self, source, target):

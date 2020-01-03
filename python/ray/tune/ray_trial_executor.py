@@ -30,7 +30,7 @@ DEFAULT_GET_TIMEOUT = 30.0  # seconds
 TRIAL_START_ATTEMPTS = 3
 
 
-class _LocalWrapper(object):
+class _LocalWrapper:
     def __init__(self, result):
         self._result = result
 

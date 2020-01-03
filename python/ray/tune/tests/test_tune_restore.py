@@ -116,7 +116,7 @@ class AutoInitTest(unittest.TestCase):
         _register_all()
 
 
-class AbstractWarmStartTest(object):
+class AbstractWarmStartTest:
     def setUp(self):
         ray.init(local_mode=True)
         self.tmpdir = tempfile.mkdtemp()

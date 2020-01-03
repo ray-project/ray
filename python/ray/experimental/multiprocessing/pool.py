@@ -105,7 +105,7 @@ class ResultThread(threading.Thread):
             raise TimeoutError
 
 
-class AsyncResult(object):
+class AsyncResult:
     """An asynchronous interface to task results.
 
     This should not be constructed directly.
@@ -168,7 +168,7 @@ class AsyncResult(object):
         return not self._result_thread.got_error()
 
 
-class IMapIterator(object):
+class IMapIterator:
     """Base class for OrderedIMapIterator and UnorderedIMapIterator."""
 
     def __init__(self, pool, func, iterable, chunksize=None):
@@ -273,7 +273,7 @@ class UnorderedIMapIterator(IMapIterator):
 
 
 @ray.remote
-class PoolActor(object):
+class PoolActor:
     """Actor used to process tasks submitted to a Pool."""
 
     def __init__(self, initializer=None, initargs=None):
@@ -298,7 +298,7 @@ class PoolActor(object):
 
 
 # https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
-class Pool(object):
+class Pool:
     """A pool of actor processes that is used to process tasks in parallel.
 
     Args:

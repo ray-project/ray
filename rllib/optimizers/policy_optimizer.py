@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class PolicyOptimizer(object):
+class PolicyOptimizer:
     """Policy optimizers encapsulate distributed RL optimization strategies.
 
     Policy optimizers serve as the "control plane" of algorithms.

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @ray.remote
-class JobWorker(object):
+class JobWorker:
     """A streaming job worker.
 
     Attributes:

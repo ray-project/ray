@@ -77,7 +77,7 @@ class _TuneFunctionDecoder(json.JSONDecoder):
         return cloudpickle.loads(hex_to_binary(obj["value"]))
 
 
-class TrialRunner(object):
+class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
     Example:
