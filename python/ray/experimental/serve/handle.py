@@ -61,8 +61,8 @@ class RayServeHandle:
         # because we are sure handle and global_state are in the same process.
         # However, once global_state is deprecated, this method need to be
         # updated accordingly.
-        return ray.get(self.router_handle.get_traffic.remote
-                       (self.endpoint_name))
+        return ray.get(
+            self.router_handle.get_traffic.remote(self.endpoint_name))
 
     # TODO(simon): a convenience function that dumps equivalent requests
     # code for a given call.

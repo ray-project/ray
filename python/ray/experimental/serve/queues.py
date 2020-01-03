@@ -159,11 +159,11 @@ class CentralizedQueues:
                      traffic_dict)
         self.traffic[service] = traffic_dict
         self.flush()
-    
+
     def get_traffic(self, service):
         if service in self.traffic:
             return self.traffic[service]
-            
+
     def set_backend_config(self, backend, config_dict):
         logger.debug("Setting backend config for "
                      "backend {} to {}".format(backend, config_dict))
