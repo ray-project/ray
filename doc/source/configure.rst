@@ -28,7 +28,7 @@ If not running cluster mode, you can specify cluster resources overrides through
   # Specifying custom resources
   ray.init(num_gpus=1, resources={'Resource1': 4, 'Resource2': 16})
 
-When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-cpus`` flags into ``ray start``. You can also specify custom resources.
+When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-gpus`` flags into ``ray start``. You can also specify custom resources.
 
 .. code-block:: bash
 
