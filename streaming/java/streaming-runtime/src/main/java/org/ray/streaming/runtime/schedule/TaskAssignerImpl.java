@@ -17,7 +17,7 @@ import org.ray.streaming.runtime.core.processor.ProcessBuilder;
 import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.worker.JobWorker;
 
-public class TaskAssignImpl implements ITaskAssign {
+public class TaskAssignerImpl implements TaskAssigner {
 
   /**
    * Assign an optimized logical plan to execution graph.

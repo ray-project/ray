@@ -244,6 +244,10 @@ def start(node_ip_address, redis_address, address, redis_port,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, use_pickle,
           internal_config):
+    if redis_address is not None:
+        raise DeprecationWarning("The --redis-address argument is "
+                                 "deprecated. Please use --address instead.")
+
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
