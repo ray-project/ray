@@ -18,7 +18,7 @@ def password():
     return random_bytes.encode("hex")  # Python 2
 
 
-class TestRedisPassword(object):
+class TestRedisPassword:
     @pytest.mark.skipif(
         os.environ.get("RAY_USE_NEW_GCS") == "on",
         reason="New GCS API doesn't support Redis authentication yet.")

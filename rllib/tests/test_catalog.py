@@ -65,7 +65,7 @@ class ModelCatalogTest(unittest.TestCase):
     def testTuplePreprocessor(self):
         ray.init(object_store_memory=1000 * 1024 * 1024)
 
-        class TupleEnv(object):
+        class TupleEnv:
             def __init__(self):
                 self.observation_space = Tuple(
                     [Discrete(5),

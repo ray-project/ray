@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-class SearchAlgorithm(object):
+class SearchAlgorithm:
     """Interface of an event handler API for hyperparameter search.
 
     Unlike TrialSchedulers, SearchAlgorithms will not have the ability

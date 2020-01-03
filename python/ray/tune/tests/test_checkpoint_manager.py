@@ -16,23 +16,28 @@ class CheckpointManagerTest(unittest.TestCase):
     def mock_result(i):
         return {"i": i}
 
+    def checkpoint_manager(self, keep_checkpoints_num):
+        return CheckpointManager(
+            keep_checkpoints_num, "i", delete_fn=lambda c: None)
+
     def testOnCheckpointOrdered(self):
         """
         Tests increasing priorities. Also tests that that the worst checkpoints
         are deleted when necessary.
         """
         keep_checkpoints_num = 2
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
+            Checkpoint(Checkpoint.PERSISTENT, {i}, self.mock_result(i))
             for i in range(3)
         ]
 
-        with patch("shutil.rmtree") as rmtree_mock, patch("os.path"):
+        with patch.object(checkpoint_manager, "delete") as \
+                delete_mock:
             for j in range(3):
                 checkpoint_manager.on_checkpoint(checkpoints[j])
                 expected_deletes = 0 if j != 2 else 1
-                self.assertEqual(rmtree_mock.call_count, expected_deletes)
+                self.assertEqual(delete_mock.call_count, expected_deletes, j)
                 self.assertEqual(checkpoint_manager.newest_checkpoint,
                                  checkpoints[j])
 
@@ -47,17 +52,17 @@ class CheckpointManagerTest(unittest.TestCase):
         that the worst checkpoints are deleted when necessary.
         """
         keep_checkpoints_num = 2
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
+            Checkpoint(Checkpoint.PERSISTENT, {i}, self.mock_result(i))
             for i in range(3, -1, -1)
         ]
 
-        with patch("shutil.rmtree") as rmtree_mock, patch("os.path"):
+        with patch.object(checkpoint_manager, "delete") as delete_mock:
             for j in range(0, len(checkpoints)):
                 checkpoint_manager.on_checkpoint(checkpoints[j])
                 expected_deletes = 0 if j != 3 else 1
-                self.assertEqual(rmtree_mock.call_count, expected_deletes)
+                self.assertEqual(delete_mock.call_count, expected_deletes)
                 self.assertEqual(checkpoint_manager.newest_checkpoint,
                                  checkpoints[j])
 
@@ -71,7 +76,7 @@ class CheckpointManagerTest(unittest.TestCase):
         Tests that the best checkpoints are tracked and ordered correctly.
         """
         keep_checkpoints_num = 4
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
             Checkpoint(Checkpoint.MEMORY, i, self.mock_result(i))
             for i in range(16)
@@ -92,7 +97,7 @@ class CheckpointManagerTest(unittest.TestCase):
         checkpoint has no checkpoint score attribute.
         """
         keep_checkpoints_num = 1
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+        checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
 
         no_attr_checkpoint = Checkpoint(Checkpoint.MEMORY, 0, {})
         with patch.object(logger, "error") as log_error_mock:

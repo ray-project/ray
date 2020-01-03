@@ -645,8 +645,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   /// Map of leased workers to their current resource usage.
-  std::unordered_map<WorkerID, std::unordered_map<std::string, double>>
-      leased_worker_resources_;
+  /// TODO(ion): Check whether we can track these resources in the worker.
+  std::unordered_map<WorkerID, ResourceSet> leased_worker_resources_;
 
   typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
                              std::string address, int port)>
@@ -657,6 +657,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
   /// Queue of lease requests that should be scheduled onto workers.
   std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
+
+  /// XXX
+  void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 };
 
 }  // namespace raylet

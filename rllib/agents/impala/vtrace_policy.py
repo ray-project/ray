@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
-class VTraceLoss(object):
+class VTraceLoss:
     def __init__(self,
                  actions,
                  actions_logp,

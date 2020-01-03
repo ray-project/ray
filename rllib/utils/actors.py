@@ -9,7 +9,7 @@ import ray
 logger = logging.getLogger(__name__)
 
 
-class TaskPool(object):
+class TaskPool:
     """Helper class for tracking the status of many in-flight actor tasks."""
 
     def __init__(self):
