@@ -48,10 +48,30 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.pause_trial(trial)
+        checkpoint = self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.start_trial(trial)
+        self.trial_executor.start_trial(trial, checkpoint)
         self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testSavePauseResumeRestore(self):
+        """Tests that pause checkpoint does not replace restore checkpoint."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        # Save
+        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        # Pause
+        temp_checkpoint = self.trial_executor.pause_trial(trial)
+        self.assertEqual(Trial.PAUSED, trial.status)
+        # Make sure pause didn't change checkpoint.
+        self.assertEqual(trial.checkpoint, checkpoint)
+        # Resume
+        self.trial_executor.start_trial(trial, temp_checkpoint)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        # Restore
+        self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
@@ -67,9 +87,9 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.fetch_result(trial)
-        self.trial_executor.pause_trial(trial)
+        checkpoint = self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.start_trial(trial)
+        self.trial_executor.start_trial(trial, checkpoint)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
