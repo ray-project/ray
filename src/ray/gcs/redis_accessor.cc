@@ -328,6 +328,27 @@ Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id,
   return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
 }
 
+Status RedisTaskInfoAccessor::AsyncUpdateTaskReconstruction(
+    const std::shared_ptr<TaskReconstructionData> &data_ptr, const StatusCallback &done) {
+  TaskReconstructionLog::WriteCallback on_success = nullptr;
+  TaskReconstructionLog::WriteCallback on_failure = nullptr;
+  if (done != nullptr) {
+    on_success = [done](RedisGcsClient *client, const TaskID &id,
+                        const TaskReconstructionData &data) { done(Status::OK()); };
+    on_failure = [done](RedisGcsClient *client, const TaskID &id,
+                        const TaskReconstructionData &data) {
+      done(Status::Invalid("Updating task reconstruction failed."));
+    };
+  }
+
+  TaskID task_id = TaskID::FromBinary(data_ptr->task_id());
+  int reconstruction_attempt = data_ptr->num_reconstructions();
+  TaskReconstructionLog &task_reconstruction_log =
+      client_impl_->task_reconstruction_log();
+  return task_reconstruction_log.AppendAt(JobID::Nil(), task_id, data_ptr, on_success,
+                                          on_failure, reconstruction_attempt);
+}
+
 RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), object_sub_executor_(client_impl->object_table()) {}
 
