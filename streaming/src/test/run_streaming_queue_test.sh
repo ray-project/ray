@@ -35,9 +35,6 @@ if [ -z "$RAY_ROOT" ] ; then
   exit 1
 fi
 
-# Run common tests
-bazel test //streaming:all
-
 bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
 bazel build //streaming:streaming_test_worker
 bazel build //streaming:streaming_queue_tests
