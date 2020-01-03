@@ -111,8 +111,7 @@ class RayTrialExecutor(TrialExecutor):
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
-            if not os.path.exists(remote_logdir):
-                os.makedirs(remote_logdir)
+            os.makedirs(remote_logdir, exist_ok=True)
             if not ray.worker._mode() == ray.worker.LOCAL_MODE:
                 os.chdir(remote_logdir)
             return NoopLogger(config, remote_logdir)
