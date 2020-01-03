@@ -18,7 +18,7 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClient {
-  // TODO(micafan) Will remove those friend class / method after we replace RedisGcsClient
+  // TODO(micafan) Will remove those friend classes after we replace RedisGcsClient
   // with interface class GcsClient in raylet.
   friend class RedisActorInfoAccessor;
   friend class RedisJobInfoAccessor;
@@ -30,6 +30,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class TaskTableTestHelper;
   friend class ClientTableTestHelper;
   friend class SetTestHelper;
+  friend class ActorCheckpointIdTable;
 
  public:
   /// Constructor of RedisGcsClient.
@@ -64,8 +65,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   TaskLeaseTable &task_lease_table();
   ErrorTable &error_table();
   ProfileTable &profile_table();
-  ActorCheckpointTable &actor_checkpoint_table();
-  ActorCheckpointIdTable &actor_checkpoint_id_table();
   DynamicResourceTable &resource_table();
   /// Used only for direct calls. Tasks submitted through the raylet transport
   /// should use Actors(), which has a requirement on the order in which
@@ -93,8 +92,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// one event loop should be attached at a time.
   void Attach(boost::asio::io_service &io_service);
 
-  /// This method will be deprecated, use method Actors() instead.
+  /// The following three methods will be deprecated, use method Actors() instead.
   ActorTable &actor_table();
+  ActorCheckpointTable &actor_checkpoint_table();
+  ActorCheckpointIdTable &actor_checkpoint_id_table();
   /// This method will be deprecated, use method Jobs() instead.
   JobTable &job_table();
   /// This method will be deprecated, use method Objects() instead

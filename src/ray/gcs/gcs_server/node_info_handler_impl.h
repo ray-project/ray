@@ -24,6 +24,14 @@ class DefaultNodeInfoHandler : public rpc::NodeInfoHandler {
                             GetAllNodeInfoReply *reply,
                             SendReplyCallback send_reply_callback) override;
 
+  void HandleReportHeartbeat(const ReportHeartbeatRequest &request,
+                             ReportHeartbeatReply *reply,
+                             SendReplyCallback send_reply_callback) override;
+
+  void HandleReportBatchHeartbeat(const ReportBatchHeartbeatRequest &request,
+                                  ReportBatchHeartbeatReply *reply,
+                                  SendReplyCallback send_reply_callback) override;
+
  private:
   gcs::RedisGcsClient &gcs_client_;
 };
