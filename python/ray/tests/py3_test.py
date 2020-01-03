@@ -6,6 +6,7 @@ from __future__ import print_function
 import asyncio
 import threading
 import pytest
+import sys
 
 import ray
 import ray.cluster_utils
@@ -170,6 +171,33 @@ def test_asyncio_actor_concurrency(ray_start_regular_shared):
             answer.append(status)
 
     assert history == answer
+
+
+def test_asyncio_actor_high_concurrency(ray_start_regular_shared):
+    # This tests actor can handle concurrency above recursionlimit.
+
+    @ray.remote
+    class AsyncConcurrencyBatcher:
+        def __init__(self, batch_size):
+            self.batch = []
+            self.event = asyncio.Event()
+            self.batch_size = batch_size
+
+        async def add(self, x):
+            self.batch.append(x)
+            if len(self.batch) >= self.batch_size:
+                self.event.set()
+            else:
+                await self.event.wait()
+            return sorted(self.batch)
+
+    batch_size = sys.getrecursionlimit() * 4
+    actor = AsyncConcurrencyBatcher.options(
+        is_asyncio=True, max_concurrency=batch_size * 2,
+        is_direct_call=True).remote(batch_size)
+    result = ray.get([actor.add.remote(i) for i in range(batch_size)])
+    assert result[0] == list(range(batch_size))
+    assert result[-1] == list(range(batch_size))
 
 
 @pytest.mark.asyncio
