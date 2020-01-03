@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 SETUP_TIME_THRESHOLD = 10
 
 
-class Trainable(object):
+class Trainable:
     """Abstract class for trainable models, functions, etc.
 
     A call to ``train()`` on a trainable will execute one logical iteration of
@@ -124,8 +124,13 @@ class Trainable(object):
 
     @classmethod
     def resource_help(cls, config):
-        """Returns a help string for configuring this trainable's resources."""
+        """
+        Args:
+            config (dict): The Trainer's config dict.
 
+        Returns:
+             str: A help string for configuring this trainable's resources.
+        """
         return ""
 
     def current_ip(self):

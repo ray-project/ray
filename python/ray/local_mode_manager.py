@@ -35,7 +35,7 @@ class LocalModeObjectID(ObjectID):
         return new
 
 
-class LocalModeManager(object):
+class LocalModeManager:
     """Used to emulate remote operations when running in local mode."""
 
     def __init__(self):

@@ -143,7 +143,7 @@ def test_driver_exiting_quickly(call_ray_start):
 import ray
 ray.init(address="{}")
 @ray.remote
-class Foo(object):
+class Foo:
     def __init__(self):
         pass
 Foo.remote()
@@ -185,7 +185,7 @@ import ray
 import time
 ray.init(address="{}")
 @ray.remote
-class Counter(object):
+class Counter:
     def __init__(self):
         self.count = 0
     def increment(self):
@@ -236,7 +236,7 @@ import time
 log_message = "{}"
 
 @ray.remote
-class Actor(object):
+class Actor:
     def log(self):
         print(log_message)
 
@@ -278,7 +278,7 @@ def g(duration):
     time.sleep(duration)
 
 @ray.remote(num_gpus=1)
-class Foo(object):
+class Foo:
     def __init__(self):
         pass
 

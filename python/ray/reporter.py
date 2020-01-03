@@ -56,7 +56,7 @@ def to_posix_time(dt):
     return (dt - datetime.datetime(1970, 1, 1)).total_seconds()
 
 
-class Reporter(object):
+class Reporter:
     """A monitor process for monitoring Ray nodes.
 
     Attributes:

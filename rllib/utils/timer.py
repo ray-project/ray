@@ -6,7 +6,7 @@ import numpy as np
 import time
 
 
-class TimerStat(object):
+class TimerStat:
     """A running stat for conveniently logging the duration of a code block.
 
     Example:
