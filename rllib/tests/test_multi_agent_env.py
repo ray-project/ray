@@ -8,7 +8,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy import PGTFPolicy
+from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.optimizers import (SyncSamplesOptimizer, SyncReplayOptimizer,
                                   AsyncGradientsOptimizer)
