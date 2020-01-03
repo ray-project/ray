@@ -133,6 +133,30 @@ message ReportBatchHeartbeatRequest {
 message ReportBatchHeartbeatReply {
 }
 
+message GetResourcesRequest {
+  bytes node_id = 1;
+}
+
+message GetResourcesReply {
+  map<string, ResourceTableData> resources = 1;
+}
+
+message UpdateResourcesRequest {
+  bytes node_id = 1;
+  map<string, ResourceTableData> resources = 2;
+}
+
+message UpdateResourcesReply {
+}
+
+message DeleteResourcesRequest {
+  bytes node_id = 1;
+  repeated string resource_name_list = 2;
+}
+
+message DeleteResourcesReply {
+}
+
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a node to GCS Service.
@@ -146,6 +170,12 @@ service NodeInfoGcsService {
   // Report batch heartbeat to GCS Service.
   rpc ReportBatchHeartbeat(ReportBatchHeartbeatRequest)
       returns (ReportBatchHeartbeatReply);
+  // Get node's resources from GCS Service.
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
+  // Update resources of a node in GCS Service.
+  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
+  // Delete resources of a node in GCS Service.
+  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
 }
 
 message GetObjectLocationsRequest {
