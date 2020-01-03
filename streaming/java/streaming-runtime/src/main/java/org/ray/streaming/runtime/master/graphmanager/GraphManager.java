@@ -12,15 +12,15 @@ public interface GraphManager extends Serializable {
 
   /**
    * Build execution graph from job graph.
-   * @param jobGraph
-   * @return
+   * @param jobGraph logical plan of streaming job
+   * @return physical plan of streaming job
    */
   ExecutionGraph buildExecutionGraph(JobGraph jobGraph);
 
   /**
    * Set up execution vertex.
-   * @param jobGraph logical plan
-   * @return
+   * @param jobGraph logical plan of streaming job
+   * @return physical plan of streaming job
    */
   ExecutionGraph setupExecutionVertex(JobGraph jobGraph);
 

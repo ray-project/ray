@@ -30,11 +30,6 @@ public class GraphManagerImpl implements GraphManager {
     this.runtimeContext = jobMaster.getRuntimeContext();
   }
 
-  /**
-   * Logical execution plan transforms physical execution plan.
-   * @param jobGraph
-   * @return
-   */
   @Override
   public ExecutionGraph buildExecutionGraph(JobGraph jobGraph) {
     LOG.info("Begin build execution graph with job graph {}.", jobGraph);

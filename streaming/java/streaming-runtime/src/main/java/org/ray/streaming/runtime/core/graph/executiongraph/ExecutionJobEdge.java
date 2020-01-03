@@ -14,7 +14,8 @@ public class ExecutionJobEdge {
   private final JobEdge jobEdge;
   private final String executionJobEdgeIndex;
 
-  public ExecutionJobEdge(ExecutionJobVertex producer, ExecutionJobVertex consumer, JobEdge jobEdge) {
+  public ExecutionJobEdge(ExecutionJobVertex producer, ExecutionJobVertex consumer,
+      JobEdge jobEdge) {
     this.producer = producer;
     this.consumer = consumer;
     this.jobEdge = jobEdge;

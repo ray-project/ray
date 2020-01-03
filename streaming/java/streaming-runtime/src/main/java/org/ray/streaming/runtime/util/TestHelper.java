@@ -68,6 +68,8 @@ public class TestHelper {
         case 5:
           resources.put("CPU", 2.0);
           break;
+        default:
+          resources.put("CPU", 1.0);
       }
 
       byte[] nodeIdBytes = new byte[UniqueId.LENGTH];

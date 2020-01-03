@@ -73,7 +73,7 @@ public class ExecutionJobVertex {
     return executionVertices;
   }
 
-  public Map<Integer, RayActor<JobWorker>> getExecutionVertexWorkers () {
+  public Map<Integer, RayActor<JobWorker>> getExecutionVertexWorkers() {
     Map<Integer, RayActor<JobWorker>> executionVertexWorkersMap = new HashMap<>();
 
     Preconditions.checkArgument(

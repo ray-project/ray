@@ -1,6 +1,5 @@
 package org.ray.streaming.runtime.config;
 
-import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,9 +14,10 @@ public class StreamingWorkerConfig extends StreamingGlobalConfig {
   public StreamingWorkerConfig(Map<String, String> conf) {
     super(conf);
 
-    configMap.putAll(workerConfig2Map());
+    // configMap.putAll(workerConfig2Map());
   }
 
+  /*
   public Map<String, String> workerConfig2Map() {
     Map<String, String> result = new HashMap<>();
     try {
@@ -27,4 +27,6 @@ public class StreamingWorkerConfig extends StreamingGlobalConfig {
     }
     return result;
   }
+
+   */
 }
