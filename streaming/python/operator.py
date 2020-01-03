@@ -1,113 +1,160 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from abc import ABC, abstractmethod
 import enum
-import logging
-
-import cloudpickle
-
-logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
+import ray.streaming as streaming
+import ray.streaming.function as function
+import ray.streaming.message as message
 
 
-# Stream partitioning schemes
-class PScheme(object):
-    def __init__(self, strategy, partition_fn=None):
-        self.strategy = strategy
-        self.partition_fn = partition_fn
-
-    def __repr__(self):
-        return "({},{})".format(self.strategy, self.partition_fn)
+class OperatorType(enum.Enum):
+    SOURCE = 0
+    ONE_INPUT = 1
+    TWO_INPUT = 2
 
 
-# Partitioning strategies
-class PStrategy(enum.Enum):
-    Forward = 0  # Default
-    Shuffle = 1
-    Rescale = 2
-    RoundRobin = 3
-    Broadcast = 4
-    Custom = 5
-    ShuffleByKey = 6
-    # ...
+class Operator(ABC):
+
+    @abstractmethod
+    def open(self, collectors, runtime_context):
+        pass
+
+    @abstractmethod
+    def finish(self):
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
+
+    @abstractmethod
+    def operator_type(self):
+        pass
 
 
-# Operator types
-class OpType(enum.Enum):
-    Source = 0
-    Map = 1
-    FlatMap = 2
-    Filter = 3
-    TimeWindow = 4
-    KeyBy = 5
-    Sink = 6
-    WindowJoin = 7
-    Inspect = 8
-    ReadTextFile = 9
-    Reduce = 10
-    Sum = 11
-    # ...
+class OneInputOperator(Operator, ABC):
+    @abstractmethod
+    def process_element(self, record):
+        pass
+
+    def operator_type(self):
+        return OperatorType.ONE_INPUT
 
 
-# A logical dataflow operator
-class Operator(object):
-    def __init__(self,
-                 id,
-                 op_type,
-                 processor_class,
-                 name="",
-                 logic=None,
-                 num_instances=1,
-                 other=None,
-                 state_actor=None):
-        self.id = id
-        self.type = op_type
-        self.processor_class = processor_class
-        self.name = name
-        self._logic = cloudpickle.dumps(logic)  # The operator's logic
-        self.num_instances = num_instances
-        # One partitioning strategy per downstream operator (default: forward)
-        self.partitioning_strategies = {}
-        self.other_args = other  # Depends on the type of the operator
-        self.state_actor = state_actor  # Actor to query state
+class TwoInputOperator(Operator, ABC):
+    @abstractmethod
+    def process_element(self, record1, record2):
+        pass
 
-    # Sets the partitioning scheme for an output stream of the operator
-    def _set_partition_strategy(self,
-                                stream_id,
-                                partitioning_scheme,
-                                dest_operator=None):
-        self.partitioning_strategies[stream_id] = (partitioning_scheme,
-                                                   dest_operator)
+    def operator_type(self):
+        return OperatorType.TWO_INPUT
 
-    # Retrieves the partitioning scheme for the given
-    # output stream of the operator
-    # Returns None is no strategy has been defined for the particular stream
-    def _get_partition_strategy(self, stream_id):
-        return self.partitioning_strategies.get(stream_id)
 
-    # Cleans metatada from all partitioning strategies that lack a
-    # destination operator
-    # Valid entries are re-organized as
-    # 'destination operator id -> partitioning scheme'
-    # Should be called only after the logical dataflow has been constructed
-    def _clean(self):
-        strategies = {}
-        for _, v in self.partitioning_strategies.items():
-            strategy, destination_operator = v
-            if destination_operator is not None:
-                strategies.setdefault(destination_operator, strategy)
-        self.partitioning_strategies = strategies
+class StreamOperator(Operator, ABC):
 
-    def print(self):
-        log = "Operator<\nID = {}\nName = {}\nprocessor_class = {}\n"
-        log += "Logic = {}\nNumber_of_Instances = {}\n"
-        log += "Partitioning_Scheme = {}\nOther_Args = {}>\n"
-        logger.debug(
-            log.format(self.id, self.name, self.processor_class, self.logic,
-                       self.num_instances, self.partitioning_strategies,
-                       self.other_args))
+    def __init__(self, func):
+        self.func = func
+        self.collectors = None
+        self.runtime_context = None
 
-    @property
-    def logic(self):
-        return cloudpickle.loads(self._logic)
+    def open(self, collectors, runtime_context):
+        self.collectors = collectors
+        self.runtime_context = runtime_context
+
+    def finish(self):
+        pass
+
+    def close(self):
+        pass
+
+    def collect(self, record):
+        for collector in self.collectors:
+            collector.collect(record)
+
+
+class SourceOperator(StreamOperator):
+    class SourceContextImpl(function.SourceContext):
+
+        def __init__(self, collectors):
+            self.collectors = collectors
+
+        def collect(self, value):
+            for collector in self.collectors:
+                collector.collect(message.Record(value))
+
+    def __init__(self, func):
+        super().__init__(func)
+        self.source_context = None
+
+    def open(self, collectors, runtime_context):
+        super().open(collectors, runtime_context)
+        self.source_context = SourceOperator.SourceContextImpl(collectors)
+        self.func.init(runtime_context.get_parallelism(), runtime_context.get_task_index())
+
+    def run(self):
+        self.func.run(self.source_context)
+
+    def operator_type(self):
+        return OperatorType.SOURCE
+
+
+class MapOperator(StreamOperator, OneInputOperator):
+    def __init__(self, map_func):
+        super().__init__(map_func)
+
+    def process_element(self, record):
+        self.collect(message.Record(self.func.map(record.value)))
+
+
+class FlatMapOperator(StreamOperator, OneInputOperator):
+    def __init__(self, flat_map_func):
+        super().__init__(flat_map_func)
+        self.collection_collector = None
+
+    def open(self, collectors, runtime_context):
+        super().open(collectors, runtime_context)
+        self.collection_collector = streaming.collector.CollectionCollector(collectors)
+
+    def process_element(self, record):
+        self.collect(message.Record(self.func.map(record.value)))
+        self.func.flat_map(record.value, self.collection_collector)
+
+
+class FilterOperator(StreamOperator, OneInputOperator):
+    pass
+
+
+class KeyByOperator(StreamOperator, OneInputOperator):
+    def __init__(self, key_func):
+        super().__init__(key_func)
+
+    def process_element(self, record):
+        key = self.func.key_by(record.value)
+        self.collect(message.KeyRecord(key, record.value))
+
+
+class ReduceOperator(StreamOperator, OneInputOperator):
+    def __init__(self, reduce_func):
+        super().__init__(reduce_func)
+        self.reduce_state = {}
+
+    def open(self, collectors, runtime_context):
+        super().open(collectors, runtime_context)
+
+    def process_element(self, record: message.KeyRecord):
+        key = record.key
+        value = record.value
+        if key in self.reduce_state:
+            old_value = self.reduce_state[key]
+            new_value = self.func.reduce(old_value, value)
+            self.reduce_state[key] = new_value
+            self.collect(message.Record(new_value))
+        else:
+            self.reduce_state[key] = value
+            self.collect(record)
+
+
+class SinkOperator(StreamOperator, OneInputOperator):
+    def __init__(self, sink_func):
+        super().__init__(sink_func)
+
+    def process_element(self, record):
+        self.func.sink(record.value)

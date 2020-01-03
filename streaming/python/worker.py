@@ -5,7 +5,7 @@ import ray
 import ray.streaming._streaming as _streaming
 from ray.streaming.config import Config
 from ray.function_manager import FunctionDescriptor
-import ray.streaming.processor2 as processor
+import ray.streaming.processor as processor
 from ray.streaming.graph import ExecutionGraph
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 
