@@ -108,7 +108,7 @@ def validate(model, val_iterator, criterion, config):
     return stats
 
 
-class AverageMeter(object):
+class AverageMeter:
     """Computes and stores the average and current value."""
 
     def __init__(self):

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class InputReader(object):
+class InputReader:
     """Input object for loading experiences in policy evaluation."""
 
     @PublicAPI

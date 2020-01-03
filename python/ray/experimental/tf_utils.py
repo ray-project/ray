@@ -22,7 +22,7 @@ def unflatten(vector, shapes):
     return arrays
 
 
-class TensorFlowVariables(object):
+class TensorFlowVariables:
     """A class used to set and get weights for Tensorflow networks.
 
     Attributes:

@@ -15,7 +15,7 @@ OffPolicyEstimate = namedtuple("OffPolicyEstimate",
 
 
 @DeveloperAPI
-class OffPolicyEstimator(object):
+class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
     @DeveloperAPI

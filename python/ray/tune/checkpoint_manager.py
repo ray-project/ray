@@ -14,7 +14,7 @@ except NameError:
 logger = logging.getLogger(__name__)
 
 
-class Checkpoint(object):
+class Checkpoint:
     """Describes a checkpoint of trial state.
 
     Checkpoint may be saved in different storage.
@@ -39,7 +39,7 @@ class Checkpoint(object):
         return Checkpoint(Checkpoint.MEMORY, value)
 
 
-class QueueItem(object):
+class QueueItem:
     def __init__(self, priority, value):
         self.priority = priority
         self.value = value
@@ -54,7 +54,7 @@ class QueueItem(object):
         return self.priority < other.priority
 
 
-class CheckpointManager(object):
+class CheckpointManager:
     """Manages checkpoints on the driver for a trial."""
 
     def __init__(self, keep_checkpoints_num, checkpoint_score_attr, delete_fn):

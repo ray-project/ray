@@ -34,7 +34,7 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-class Location(object):
+class Location:
     """Describes the location at which Trial is placed to run."""
 
     def __init__(self, hostname=None, pid=None):
@@ -50,7 +50,7 @@ class Location(object):
             return "{}:{}".format(self.hostname, self.pid)
 
 
-class ExportFormat(object):
+class ExportFormat:
     """Describes the format to export the trial Trainable.
 
     This may correspond to different file formats based on the
@@ -99,7 +99,7 @@ def checkpoint_deleter(trial_id, runner):
     return delete
 
 
-class Trial(object):
+class Trial:
     """A trial object holds the state for one model training run.
 
     Trials are themselves managed by the TrialRunner class, which implements

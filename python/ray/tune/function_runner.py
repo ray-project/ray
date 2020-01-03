@@ -24,7 +24,7 @@ ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
 
 
-class StatusReporter(object):
+class StatusReporter:
     """Object passed into your function that you can report status through.
 
     Example:

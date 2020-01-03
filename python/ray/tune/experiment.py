@@ -50,7 +50,7 @@ def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
                 "`upload_dir` must be provided.")
 
 
-class Experiment(object):
+class Experiment:
     """Tracks experiment specifications.
 
     Implicitly registers the Trainable if needed.

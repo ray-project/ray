@@ -133,7 +133,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     cluster, num_nodes = ray_start_cluster_with_resource
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def ready(self):
             pass
 

@@ -191,7 +191,7 @@ def test_gpu_ids(shutdown_only):
     # Test that actors have CUDA_VISIBLE_DEVICES set properly.
 
     @ray.remote
-    class Actor0(object):
+    class Actor0:
         def __init__(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
@@ -208,7 +208,7 @@ def test_gpu_ids(shutdown_only):
             return self.x
 
     @ray.remote(num_gpus=1)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 1
@@ -243,7 +243,7 @@ def test_zero_cpus(shutdown_only):
 
     # We should be able to create an actor that requires 0 CPU resources.
     @ray.remote(num_cpus=0)
-    class Actor(object):
+    class Actor:
         def method(self):
             pass
 
@@ -261,7 +261,7 @@ def test_zero_cpus_actor(ray_start_cluster):
     node_id = ray.worker.global_worker.node.unique_id
 
     @ray.remote
-    class Foo(object):
+    class Foo:
         def method(self):
             return ray.worker.global_worker.node.unique_id
 
@@ -274,7 +274,7 @@ def test_fractional_resources(shutdown_only):
     ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
 
     @ray.remote(num_gpus=0.5)
-    class Foo1(object):
+    class Foo1:
         def method(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 1
@@ -287,7 +287,7 @@ def test_fractional_resources(shutdown_only):
     del foos
 
     @ray.remote
-    class Foo2(object):
+    class Foo2:
         def method(self):
             pass
 

@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-class NoReturn(object):
+class NoReturn:
     """Do not store the return value in the object store.
 
     If a task returns this object, then Ray will not store this object in the

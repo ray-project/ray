@@ -5,7 +5,7 @@ from __future__ import print_function
 from ray.tune.trial import Trial
 
 
-class TrialScheduler(object):
+class TrialScheduler:
     """Interface for implementing a Trial Scheduler class."""
 
     CONTINUE = "CONTINUE"  #: Status for continuing trial execution

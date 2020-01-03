@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 SETUP_TIME_THRESHOLD = 10
 
 
-class TrainableUtil(object):
+class TrainableUtil:
     @staticmethod
     def pickle_checkpoint(checkpoint_path):
         """Pickles checkpoint data."""
@@ -80,7 +80,7 @@ class TrainableUtil(object):
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
 
 
-class Trainable(object):
+class Trainable:
     """Abstract class for trainable models, functions, etc.
 
     A call to ``train()`` on a trainable will execute one logical iteration of

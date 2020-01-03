@@ -60,7 +60,7 @@ def log_sync_template(options=""):
     return template.format(options=options, rsh=quote(rsh))
 
 
-class Syncer(object):
+class Syncer:
     def __init__(self, local_dir, remote_dir, sync_client=NOOP):
         """Syncs between two directories with the sync_function.
 

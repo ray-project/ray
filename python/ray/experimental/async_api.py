@@ -15,7 +15,7 @@ transport = None
 protocol = None
 
 
-class _ThreadSafeProxy(object):
+class _ThreadSafeProxy:
     """This class is used to create a thread-safe proxy for a given object.
         Every method call will be guarded with a lock.
 

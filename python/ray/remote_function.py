@@ -21,7 +21,7 @@ DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES = 3
 logger = logging.getLogger(__name__)
 
 
-class RemoteFunction(object):
+class RemoteFunction:
     """A remote function.
 
     This is a decorated function. It can be used to spawn tasks.
@@ -133,7 +133,7 @@ class RemoteFunction(object):
 
         func_cls = self
 
-        class FuncWrapper(object):
+        class FuncWrapper:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(args=args, kwargs=kwargs, **options)
 

@@ -11,7 +11,7 @@ from ray.tune.error import TuneError
 logger = logging.getLogger(__name__)
 
 
-class TrialExecutor(object):
+class TrialExecutor:
     """Manages platform-specific details such as resource handling
     and starting/stopping trials.
     """
