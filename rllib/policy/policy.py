@@ -2,15 +2,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-import numpy as np
 import gym
+import numpy as np
+import random
 
 from ray.rllib.utils.annotations import DeveloperAPI
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+ACTION_PROB = "action_prob"
+ACTION_LOGP = "action_logp"
 
 
 class TupleActions(namedtuple("TupleActions", ["batches"])):
@@ -24,7 +29,7 @@ class TupleActions(namedtuple("TupleActions", ["batches"])):
 
 
 @DeveloperAPI
-class Policy:
+class Policy(metaclass=ABCMeta):
     """An agent policy and loss, i.e., a TFPolicy or other subclass.
 
     This object defines how to act in the environment, and also losses used to
@@ -55,24 +60,24 @@ class Policy:
             action_space (gym.Space): Action space of the policy.
             config (dict): Policy-specific configuration data.
         """
-
         self.observation_space = observation_space
         self.action_space = action_space
 
+    @abstractmethod
     @DeveloperAPI
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        """Compute actions for the current policy.
+        """Computes actions for the current policy.
 
-        Arguments:
+        Args:
             obs_batch (np.ndarray): batch of observations
-            state_batches (list): list of RNN state input batches, if any
+            state_batches (Optional[list]): List of RNN state input batches, if any.
             prev_action_batch (np.ndarray): batch of previous action values
             prev_reward_batch (np.ndarray): batch of previous rewards
             info_batch (info): batch of info objects
@@ -120,7 +125,6 @@ class Policy:
             state_outs (list): list of RNN state outputs, if any
             info (dict): dictionary of extra features, if any
         """
-
         prev_action_batch = None
         prev_reward_batch = None
         info_batch = None
@@ -133,6 +137,7 @@ class Policy:
             info_batch = [info]
         if episode is not None:
             episodes = [episode]
+
         [action], state_out, info = self.compute_actions(
             [obs], [[s] for s in state],
             prev_action_batch=prev_action_batch,
@@ -140,9 +145,10 @@ class Policy:
             info_batch=info_batch,
             episodes=episodes)
         if clip_actions:
-            action = clip_action(action, self.action_space)
-        return action, [s[0] for s in state_out], \
-            {k: v[0] for k, v in info.items()}
+            action = self.clip_action(action, self.action_space)
+
+        # Return action, internal state(s), infos.
+        return action, [s[0] for s in state_out], {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
     def postprocess_trajectory(self,
@@ -188,6 +194,7 @@ class Policy:
         self.apply_gradients(grads)
         return grad_info
 
+    @abstractmethod
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
         """Computes gradients against a batch of experiences.
@@ -200,6 +207,7 @@ class Policy:
         """
         raise NotImplementedError
 
+    @abstractmethod
     @DeveloperAPI
     def apply_gradients(self, gradients):
         """Applies previously computed gradients.
@@ -208,6 +216,7 @@ class Policy:
         """
         raise NotImplementedError
 
+    @abstractmethod
     @DeveloperAPI
     def get_weights(self):
         """Returns model weights.
@@ -217,12 +226,22 @@ class Policy:
         """
         raise NotImplementedError
 
+    @abstractmethod
     @DeveloperAPI
     def set_weights(self, weights):
         """Sets model weights.
 
         Arguments:
             weights (obj): Serializable copy or view of model weights
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    @DeveloperAPI
+    def num_state_tensors(self):
+        """
+        Returns:
+            int: The number of RNN hidden state tensors kept by this Policy's (RNN-based) Model.
         """
         raise NotImplementedError
 
@@ -258,6 +277,7 @@ class Policy:
         """
         pass
 
+    @abstractmethod
     @DeveloperAPI
     def export_model(self, export_dir):
         """Export Policy to local directory for serving.
@@ -267,6 +287,7 @@ class Policy:
         """
         raise NotImplementedError
 
+    @abstractmethod
     @DeveloperAPI
     def export_checkpoint(self, export_dir):
         """Export Policy checkpoint to local directory.
@@ -276,27 +297,28 @@ class Policy:
         """
         raise NotImplementedError
 
+    @staticmethod
+    def clip_action(action, space):
+        """
+        Called to clip actions to the specified range of this policy.
 
-def clip_action(action, space):
-    """Called to clip actions to the specified range of this policy.
+        Arguments:
+            action: Single action.
+            space: Action space the actions should be present in.
 
-    Arguments:
-        action: Single action.
-        space: Action space the actions should be present in.
+        Returns:
+            Clipped batch of actions.
+        """
 
-    Returns:
-        Clipped batch of actions.
-    """
-
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(action, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(action) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                action, space))
-        out = []
-        for a, s in zip(action, space.spaces):
-            out.append(clip_action(a, s))
-        return out
-    else:
-        return action
+        if isinstance(space, gym.spaces.Box):
+            return np.clip(action, space.low, space.high)
+        elif isinstance(space, gym.spaces.Tuple):
+            if type(action) not in (tuple, list):
+                raise ValueError("Expected tuple space for actions {}: {}".format(
+                    action, space))
+            out = []
+            for a, s in zip(action, space.spaces):
+                out.append(clip_action(a, s))
+            return out
+        else:
+            return action
