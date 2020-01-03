@@ -473,7 +473,7 @@ class Set : private Log<ID, Data>,
 
   using NotificationCallback =
       std::function<void(RedisGcsClient *client, const ID &id,
-                         const std::vector<ObjectChangeNotification> &data)>;
+                         const std::vector<ArrayNotification<Data>> &data)>;
   /// Subscribe to any add or remove operations to this table.
   ///
   /// \param job_id The ID of the job.
@@ -540,7 +540,7 @@ class HashInterface {
   /// \return Void
   using HashNotificationCallback =
       std::function<void(RedisGcsClient *client, const ID &id,
-                         const GcsChangeMode change_mode, const DataMap &data)>;
+                         const std::vector<MapNotification<std::string, Data>> &data)>;
 
   /// Add entries of a hash table.
   ///

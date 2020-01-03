@@ -352,6 +352,45 @@ class NodeInfoAccessor {
   /// \return Whether the node is removed.
   virtual bool IsRemoved(const ClientID &node_id) const = 0;
 
+  // TODO(micafan) Define ResourceMap in GCS proto.
+  typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+      ResourceMap;
+
+  /// Get node's resources from GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to lookup dynamic resources.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetResources(const ClientID &node_id,
+                                   const OptionalItemCallback<ResourceMap> &callback) = 0;
+
+  /// Update resources of node in GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to update dynamic resources.
+  /// \param resources The dynamic resources of node to be updated.
+  /// \param callback Callback that will be called after update finishes.
+  virtual Status AsyncUpdateResources(const ClientID &node_id,
+                                      const ResourceMap &resources,
+                                      const StatusCallback &callback) = 0;
+
+  /// Delete resources of a node from GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to delete resources from GCS.
+  /// \param resource_names The names of resource to be deleted.
+  /// \param callback Callback that will be called after delete finishes.
+  virtual Status AsyncDeleteResources(const ClientID &node_id,
+                                      const std::vector<std::string> &resource_names,
+                                      const StatusCallback &callback) = 0;
+
+  /// Subscribe to node resource changes.
+  ///
+  /// \param subscribe Callback that will be called when any resource is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeToResources(
+      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+      const StatusCallback &done) = 0;
+
   /// Report heartbeat of a node to GCS asynchronously.
   ///
   /// \param data_ptr The heartbeat that will be reported to GCS.

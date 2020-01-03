@@ -183,31 +183,27 @@ ray::Status NodeManager::RegisterGcs() {
 
   // Subscribe to resource changes.
   const auto &resources_changed =
-      [this](
-          gcs::RedisGcsClient *client, const ClientID &id,
-          const gcs::GcsChangeMode change_mode,
-          const std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>>
-              &data) {
-        if (change_mode == gcs::GcsChangeMode::APPEND_OR_ADD) {
+      [this](const ClientID &id,
+             const gcs::ResourceChangeNotification &resource_notification) {
+        if (resource_notification.IsAdded()) {
           ResourceSet resource_set;
-          for (auto &entry : data) {
+          for (auto &entry : resource_notification.GetData()) {
             resource_set.AddOrUpdateResource(entry.first,
                                              entry.second->resource_capacity());
           }
           ResourceCreateUpdated(id, resource_set);
-        }
-        if (change_mode == gcs::GcsChangeMode::REMOVE) {
+        } else {
+          RAY_CHECK(resource_notification.IsRemoved());
           std::vector<std::string> resource_names;
-          for (auto &entry : data) {
+          for (auto &entry : resource_notification.GetData()) {
             resource_names.push_back(entry.first);
           }
           ResourceDeleted(id, resource_names);
         }
       };
-  RAY_RETURN_NOT_OK(
-      gcs_client_->resource_table().Subscribe(JobID::Nil(), ClientID::Nil(),
-                                              /*subscribe_callback=*/resources_changed,
-                                              /*done_callback=*/nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToResources(
+      /*subscribe_callback=*/resources_changed,
+      /*done_callback=*/nullptr));
 
   // Subscribe to heartbeat batches from the monitor.
   const auto &heartbeat_batch_added =
@@ -471,17 +467,18 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   remote_node_manager_clients_.emplace(node_id, std::move(client));
 
   // Fetch resource info for the remote client and update cluster resource map.
-  RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
-      JobID::Nil(), node_id,
-      [this](gcs::RedisGcsClient *client, const ClientID &node_id,
-             const std::unordered_map<std::string,
-                                      std::shared_ptr<gcs::ResourceTableData>> &pairs) {
-        ResourceSet resource_set;
-        for (auto &resource_entry : pairs) {
-          resource_set.AddOrUpdateResource(resource_entry.first,
-                                           resource_entry.second->resource_capacity());
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(
+      node_id,
+      [this, node_id](Status status,
+                      const boost::optional<gcs::NodeInfoAccessor::ResourceMap> &data) {
+        if (data) {
+          ResourceSet resource_set;
+          for (auto &resource_entry : *data) {
+            resource_set.AddOrUpdateResource(resource_entry.first,
+                                             resource_entry.second->resource_capacity());
+          }
+          ResourceCreateUpdated(node_id, resource_set);
         }
-        ResourceCreateUpdated(node_id, resource_set);
       }));
 }
 
@@ -1704,15 +1701,15 @@ void NodeManager::ProcessSetResourceRequest(
   double const &capacity = message->capacity();
   bool is_deletion = capacity <= 0;
 
-  ClientID client_id = from_flatbuf<ClientID>(*message->client_id());
+  ClientID node_id = from_flatbuf<ClientID>(*message->client_id());
 
-  // If the python arg was null, set client_id to the local client
-  if (client_id.IsNil()) {
-    client_id = self_node_id_;
+  // If the python arg was null, set node_id to the local node id.
+  if (node_id.IsNil()) {
+    node_id = self_node_id_;
   }
 
   if (is_deletion &&
-      cluster_resource_map_[client_id].GetTotalResources().GetResourceMap().count(
+      cluster_resource_map_[node_id].GetTotalResources().GetResourceMap().count(
           resource_name) == 0) {
     // Resource does not exist in the cluster resource map, thus nothing to delete.
     // Return..
@@ -1724,15 +1721,14 @@ void NodeManager::ProcessSetResourceRequest(
   // Submit to the resource table. This calls the ResourceCreateUpdated or ResourceDeleted
   // callback, which updates cluster_resource_map_.
   if (is_deletion) {
-    RAY_CHECK_OK(gcs_client_->resource_table().RemoveEntries(JobID::Nil(), client_id,
-                                                             {resource_name}, nullptr));
+    RAY_CHECK_OK(
+        gcs_client_->Nodes().AsyncDeleteResources(node_id, {resource_name}, nullptr));
   } else {
     std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> data_map;
     auto resource_table_data = std::make_shared<gcs::ResourceTableData>();
     resource_table_data->set_resource_capacity(capacity);
     data_map.emplace(resource_name, resource_table_data);
-    RAY_CHECK_OK(
-        gcs_client_->resource_table().Update(JobID::Nil(), client_id, data_map, nullptr));
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(node_id, data_map, nullptr));
   }
 }
 
