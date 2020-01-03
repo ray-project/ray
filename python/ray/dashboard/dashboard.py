@@ -75,10 +75,11 @@ def format_reply(reply):
 def measures_to_dict(measures):
     measures_dict = {}
     for measure in measures:
+        tags = measure["tags"].split(",")[-1]
         if "intValue" in measure:
-            measures_dict[measure["tags"]] = measure["intValue"]
+            measures_dict[tags] = measure["intValue"]
         elif "doubleValue" in measure:
-            measures_dict[measure["tags"]] = measure["doubleValue"]
+            measures_dict[tags] = measure["doubleValue"]
     return measures_dict
 
 
@@ -202,21 +203,17 @@ class Dashboard(object):
                 # process resources info
                 extra_info_strings = []
                 prefix = "ResourceName:"
-                for stats_name in [
-                        "CPU", "node:{}".format(address), "memory",
-                        "object_store_memory"
-                ]:
-                    total_resource = measures_dicts[
-                        "local_total_resource"].get(prefix + stats_name, .0)
+                for resource_name, total_resource in measures_dicts[
+                        "local_total_resource"].items():
                     available_resource = measures_dicts[
-                        "local_available_resource"].get(
-                            prefix + stats_name, .0)
+                        "local_available_resource"].get(resource_name, .0)
+                    resource_name = resource_name[len(prefix):]
                     extra_info_strings.append("{}: {} / {}".format(
-                        stats_name,
-                        format_resource(stats_name,
+                        resource_name,
+                        format_resource(resource_name,
                                         total_resource - available_resource),
-                        format_resource(stats_name, total_resource)))
-                data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
+                        format_resource(resource_name, total_resource)))
+                data["extraInfo"] = ",".join(extra_info_strings) + "\n"
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
                     # process object store info
                     extra_info_strings = []
