@@ -238,7 +238,7 @@ def _get_trial_info(trial, parameters, metrics):
         metrics (List[str]): Names of metrics to include.
     """
     result = flatten_dict(trial.last_result)
-    trial_info = [str(trial), trial.status, str(trial.address)]
+    trial_info = [str(trial), trial.status, str(trial.location)]
     trial_info += [result.get(CONFIG_PREFIX + param) for param in parameters]
     trial_info += [result.get(metric) for metric in metrics]
     return trial_info
