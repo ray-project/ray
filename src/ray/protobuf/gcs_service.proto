@@ -218,3 +218,35 @@ service ObjectInfoGcsService {
   rpc RemoveObjectLocation(RemoveObjectLocationRequest)
       returns (RemoveObjectLocationReply);
 }
+
+message AddTaskRequest {
+  TaskTableData task_data = 1;
+}
+
+message AddTaskReply {
+}
+
+message GetTaskRequest {
+  bytes task_id = 1;
+}
+
+message GetTaskReply {
+  TaskTableData task_data = 1;
+}
+
+message DeleteTasksRequest {
+  repeated bytes task_id_list = 1;
+}
+
+message DeleteTasksReply {
+}
+
+// Service for task info access.
+service TaskInfoGcsService {
+  // Add a task to GCS Service.
+  rpc AddTask(AddTaskRequest) returns (AddTaskReply);
+  // Get task information from GCS Service.
+  rpc GetTask(GetTaskRequest) returns (GetTaskReply);
+  // Delete tasks from GCS Service.
+  rpc DeleteTasks(DeleteTasksRequest) returns (DeleteTasksReply);
+}
