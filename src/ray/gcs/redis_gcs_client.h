@@ -66,10 +66,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   TaskLeaseTable &task_lease_table();
   ErrorTable &error_table();
   ProfileTable &profile_table();
-  /// Used only for direct calls. Tasks submitted through the raylet transport
-  /// should use Actors(), which has a requirement on the order in which
-  /// entries can be appended to the log.
-  DirectActorTable &direct_actor_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -115,7 +111,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
-  std::unique_ptr<DirectActorTable> direct_actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;
