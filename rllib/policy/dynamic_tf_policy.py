@@ -77,7 +77,7 @@ class DynamicTFPolicy(TFPolicy):
                 tuple of action and action logp tensors given
                 (policy, model, input_dict, obs_space, action_space, config).
                 If not specified, a default action distribution will be used.
-            existing_inputs (OrderedDict): when copying a policy, this
+            existing_inputs (OrderedDict): When copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
             existing_model (ModelV2): when copying a policy, this specifies
@@ -179,6 +179,7 @@ class DynamicTFPolicy(TFPolicy):
             self,
             obs_space,
             action_space,
+            config,
             sess,
             obs_input=obs,
             action_sampler=action_sampler,
@@ -252,13 +253,6 @@ class DynamicTFPolicy(TFPolicy):
             return self.model.get_initial_state()
         else:
             return []
-
-    def is_recurrent(self):
-        return len(self._state_in) > 0
-
-    @override(Policy)
-    def num_state_tensors(self):
-        return len(self._state_in)
 
     def _initialize_loss(self):
         def fake_array(tensor):
