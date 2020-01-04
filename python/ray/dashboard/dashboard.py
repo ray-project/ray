@@ -238,7 +238,6 @@ class Dashboard(object):
                                         (max_line_length - len(line)) * " ")
                     data["extraInfo"] += "\n" + "\n".join(to_print)
             D["actorInfo"] = actor_tree
-            D["infeasibleTasks"] = infeasible_tasks
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:
@@ -298,6 +297,21 @@ class NodeStats(threading.Thread):
         self._addr_to_actor_id = {}
         self._addr_to_extra_info_dict = {}
         self._node_stats_lock = threading.Lock()
+
+        self._default_info = {
+            "actorId": "",
+            "children": {},
+            "ipAddress": "",
+            "isDirectCall": False,
+            "jobId": "",
+            "numLocalObjects": 0,
+            "numObjectIdsInScope": 0,
+            "port": 0,
+            "state": 0,
+            "taskQueueLength": 0,
+            "usedObjectStoreMemory": 0,
+            "usedResources": {},
+        }
 
         # Mapping from IP address to PID to list of log lines
         self._logs = defaultdict(lambda: defaultdict(list))
@@ -359,7 +373,7 @@ class NodeStats(threading.Thread):
         child_to_parent = {}
         with self._node_stats_lock:
             for addr, actor_id in self._addr_to_actor_id.items():
-                flattened_tree[actor_id] = {"children": {}}
+                flattened_tree[actor_id] = copy.deepcopy(self._default_info)
                 flattened_tree[actor_id].update(
                     self._addr_to_extra_info_dict[addr])
                 parent_id = self._addr_to_actor_id.get(
