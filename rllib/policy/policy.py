@@ -318,7 +318,7 @@ class Policy(metaclass=ABCMeta):
                     action, space))
             out = []
             for a, s in zip(action, space.spaces):
-                out.append(clip_action(a, s))
+                out.append(Policy.clip_action(a, s))
             return out
         else:
             return action
