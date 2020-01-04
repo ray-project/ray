@@ -64,20 +64,27 @@ class CheckpointManager:
             self._checkpoint_score_attr = checkpoint_score_attr[4:]
         else:
             self._checkpoint_score_attr = checkpoint_score_attr
+
         self.delete = delete_fn
         self.newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, None)
+        self.newest_in_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
 
     def on_checkpoint(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
-        Sets newest checkpoint. Deletes previous checkpoint as long as it isn't
-        one of the best ones. Also deletes the worst checkpoint if at capacity.
+        Sets the newest checkpoint. For PERSISTENT checkpoints, deletes
+        previous checkpoint if it isn't one of the best ones and the worst
+        checkpoint if at capacity.
 
         Args:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
+        if checkpoint.storage == Checkpoint.MEMORY:
+            self.newest_in_memory_checkpoint = checkpoint
+            return
+
         old_checkpoint = self.newest_checkpoint
         self.newest_checkpoint = checkpoint
 

@@ -232,7 +232,11 @@ class Trial:
 
     @property
     def checkpoint(self):
-        return self.checkpoint_manager.newest_checkpoint
+        if self.status == Trial.PAUSED:
+            assert self.checkpoint_manager.newest_in_memory_checkpoint.value
+            return self.checkpoint_manager.newest_in_memory_checkpoint
+        else:
+            return self.checkpoint_manager.newest_checkpoint
 
     @classmethod
     def generate_id(cls):
@@ -352,9 +356,11 @@ class Trial:
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
-            checkpoint (Checkpoint): PERSISTENT Checkpoint taken.
+            checkpoint (Checkpoint): Checkpoint taken.
         """
-        assert checkpoint.storage == Checkpoint.PERSISTENT
+        if checkpoint.storage == Checkpoint.MEMORY:
+            self.checkpoint_manager.on_checkpoint(checkpoint)
+            return
         if self.sync_on_checkpoint:
             try:
                 # Wait for any other syncs to finish. We need to sync again

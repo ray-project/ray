@@ -172,13 +172,11 @@ class RayTrialExecutor(TrialExecutor):
         See `RayTrialExecutor.restore` for possible errors raised.
         """
         prior_status = trial.status
-        self.set_status(trial, Trial.RUNNING)
-        trial.set_runner(
-            runner or self._setup_remote_runner(
-                trial,
-                reuse_allowed=checkpoint is not None
-                or trial.has_checkpoint()))
+        reuse_allowed = checkpoint is not None or trial.has_checkpoint()
+        trial.set_runner(runner or self._setup_remote_runner(
+            trial, reuse_allowed=reuse_allowed))
         self.restore(trial, checkpoint)
+        self.set_status(trial, Trial.RUNNING)
 
         previous_run = self._find_item(self._paused, trial)
         if prior_status == Trial.PAUSED and previous_run:
@@ -570,19 +568,19 @@ class RayTrialExecutor(TrialExecutor):
                 # TODO(ujvl): Make this asynchronous.
                 value = ray.get(trial.runner.save.remote())
                 checkpoint = Checkpoint(storage, value, result)
-            with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
-                try:
-                    trial.on_checkpoint(checkpoint)
-                except Exception:
-                    logger.exception("Trial %s: Error handling checkpoint %s",
-                                     trial, checkpoint.value)
-                    return None
-            if profile.too_slow and trial.sync_on_checkpoint:
-                logger.warning(
-                    "Consider turning off forced head-worker trial checkpoint "
-                    "syncs by setting sync_on_checkpoint=False. Note that "
-                    "this might result in faulty trial restoration for some "
-                    "worker failure modes.")
+        with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
+            try:
+                trial.on_checkpoint(checkpoint)
+            except Exception:
+                logger.exception("Trial %s: Error handling checkpoint %s",
+                                 trial, checkpoint.value)
+                return None
+        if profile.too_slow and trial.sync_on_checkpoint:
+            logger.warning(
+                "Consider turning off forced head-worker trial checkpoint "
+                "syncs by setting sync_on_checkpoint=False. Note that this "
+                "might result in faulty trial restoration for some worker "
+                "failure modes.")
         return checkpoint
 
     def restore(self, trial, checkpoint=None):

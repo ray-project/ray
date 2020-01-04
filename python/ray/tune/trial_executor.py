@@ -27,7 +27,6 @@ class TrialExecutor:
         """
         self._queue_trials = queue_trials
         self._cached_trial_state = {}
-        self._temporary_checkpoints = {}
 
     def set_status(self, trial, status):
         """Sets status and checkpoints metadata if needed.
@@ -113,8 +112,7 @@ class TrialExecutor:
         """
         assert trial.status == Trial.RUNNING, trial.status
         try:
-            checkpoint = self.save(trial, Checkpoint.MEMORY)
-            self._temporary_checkpoints[trial] = checkpoint
+            self.save(trial, Checkpoint.MEMORY)
             self.stop_trial(trial, stop_logger=False)
             self.set_status(trial, Trial.PAUSED)
         except Exception:
@@ -129,7 +127,7 @@ class TrialExecutor:
     def resume_trial(self, trial):
         """Resumes PAUSED trials. This is a blocking call."""
         assert trial.status == Trial.PAUSED, trial.status
-        self.start_trial(trial, self._temporary_checkpoints[trial])
+        self.start_trial(trial)
         self._temporary_checkpoints[trial] = None
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
