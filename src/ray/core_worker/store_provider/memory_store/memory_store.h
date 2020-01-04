@@ -12,6 +12,11 @@
 
 namespace ray {
 
+struct MemoryStoreStats {
+  int32_t num_local_objects = 0;
+  int64_t used_object_store_memory = 0;
+};
+
 class GetRequest;
 class CoreWorkerMemoryStore;
 
@@ -116,6 +121,16 @@ class CoreWorkerMemoryStore {
     absl::MutexLock lock(&mu_);
     return objects_.size();
   }
+
+  /// Returns stats data of memory usage.
+  ///
+  /// \return number of local objects and used memory size.
+  MemoryStoreStats GetMemoryStoreStatisticalData();
+
+  /// Returns the memory usage of this store.
+  ///
+  /// \return Total size of objects in the store.
+  uint64_t UsedMemory();
 
  private:
   /// Optional callback for putting objects into the plasma store.

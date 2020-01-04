@@ -2997,23 +2997,6 @@ void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request
     worker_stats->set_pid(driver->Pid());
     worker_stats->set_is_driver(true);
   }
-  // Record available resources of this node.
-  const auto &available_resources =
-      cluster_resource_map_.at(self_node_id_).GetAvailableResources().GetResourceMap();
-  // Record total resources of this node.
-  const auto &total_resources =
-      cluster_resource_map_.at(self_node_id_).GetTotalResources().GetResourceMap();
-  auto available_resources_map = reply->mutable_available_resources();
-  auto total_resources_map = reply->mutable_total_resources();
-  for (const auto &pair : total_resources) {
-    (*total_resources_map)[pair.first] = pair.second;
-    auto it = available_resources.find(pair.first);
-    if (it != available_resources.end()) {
-      (*available_resources_map)[pair.first] = it->second;
-    } else {
-      (*available_resources_map)[pair.first] = 0.0;
-    }
-  }
   for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     auto infeasible_task = reply->add_infeasible_tasks();
     infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
