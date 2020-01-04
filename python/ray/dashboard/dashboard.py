@@ -359,8 +359,9 @@ class NodeStats(threading.Thread):
         child_to_parent = {}
         with self._node_stats_lock:
             for addr, actor_id in self._addr_to_actor_id.items():
-                flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
-                flattened_tree[actor_id]["children"] = {}
+                flattened_tree[actor_id] = {"children": {}}
+                flattened_tree[actor_id].update(
+                    self._addr_to_extra_info_dict[addr])
                 parent_id = self._addr_to_actor_id.get(
                     self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
