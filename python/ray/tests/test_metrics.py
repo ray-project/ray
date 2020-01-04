@@ -164,10 +164,8 @@ def test_raylet_info_endpoint(shutdown_only):
                 break
             except AssertionError:
                 if time.time() > start_time + 30:
-                    raise Exception(
-                        "Timed out while waiting for actor info \\
-                        or object store info update."
-                    )
+                    raise Exception("Timed out while waiting for actor info \
+                        or object store info update.")
         except requests.exceptions.ConnectionError:
             if time.time() > start_time + 30:
                 raise Exception(
