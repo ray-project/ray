@@ -128,7 +128,6 @@ class TrialExecutor:
         """Resumes PAUSED trials. This is a blocking call."""
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
-        self._temporary_checkpoints[trial] = None
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         """Tries to invoke `Trainable.reset_config()` to reset trial.

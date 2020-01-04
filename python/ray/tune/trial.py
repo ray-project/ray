@@ -233,8 +233,8 @@ class Trial:
     @property
     def checkpoint(self):
         if self.status == Trial.PAUSED:
-            assert self.checkpoint_manager.newest_in_memory_checkpoint.value
-            return self.checkpoint_manager.newest_in_memory_checkpoint
+            assert self.checkpoint_manager.newest_memory_checkpoint.value
+            return self.checkpoint_manager.newest_memory_checkpoint
         else:
             return self.checkpoint_manager.newest_checkpoint
 

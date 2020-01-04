@@ -67,7 +67,7 @@ class CheckpointManager:
 
         self.delete = delete_fn
         self.newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, None)
-        self.newest_in_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
+        self.newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
 
@@ -82,7 +82,7 @@ class CheckpointManager:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
-            self.newest_in_memory_checkpoint = checkpoint
+            self.newest_memory_checkpoint = checkpoint
             return
 
         old_checkpoint = self.newest_checkpoint
