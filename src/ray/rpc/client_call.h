@@ -4,6 +4,8 @@
 #include <grpcpp/grpcpp.h>
 #include <boost/asio.hpp>
 
+#include "absl/synchronization/mutex.h"
+
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 
@@ -46,7 +48,10 @@ class ClientCallImpl : public ClientCall {
   /// \param[in] callback The callback function to handle the reply.
   explicit ClientCallImpl(const ClientCallback<Reply> &callback) : callback_(callback) {}
 
-  Status GetStatus() override { return GrpcStatusToRayStatus(status_); }
+  Status GetStatus() override {
+    absl::MutexLock lock(&mutex_);
+    return GrpcStatusToRayStatus(status_);
+  }
 
   void OnReplyReceived() override {
     if (callback_ != nullptr) {
@@ -64,8 +69,11 @@ class ClientCallImpl : public ClientCall {
   /// The response reader.
   std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> response_reader_;
 
+  /// Mutex to protect the status_ field.
+  absl::Mutex mutex_;
+
   /// gRPC status of this request.
-  grpc::Status status_;
+  grpc::Status status_ GUARDED_BY(mutex_);
 
   /// Context for the client. It could be used to convey extra information to
   /// the server and/or tweak certain RPC behaviors.
@@ -178,6 +186,7 @@ class ClientCallManager {
     // `ClientCall` is safe to use. But `response_reader_->Finish` only accepts a raw
     // pointer.
     auto tag = new ClientCallTag(call);
+    absl::MutexLock lock(&call->mutex_);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
   }
