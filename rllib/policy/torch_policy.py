@@ -23,7 +23,7 @@ class TorchPolicy(Policy):
         model (TorchModel): Torch model instance
         dist_class (type): Torch action distribution class
     """
-    def __init__(self, observation_space, action_space, model, loss,
+    def __init__(self, observation_space, action_space, config, model, loss,
                  action_distribution_class):
         """Build a policy from policy and loss torch modules.
 
@@ -42,7 +42,7 @@ class TorchPolicy(Policy):
                 distribution.
         """
         super(TorchPolicy, self).__init__(
-            observation_space, action_space, config=None
+            observation_space, action_space, config
         )
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))

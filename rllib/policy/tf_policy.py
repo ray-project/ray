@@ -54,6 +54,7 @@ class TFPolicy(Policy):
     def __init__(self,
                  observation_space,
                  action_space,
+                 config,
                  sess,
                  obs_input,
                  action_sampler,
@@ -104,9 +105,7 @@ class TFPolicy(Policy):
                 applying gradients. Otherwise we run all update ops found in
                 the current variable scope.
         """
-        super(TFPolicy, self).__init__(
-            observation_space, action_space, config=None
-        )
+        super(TFPolicy, self).__init__(observation_space, action_space, config)
         self.model = model
         self._sess = sess
         self._obs_input = obs_input
@@ -297,6 +296,13 @@ class TFPolicy(Policy):
 
         Optional, only required to work with the multi-GPU optimizer."""
         raise NotImplementedError
+
+    def is_recurrent(self):
+        return len(self._state_inputs) > 0
+
+    @override(Policy)
+    def num_state_tensors(self):
+        return len(self._state_inputs)
 
     @DeveloperAPI
     def extra_compute_action_feed_dict(self):
