@@ -5,7 +5,6 @@ from __future__ import print_function
 
 import json
 import unittest
-from unittest.mock import MagicMock, patch
 
 import ray
 from ray.rllib import _register_all
