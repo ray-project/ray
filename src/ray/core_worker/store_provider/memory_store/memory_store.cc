@@ -396,15 +396,16 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   return false;
 }
 
-uint64_t CoreWorkerMemoryStore::UsedMemory() {
+MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
   absl::MutexLock lock(&mu_);
-  uint64_t used_memory = 0;
+  MemoryStoreStats item;
   for (const auto &it : objects_) {
     if (!it.second->IsInPlasmaError()) {
-      used_memory += it.second->GetSize();
+      item.num_local_objects += 1;
+      item.used_object_store_memory += it.second->GetSize();
     }
   }
-  return used_memory;
+  return item;
 }
 
 }  // namespace ray

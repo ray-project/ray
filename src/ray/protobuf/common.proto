@@ -206,6 +206,10 @@ message CoreWorkerStats {
   map<string, double> used_resources = 9;
   // A string displayed on Dashboard.
   string webui_display = 10;
-  // Used local memory.
-  uint64 used_memory = 11;
+  // Number of objects stored in local memory.
+  int32 num_local_objects = 11;
+  // Used local object store memory.
+  int64 used_object_store_memory = 12;
+  // Length of the task queue. 
+  int32 task_queue_length = 13;
 }
