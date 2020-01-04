@@ -172,9 +172,10 @@ class RayTrialExecutor(TrialExecutor):
         See `RayTrialExecutor.restore` for possible errors raised.
         """
         prior_status = trial.status
-        reuse_allowed = checkpoint is not None or trial.has_checkpoint()
-        trial.set_runner(runner or self._setup_remote_runner(
-            trial, reuse_allowed=reuse_allowed))
+        if runner is None:
+            reuse_allowed = checkpoint is not None or trial.has_checkpoint()
+            runner = self._setup_remote_runner(trial, reuse_allowed)
+        trial.set_runner(runner)
         self.restore(trial, checkpoint)
         self.set_status(trial, Trial.RUNNING)
 

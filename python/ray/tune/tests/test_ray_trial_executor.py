@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import json
 import unittest
+from unittest.mock import MagicMock, patch
 
 import ray
 from ray.rllib import _register_all
@@ -48,9 +49,9 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        checkpoint = self.trial_executor.pause_trial(trial)
+        self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.start_trial(trial, checkpoint)
+        self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
@@ -62,14 +63,15 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Save
         checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.assertEqual(Trial.RUNNING, trial.status)
+        self.assertEqual(checkpoint.storage, Checkpoint.PERSISTENT)
         # Pause
-        temp_checkpoint = self.trial_executor.pause_trial(trial)
+        self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        # Make sure pause didn't change checkpoint.
-        self.assertEqual(trial.checkpoint, checkpoint)
+        self.assertEqual(trial.checkpoint.storage, Checkpoint.MEMORY)
         # Resume
-        self.trial_executor.start_trial(trial, temp_checkpoint)
+        self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
+        self.assertEqual(trial.checkpoint, checkpoint)
         # Restore
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
