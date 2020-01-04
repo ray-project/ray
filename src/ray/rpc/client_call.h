@@ -128,7 +128,7 @@ class ClientCallManager {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
-    polling_threads_.reserver(num_threads_);
+    polling_threads_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
       cqs_.emplace_back();
       polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue,
