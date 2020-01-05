@@ -63,3 +63,4 @@ build:tsan --linkopt -fsanitize=thread
 build:tsan --linkopt -fsanitize=undefined
 build:tsan --linkopt -fno-sanitize=function,vptr
 build:tsan --copt -Wno-macro-redefined
+build:tsan --test_env=TSAN_OPTIONS=report_atomic_races=0
