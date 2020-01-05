@@ -107,9 +107,10 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   rpc::ActorCheckpointData GetCheckpoint(const ActorCheckpointID &checkpoint_id) {
     std::promise<bool> promise;
     rpc::ActorCheckpointData actor_checkpoint_data;
-    RAY_CHECK_OK(
-        gcs_client_->Actors().AsyncGetCheckpoint(checkpoint_id, [&actor_checkpoint_data, &promise](Status status,
-            const boost::optional<rpc::ActorCheckpointData> &result) {
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpoint(
+        checkpoint_id,
+        [&actor_checkpoint_data, &promise](
+            Status status, const boost::optional<rpc::ActorCheckpointData> &result) {
           assert(result);
           actor_checkpoint_data.CopyFrom(*result);
           promise.set_value(true);
@@ -121,9 +122,10 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   rpc::ActorCheckpointIdData GetCheckpointID(const ActorID &actor_id) {
     std::promise<bool> promise;
     rpc::ActorCheckpointIdData actor_checkpoint_id_data;
-    RAY_CHECK_OK(
-        gcs_client_->Actors().AsyncGetCheckpointID(actor_id, [&actor_checkpoint_id_data, &promise](Status status,
-            const boost::optional<rpc::ActorCheckpointIdData> &result) {
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncGetCheckpointID(
+        actor_id,
+        [&actor_checkpoint_id_data, &promise](
+            Status status, const boost::optional<rpc::ActorCheckpointIdData> &result) {
           assert(result);
           actor_checkpoint_id_data.CopyFrom(*result);
           promise.set_value(true);
@@ -198,6 +200,21 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncDeleteResources(
         node_id, resource_names,
         [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportHeartbeat(const std::shared_ptr<rpc::HeartbeatTableData> heartbeat) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportHeartbeat(
+        heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportBatchHeartbeat(
+      const std::shared_ptr<rpc::HeartbeatBatchTableData> batch_heartbeat) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportBatchHeartbeat(
+        batch_heartbeat, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -423,8 +440,9 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
 TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
   int add_count = 0;
   int remove_count = 0;
-  auto subscribe = [&add_count, &remove_count](const ClientID &id,
-                          const gcs::ResourceChangeNotification &notification) {
+  auto subscribe = [&add_count, &remove_count](
+                       const ClientID &id,
+                       const gcs::ResourceChangeNotification &notification) {
     if (notification.IsAdded()) {
       ++add_count;
     } else if (notification.IsRemoved()) {
@@ -450,6 +468,35 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
   ASSERT_TRUE(get_resources_result.empty());
   EXPECT_EQ(add_count, 1);
   EXPECT_EQ(remove_count, 1);
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
+  int heartbeat_count = 0;
+  auto heartbeat_subscribe = [&heartbeat_count](const ClientID &id,
+                                                const gcs::HeartbeatTableData &result) {
+    ++heartbeat_count;
+  };
+  RAY_CHECK_OK(
+      gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_subscribe, nullptr));
+
+  int heartbeat_batch_count = 0;
+  auto heartbeat_batch_subscribe =
+      [&heartbeat_batch_count](const gcs::HeartbeatBatchTableData &result) {
+        ++heartbeat_batch_count;
+      };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
+      heartbeat_batch_subscribe, nullptr));
+
+  // Report heartbeat
+  ClientID node_id = ClientID::FromRandom();
+  auto heartbeat = std::make_shared<rpc::HeartbeatTableData>();
+  heartbeat->set_client_id(node_id.Binary());
+  ASSERT_TRUE(ReportHeartbeat(heartbeat));
+
+  // Delete resources
+  auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
+  batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
+  ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
 }
 
 }  // namespace ray
