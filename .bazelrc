@@ -34,7 +34,6 @@ build --incompatible_depset_is_not_iterable=false
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
 build:tsan --copt -DTHREAD_SANITIZER
-build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
 build:tsan --linkopt -fsanitize=thread
