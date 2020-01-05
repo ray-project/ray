@@ -67,8 +67,8 @@ class DynamicTFPolicy(TFPolicy):
                 TF fetches given the policy and batch input tensors
             grad_stats_fn (func): optional function that returns a dict of
                 TF fetches given the policy and loss gradient tensors
-            before_loss_init (Optional[callable]): Optional function to run prior to loss
-                init that takes the same arguments as __init__.
+            before_loss_init (Optional[callable]): Optional function to run
+                prior to loss init that takes the same arguments as __init__.
             make_model (func): optional function that returns a ModelV2 object
                 given (policy, obs_space, action_space, config).
                 All policy variables should be created in this function. If not
