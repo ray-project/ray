@@ -96,12 +96,12 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
             HandleTaskReconstruction(task_id, required_object_id);
           },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          self_node_id_, gcs_client_->task_lease_table(), object_directory_,
+          self_node_id_, gcs_client_, object_directory_,
           gcs_client_->task_reconstruction_log()),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service, self_node_id_,
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client_->task_lease_table()),
+          gcs_client_),
       lineage_cache_(self_node_id_, gcs_client_, config.max_lineage_size),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
@@ -136,30 +136,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
-  const auto task_lease_notification_callback = [this](gcs::RedisGcsClient *client,
-                                                       const TaskID &task_id,
-                                                       const TaskLeaseData &task_lease) {
-    const ClientID node_manager_id = ClientID::FromBinary(task_lease.node_manager_id());
-    if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
-      // The node manager that added the task lease is already removed. The
-      // lease is considered inactive.
-      reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
-    } else {
-      // NOTE(swang): The task_lease.timeout is an overestimate of the lease's
-      // expiration period since the entry may have been in the GCS for some
-      // time already. For a more accurate estimate, the age of the entry in
-      // the GCS should be subtracted from task_lease.timeout.
-      reconstruction_policy_.HandleTaskLeaseNotification(task_id, task_lease.timeout());
-    }
-  };
-  const auto task_lease_empty_callback = [this](gcs::RedisGcsClient *client,
-                                                const TaskID &task_id) {
-    reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
-  };
-  RAY_RETURN_NOT_OK(gcs_client_->task_lease_table().Subscribe(
-      JobID::Nil(), self_node_id_, task_lease_notification_callback,
-      task_lease_empty_callback, nullptr));
-
+  // The TaskLease subscription is done on demand in reconstruction policy.
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &data) {

@@ -247,7 +247,9 @@ Status RedisJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 }
 
 RedisTaskInfoAccessor::RedisTaskInfoAccessor(RedisGcsClient *client_impl)
-    : client_impl_(client_impl), task_sub_executor_(client_impl->raylet_task_table()) {}
+    : client_impl_(client_impl),
+      task_sub_executor_(client_impl->raylet_task_table()),
+      task_lease_sub_executor_(client_impl->task_lease_table()) {}
 
 Status RedisTaskInfoAccessor::AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
                                        const StatusCallback &callback) {
@@ -299,6 +301,31 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
 Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
                                                const StatusCallback &done) {
   return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+}
+
+Status RedisTaskInfoAccessor::AsyncAddTaskLease(
+    const std::shared_ptr<TaskLeaseData> &data_ptr, const StatusCallback &callback) {
+  TaskLeaseTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const TaskID &id,
+                         const TaskLeaseData &data) { callback(Status::OK()); };
+  }
+  TaskID task_id = TaskID::FromBinary(data_ptr->task_id());
+  TaskLeaseTable &task_lease_table = client_impl_->task_lease_table();
+  return task_lease_table.Add(JobID::Nil(), task_id, data_ptr, on_done);
+}
+
+Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
+    const TaskID &task_id,
+    const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+}
+
+Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                                        const StatusCallback &done) {
+  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
 }
 
 RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
