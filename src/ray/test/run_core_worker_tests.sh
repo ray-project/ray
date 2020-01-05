@@ -38,8 +38,8 @@ if [ ! -d "$RAY_ROOT/python" ]; then
   exit 1
 fi
 
+REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 BAZEL_BIN_PREFIX="$(bazel info -c dbg $RAY_BAZEL_CONFIG bazel-bin)"
-REDIS_MODULE="$BAZEL_BIN_PREFIX/libray_redis_module.so"
 LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 STORE_EXEC="$BAZEL_BIN_PREFIX/external/plasma/plasma_store_server"
 RAYLET_EXEC="$BAZEL_BIN_PREFIX/raylet"
