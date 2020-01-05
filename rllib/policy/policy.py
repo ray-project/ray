@@ -99,7 +99,7 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def compute_single_action(self,
                               obs,
-                              state,
+                              state=None,
                               prev_action=None,
                               prev_reward=None,
                               info=None,
@@ -109,10 +109,10 @@ class Policy(metaclass=ABCMeta):
         """Unbatched version of compute_actions.
 
         Arguments:
-            obs (obj): single observation
-            state_batches (list): list of RNN state inputs, if any
-            prev_action (obj): previous action value, if any
-            prev_reward (int): previous reward, if any
+            obs (obj): Single observation.
+            state (list): List of RNN state inputs, if any.
+            prev_action (obj): Previous action value, if any.
+            prev_reward (float): Previous reward, if any.
             info (dict): info object, if any
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
@@ -148,7 +148,8 @@ class Policy(metaclass=ABCMeta):
             action = self.clip_action(action, self.action_space)
 
         # Return action, internal state(s), infos.
-        return action, [s[0] for s in state_out], {k: v[0] for k, v in info.items()}
+        return action, [s[0] for s in state_out], \
+               {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
     def postprocess_trajectory(self,
@@ -241,7 +242,8 @@ class Policy(metaclass=ABCMeta):
     def num_state_tensors(self):
         """
         Returns:
-            int: The number of RNN hidden state tensors kept by this Policy's (RNN-based) Model.
+            int: The number of RNN hidden state tensors kept by this Policy's
+                (RNN-based) Model.
         """
         raise NotImplementedError
 
@@ -314,8 +316,9 @@ class Policy(metaclass=ABCMeta):
             return np.clip(action, space.low, space.high)
         elif isinstance(space, gym.spaces.Tuple):
             if type(action) not in (tuple, list):
-                raise ValueError("Expected tuple space for actions {}: {}".format(
-                    action, space))
+                raise ValueError(
+                    "Expected tuple space for actions {}: {}".
+                    format(action, space))
             out = []
             for a, s in zip(action, space.spaces):
                 out.append(Policy.clip_action(a, s))

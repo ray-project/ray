@@ -1,7 +1,6 @@
 import numpy as np
 
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, \
-    ACTION_PROB, ACTION_LOGP
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -33,6 +32,7 @@ class TorchPolicy(Policy):
         Arguments:
             observation_space (gym.Space): observation space of the policy.
             action_space (gym.Space): action space of the policy.
+            config (dict): The Policy config dict.
             model (nn.Module): PyTorch policy module. Given observations as
                 input, this module must return a list of outputs where the
                 first item is action logits, and the rest can be any value.
