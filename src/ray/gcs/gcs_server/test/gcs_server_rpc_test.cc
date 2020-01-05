@@ -208,6 +208,44 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool UpdateResources(const rpc::UpdateResourcesRequest &request) {
+    std::promise<bool> promise;
+    client_->UpdateResources(request, [&promise](const Status &status,
+                                                 const rpc::UpdateResourcesReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool DeleteResources(const rpc::DeleteResourcesRequest &request) {
+    std::promise<bool> promise;
+    client_->DeleteResources(request, [&promise](const Status &status,
+                                                 const rpc::DeleteResourcesReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  std::map<std::string, gcs::ResourceTableData> GetResources(const std::string &node_id) {
+    rpc::GetResourcesRequest request;
+    request.set_node_id(node_id);
+    std::map<std::string, gcs::ResourceTableData> resources;
+    std::promise<bool> promise;
+    client_->GetResources(request,
+                          [&resources, &promise](const Status &status,
+                                                 const rpc::GetResourcesReply &reply) {
+                            RAY_CHECK_OK(status);
+                            for (auto resource : reply.resources()) {
+                              resources[resource.first] = resource.second;
+                            }
+                            promise.set_value(true);
+                          });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return resources;
+  }
+
   bool AddObjectLocation(const rpc::AddObjectLocationRequest &request) {
     std::promise<bool> promise;
     client_->AddObjectLocation(
@@ -390,6 +428,25 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(node_info_list.size() == 1);
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+
+  // Update node resources
+  rpc::UpdateResourcesRequest update_resources_request;
+  update_resources_request.set_node_id(node_id.Binary());
+  rpc::ResourceTableData resource_table_data;
+  resource_table_data.set_resource_capacity(1.0);
+  std::string resource_name = "CPU";
+  (*update_resources_request.mutable_resources())[resource_name] = resource_table_data;
+  ASSERT_TRUE(UpdateResources(update_resources_request));
+  auto resources = GetResources(node_id.Binary());
+  ASSERT_TRUE(resources.size() == 1);
+
+  // Delete node resources
+  rpc::DeleteResourcesRequest delete_resources_request;
+  delete_resources_request.set_node_id(node_id.Binary());
+  delete_resources_request.add_resource_name_list(resource_name);
+  ASSERT_TRUE(DeleteResources(delete_resources_request));
+  resources = GetResources(node_id.Binary());
+  ASSERT_TRUE(resources.size() == 0);
 }
 
 TEST_F(GcsServerTest, TestObjectInfo) {

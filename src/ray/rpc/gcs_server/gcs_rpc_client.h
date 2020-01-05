@@ -84,6 +84,18 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, ReportBatchHeartbeat, request, callback,
                          node_info_grpc_client_)
 
+  /// Get node's resources from GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, GetResources, request, callback,
+                         node_info_grpc_client_)
+
+  /// Update resources of a node in GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, UpdateResources, request, callback,
+                         node_info_grpc_client_)
+
+  /// Delete resources of a node in GCS Service.
+  VOID_RPC_CLIENT_METHOD(NodeInfoGcsService, DeleteResources, request, callback,
+                         node_info_grpc_client_)
+
   /// Get object's locations from GCS Service.
   VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations, request, callback,
                          object_info_grpc_client_)
