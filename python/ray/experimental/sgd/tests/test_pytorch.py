@@ -8,11 +8,14 @@ import tempfile
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+from unittest.mock import patch
 
+import ray
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 from ray.experimental.sgd.pytorch.utils import train
+from ray.experimental.sgd.utils import check_for_failure
 
 from ray.experimental.sgd.examples.train_example import (
     model_creator, optimizer_creator, data_creator)
@@ -168,3 +171,24 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     for k in model1_state_dict:
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
+
+def step_with_fail(self):
+    worker_stats = [w.step.remote() for w in self.workers]
+    if self._num_failures < 3:
+        self.workers[0].__ray_kill__()
+    success = check_for_failure(worker_stats)
+    return success, worker_stats
+
+@patch.object(PyTorchTrainer, '_train_step', step_with_fail)
+def test_fail_thrice(ray_start_2_cpus):
+    if not dist.is_available():
+        return
+
+    trainer1 = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_replicas=2)
+
+    trainer1.train(retries=2)

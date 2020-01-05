@@ -23,19 +23,6 @@ from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 logger = logging.getLogger(__name__)
 
 
-def check_for_failure(remote_values):
-    unfinished = remote_values
-    success = False
-    try:
-        while len(unfinished) > 0:
-            finished, unfinished = ray.wait(unfinished)
-            finished = ray.get(finished)
-        success = True
-    except Exception:
-        logger.exception()
-    return success
-
-
 class PyTorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
@@ -93,7 +80,10 @@ class PyTorchTrainer:
                  "https://github.com/pytorch/examples/issues/467."))
 
         self.model_creator = model_creator
+        self.data_creator = data_creator
         self.train_function = train_function
+        self.optimizer_creator = optimizer_creator
+        self.loss_creator = loss_creator
         self.validation_function = validation_function
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
@@ -105,11 +95,14 @@ class PyTorchTrainer:
         logger.info("Using {} as backend.".format(backend))
         self.backend = backend
         self.use_gpu = use_gpu
+        self.batch_size = batch_size
         self.max_replicas = num_replicas
         self.tmpdir = tempfile.mkdtemp(prefix="raysgd")
+        self._num_failures = 0
         self._start_workers(self.max_replicas)
 
     def _start_workers(self, num_replicas):
+        logger.info(f"start_workers: Setting {num_replicas} replicas.")
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(
@@ -185,19 +178,17 @@ class PyTorchTrainer:
             checkpoint_dir = self.save(
                 os.path.join(self.tmpdir, "tmp_checkpoint"))
         with self.optimizer_timer:
-            worker_stats = [w.step.remote() for w in self.workers]
-            success = check_for_failure(worker_stats)
-
+            success, worker_stats = self._train_step()
             # Fault handling
             for i in range(retries):
                 if success:
                     break
+                else:
+                    self._num_failures += 1
                 self._try_resize_workers(checkpoint=checkpoint_dir)
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
-                worker_stats = [w.step.remote() for w in self.workers]
-                success = check_for_failure(worker_stats)
-
+                success, worker_stats = self._train_step()
         if not success:
             raise RuntimeError("Training run failed.")
 
@@ -211,6 +202,11 @@ class PyTorchTrainer:
             else:
                 train_stats[stat_key] = worker_stats[0][stat_key]
         return train_stats
+
+    def _train_step(self):
+        worker_stats = [w.step.remote() for w in self.workers]
+        success = utils.check_for_failure(worker_stats)
+        return success, worker_stats
 
     def apply_all_workers(self, fn):
         return ray.get([w.apply_fn.remote(fn) for w in self.workers])
@@ -276,7 +272,7 @@ class PyTorchTrainer:
             if self.use_gpu:
                 new_workers = min(resources.get("GPU", 0), new_workers)
             if new_workers:
-                self._start_workers(new_workers)
+                self._start_workers(int(new_workers))
                 self.restore(checkpoint)
                 return
             else:

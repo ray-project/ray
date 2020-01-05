@@ -3,9 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from contextlib import closing
+import logging
 import numpy as np
 import socket
 import time
+
+import ray
+
+logger = logging.getLogger(__name__)
 
 
 class TimerStat:
@@ -125,3 +130,16 @@ class AverageMeter:
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+def check_for_failure(remote_values):
+    unfinished = remote_values
+    success = False
+    try:
+        while len(unfinished) > 0:
+            finished, unfinished = ray.wait(unfinished)
+            finished = ray.get(finished)
+        success = True
+    except Exception as exc:
+        logger.exception(str(exc))
+    return success
