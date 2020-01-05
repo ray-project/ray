@@ -1,12 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 import gym
 import numpy as np
-import random
 
 from ray.rllib.utils.annotations import DeveloperAPI
 
@@ -76,11 +71,14 @@ class Policy(metaclass=ABCMeta):
         """Computes actions for the current policy.
 
         Args:
-            obs_batch (np.ndarray): batch of observations
-            state_batches (Optional[list]): List of RNN state input batches, if any.
-            prev_action_batch (np.ndarray): batch of previous action values
-            prev_reward_batch (np.ndarray): batch of previous rewards
-            info_batch (info): batch of info objects
+            obs_batch (Union[List,np.ndarray]): Batch of observations.
+            state_batches (Optional[list]): List of RNN state input batches,
+                if any.
+            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
+                action values.
+            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
+                rewards.
+            info_batch (info): Batch of info objects.
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
@@ -149,7 +147,7 @@ class Policy(metaclass=ABCMeta):
 
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
-               {k: v[0] for k, v in info.items()}
+            {k: v[0] for k, v in info.items()}
 
     @DeveloperAPI
     def postprocess_trajectory(self,
