@@ -171,7 +171,7 @@ class Policy(metaclass=ABCMeta):
                 multi-agent algorithms.
 
         Returns:
-            SampleBatch: postprocessed sample batch.
+            SampleBatch: Postprocessed sample batch.
         """
         return sample_batch
 
