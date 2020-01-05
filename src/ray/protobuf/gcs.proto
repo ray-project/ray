@@ -213,14 +213,16 @@ message HeartbeatBatchTableData {
 
 // Data for a lease on task execution.
 message TaskLeaseData {
+  // The task ID.
+  bytes task_id = 1;
   // Node manager client ID.
-  bytes node_manager_id = 1;
+  bytes node_manager_id = 2;
   // The time that the lease was last acquired at. NOTE(swang): This is the
   // system clock time according to the node that added the entry and is not
   // synchronized with other nodes.
-  uint64 acquired_at = 2;
+  uint64 acquired_at = 3;
   // The period that the lease is active for.
-  uint64 timeout = 3;
+  uint64 timeout = 4;
 }
 
 message JobTableData {
