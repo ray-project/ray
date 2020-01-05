@@ -53,40 +53,31 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
 
   bool AddJob(const std::shared_ptr<rpc::JobTableData> &job_table_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_table_data, [&promise](Status status) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    }));
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
+        job_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool MarkJobFinished(const JobID &job_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(job_id, [&promise](Status status) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    }));
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(
+        job_id, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(
-        gcs_client_->Actors().AsyncRegister(actor_table_data, [&promise](Status status) {
-          RAY_CHECK_OK(status);
-          promise.set_value(true);
-        }));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(
+        actor_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool UpdateActor(const ActorID &actor_id,
                    const std::shared_ptr<rpc::ActorTableData> &actor_table_data) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, actor_table_data,
-                                                   [&promise](Status status) {
-                                                     RAY_CHECK_OK(status);
-                                                     promise.set_value(true);
-                                                   }));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(
+        actor_id, actor_table_data,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -96,13 +87,49 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
         actor_id, [&actor_table_data, &promise](
                       Status status, const boost::optional<rpc::ActorTableData> &result) {
-          RAY_CHECK_OK(status);
           assert(result);
           actor_table_data.CopyFrom(*result);
           promise.set_value(true);
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return actor_table_data;
+  }
+
+  bool AddCheckpoint(
+      const std::shared_ptr<rpc::ActorCheckpointData> &actor_checkpoint_data) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncAddCheckpoint(
+        actor_checkpoint_data,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  rpc::ActorCheckpointData GetCheckpoint(const ActorCheckpointID &checkpoint_id) {
+    std::promise<bool> promise;
+    rpc::ActorCheckpointData actor_checkpoint_data;
+    RAY_CHECK_OK(
+        gcs_client_->Actors().AsyncGetCheckpoint(checkpoint_id, [&actor_checkpoint_data, &promise](Status status,
+            const boost::optional<rpc::ActorCheckpointData> &result) {
+          assert(result);
+          actor_checkpoint_data.CopyFrom(*result);
+          promise.set_value(true);
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return actor_checkpoint_data;
+  }
+
+  rpc::ActorCheckpointIdData GetCheckpointID(const ActorID &actor_id) {
+    std::promise<bool> promise;
+    rpc::ActorCheckpointIdData actor_checkpoint_id_data;
+    RAY_CHECK_OK(
+        gcs_client_->Actors().AsyncGetCheckpointID(actor_id, [&actor_checkpoint_id_data, &promise](Status status,
+            const boost::optional<rpc::ActorCheckpointIdData> &result) {
+          assert(result);
+          actor_checkpoint_id_data.CopyFrom(*result);
+          promise.set_value(true);
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return actor_checkpoint_id_data;
   }
 
   bool RegisterSelf(const rpc::GcsNodeInfo &local_node_info) {
@@ -125,10 +152,9 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     std::vector<rpc::GcsNodeInfo> nodes;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
         [&nodes, &promise](Status status, const std::vector<rpc::GcsNodeInfo> &result) {
-          RAY_CHECK_OK(status);
           assert(result);
           nodes.assign(result.begin(), result.end());
-          promise.set_value(true);
+          promise.set_value(status.ok());
         }));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
@@ -136,10 +162,42 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
 
   bool UnregisterNode(const ClientID &node_id) {
     std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncUnregister(node_id, [&promise](Status status) {
-      RAY_CHECK_OK(status);
-      promise.set_value(true);
-    }));
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncUnregister(
+        node_id, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  gcs::NodeInfoAccessor::ResourceMap GetResources(const ClientID &node_id) {
+    gcs::NodeInfoAccessor::ResourceMap resource_map;
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetResources(
+        node_id, [&resource_map, &promise](
+                     Status status,
+                     const boost::optional<gcs::NodeInfoAccessor::ResourceMap> &result) {
+          if (result) {
+            resource_map.insert(result->begin(), result->end());
+          }
+          promise.set_value(true);
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return resource_map;
+  }
+
+  bool UpdateResources(const ClientID &node_id,
+                       const gcs::NodeInfoAccessor::ResourceMap &resource_map) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncUpdateResources(
+        node_id, resource_map,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool DeleteResources(const ClientID &node_id,
+                       const std::vector<std::string> &resource_names) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncDeleteResources(
+        node_id, resource_names,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -257,6 +315,31 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestActorInfo) {
   EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
+TEST_F(ServiceBasedGcsGcsClientTest, TestActorCheckpoint) {
+  // Create actor checkpoint
+  JobID job_id = JobID::FromInt(1);
+  auto actor_table_data = GenActorTableData(job_id);
+  ActorID actor_id = ActorID::FromBinary(actor_table_data->actor_id());
+
+  ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
+  auto checkpoint = std::make_shared<rpc::ActorCheckpointData>();
+  checkpoint->set_actor_id(actor_table_data->actor_id());
+  checkpoint->set_checkpoint_id(checkpoint_id.Binary());
+  checkpoint->set_execution_dependency(checkpoint_id.Binary());
+
+  // Add checkpoint
+  ASSERT_TRUE(AddCheckpoint(checkpoint));
+
+  // Get Checkpoint
+  auto get_checkpoint_result = GetCheckpoint(checkpoint_id);
+  ASSERT_TRUE(get_checkpoint_result.actor_id() == actor_id.Binary());
+
+  // Get CheckpointID
+  auto get_checkpoint_id_result = GetCheckpointID(actor_id);
+  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids_size() == 1);
+  ASSERT_TRUE(get_checkpoint_id_result.checkpoint_ids(0) == checkpoint_id.Binary());
+}
+
 TEST_F(ServiceBasedGcsGcsClientTest, TestActorSubscribeAll) {
   // Create actor_table_data
   JobID job_id = JobID::FromInt(1);
@@ -335,7 +418,39 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeInfo) {
             rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
   EXPECT_EQ(unregister_count, 2);
   ASSERT_TRUE(gcs_client_->Nodes().IsRemoved(node2_id));
-}  // namespace ray
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestNodeResources) {
+  int add_count = 0;
+  int remove_count = 0;
+  auto subscribe = [&add_count, &remove_count](const ClientID &id,
+                          const gcs::ResourceChangeNotification &notification) {
+    if (notification.IsAdded()) {
+      ++add_count;
+    } else if (notification.IsRemoved()) {
+      ++remove_count;
+    }
+  };
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToResources(subscribe, nullptr));
+
+  // Update resources
+  ClientID node_id = ClientID::FromRandom();
+  gcs::NodeInfoAccessor::ResourceMap resource_map;
+  std::string key = "CPU";
+  auto resource = std::make_shared<rpc::ResourceTableData>();
+  resource->set_resource_capacity(1.0);
+  resource_map[key] = resource;
+  ASSERT_TRUE(UpdateResources(node_id, resource_map));
+  auto get_resources_result = GetResources(node_id);
+  ASSERT_TRUE(get_resources_result.count(key));
+
+  // Delete resources
+  ASSERT_TRUE(DeleteResources(node_id, {key}));
+  get_resources_result = GetResources(node_id);
+  ASSERT_TRUE(get_resources_result.empty());
+  EXPECT_EQ(add_count, 1);
+  EXPECT_EQ(remove_count, 1);
+}
 
 }  // namespace ray
 
