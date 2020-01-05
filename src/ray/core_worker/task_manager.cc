@@ -52,7 +52,7 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
   shutdown_hook_ = shutdown;
 }
 
-bool TaskManager::IsTaskPending(const TaskID &task_id) const {
+bool TaskManager::IsTaskPending(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   return pending_tasks_.count(task_id) > 0;
 }
@@ -211,7 +211,7 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,
   }
 }
 
-TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
+TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
   auto it = pending_tasks_.find(task_id);
   RAY_CHECK(it != pending_tasks_.end());

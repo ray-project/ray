@@ -59,7 +59,7 @@ class TaskManager : public TaskFinisherInterface {
   ///
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const;
+  bool IsTaskPending(const TaskID &task_id);
 
   /// Write return objects for a pending task to the memory store.
   ///
@@ -82,7 +82,7 @@ class TaskManager : public TaskFinisherInterface {
   void OnTaskDependenciesInlined(const std::vector<ObjectID> &object_id) override;
 
   /// Return the spec for a pending task.
-  TaskSpecification GetTaskSpec(const TaskID &task_id) const;
+  TaskSpecification GetTaskSpec(const TaskID &task_id);
 
   /// Return the number of pending tasks.
   int NumPendingTasks() const { return pending_tasks_.size(); }
@@ -125,7 +125,7 @@ class TaskManager : public TaskFinisherInterface {
   int64_t last_log_time_ms_ GUARDED_BY(mu_) = 0;
 
   /// Protects below fields.
-  mutable absl::Mutex mu_;
+  absl::Mutex mu_;
 
   /// Map from task ID to a pair of:
   ///   {task spec, number of allowed retries left}
