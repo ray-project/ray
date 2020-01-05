@@ -94,7 +94,7 @@ matrix:
 
       script:
         # Run core worker tests with thread sanitizer
-        - RAY_BAZEL_CONFIG=--config=tsan TSAN_OPTIONS=report_atomic_races=0 ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+        - RAY_BAZEL_CONFIG="--config=tsan" TSAN_OPTIONS="report_atomic_races=0" ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
 
     # Build Linux wheels.
     - os: linux
