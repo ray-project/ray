@@ -47,17 +47,17 @@ RAYLET_MONITOR_EXEC="$BAZEL_BIN_PREFIX/raylet_monitor"
 MOCK_WORKER_EXEC="$BAZEL_BIN_PREFIX/mock_worker"
 
 # Allow cleanup commands to fail.
-bazel run //:redis-cli -- -p 6379 shutdown || true
+bazel run "//:redis-cli" -- -p 6379 shutdown || true
 sleep 1s
-bazel run //:redis-cli -- -p 6380 shutdown || true
+bazel run "//:redis-cli" -- -p 6380 shutdown || true
 sleep 1s
-bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
+bazel run "//:redis-server" -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6379 &
 sleep 2s
-bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
+bazel run "//:redis-server" -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
 sleep 2s
 # Run tests.
-bazel run -c dbg $RAY_BAZEL_CONFIG //:core_worker_test $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $RAYLET_MONITOR_EXEC $MOCK_WORKER_EXEC
+bazel run -c dbg $RAY_BAZEL_CONFIG "//:core_worker_test" $STORE_EXEC $RAYLET_EXEC $RAYLET_PORT $RAYLET_MONITOR_EXEC $MOCK_WORKER_EXEC
 sleep 1s
-bazel run //:redis-cli -- -p 6379 shutdown
-bazel run //:redis-cli -- -p 6380 shutdown
+bazel run "//:redis-cli" -- -p 6379 shutdown
+bazel run "//:redis-cli" -- -p 6380 shutdown
 sleep 1s
