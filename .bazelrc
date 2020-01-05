@@ -30,6 +30,7 @@ build --http_timeout_scaling=5.0
 # bazel_common/tools/maven/pom_file.bzl with Bazel 1.0
 build --incompatible_depset_is_not_iterable=false
 
+# Thread sanitizer configuration:
 build:tsan --strip=never
 build:tsan --copt -fsanitize=thread
 build:tsan --copt -DTHREAD_SANITIZER
