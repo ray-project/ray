@@ -1093,15 +1093,28 @@ genrule(
         "redis-server",
         "redis-cli",
     ],
-    cmd = """
-        set -x &&
-        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
-        make &&
-        mv ./src/redis-server $(location redis-server) &&
-        chmod +x $(location redis-server) &&
-        mv ./src/redis-cli $(location redis-cli) &&
-        chmod +x $(location redis-cli)
-    """,
+    cmd = select({
+        # Windows is not supported yet, so make stubs for it
+        "@bazel_tools//src/conditions:windows": """
+            set -eu
+            for f in $(OUTS); do
+                {
+                    echo '#!/usr/bin/env bash'
+                    echo 'echo "$${0##*/} is unsupported on this platform" 1>&2 && false'
+                } > "$$f"
+                chmod +x "$$f"
+            done
+        """,
+        "//conditions:default": """
+            set -x &&
+            curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
+            make &&
+            mv ./src/redis-server $(location redis-server) &&
+            chmod +x $(location redis-server) &&
+            mv ./src/redis-cli $(location redis-cli) &&
+            chmod +x $(location redis-cli)
+        """,
+    }),
     visibility = ["//java:__subpackages__"],
 )
 
