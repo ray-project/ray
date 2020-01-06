@@ -158,3 +158,25 @@ class SinkOperator(StreamOperator, OneInputOperator):
 
     def process_element(self, record):
         self.func.sink(record.value)
+
+
+_function_to_operator = {
+    function.SourceFunction: SourceOperator,
+    function.MapFunction: MapOperator,
+    function.FlatMapFunction: FlatMapOperator,
+    function.FilterFunction: FilterOperator,
+    function.KeyFunction: KeyByOperator,
+    function.ReduceFunction: ReduceOperator,
+    function.SinkFunction: SinkOperator,
+}
+
+
+def create_operator(func):
+    func_interface = None
+    super_classes = func.__class__.mro()
+    for i in range(len(super_classes)):
+        if super_classes[i] == function.Function:
+            func_interface = super_classes[i - 1]
+    assert func_interface is not None
+    operator_class = _function_to_operator[func_interface]
+    return operator_class(func)
