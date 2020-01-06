@@ -2981,15 +2981,17 @@ void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &requ
     auto client = std::unique_ptr<rpc::CoreWorkerClient>(
         new rpc::CoreWorkerClient(request.owner_address().ip_address(),
                                   request.owner_address().port(), client_call_manager_));
-    worker_rpc_clients_.emplace(
-        worker_id, std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(
-                       std::move(client), 0));
-    it = worker_rpc_clients_.find(worker_id);
+    it = worker_rpc_clients_
+             .emplace(worker_id,
+                      std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(
+                          std::move(client), 0))
+             .first;
   }
-  RAY_CHECK(it != worker_rpc_clients_.end());
 
   // Pin the objects in plasma by getting them and holding a reference to
   // the returned buffer.
+  // NOTE: the caller must ensure that the objects already exist in plamsa before
+  // sending a PinObjectIDs request.
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(request.object_ids_size());
   for (const auto &object_id_binary : request.object_ids()) {
@@ -3002,7 +3004,8 @@ void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &requ
     return;
   }
 
-  // Pin the requested objects.
+  // Pin the requested objects until the owner notifies us that the objects can be
+  // unpinned by responding to the WaitForObjectEviction message.
   // TODO(edoakes): we should be batching these requests instead of sending one per
   // pinned object.
   size_t i = 0;

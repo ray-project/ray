@@ -75,7 +75,7 @@ class ReferenceCounter {
   void AddBorrowedObject(const ObjectID &object_id, const TaskID &owner_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
-  /// Get the owner ID and addresss of the given object.
+  /// Get the owner ID and address of the given object.
   ///
   /// \param[in] object_id The ID of the object to look up.
   /// \param[out] owner_id The TaskID of the object owner.
@@ -131,7 +131,8 @@ class ReferenceCounter {
   };
 
   /// Helper method to delete an entry from the reference map and run any necessary
-  /// callbacks. Assumes that the entry is in object_id_refs_.
+  /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
+  /// iterator.
   void DeleteReferenceInternal(absl::flat_hash_map<ObjectID, Reference>::iterator entry,
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);

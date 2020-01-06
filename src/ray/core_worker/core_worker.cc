@@ -385,8 +385,10 @@ Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
+  RAY_RETURN_NOT_OK(Put(object, *object_id));
+  // Tell the raylet to pin the object **after** it is created.
   RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
-  return Put(object, *object_id);
+  return Status::OK();
 }
 
 Status CoreWorker::Put(const RayObject &object, const ObjectID &object_id) {
@@ -414,6 +416,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool owns_object, bool pin_ob
   if (owns_object) {
     reference_counter_->AddOwnedObject(object_id, GetCallerId(), rpc_address_);
     if (pin_object) {
+      // Tell the raylet to pin the object **after** it is created.
       RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
     }
   }
@@ -1130,7 +1133,6 @@ void CoreWorker::HandleWaitForObjectEviction(
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
-  // unpin and respond to the message immediately.
   if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
     RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
     respond(object_id);
