@@ -9,7 +9,7 @@ import org.slf4j.LoggerFactory;
  */
 public class StreamingWorkerConfig extends StreamingGlobalConfig {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(StreamingWorkerConfig.class);
+  private static final Logger LOG = LoggerFactory.getLogger(StreamingWorkerConfig.class);
 
   public StreamingWorkerConfig(final Map<String, String> conf) {
     super(conf);
