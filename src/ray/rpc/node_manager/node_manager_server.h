@@ -10,6 +10,7 @@
 namespace ray {
 namespace rpc {
 
+/// NOTE: See src/ray/core_worker/core_worker.h on how to add a new grpc handler.
 #define RAY_NODE_MANAGER_RPC_HANDLERS                              \
   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, 100) \
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, 100)       \
