@@ -11,6 +11,8 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
  public:
   ServiceBasedGcsClient(const GcsClientOptions &options);
 
+  ServiceBasedGcsClient(RedisGcsClient *redis_gcs_client);
+
   Status Connect(boost::asio::io_service &io_service) override;
 
   void Disconnect() override;

@@ -493,7 +493,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   heartbeat->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportHeartbeat(heartbeat));
 
-  // Delete resources
+  // Report batch heartbeat
   auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
   batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
