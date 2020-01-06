@@ -51,8 +51,8 @@ public class PythonGateway {
   public byte[] createPythonStreamSource(byte[] pySourceFunc) {
     Preconditions.checkNotNull(streamingContext);
     try {
-      PythonStreamSource pythonStreamSource = new PythonStreamSource(
-          streamingContext, new DescriptorFunction(pySourceFunc));
+      PythonStreamSource pythonStreamSource = PythonStreamSource.from(
+          streamingContext, DescriptorFunction.fromFunction(pySourceFunc));
       objectMap.put(getRefId(pythonStreamSource), pythonStreamSource);
       return serializer.serialize(getRefId(pythonStreamSource));
     } catch (Exception e) {
@@ -65,7 +65,7 @@ public class PythonGateway {
   }
 
   public byte[] createPyFunc(byte[] pyFunc) {
-    DescriptorFunction function = new DescriptorFunction(pyFunc);
+    DescriptorFunction function = DescriptorFunction.fromFunction(pyFunc);
     objectMap.put(getRefId(function), function);
     return serializer.serialize(getRefId(function));
   }
