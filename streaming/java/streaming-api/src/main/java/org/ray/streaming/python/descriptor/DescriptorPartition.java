@@ -1,6 +1,8 @@
 package org.ray.streaming.python.descriptor;
 
+import java.util.Arrays;
 import org.ray.streaming.api.partition.Partition;
+import org.ray.streaming.python.MsgPackSerializer;
 
 /**
  * A DescriptorPartition is used to describe a python partition function.
@@ -22,13 +24,13 @@ public class DescriptorPartition implements Descriptor, Partition {
   public static final DescriptorPartition RoundRobinPartition = new DescriptorPartition(
       "ray.streaming.partition", "RoundRobinPartition", null);
 
-  private byte[] serializedPyPartition;
+  private byte[] partition;
   private String moduleName;
   private String className;
   private String functionName;
 
-  public DescriptorPartition(byte[] serializedPyPartition) {
-    this.serializedPyPartition = serializedPyPartition;
+  public DescriptorPartition(byte[] partition) {
+    this.partition = partition;
   }
 
   public DescriptorPartition(String moduleName, String className, String functionName) {
@@ -44,8 +46,8 @@ public class DescriptorPartition implements Descriptor, Partition {
 
   @Override
   public byte[] toBytes() {
-    // TODO serialize to bytes using protobuf
-    return new byte[0];
+    return new MsgPackSerializer().serialize(
+        Arrays.asList(partition, moduleName, className, functionName));
   }
 
 }

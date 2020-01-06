@@ -14,9 +14,9 @@ import org.msgpack.value.IntegerValue;
 import org.msgpack.value.MapValue;
 import org.msgpack.value.Value;
 
-class MsgPackSerializer {
+public class MsgPackSerializer {
 
-  byte[] serialize(Object obj) {
+  public byte[] serialize(Object obj) {
     MessageBufferPacker packer = MessagePack.newDefaultBufferPacker();
     serialize(obj, packer);
     return packer.toByteArray();
@@ -59,7 +59,7 @@ class MsgPackSerializer {
     }
   }
 
-  Object deserialize(byte[] bytes) {
+  public Object deserialize(byte[] bytes) {
     MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(bytes);
     try {
       return convert(unpacker.unpackValue());

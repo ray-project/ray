@@ -1,7 +1,9 @@
 package org.ray.streaming.python.descriptor;
 
 import com.google.common.base.Preconditions;
+import java.util.Arrays;
 import org.ray.streaming.api.function.Function;
+import org.ray.streaming.python.MsgPackSerializer;
 
 /**
  * A DescriptorFunction is used to describe a user defined python function.
@@ -35,7 +37,7 @@ public class DescriptorFunction implements Descriptor, Function {
     }
   }
 
-  private byte[] pythonFunction;
+  private byte[] function;
   private String moduleName;
   private String className;
   private String functionName;
@@ -43,27 +45,27 @@ public class DescriptorFunction implements Descriptor, Function {
    * FunctionInterface can be used to validate python function,
    * and look up operator class from FunctionInterface.
    */
-  private String pythonFunctionInterface;
+  private String functionInterface;
 
-  private DescriptorFunction(byte[] pythonFunction,
+  private DescriptorFunction(byte[] function,
                              String moduleName,
                              String className,
                              String functionName) {
-    this.pythonFunction = pythonFunction;
+    this.function = function;
     this.moduleName = moduleName;
     this.className = className;
     this.functionName = functionName;
   }
 
-  public void setPythonFunctionInterface(PythonFunctionInterface pythonFunctionInterface) {
-    this.pythonFunctionInterface = pythonFunctionInterface.pythonFunctionInterface;
+  public void setFunctionInterface(PythonFunctionInterface functionInterface) {
+    this.functionInterface = functionInterface.pythonFunctionInterface;
   }
 
   @Override
   public byte[] toBytes() {
-    Preconditions.checkNotNull(this.pythonFunctionInterface);
-    // TODO serialize to bytes using protobuf
-    return new byte[0];
+    Preconditions.checkNotNull(this.functionInterface);
+    return new MsgPackSerializer().serialize(
+        Arrays.asList(function, moduleName, className, functionName, functionInterface));
   }
 
   /**

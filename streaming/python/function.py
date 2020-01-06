@@ -4,7 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 
 import cloudpickle
-import ray.streaming.generated.remote_call_pb2 as remote_call_pb
+import msgpack
 
 
 class Function(ABC):
@@ -135,24 +135,24 @@ def deserialize(func_bytes):
     return cloudpickle.loads(func_bytes)
 
 
-def load_function(func_pb_bytes):
-    py_func_pb = remote_call_pb.PythonFunction()
-    py_func_pb.ParseFromString(func_pb_bytes)
-    if py_func_pb.function != b"":
-        return deserialize(py_func_pb.function)
+def load_function(descriptor_func_bytes):
+    function_bytes, module_name, class_name, function_name, function_interface =\
+        msgpack.loads(descriptor_func_bytes)
+    if function_bytes:
+        return deserialize(function_bytes)
     else:
-        assert py_func_pb.module_name != ""
-        assert py_func_pb.function_interface != ""
-        function_interface = getattr(sys.modules[__name__], py_func_pb.function_interface)
-        mod = importlib.import_module(py_func_pb.module_name)
-        if py_func_pb.class_name != "":
-            assert py_func_pb.function_name == ""
-            cls = getattr(mod, py_func_pb.class_name)
+        assert module_name
+        assert function_interface
+        function_interface = getattr(sys.modules[__name__], function_interface)
+        mod = importlib.import_module(module_name)
+        if class_name:
+            assert function_name is None
+            cls = getattr(mod, class_name)
             assert issubclass(cls, function_interface)
             return cls()
         else:
-            assert py_func_pb.function_name != ""
-            func = getattr(mod, py_func_pb.function_name)
+            assert function_name
+            func = getattr(mod, function_name)
             simple_func_class = get_simple_function_class(function_interface)
             return simple_func_class(func)
 

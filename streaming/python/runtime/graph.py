@@ -1,6 +1,10 @@
 import enum
+
 import ray
+import ray.streaming.function as function
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
+import ray.streaming.operator as operator
+import ray.streaming.partition as partition
 
 
 class NodeType(enum.Enum):
@@ -14,8 +18,9 @@ class ExecutionNode:
     def __init__(self, node_pb):
         self.node_id = node_pb.node_id
         self.node_type = NodeType[node_pb.node_type.name]
-        # TODO deserialize
-        self.stream_operator = node_pb.stream_operator  # bytes
+        func_bytes = node_pb.stream_operator  # stream_operator only contains descriptor python function
+        func = function.load_function(func_bytes)
+        self.stream_operator = operator.create_operator(func)
         self.execution_tasks = [ExecutionTask(task) for task in node_pb.execution_tasks]
         self.inputs_edges = [ExecutionEdge(edge) for edge in node_pb.inputs_edges]
         self.output_edges = [ExecutionEdge(edge) for edge in node_pb.output_edges]
@@ -25,8 +30,8 @@ class ExecutionEdge:
     def __init__(self, edge_pb):
         self.src_node_id = edge_pb.src_node_id
         self.target_node_id = edge_pb.target_node_id
-        # TODO deserialize
-        self.partition = edge_pb.partition  # bytes
+        partition_bytes = edge_pb.partition
+        self.partition = partition.load_partition(partition_bytes)
 
 
 class ExecutionTask:

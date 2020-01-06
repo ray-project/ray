@@ -1,5 +1,8 @@
+import importlib
 from abc import ABC, abstractmethod
+
 import cloudpickle
+import msgpack
 
 
 class Partition(ABC):
@@ -69,3 +72,20 @@ def serialize(partition_func):
 
 def deserialize(partition_bytes):
     return cloudpickle.loads(partition_bytes)
+
+
+def load_partition(descriptor_partition_bytes):
+    partition_bytes, module_name, class_name, function_name = msgpack.loads(descriptor_partition_bytes)
+    if partition_bytes:
+        return deserialize(partition_bytes)
+    else:
+        assert module_name
+        mod = importlib.import_module(module_name)
+        if class_name:
+            assert function_name is None
+            cls = getattr(mod, class_name)
+            return cls()
+        else:
+            assert function_name
+            func = getattr(mod, function_name)
+            return SimplePartition(func)

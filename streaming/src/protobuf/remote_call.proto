@@ -4,21 +4,6 @@ package ray.streaming.proto;
 
 option java_package = "org.ray.streaming.runtime.generated";
 
-message PythonFunction {
-    bytes function = 1;
-    string module_name = 2;
-    string class_name = 3;
-    string function_name = 4;
-    string function_interface = 5;
-}
-
-message PythonPartition {
-    bytes partition = 1;
-    string module_name = 2;
-    string class_name = 3;
-    string function_name = 4;
-}
-
 message ExecutionGraph {
     enum NodeType {
         SOURCE = 0;
