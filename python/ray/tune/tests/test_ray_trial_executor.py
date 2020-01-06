@@ -4,12 +4,9 @@ from __future__ import division
 from __future__ import print_function
 
 import json
-import sys
 import unittest
-from unittest.mock import patch
 
 import ray
-from ray.exceptions import RayTimeoutError
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -41,32 +38,10 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.save(trial, Checkpoint.DISK)
+        self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
-
-    def testSaveRestoreTimeout(self):
-        trial = Trial("__fake")
-        self.trial_executor.start_trial(trial)
-        self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.save(trial, Checkpoint.DISK)
-        self.trial_executor.set_status(trial, Trial.PAUSED)
-
-        ray_get = ray.get
-        start_trial = self.trial_executor._start_trial
-
-        # Timeout on first two attempts, then succeed on subsequent gets.
-        side_effects = [RayTimeoutError, RayTimeoutError, ray_get, ray_get]
-        with patch.object(self.trial_executor, "_start_trial") as mock_start:
-            with patch("ray.get", side_effect=side_effects):
-                mock_start.side_effect = start_trial
-                self.trial_executor.start_trial(trial, trial.checkpoint)
-
-        # Trial starts successfully on 3rd attempt.
-        assert mock_start.call_count == 3
-        self.assertEqual(Trial.RUNNING, trial.status)
-        self.trial_executor.stop_trial(trial)
 
     def testPauseResume(self):
         """Tests that pausing works for trials in flight."""
@@ -216,4 +191,5 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
 if __name__ == "__main__":
     import pytest
+    import sys
     sys.exit(pytest.main(["-v", __file__]))

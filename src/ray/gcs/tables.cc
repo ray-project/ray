@@ -368,8 +368,8 @@ Status Set<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   auto on_subscribe = [subscribe](RedisGcsClient *client, const ID &id,
                                   const GcsChangeMode change_mode,
                                   const std::vector<Data> &data) {
-    EntryChangeNotification<Data> change_notification(change_mode, data);
-    std::vector<EntryChangeNotification<Data>> notification_vec;
+    ArrayNotification<Data> change_notification(change_mode, data);
+    std::vector<ArrayNotification<Data>> notification_vec;
     notification_vec.emplace_back(std::move(change_notification));
     subscribe(client, id, notification_vec);
   };
@@ -498,7 +498,11 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
             data_map.emplace(key, std::move(value));
           }
         }
-        subscribe(client_, id, gcs_entry.change_mode(), data_map);
+        MapNotification<std::string, Data> notification(gcs_entry.change_mode(),
+                                                        data_map);
+        std::vector<MapNotification<std::string, Data>> notification_vec;
+        notification_vec.emplace_back(std::move(notification));
+        subscribe(client_, id, notification_vec);
       }
     }
   };
@@ -724,6 +728,25 @@ std::string ClientTable::DebugString() const {
   result << ", cache size: " << node_cache_.size()
          << ", num removed: " << removed_nodes_.size();
   return result.str();
+}
+
+Status TaskLeaseTable::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                 const Callback &subscribe,
+                                 const SubscriptionCallback &done) {
+  auto on_subscribe = [subscribe](RedisGcsClient *client, const TaskID &task_id,
+                                  const std::vector<TaskLeaseData> &data) {
+    std::vector<boost::optional<TaskLeaseData>> result;
+    for (const auto &item : data) {
+      boost::optional<TaskLeaseData> optional_item(item);
+      result.emplace_back(std::move(optional_item));
+    }
+    if (result.empty()) {
+      boost::optional<TaskLeaseData> optional_item;
+      result.emplace_back(std::move(optional_item));
+    }
+    subscribe(client, task_id, result);
+  };
+  return Table<TaskID, TaskLeaseData>::Subscribe(job_id, client_id, on_subscribe, done);
 }
 
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,

@@ -117,13 +117,14 @@ def test_worker_stats(shutdown_only):
 def test_raylet_info_endpoint(shutdown_only):
     addresses = ray.init(include_webui=True, num_cpus=6)
 
+    @ray.remote
+    def f():
+        return "test"
+
     @ray.remote(num_cpus=1)
     class ActorA:
         def __init__(self):
             pass
-
-        def f(self):
-            return os.getpid()
 
     @ray.remote(resources={"CustomResource": 1})
     class ActorB:
@@ -135,7 +136,15 @@ def test_raylet_info_endpoint(shutdown_only):
         def __init__(self):
             self.children = [ActorA.remote(), ActorB.remote()]
 
-    _ = ActorC.remote()
+        def local_store(self):
+            self.local_storage = [f.remote() for _ in range(10)]
+
+        def remote_store(self):
+            self.remote_storage = ray.put("test")
+
+    c = ActorC.remote()
+    c.local_store.remote()
+    c.remote_store.remote()
 
     start_time = time.time()
     while True:
@@ -148,13 +157,15 @@ def test_raylet_info_endpoint(shutdown_only):
             try:
                 assert len(actor_info) == 1
                 _, parent_actor_info = actor_info.popitem()
+                assert parent_actor_info["numObjectIdsInScope"] == 11
+                assert parent_actor_info["numLocalObjects"] == 10
                 children = parent_actor_info["children"]
                 assert len(children) == 2
                 break
             except AssertionError:
                 if time.time() > start_time + 30:
-                    raise Exception(
-                        "Timed out while waiting for actorInfo to show up.")
+                    raise Exception("Timed out while waiting for actor info \
+                        or object store info update.")
         except requests.exceptions.ConnectionError:
             if time.time() > start_time + 30:
                 raise Exception(

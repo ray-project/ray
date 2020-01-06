@@ -33,10 +33,10 @@ class NodeManagerClient {
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ForwardTask, grpc_client_, )
 
   /// Get current node stats.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_)
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_, )
 
   void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
     GetNodeStatsRequest request;
@@ -68,10 +68,18 @@ class NodeManagerWorkerClient
   }
 
   /// Request a worker lease.
+<<<<<<< HEAD
   RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_)
 
   /// Return a worker lease.
   RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_)
+=======
+  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, request, callback,
+                    grpc_client_, )
+
+  /// Return a worker lease.
+  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, request, callback, grpc_client_, )
+>>>>>>> 1000e3322db3dbeffa4c10572950ff390c7a2574
 
  private:
   /// Constructor.

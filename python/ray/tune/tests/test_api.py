@@ -2,16 +2,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import shutil
+
 import copy
 import os
 import time
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import Trainable, TuneError
+from ray.tune import DurableTrainable, Trainable, TuneError
 from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.trial import Trial
@@ -25,6 +28,7 @@ from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
 from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
+from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
 
 
 class TrainableFunctionApiTest(unittest.TestCase):
@@ -702,6 +706,34 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for log, result in zip(logs1, results1)
         ]
         self.assertTrue(all(complete_results1))
+
+    def testDurableTrainable(self):
+        class TestTrain(DurableTrainable):
+            def _setup(self, config):
+                self.state = {"hi": 1, "iter": 0}
+
+            def _train(self):
+                self.state["iter"] += 1
+                return {"timesteps_this_iter": 1, "done": True}
+
+            def _save(self, path):
+                return self.state
+
+            def _restore(self, state):
+                self.state = state
+
+        sync_client = mock_storage_client()
+        mock_get_client = "ray.tune.durable_trainable.get_cloud_sync_client"
+        with patch(mock_get_client) as mock_get_cloud_sync_client:
+            mock_get_cloud_sync_client.return_value = sync_client
+            test_trainable = TestTrain(remote_checkpoint_dir=MOCK_REMOTE_DIR)
+            checkpoint_path = test_trainable.save()
+            test_trainable.train()
+            test_trainable.state["hi"] = 2
+            test_trainable.restore(checkpoint_path)
+            self.assertEqual(test_trainable.state["hi"], 1)
+
+        self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
 
     def testCheckpointDict(self):
         class TestTrain(Trainable):

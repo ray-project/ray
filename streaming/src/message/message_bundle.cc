@@ -16,9 +16,14 @@ StreamingMessageBundle::StreamingMessageBundle(uint64_t last_offset_seq_id,
   this->raw_bundle_size_ = 0;
 }
 
+StreamingMessageBundleMeta::StreamingMessageBundleMeta(const uint8_t *bytes) {
+  std::memcpy(GetFirstMemberAddress(), bytes,
+              kMessageBundleMetaHeaderSize - sizeof(uint32_t));
+}
+
 StreamingMessageBundleMeta::StreamingMessageBundleMeta(
-    uint64_t message_bundle_ts, uint64_t last_offset_seq_id, uint32_t message_list_size,
-    StreamingMessageBundleType bundle_type)
+    const uint64_t message_bundle_ts, const uint64_t last_offset_seq_id,
+    const uint32_t message_list_size, const StreamingMessageBundleType bundle_type)
     : message_bundle_ts_(message_bundle_ts),
       last_message_id_(last_offset_seq_id),
       message_list_size_(message_list_size),
@@ -27,28 +32,10 @@ StreamingMessageBundleMeta::StreamingMessageBundleMeta(
 }
 
 void StreamingMessageBundleMeta::ToBytes(uint8_t *bytes) {
-  uint32_t byte_offset = 0;
-
   uint32_t magicNum = StreamingMessageBundleMeta::StreamingMessageBundleMagicNum;
-  std::memcpy(bytes + byte_offset, reinterpret_cast<const uint8_t *>(&magicNum),
-              sizeof(uint32_t));
-  byte_offset += sizeof(uint32_t);
-
-  std::memcpy(bytes + byte_offset, reinterpret_cast<const uint8_t *>(&message_bundle_ts_),
-              sizeof(uint64_t));
-  byte_offset += sizeof(uint64_t);
-
-  std::memcpy(bytes + byte_offset, reinterpret_cast<const uint8_t *>(&last_message_id_),
-              sizeof(uint64_t));
-  byte_offset += sizeof(uint64_t);
-
-  std::memcpy(bytes + byte_offset, reinterpret_cast<const uint8_t *>(&message_list_size_),
-              sizeof(uint32_t));
-  byte_offset += sizeof(uint32_t);
-
-  std::memcpy(bytes + byte_offset, reinterpret_cast<const uint8_t *>(&bundle_type_),
-              sizeof(StreamingMessageBundleType));
-  byte_offset += sizeof(StreamingMessageBundleType);
+  std::memcpy(bytes, reinterpret_cast<const uint8_t *>(&magicNum), sizeof(uint32_t));
+  std::memcpy(bytes + sizeof(uint32_t), GetFirstMemberAddress(),
+              kMessageBundleMetaHeaderSize - sizeof(uint32_t));
 }
 
 StreamingMessageBundleMetaPtr StreamingMessageBundleMeta::FromBytes(const uint8_t *bytes,
@@ -56,35 +43,12 @@ StreamingMessageBundleMetaPtr StreamingMessageBundleMeta::FromBytes(const uint8_
   STREAMING_CHECK(bytes);
 
   uint32_t byte_offset = 0;
-  const uint32_t magic_num = *reinterpret_cast<const uint32_t *>(bytes + byte_offset);
-
-  if (magic_num != StreamingMessageBundleMagicNum) {
-    STREAMING_LOG(INFO) << "Magic Number => " << magic_num;
-  }
-
-  STREAMING_CHECK(magic_num == StreamingMessageBundleMagicNum);
+  STREAMING_CHECK(CheckBundleMagicNum(bytes));
   byte_offset += sizeof(uint32_t);
 
-  uint64_t message_bundle_ts = *reinterpret_cast<const uint64_t *>(bytes + byte_offset);
-  byte_offset += sizeof(uint64_t);
-
-  uint64_t last_message_id = *reinterpret_cast<const uint64_t *>(bytes + byte_offset);
-  byte_offset += sizeof(uint64_t);
-
-  uint32_t messageListSize = *reinterpret_cast<const uint32_t *>(bytes + byte_offset);
-  byte_offset += sizeof(uint32_t);
-  STREAMING_LOG(DEBUG) << "ts => " << message_bundle_ts << " last message id => "
-                       << last_message_id << " message size => " << messageListSize;
-
-  STREAMING_CHECK(messageListSize <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
-
-  StreamingMessageBundleType messageBundleType =
-      *reinterpret_cast<const StreamingMessageBundleType *>(bytes + byte_offset);
-  byte_offset += sizeof(StreamingMessageBundleType);
-
-  auto result = std::make_shared<StreamingMessageBundleMeta>(
-      message_bundle_ts, last_message_id, messageListSize, messageBundleType);
-  STREAMING_CHECK(byte_offset == result->ClassBytesSize());
+  auto result = std::make_shared<StreamingMessageBundleMeta>(bytes + byte_offset);
+  STREAMING_CHECK(result->GetMessageListSize() <=
+                  StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
   return result;
 }
 
@@ -97,14 +61,6 @@ bool StreamingMessageBundleMeta::operator==(StreamingMessageBundleMeta &meta) co
 
 bool StreamingMessageBundleMeta::operator==(StreamingMessageBundleMeta *meta) const {
   return operator==(*meta);
-}
-
-StreamingMessageBundleMeta::StreamingMessageBundleMeta(
-    StreamingMessageBundleMeta *meta_ptr) {
-  bundle_type_ = meta_ptr->bundle_type_;
-  last_message_id_ = meta_ptr->last_message_id_;
-  message_bundle_ts_ = meta_ptr->message_bundle_ts_;
-  message_list_size_ = meta_ptr->message_list_size_;
 }
 
 StreamingMessageBundleMeta::StreamingMessageBundleMeta()

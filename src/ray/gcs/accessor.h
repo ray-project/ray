@@ -197,12 +197,40 @@ class TaskInfoAccessor {
       const StatusCallback &done) = 0;
 
   /// Cancel subscription to a task asynchronously.
-  /// This method is for node only (core worker shouldn't use this method).
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
   /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
   virtual Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) = 0;
+
+  /// Add a task lease to GCS asynchronously.
+  ///
+  /// \param data_ptr The task lease that will be added to GCS.
+  /// \param callback Callback that will be called after task lease has been added
+  /// to GCS.
+  /// \return Status
+  virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
+                                   const StatusCallback &callback) = 0;
+
+  /// Subscribe asynchronously to the event that the given task lease is added in GCS.
+  ///
+  /// \param task_id The ID of the task to be subscribed to.
+  /// \param subscribe Callback that will be called each time when the task lease is
+  /// updated or the task lease is empty currently.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
+      const StatusCallback &done) = 0;
+
+  /// Cancel subscription to a task lease asynchronously.
+  ///
+  /// \param task_id The ID of the task to be unsubscribed to.
+  /// \param done Callback that will be called when unsubscribe is complete.
+  /// \return Status
+  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                           const StatusCallback &done) = 0;
 
  protected:
   TaskInfoAccessor() = default;
@@ -351,6 +379,45 @@ class NodeInfoAccessor {
   /// \param node_id The id of the node to check.
   /// \return Whether the node is removed.
   virtual bool IsRemoved(const ClientID &node_id) const = 0;
+
+  // TODO(micafan) Define ResourceMap in GCS proto.
+  typedef std::unordered_map<std::string, std::shared_ptr<rpc::ResourceTableData>>
+      ResourceMap;
+
+  /// Get node's resources from GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to lookup dynamic resources.
+  /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
+  virtual Status AsyncGetResources(const ClientID &node_id,
+                                   const OptionalItemCallback<ResourceMap> &callback) = 0;
+
+  /// Update resources of node in GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to update dynamic resources.
+  /// \param resources The dynamic resources of node to be updated.
+  /// \param callback Callback that will be called after update finishes.
+  virtual Status AsyncUpdateResources(const ClientID &node_id,
+                                      const ResourceMap &resources,
+                                      const StatusCallback &callback) = 0;
+
+  /// Delete resources of a node from GCS asynchronously.
+  ///
+  /// \param node_id The ID of node to delete resources from GCS.
+  /// \param resource_names The names of resource to be deleted.
+  /// \param callback Callback that will be called after delete finishes.
+  virtual Status AsyncDeleteResources(const ClientID &node_id,
+                                      const std::vector<std::string> &resource_names,
+                                      const StatusCallback &callback) = 0;
+
+  /// Subscribe to node resource changes.
+  ///
+  /// \param subscribe Callback that will be called when any resource is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeToResources(
+      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+      const StatusCallback &done) = 0;
 
   /// Report heartbeat of a node to GCS asynchronously.
   ///
