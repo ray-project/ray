@@ -78,9 +78,9 @@ class CheckpointManager:
     def on_checkpoint(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
-        Sets the newest checkpoint. For PERSISTENT checkpoints, deletes
-        previous checkpoint if it isn't one of the best ones and the worst
-        checkpoint if at capacity.
+        Sets the newest checkpoint. For PERSISTENT checkpoints: Deletes
+        previous checkpoint as long as it isn't one of the best ones. Also
+        deletes the worst checkpoint if at capacity.
 
         Args:
             checkpoint (Checkpoint): Trial state checkpoint.
