@@ -64,6 +64,16 @@ message GetNodeStatsReply {
   repeated TaskSpec infeasible_tasks = 4;
 }
 
+message GetProfilingStatsRequest {
+  // PID of the worker process.
+  uint32 pid = 1;
+}
+
+message GetProfilingStatsReply {
+  // Profiling stats.
+  bytes profiling_stats = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.
@@ -74,4 +84,6 @@ service NodeManagerService {
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Get the current node stats.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
+  // Get the profiling stats.
+  rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
 }

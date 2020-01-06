@@ -3051,6 +3051,12 @@ void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request
   }
 }
 
+void NodeManager::HandleProfilingStatsRequest(const rpc::GetProfilingStatsRequest &request,
+                                              rpc::GetProfilingStatsReply *reply,
+                                              rpc::SendReplyCallback send_reply_callback) {
+  ;
+}
+
 void NodeManager::RecordMetrics() {
   recorded_metrics_ = true;
   if (stats::StatsConfig::instance().IsStatsDisabled()) {
