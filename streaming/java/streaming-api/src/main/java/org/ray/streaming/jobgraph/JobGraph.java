@@ -3,6 +3,7 @@ package org.ray.streaming.jobgraph;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,10 +14,14 @@ public class JobGraph implements Serializable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JobGraph.class);
 
+  private final String jobName;
+  private final Map<String, String> jobConfig;
   private List<JobVertex> jobVertexList;
   private List<JobEdge> jobEdgeList;
 
-  public JobGraph() {
+  public JobGraph(String jobName, Map<String, String> jobConfig) {
+    this.jobName = jobName;
+    this.jobConfig = jobConfig;
     this.jobVertexList = new ArrayList<>();
     this.jobEdgeList = new ArrayList<>();
   }
@@ -39,6 +44,14 @@ public class JobGraph implements Serializable {
 
   public String getGraphViz() {
     return "";
+  }
+
+  public String getJobName() {
+    return jobName;
+  }
+
+  public Map<String, String> getJobConfig() {
+    return jobConfig;
   }
 
   public void printJobGraph() {

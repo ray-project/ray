@@ -15,5 +15,5 @@ public interface JobScheduler {
    *
    * @param jobGraph The logical plan.
    */
-  void schedule(JobGraph jobGraph, Map<String, Object> conf);
+  void schedule(JobGraph jobGraph, Map<String, String> conf);
 }
