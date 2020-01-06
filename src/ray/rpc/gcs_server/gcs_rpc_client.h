@@ -106,15 +106,15 @@ class GcsRpcClient {
 
   /// Add a task to GCS Service.
   VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTask, request, callback,
-                         task_info_grpc_client_)
+                         task_info_grpc_client_, )
 
   /// Get task information from GCS Service.
   VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTask, request, callback,
-                         task_info_grpc_client_)
+                         task_info_grpc_client_, )
 
   /// Delete tasks from GCS Service.
   VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, DeleteTasks, request, callback,
-                         task_info_grpc_client_)
+                         task_info_grpc_client_, )
 
  private:
   /// The gRPC-generated stub.
