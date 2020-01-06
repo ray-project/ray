@@ -388,14 +388,17 @@ class NodeStats(threading.Thread):
                     addr = (core_worker_stats["ipAddress"],
                             str(core_worker_stats["port"]))
                     if addr in self._addr_to_actor_id:
-                        actor_info = flattened_tree[self._addr_to_actor_id[addr]]
+                        actor_info = flattened_tree[self._addr_to_actor_id[
+                            addr]]
                         if "currentTaskDesc" in core_worker_stats:
                             core_worker_stats.pop("currentTaskDesc")
                         if "numPendingTasks" in core_worker_stats:
                             core_worker_stats.pop("numPendingTasks")
                         format_reply(core_worker_stats)
                         actor_info.update(core_worker_stats)
-                        actor_info["averageTaskExecutionSpeed"] = actor_info["numExecutedTasks"] / (now - actor_info["timestamp"] / 1000)
+                        actor_info[
+                            "averageTaskExecutionSpeed"] = actor_info["numExecutedTasks"] / (
+                                now - actor_info["timestamp"] / 1000)
 
             for infeasible_task in infeasible_tasks:
                 actor_id = ray.utils.binary_to_hex(
