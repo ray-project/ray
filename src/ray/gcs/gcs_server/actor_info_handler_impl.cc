@@ -1,5 +1,4 @@
 #include "actor_info_handler_impl.h"
-#include <assert.h>
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -14,7 +13,7 @@ void DefaultActorInfoHandler::HandleGetActorInfo(
   auto on_done = [actor_id, reply, send_reply_callback](
                      Status status, const boost::optional<ActorTableData> &result) {
     if (status.ok()) {
-      assert(result);
+      RAY_DCHECK(result);
       reply->mutable_actor_table_data()->CopyFrom(*result);
     } else {
       RAY_LOG(ERROR) << "Failed to get actor info: " << status.ToString()
@@ -72,6 +71,84 @@ void DefaultActorInfoHandler::HandleUpdateActorInfo(
     on_done(status);
   }
   RAY_LOG(DEBUG) << "Finished updating actor info, actor id = " << actor_id;
+}
+
+void DefaultActorInfoHandler::HandleAddActorCheckpoint(
+    const AddActorCheckpointRequest &request, AddActorCheckpointReply *reply,
+    SendReplyCallback send_reply_callback) {
+  ActorID actor_id = ActorID::FromBinary(request.checkpoint_data().actor_id());
+  ActorCheckpointID checkpoint_id =
+      ActorCheckpointID::FromBinary(request.checkpoint_data().checkpoint_id());
+  RAY_LOG(DEBUG) << "Adding actor checkpoint, actor id = " << actor_id
+                 << ", checkpoint id = " << checkpoint_id;
+  auto actor_checkpoint_data = std::make_shared<ActorCheckpointData>();
+  actor_checkpoint_data->CopyFrom(request.checkpoint_data());
+  auto on_done = [actor_id, checkpoint_id, send_reply_callback](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to add actor checkpoint: " << status.ToString()
+                     << ", actor id = " << actor_id
+                     << ", checkpoint id = " << checkpoint_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status = gcs_client_.Actors().AsyncAddCheckpoint(actor_checkpoint_data, on_done);
+  if (!status.ok()) {
+    on_done(status);
+  }
+  RAY_LOG(DEBUG) << "Finished adding actor checkpoint, actor id = " << actor_id
+                 << ", checkpoint id = " << checkpoint_id;
+}
+
+void DefaultActorInfoHandler::HandleGetActorCheckpoint(
+    const GetActorCheckpointRequest &request, GetActorCheckpointReply *reply,
+    SendReplyCallback send_reply_callback) {
+  ActorCheckpointID checkpoint_id =
+      ActorCheckpointID::FromBinary(request.checkpoint_id());
+  RAY_LOG(DEBUG) << "Getting actor checkpoint, checkpoint id = " << checkpoint_id;
+  auto on_done = [checkpoint_id, reply, send_reply_callback](
+                     Status status, const boost::optional<ActorCheckpointData> &result) {
+    if (status.ok()) {
+      RAY_DCHECK(result);
+      reply->mutable_checkpoint_data()->CopyFrom(*result);
+    } else {
+      RAY_LOG(ERROR) << "Failed to get actor checkpoint: " << status.ToString()
+                     << ", checkpoint id = " << checkpoint_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status = gcs_client_.Actors().AsyncGetCheckpoint(checkpoint_id, on_done);
+  if (!status.ok()) {
+    on_done(status, boost::none);
+  }
+  RAY_LOG(DEBUG) << "Finished getting actor checkpoint, checkpoint id = "
+                 << checkpoint_id;
+}
+
+void DefaultActorInfoHandler::HandleGetActorCheckpointID(
+    const GetActorCheckpointIDRequest &request, GetActorCheckpointIDReply *reply,
+    SendReplyCallback send_reply_callback) {
+  ActorID actor_id = ActorID::FromBinary(request.actor_id());
+  RAY_LOG(DEBUG) << "Getting actor checkpoint id, actor id = " << actor_id;
+  auto on_done = [actor_id, reply, send_reply_callback](
+                     Status status,
+                     const boost::optional<ActorCheckpointIdData> &result) {
+    if (status.ok()) {
+      RAY_DCHECK(result);
+      reply->mutable_checkpoint_id_data()->CopyFrom(*result);
+    } else {
+      RAY_LOG(ERROR) << "Failed to get actor checkpoint id: " << status.ToString()
+                     << ", actor id = " << actor_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status = gcs_client_.Actors().AsyncGetCheckpointID(actor_id, on_done);
+  if (!status.ok()) {
+    on_done(status, boost::none);
+  }
+  RAY_LOG(DEBUG) << "Finished getting actor checkpoint id, actor id = " << actor_id;
 }
 
 }  // namespace rpc

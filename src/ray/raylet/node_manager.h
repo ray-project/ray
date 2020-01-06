@@ -4,7 +4,7 @@
 #include <boost/asio/steady_timer.hpp>
 
 // clang-format off
-#include "ray/rpc/client_call.h"
+#include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/task/task.h"
@@ -534,8 +534,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                         bool success);
 
   /// Handle a `WorkerLease` request.
-  void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
-                                rpc::WorkerLeaseReply *reply,
+  void HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest &request,
+                                rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ReturnWorker` request.
@@ -554,8 +554,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                  rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
-  void HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
-                              rpc::NodeStatsReply *reply,
+  void HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request,
+                              rpc::GetNodeStatsReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Push an error to the driver if this node is full of actors and so we are
@@ -655,8 +655,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   /// Map of leased workers to their current resource usage.
-  std::unordered_map<WorkerID, std::unordered_map<std::string, double>>
-      leased_worker_resources_;
+  /// TODO(ion): Check whether we can track these resources in the worker.
+  std::unordered_map<WorkerID, ResourceSet> leased_worker_resources_;
 
   typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
                              std::string address, int port)>
@@ -676,6 +676,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       worker_rpc_clients_;
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
+
+  /// XXX
+  void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 };
 
 }  // namespace raylet

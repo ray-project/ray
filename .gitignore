@@ -56,6 +56,7 @@ python/.eggs
 
 # Fortran module files
 *.mod
+!deploy/ray-operator/go.mod
 
 # Compiled Static libraries
 *.lai

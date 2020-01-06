@@ -8,9 +8,6 @@ from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils import try_import_tf
-
-tf = try_import_tf()
 
 
 @DeveloperAPI
@@ -161,7 +158,6 @@ def build_trainer(name,
             Trainer.__setstate__(self, state)
             self.state = state["trainer_state"].copy()
 
-    @staticmethod
     def with_updates(**overrides):
         """Build a copy of this trainer with the specified overrides.
 
@@ -171,7 +167,7 @@ def build_trainer(name,
         """
         return build_trainer(**dict(original_kwargs, **overrides))
 
-    trainer_cls.with_updates = with_updates
+    trainer_cls.with_updates = staticmethod(with_updates)
     trainer_cls.__name__ = name
     trainer_cls.__qualname__ = name
     return trainer_cls

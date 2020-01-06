@@ -6,7 +6,7 @@ from ray.rllib.utils.annotations import PublicAPI
 
 
 @PublicAPI
-class MultiAgentEnv(object):
+class MultiAgentEnv:
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here

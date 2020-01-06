@@ -592,6 +592,10 @@ cdef execute_task(
                             c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
+            # function_executor is a generator to make sure python decrement
+            # stack counter on context switch for async mode. If it is not
+            # a generator, python will count the stacks of executor as part
+            # of the recursion limit, resulting in much lower concurrency.
             function = execution_info.function
 
             if PY3 and core_worker.current_actor_is_asyncio():
@@ -614,9 +618,9 @@ cdef execute_task(
                     (core_worker.core_worker.get()
                         .YieldCurrentFiber(fiber_event))
 
-                return future.result()
+                yield future.result()
 
-            return function(actor, *arguments, **kwarguments)
+            yield function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -634,6 +638,9 @@ cdef execute_task(
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
                     outputs = function_executor(*args, **kwargs)
+                    # The function_executor is a generator in actor mode.
+                    if inspect.isgenerator(outputs):
+                        outputs = next(outputs)
                     task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)

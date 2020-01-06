@@ -12,7 +12,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class MultiAgentEpisode(object):
+class MultiAgentEpisode:
     """Tracks the current state of a (possibly multi-agent) episode.
 
     Attributes:

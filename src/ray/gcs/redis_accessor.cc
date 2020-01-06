@@ -134,6 +134,79 @@ Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
   return actor_sub_executor_.AsyncUnsubscribe(subscribe_id_, actor_id, done);
 }
 
+Status RedisActorInfoAccessor::AsyncAddCheckpoint(
+    const std::shared_ptr<ActorCheckpointData> &data_ptr,
+    const StatusCallback &callback) {
+  auto on_add_data_done = [callback, data_ptr, this](
+                              RedisGcsClient *client,
+                              const ActorCheckpointID &checkpoint_id,
+                              const ActorCheckpointData &data) {
+    ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
+    Status status = AsyncAddCheckpointID(actor_id, checkpoint_id, callback);
+    if (!status.ok()) {
+      callback(status);
+    }
+  };
+
+  ActorCheckpointID checkpoint_id =
+      ActorCheckpointID::FromBinary(data_ptr->checkpoint_id());
+  ActorCheckpointTable &actor_cp_table = client_impl_->actor_checkpoint_table();
+  return actor_cp_table.Add(JobID::Nil(), checkpoint_id, data_ptr, on_add_data_done);
+}
+
+Status RedisActorInfoAccessor::AsyncGetCheckpoint(
+    const ActorCheckpointID &checkpoint_id,
+    const OptionalItemCallback<ActorCheckpointData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_success = [callback](RedisGcsClient *client,
+                               const ActorCheckpointID &checkpoint_id,
+                               const ActorCheckpointData &checkpoint_data) {
+    boost::optional<ActorCheckpointData> optional(checkpoint_data);
+    callback(Status::OK(), std::move(optional));
+  };
+
+  auto on_failure = [callback](RedisGcsClient *client,
+                               const ActorCheckpointID &checkpoint_id) {
+    boost::optional<ActorCheckpointData> optional;
+    callback(Status::Invalid("Invalid checkpoint id."), std::move(optional));
+  };
+
+  ActorCheckpointTable &actor_cp_table = client_impl_->actor_checkpoint_table();
+  return actor_cp_table.Lookup(JobID::Nil(), checkpoint_id, on_success, on_failure);
+}
+
+Status RedisActorInfoAccessor::AsyncGetCheckpointID(
+    const ActorID &actor_id,
+    const OptionalItemCallback<ActorCheckpointIdData> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                               const ActorCheckpointIdData &data) {
+    boost::optional<ActorCheckpointIdData> optional(data);
+    callback(Status::OK(), std::move(optional));
+  };
+
+  auto on_failure = [callback](RedisGcsClient *client, const ActorID &actor_id) {
+    boost::optional<ActorCheckpointIdData> optional;
+    callback(Status::Invalid("Checkpoint not found."), std::move(optional));
+  };
+
+  ActorCheckpointIdTable &cp_id_table = client_impl_->actor_checkpoint_id_table();
+  return cp_id_table.Lookup(JobID::Nil(), actor_id, on_success, on_failure);
+}
+
+Status RedisActorInfoAccessor::AsyncAddCheckpointID(
+    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id,
+    const StatusCallback &callback) {
+  ActorCheckpointIdTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
+                         const ActorCheckpointIdData &data) { callback(Status::OK()); };
+  }
+
+  ActorCheckpointIdTable &cp_id_table = client_impl_->actor_checkpoint_id_table();
+  return cp_id_table.AddCheckpointId(JobID::Nil(), actor_id, checkpoint_id, on_done);
+}
+
 RedisJobInfoAccessor::RedisJobInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), job_sub_executor_(client_impl->job_table()) {}
 
@@ -174,7 +247,9 @@ Status RedisJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 }
 
 RedisTaskInfoAccessor::RedisTaskInfoAccessor(RedisGcsClient *client_impl)
-    : client_impl_(client_impl), task_sub_executor_(client_impl->raylet_task_table()) {}
+    : client_impl_(client_impl),
+      task_sub_executor_(client_impl->raylet_task_table()),
+      task_lease_sub_executor_(client_impl->task_lease_table()) {}
 
 Status RedisTaskInfoAccessor::AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
                                        const StatusCallback &callback) {
@@ -211,6 +286,9 @@ Status RedisTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
                                           const StatusCallback &callback) {
   raylet::TaskTable &task_table = client_impl_->raylet_task_table();
   task_table.Delete(JobID::Nil(), task_ids);
+  if (callback) {
+    callback(Status::OK());
+  }
   // TODO(micafan) Always return OK here.
   // Confirm if we need to handle the deletion failure and how to handle it.
   return Status::OK();
@@ -226,6 +304,31 @@ Status RedisTaskInfoAccessor::AsyncSubscribe(
 Status RedisTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
                                                const StatusCallback &done) {
   return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+}
+
+Status RedisTaskInfoAccessor::AsyncAddTaskLease(
+    const std::shared_ptr<TaskLeaseData> &data_ptr, const StatusCallback &callback) {
+  TaskLeaseTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const TaskID &id,
+                         const TaskLeaseData &data) { callback(Status::OK()); };
+  }
+  TaskID task_id = TaskID::FromBinary(data_ptr->task_id());
+  TaskLeaseTable &task_lease_table = client_impl_->task_lease_table();
+  return task_lease_table.Add(JobID::Nil(), task_id, data_ptr, on_done);
+}
+
+Status RedisTaskInfoAccessor::AsyncSubscribeTaskLease(
+    const TaskID &task_id,
+    const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+}
+
+Status RedisTaskInfoAccessor::AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                                        const StatusCallback &done) {
+  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
 }
 
 RedisObjectInfoAccessor::RedisObjectInfoAccessor(RedisGcsClient *client_impl)
@@ -293,7 +396,10 @@ Status RedisObjectInfoAccessor::AsyncUnsubscribeToLocations(const ObjectID &obje
 }
 
 RedisNodeInfoAccessor::RedisNodeInfoAccessor(RedisGcsClient *client_impl)
-    : client_impl_(client_impl) {}
+    : client_impl_(client_impl),
+      resource_sub_executor_(client_impl_->resource_table()),
+      heartbeat_sub_executor_(client_impl->heartbeat_table()),
+      heartbeat_batch_sub_executor_(client_impl->heartbeat_batch_table()) {}
 
 Status RedisNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   ClientTable &client_table = client_impl_->client_table();
@@ -376,6 +482,106 @@ const std::unordered_map<ClientID, GcsNodeInfo> &RedisNodeInfoAccessor::GetAll()
 bool RedisNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {
   ClientTable &client_table = client_impl_->client_table();
   return client_table.IsRemoved(node_id);
+}
+Status RedisNodeInfoAccessor::AsyncReportHeartbeat(
+    const std::shared_ptr<HeartbeatTableData> &data_ptr, const StatusCallback &callback) {
+  HeartbeatTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
+                         const HeartbeatTableData &data) { callback(Status::OK()); };
+  }
+
+  ClientID node_id = ClientID::FromBinary(data_ptr->client_id());
+  HeartbeatTable &heartbeat_table = client_impl_->heartbeat_table();
+  return heartbeat_table.Add(JobID::Nil(), node_id, data_ptr, on_done);
+}
+
+Status RedisNodeInfoAccessor::AsyncSubscribeHeartbeat(
+    const SubscribeCallback<ClientID, HeartbeatTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  auto on_subscribe = [subscribe](const ClientID &node_id,
+                                  const HeartbeatTableData &data) {
+    subscribe(node_id, data);
+  };
+
+  return heartbeat_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe, done);
+}
+
+Status RedisNodeInfoAccessor::AsyncReportBatchHeartbeat(
+    const std::shared_ptr<HeartbeatBatchTableData> &data_ptr,
+    const StatusCallback &callback) {
+  HeartbeatBatchTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
+                         const HeartbeatBatchTableData &data) { callback(Status::OK()); };
+  }
+
+  HeartbeatBatchTable &hb_batch_table = client_impl_->heartbeat_batch_table();
+  return hb_batch_table.Add(JobID::Nil(), ClientID::Nil(), data_ptr, on_done);
+}
+
+Status RedisNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
+    const ItemCallback<HeartbeatBatchTableData> &subscribe, const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  auto on_subscribe = [subscribe](const ClientID &node_id,
+                                  const HeartbeatBatchTableData &data) {
+    subscribe(data);
+  };
+
+  return heartbeat_batch_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe,
+                                                         done);
+}
+
+Status RedisNodeInfoAccessor::AsyncGetResources(
+    const ClientID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
+  RAY_CHECK(callback != nullptr);
+  auto on_done = [callback](RedisGcsClient *client, const ClientID &id,
+                            const ResourceMap &data) {
+    boost::optional<ResourceMap> result;
+    if (!data.empty()) {
+      result = data;
+    }
+    callback(Status::OK(), result);
+  };
+
+  DynamicResourceTable &resource_table = client_impl_->resource_table();
+  return resource_table.Lookup(JobID::Nil(), node_id, on_done);
+}
+
+Status RedisNodeInfoAccessor::AsyncUpdateResources(const ClientID &node_id,
+                                                   const ResourceMap &resources,
+                                                   const StatusCallback &callback) {
+  Hash<ClientID, ResourceTableData>::HashCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
+                         const ResourceMap &resources) { callback(Status::OK()); };
+  }
+
+  DynamicResourceTable &resource_table = client_impl_->resource_table();
+  return resource_table.Update(JobID::Nil(), node_id, resources, on_done);
+}
+
+Status RedisNodeInfoAccessor::AsyncDeleteResources(
+    const ClientID &node_id, const std::vector<std::string> &resource_names,
+    const StatusCallback &callback) {
+  Hash<ClientID, ResourceTableData>::HashRemoveCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
+                         const std::vector<std::string> &resource_names) {
+      callback(Status::OK());
+    };
+  }
+
+  DynamicResourceTable &resource_table = client_impl_->resource_table();
+  return resource_table.RemoveEntries(JobID::Nil(), node_id, resource_names, on_done);
+}
+
+Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
+    const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 }  // namespace gcs

@@ -409,7 +409,7 @@ def build_eager_tf_policy(name,
 
             if gradients_fn:
 
-                class OptimizerWrapper(object):
+                class OptimizerWrapper:
                     def __init__(self, tape):
                         self.tape = tape
 

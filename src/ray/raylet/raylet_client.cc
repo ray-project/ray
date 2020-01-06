@@ -408,8 +408,8 @@ Status raylet::RayletClient::ReportActiveObjectIDs(
 
 Status raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
-    const rpc::ClientCallback<rpc::WorkerLeaseReply> &callback) {
-  rpc::WorkerLeaseRequest request;
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
+  rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
   return grpc_client_->RequestWorkerLease(request, callback);
 }

@@ -21,7 +21,7 @@ from ray.tune.trial import Trial, Checkpoint
 logger = logging.getLogger(__name__)
 
 
-class PBTTrialState(object):
+class PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
     def __init__(self, trial):

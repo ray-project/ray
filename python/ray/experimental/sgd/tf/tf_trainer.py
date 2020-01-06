@@ -16,7 +16,7 @@ from ray.experimental.sgd.tf.tf_runner import TFRunner
 logger = logging.getLogger(__name__)
 
 
-class TFTrainer(object):
+class TFTrainer:
     def __init__(self,
                  model_creator,
                  data_creator,
