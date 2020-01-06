@@ -1,18 +1,9 @@
-/**
- * Alipay.com Inc. Copyright (c) 2004-2019 All Rights Reserved.
- */
 package org.ray.deploy.rps.k8s.model;
 
 import io.fabric8.kubernetes.client.CustomResource;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * BaseCustomResource
- *
- * @author qstar
- * @version : BaseCustomResource.java, v 0.1 2019年05月17日 10:53 qstar Exp $
- */
 public class BaseCustomResource extends CustomResource {
     public static final String LABEL_POOL = "mandatory.k8s.alipay.com/app-logic-pool";
     public static final String LABEL_USER = "ray_cluster_user";
