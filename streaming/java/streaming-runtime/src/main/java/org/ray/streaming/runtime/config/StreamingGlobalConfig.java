@@ -57,7 +57,6 @@ public class StreamingGlobalConfig implements Serializable {
         break;
       }
     }
-    assert configInterface != null;
     Preconditions.checkArgument(configInterface != null,
         "Can not get config interface.");
     Method[] methods = configInterface.getMethods();
