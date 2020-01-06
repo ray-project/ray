@@ -49,6 +49,9 @@ class CheckpointManager:
     def __init__(self, keep_checkpoints_num, checkpoint_score_attr, delete_fn):
         """Initializes a new CheckpointManager.
 
+        `newest_checkpoint` and `newest_memory_checkpoint` are initialized to
+        Checkpoint objects with values of None.
+
         Args:
             keep_checkpoints_num (int): Keep at least this many checkpoints.
             checkpoint_score_attr (str): Attribute to use to determine which
