@@ -4,6 +4,11 @@ ARG WHEEL_NAME
 
 RUN apt update
 RUN apt install -y curl tmux screen rsync
+RUN curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+RUN sudo touch /etc/apt/sources.list.d/kubernetes.list
+RUN echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+RUN apt update
+RUN apt install -y kubectl
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 RUN conda remove -y wrapt
