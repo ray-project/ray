@@ -89,8 +89,3 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     mv dist/*.whl ../.whl/
   popd
 done
-
-# Build ray-java wheel
-cd ../java/dist && python setup.py bdist_wheel
-mv dist/*.whl ../../.whl/
-cd -

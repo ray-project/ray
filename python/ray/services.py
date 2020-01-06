@@ -1253,38 +1253,15 @@ def start_raylet(redis_address,
     return process_info
 
 
-def __process_java_worker_classpath(java_options):
-    """Add ray jars path to java classpath
-
-    Args:
-        java_options: java options specified by `--java-worker-options`
-    Returns:
-        java options with ray jars appended to classpath.
-    """
-    try:
-        from ray_java import resource_util
-        ray_jars_dir = resource_util.get_ray_jars_dir()
-    except ModuleNotFoundError:
-        raise Exception("Please install `ray-java` package "
-                        "when `--include-java` is enabled.")
-    cp_sep = ":"
-    import platform
-    if platform.system() == "Windows":
-        cp_sep = ";"
-    if java_options is None:
-        java_options = ""
-    options = re.split("\\s+", java_options)
-    cp_index = -1
-    for i in range(len(options)):
-        option = options[i]
-        if option == "-cp" or option == "-classpath":
-            cp_index = i + 1
-            break
-    if cp_index != -1:
-        options[cp_index] = options[cp_index] + cp_sep + ray_jars_dir
-    else:
-        options = ["-cp", ray_jars_dir] + options
-    return " ".join(options)
+def get_ray_jars_dir():
+    """Return a directory where all ray-related jars and
+      their dependencies locate."""
+    current_dir = os.path.abspath(os.path.dirname(__file__))
+    jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
+    if not os.path.exists(jars_dir):
+        raise Exception("Ray jars is not packaged into ray. "
+                        "Please build ray with java enabled.")
+    return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
 def build_java_worker_command(
@@ -1332,12 +1309,7 @@ def build_java_worker_command(
                 "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
 
     # Add ray jars path to java classpath
-    try:
-        from ray_java import resource_util
-        ray_jars_dir = resource_util.get_ray_jars_dir()
-    except ModuleNotFoundError:
-        raise Exception("Please install `ray-java` package "
-                        "when `--include-java` is enabled.")
+    ray_jars_dir = get_ray_jars_dir()
     cp_sep = ":"
     import platform
     if platform.system() == "Windows":

@@ -73,8 +73,3 @@ done
 pushd .whl
   find *.whl -exec bash -c 'mv $1 ${1//linux/manylinux1}' bash {} \;
 popd
-
-# Build ray-java wheel
-cd ../java/dist && python setup.py bdist_wheel
-mv dist/*.whl ../../.whl/
-cd -

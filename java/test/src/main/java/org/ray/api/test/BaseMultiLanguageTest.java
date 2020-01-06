@@ -81,7 +81,7 @@ public abstract class BaseMultiLanguageTest {
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
-        "--include-java" // classpath will use jars in `ray-java` wheel
+        "--include-java" // classpath will use jars in the `ray` wheel
     );
     String numWorkersPerProcessJava = System
         .getProperty("ray.raylet.config.num_workers_per_process_java");

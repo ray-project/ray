@@ -3,6 +3,7 @@
 /python/ray/core
 /python/ray/pyarrow_files/
 /python/ray/pickle5_files/
+/python/ray/jars/
 /python/build
 /python/dist
 /python/python-driver-*
@@ -145,8 +146,6 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
-java/dist/dist
-java/dist/ray_java/jars
 
 # streaming/python
 streaming/python/generated/

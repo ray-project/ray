@@ -1,2 +1,0 @@
-global-exclude *.py[cod] __pycache__ .DS_Store
-graft ray_java/jars
