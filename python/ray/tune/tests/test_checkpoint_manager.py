@@ -37,8 +37,9 @@ class CheckpointManagerTest(unittest.TestCase):
                 checkpoint_manager.on_checkpoint(checkpoints[j])
                 expected_deletes = 0 if j != 2 else 1
                 self.assertEqual(delete_mock.call_count, expected_deletes, j)
-                self.assertEqual(checkpoint_manager.newest_checkpoint,
-                                 checkpoints[j])
+                self.assertEqual(
+                    checkpoint_manager.newest_persistent_checkpoint,
+                    checkpoints[j])
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
@@ -62,8 +63,9 @@ class CheckpointManagerTest(unittest.TestCase):
                 checkpoint_manager.on_checkpoint(checkpoints[j])
                 expected_deletes = 0 if j != 3 else 1
                 self.assertEqual(delete_mock.call_count, expected_deletes)
-                self.assertEqual(checkpoint_manager.newest_checkpoint,
-                                 checkpoints[j])
+                self.assertEqual(
+                    checkpoint_manager.newest_persistent_checkpoint,
+                    checkpoints[j])
 
         best_checkpoints = checkpoint_manager.best_checkpoints()
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
@@ -102,7 +104,8 @@ class CheckpointManagerTest(unittest.TestCase):
             checkpoint_manager.on_checkpoint(no_attr_checkpoint)
             log_error_mock.assert_called_once()
             # The newest checkpoint should still be set despite this error.
-            assert checkpoint_manager.newest_checkpoint == no_attr_checkpoint
+            self.assertEqual(checkpoint_manager.newest_persistent_checkpoint,
+                             no_attr_checkpoint)
 
     def testOnMemoryCheckpoint(self):
         checkpoints = [

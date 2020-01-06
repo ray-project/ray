@@ -49,8 +49,8 @@ class CheckpointManager:
     def __init__(self, keep_checkpoints_num, checkpoint_score_attr, delete_fn):
         """Initializes a new CheckpointManager.
 
-        `newest_checkpoint` and `newest_memory_checkpoint` are initialized to
-        Checkpoint objects with values of None.
+        `newest_persistent_checkpoint` and `newest_memory_checkpoint` are
+        initialized to Checkpoint objects with values of None.
 
         Args:
             keep_checkpoints_num (int): Keep at least this many checkpoints.
@@ -69,7 +69,8 @@ class CheckpointManager:
             self._checkpoint_score_attr = checkpoint_score_attr
 
         self.delete = delete_fn
-        self.newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, None)
+        self.newest_persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT,
+                                                       None)
         self.newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
@@ -88,8 +89,8 @@ class CheckpointManager:
             self.newest_memory_checkpoint = checkpoint
             return
 
-        old_checkpoint = self.newest_checkpoint
-        self.newest_checkpoint = checkpoint
+        old_checkpoint = self.newest_persistent_checkpoint
+        self.newest_persistent_checkpoint = checkpoint
 
         # Remove the old checkpoint if it isn't one of the best ones.
         if old_checkpoint.value and old_checkpoint not in self._membership:

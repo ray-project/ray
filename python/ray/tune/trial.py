@@ -198,11 +198,11 @@ class Trial:
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.sync_on_checkpoint = sync_on_checkpoint
-        newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
             checkpoint_deleter(str(self), self.runner))
-        self.checkpoint_manager.newest_checkpoint = newest_checkpoint
+        checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
+        self.checkpoint_manager.newest_persistent_checkpoint = checkpoint
 
         # Restoration fields
         self.restoring_from = None
@@ -241,7 +241,7 @@ class Trial:
             assert self.checkpoint_manager.newest_memory_checkpoint.value
             return self.checkpoint_manager.newest_memory_checkpoint
         else:
-            return self.checkpoint_manager.newest_checkpoint
+            return self.checkpoint_manager.newest_persistent_checkpoint
 
     @classmethod
     def generate_id(cls):
