@@ -29,8 +29,7 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
-    // TODO: Once ref counting is implemented, we should always know how the
-    // ObjectID was created, so there should always be an entry.
+    // NOTE: ownership info for these objects must be added later via AddBorrowedObject.
     it = object_id_refs_.emplace(object_id, Reference()).first;
   }
   it->second.local_ref_count++;
@@ -56,8 +55,8 @@ void ReferenceCounter::AddSubmittedTaskReferences(
   for (const ObjectID &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
     if (it == object_id_refs_.end()) {
-      // TODO: Once ref counting is implemented, we should always know how the
-      // ObjectID was created, so there should always be an entry.
+      // This happens if a large argument is transparently passed by reference
+      // because we don't hold a Python reference to its ObjectID.
       it = object_id_refs_.emplace(object_id, Reference()).first;
     }
     it->second.submitted_task_ref_count++;
