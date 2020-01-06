@@ -23,6 +23,7 @@ public class PythonDataStream extends Stream implements PythonStream {
   /**
    * Apply a map function to this stream.
    *
+   * @param func The python MapFunction.
    * @return A new PythonDataStream.
    */
   public PythonDataStream map(DescriptorFunction func) {
@@ -32,6 +33,7 @@ public class PythonDataStream extends Stream implements PythonStream {
   /**
    * Apply a flat-map function to this stream.
    *
+   * @param func The python FlapMapFunction.
    * @return A new PythonDataStream
    */
   public PythonDataStream flatMap(DescriptorFunction func) {
@@ -41,7 +43,7 @@ public class PythonDataStream extends Stream implements PythonStream {
   /**
    * Apply a sink function and get a StreamSink.
    *
-   * @param func The sink function.
+   * @param func The python SinkFunction.
    * @return A new StreamSink.
    */
   public PythonStreamSink sink(DescriptorFunction func) {
@@ -51,7 +53,7 @@ public class PythonDataStream extends Stream implements PythonStream {
   /**
    * Apply a key-by function to this stream.
    *
-   * @param func the key function.
+   * @param func the  python keyFunction.
    * @return A new KeyDataStream.
    */
   public PythonKeyDataStream keyBy(DescriptorFunction func) {

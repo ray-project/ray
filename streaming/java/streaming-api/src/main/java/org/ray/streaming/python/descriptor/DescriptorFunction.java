@@ -3,7 +3,7 @@ package org.ray.streaming.python.descriptor;
 import org.ray.streaming.api.function.Function;
 
 /**
- * DescriptorFunction is used to describe a used defined python function.
+ * DescriptorFunction is used to describe a user defined python function.
  * <br>
  * When python data stream api call is from python, `serializedPyFunction` will be not null.
  * <br>
@@ -12,7 +12,7 @@ import org.ray.streaming.api.function.Function;
  */
 
 /**
- * A DescriptorFunction is used to describe a used defined python function.
+ * A DescriptorFunction is used to describe a user defined python function.
  * <p>
  * Python worker can create a function object based on information in this
  * DescriptorFunction.
