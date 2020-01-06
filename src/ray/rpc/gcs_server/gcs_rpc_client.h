@@ -1,11 +1,6 @@
 #ifndef RAY_RPC_GCS_RPC_CLIENT_H
 #define RAY_RPC_GCS_RPC_CLIENT_H
 
-#include <thread>
-
-#include <grpcpp/grpcpp.h>
-
-#include "src/ray/protobuf/gcs_service.pb.h"
 #include "src/ray/rpc/grpc_client.h"
 
 namespace ray {
@@ -20,8 +15,7 @@ class GcsRpcClient {
   /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   GcsRpcClient(const std::string &address, const int port,
-               ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
+               ClientCallManager &client_call_manager) {
     job_info_grpc_client_ = std::unique_ptr<GrpcClient<JobInfoGcsService>>(
         new GrpcClient<JobInfoGcsService>(address, port, client_call_manager));
     actor_info_grpc_client_ = std::unique_ptr<GrpcClient<ActorInfoGcsService>>(
@@ -30,6 +24,8 @@ class GcsRpcClient {
         new GrpcClient<NodeInfoGcsService>(address, port, client_call_manager));
     object_info_grpc_client_ = std::unique_ptr<GrpcClient<ObjectInfoGcsService>>(
         new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
+    task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
+        new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
   };
 
   /// Add job info to gcs server.
@@ -108,15 +104,25 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation, request, callback,
                          object_info_grpc_client_, )
 
+  /// Add a task to GCS Service.
+  VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTask, request, callback,
+                         task_info_grpc_client_)
+
+  /// Get task information from GCS Service.
+  VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, GetTask, request, callback,
+                         task_info_grpc_client_)
+
+  /// Delete tasks from GCS Service.
+  VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, DeleteTasks, request, callback,
+                         task_info_grpc_client_)
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
   std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
-
-  /// The `ClientCallManager` used for managing requests.
-  ClientCallManager &client_call_manager_;
+  std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
 };
 
 }  // namespace rpc

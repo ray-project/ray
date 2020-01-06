@@ -286,6 +286,9 @@ Status RedisTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
                                           const StatusCallback &callback) {
   raylet::TaskTable &task_table = client_impl_->raylet_task_table();
   task_table.Delete(JobID::Nil(), task_ids);
+  if (callback) {
+    callback(Status::OK());
+  }
   // TODO(micafan) Always return OK here.
   // Confirm if we need to handle the deletion failure and how to handle it.
   return Status::OK();
