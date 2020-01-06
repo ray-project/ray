@@ -4,6 +4,8 @@ ARG WHEEL_NAME
 
 RUN apt update
 RUN apt install -y curl tmux screen rsync apt-transport-https
+
+# Install kubectl.
 RUN curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
 RUN touch /etc/apt/sources.list.d/kubernetes.list
 RUN echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list
