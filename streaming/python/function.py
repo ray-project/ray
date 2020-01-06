@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import cloudpickle
 
 
 class Function(ABC):
@@ -119,3 +120,11 @@ class SimpleSinkFunction(SinkFunction):
 
     def sink(self, value):
         return self.func(value)
+
+
+def serialize(func):
+    return cloudpickle.dumps(func)
+
+
+def deserialize(func_bytes):
+    return cloudpickle.loads(func_bytes)

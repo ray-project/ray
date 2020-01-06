@@ -1,7 +1,6 @@
 from abc import ABC
 import ray.streaming.function as function
 import ray.streaming.partition as partition
-import cloudpickle
 
 
 class Stream(ABC):
@@ -50,7 +49,7 @@ class DataStream(Stream):
     def map(self, func):
         if not isinstance(func, function.MapFunction):
             func = function.SimpleMapFunction(func)
-        j_func = self._gateway_client().create_py_func(cloudpickle.dumps(func))
+        j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
             method_call(self._j_stream, "map", j_func)
         return DataStream(self, j_stream)
@@ -58,7 +57,7 @@ class DataStream(Stream):
     def flat_map(self, func):
         if not isinstance(func, function.FlatMapFunction):
             func = function.SimpleFlatMapFunction(func)
-        j_func = self._gateway_client().create_py_func(cloudpickle.dumps(func))
+        j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
             method_call(self._j_stream, "flatMap", j_func)
         return DataStream(self, j_stream)
@@ -66,7 +65,7 @@ class DataStream(Stream):
     def filter(self, func):
         if not isinstance(func, function.FilterFunction):
             func = function.SimpleFilterFunction(func)
-        j_func = self._gateway_client().create_py_func(cloudpickle.dumps(func))
+        j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
             method_call(self._j_stream, "filter", j_func)
         return DataStream(self, j_stream)
@@ -74,7 +73,7 @@ class DataStream(Stream):
     def key_by(self, func):
         if not isinstance(func, function.KeyFunction):
             func = function.SimpleKeyFunction(func)
-        j_func = self._gateway_client().create_py_func(cloudpickle.dumps(func))
+        j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
             method_call(self._j_stream, "keyBy", j_func)
         return KeyDataStream(self, j_stream)
@@ -86,7 +85,7 @@ class DataStream(Stream):
     def partition_by(self, partition_func):
         if not isinstance(partition_func, partition.SimplePartition):
             partition_func = partition.SimplePartition(partition_func)
-        j_partition = self._gateway_client().create_py_func(cloudpickle.dumps(partition_func))
+        j_partition = self._gateway_client().create_py_func(partition.serialize(partition_func))
         self._gateway_client(). \
             method_call(self._j_stream, "partitionBy", j_partition)
         return self
@@ -94,7 +93,7 @@ class DataStream(Stream):
     def sink(self, func):
         if not isinstance(func, function.SinkFunction):
             func = function.SimpleSinkFunction(func)
-        j_func = self._gateway_client().create_py_func(cloudpickle.dumps(func))
+        j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
             method_call(self._j_stream, "sink", j_func)
         return StreamSink(self, j_stream, func)
@@ -111,7 +110,7 @@ class KeyDataStream(Stream):
     def reduce(self, func):
         if not isinstance(func, function.ReduceFunction):
             func = function.SimpleReduceFunction(func)
-        j_func = self._gateway_client().create_py_func(cloudpickle.dumps(func))
+        j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
             method_call(self._j_stream, "reduce", j_func)
         return DataStream(self, j_stream)
@@ -137,7 +136,7 @@ class StreamSource(DataStream):
         """
         func = function.ListSourceFunction(values)
         j_stream = streaming_context._gateway_client. \
-            create_py_stream_source(cloudpickle.dumps(func))
+            create_py_stream_source(function.serialize(func))
         return StreamSource(j_stream, streaming_context, func)
 
 

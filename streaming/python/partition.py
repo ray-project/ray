@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import cloudpickle
 
 
 class Partition(ABC):
@@ -60,3 +61,11 @@ class SimplePartition(Partition):
 
     def partition(self, record, num_partition: int):
         return self.func(record, num_partition)
+
+
+def serialize(partition_func):
+    return cloudpickle.dumps(partition_func)
+
+
+def deserialize(partition_bytes):
+    return cloudpickle.loads(partition_bytes)
