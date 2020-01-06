@@ -58,7 +58,6 @@ You can experiment with this behavior by running the following code.
 
 .. code-block:: python
 
-    import numpy as np
     import os
     import ray
     import time
@@ -70,10 +69,10 @@ You can experiment with this behavior by running the following code.
         def __init__(self):
             self.counter = 0
 
-        def increment_and_possibly_fail(self, failure_probability):
+        def increment_and_possibly_fail(self):
             self.counter += 1
             time.sleep(0.2)
-            if np.random.random() < failure_probability:
+            if self.counter == 10:
                 os._exit(0)
             return self.counter
 
@@ -85,7 +84,7 @@ You can experiment with this behavior by running the following code.
     # raise exceptions.
     for _ in range(100):
         try:
-            counter = ray.get(actor.increment_and_possibly_fail.remote(0.1))
+            counter = ray.get(actor.increment_and_possibly_fail.remote())
             print(counter)
         except ray.exceptions.RayActorError:
             print('FAILURE')
