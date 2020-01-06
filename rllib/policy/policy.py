@@ -193,7 +193,6 @@ class Policy(metaclass=ABCMeta):
         self.apply_gradients(grads)
         return grad_info
 
-    @abstractmethod
     @DeveloperAPI
     def compute_gradients(self, postprocessed_batch):
         """Computes gradients against a batch of experiences.
@@ -206,7 +205,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @abstractmethod
     @DeveloperAPI
     def apply_gradients(self, gradients):
         """Applies previously computed gradients.
@@ -240,8 +238,7 @@ class Policy(metaclass=ABCMeta):
     def num_state_tensors(self):
         """
         Returns:
-            int: The number of RNN hidden state tensors kept by this Policy's
-                (RNN-based) Model.
+            int: The number of RNN hidden states kept by this Policy's Model.
         """
         raise NotImplementedError
 
