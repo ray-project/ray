@@ -53,8 +53,8 @@ class JobInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    RPC_SERVICE_HANDLER(JobInfoGrpcService, AddJob, 1);
-    RPC_SERVICE_HANDLER(JobInfoGrpcService, MarkJobFinished, 1);
+    JOB_INFO_SERVICE_RPC_HANDLER(AddJob, 1);
+    JOB_INFO_SERVICE_RPC_HANDLER(MarkJobFinished, 1);
   }
 
  private:
@@ -230,9 +230,9 @@ class ObjectInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    RPC_SERVICE_HANDLER(ObjectInfoGrpcService, GetObjectLocations, 1);
-    RPC_SERVICE_HANDLER(ObjectInfoGrpcService, AddObjectLocation, 1);
-    RPC_SERVICE_HANDLER(ObjectInfoGrpcService, RemoveObjectLocation, 1);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(GetObjectLocations, 1);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(AddObjectLocation, 1);
+    OBJECT_INFO_SERVICE_RPC_HANDLER(RemoveObjectLocation, 1);
   }
 
  private:
