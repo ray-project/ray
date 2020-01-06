@@ -1,13 +1,13 @@
 import logging
-import threading
 
 import ray
 import ray.streaming._streaming as _streaming
-from ray.streaming.config import Config
-from ray.function_manager import FunctionDescriptor
-import ray.streaming.runtime.processor as processor
-from ray.streaming.runtime.graph import ExecutionGraph
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
+import ray.streaming.runtime.processor as processor
+from ray.function_manager import FunctionDescriptor
+from ray.streaming.config import Config
+from ray.streaming.runtime.graph import ExecutionGraph
+from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +40,9 @@ class JobWorker(object):
             get_execution_task_by_task_id(self.task_id)
         self.execution_node = self.execution_graph. \
             get_execution_node_by_task_id(self.task_id)
-        operator = None
+        operator = self.execution_node.stream_operator
         self.stream_processor = processor.build_processor(operator)
-        logger.info("Initializing StreamWorker, taskId: {}, operator: {}.",
+        logger.info("Initializing JobWorker, task_id: {}, operator: {}.",
                     self.task_id, self.stream_processor)
 
         if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):
@@ -69,7 +69,12 @@ class JobWorker(object):
         return True
 
     def create_stream_task(self):
-        pass
+        if isinstance(self.stream_processor, processor.SourceProcessor):
+            return SourceStreamTask(self.task_id, self.stream_processor, self)
+        elif isinstance(self.stream_processor, processor.OneInputProcessor):
+            return OneInputStreamTask(self.task_id, self.stream_processor, self)
+        else:
+            raise Exception("Unsupported processor type: " + type(self.stream_processor))
 
     def on_reader_message(self, buffer: bytes):
         """used in direct call mode"""
@@ -92,10 +97,3 @@ class JobWorker(object):
             return b" " * 4  # special flag to indicate this actor not ready
         result = self.writer_client.on_writer_message_sync(buffer)
         return result.to_pybytes()
-
-
-class WorkerContext:
-    def __init__(self, task_id: int, execution_graph, job_config):
-        self.task_id = task_id
-        self.execution_graph = execution_graph
-        self.job_config = job_config
