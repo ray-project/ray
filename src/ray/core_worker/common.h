@@ -87,8 +87,10 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(int num_returns, bool is_direct_call, bool is_cross_language,
               std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), is_direct_call(is_direct_call),
-        is_cross_language(is_cross_language), resources(resources) {}
+      : num_returns(num_returns),
+        is_direct_call(is_direct_call),
+        is_cross_language(is_cross_language),
+        resources(resources) {}
 
   /// Number of returns of this task.
   int num_returns = 1;

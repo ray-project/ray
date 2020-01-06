@@ -586,8 +586,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, /*is_direct*/ false,
-                              /*is_cross_language*/false,
-                              resources, resources);
+                              /*is_cross_language*/ false, resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {

@@ -967,7 +967,8 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, is_direct_call, is_cross_language, c_resources)
+                num_return_vals, is_direct_call,
+                is_cross_language, c_resources)
             ray_function = CRayFunction(
                 language.lang, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
@@ -1038,7 +1039,8 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_return_vals, False, is_cross_language, c_resources)
+            task_options = CTaskOptions(num_return_vals, False,
+                                        is_cross_language, c_resources)
             ray_function = CRayFunction(
                 language.lang, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)

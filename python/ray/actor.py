@@ -172,11 +172,12 @@ class ActorClassMetadata:
             each actor method.
     """
 
-    def __init__(self, language, modified_class_or_descriptor_list,
-                 class_id, max_reconstructions, num_cpus,
-                 num_gpus, memory, object_store_memory, resources):
-        # We do not set self.is_cross_language if self.language != Language.PYTHON
-        # in order to test cross language feature by cross calling PYTHON from PYTHON.
+    def __init__(self, language, modified_class_or_descriptor_list, class_id,
+                 max_reconstructions, num_cpus, num_gpus, memory,
+                 object_store_memory, resources):
+        # We do not set self.is_cross_language ifself.language !=
+        # Language.PYTHON in order to test cross language feature by
+        # cross calling PYTHON from PYTHON.
         self.language = language
         if inspect.isclass(modified_class_or_descriptor_list):
             self.modified_class = modified_class_or_descriptor_list
@@ -186,7 +187,8 @@ class ActorClassMetadata:
         else:
             self.modified_class = None
             self.descriptor_list = modified_class_or_descriptor_list
-            self.class_name = b'.'.join(modified_class_or_descriptor_list).decode('ascii')
+            self.class_name = b".".join(
+                modified_class_or_descriptor_list).decode("ascii")
             self.is_cross_language = True
         self.class_id = class_id
         self.max_reconstructions = max_reconstructions
@@ -204,7 +206,8 @@ class ActorClassMetadata:
         ]
 
         constructor_name = "__init__"
-        if not self.is_cross_language and constructor_name not in self.actor_method_names:
+        if not self.is_cross_language and \
+                constructor_name not in self.actor_method_names:
             # Add __init__ if it does not exist.
             # Actor creation will be executed with __init__ together.
 
@@ -295,7 +298,10 @@ class ActorClass:
     def _ray_from_modified_class(cls, modified_class, class_id,
                                  max_reconstructions, num_cpus, num_gpus,
                                  memory, object_store_memory, resources):
-        for attribute in ["remote", "_remote", "_ray_from_modified_class", "_ray_from_descriptor_list"]:
+        for attribute in [
+                "remote", "_remote", "_ray_from_modified_class",
+                "_ray_from_descriptor_list"
+        ]:
             if hasattr(modified_class, attribute):
                 logger.warning("Creating an actor from class {} overwrites "
                                "attribute {} of that class".format(
@@ -326,8 +332,8 @@ class ActorClass:
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
-            language, descriptor_list, None, max_reconstructions,
-            num_cpus, num_gpus, memory, object_store_memory, resources)
+            language, descriptor_list, None, max_reconstructions, num_cpus,
+            num_gpus, memory, object_store_memory, resources)
 
         return self
 
@@ -477,12 +483,13 @@ class ActorClass:
         function_name = "__init__"
         if meta.is_cross_language:
             function_descriptor_list = meta.descriptor_list
-            module_name = ''
+            module_name = ""
         else:
             function_descriptor = FunctionDescriptor(
                 meta.modified_class.__module__, function_name,
                 meta.modified_class.__name__)
-            function_descriptor_list = function_descriptor.get_function_descriptor_list()
+            function_descriptor_list = \
+                function_descriptor.get_function_descriptor_list()
             module_name = meta.modified_class.__module__
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
@@ -490,14 +497,16 @@ class ActorClass:
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
             if meta.is_cross_language:
-                raise Exception('Cross-lang ActorClass cannot be executed locally.')
+                raise Exception(
+                    "Cross-lang ActorClass cannot be executed locally.")
             actor_id = ActorID.from_random()
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
             # Export the actor.
-            if not meta.is_cross_language and (meta.last_export_session_and_job !=
-                    worker.current_session_and_job):
+            if not meta.is_cross_language and (meta.last_export_session_and_job
+                                               !=
+                                               worker.current_session_and_job):
                 # If this actor class was not exported in this session and job,
                 # we need to export this function again, because current GCS
                 # doesn't have it.
@@ -521,18 +530,21 @@ class ActorClass:
                 actor_placement_resources["CPU"] += 1
             if meta.is_cross_language:
                 if kwargs:
-                    raise Exception('Cross-lang remote actor creation not support kwargs.')
+                    raise Exception(
+                        "Cross-lang remote actor creation not support kwargs.")
                 if not worker.load_code_from_local:
-                    raise Exception('Cross-lang feature needs --load-code-from-local to be set.')
+                    raise Exception(
+                        "Cross-lang needs --load-code-from-local to be set.")
                 creation_args = args
             else:
                 function_signature = meta.method_signatures[function_name]
-                creation_args = signature.flatten_args(function_signature, args, kwargs)
+                creation_args = signature.flatten_args(function_signature,
+                                                       args, kwargs)
             actor_id = worker.core_worker.create_actor(
-                meta.language, function_descriptor_list,
-                creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources, is_direct_call, meta.is_cross_language,
-                max_concurrency, detached, is_asyncio)
+                meta.language, function_descriptor_list, creation_args,
+                meta.max_reconstructions, resources, actor_placement_resources,
+                is_direct_call, meta.is_cross_language, max_concurrency,
+                detached, is_asyncio)
 
         actor_handle = ActorHandle(
             meta.language,
@@ -651,11 +663,13 @@ class ActorHandle:
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
             if kwargs:
-                raise Exception('Cross-lang remote actor method not support kwargs.')
+                raise Exception(
+                    "Cross-lang remote actor method not support kwargs.")
             if not worker.load_code_from_local:
-                raise Exception('Cross-lang feature needs --load-code-from-local to be set.')
+                raise Exception(
+                    "Cross-lang needs --load-code-from-local to be set.")
             list_args = args
-            function_descriptor_list = [method_name.encode('ascii')]
+            function_descriptor_list = [method_name.encode("ascii")]
         else:
             function_signature = self._ray_method_signatures[method_name]
 
@@ -664,20 +678,21 @@ class ActorHandle:
             else:
                 list_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
-            function_descriptor_list = self._ray_function_descriptor_lists[method_name]
+            function_descriptor_list = self._ray_function_descriptor_lists[
+                method_name]
 
         if worker.mode == ray.LOCAL_MODE:
             if self._ray_is_cross_language:
-                raise Exception('Cross-lang remote actor method cannot be executed locally.')
+                raise Exception("Cross-lang remote actor method "
+                                "cannot be executed locally.")
             function = getattr(worker.actors[self._actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
                 function, method_name, args, kwargs, num_return_vals)
         else:
             object_ids = worker.core_worker.submit_actor_task(
-                self._ray_actor_language,
-                self._ray_actor_id,
-                function_descriptor_list, list_args,
-                num_return_vals, self._ray_actor_method_cpus, self._ray_is_cross_language)
+                self._ray_actor_language, self._ray_actor_id,
+                function_descriptor_list, list_args, num_return_vals,
+                self._ray_actor_method_cpus, self._ray_is_cross_language)
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -688,13 +703,17 @@ class ActorHandle:
 
     def __getattr__(self, item):
         if not self._ray_is_cross_language:
-            raise AttributeError("'{}' object has no attribute '{}'".format(type(self).__name__, item))
+            raise AttributeError("'{}' object has no attribute '{}'".format(
+                type(self).__name__, item))
 
         return ActorMethod(
-                self,
-                item,
-                ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,  # Currently, we use default num returns
-                decorator=None)  # Currently, cross-lang actor method not support decorator
+            self,
+            item,
+            ray_constants.
+            # Currently, we use default num returns
+            DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS,
+            # Currently, cross-lang actor method not support decorator
+            decorator=None)
 
     # Make tab completion work.
     def __dir__(self):

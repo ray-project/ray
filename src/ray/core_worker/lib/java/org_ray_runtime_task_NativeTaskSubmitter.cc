@@ -79,7 +79,8 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
     resources = ToResources(env, java_resources);
   }
 
-  ray::TaskOptions task_options{numReturns, /*is_direct_call=*/false, /*is_cross_language=*/false, resources};
+  ray::TaskOptions task_options{numReturns, /*is_direct_call=*/false,
+                                /*is_cross_language=*/false, resources};
   return task_options;
 }
 
@@ -135,7 +136,8 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
 
   std::vector<ObjectID> return_ids;
   auto status = GetCoreWorker(nativeCoreWorkerPointer)
-                    .SubmitTask(ray_function, task_args, task_options, &return_ids, /*max_retries=*/1);
+                    .SubmitTask(ray_function, task_args, task_options, &return_ids,
+                                /*max_retries=*/1);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
 

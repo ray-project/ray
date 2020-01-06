@@ -90,10 +90,9 @@ class FunctionDescriptor:
             actor_id = worker.core_worker.get_actor_id()
             actor = worker.actors[actor_id]
             function_descriptor = actor.__ray_function_descriptor__
-            return FunctionDescriptor(
-                    function_descriptor.module_name,
-                    function_descriptor_list[0].decode('ascii'),
-                    function_descriptor.class_name)
+            return cls(function_descriptor.module_name,
+                       function_descriptor_list[0].decode("ascii"),
+                       function_descriptor.class_name)
         elif (len(function_descriptor_list) == 3
               or len(function_descriptor_list) == 4):
             module_name = ensure_str(function_descriptor_list[0])
