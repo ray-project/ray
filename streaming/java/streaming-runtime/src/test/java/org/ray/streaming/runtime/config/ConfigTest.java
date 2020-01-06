@@ -1,40 +1,15 @@
 package org.ray.streaming.runtime.config;
 
-import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 import org.aeonbits.owner.ConfigFactory;
 import org.nustaq.serialization.FSTConfiguration;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.config.global.CommonConfig;
-import org.ray.streaming.runtime.util.TestHelper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class ConfigTest {
-
-  private static final Logger LOG = LoggerFactory.getLogger(ConfigTest.class);
-
-  @org.testng.annotations.BeforeClass
-  public void setUp() {
-    TestHelper.setUTPattern();
-  }
-
-  @org.testng.annotations.AfterClass
-  public void tearDown() {
-    TestHelper.clearUTPattern();
-  }
-
-  @org.testng.annotations.BeforeMethod
-  public void testBegin(Method method) {
-    LOG.warn(">>>>>>>>>>>>>>>>>>>> Test case: " + method.getName() + " begin >>>>>>>>>>>>>>>>>>");
-  }
-
-  @org.testng.annotations.AfterMethod
-  public void testEnd(Method method) {
-    LOG.warn(">>>>>>>>>>>>>>>>>>>> Test case: " + method.getName() + " end >>>>>>>>>>>>>>>>>>");
-  }
+public class ConfigTest extends BaseUnitTest {
 
   @Test
   public void testBaseFunc() {

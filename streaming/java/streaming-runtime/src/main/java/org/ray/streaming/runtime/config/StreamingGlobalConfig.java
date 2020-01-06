@@ -19,9 +19,9 @@ public class StreamingGlobalConfig implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingGlobalConfig.class);
 
-  public CommonConfig commonConfig;
+  public final CommonConfig commonConfig;
 
-  public Map<String, String> configMap;
+  public final Map<String, String> configMap;
 
   public StreamingGlobalConfig(final Map<String, String> conf) {
     configMap = new HashMap<>(conf);
@@ -35,15 +35,15 @@ public class StreamingGlobalConfig implements Serializable {
     return configMap.toString();
   }
 
-  public void globalConfig2Map() {
+  private void globalConfig2Map() {
     try {
       configMap.putAll(config2Map(this.commonConfig));
     } catch (Exception e) {
-      LOG.error("Global config to map occur error.", e);
+      LOG.error("Couldn't convert global config to a map.", e);
     }
   }
 
-  public Map<String, String> config2Map(org.aeonbits.owner.Config config)
+  protected Map<String, String> config2Map(org.aeonbits.owner.Config config)
       throws ClassNotFoundException {
     Map<String, String> result = new HashMap<>();
 
