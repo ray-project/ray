@@ -14,14 +14,14 @@ from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.env.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
 
-class MockPolicy(Policy):
+class MockPolicy(TestPolicy):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -38,27 +38,6 @@ class MockPolicy(Policy):
         assert episode is not None
         return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
-    def compute_gradients(self, postprocessed_batch):
-        pass
-
-    def apply_gradients(self, gradients):
-        pass
-
-    def get_weights(self):
-        pass
-
-    def set_weights(self, weights):
-        pass
-
-    def export_checkpoint(self, export_dir):
-        pass
-
-    def export_model(self, export_dir):
-        pass
-
-    def num_state_tensors(self):
-        return 0
-
 
 class BadPolicy(MockPolicy):
     def compute_actions(self,
@@ -69,13 +48,6 @@ class BadPolicy(MockPolicy):
                         episodes=None,
                         **kwargs):
         raise Exception("intentional error")
-
-    def postprocess_trajectory(self,
-                               batch,
-                               other_agent_batches=None,
-                               episode=None):
-        assert episode is not None
-        return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
 class FailOnStepEnv(gym.Env):
