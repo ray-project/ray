@@ -15,7 +15,7 @@ DEFAULT_POLICY_ID = "default_policy"
 
 
 @PublicAPI
-class SampleBatch(object):
+class SampleBatch:
     """Wrapper around a dictionary with string keys and array-like values.
 
     For example, {"obs": [1, 2, 3], "reward": [0, -1, 1]} is a batch of three
@@ -231,7 +231,7 @@ class SampleBatch(object):
 
 
 @PublicAPI
-class MultiAgentBatch(object):
+class MultiAgentBatch:
     """A batch of experiences from multiple policies in the environment.
 
     Attributes:

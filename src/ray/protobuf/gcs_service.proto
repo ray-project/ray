@@ -56,6 +56,29 @@ message UpdateActorInfoRequest {
 message UpdateActorInfoReply {
 }
 
+message AddActorCheckpointRequest {
+  ActorCheckpointData checkpoint_data = 1;
+}
+
+message AddActorCheckpointReply {
+}
+
+message GetActorCheckpointRequest {
+  bytes checkpoint_id = 1;
+}
+
+message GetActorCheckpointReply {
+  ActorCheckpointData checkpoint_data = 1;
+}
+
+message GetActorCheckpointIDRequest {
+  bytes actor_id = 1;
+}
+
+message GetActorCheckpointIDReply {
+  ActorCheckpointIdData checkpoint_id_data = 1;
+}
+
 // Service for actor info access.
 service ActorInfoGcsService {
   // Get actor data from GCS Service.
@@ -64,6 +87,13 @@ service ActorInfoGcsService {
   rpc RegisterActorInfo(RegisterActorInfoRequest) returns (RegisterActorInfoReply);
   // Update actor info in GCS Service.
   rpc UpdateActorInfo(UpdateActorInfoRequest) returns (UpdateActorInfoReply);
+  // Add actor checkpoint data to GCS Service.
+  rpc AddActorCheckpoint(AddActorCheckpointRequest) returns (AddActorCheckpointReply);
+  // Get actor checkpoint data from GCS Service.
+  rpc GetActorCheckpoint(GetActorCheckpointRequest) returns (GetActorCheckpointReply);
+  // Get actor checkpoint id data from GCS Service.
+  rpc GetActorCheckpointID(GetActorCheckpointIDRequest)
+      returns (GetActorCheckpointIDReply);
 }
 
 message RegisterNodeRequest {
@@ -89,6 +119,44 @@ message GetAllNodeInfoReply {
   repeated GcsNodeInfo node_info_list = 1;
 }
 
+message ReportHeartbeatRequest {
+  HeartbeatTableData heartbeat = 1;
+}
+
+message ReportHeartbeatReply {
+}
+
+message ReportBatchHeartbeatRequest {
+  HeartbeatBatchTableData heartbeat_batch = 1;
+}
+
+message ReportBatchHeartbeatReply {
+}
+
+message GetResourcesRequest {
+  bytes node_id = 1;
+}
+
+message GetResourcesReply {
+  map<string, ResourceTableData> resources = 1;
+}
+
+message UpdateResourcesRequest {
+  bytes node_id = 1;
+  map<string, ResourceTableData> resources = 2;
+}
+
+message UpdateResourcesReply {
+}
+
+message DeleteResourcesRequest {
+  bytes node_id = 1;
+  repeated string resource_name_list = 2;
+}
+
+message DeleteResourcesReply {
+}
+
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a node to GCS Service.
@@ -97,6 +165,17 @@ service NodeInfoGcsService {
   rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
+  // Report heartbeat of a node to GCS Service.
+  rpc ReportHeartbeat(ReportHeartbeatRequest) returns (ReportHeartbeatReply);
+  // Report batch heartbeat to GCS Service.
+  rpc ReportBatchHeartbeat(ReportBatchHeartbeatRequest)
+      returns (ReportBatchHeartbeatReply);
+  // Get node's resources from GCS Service.
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
+  // Update resources of a node in GCS Service.
+  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
+  // Delete resources of a node in GCS Service.
+  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
 }
 
 message GetObjectLocationsRequest {
@@ -138,4 +217,36 @@ service ObjectInfoGcsService {
   // Remove location of object from GCS Service.
   rpc RemoveObjectLocation(RemoveObjectLocationRequest)
       returns (RemoveObjectLocationReply);
+}
+
+message AddTaskRequest {
+  TaskTableData task_data = 1;
+}
+
+message AddTaskReply {
+}
+
+message GetTaskRequest {
+  bytes task_id = 1;
+}
+
+message GetTaskReply {
+  TaskTableData task_data = 1;
+}
+
+message DeleteTasksRequest {
+  repeated bytes task_id_list = 1;
+}
+
+message DeleteTasksReply {
+}
+
+// Service for task info access.
+service TaskInfoGcsService {
+  // Add a task to GCS Service.
+  rpc AddTask(AddTaskRequest) returns (AddTaskReply);
+  // Get task information from GCS Service.
+  rpc GetTask(GetTaskRequest) returns (GetTaskReply);
+  // Delete tasks from GCS Service.
+  rpc DeleteTasks(DeleteTasksRequest) returns (DeleteTasksReply);
 }

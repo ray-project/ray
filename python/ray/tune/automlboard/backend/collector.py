@@ -17,7 +17,7 @@ from ray.tune.result import DEFAULT_RESULTS_DIR, JOB_META_FILE, \
     EXPR_PARAM_FILE, EXPR_RESULT_FILE, EXPR_META_FILE
 
 
-class CollectorService(object):
+class CollectorService:
     """Server implementation to monitor the log directory.
 
     The service will save the information of job and

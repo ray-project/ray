@@ -72,7 +72,7 @@ except ImportError:
     setproctitle = None
 
 
-class ActorCheckpointInfo(object):
+class ActorCheckpointInfo:
     """Information used to maintain actor checkpoints."""
 
     __slots__ = [
@@ -91,7 +91,7 @@ class ActorCheckpointInfo(object):
         self.checkpoint_ids = checkpoint_ids
 
 
-class Worker(object):
+class Worker:
     """A class used to define the control flow of a worker process.
 
     Note:
@@ -657,6 +657,10 @@ def init(address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if redis_address is not None:
+        raise DeprecationWarning("The redis_address argument is deprecated. "
+                                 "Please use address instead.")
 
     if redis_address is not None or address is not None:
         redis_address, _, _ = services.validate_redis_address(
@@ -1707,7 +1711,7 @@ def remote(*args, **kwargs):
             return 1
 
         @ray.remote
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
 
@@ -1743,7 +1747,7 @@ def remote(*args, **kwargs):
             return 1, 2
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
 
@@ -1759,7 +1763,7 @@ def remote(*args, **kwargs):
         g = f.options(num_gpus=2, max_calls=None)
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
         Bar = Foo.options(num_cpus=1, resources=None)

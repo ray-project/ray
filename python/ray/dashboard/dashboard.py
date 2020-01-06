@@ -21,6 +21,7 @@ import time
 import traceback
 import yaml
 
+from base64 import b64decode
 from collections import defaultdict
 from operator import itemgetter
 from typing import Dict
@@ -55,6 +56,31 @@ def format_resource(resource_name, quantity):
         quantity = quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)
         return "{} GiB".format(round_resource_value(quantity))
     return "{}".format(round_resource_value(quantity))
+
+
+def format_reply(reply):
+    if isinstance(reply, dict):
+        for k, v in reply.items():
+            if isinstance(v, dict) or isinstance(v, list):
+                format_reply(v)
+            else:
+                if k.endswith("Id"):
+                    v = b64decode(v)
+                    reply[k] = ray.utils.binary_to_hex(v)
+    elif isinstance(reply, list):
+        for item in reply:
+            format_reply(item)
+
+
+def measures_to_dict(measures):
+    measures_dict = {}
+    for measure in measures:
+        tags = measure["tags"].split(",")[-1]
+        if "intValue" in measure:
+            measures_dict[tags] = measure["intValue"]
+        elif "doubleValue" in measure:
+            measures_dict[tags] = measure["doubleValue"]
+    return measures_dict
 
 
 class Dashboard(object):
@@ -158,31 +184,59 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            workers_info = sum((data["workersStats"] for data in D.values()),
-                               [])
-            actor_tree = self.node_stats.get_actor_tree(workers_info)
+            workers_info = sum(
+                (data.get("workersStats", []) for data in D.values()), [])
+            infeasible_tasks = sum(
+                (data.get("infeasibleTasks", []) for data in D.values()), [])
+            actor_tree = self.node_stats.get_actor_tree(
+                workers_info, infeasible_tasks)
             for address, data in D.items():
-                available_resources = data["availableResources"]
-                total_resources = data["totalResources"]
-                extra_info = []
-                for resource_name in sorted(available_resources.keys()):
-                    total = total_resources[resource_name]
-                    occupied = total - available_resources[resource_name]
-                    total = format_resource(resource_name, total)
-                    occupied = format_resource(resource_name, occupied)
-                    extra_info.append("{}: {} / {}".format(
-                        resource_name, occupied, total))
-                data["extraInfo"] = ", ".join(extra_info)
+                # process view data
+                measures_dicts = {}
+                for view_data in data["viewData"]:
+                    view_name = view_data["viewName"]
+                    if view_name in ("local_available_resource",
+                                     "local_total_resource",
+                                     "object_manager_stats"):
+                        measures_dicts[view_name] = measures_to_dict(
+                            view_data["measures"])
+                # process resources info
+                extra_info_strings = []
+                prefix = "ResourceName:"
+                for resource_name, total_resource in measures_dicts[
+                        "local_total_resource"].items():
+                    available_resource = measures_dicts[
+                        "local_available_resource"].get(resource_name, .0)
+                    resource_name = resource_name[len(prefix):]
+                    extra_info_strings.append("{}: {} / {}".format(
+                        resource_name,
+                        format_resource(resource_name,
+                                        total_resource - available_resource),
+                        format_resource(resource_name, total_resource)))
+                data["extraInfo"] = ",".join(extra_info_strings) + "\n"
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
-                    actor_tree_str = json.dumps(actor_tree, indent=2)
-                    actor_tree_lines = actor_tree_str.split("\n")
-                    max_line_length = max(map(len, actor_tree_lines))
-                    actor_tree_print = []
-                    for line in actor_tree_lines:
-                        actor_tree_print.append(
-                            line + (max_line_length - len(line)) * " ")
-                    actor_tree_print = "\n".join(actor_tree_print)
-                    data["extraInfo"] += "\n" + actor_tree_print
+                    # process object store info
+                    extra_info_strings = []
+                    prefix = "ValueType:"
+                    for stats_name in [
+                            "used_object_store_memory", "num_local_objects"
+                    ]:
+                        stats_value = measures_dicts[
+                            "object_manager_stats"].get(
+                                prefix + stats_name, .0)
+                        extra_info_strings.append("{}: {}".format(
+                            stats_name, stats_value))
+                    data["extraInfo"] += ", ".join(extra_info_strings)
+                    # process actor info
+                    actor_tree_str = json.dumps(
+                        actor_tree, indent=2, sort_keys=True)
+                    lines = actor_tree_str.split("\n")
+                    max_line_length = max(map(len, lines))
+                    to_print = []
+                    for line in lines:
+                        to_print.append(line +
+                                        (max_line_length - len(line)) * " ")
+                    data["extraInfo"] += "\n" + "\n".join(to_print)
             D["actorInfo"] = actor_tree
             return await json_response(result=D)
 
@@ -244,6 +298,21 @@ class NodeStats(threading.Thread):
         self._addr_to_extra_info_dict = {}
         self._node_stats_lock = threading.Lock()
 
+        self._default_info = {
+            "actorId": "",
+            "children": {},
+            "ipAddress": "",
+            "isDirectCall": False,
+            "jobId": "",
+            "numLocalObjects": 0,
+            "numObjectIdsInScope": 0,
+            "port": 0,
+            "state": 0,
+            "taskQueueLength": 0,
+            "usedObjectStoreMemory": 0,
+            "usedResources": {},
+        }
+
         # Mapping from IP address to PID to list of log lines
         self._logs = defaultdict(lambda: defaultdict(list))
 
@@ -298,14 +367,15 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
-    def get_actor_tree(self, workers_info) -> Dict:
+    def get_actor_tree(self, workers_info, infeasible_tasks) -> Dict:
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
         with self._node_stats_lock:
             for addr, actor_id in self._addr_to_actor_id.items():
-                flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
-                flattened_tree[actor_id]["children"] = {}
+                flattened_tree[actor_id] = copy.deepcopy(self._default_info)
+                flattened_tree[actor_id].update(
+                    self._addr_to_extra_info_dict[addr])
                 parent_id = self._addr_to_actor_id.get(
                     self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
@@ -314,12 +384,30 @@ class NodeStats(threading.Thread):
                 if "coreWorkerStats" in worker_info:
                     core_worker_stats = worker_info["coreWorkerStats"]
                     addr = (core_worker_stats["ipAddress"],
-                            core_worker_stats["port"])
+                            str(core_worker_stats["port"]))
                     if addr in self._addr_to_actor_id:
                         actor_id = self._addr_to_actor_id[addr]
                         if "currentTaskDesc" in core_worker_stats:
                             core_worker_stats.pop("currentTaskDesc")
+                        if "numPendingTasks" in core_worker_stats:
+                            core_worker_stats.pop("numPendingTasks")
+                        format_reply(core_worker_stats)
                         flattened_tree[actor_id].update(core_worker_stats)
+
+            for infeasible_task in infeasible_tasks:
+                actor_id = ray.utils.binary_to_hex(
+                    b64decode(
+                        infeasible_task["actorCreationTaskSpec"]["actorId"]))
+                caller_addr = (infeasible_task["callerAddress"]["ipAddress"],
+                               str(infeasible_task["callerAddress"]["port"]))
+                caller_id = self._addr_to_actor_id.get(caller_addr, "root")
+                child_to_parent[actor_id] = caller_id
+                infeasible_task["state"] = -1
+                infeasible_task["functionDescriptor"] = list(
+                    map(lambda desc: b64decode(desc).decode("utf-8"),
+                        infeasible_task["functionDescriptor"]))
+                format_reply(infeasible_tasks)
+                flattened_tree[actor_id] = infeasible_task
 
         # construct actor tree
         actor_tree = flattened_tree
@@ -359,6 +447,21 @@ class NodeStats(threading.Thread):
         p.subscribe(actor_channel)
         logger.info("NodeStats: subscribed to {}".format(actor_channel))
 
+        current_actor_table = ray.actors()
+        with self._node_stats_lock:
+            for actor_data in current_actor_table.values():
+                addr = (actor_data["Address"]["IPAddress"],
+                        str(actor_data["Address"]["Port"]))
+                owner_addr = (actor_data["OwnerAddress"]["IPAddress"],
+                              str(actor_data["OwnerAddress"]["Port"]))
+                self._addr_to_owner_addr[addr] = owner_addr
+                self._addr_to_actor_id[addr] = actor_data["ActorID"]
+                self._addr_to_extra_info_dict[addr] = {
+                    "jobId": actor_data["JobID"],
+                    "state": actor_data["State"],
+                    "isDirectCall": actor_data["IsDirectCall"],
+                }
+
         for x in p.listen():
             try:
                 with self._node_stats_lock:
@@ -388,16 +491,18 @@ class NodeStats(threading.Thread):
                         gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
                         actor_data = ray.gcs_utils.ActorTableData.FromString(
                             gcs_entry.entries[0])
-                        addr = (str(actor_data.address.ip_address),
+                        addr = (actor_data.address.ip_address,
                                 str(actor_data.address.port))
-                        owner_addr = (str(actor_data.owner_address.ip_address),
+                        owner_addr = (actor_data.owner_address.ip_address,
                                       str(actor_data.owner_address.port))
                         self._addr_to_owner_addr[addr] = owner_addr
                         self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(
                             actor_data.actor_id)
                         self._addr_to_extra_info_dict[addr] = {
-                            "job_id": ray.utils.binary_to_hex(
-                                actor_data.job_id)
+                            "jobId": ray.utils.binary_to_hex(
+                                actor_data.job_id),
+                            "state": actor_data.state,
+                            "isDirectCall": actor_data.is_direct_call,
                         }
                     else:
                         data = json.loads(ray.utils.decode(data))

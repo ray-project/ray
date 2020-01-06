@@ -285,7 +285,7 @@ class FiberRateLimiter {
  private:
   boost::fibers::condition_variable cond_;
   boost::fibers::mutex mutex_;
-  int num_;
+  int num_ = 1;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -472,7 +472,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
 
-  void SetActorAsAsync();
+  /// Set the max concurrency and start async actor context.
+  void SetActorAsAsync(int max_concurrency);
 
  private:
   // Worker context.

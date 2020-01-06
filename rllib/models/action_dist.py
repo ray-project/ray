@@ -6,7 +6,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class ActionDistribution(object):
+class ActionDistribution:
     """The policy action distribution of an agent.
 
     Attributes:

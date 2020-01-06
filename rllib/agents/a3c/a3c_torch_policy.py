@@ -69,7 +69,7 @@ def torch_optimizer(policy, config):
     return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
 
 
-class ValueNetworkMixin(object):
+class ValueNetworkMixin:
     def _value(self, obs):
         obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
         _ = self.model({"obs": obs}, [], [1])

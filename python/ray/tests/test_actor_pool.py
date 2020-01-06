@@ -18,7 +18,7 @@ def init():
 
 def test_get_next(init):
     @ray.remote
-    class MyActor(object):
+    class MyActor:
         def __init__(self):
             pass
 
@@ -37,7 +37,7 @@ def test_get_next(init):
 
 def test_get_next_unordered(init):
     @ray.remote
-    class MyActor(object):
+    class MyActor:
         def __init__(self):
             pass
 
@@ -62,7 +62,7 @@ def test_get_next_unordered(init):
 
 def test_map(init):
     @ray.remote
-    class MyActor(object):
+    class MyActor:
         def __init__(self):
             pass
 
@@ -83,7 +83,7 @@ def test_map(init):
 
 def test_map_unordered(init):
     @ray.remote
-    class MyActor(object):
+    class MyActor:
         def __init__(self):
             pass
 
@@ -105,7 +105,7 @@ def test_map_unordered(init):
 
 def test_get_next_timeout(init):
     @ray.remote
-    class MyActor(object):
+    class MyActor:
         def __init__(self):
             pass
 
@@ -127,7 +127,7 @@ def test_get_next_timeout(init):
 
 def test_get_next_unordered_timeout(init):
     @ray.remote
-    class MyActor(object):
+    class MyActor:
         def __init__(self):
             pass
 

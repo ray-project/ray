@@ -29,7 +29,7 @@ def test_actor_deletion_with_gpus(shutdown_only):
     # are released.
 
     @ray.remote(num_gpus=1)
-    class Actor(object):
+    class Actor:
         def getpid(self):
             return os.getpid()
 
@@ -42,7 +42,7 @@ def test_actor_deletion_with_gpus(shutdown_only):
 
 def test_actor_state(ray_start_regular):
     @ray.remote
-    class Counter(object):
+    class Counter:
         def __init__(self):
             self.value = 0
 
@@ -63,7 +63,7 @@ def test_actor_state(ray_start_regular):
 
 
 def test_actor_class_methods(ray_start_regular):
-    class Foo(object):
+    class Foo:
         x = 2
 
         @classmethod
@@ -98,7 +98,7 @@ def test_resource_assignment(shutdown_only):
         resources={"Custom": 1},
         object_store_memory=int(150 * 1024 * 1024))
 
-    class Actor(object):
+    class Actor:
         def __init__(self):
             self.resources = ray.get_resource_ids()
 
@@ -188,7 +188,7 @@ def test_actor_gpus(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -227,7 +227,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=2)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -259,7 +259,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
 
     # We should be able to create more actors that use only a single GPU.
     @ray.remote(num_gpus=1)
-    class Actor2(object):
+    class Actor2:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -297,7 +297,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -343,7 +343,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     @ray.remote
     def create_actors(i, n):
         @ray.remote(num_gpus=1)
-        class Actor(object):
+        class Actor:
             def __init__(self, i, j):
                 self.gpu_ids = ray.get_gpu_ids()
 
@@ -389,7 +389,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
         assert len(set(gpus_in_use[node_name])) == num_gpus_per_raylet
 
     @ray.remote(num_gpus=1)
-    class Actor(object):
+    class Actor:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
 
@@ -452,7 +452,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
                 [t1, t2])
 
     @ray.remote(num_gpus=1)
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             self.gpu_ids = ray.get_gpu_ids()
             assert len(self.gpu_ids) == 1
@@ -528,7 +528,7 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # for a long time in order to make sure the GPU is not released
     # prematurely.
     @ray.remote
-    class RecordGPUs(object):
+    class RecordGPUs:
         def __init__(self):
             self.gpu_ids_seen = []
             self.num_calls = 0
@@ -550,7 +550,7 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
         time.sleep(1000)
 
     @ray.remote(num_gpus=1)
-    class Actor(object):
+    class Actor:
         def __init__(self, record_gpu_actor):
             self.gpu_ids = ray.get_gpu_ids()
             assert len(self.gpu_ids) == 1
@@ -592,7 +592,7 @@ def test_blocking_actor_task(shutdown_only):
         return 1
 
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self):
             pass
 
@@ -605,7 +605,7 @@ def test_blocking_actor_task(shutdown_only):
     ray.get(actor.blocking_method.remote())
 
     @ray.remote(num_cpus=1)
-    class CPUFoo(object):
+    class CPUFoo:
         def __init__(self):
             pass
 
@@ -621,7 +621,7 @@ def test_blocking_actor_task(shutdown_only):
     assert remaining_ids == [x_id]
 
     @ray.remote(num_gpus=1)
-    class GPUFoo(object):
+    class GPUFoo:
         def __init__(self):
             pass
 
@@ -639,13 +639,13 @@ def test_blocking_actor_task(shutdown_only):
 def test_lifetime_and_transient_resources(ray_start_regular):
     # This actor acquires resources only when running methods.
     @ray.remote
-    class Actor1(object):
+    class Actor1:
         def method(self):
             pass
 
     # This actor acquires resources for its lifetime.
     @ray.remote(num_cpus=1)
-    class Actor2(object):
+    class Actor2:
         def method(self):
             pass
 
@@ -666,12 +666,12 @@ def test_custom_label_placement(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
-    class ResourceActor1(object):
+    class ResourceActor1:
         def get_location(self):
             return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource2": 1})
-    class ResourceActor2(object):
+    class ResourceActor2:
         def get_location(self):
             return ray.worker.global_worker.node.unique_id
 
@@ -692,12 +692,12 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.init(num_cpus=10, num_gpus=2, resources={"CustomResource1": 1})
 
     @ray.remote(num_gpus=1)
-    class ResourceActor1(object):
+    class ResourceActor1:
         def method(self):
             return ray.get_gpu_ids()[0]
 
     @ray.remote(resources={"CustomResource1": 1})
-    class ResourceActor2(object):
+    class ResourceActor2:
         def method(self):
             pass
 

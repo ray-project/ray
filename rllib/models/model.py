@@ -17,7 +17,7 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class Model(object):
+class Model:
     """This class is deprecated, please use TFModelV2 instead."""
 
     def __init__(self,

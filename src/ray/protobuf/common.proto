@@ -162,6 +162,30 @@ message ResourceMapEntry {
   repeated ResourceId resource_ids = 2;
 }
 
+message ViewData {
+  message Measure {
+    // A short string that describes the tags for this mesaure, e.g.,
+    // "Tag1:Value1,Tag2:Value2,Tag3:Value3"
+    string tags = 1;
+    // Int64 type value (if present).
+    int64 int_value = 2;
+    // Double type value (if present).
+    double double_value = 3;
+    // Distribution type value (if present).
+    double distribution_min = 4;
+    double distribution_mean = 5;
+    double distribution_max = 6;
+    double distribution_count = 7;
+    repeated double distribution_bucket_boundaries = 8;
+    repeated double distribution_bucket_counts = 9;
+  }
+
+  // The name of this Census view.
+  string view_name = 1;
+  // The list of measures recorded under this view.
+  repeated Measure measures = 2;
+}
+
 // Debug info returned from the core worker.
 message CoreWorkerStats {
   // Debug string of the currently executing task.
@@ -182,4 +206,10 @@ message CoreWorkerStats {
   map<string, double> used_resources = 9;
   // A string displayed on Dashboard.
   string webui_display = 10;
+  // Number of objects stored in local memory.
+  int32 num_local_objects = 11;
+  // Used local object store memory.
+  int64 used_object_store_memory = 12;
+  // Length of the task queue.
+  int32 task_queue_length = 13;
 }

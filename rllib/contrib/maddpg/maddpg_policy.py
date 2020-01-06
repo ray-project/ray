@@ -23,7 +23,7 @@ tf = try_import_tf()
 tfp = try_import_tfp()
 
 
-class MADDPGPostprocessing(object):
+class MADDPGPostprocessing:
     """Implements agentwise termination signal and n-step learning."""
 
     @override(Policy)

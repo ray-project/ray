@@ -181,7 +181,7 @@ class ExternalEnv(threading.Thread):
         return self._episodes[episode_id]
 
 
-class _ExternalEnvEpisode(object):
+class _ExternalEnvEpisode:
     """Tracked state for each active episode."""
 
     def __init__(self,

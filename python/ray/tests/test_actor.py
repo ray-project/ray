@@ -22,7 +22,7 @@ from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 def test_actor_init_error_propagated(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self, error=False):
             if error:
                 raise Exception("oops")
@@ -40,7 +40,7 @@ def test_actor_init_error_propagated(ray_start_regular):
 
 def test_keyword_args(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self, arg0, arg1=1, arg2="a"):
             self.arg0 = arg0
             self.arg1 = arg1
@@ -89,7 +89,7 @@ def test_keyword_args(ray_start_regular):
 
 def test_variable_number_of_args(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self, arg0, arg1=1, *args):
             self.arg0 = arg0
             self.arg1 = arg1
@@ -113,7 +113,7 @@ def test_variable_number_of_args(ray_start_regular):
         2, 3, 1, 2, 3, 4)) == (3, 5, ("a", "b", "c", "d"), (1, 2, 3, 4))
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self, *args):
             self.args = args
 
@@ -130,7 +130,7 @@ def test_variable_number_of_args(ray_start_regular):
 
 def test_no_args(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
@@ -144,7 +144,7 @@ def test_no_args(ray_start_regular):
 def test_no_constructor(ray_start_regular):
     # If no __init__ method is provided, that should not be a problem.
     @ray.remote
-    class Actor(object):
+    class Actor:
         def get_values(self):
             pass
 
@@ -153,12 +153,12 @@ def test_no_constructor(ray_start_regular):
 
 
 def test_custom_classes(ray_start_regular):
-    class Foo(object):
+    class Foo:
         def __init__(self, x):
             self.x = x
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self, f2):
             self.f1 = Foo(1)
             self.f2 = f2
@@ -180,13 +180,13 @@ def test_custom_classes(ray_start_regular):
 
 
 def test_actor_class_attributes(ray_start_regular):
-    class Grandparent(object):
+    class Grandparent:
         GRANDPARENT = 2
 
     class Parent1(Grandparent):
         PARENT1 = 6
 
-    class Parent2(object):
+    class Parent2:
         PARENT2 = 7
 
     @ray.remote
@@ -216,7 +216,7 @@ def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self):
             pass
 
@@ -240,7 +240,7 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote()
-        class Actor(object):
+        class Actor:
             def __init__(self):
                 pass
 
@@ -248,7 +248,7 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(invalid_kwarg=0)  # noqa: F811
-        class Actor(object):
+        class Actor:
             def __init__(self):
                 pass
 
@@ -256,32 +256,32 @@ def test_decorator_args(ray_start_regular):
     with pytest.raises(Exception):
 
         @ray.remote(num_cpus=0, invalid_kwarg=0)  # noqa: F811
-        class Actor(object):
+        class Actor:
             def __init__(self):
                 pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1)  # noqa: F811
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_gpus=1)  # noqa: F811
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
     # This is a valid way of using the decorator.
     @ray.remote(num_cpus=1, num_gpus=1)  # noqa: F811
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
 
 def test_random_id_generation(ray_start_regular):
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self):
             pass
 
@@ -299,7 +299,7 @@ def test_random_id_generation(ray_start_regular):
 
 def test_actor_class_name(ray_start_regular):
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self):
             pass
 
@@ -314,7 +314,7 @@ def test_actor_class_name(ray_start_regular):
 
 
 def test_actor_inheritance(ray_start_regular):
-    class NonActorBase(object):
+    class NonActorBase:
         def __init__(self):
             pass
 
@@ -342,7 +342,7 @@ def test_actor_inheritance(ray_start_regular):
 
 def test_multiple_return_values(ray_start_regular):
     @ray.remote
-    class Foo(object):
+    class Foo:
         def method0(self):
             return 1
 
@@ -375,7 +375,7 @@ def test_multiple_return_values(ray_start_regular):
 
 def test_define_actor(ray_start_regular):
     @ray.remote
-    class Test(object):
+    class Test:
         def __init__(self, x):
             self.x = x
 
@@ -395,7 +395,7 @@ def test_actor_deletion(ray_start_regular):
     # destructor is called.
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def getpid(self):
             return os.getpid()
 
@@ -413,7 +413,7 @@ def test_actor_deletion(ray_start_regular):
 
 def test_actor_method_deletion(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def method(self):
             return 1
 
@@ -426,7 +426,7 @@ def test_actor_method_deletion(ray_start_regular):
 
 def test_multiple_actors(ray_start_regular):
     @ray.remote
-    class Counter(object):
+    class Counter:
         def __init__(self, value):
             self.value = value
 
@@ -479,7 +479,7 @@ def test_remote_function_within_actor(ray_start_10_cpus):
         return ray.get(f.remote(x))
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self, x):
             self.x = x
             self.y = val2
@@ -515,13 +515,13 @@ def test_define_actor_within_actor(ray_start_10_cpus):
     # Make sure we can use remote funtions within actors.
 
     @ray.remote
-    class Actor1(object):
+    class Actor1:
         def __init__(self, x):
             self.x = x
 
         def new_actor(self, z):
             @ray.remote
-            class Actor2(object):
+            class Actor2:
                 def __init__(self, x):
                     self.x = x
 
@@ -542,7 +542,7 @@ def test_use_actor_within_actor(ray_start_10_cpus):
     # Make sure we can use actors within actors.
 
     @ray.remote
-    class Actor1(object):
+    class Actor1:
         def __init__(self, x):
             self.x = x
 
@@ -550,7 +550,7 @@ def test_use_actor_within_actor(ray_start_10_cpus):
             return self.x
 
     @ray.remote
-    class Actor2(object):
+    class Actor2:
         def __init__(self, x, y):
             self.x = x
             self.actor1 = Actor1.remote(y)
@@ -568,7 +568,7 @@ def test_define_actor_within_remote_function(ray_start_10_cpus):
     @ray.remote
     def f(x, n):
         @ray.remote
-        class Actor1(object):
+        class Actor1:
             def __init__(self, x):
                 self.x = x
 
@@ -587,7 +587,7 @@ def test_use_actor_within_remote_function(ray_start_10_cpus):
     # Make sure we can create and use actors within remote funtions.
 
     @ray.remote
-    class Actor1(object):
+    class Actor1:
         def __init__(self, x):
             self.x = x
 
@@ -618,7 +618,7 @@ def test_actor_import_counter(ray_start_10_cpus):
     @ray.remote
     def g():
         @ray.remote
-        class Actor(object):
+        class Actor:
             def __init__(self):
                 # This should use the last version of f.
                 self.x = ray.get(f.remote())
@@ -636,7 +636,7 @@ def test_inherit_actor_from_class(ray_start_regular):
     # Make sure we can define an actor by inheriting from a regular class.
     # Note that actors cannot inherit from other actors.
 
-    class Foo(object):
+    class Foo:
         def __init__(self, x):
             self.x = x
 
@@ -663,7 +663,7 @@ def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
     # Make sure that regular remote functions are not scheduled on actors.
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
@@ -683,7 +683,7 @@ def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
 
 def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     @ray.remote
-    class Foo(object):
+    class Foo:
         def method(self):
             pass
 
@@ -700,7 +700,7 @@ def test_actor_load_balancing(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote
-    class Actor1(object):
+    class Actor1:
         def __init__(self):
             pass
 
@@ -743,7 +743,7 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     ray.init(address=cluster.address)
 
     @ray.remote(num_cpus=1)
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
@@ -759,7 +759,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
     remote_node = cluster.add_node()
 
     @ray.remote(max_reconstructions=0)
-    class Counter(object):
+    class Counter:
         def __init__(self):
             self.x = 0
 
@@ -799,7 +799,7 @@ def test_actor_init_fails(ray_start_cluster_head):
     remote_node = cluster.add_node()
 
     @ray.remote(max_reconstructions=1)
-    class Counter(object):
+    class Counter:
         def __init__(self):
             self.x = 0
 
@@ -825,7 +825,7 @@ def test_reconstruction_suppression(ray_start_cluster_head):
     worker_nodes = [cluster.add_node() for _ in range(num_nodes)]
 
     @ray.remote(max_reconstructions=1)
-    class Counter(object):
+    class Counter:
         def __init__(self):
             self.x = 0
 
@@ -863,7 +863,7 @@ def setup_counter_actor(test_checkpoint=False,
         checkpoint_interval = 5
 
     @ray.remote(checkpoint_interval=checkpoint_interval)
-    class Counter(object):
+    class Counter:
         _resume_exception = resume_exception
 
         def __init__(self, save_exception):
@@ -1031,7 +1031,7 @@ def _test_nondeterministic_reconstruction(
         cluster, num_forks, num_items_per_fork, num_forks_to_wait):
     # Make a shared queue.
     @ray.remote
-    class Queue(object):
+    class Queue:
         def __init__(self):
             self.queue = []
 
@@ -1115,7 +1115,7 @@ def setup_queue_actor():
     ray.init(num_cpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote
-    class Queue(object):
+    class Queue:
         def __init__(self):
             self.queue = []
 
@@ -1274,7 +1274,7 @@ def test_garbage_collection(setup_queue_actor):
 
 def test_calling_put_on_actor_handle(ray_start_regular):
     @ray.remote
-    class Counter(object):
+    class Counter:
         def __init__(self):
             self.x = 0
 
@@ -1308,7 +1308,7 @@ def test_calling_put_on_actor_handle(ray_start_regular):
 
 def test_pickling_actor_handle(ray_start_regular):
     @ray.remote
-    class Foo(object):
+    class Foo:
         def method(self):
             pass
 
@@ -1321,12 +1321,12 @@ def test_pickling_actor_handle(ray_start_regular):
 
 def test_pickled_actor_handle_call_in_method_twice(ray_start_regular):
     @ray.remote
-    class Actor1(object):
+    class Actor1:
         def f(self):
             return 1
 
     @ray.remote
-    class Actor2(object):
+    class Actor2:
         def __init__(self, constructor):
             self.actor = constructor()
 
@@ -1345,7 +1345,7 @@ def test_register_and_get_named_actors(ray_start_regular):
     # TODO(heyucongtom): We should test this from another driver.
 
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self):
             self.x = 0
 
@@ -1381,7 +1381,7 @@ def test_register_and_get_named_actors(ray_start_regular):
 
 def test_detached_actor(ray_start_regular):
     @ray.remote
-    class DetachedActor(object):
+    class DetachedActor:
         def ping(self):
             return "pong"
 
@@ -1400,7 +1400,7 @@ import ray
 ray.init(address="{}")
 
 @ray.remote
-class DetachedActor(object):
+class DetachedActor:
     def ping(self):
         return "pong"
 
@@ -1415,7 +1415,7 @@ ray.get(actor.ping.remote())
 
 def test_kill(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def hang(self):
             # Never returns.
             ray.get(ray.ObjectID.from_random())
@@ -1434,7 +1434,7 @@ def test_kill(ray_start_regular):
 def test_actor_creation_task_crash(ray_start_regular):
     # Test actor death in constructor.
     @ray.remote(max_reconstructions=0)
-    class Actor(object):
+    class Actor:
         def __init__(self):
             print("crash")
             os._exit(0)
@@ -1450,7 +1450,7 @@ def test_actor_creation_task_crash(ray_start_regular):
     # Test an actor can be reconstructed successfully
     # afte it dies in its constructor.
     @ray.remote(max_reconstructions=3)
-    class ReconstructableActor(object):
+    class ReconstructableActor:
         def __init__(self):
             count = self.get_count()
             count += 1
