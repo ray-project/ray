@@ -44,15 +44,29 @@ class StreamingMessageBundleMeta {
 
   StreamingMessageBundleType bundle_type_;
 
+ private:
+  /// To speed up memory copy and serilization, we use memory layout of compiler related
+  /// member variables. It's must be modified if any field is going to be inserted before
+  /// first member property.
+  /// Reference
+  /// :/http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2018/p1113r0.html#2254).
+  inline uint8_t *GetFirstMemberAddress() {
+    return reinterpret_cast<uint8_t *>(&message_bundle_ts_);
+  }
+
  public:
-  explicit StreamingMessageBundleMeta(uint64_t, uint64_t, uint32_t,
-                                      StreamingMessageBundleType);
+  explicit StreamingMessageBundleMeta(const uint8_t *bytes);
+
+  explicit StreamingMessageBundleMeta(const uint64_t message_bunddle_tes,
+                                      const uint64_t last_offset_seq_id,
+                                      const uint32_t message_list_size,
+                                      const StreamingMessageBundleType bundle_type);
 
   explicit StreamingMessageBundleMeta(StreamingMessageBundleMeta *);
 
   explicit StreamingMessageBundleMeta();
 
-  virtual ~StreamingMessageBundleMeta(){};
+  virtual ~StreamingMessageBundleMeta() = default;
 
   bool operator==(StreamingMessageBundleMeta &) const;
 
@@ -74,6 +88,11 @@ class StreamingMessageBundleMeta {
                                                  bool verifer_check = true);
   inline virtual uint32_t ClassBytesSize() { return kMessageBundleMetaHeaderSize; }
 
+  inline static bool CheckBundleMagicNum(const uint8_t *bytes) {
+    const uint32_t *magic_num = reinterpret_cast<const uint32_t *>(bytes);
+    return *magic_num == StreamingMessageBundleMagicNum;
+  }
+
   std::string ToString() {
     return std::to_string(last_message_id_) + "," + std::to_string(message_list_size_) +
            "," + std::to_string(message_bundle_ts_) + "," +
@@ -81,11 +100,9 @@ class StreamingMessageBundleMeta {
   }
 };
 
-/// StreamingMessageBundle inherits from metadata class (StreamingMessageBundleMeta) with
-/// the following protocol:
-/// MagicNum = 0xcafebaba
-/// Timestamp 64bits timestamp (milliseconds from 1970)
-/// LastMessageId( the last id of bundle) (0,INF]
+/// StreamingMessageBundle inherits from metadata class (StreamingMessageBundleMeta)
+/// with the following protocol: MagicNum = 0xcafebaba Timestamp 64bits timestamp
+/// (milliseconds from 1970) LastMessageId( the last id of bundle) (0,INF]
 /// MessageListSize(bundle len of message)
 /// BundleType(a. bundle = 3 , b. barrier =2, c. empty = 1)
 /// RawBundleSize（binary length of data)
@@ -154,6 +171,7 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
   static void GetMessageListFromRawData(const uint8_t *bytes, uint32_t bytes_size,
                                         uint32_t message_list_size,
                                         std::list<StreamingMessagePtr> &message_list);
+
   static void ConvertMessageListToRawData(
       const std::list<StreamingMessagePtr> &message_list, uint32_t raw_data_size,
       uint8_t *raw_data);
