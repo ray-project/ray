@@ -22,12 +22,12 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, 9999)                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, 100)
 
-#define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                                  \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignTask)                         \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                           \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete)     \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                    \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                          \
+#define RAY_CORE_WORKER_DECLARE_RPC_HANDLERS                              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignTask)                     \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.

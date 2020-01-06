@@ -23,9 +23,9 @@ namespace rpc {
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
 // Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)                         \
-  virtual void Handle##METHOD(const rpc::METHOD##Request &request,            \
-                              rpc::METHOD##Reply *reply,                      \
+#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)            \
+  virtual void Handle##METHOD(const rpc::METHOD##Request &request, \
+                              rpc::METHOD##Reply *reply,           \
                               rpc::SendReplyCallback send_reply_callback) = 0;
 
 class GrpcService;
