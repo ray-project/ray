@@ -77,8 +77,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),
-      gcs_client_(std::move(gcs_client)),
-      object_directory_(std::move(object_directory)),
+      gcs_client_(gcs_client),
+      object_directory_(object_directory),
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
@@ -966,7 +966,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   if (message->is_worker()) {
     // Register the new worker.
-    if (worker_pool_.RegisterWorker(std::move(worker)).ok()) {
+    if (worker_pool_.RegisterWorker(worker).ok()) {
       HandleWorkerAvailable(worker->Connection());
     }
   } else {
@@ -976,7 +976,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
-    status = worker_pool_.RegisterDriver(std::move(worker));
+    status = worker_pool_.RegisterDriver(worker);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr = gcs::CreateJobTableData(
@@ -1057,7 +1057,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
 
   if (worker_idle) {
     // Return the worker to the idle pool.
-    worker_pool_.PushWorker(std::move(worker));
+    worker_pool_.PushWorker(worker);
   }
 
   if (new_scheduler_enabled_) {
@@ -1595,7 +1595,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
-  std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_id]);
+  std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   if (new_scheduler_enabled_) {
     if (worker->IsBlocked()) {
