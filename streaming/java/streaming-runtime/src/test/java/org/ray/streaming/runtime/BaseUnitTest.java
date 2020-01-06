@@ -1,7 +1,6 @@
 package org.ray.streaming.runtime;
 
 import java.lang.reflect.Method;
-import org.ray.streaming.runtime.util.TestHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.AfterClass;
