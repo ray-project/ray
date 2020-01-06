@@ -71,7 +71,7 @@ class CoreWorkerGrpcService : public GrpcService {
   /// The grpc async service object.
   CoreWorkerService::AsyncService service_;
 
-  /// The service handler that actually handle the requests.
+  /// The service handler that actually handles the requests.
   CoreWorkerServiceHandler &service_handler_;
 };
 
