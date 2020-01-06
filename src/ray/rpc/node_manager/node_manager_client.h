@@ -68,18 +68,10 @@ class NodeManagerWorkerClient
   }
 
   /// Request a worker lease.
-<<<<<<< HEAD
-  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_)
+  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
 
   /// Return a worker lease.
-  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_)
-=======
-  RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, request, callback,
-                    grpc_client_, )
-
-  /// Return a worker lease.
-  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, request, callback, grpc_client_, )
->>>>>>> 1000e3322db3dbeffa4c10572950ff390c7a2574
+  RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
 
  private:
   /// Constructor.
