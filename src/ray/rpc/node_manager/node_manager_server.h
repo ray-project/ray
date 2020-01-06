@@ -3,7 +3,6 @@
 
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -35,6 +34,10 @@ class NodeManagerServiceHandler {
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePinObjectIDsRequest(const PinObjectIDsRequest &request,
+                                         PinObjectIDsReply *reply,
+                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleNodeStatsRequest(const GetNodeStatsRequest &request,
                                       GetNodeStatsReply *reply,
@@ -81,6 +84,13 @@ class NodeManagerGrpcService : public GrpcService {
             service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq,
             main_service_));
 
+    std::unique_ptr<ServerCallFactory> pin_object_ids_call_factory(
+        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
+                                  PinObjectIDsRequest, PinObjectIDsReply>(
+            service_, &NodeManagerService::AsyncService::RequestPinObjectIDs,
+            service_handler_, &NodeManagerServiceHandler::HandlePinObjectIDsRequest, cq,
+            main_service_));
+
     std::unique_ptr<ServerCallFactory> node_stats_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   GetNodeStatsRequest, GetNodeStatsReply>(
@@ -95,6 +105,8 @@ class NodeManagerGrpcService : public GrpcService {
         std::move(release_worker_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
         std::move(forward_task_call_factory), 100);
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(pin_object_ids_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
         std::move(node_stats_call_factory), 1);
   }

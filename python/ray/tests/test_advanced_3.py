@@ -8,6 +8,7 @@ import logging
 import os
 import setproctitle
 import shutil
+import json
 import sys
 import socket
 import subprocess
@@ -418,7 +419,12 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=1,
+        object_store_memory=int(10**8),
+        _internal_config=json.dumps({
+            "object_pinning_enabled": 0
+        }))
 
     @ray.remote
     def f():
@@ -577,21 +583,21 @@ def test_shutdown_disconnect_global_state():
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_put_pins_object(ray_start_object_store_memory):
     x_id = ray.put("HI")
-    x_copy = ray.ObjectID(x_id.binary())
-    assert ray.get(x_copy) == "HI"
+    x_binary = x_id.binary()
+    assert ray.get(ray.ObjectID(x_binary)) == "HI"
 
     # x cannot be evicted since x_id pins it
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert ray.get(x_id) == "HI"
-    assert ray.get(x_copy) == "HI"
+    assert ray.get(ray.ObjectID(x_binary)) == "HI"
 
-    # now it can be evicted since x_id pins it but x_copy does not
+    # now it can be evicted since x_id pins it but x_binary does not
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(x_copy)
+        ray.get(ray.ObjectID(x_binary))
 
     # weakref put
     y_id = ray.put("HI", weakref=True)
@@ -599,14 +605,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.put(np.zeros(10 * 1024 * 1024))
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(y_id)
-
-    @ray.remote
-    def check_no_buffer_ref(x):
-        assert x[0].get_buffer_ref() is None
-
-    z_id = ray.put("HI")
-    assert z_id.get_buffer_ref() is not None
-    ray.get(check_no_buffer_ref.remote([z_id]))
 
 
 @pytest.mark.parametrize(
