@@ -232,6 +232,11 @@ class Trial:
 
     @property
     def checkpoint(self):
+        """Returns the most recent checkpoint.
+
+        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
+        Otherwise, it is the most recent PERSISTENT checkpoint.
+        """
         if self.status == Trial.PAUSED:
             assert self.checkpoint_manager.newest_memory_checkpoint.value
             return self.checkpoint_manager.newest_memory_checkpoint
