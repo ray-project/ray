@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.plan.VertexType;
-import org.ray.streaming.runtime.core.processor.StreamProcessor;
 
 /**
  * A node in the physical execution graph.

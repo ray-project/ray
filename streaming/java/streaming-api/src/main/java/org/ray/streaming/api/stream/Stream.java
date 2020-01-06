@@ -6,8 +6,8 @@ import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.python.descriptor.DescriptorOperator;
-import org.ray.streaming.python.stream.PythonStream;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
+import org.ray.streaming.python.stream.PythonStream;
 
 /**
  * Abstract base class of all stream types.
