@@ -2,8 +2,9 @@ package org.ray.streaming.python.stream;
 
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.stream.Stream;
+import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.python.descriptor.DescriptorFunction;
-import org.ray.streaming.python.descriptor.DescriptorOperator;
+import org.ray.streaming.python.descriptor.DescriptorFunction.PythonFunctionInterface;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 
 /**
@@ -12,12 +13,12 @@ import org.ray.streaming.python.descriptor.DescriptorPartition;
 public class PythonDataStream extends Stream implements PythonStream {
 
   protected PythonDataStream(StreamingContext streamingContext,
-                          DescriptorOperator descriptorOperator) {
-    super(streamingContext, descriptorOperator);
+                             PythonOperator pythonOperator) {
+    super(streamingContext, pythonOperator);
   }
 
-  protected PythonDataStream(Stream inputStream, DescriptorOperator descriptorOperator) {
-    super(inputStream, descriptorOperator);
+  protected PythonDataStream(Stream inputStream, PythonOperator pythonOperator) {
+    super(inputStream, pythonOperator);
   }
 
   /**
@@ -27,7 +28,8 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new PythonDataStream.
    */
   public PythonDataStream map(DescriptorFunction func) {
-    return new PythonDataStream(this, DescriptorOperator.ofMap(func));
+    func.setPythonFunctionInterface(PythonFunctionInterface.MAP_FUNCTION);
+    return new PythonDataStream(this, new PythonOperator(func));
   }
 
   /**
@@ -37,7 +39,8 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new PythonDataStream
    */
   public PythonDataStream flatMap(DescriptorFunction func) {
-    return new PythonDataStream(this, DescriptorOperator.ofFlatMap(func));
+    func.setPythonFunctionInterface(PythonFunctionInterface.FLAT_MAP_FUNCTION);
+    return new PythonDataStream(this, new PythonOperator(func));
   }
 
   /**
@@ -47,7 +50,8 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new StreamSink.
    */
   public PythonStreamSink sink(DescriptorFunction func) {
-    return new PythonStreamSink(this, DescriptorOperator.ofSink(func));
+    func.setPythonFunctionInterface(DescriptorFunction.PythonFunctionInterface.SINK_FUNCTION);
+    return new PythonStreamSink(this, new PythonOperator(func));
   }
 
   /**
@@ -57,7 +61,8 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new KeyDataStream.
    */
   public PythonKeyDataStream keyBy(DescriptorFunction func) {
-    return new PythonKeyDataStream(this, DescriptorOperator.ofKeyBy(func));
+    func.setPythonFunctionInterface(PythonFunctionInterface.KEY_FUNCTION);
+    return new PythonKeyDataStream(this, new PythonOperator(func));
   }
 
   /**

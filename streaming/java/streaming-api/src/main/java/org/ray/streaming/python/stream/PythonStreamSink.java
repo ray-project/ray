@@ -1,13 +1,13 @@
 package org.ray.streaming.python.stream;
 
 import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.python.descriptor.DescriptorOperator;
+import org.ray.streaming.python.PythonOperator;
 
 /**
  * Represents a sink of the PythonStream.
  */
 public class PythonStreamSink extends StreamSink implements PythonStream {
-  public PythonStreamSink(PythonDataStream input, DescriptorOperator sinkOperator) {
+  public PythonStreamSink(PythonDataStream input, PythonOperator sinkOperator) {
     super(input, null);
     this.streamingContext.addSink(this);
   }

@@ -5,7 +5,7 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.python.descriptor.DescriptorOperator;
+import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 import org.ray.streaming.python.stream.PythonStream;
 
@@ -27,7 +27,7 @@ public abstract class Stream<T> implements Serializable {
     this.streamingContext = streamingContext;
     this.operator = streamOperator;
     this.id = streamingContext.generateId();
-    if (streamOperator instanceof DescriptorOperator) {
+    if (streamOperator instanceof PythonOperator) {
       this.partition = DescriptorPartition.RoundRobinPartition;
     } else {
       this.partition = new RoundRobinPartition<>();
