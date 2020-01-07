@@ -2,8 +2,16 @@ import numpy as np
 import unittest
 
 import ray
+from ray.rllib.agents.impala.vtrace_policy import BEHAVIOR_LOGITS
 import ray.rllib.agents.ppo as ppo
+from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
+    postprocess_ppo_gae_tf, PPOLoss as PPOLossTf
+from ray.rllib.agents.ppo.ppo_torch_policy import postprocess_ppo_gae as \
+    postprocess_ppo_gae_torch, PPOLoss as PPOLossTorch
+from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.utils.test_utils import check
 
 
 class TestPPO(unittest.TestCase):
@@ -47,7 +55,10 @@ class TestPPO(unittest.TestCase):
             ]),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, 1.0, 1.0]),
-            SampleBatch.DONES: np.array([False, False, True])
+            SampleBatch.DONES: np.array([False, False, True]),
+            SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7]),
+            BEHAVIOR_LOGITS: np.array(),
+            ACTION_LOGP: np.array()
         }
 
         # tf.
@@ -59,15 +70,35 @@ class TestPPO(unittest.TestCase):
         # train_batch dict.
         # A = [0.99^2 * 1.0 + 0.99 * 1.0 + 1.0, 0.99 * 1.0 + 1.0, 1.0] =
         # [2.9701, 1.99, 1.0]
-        train_batch = ppo.post_process_advantages(policy, train_batch)
+        train_batch = postprocess_ppo_gae_tf(policy, train_batch)
         # Check Advantage values.
-        check(train_batch[Postprocessing.ADVANTAGES], [2.9701, 1.99, 1.0])
+        check(train_batch[Postprocessing.VALUE_TARGETS], [2.9701, 1.99, 1.0])
 
         # Actual loss results.
-        results = pg.pg_tf_loss(
-            policy, policy.model, dist_class=Categorical,
-            train_batch=train_batch
-        )
+        #results = ppo.pg_tf_loss(
+        #    policy, policy.model, dist_class=Categorical,
+        #    train_batch=train_batch
+        #)
+
+        loss_obj = PPOLossTf(
+            Categorical,
+            policy.model,
+            train_batch[Postprocessing.VALUE_TARGETS],
+            train_batch[Postprocessing.ADVANTAGES],
+            train_batch[SampleBatch.ACTIONS],
+            train_batch[BEHAVIOR_LOGITS],
+            train_batch[ACTION_LOGP],
+            train_batch[SampleBatch.VF_PREDS],
+            Categorical(train_batch[BEHAVIOR_LOGITS], policy.model),
+            policy.model.value_function(),
+            policy.kl_coeff,
+            None,  # RNN valid mask
+            entropy_coeff=policy.entropy_coeff,
+            clip_param=policy.config["clip_param"],
+            vf_clip_param=policy.config["vf_clip_param"],
+            vf_loss_coeff=policy.config["vf_loss_coeff"],
+            use_gae=policy.config["use_gae"],
+            model_config=policy.config["model"])
 
         # Calculate expected results.
         expected_logits = fc(
@@ -83,7 +114,7 @@ class TestPPO(unittest.TestCase):
         expected_loss = -np.mean(
             expected_logp * train_batch[Postprocessing.ADVANTAGES]
         )
-        check(results.numpy(), expected_loss, decimals=4)
+        check(loss_obj.loss.numpy(), expected_loss, decimals=4)
 
         # Torch.
         config["use_pytorch"] = True
