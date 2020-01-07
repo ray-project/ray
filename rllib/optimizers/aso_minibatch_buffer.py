@@ -1,5 +1,6 @@
 """Helper class for AsyncSamplesOptimizer."""
 
+
 class MinibatchBuffer:
     """Ring buffer of recent data batches for minibatch SGD.
 

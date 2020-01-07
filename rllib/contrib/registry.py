@@ -1,5 +1,6 @@
 """Registry of algorithm names for `rllib train --run=<alg_name>`"""
 
+
 def _import_random_agent():
     from ray.rllib.contrib.random_agent.random_agent import RandomAgent
     return RandomAgent
