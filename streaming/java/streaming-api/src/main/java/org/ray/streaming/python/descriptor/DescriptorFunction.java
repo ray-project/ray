@@ -4,7 +4,7 @@ import com.google.common.base.Preconditions;
 import org.ray.streaming.api.function.Function;
 
 /**
- * A DescriptorFunction is used to describe an user defined python function.
+ * A DescriptorFunction is used to describe a user defined python function.
  * Python worker can create a function object based on information in this
  * DescriptorFunction.
  *
