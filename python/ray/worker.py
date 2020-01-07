@@ -209,7 +209,6 @@ class Worker(object):
             if job_id not in self.serialization_context_map:
                 self.serialization_context_map[
                     job_id] = serialization.SerializationContext(self)
-                self.serialization_context_map[job_id].initialize()
             return self.serialization_context_map[job_id]
 
     def check_connected(self):
