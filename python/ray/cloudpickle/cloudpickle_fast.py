@@ -423,7 +423,7 @@ def _numpy_ndarray_reduce(array):
             raise ImportError("Using pickle protocol 5 requires the pickle5 "
                               "module for Python >=3.5 and <3.8")
     else:
-        raise ValueError("pickle protocol 5 is not available for Python < 3.6")
+        raise ValueError("pickle protocol 5 is not available for Python < 3.5")
     # if the array if Fortran-contiguous and not C-contiguous,
     # the PickleBuffer instance will hold a view on the transpose
     # of the initial array, that is C-contiguous.
