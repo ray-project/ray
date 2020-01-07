@@ -43,7 +43,7 @@ class SampleBatch:
     # Uniquely identifies an agent within an episode
     AGENT_INDEX = "agent_index"
 
-    # Value function predictions emitted by the behaviour policy
+    # Value function predictions emitted by the behavior policy
     VF_PREDS = "vf_preds"
 
     @PublicAPI

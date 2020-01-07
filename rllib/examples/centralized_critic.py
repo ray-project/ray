@@ -20,9 +20,10 @@ import numpy as np
 from gym.spaces import Discrete
 
 from ray import tune
+from ray.rllib.agents.impala.vtrace_policy import BEHAVIOR_LOGITS
 from ray.rllib.agents.ppo.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy, KLCoeffMixin, \
-    PPOLoss, BEHAVIOUR_LOGITS
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
+    PPOLoss
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.examples.twostep_game import TwoStepGame
@@ -147,7 +148,7 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
         train_batch[Postprocessing.VALUE_TARGETS],
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
-        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[BEHAVIOR_LOGITS],
         train_batch[ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,

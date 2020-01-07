@@ -24,7 +24,8 @@ tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
-BEHAVIOUR_LOGITS = "behaviour_logits"
+BEHAVIOR_LOGITS = "behavior_logits"
+BEHAVIOUR_LOGITS = BEHAVIOR_LOGITS  # Backward compatibility.
 
 
 class VTraceLoss:
@@ -33,8 +34,8 @@ class VTraceLoss:
                  actions_logp,
                  actions_entropy,
                  dones,
-                 behaviour_action_logp,
-                 behaviour_logits,
+                 behavior_action_logp,
+                 behavior_logits,
                  target_logits,
                  discount,
                  rewards,
@@ -59,8 +60,8 @@ class VTraceLoss:
             actions_logp: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
-            behaviour_action_logp: Tensor of shape [T, B].
-            behaviour_logits: A list with length of ACTION_SPACE of float32
+            behavior_action_logp: Tensor of shape [T, B].
+            behavior_logits: A list with length of ACTION_SPACE of float32
                 tensors of shapes
                 [T, B, ACTION_SPACE[0]],
                 ...,
@@ -82,8 +83,8 @@ class VTraceLoss:
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
-                behaviour_action_log_probs=behaviour_action_logp,
-                behaviour_policy_logits=behaviour_logits,
+                behavior_action_log_probs=behavior_action_logp,
+                behavior_policy_logits=behavior_logits,
                 target_policy_logits=target_logits,
                 actions=tf.unstack(actions, axis=2),
                 discounts=tf.to_float(~dones) * discount,
@@ -175,10 +176,10 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
     rewards = train_batch[SampleBatch.REWARDS]
-    behaviour_action_logp = train_batch[ACTION_LOGP]
-    behaviour_logits = train_batch[BEHAVIOUR_LOGITS]
-    unpacked_behaviour_logits = tf.split(
-        behaviour_logits, output_hidden_shape, axis=1)
+    behavior_action_logp = train_batch[ACTION_LOGP]
+    behavior_logits = train_batch[BEHAVIOR_LOGITS]
+    unpacked_behavior_logits = tf.split(
+        behavior_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
     values = model.value_function()
 
@@ -201,10 +202,10 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         actions_entropy=make_time_major(
             action_dist.multi_entropy(), drop_last=True),
         dones=make_time_major(dones, drop_last=True),
-        behaviour_action_logp=make_time_major(
-            behaviour_action_logp, drop_last=True),
-        behaviour_logits=make_time_major(
-            unpacked_behaviour_logits, drop_last=True),
+        behavior_action_logp=make_time_major(
+            behavior_action_logp, drop_last=True),
+        behavior_logits=make_time_major(
+            unpacked_behavior_logits, drop_last=True),
         target_logits=make_time_major(unpacked_outputs, drop_last=True),
         discount=policy.config["gamma"],
         rewards=make_time_major(rewards, drop_last=True),
@@ -257,8 +258,8 @@ def postprocess_trajectory(policy,
     return sample_batch
 
 
-def add_behaviour_logits(policy):
-    return {BEHAVIOUR_LOGITS: policy.model.last_output()}
+def add_behavior_logits(policy):
+    return {BEHAVIOR_LOGITS: policy.model.last_output()}
 
 
 def validate_config(policy, obs_space, action_space, config):
@@ -299,7 +300,7 @@ VTraceTFPolicy = build_tf_policy(
     postprocess_fn=postprocess_trajectory,
     optimizer_fn=choose_optimizer,
     gradients_fn=clip_gradients,
-    extra_action_fetches_fn=add_behaviour_logits,
+    extra_action_fetches_fn=add_behavior_logits,
     before_init=validate_config,
     before_loss_init=setup_mixins,
     mixins=[LearningRateSchedule, EntropyCoeffSchedule],

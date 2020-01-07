@@ -1,15 +1,13 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 import ray
+from ray.rllib.agents.impala.vtrace_policy import BEHAVIOR_LOGITS
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
-    EntropyCoeffSchedule, ACTION_LOGP
+    EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.tf_ops import make_tf_callable
@@ -19,13 +17,9 @@ tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
 
-# Frozen logits of the policy that computed the action
-BEHAVIOUR_LOGITS = "behaviour_logits"
-
 
 class PPOLoss:
     def __init__(self,
-                 action_space,
                  dist_class,
                  model,
                  value_targets,
@@ -47,7 +41,6 @@ class PPOLoss:
         """Constructs the loss for Proximal Policy Objective.
 
         Arguments:
-            action_space: Environment observation space specification.
             dist_class: action distribution class for logits.
             value_targets (Placeholder): Placeholder for target values; used
                 for GAE.
@@ -57,16 +50,17 @@ class PPOLoss:
                 from previous model evaluation.
             prev_logits (Placeholder): Placeholder for logits output from
                 previous model evaluation.
-            prev_actions_logp (Placeholder): Placeholder for prob output from
-                previous model evaluation.
+            prev_actions_logp (Placeholder): Placeholder for action prob output
+                from the previous (before update) Model evaluation.
             vf_preds (Placeholder): Placeholder for value function output
-                from previous model evaluation.
+                from the previous (before update) Model evaluation.
             curr_action_dist (ActionDistribution): ActionDistribution
                 of the current model.
             value_fn (Tensor): Current value function output Tensor.
             cur_kl_coeff (Variable): Variable holding the current PPO KL
                 coefficient.
-            valid_mask (Tensor): A bool mask of valid input elements (#2992).
+            valid_mask (Optional[tf.Tensor]): An optional bool mask of valid
+                input elements (for max-len padded sequences (RNNs)).
             entropy_coeff (float): Coefficient of the entropy regularizer.
             clip_param (float): Clip parameter
             vf_clip_param (float): Clip parameter for the value function
@@ -75,9 +69,12 @@ class PPOLoss:
             model_config (dict): (Optional) model config for use in specifying
                 action distributions.
         """
-
-        def reduce_mean_valid(t):
-            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+        if valid_mask is not None:
+            reduce_mean_valid = lambda t: tf.reduce_mean(
+                tf.boolean_mask(t, valid_mask)
+            )
+        else:
+            reduce_mean_valid = lambda t: tf.reduce_mean(t)
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -116,22 +113,19 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
+    mask = None
     if state:
         max_seq_len = tf.reduce_max(train_batch["seq_lens"])
         mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
         mask = tf.reshape(mask, [-1])
-    else:
-        mask = tf.ones_like(
-            train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool)
 
     policy.loss_obj = PPOLoss(
-        policy.action_space,
         dist_class,
         model,
         train_batch[Postprocessing.VALUE_TARGETS],
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
-        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[BEHAVIOR_LOGITS],
         train_batch[ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,
@@ -168,7 +162,7 @@ def vf_preds_and_logits_fetches(policy):
     """Adds value function and logits outputs to experience train_batches."""
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
-        BEHAVIOUR_LOGITS: policy.model.last_output(),
+        BEHAVIOR_LOGITS: policy.model.last_output(),
     }
 
 

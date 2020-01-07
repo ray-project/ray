@@ -12,7 +12,7 @@ import gym
 
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
-        BEHAVIOUR_LOGITS, clip_gradients, validate_config, choose_optimizer
+        BEHAVIOR_LOGITS, clip_gradients, validate_config, choose_optimizer
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -20,7 +20,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
-from ray.rllib.agents.ppo.ppo_policy import KLCoeffMixin, ValueNetworkMixin
+from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
@@ -106,8 +106,8 @@ class VTraceSurrogateLoss:
                  action_kl,
                  actions_entropy,
                  dones,
-                 behaviour_logits,
-                 old_policy_behaviour_logits,
+                 behavior_logits,
+                 old_policy_behavior_logits,
                  target_logits,
                  discount,
                  rewards,
@@ -137,8 +137,8 @@ class VTraceSurrogateLoss:
             action_kl: A float32 tensor of shape [T, B].
             actions_entropy: A float32 tensor of shape [T, B].
             dones: A bool tensor of shape [T, B].
-            behaviour_logits: A float32 tensor of shape [T, B, logit_dim].
-            old_policy_behaviour_logits: A float32 tensor of shape
+            behavior_logits: A float32 tensor of shape [T, B, logit_dim].
+            old_policy_behavior_logits: A float32 tensor of shape
             [T, B, logit_dim].
             target_logits: A float32 tensor of shape [T, B, logit_dim].
             discount: A float32 scalar.
@@ -161,8 +161,8 @@ class VTraceSurrogateLoss:
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
             self.vtrace_returns = vtrace.multi_from_logits(
-                behaviour_policy_logits=behaviour_logits,
-                target_policy_logits=old_policy_behaviour_logits,
+                behavior_policy_logits=behavior_logits,
+                target_policy_logits=old_policy_behavior_logits,
                 actions=tf.unstack(actions, axis=2),
                 discounts=tf.to_float(~dones) * discount,
                 rewards=rewards,
@@ -248,18 +248,18 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
     rewards = train_batch[SampleBatch.REWARDS]
-    behaviour_logits = train_batch[BEHAVIOUR_LOGITS]
+    behavior_logits = train_batch[BEHAVIOR_LOGITS]
 
     target_model_out, _ = policy.target_model.from_batch(train_batch)
-    old_policy_behaviour_logits = tf.stop_gradient(target_model_out)
+    old_policy_behavior_logits = tf.stop_gradient(target_model_out)
 
-    unpacked_behaviour_logits = tf.split(
-        behaviour_logits, output_hidden_shape, axis=1)
-    unpacked_old_policy_behaviour_logits = tf.split(
-        old_policy_behaviour_logits, output_hidden_shape, axis=1)
+    unpacked_behavior_logits = tf.split(
+        behavior_logits, output_hidden_shape, axis=1)
+    unpacked_old_policy_behavior_logits = tf.split(
+        old_policy_behavior_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
-    old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
-    prev_action_dist = dist_class(behaviour_logits, policy.model)
+    old_policy_action_dist = dist_class(old_policy_behavior_logits, model)
+    prev_action_dist = dist_class(behavior_logits, policy.model)
     values = policy.model.value_function()
 
     policy.model_vars = policy.model.variables()
@@ -296,10 +296,10 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
             actions_entropy=make_time_major(
                 action_dist.multi_entropy(), drop_last=True),
             dones=make_time_major(dones, drop_last=True),
-            behaviour_logits=make_time_major(
-                unpacked_behaviour_logits, drop_last=True),
-            old_policy_behaviour_logits=make_time_major(
-                unpacked_old_policy_behaviour_logits, drop_last=True),
+            behavior_logits=make_time_major(
+                unpacked_behavior_logits, drop_last=True),
+            old_policy_behavior_logits=make_time_major(
+                unpacked_old_policy_behavior_logits, drop_last=True),
             target_logits=make_time_major(unpacked_outputs, drop_last=True),
             discount=policy.config["gamma"],
             rewards=make_time_major(rewards, drop_last=True),
@@ -401,7 +401,7 @@ def postprocess_trajectory(policy,
 
 
 def add_values_and_logits(policy):
-    out = {BEHAVIOUR_LOGITS: policy.model.last_output()}
+    out = {BEHAVIOR_LOGITS: policy.model.last_output()}
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = policy.model.value_function()
     return out

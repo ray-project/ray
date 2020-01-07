@@ -1,8 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
+from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents.ppo.ppo import update_kl
 from ray.rllib.agents import impala
@@ -79,7 +75,7 @@ def initialize_target(trainer):
     trainer.workers.local_worker().foreach_trainable_policy(
         lambda p, _: p.update_target())
     trainer.target_update_frequency = trainer.config["num_sgd_iter"] \
-        * trainer.config["minibatch_buffer_size"]
+                                      * trainer.config["minibatch_buffer_size"]
 
 
 APPOTrainer = impala.ImpalaTrainer.with_updates(
