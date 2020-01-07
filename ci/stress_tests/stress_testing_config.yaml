@@ -28,6 +28,7 @@ provider:
     type: aws
     region: us-west-2
     availability_zone: us-west-2a
+    cache_stopped_nodes: False
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -43,7 +44,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m4.16xlarge
-    ImageId: ami-06d51e91cea0dac8d
+    ImageId: ami-06d51e91cea0dac8d # Ubuntu 18.04
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
@@ -59,7 +60,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m4.large
-    ImageId: ami-06d51e91cea0dac8d
+    ImageId: ami-06d51e91cea0dac8d # Ubuntu 18.04
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
