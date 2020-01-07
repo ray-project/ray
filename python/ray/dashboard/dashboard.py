@@ -213,7 +213,7 @@ class Dashboard(object):
                         format_resource(resource_name,
                                         total_resource - available_resource),
                         format_resource(resource_name, total_resource)))
-                data["extraInfo"] = ",".join(extra_info_strings) + "\n"
+                data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
                     # process object store info
                     extra_info_strings = []
@@ -241,10 +241,10 @@ class Dashboard(object):
             return await json_response(result=D)
 
         async def profiling_info(req) -> aiohttp.web.Response:
-            pid = req.query.get("pid")
-            duration = req.query.get("duration")
-            D = self.raylet_stats.get_profiling_stats(pid=pid, duration=duration)
-            print(D)
+            node_id = req.query.get("node_id")
+            pid = int(req.query.get("pid"))
+            duration = int(req.query.get("duration"))
+            D = self.raylet_stats.get_profiling_stats(node_id=node_id, pid=pid, duration=duration)
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:
@@ -566,15 +566,10 @@ class RayletStats(threading.Thread):
         with self._raylet_stats_lock:
             return copy.deepcopy(self._raylet_stats)
 
-    def get_profiling_stats(self, pid, duration) -> Dict:
-        # TODO: should pass in node id
-        print(pid, duration)
-        for node in self.nodes:
-            node_id = node["NodeID"]
-            stub = self.stubs[node_id]
-            reply = stub.GetProfilingStats(
-                node_manager_pb2.GetProfilingStatsRequest(pid=int(pid), duration=int(duration)))
-        print(type(reply))
+    def get_profiling_stats(self, node_id, pid, duration) -> Dict:
+        stub = self.stubs[node_id]
+        reply = stub.GetProfilingStats(
+            node_manager_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
         return MessageToDict(reply)
         
     def run(self):

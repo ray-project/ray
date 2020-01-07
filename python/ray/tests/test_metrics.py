@@ -184,8 +184,55 @@ def test_raylet_info_endpoint(shutdown_only):
             assert len(child_actor_info["children"]) == 0
             assert child_actor_info["usedResources"]["CPU"] == 1
 
-    profiling_info = requests.get(webui_url + "/api/profiling_info", params={"pid": actor_pid, "duration": 8})# .json()
-    time.sleep(12)
+    actor_pid = 0
+    raylet_info = requests.get(webui_url + "/api/profiling_info", params={"node_id": ray.nodes()[0]["NodeID"], "pid": actor_pid, "duration": 2}).json()
+    print(raylet_info)
+
+
+def test_profiling_info_endpoint(shutdown_only):
+    ray.init(num_cpus=1, include_webui=False)
+    raylet = ray.nodes()[0]
+    raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
+                                    ray.nodes()[0]["NodeManagerPort"])
+
+    channel = grpc.insecure_channel(raylet_address)
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+
+    @ray.remote
+    def f():
+        return "test"
+
+    @ray.remote(num_cpus=1)
+    class ActorA:
+        def __init__(self):
+            pass
+
+        def f(self):
+            for _ in range(60):
+                time.sleep(1)
+                f.remote()
+
+        def getpid(self):
+            return os.getpid()
+
+    a = ActorA.remote()
+    actor_pid = ray.get(a.getpid.remote())
+
+    def try_get_profiling_stats(num_retry=10):
+        reply = None
+        for _ in range(num_retry):
+            try:
+                time.sleep(2)
+                reply = stub.GetProfilingStats(
+                    node_manager_pb2.GetProfilingStatsRequest(pid=actor_pid, duration=2))
+                break
+            except grpc.RpcError:
+                continue
+        assert reply is not None
+        return reply
+
+    a.f.remote()
+    reply = try_get_profiling_stats()
 
 
 if __name__ == "__main__":

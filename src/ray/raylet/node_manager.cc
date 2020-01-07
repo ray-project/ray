@@ -11,7 +11,6 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
 #include "ray/util/sample.h"
-#include "ray/util/process.h"
 
 namespace {
 
@@ -3058,20 +3057,12 @@ void NodeManager::HandleProfilingStatsRequest(const rpc::GetProfilingStatsReques
   int pid = request.pid();
   int duration = request.duration();
   std::string file_path = "/tmp/ray/profiling_stats_" + std::to_string(pid) + ".svg";
-  std::vector<std::string> worker_command_args;
-  worker_command_args.push_back("sudo");
-  worker_command_args.push_back("py-spy");
-  worker_command_args.push_back("record");
-  worker_command_args.push_back("-o");
-  worker_command_args.push_back(file_path);
-  worker_command_args.push_back("-p");
-  worker_command_args.push_back(std::to_string(pid));
-  worker_command_args.push_back("-d");
-  worker_command_args.push_back(std::to_string(duration));
+  std::string worker_command;
+  // TODO: redirect stderr / stdout
+  worker_command = "sudo py-spy record -o " + file_path + " -p " + std::to_string(pid) + " -d " + std::to_string(duration);
   int64_t now = current_time_ms();
-  RAY_LOG(WARNING) << "XXX" << "start profiling";
-  SpawnProcess(worker_command_args); // Not blocked; TODO: wait here
-  RAY_LOG(WARNING) << "XXX" << current_time_ms() - now << "completes profiling";
+  int result = std::system(worker_command.c_str());
+  RAY_LOG(WARNING) << "XXXb" << current_time_ms() - now << "completes profiling";
   std::ifstream inFile(file_path);
   std::stringstream strStream;
   strStream << inFile.rdbuf();
