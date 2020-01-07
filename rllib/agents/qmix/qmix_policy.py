@@ -421,18 +421,6 @@ class QMixTorchPolicy(Policy):
     def set_epsilon(self, epsilon):
         self.cur_epsilon = epsilon
 
-    @override(Policy)
-    def export_checkpoint(self):
-        pass
-
-    @override(Policy)
-    def export_model(self, path):
-        pass
-
-    @override(Policy)
-    def num_state_tensors(self):
-        return 0
-
     def _get_group_rewards(self, info_batch):
         group_rewards = np.array([
             info.get(GROUP_REWARDS, [0.0] * self.n_agents)
