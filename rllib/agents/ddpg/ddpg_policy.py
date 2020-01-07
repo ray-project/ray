@@ -292,6 +292,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             self,
             observation_space,
             action_space,
+            self.config,
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
