@@ -81,8 +81,8 @@ def build_torch_policy(name,
                     self.config["model"],
                     framework="torch")
 
-            TorchPolicy.__init__(self, obs_space, action_space, self.model,
-                                 loss_fn, self.dist_class)
+            TorchPolicy.__init__(self, obs_space, action_space, self.config,
+                                 self.model, loss_fn, self.dist_class)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
@@ -127,11 +127,10 @@ def build_torch_policy(name,
             else:
                 return TorchPolicy.extra_grad_info(self, train_batch)
 
-    @staticmethod
     def with_updates(**overrides):
         return build_torch_policy(**dict(original_kwargs, **overrides))
 
-    policy_cls.with_updates = with_updates
+    policy_cls.with_updates = staticmethod(with_updates)
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls

@@ -18,10 +18,11 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
+    try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils import FilterManager, deep_update, merge_dicts
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.memory import ray_get_and_free
-from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -531,7 +532,7 @@ class Trainer(Trainable):
         with get_scope():
             self._init(self.config, self.env_creator)
 
-            # Evaluation related
+            # Evaluation setup.
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
@@ -539,8 +540,10 @@ class Trainer(Trainable):
                     "batch_mode": "complete_episodes",
                     "batch_steps": 1,
                 })
-                logger.debug(
-                    "using evaluation_config: {}".format(extra_config))
+                # Switch off all types of Explorations.
+                extra_config["exploration"] = False
+                logger.debug("using evaluation_config: {}".format(extra_config))
+
                 self.evaluation_workers = self._make_workers(
                     self.env_creator,
                     self._policy,
@@ -589,7 +592,6 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
-
         if not self.config["evaluation_config"]:
             raise ValueError(
                 "No evaluation_config specified. It doesn't make sense "
@@ -631,57 +633,51 @@ class Trainer(Trainable):
             observation (obj): observation from the environment.
             state (list): RNN hidden state, if any. If state is not None,
                           then all of compute_single_action(...) is returned
-                          (computed action, rnn state, logits dictionary).
+                          (computed action, rnn state(s), logits dictionary).
                           Otherwise compute_single_action(...)[0] is
                           returned (computed action).
             prev_action (obj): previous action value, if any
             prev_reward (int): previous reward, if any
             info (dict): info object, if any
             policy_id (str): policy to query (only applies to multi-agent).
-            full_fetch (bool): whether to return extra action fetch results.
-                This is always set to true if RNN state is specified.
+            full_fetch (bool): Whether to return extra action fetch results.
+                This is always set to True if RNN state is specified.
 
         Returns:
-            Just the computed action if full_fetch=False, or the full output
-            of policy.compute_actions() otherwise.
+            any: The computed action if full_fetch=False, or
+            tuple: The full output of policy.compute_actions() if full_fetch=True or we have an RNN-based Policy.
         """
-
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
+
+        preprocessed = self.workers.local_worker().preprocessors[policy_id].\
+            transform(observation)
         filtered_obs = self.workers.local_worker().filters[policy_id](
-            preprocessed, update=False)
-        if state:
-            return self.get_policy(policy_id).compute_single_action(
-                filtered_obs,
-                state,
-                prev_action,
-                prev_reward,
-                info,
-                clip_actions=self.config["clip_actions"])
-        res = self.get_policy(policy_id).compute_single_action(
-            filtered_obs,
-            state,
-            prev_action,
-            prev_reward,
-            info,
-            clip_actions=self.config["clip_actions"])
-        if full_fetch:
-            return res
+            preprocessed, update=False
+        )
+
+        # Figure out the current (sample) time step and pass it into Policy.
+        time_step = self.optimizer.num_steps_sampled \
+            if self._has_policy_optimizer() else 0
+
+        result = self.get_policy(policy_id).compute_single_action(
+            filtered_obs, state, prev_action, prev_reward, info,
+            clip_actions=self.config["clip_actions"], time_step=time_step
+        )
+
+        if state or full_fetch:
+            return result
         else:
-            return res[0]  # backwards compatibility
+            return result[0]  # backwards compatibility
 
     @property
     def _name(self):
         """Subclasses should override this to declare their name."""
-
         raise NotImplementedError
 
     @property
     def _default_config(self):
         """Subclasses should override this to declare their default config."""
-
         raise NotImplementedError
 
     @PublicAPI
@@ -691,7 +687,6 @@ class Trainer(Trainable):
         Arguments:
             policy_id (str): id of policy to return.
         """
-
         return self.workers.local_worker().get_policy(policy_id)
 
     @PublicAPI
@@ -763,13 +758,21 @@ class Trainer(Trainable):
 
     @classmethod
     def resource_help(cls, config):
-        return ("\n\nYou can adjust the resource requests of RLlib agents by "
-                "setting `num_workers`, `num_gpus`, and other configs. See "
-                "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
-                "The config of this agent is: {}".format(config))
+        return \
+            "\n\nYou can adjust the resource requests of RLlib agents by " \
+            "setting `num_workers`, `num_gpus`, and other configs. See the " \
+            "DEFAULT_CONFIG defined by each agent for more info.\n\n" \
+            "The config of this agent ({}) is: {}".format(cls.__name__, config)
 
     @staticmethod
     def _validate_config(config):
+        """
+        Generic config checking method for all Trainer types. Raises errors and outputs warnings in case
+        of deprecated config settings.
+
+        Args:
+            config (dict): The Trainer's config.
+        """
         if "policy_graphs" in config["multiagent"]:
             logger.warning(
                 "The `policy_graphs` config has been renamed to `policies`.")
@@ -834,8 +837,11 @@ class Trainer(Trainable):
         self.optimizer.reset(healthy_workers)
 
     def _has_policy_optimizer(self):
-        return hasattr(self, "optimizer") and isinstance(
-            self.optimizer, PolicyOptimizer)
+        """
+        Returns:
+            bool: True if this Trainer holds a PolicyOptimizer object in property `self.optimizer`.
+        """
+        return hasattr(self, "optimizer") and isinstance(self.optimizer, PolicyOptimizer)
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):

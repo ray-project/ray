@@ -7,6 +7,7 @@ import numpy as np
 import gym
 
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.components.explorations.exploration import Exploration
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
@@ -58,6 +59,12 @@ class Policy:
 
         self.observation_space = observation_space
         self.action_space = action_space
+        self.config = config
+        # Create the Exploration object to use for this Policy.
+        self.exploration = Exploration.from_config(config.get("exploration"))
+        # The default sampling behavior for actions if not explicitly given
+        # in calls to `compute_actions`.
+        self.deterministic = config.get("deterministic", False)
 
     @DeveloperAPI
     def compute_actions(self,
@@ -67,6 +74,9 @@ class Policy:
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        deterministic=None,
+                        explore=True,
+                        time_step=None,
                         **kwargs):
         """Compute actions for the current policy.
 
@@ -79,6 +89,12 @@ class Policy:
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
+            deterministic (Optional[bool]): Whether the action should be
+                sampled deterministically or stochastically.
+                If None, use this Policy's `self.deterministic` value.
+            explore (bool): Whether we should use exploration
+                (e.g. when training) or not (for inference/evaluation).
+            time_step (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -100,6 +116,9 @@ class Policy:
                               info=None,
                               episode=None,
                               clip_actions=False,
+                              deterministic=False,
+                              explore=True,
+                              time_step=None,
                               **kwargs):
         """Unbatched version of compute_actions.
 
@@ -113,6 +132,12 @@ class Policy:
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
             clip_actions (bool): should the action be clipped
+            deterministic (Optional[bool]): Whether the action should be
+                sampled deterministically or stochastically.
+                If None, use this Policy's `self.deterministic` value.
+            explore (bool): Whether we should use exploration (i.e. when
+                training) or not (e.g. for inference/evaluation).
+            time_step (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -138,7 +163,12 @@ class Policy:
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
-            episodes=episodes)
+            episodes=episodes,
+            deterministic=deterministic,
+            explore=explore,
+            time_step=time_step
+        )
+
         if clip_actions:
             action = clip_action(action, self.action_space)
         return action, [s[0] for s in state_out], \

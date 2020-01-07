@@ -69,6 +69,7 @@ class TFPolicy(Policy):
                  prev_reward_input=None,
                  seq_lens=None,
                  max_seq_len=20,
+                 time_step=None,
                  batch_divisibility_req=1,
                  update_ops=None):
         """Initialize the policy.
@@ -76,13 +77,14 @@ class TFPolicy(Policy):
         Arguments:
             observation_space (gym.Space): Observation space of the env.
             action_space (gym.Space): Action space of the env.
-            sess (Session): TensorFlow session to use.
-            obs_input (Tensor): input placeholder for observations, of shape
+            config (dict): The Policy config dict.
+            sess (Session): The TensorFlow session to use.
+            obs_input (Tensor): Input placeholder for observations, of shape
                 [BATCH_SIZE, obs...].
             action_sampler (Tensor): Tensor for sampling an action, of shape
                 [BATCH_SIZE, action...]
-            loss (Tensor): scalar policy loss output tensor.
-            loss_inputs (list): a (name, placeholder) tuple for each loss
+            loss (Tensor): Scalar policy loss output tensor.
+            loss_inputs (list): A (name, placeholder) tuple for each loss
                 input argument. Each placeholder name must correspond to a
                 SampleBatch column key returned by postprocess_trajectory(),
                 and has shape [BATCH_SIZE, data...]. These keys will be read
@@ -95,10 +97,12 @@ class TFPolicy(Policy):
             state_outputs (list): list of RNN state output Tensors.
             prev_action_input (Tensor): placeholder for previous actions
             prev_reward_input (Tensor): placeholder for previous rewards
-            seq_lens (Tensor): placeholder for RNN sequence lengths, of shape
+            seq_lens (Tensor): Placeholder for RNN sequence lengths, of shape
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
                 policy/rnn_sequencing.py for more information.
-            max_seq_len (int): max sequence length for LSTM training.
+            max_seq_len (int): Max sequence length for LSTM training.
+            time_step (Tensor): Placeholder (with default) for the current
+                time step value.
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
                 a LSTM model.
@@ -123,6 +127,7 @@ class TFPolicy(Policy):
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
+        self._time_step = time_step
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
         self._stats_fetches = {}
@@ -232,11 +237,18 @@ class TFPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        deterministic=None,
+                        explore=True,
+                        time_step=None,
                         **kwargs):
+
+        deterministic = deterministic if deterministic is not None else self.deterministic
         builder = TFRunBuilder(self._sess, "compute_actions")
-        fetches = self._build_compute_actions(builder, obs_batch,
-                                              state_batches, prev_action_batch,
-                                              prev_reward_batch)
+        fetches = self._build_compute_actions(
+            builder, obs_batch,state_batches, prev_action_batch,
+            prev_reward_batch, deterministic=deterministic, explore=explore,
+            time_step=time_step
+        )
         return builder.get(fetches)
 
     @override(Policy)
@@ -432,7 +444,12 @@ class TFPolicy(Policy):
                                state_batches=None,
                                prev_action_batch=None,
                                prev_reward_batch=None,
-                               episodes=None):
+                               episodes=None,
+                               deterministic=False,
+                               explore=True,
+                               time_step=None
+                               ):
+
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
             raise ValueError(
@@ -450,7 +467,22 @@ class TFPolicy(Policy):
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches([self._sampler] + self._state_outputs +
+        if time_step is not None:
+            builder.add_feed_dict({self._time_step: time_step})
+
+        # Apply the post-forward-pass exploration if applicable.
+        sampler_fetch = self._sampler
+        extra_action_fetches = self.extra_compute_action_fetches()
+        # If `explore` is fixed to (boolean) False (or np.array(False)),
+        # don't explore. But it could be a Tensor as well.
+        if explore and self.exploration:
+            assert "behavior_logits" in extra_action_fetches
+            sampler_fetch = self.exploration.get_action(
+                extra_action_fetches["behavior_logits"], self.model, None,
+                time_step
+            )
+
+        fetches = builder.add_fetches([sampler_fetch] + self._state_outputs +
                                       [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
