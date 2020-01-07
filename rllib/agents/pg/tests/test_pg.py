@@ -41,7 +41,7 @@ class TestPG(unittest.TestCase):
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = "linear"
 
-        # Fake CartPole episode of n timesteps.
+        # Fake CartPole episode of n time steps.
         train_batch = {
             SampleBatch.CUR_OBS: np.array([
                 [0.1, 0.2, 0.3, 0.4],
