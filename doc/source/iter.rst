@@ -97,6 +97,42 @@ each shard should only be read by one process at a time:
     >>> ray.get([do_sum.remote(s) for s in it.shards()])
     [5552778, 16661667, 27780555]
 
+Semantic Guarantees
+~~~~~~~~~~~~~~~~~~~
+
+The parallel iterator API guarantees the following semantics:
+
+**Fetch ordering**: When using ``it.gather_sync().foreach(fn)`` or
+``it.gather_async().foreach(fn)`` (or any other transformation after a gather),
+``fn(x_i)`` will be called on the element ``x_i`` before the next
+element ``x_{i+1}`` is fetched from the source actor. This is useful if you need to
+update the source actor between iterator steps. Note that for async gather, this
+ordering only applies per shard.
+
+**Operator state**: Operator state is preserved for each shard. This means that you can pass a stateful callable to ``.foreach()``:
+For example, this means you can pass a stateful callable to ``.foreach()``:
+
+.. code-block:: python
+
+    class CumulativeSum:
+        def __init__(self):
+            self.total = 0
+
+        def __call__(self, x):
+            self.total += x
+            return (self.total, x)
+
+    it = ray.experimental.iter.from_range(5, 1)
+    for x in it.for_each(CumulativeSum()).gather_sync():
+        print(x)
+
+    ## This prints:
+    #(0, 0)
+    #(1, 1)
+    #(3, 2)
+    #(6, 3)
+    #(10, 4)
+
 Example: Streaming word frequency count
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
