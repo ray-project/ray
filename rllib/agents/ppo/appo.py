@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.rllib.agents.ppo.appo_policy import AsyncPPOTFPolicy
+from ray.rllib.agents.ppo.appo_tf_policy import AsyncPPOTFPolicy
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.agents.ppo.ppo import update_kl
 from ray.rllib.agents import impala
