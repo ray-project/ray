@@ -157,8 +157,7 @@ class SerializationContext(object):
                 worker = ray.worker.get_global_worker()
                 worker.check_connected()
                 obj, owner_id, owner_address = (
-                    worker.core_worker.serialize_and_promote_object_id(obj)
-                )
+                    worker.core_worker.serialize_and_promote_object_id(obj))
             obj = id_serializer(obj)
             owner_id = id_serializer(owner_id) if owner_id else owner_id
             return (obj, owner_id, owner_address)
@@ -184,8 +183,8 @@ class SerializationContext(object):
                 self._register_cloudpickle_serializer(
                     id_type, object_id_serializer, object_id_deserializer)
             else:
-                self._register_cloudpickle_serializer(
-                    id_type, id_serializer, id_deserializer)
+                self._register_cloudpickle_serializer(id_type, id_serializer,
+                                                      id_deserializer)
 
     def _register_cloudpickle_serializer(self, cls, custom_serializer,
                                          custom_deserializer):
@@ -389,8 +388,8 @@ class SerializationContext(object):
         def register_class_for_serialization(worker_info):
             assert worker_info["worker"].use_pickle
             context = worker_info["worker"].get_serialization_context(job_id)
-            context._register_cloudpickle_serializer(
-                cls, serializer, deserializer)
+            context._register_cloudpickle_serializer(cls, serializer,
+                                                     deserializer)
 
         if not local:
             self.worker.run_function_on_all_workers(
