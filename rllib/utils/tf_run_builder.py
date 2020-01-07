@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import os
 import time
@@ -13,7 +9,7 @@ tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-class TFRunBuilder:
+class TFRunBuilder(object):
     """Used to incrementally build up a TensorFlow run.
 
     This is particularly useful for batching ops from multiple different
