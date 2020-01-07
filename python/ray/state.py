@@ -893,14 +893,17 @@ class GlobalState:
         """
         self._check_connected()
 
-        resources = defaultdict(int)
+        all_resources = dict()
         clients = self.client_table()
         for client in clients:
             # Only count resources from latest entries of live clients.
             if client["Alive"]:
+                node_resources = defaultdict(int)
+                print(client["Resources"])
                 for key, value in client["Resources"].items():
-                    resources[key] += value
-        return dict(resources)
+                    node_resources[key] += value
+                all_resources[client["NodeID"]] = dict(node_resources)
+        return dict(all_resources)
 
     def _live_client_ids(self):
         """Returns a set of client IDs corresponding to clients still alive."""
