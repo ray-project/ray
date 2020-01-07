@@ -534,7 +534,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                         bool success);
 
   /// Handle a `WorkerLease` request.
-  void HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest &request,
+  void HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
@@ -549,14 +549,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `PinObjectIDs` request.
-  void HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &request,
-                                 rpc::PinObjectIDsReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  void HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+                          rpc::PinObjectIDsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
-  void HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request,
-                              rpc::GetNodeStatsReply *reply,
-                              rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
+                          rpc::GetNodeStatsReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
