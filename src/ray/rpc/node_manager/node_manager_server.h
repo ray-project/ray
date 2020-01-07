@@ -3,7 +3,6 @@
 
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-
 #include "src/ray/protobuf/node_manager.grpc.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
@@ -15,6 +14,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, RequestWorkerLease, 100) \
   RPC_SERVICE_HANDLER(NodeManagerService, ReturnWorker, 100)       \
   RPC_SERVICE_HANDLER(NodeManagerService, ForwardTask, 100)        \
+  RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs, 100)       \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, 1)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
@@ -42,6 +42,10 @@ class NodeManagerServiceHandler {
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePinObjectIDs(const PinObjectIDsRequest &request,
+                                  PinObjectIDsReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetNodeStats(const GetNodeStatsRequest &request,
                                   GetNodeStatsReply *reply,

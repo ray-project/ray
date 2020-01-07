@@ -19,6 +19,7 @@ namespace rpc {
   RPC_SERVICE_HANDLER(CoreWorkerService, PushTask, 9999)                      \
   RPC_SERVICE_HANDLER(CoreWorkerService, DirectActorCallArgWaitComplete, 100) \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetObjectStatus, 9999)               \
+  RPC_SERVICE_HANDLER(CoreWorkerService, WaitForObjectEviction, 9999)         \
   RPC_SERVICE_HANDLER(CoreWorkerService, KillActor, 9999)                     \
   RPC_SERVICE_HANDLER(CoreWorkerService, GetCoreWorkerStats, 100)
 
@@ -27,6 +28,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PushTask)                       \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForObjectEviction)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)
 

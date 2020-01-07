@@ -216,8 +216,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// a corresponding `Create()` call and then writing into the returned buffer.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
+  /// \param[in] owns_object Whether or not this worker owns the object. If true,
+  ///            the object will be added as owned to the reference counter as an
+  ///            owned object and this worker will be responsible for managing its
+  ///            lifetime.
+  /// \param[in] pin_object Whether or not to pin the object at the local raylet. This
+  ///            only applies when owns_object is true.
   /// \return Status.
-  Status Seal(const ObjectID &object_id);
+  Status Seal(const ObjectID &object_id, bool owns_object, bool pin_object);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -406,6 +412,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
+                                   rpc::WaitForObjectEvictionReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback);
 
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
