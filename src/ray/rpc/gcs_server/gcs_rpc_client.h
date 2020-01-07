@@ -103,8 +103,7 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, DeleteTasks, task_info_grpc_client_, )
 
   /// Add a task lease to GCS Service.
-  VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, request, callback,
-                         task_info_grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTaskLease, task_info_grpc_client_, )
 
  private:
   /// The gRPC-generated stub.
