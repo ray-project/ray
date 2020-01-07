@@ -1,6 +1,3 @@
-/**
- * Alipay.com Inc. Copyright (c) 2004-2019 All Rights Reserved.
- */
 package org.ray.deploy.rps.model;
 
 public abstract class Request {
