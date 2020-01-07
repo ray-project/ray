@@ -79,7 +79,7 @@ public interface RayRuntime {
   /**
    * Kill the actor immediately.
    *
-   * @param actor The actor.
+   * @param actor The actor to be killed.
    */
   void killActor(RayActor<?> actor);
 
