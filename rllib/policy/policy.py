@@ -214,7 +214,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @abstractmethod
     @DeveloperAPI
     def get_weights(self):
         """Returns model weights.
@@ -222,9 +221,8 @@ class Policy(metaclass=ABCMeta):
         Returns:
             weights (obj): Serializable copy or view of model weights
         """
-        raise NotImplementedError
+        pass
 
-    @abstractmethod
     @DeveloperAPI
     def set_weights(self, weights):
         """Sets model weights.
@@ -232,16 +230,15 @@ class Policy(metaclass=ABCMeta):
         Arguments:
             weights (obj): Serializable copy or view of model weights
         """
-        raise NotImplementedError
+        pass
 
-    @abstractmethod
     @DeveloperAPI
     def num_state_tensors(self):
         """
         Returns:
             int: The number of RNN hidden states kept by this Policy's Model.
         """
-        raise NotImplementedError
+        return 0
 
     @DeveloperAPI
     def get_initial_state(self):
@@ -275,7 +272,6 @@ class Policy(metaclass=ABCMeta):
         """
         pass
 
-    @abstractmethod
     @DeveloperAPI
     def export_model(self, export_dir):
         """Export Policy to local directory for serving.
@@ -285,7 +281,6 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @abstractmethod
     @DeveloperAPI
     def export_checkpoint(self, export_dir):
         """Export Policy checkpoint to local directory.
