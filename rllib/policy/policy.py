@@ -57,6 +57,7 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space = observation_space
         self.action_space = action_space
+        self.config = config
 
     @abstractmethod
     @DeveloperAPI
