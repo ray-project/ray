@@ -7,6 +7,8 @@ time throughout the execution of the algorithm, such as:
 Each schedule has a function `value(t)` which returns the current value
 of the parameter given the timestep t of the optimization procedure.
 """
+
+
 class Schedule:
     def value(self, t):
         """Value of the schedule at time t"""
