@@ -26,23 +26,19 @@
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
 /// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
-/// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
-/// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
-#define RAY_CORE_WORKER_RPC_HANDLERS                               \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
-  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
-  RAY_CORE_WORKER_RPC_HANDLER(WaitForObjectEviction, 9999)         \
-  RAY_CORE_WORKER_RPC_HANDLER(KillActor, 9999)                     \
-  RAY_CORE_WORKER_RPC_HANDLER(GetCoreWorkerStats, 100)
+/// 2) Add a new macro to RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
+///    in core_worker_server.h,
+//     e.g. "DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExampleCall)"
+/// 3) Add a new macro to RAY_CORE_WORKER_RPC_HANDLERS in core_worker_server.h, e.g.
+///    "RPC_SERVICE_HANDLER(CoreWorkerService, ExampleCall, 1)"
+/// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray {
 
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker {
+class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
@@ -81,7 +77,7 @@ class CoreWorker {
              std::function<Status()> check_signals = nullptr,
              bool ref_counting_enabled = false);
 
-  ~CoreWorker();
+  virtual ~CoreWorker();
 
   void Disconnect();
 
@@ -400,22 +396,22 @@ class CoreWorker {
   /// Implements gRPC server handler.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback);
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback);
+                      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback);
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                              rpc::GetObjectStatusReply *reply,
-                             rpc::SendReplyCallback send_reply_callback);
+                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
@@ -424,12 +420,12 @@ class CoreWorker {
 
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
-                       rpc::SendReplyCallback send_reply_callback);
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                 rpc::GetCoreWorkerStatsReply *reply,
-                                rpc::SendReplyCallback send_reply_callback);
+                                rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when
