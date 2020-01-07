@@ -142,7 +142,11 @@ def test_raylet_info_endpoint(shutdown_only):
         def remote_store(self):
             self.remote_storage = ray.put("test")
 
+        def getpid(self):
+            return os.getpid()
+
     c = ActorC.remote()
+    actor_pid = ray.get(c.getpid.remote())
     c.local_store.remote()
     c.remote_store.remote()
 
@@ -179,6 +183,9 @@ def test_raylet_info_endpoint(shutdown_only):
             assert child_actor_info["state"] == 0
             assert len(child_actor_info["children"]) == 0
             assert child_actor_info["usedResources"]["CPU"] == 1
+
+    profiling_info = requests.get(webui_url + "/api/profiling_info", params={"pid": actor_pid, "duration": 8})# .json()
+    time.sleep(12)
 
 
 if __name__ == "__main__":

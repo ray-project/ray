@@ -240,6 +240,13 @@ class Dashboard(object):
             D["actorInfo"] = actor_tree
             return await json_response(result=D)
 
+        async def profiling_info(req) -> aiohttp.web.Response:
+            pid = req.query.get("pid")
+            duration = req.query.get("duration")
+            D = self.raylet_stats.get_profiling_stats(pid=pid, duration=duration)
+            print(D)
+            return await json_response(result=D)
+
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
             pid = req.query.get("pid")
@@ -268,6 +275,7 @@ class Dashboard(object):
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
+        self.app.router.add_get("/api/profiling_info", profiling_info)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
 
@@ -558,6 +566,17 @@ class RayletStats(threading.Thread):
         with self._raylet_stats_lock:
             return copy.deepcopy(self._raylet_stats)
 
+    def get_profiling_stats(self, pid, duration) -> Dict:
+        # TODO: should pass in node id
+        print(pid, duration)
+        for node in self.nodes:
+            node_id = node["NodeID"]
+            stub = self.stubs[node_id]
+            reply = stub.GetProfilingStats(
+                node_manager_pb2.GetProfilingStatsRequest(pid=int(pid), duration=int(duration)))
+        print(type(reply))
+        return MessageToDict(reply)
+        
     def run(self):
         counter = 0
         while True:
