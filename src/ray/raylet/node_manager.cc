@@ -1112,6 +1112,16 @@ void NodeManager::ProcessDisconnectClientMessage(
     }
     // Erase any lease metadata.
     leased_workers_.erase(worker->WorkerId());
+
+    // Publish the worker failure.
+    auto data = std::make_shared<rpc::WorkerFailureData>();
+    data->mutable_worker_address()->set_ip_address(initial_config_.node_manager_address);
+    data->mutable_worker_address()->set_port(worker->Port());
+    data->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+    data->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+    data->set_timestamp(std::time(nullptr));
+    RAY_CHECK_OK(gcs_client_->worker_failure_table().Add(JobID::Nil(), worker->WorkerId(),
+                                                         data, nullptr));
   }
 
   if (is_worker) {
