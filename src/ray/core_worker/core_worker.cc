@@ -104,7 +104,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   // Subscribe to all unexpected worker failure notifications from the local
-  // and remote raylets.
+  // and remote raylets. Note that this does not include workers that failed
+  // due to node failure.
   const auto &worker_failed = [this](gcs::RedisGcsClient *client, const WorkerID &id,
                                      const gcs::WorkerFailureData &worker_failure) {
     HandleWorkerFailed(id, worker_failure);
