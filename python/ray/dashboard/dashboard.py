@@ -72,7 +72,18 @@ def format_reply(reply):
             format_reply(item)
 
 
-class Dashboard:
+def measures_to_dict(measures):
+    measures_dict = {}
+    for measure in measures:
+        tags = measure["tags"].split(",")[-1]
+        if "intValue" in measure:
+            measures_dict[tags] = measure["intValue"]
+        elif "doubleValue" in measure:
+            measures_dict[tags] = measure["doubleValue"]
+    return measures_dict
+
+
+class Dashboard(object):
     """A dashboard process for monitoring Ray nodes.
 
     This dashboard is made up of a REST API which collates data published by
@@ -180,18 +191,43 @@ class Dashboard:
             actor_tree = self.node_stats.get_actor_tree(
                 workers_info, infeasible_tasks)
             for address, data in D.items():
-                available_resources = data["availableResources"]
-                total_resources = data["totalResources"]
-                extra_info = []
-                for resource_name in sorted(available_resources.keys()):
-                    total = total_resources[resource_name]
-                    occupied = total - available_resources[resource_name]
-                    total = format_resource(resource_name, total)
-                    occupied = format_resource(resource_name, occupied)
-                    extra_info.append("{}: {} / {}".format(
-                        resource_name, occupied, total))
-                data["extraInfo"] = ", ".join(extra_info)
+                # process view data
+                measures_dicts = {}
+                for view_data in data["viewData"]:
+                    view_name = view_data["viewName"]
+                    if view_name in ("local_available_resource",
+                                     "local_total_resource",
+                                     "object_manager_stats"):
+                        measures_dicts[view_name] = measures_to_dict(
+                            view_data["measures"])
+                # process resources info
+                extra_info_strings = []
+                prefix = "ResourceName:"
+                for resource_name, total_resource in measures_dicts[
+                        "local_total_resource"].items():
+                    available_resource = measures_dicts[
+                        "local_available_resource"].get(resource_name, .0)
+                    resource_name = resource_name[len(prefix):]
+                    extra_info_strings.append("{}: {} / {}".format(
+                        resource_name,
+                        format_resource(resource_name,
+                                        total_resource - available_resource),
+                        format_resource(resource_name, total_resource)))
+                data["extraInfo"] = ",".join(extra_info_strings) + "\n"
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
+                    # process object store info
+                    extra_info_strings = []
+                    prefix = "ValueType:"
+                    for stats_name in [
+                            "used_object_store_memory", "num_local_objects"
+                    ]:
+                        stats_value = measures_dicts[
+                            "object_manager_stats"].get(
+                                prefix + stats_name, .0)
+                        extra_info_strings.append("{}: {}".format(
+                            stats_name, stats_value))
+                    data["extraInfo"] += ", ".join(extra_info_strings)
+                    # process actor info
                     actor_tree_str = json.dumps(
                         actor_tree, indent=2, sort_keys=True)
                     lines = actor_tree_str.split("\n")
@@ -202,7 +238,6 @@ class Dashboard:
                                         (max_line_length - len(line)) * " ")
                     data["extraInfo"] += "\n" + "\n".join(to_print)
             D["actorInfo"] = actor_tree
-            D["infeasibleTasks"] = infeasible_tasks
             return await json_response(result=D)
 
         async def logs(req) -> aiohttp.web.Response:
@@ -262,6 +297,21 @@ class NodeStats(threading.Thread):
         self._addr_to_actor_id = {}
         self._addr_to_extra_info_dict = {}
         self._node_stats_lock = threading.Lock()
+
+        self._default_info = {
+            "actorId": "",
+            "children": {},
+            "ipAddress": "",
+            "isDirectCall": False,
+            "jobId": "",
+            "numLocalObjects": 0,
+            "numObjectIdsInScope": 0,
+            "port": 0,
+            "state": 0,
+            "taskQueueLength": 0,
+            "usedObjectStoreMemory": 0,
+            "usedResources": {},
+        }
 
         # Mapping from IP address to PID to list of log lines
         self._logs = defaultdict(lambda: defaultdict(list))
@@ -323,8 +373,9 @@ class NodeStats(threading.Thread):
         child_to_parent = {}
         with self._node_stats_lock:
             for addr, actor_id in self._addr_to_actor_id.items():
-                flattened_tree[actor_id] = self._addr_to_extra_info_dict[addr]
-                flattened_tree[actor_id]["children"] = {}
+                flattened_tree[actor_id] = copy.deepcopy(self._default_info)
+                flattened_tree[actor_id].update(
+                    self._addr_to_extra_info_dict[addr])
                 parent_id = self._addr_to_actor_id.get(
                     self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
