@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from numpy.testing import assert_almost_equal
 import tensorflow.compat.v1 as tf
 
