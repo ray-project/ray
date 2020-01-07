@@ -184,8 +184,7 @@ def test_raylet_info_endpoint(shutdown_only):
             assert len(child_actor_info["children"]) == 0
             assert child_actor_info["usedResources"]["CPU"] == 1
 
-    actor_pid = 0
-    raylet_info = requests.get(webui_url + "/api/profiling_info", params={"node_id": ray.nodes()[0]["NodeID"], "pid": actor_pid, "duration": 2}).json()
+    raylet_info = requests.get(webui_url + "/api/profiling_info", params={"node_id": ray.nodes()[0]["NodeID"], "pid": actor_pid, "duration": 5}).json()
     print(raylet_info)
 
 

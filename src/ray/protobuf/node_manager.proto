@@ -73,7 +73,8 @@ message GetProfilingStatsRequest {
 
 message GetProfilingStatsReply {
   // Profiling stats.
-  bytes profiling_stats = 1;
+  string profiling_stats = 1;
+  string profiling_stats_stdout = 2;
 }
 
 // Service for inter-node-manager communication.
