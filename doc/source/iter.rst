@@ -104,7 +104,7 @@ The parallel iterator API guarantees the following semantics:
 
 **Fetch ordering**: When using ``it.gather_sync().foreach(fn)`` or
 ``it.gather_async().foreach(fn)`` (or any other transformation after a gather),
-it is guaranteed that ``fn(x_i)`` will be called on the element ``x_i`` before the next
+``fn(x_i)`` will be called on the element ``x_i`` before the next
 element ``x_{i+1}`` is fetched from the source actor. This is useful if you need to
 update the source actor between iterator steps. Note that for async gather, this
 ordering only applies per shard.
