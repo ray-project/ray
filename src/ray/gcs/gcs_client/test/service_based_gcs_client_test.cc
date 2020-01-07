@@ -218,6 +218,35 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool AddTask(const std::shared_ptr<rpc::TaskTableData> task) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(
+        task, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  rpc::TaskTableData GetTask(const TaskID &task_id) {
+    std::promise<bool> promise;
+    rpc::TaskTableData task_table_data;
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncGet(
+        task_id, [&task_table_data, &promise](
+                     Status status, const boost::optional<rpc::TaskTableData> &result) {
+          if (result) {
+            task_table_data.CopyFrom(*result);
+          }
+          promise.set_value(status.ok());
+        }));
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return task_table_data;
+  }
+
+  bool DeleteTask(const std::vector<TaskID> &task_ids) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncDelete(
+        task_ids, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
  protected:
   bool WaitReady(const std::future<bool> &future,
                  const std::chrono::milliseconds &timeout_ms) {
@@ -252,6 +281,18 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     gcs_node_info.set_node_id(node_id);
     gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
     return gcs_node_info;
+  }
+
+  rpc::TaskTableData GenTaskTableData(const std::string &job_id,
+                                      const std::string &task_id) {
+    rpc::TaskTableData task_table_data;
+    rpc::Task task;
+    rpc::TaskSpec task_spec;
+    task_spec.set_job_id(job_id);
+    task_spec.set_task_id(task_id);
+    task.mutable_task_spec()->CopyFrom(task_spec);
+    task_table_data.mutable_task()->CopyFrom(task);
+    return task_table_data;
   }
 
   // Gcs server
@@ -497,6 +538,39 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
   auto batch_heartbeat = std::make_shared<rpc::HeartbeatBatchTableData>();
   batch_heartbeat->add_batch()->set_client_id(node_id.Binary());
   ASSERT_TRUE(ReportBatchHeartbeat(batch_heartbeat));
+
+  EXPECT_EQ(heartbeat_count, 1);
+  EXPECT_EQ(heartbeat_batch_count, 1);
+}
+
+TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
+  JobID job_id = JobID::FromInt(1);
+  TaskID task_id = TaskID::ForDriverTask(job_id);
+  rpc::TaskTableData task_table_data =
+      GenTaskTableData(job_id.Binary(), task_id.Binary());
+
+  int task_count = 0;
+  auto task_subscribe = [&task_count](const TaskID &id,
+                                      const rpc::TaskTableData &result) { ++task_count; };
+  RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribe(task_id, task_subscribe, nullptr));
+
+  // Add task
+  auto task = std::make_shared<rpc::TaskTableData>();
+  task->CopyFrom(task_table_data);
+  RAY_CHECK(AddTask(task));
+
+  auto get_task_result = GetTask(task_id);
+  ASSERT_TRUE(get_task_result.task().task_spec().task_id() == task_id.Binary());
+  ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
+
+  //  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id, nullptr));
+
+  // Delete task
+  std::vector<TaskID> task_ids;
+  task_ids.push_back(task_id);
+  RAY_CHECK(DeleteTask(task_ids));
+
+  EXPECT_EQ(task_count, 1);
 }
 
 }  // namespace ray

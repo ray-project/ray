@@ -288,7 +288,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncUpdateResources(
     const StatusCallback &callback) {
   rpc::UpdateResourcesRequest request;
   request.set_node_id(node_id.Binary());
-  for (auto resource : resources) {
+  for (auto &resource : resources) {
     (*request.mutable_resources())[resource.first] = *resource.second;
   }
   client_impl_->GetGcsRpcClient().UpdateResources(
@@ -303,7 +303,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncDeleteResources(
     const StatusCallback &callback) {
   rpc::DeleteResourcesRequest request;
   request.set_node_id(node_id.Binary());
-  for (auto resource_name : resource_names) {
+  for (auto &resource_name : resource_names) {
     request.add_resource_name_list(resource_name);
   }
   client_impl_->GetGcsRpcClient().DeleteResources(
@@ -362,6 +362,80 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
   };
   return heartbeat_batch_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), on_subscribe,
                                                          done);
+}
+
+ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl),
+      task_sub_executor_(client_impl->GetRedisGcsClient().raylet_task_table()),
+      task_lease_sub_executor_(client_impl->GetRedisGcsClient().task_lease_table()) {}
+
+Status ServiceBasedTaskInfoAccessor::AsyncAdd(
+    const std::shared_ptr<rpc::TaskTableData> &data_ptr, const StatusCallback &callback) {
+  rpc::AddTaskRequest request;
+  request.mutable_task_data()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().AddTask(
+      request, [callback](const Status &status, const rpc::AddTaskReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedTaskInfoAccessor::AsyncGet(
+    const TaskID &task_id, const OptionalItemCallback<rpc::TaskTableData> &callback) {
+  rpc::GetTaskRequest request;
+  request.set_task_id(task_id.Binary());
+  client_impl_->GetGcsRpcClient().GetTask(
+      request, [callback](const Status &status, const rpc::GetTaskReply &reply) {
+        TaskTableData task_table_data;
+        task_table_data.CopyFrom(reply.task_data());
+        callback(status, task_table_data);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
+                                                 const StatusCallback &callback) {
+  rpc::DeleteTasksRequest request;
+  for (auto &task_id : task_ids) {
+    request.add_task_id_list(task_id.Binary());
+  }
+  client_impl_->GetGcsRpcClient().DeleteTasks(
+      request, [callback](const Status &status, const rpc::DeleteTasksReply &reply) {
+        callback(status);
+      });
+  return Status::OK();
+}
+
+Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
+    const TaskID &task_id, const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+}
+
+Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribe(const TaskID &task_id,
+                                                      const StatusCallback &done) {
+  return task_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+}
+
+Status ServiceBasedTaskInfoAccessor::AsyncAddTaskLease(
+    const std::shared_ptr<rpc::TaskLeaseData> &data_ptr, const StatusCallback &callback) {
+  // TODO
+  return Status::OK();
+}
+
+Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
+    const TaskID &task_id,
+    const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
+}
+
+Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(
+    const TaskID &task_id, const StatusCallback &done) {
+  return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
 }
 
 }  // namespace gcs

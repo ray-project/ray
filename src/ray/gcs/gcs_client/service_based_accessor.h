@@ -166,6 +166,55 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   ClientID local_node_id_;
 };
 
+/// \class ServiceBasedTaskInfoAccessor
+/// ServiceBasedTaskInfoAccessor is an implementation of `TaskInfoAccessor`
+/// that uses GCS service as the backend storage.
+class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
+ public:
+  explicit ServiceBasedTaskInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedTaskInfoAccessor() = default;
+
+  Status AsyncAdd(const std::shared_ptr<rpc::TaskTableData> &data_ptr,
+                  const StatusCallback &callback) override;
+
+  Status AsyncGet(const TaskID &task_id,
+                  const OptionalItemCallback<rpc::TaskTableData> &callback) override;
+
+  Status AsyncDelete(const std::vector<TaskID> &task_ids,
+                     const StatusCallback &callback) override;
+
+  Status AsyncSubscribe(const TaskID &task_id,
+                        const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
+                        const StatusCallback &done) override;
+
+  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+
+  Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
+                           const StatusCallback &callback) override;
+
+  Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                   const StatusCallback &done) override;
+
+ private:
+  ServiceBasedGcsClient *client_impl_{nullptr};
+
+  ClientID subscribe_id_{ClientID::FromRandom()};
+
+  typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
+      TaskSubscriptionExecutor;
+  TaskSubscriptionExecutor task_sub_executor_;
+
+  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
+      TaskLeaseSubscriptionExecutor;
+  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
+};
+
 }  // namespace gcs
 }  // namespace ray
 
