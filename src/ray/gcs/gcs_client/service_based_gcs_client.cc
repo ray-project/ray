@@ -63,6 +63,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   job_accessor_.reset(new ServiceBasedJobInfoAccessor(this));
   actor_accessor_.reset(new ServiceBasedActorInfoAccessor(this));
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
+  task_accessor_.reset(new ServiceBasedTaskInfoAccessor(this));
 
   is_connected_ = true;
 
