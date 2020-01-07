@@ -2,17 +2,17 @@ package org.ray.streaming.runtime;
 
 public class TestHelper {
 
-  private static final String UT_PATTERN = "UT_PATTERN";
+  private static volatile boolean UT_FLAG = false;
 
-  public static void setUTPattern() {
-    System.setProperty(UT_PATTERN, "");
+  public static void setUTFlag() {
+    UT_FLAG = true;
   }
 
-  public static void clearUTPattern() {
-    System.clearProperty(UT_PATTERN);
+  public static void clearUTFlag() {
+    UT_FLAG = false;
   }
 
-  public static boolean isUTPattern() {
-    return System.getProperty(UT_PATTERN) != null;
+  public static boolean isUT() {
+    return UT_FLAG;
   }
 }

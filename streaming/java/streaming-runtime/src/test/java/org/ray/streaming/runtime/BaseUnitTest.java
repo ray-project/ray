@@ -14,17 +14,17 @@ public abstract class BaseUnitTest {
 
   @BeforeClass
   public void setUp() {
-    TestHelper.setUTPattern();
+    TestHelper.setUTFlag();
   }
 
   @AfterClass
   public void tearDown() {
-    TestHelper.clearUTPattern();
+    TestHelper.clearUTFlag();
   }
 
   @BeforeMethod
   public void testBegin(Method method) {
-    LOG.info(">>>>>>>>>>>>>>>>>>>> Test case: " + method.getName() + " begin >>>>>>>>>>>>>>>>>>>>");
+    LOG.info(">>>>>>>>>>>>>>>>>>>> Test case: " + method.getName() + " began >>>>>>>>>>>>>>>>>>>>");
   }
 
   @AfterMethod
