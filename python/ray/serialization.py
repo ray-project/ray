@@ -292,12 +292,10 @@ class SerializationContext(object):
             return RawSerializedObject(value)
 
         assert self.worker.use_pickle
+        assert ray.cloudpickle.FAST_CLOUDPICKLE_USED
         writer = Pickle5Writer()
-        if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
-            inband = pickle.dumps(
-                value, protocol=5, buffer_callback=writer.buffer_callback)
-        else:
-            inband = pickle.dumps(value)
+        inband = pickle.dumps(
+            value, protocol=5, buffer_callback=writer.buffer_callback)
         return Pickle5SerializedObject(inband, writer)
 
     def register_custom_serializer(self,
