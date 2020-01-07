@@ -949,8 +949,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
-  auto worker = std::make_shared<Worker>(!message->is_worker(), worker_id, message->worker_pid(), language,
-                                         message->port(), client, client_call_manager_);
+  auto worker =
+      std::make_shared<Worker>(!message->is_worker(), worker_id, message->worker_pid(),
+                               language, message->port(), client, client_call_manager_);
   Status status;
   flatbuffers::FlatBufferBuilder fbb;
   auto reply =
