@@ -12,10 +12,11 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
-               std::shared_ptr<LocalClientConnection> connection,
+Worker::Worker(bool is_driver, const WorkerID &worker_id, pid_t pid, const Language &language,
+               int port, std::shared_ptr<LocalClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
-    : worker_id_(worker_id),
+    : is_driver_(is_driver),
+      worker_id_(worker_id),
       pid_(pid),
       language_(language),
       port_(port),
@@ -27,6 +28,14 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
         new rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_));
+  }
+}
+
+Worker::~Worker() {
+  if (!is_driver_) {
+    RAY_CHECK(pid_ > 0);
+    kill(pid_, SIGKILL);
+    waitpid(pid_, NULL, 0);
   }
 }
 

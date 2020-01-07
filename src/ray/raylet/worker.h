@@ -22,11 +22,10 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
-         std::shared_ptr<LocalClientConnection> connection,
+  Worker(bool is_driver, const WorkerID &worker_id, pid_t pid, const Language &language,
+         int port, std::shared_ptr<LocalClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
-  /// A destructor responsible for freeing all worker state.
-  ~Worker() {}
+  ~Worker();
   void MarkDead();
   bool IsDead() const;
   void MarkBlocked();
@@ -77,6 +76,8 @@ class Worker {
   rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
 
  private:
+  /// Whether this process is a driver.
+  bool is_driver_;
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's PID.

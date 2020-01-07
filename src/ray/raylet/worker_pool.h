@@ -44,8 +44,7 @@ class WorkerPool {
              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
-  /// Destructor responsible for freeing a set of workers owned by this class.
-  virtual ~WorkerPool();
+  virtual ~WorkerPool() {}
 
   /// Register a new worker. The Worker should be added by the caller to the
   /// pool after it becomes idle (e.g., requests a work assignment).

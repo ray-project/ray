@@ -51,13 +51,6 @@ WorkerPool::WorkerPool(int num_workers, int maximum_startup_concurrency,
     : maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(maximum_startup_concurrency > 0);
-#ifdef _WIN32
-  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
-#else
-  // Ignore SIGCHLD signals. If we don't do this, then worker processes will
-  // become zombies instead of dying gracefully.
-  signal(SIGCHLD, SIG_IGN);
-#endif
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
@@ -95,29 +88,6 @@ void WorkerPool::Start(int num_workers) {
     for (int i = 0; i < num_worker_processes; i++) {
       StartWorkerProcess(entry.first);
     }
-  }
-}
-
-WorkerPool::~WorkerPool() {
-  std::unordered_set<pid_t> pids_to_kill;
-  for (const auto &entry : states_by_lang_) {
-    // Kill all registered workers. NOTE(swang): This assumes that the registered
-    // workers were started by the pool.
-    for (const auto &worker : entry.second.registered_workers) {
-      pids_to_kill.insert(worker->Pid());
-    }
-    // Kill all the workers that have been started but not registered.
-    for (const auto &starting_worker : entry.second.starting_worker_processes) {
-      pids_to_kill.insert(starting_worker.first);
-    }
-  }
-  for (const auto &pid : pids_to_kill) {
-    RAY_CHECK(pid > 0);
-    kill(pid, SIGKILL);
-  }
-  // Waiting for the workers to be killed
-  for (const auto &pid : pids_to_kill) {
-    waitpid(pid, NULL, 0);
   }
 }
 
@@ -244,10 +214,6 @@ static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
   pid = fork();
   if (pid == 0) {
     // Child process case.
-    // Reset the SIGCHLD handler for the worker.
-    // TODO(mehrdadn): Move any work here to the child process itself
-    //                 so that it can also be implemented on Windows.
-    signal(SIGCHLD, SIG_DFL);
     if (execvp(str_args[0], const_cast<char *const *>(str_args.data())) == -1) {
       pid = -1;
       abort();  // fork() succeeded but exec() failed, so abort the child
