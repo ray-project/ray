@@ -23,11 +23,12 @@ from ray.tune.result import (TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
                              TIMESTEPS_THIS_ITER, TIME_THIS_ITER_S,
                              TIME_TOTAL_S, TRIAL_ID, EXPERIMENT_TAG)
 from ray.tune.logger import Logger
-from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
 from ray.tune.resources import Resources
 from ray.tune.suggest import grid_search
 from ray.tune.suggest.suggestion import _MockSuggestionAlgorithm
+from ray.tune.utils import (flatten_dict, get_pinned_object,
+                            pin_in_object_store)
 from ray.tune.utils.mock import mock_storage_client, MOCK_REMOTE_DIR
 
 

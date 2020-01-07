@@ -21,8 +21,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
-
-from ray.tune.util import UtilMonitor
+from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -524,7 +523,7 @@ class Trainable:
         Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors
         before execution.
 
-        >>> from ray.tune.util import validate_save_restore
+        >>> from ray.tune.utils import validate_save_restore
         >>> validate_save_restore(MyTrainableClass)
         >>> validate_save_restore(MyTrainableClass, use_object_store=True)
 
