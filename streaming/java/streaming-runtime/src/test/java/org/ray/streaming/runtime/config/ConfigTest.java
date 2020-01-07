@@ -15,25 +15,25 @@ public class ConfigTest extends BaseUnitTest {
   public void testBaseFunc() {
     // conf using
     CommonConfig commonConfig = ConfigFactory.create(CommonConfig.class);
-    Assert.assertTrue(commonConfig.fileEncoding().equals("UTF-8"));
+    Assert.assertTrue(commonConfig.jobId().equals("default-job-id"));
 
     // override conf
     Map<String, String> customConf = new HashMap<>();
-    customConf.put(CommonConfig.FILE_ENCODING, "GBK");
+    customConf.put(CommonConfig.JOB_ID, "111");
     CommonConfig commonConfig2 = ConfigFactory.create(CommonConfig.class, customConf);
-    Assert.assertTrue(commonConfig2.fileEncoding().equals("GBK"));
+    Assert.assertTrue(commonConfig2.jobId().equals("111"));
   }
 
   @Test
   public void testMapTransformation() {
     Map<String, String> conf = new HashMap<>();
-    String encodingType = "GBK";
-    conf.put(CommonConfig.FILE_ENCODING, encodingType);
+    String testValue = "222";
+    conf.put(CommonConfig.JOB_ID, testValue);
 
     StreamingConfig config = new StreamingConfig(conf);
     Map<String, String> wholeConfigMap = config.getMap();
 
-    Assert.assertTrue(wholeConfigMap.get(CommonConfig.FILE_ENCODING).equals(encodingType));
+    Assert.assertTrue(wholeConfigMap.get(CommonConfig.JOB_ID).equals(testValue));
   }
 
   @Test
@@ -58,7 +58,7 @@ public class ConfigTest extends BaseUnitTest {
     byte[] configBytes = fstConf.asByteArray(config);
     StreamingConfig deserializedConfig = (StreamingConfig) fstConf.asObject(configBytes);
 
-    Assert.assertEquals(deserializedConfig.masterConfig.commonConfig.fileEncoding(), "UTF-8");
+    Assert.assertEquals(deserializedConfig.masterConfig.commonConfig.jobId(), "default-job-id");
     Assert.assertEquals(deserializedConfig.getMap().get(customKey), customValue);
   }
 }
