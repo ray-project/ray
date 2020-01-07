@@ -898,11 +898,7 @@ class GlobalState:
         for client in clients:
             # Only count resources from latest entries of live clients.
             if client["Alive"]:
-                node_resources = defaultdict(int)
-                print(client["Resources"])
-                for key, value in client["Resources"].items():
-                    node_resources[key] += value
-                all_resources[client["NodeID"]] = dict(node_resources)
+                all_resources[client["NodeID"]] = client["Resources"]
         return dict(all_resources)
 
     def _live_client_ids(self):
