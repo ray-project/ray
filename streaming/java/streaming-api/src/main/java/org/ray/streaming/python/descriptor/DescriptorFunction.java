@@ -15,7 +15,7 @@ import org.ray.streaming.api.function.Function;
  * function. </p>
  *
  * <p>If this python data stream api is invoked from python, `pythonFunction` will be not null.</p>
- * <p>When python data stream api call is from java, `moduleName` and `className`/`functionName`
+ * <p>If this python data stream api is invoked from java, `moduleName` and `className`/`functionName`
  * will be not null.</p>
  */
 public class DescriptorFunction implements Descriptor, Function {
