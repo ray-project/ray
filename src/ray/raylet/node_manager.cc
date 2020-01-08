@@ -972,12 +972,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   WorkerProcessHandle proc =
       worker_pool_.FindStartingWorkerByProcessId(language, message->worker_pid());
   if (!proc) {
-    // Unknown worker! We'll still use it and let the pool deal with it on registration.
-    pid_t pid = message->worker_pid();
-    WorkerProcess worker_proc(pid);
-    // TODO(mehrdadn): We can't wait on a non-child, but should this really be detached?
-    worker_proc.detach();
-    proc = std::make_shared<WorkerProcess>(std::move(worker_proc));
+    RAY_LOG(FATAL) << "Unrecognized worker";
   }
   auto worker = std::make_shared<Worker>(worker_id, proc, language, message->port(),
                                          client, client_call_manager_);

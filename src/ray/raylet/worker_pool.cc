@@ -103,9 +103,8 @@ WorkerPool::~WorkerPool() {
     }
   }
   for (const auto &proc : procs_to_kill) {
-    // Automatically waits for the process to exit
-    // (see boost/process/detail/posix/terminate.hpp)
     proc->terminate();
+    proc->wait();
   }
 }
 

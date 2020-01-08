@@ -47,7 +47,7 @@ class WorkerPoolMock : public WorkerPool {
     // A non-null process handle that points to an invalid process object
     // is used to represent a dummy process for testing.
     last_worker_process_ = std::make_shared<WorkerProcess>();
-    worker_commands_by_proc[last_worker_process_] = worker_command_args;
+    worker_commands_by_proc_[last_worker_process_] = worker_command_args;
     return last_worker_process_;
   }
 
@@ -56,7 +56,7 @@ class WorkerPoolMock : public WorkerPool {
   WorkerProcessHandle LastStartedWorkerProcess() const { return last_worker_process_; }
 
   const std::vector<std::string> &GetWorkerCommand(WorkerProcessHandle proc) {
-    return worker_commands_by_proc[proc];
+    return worker_commands_by_proc_[proc];
   }
 
   int NumWorkersStarting() const {
@@ -81,7 +81,7 @@ class WorkerPoolMock : public WorkerPool {
   WorkerProcessHandle last_worker_process_;
   // The worker commands by process.
   std::unordered_map<WorkerProcessHandle, std::vector<std::string>>
-      worker_commands_by_proc;
+      worker_commands_by_proc_;
 };
 
 class WorkerPoolTest : public ::testing::Test {
