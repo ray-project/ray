@@ -43,7 +43,7 @@ public class DescriptorPartition implements Descriptor, Partition {
   }
 
   @Override
-  public byte[] toBytes() {
+  public byte[] getBytes() {
     // TODO serialize to bytes using protobuf
     return new byte[0];
   }

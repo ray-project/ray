@@ -9,6 +9,6 @@ public interface Descriptor {
    * Serialize a descriptor using an opaque protocol so that
    * it can be deserialized in python.
    */
-  byte[] toBytes();
+  byte[] getBytes();
 
 }

@@ -4,7 +4,7 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.python.descriptor.DescriptorFunction;
-import org.ray.streaming.python.descriptor.DescriptorFunction.PythonFunctionInterface;
+import org.ray.streaming.python.descriptor.DescriptorFunction.FunctionInterface;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 
 /**
@@ -28,7 +28,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new PythonDataStream.
    */
   public PythonDataStream map(DescriptorFunction func) {
-    func.setPythonFunctionInterface(PythonFunctionInterface.MAP_FUNCTION);
+    func.setFunctionInterface(FunctionInterface.MAP_FUNCTION);
     return new PythonDataStream(this, new PythonOperator(func));
   }
 
@@ -39,7 +39,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new PythonDataStream
    */
   public PythonDataStream flatMap(DescriptorFunction func) {
-    func.setPythonFunctionInterface(PythonFunctionInterface.FLAT_MAP_FUNCTION);
+    func.setFunctionInterface(FunctionInterface.FLAT_MAP_FUNCTION);
     return new PythonDataStream(this, new PythonOperator(func));
   }
 
@@ -50,7 +50,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new StreamSink.
    */
   public PythonStreamSink sink(DescriptorFunction func) {
-    func.setPythonFunctionInterface(DescriptorFunction.PythonFunctionInterface.SINK_FUNCTION);
+    func.setFunctionInterface(FunctionInterface.SINK_FUNCTION);
     return new PythonStreamSink(this, new PythonOperator(func));
   }
 
@@ -61,7 +61,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return A new KeyDataStream.
    */
   public PythonKeyDataStream keyBy(DescriptorFunction func) {
-    func.setPythonFunctionInterface(PythonFunctionInterface.KEY_FUNCTION);
+    func.setFunctionInterface(FunctionInterface.KEY_FUNCTION);
     return new PythonKeyDataStream(this, new PythonOperator(func));
   }
 

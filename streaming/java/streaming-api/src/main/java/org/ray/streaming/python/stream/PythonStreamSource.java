@@ -4,7 +4,7 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.python.descriptor.DescriptorFunction;
-import org.ray.streaming.python.descriptor.DescriptorFunction.PythonFunctionInterface;
+import org.ray.streaming.python.descriptor.DescriptorFunction.FunctionInterface;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 
 /**
@@ -24,7 +24,7 @@ public class PythonStreamSource extends PythonDataStream implements StreamSource
 
   public static PythonStreamSource from(StreamingContext streamingContext,
                                    DescriptorFunction sourceFunction) {
-    sourceFunction.setPythonFunctionInterface(PythonFunctionInterface.SOURCE_FUNCTION);
+    sourceFunction.setFunctionInterface(FunctionInterface.SOURCE_FUNCTION);
     return new PythonStreamSource(streamingContext, sourceFunction);
   }
 

@@ -4,7 +4,7 @@ import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.python.descriptor.DescriptorFunction;
-import org.ray.streaming.python.descriptor.DescriptorFunction.PythonFunctionInterface;
+import org.ray.streaming.python.descriptor.DescriptorFunction.FunctionInterface;
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 
 /**
@@ -24,7 +24,7 @@ public class PythonKeyDataStream extends Stream implements PythonStream  {
    * @return A new DataStream.
    */
   public PythonDataStream reduce(DescriptorFunction func) {
-    func.setPythonFunctionInterface(PythonFunctionInterface.REDUCE_FUNCTION);
+    func.setFunctionInterface(FunctionInterface.REDUCE_FUNCTION);
     return new PythonDataStream(this, new PythonOperator(func));
   }
 

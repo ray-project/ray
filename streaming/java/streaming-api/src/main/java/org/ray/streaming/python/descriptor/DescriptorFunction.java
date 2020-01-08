@@ -11,15 +11,15 @@ import org.ray.streaming.api.function.Function;
  * <p>If DescriptorFunction is constructed from serialized python function,
  * python worker can directly deserialize to create python function.
  * If DescriptorFunction is constructed from moduleName and className/functionName,
- * python worker will use `importlib` to load python
- * function. </p>
+ * python worker will use `importlib` to load python function.</p>
  *
- * <p>If this python data stream api is invoked from python, `pythonFunction` will be not null.</p>
- * <p>If this python data stream api is invoked from java, `moduleName` and `className`/`functionName`
- * will be not null.</p>
+ *
+ * <p>If this python data stream api is invoked from python, `function` will be not null.</p>
+ * <p>If this python data stream api is invoked from java, `moduleName` and
+ * `className`/`functionName` will be not null.</p>
  */
 public class DescriptorFunction implements Descriptor, Function {
-  public enum PythonFunctionInterface {
+  public enum FunctionInterface {
     SOURCE_FUNCTION("ray.streaming.function.SourceFunction"),
     MAP_FUNCTION("ray.streaming.function.MapFunction"),
     FLAT_MAP_FUNCTION("ray.streaming.function.FlatMapFunction"),
@@ -28,14 +28,14 @@ public class DescriptorFunction implements Descriptor, Function {
     REDUCE_FUNCTION("ray.streaming.function.ReduceFunction"),
     SINK_FUNCTION("ray.streaming.function.SinkFunction");
 
-    private String pythonFunctionInterface;
+    private String functionInterface;
 
-    PythonFunctionInterface(String pythonFunctionInterface) {
-      this.pythonFunctionInterface = pythonFunctionInterface;
+    FunctionInterface(String functionInterface) {
+      this.functionInterface = functionInterface;
     }
   }
 
-  private byte[] pythonFunction;
+  private byte[] function;
   private String moduleName;
   private String className;
   private String functionName;
@@ -43,25 +43,25 @@ public class DescriptorFunction implements Descriptor, Function {
    * FunctionInterface can be used to validate python function,
    * and look up operator class from FunctionInterface.
    */
-  private String pythonFunctionInterface;
+  private String functionInterface;
 
-  private DescriptorFunction(byte[] pythonFunction,
+  private DescriptorFunction(byte[] function,
                              String moduleName,
                              String className,
                              String functionName) {
-    this.pythonFunction = pythonFunction;
+    this.function = function;
     this.moduleName = moduleName;
     this.className = className;
     this.functionName = functionName;
   }
 
-  public void setPythonFunctionInterface(PythonFunctionInterface pythonFunctionInterface) {
-    this.pythonFunctionInterface = pythonFunctionInterface.pythonFunctionInterface;
+  public void setFunctionInterface(FunctionInterface functionInterface) {
+    this.functionInterface = functionInterface.functionInterface;
   }
 
   @Override
-  public byte[] toBytes() {
-    Preconditions.checkNotNull(this.pythonFunctionInterface);
+  public byte[] getBytes() {
+    Preconditions.checkNotNull(this.functionInterface);
     // TODO serialize to bytes using protobuf
     return new byte[0];
   }
@@ -69,10 +69,10 @@ public class DescriptorFunction implements Descriptor, Function {
   /**
    * Create a {@link DescriptorFunction} using python serialized function
    *
-   * @param pythonFunction serialized python function sent from python driver
+   * @param function serialized python function sent from python driver
    */
-  public static DescriptorFunction fromFunction(byte[] pythonFunction) {
-    return new DescriptorFunction(pythonFunction, null, null, null);
+  public static DescriptorFunction fromFunction(byte[] function) {
+    return new DescriptorFunction(function, null, null, null);
   }
 
   /**
