@@ -20,11 +20,17 @@ import org.ray.streaming.schedule.JobScheduler;
 public class StreamingContext implements Serializable {
 
   private transient AtomicInteger idGenerator;
+
   /**
    * The sinks of this streaming job.
    */
   private List<StreamSink> streamSinks;
+
+  /**
+   * The user custom streaming job configuration.
+   */
   private Map<String, String> jobConfig;
+
   /**
    * The logic plan.
    */

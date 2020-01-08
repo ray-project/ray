@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory;
  */
 public class JobGraph implements Serializable {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(JobGraph.class);
+  private static final Logger LOG = LoggerFactory.getLogger(JobGraph.class);
 
   private final String jobName;
   private final Map<String, String> jobConfig;
@@ -55,15 +55,15 @@ public class JobGraph implements Serializable {
   }
 
   public void printJobGraph() {
-    if (!LOGGER.isInfoEnabled()) {
+    if (!LOG.isInfoEnabled()) {
       return;
     }
-    LOGGER.info("Printing job graph:");
+    LOG.info("Printing job graph:");
     for (JobVertex jobVertex : jobVertexList) {
-      LOGGER.info(jobVertex.toString());
+      LOG.info(jobVertex.toString());
     }
     for (JobEdge jobEdge : jobEdgeList) {
-      LOGGER.info(jobEdge.toString());
+      LOG.info(jobEdge.toString());
     }
   }
 
