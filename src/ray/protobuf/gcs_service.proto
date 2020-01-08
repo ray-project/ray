@@ -248,11 +248,11 @@ message AddTaskLeaseRequest {
 message AddTaskLeaseReply {
 }
 
-message UpdateTaskReconstructionRequest {
+message AttemptTaskReconstructionRequest {
   TaskReconstructionData task_reconstruction = 1;
 }
 
-message UpdateTaskReconstructionReply {
+message AttemptTaskReconstructionReply {
 }
 
 // Service for task info access.
@@ -265,7 +265,7 @@ service TaskInfoGcsService {
   rpc DeleteTasks(DeleteTasksRequest) returns (DeleteTasksReply);
   // Add a task lease to GCS Service.
   rpc AddTaskLease(AddTaskLeaseRequest) returns (AddTaskLeaseReply);
-  // Update task reconstruction to GCS Service.
-  rpc UpdateTaskReconstruction(UpdateTaskReconstructionRequest)
-      returns (UpdateTaskReconstructionReply);
+  // Attempt task reconstruction to GCS Service.
+  rpc AttemptTaskReconstruction(AttemptTaskReconstructionRequest)
+      returns (AttemptTaskReconstructionReply);
 }
