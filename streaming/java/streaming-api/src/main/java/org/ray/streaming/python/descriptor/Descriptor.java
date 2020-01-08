@@ -1,7 +1,7 @@
 package org.ray.streaming.python.descriptor;
 
 /**
- * Descriptor is used to describe all python-related function/operator/partition
+ * Descriptor is used to describe python-related function/operator/partition.
  */
 public interface Descriptor {
 
