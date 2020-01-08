@@ -515,16 +515,6 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   return Status::OK();
 }
 
-Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &type,
-                                     const std::string &error_message, double timestamp) {
-  auto data = std::make_shared<ErrorTableData>();
-  data->set_job_id(job_id.Binary());
-  data->set_type(type);
-  data->set_error_message(error_message);
-  data->set_timestamp(timestamp);
-  return Append(job_id, job_id, data, /*done_callback=*/nullptr);
-}
-
 std::string ErrorTable::DebugString() const {
   return Log<JobID, ErrorTableData>::DebugString();
 }

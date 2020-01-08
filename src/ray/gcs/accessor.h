@@ -471,6 +471,26 @@ class NodeInfoAccessor {
   NodeInfoAccessor() = default;
 };
 
+/// \class ErrorInfoAccessor
+/// `ErrorInfoAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// error information in the GCS.
+class ErrorInfoAccessor {
+ public:
+  virtual ~ErrorInfoAccessor() = default;
+
+  /// Report error happend to GCS asynchronously.
+  ///
+  /// \param data_ptr The error message that will be reported to GCS.
+  /// \param callback Callback that will be called when report is complete.
+  /// \return Status
+  virtual Status AsyncReportError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
+                                  const StatusCallback &callback) = 0;
+
+ protected:
+  ErrorInfoAccessor() = default;
+};
+
 }  // namespace gcs
 
 }  // namespace ray
