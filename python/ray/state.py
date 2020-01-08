@@ -888,8 +888,8 @@ class GlobalState:
         removed from the cluster.
 
         Returns:
-            A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
+            A dictionary mapping the node id to the resources map of that node
+            in the cluster.
         """
         self._check_connected()
 
@@ -917,11 +917,10 @@ class GlobalState:
         Note that this information can grow stale as tasks start and finish.
 
         Returns:
-            A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
+            A dictionary mapping node id to the resources map of that node
+            in the cluster.
         """
         self._check_connected()
-
         available_resources_by_id = {}
 
         subscribe_clients = [
@@ -965,17 +964,10 @@ class GlobalState:
                 if client_id not in client_ids:
                     del available_resources_by_id[client_id]
 
-        # Calculate total available resources
-        total_available_resources = defaultdict(int)
-        for available_resources in available_resources_by_id.values():
-            for resource_id, num_available in available_resources.items():
-                total_available_resources[resource_id] += num_available
-
-        # Close the pubsub clients to avoid leaking file descriptors.
+        # Close the pub-sub clients to avoid leaking file descriptors.
         for subscribe_client in subscribe_clients:
             subscribe_client.close()
-
-        return dict(total_available_resources)
+        return available_resources_by_id
 
     def _error_messages(self, job_id):
         """Get the error messages for a specific driver.
@@ -1212,8 +1204,8 @@ def cluster_resources():
     from the cluster.
 
     Returns:
-        A dictionary mapping resource name to the total quantity of that
-            resource in the cluster.
+        A dictionary mapping the node id to the resources map of that node
+        in the cluster.
     """
     return state.cluster_resources()
 
@@ -1227,8 +1219,8 @@ def available_resources():
     Note that this information can grow stale as tasks start and finish.
 
     Returns:
-        A dictionary mapping resource name to the total quantity of that
-            resource in the cluster.
+        A dictionary mapping node id to the resources map of that node
+        in the cluster.
     """
     return state.available_resources()
 
