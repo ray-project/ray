@@ -240,13 +240,18 @@ class Dashboard(object):
             D["actorInfo"] = actor_tree
             return await json_response(result=D)
 
+        async def get_profiling_stats_callback(reply_future) -> aiohttp.web.Response:
+            reply = reply_future.result()
+            print(reply.profiling_stats_stdout)
+            return aiohttp.web.json_response(json.loads(reply.profiling_stats))
+
         async def profiling_info(req) -> aiohttp.web.Response:
             node_id = req.query.get("node_id")
             pid = int(req.query.get("pid"))
             duration = int(req.query.get("duration"))
-            D = self.raylet_stats.get_profiling_stats(node_id=node_id, pid=pid, duration=duration)
-            print(D["profilingStatsStdout"])  # TODO: direct to somewhere else
-            return aiohttp.web.json_response(json.loads(D["profilingStats"]))
+            reply_future = self.raylet_stats.get_profiling_stats(node_id=node_id, pid=pid, duration=duration)
+            reply_future.add_done_callback(get_profiling_stats_callback)
+            return await get_profiling_stats_callback(reply_future)
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -409,8 +414,8 @@ class NodeStats(threading.Thread):
                         format_reply(core_worker_stats)
                         actor_info.update(core_worker_stats)
                         actor_info[
-                            "averageTaskExecutionSpeed"] = actor_info["numExecutedTasks"] / (
-                                now - actor_info["timestamp"] / 1000)
+                            "averageTaskExecutionSpeed"] = round(actor_info["numExecutedTasks"] / (
+                                now - actor_info["timestamp"] / 1000), 2)
 
             for infeasible_task in infeasible_tasks:
                 actor_id = ray.utils.binary_to_hex(
@@ -572,9 +577,9 @@ class RayletStats(threading.Thread):
 
     def get_profiling_stats(self, node_id, pid, duration) -> Dict:
         stub = self.stubs[node_id]
-        reply = stub.GetProfilingStats(
+        reply_future = stub.GetProfilingStats.future(
             node_manager_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
-        return MessageToDict(reply)
+        return reply_future
         
     def run(self):
         counter = 0
@@ -586,6 +591,7 @@ class RayletStats(threading.Thread):
                 stub = self.stubs[node_id]
                 reply = stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(), timeout=2)
+                for worker_stats in reply.workers_stats:
                 replies[node["NodeManagerAddress"]] = reply
             with self._raylet_stats_lock:
                 for address, reply in replies.items():
