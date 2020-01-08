@@ -451,21 +451,6 @@ def estimate_available_memory():
         The total amount of available memory in bytes. It may be an
         overestimate if psutil is not installed.
     """
-    # Handle Linux.
-    if sys.platform == "linux" or sys.platform == "linux2":
-        bytes_in_kilobyte = 1024
-        return (
-            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
-
-    # check cgroup memory
-    try:
-        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
-            cgroup_memory_usage = int(f.read())
-    except IOError:
-        cgroup_memory_usage = None
-
-    if cgroup_memory_usage is not None:
-        return get_system_memory() - cgroup_memory_usage
 
     # Use psutil if it is available.
     try:
@@ -473,6 +458,12 @@ def estimate_available_memory():
         return psutil.virtual_memory().available
     except ImportError:
         pass
+
+    # Handle Linux.
+    if sys.platform == "linux" or sys.platform == "linux2":
+        bytes_in_kilobyte = 1024
+        return (
+            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
 
     # Give up
     return get_system_memory()
