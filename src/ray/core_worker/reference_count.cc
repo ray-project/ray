@@ -17,8 +17,8 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
 void ReferenceCounter::AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
                                       const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
-  RAY_CHECK(object_id_refs_.count(object_id) == 0)
-      << "Tried to create an owned object that already exists: " << object_id;
+  //  RAY_CHECK(object_id_refs_.count(object_id) == 0)
+  //      << "Tried to create an owned object that already exists: " << object_id;
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.

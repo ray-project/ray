@@ -631,6 +631,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
+  std::vector<std::unique_ptr<CoreWorkerDirectTaskSubmitter>> extra_task_submitters_;
+  std::atomic<unsigned int> rr_index_;
+  boost::asio::thread_pool pool_;
+
   /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
   /// need a mutex to protect it.
   mutable absl::Mutex actor_handles_mutex_;

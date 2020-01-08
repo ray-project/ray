@@ -15,6 +15,8 @@ namespace {
 // Duration between internal book-keeping heartbeats.
 const int kInternalHeartbeatMillis = 1000;
 
+const int kMaxSubmitParallelism = 2;
+
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const TaskID &current_task_id, const int task_index, const TaskID &caller_id,
@@ -39,11 +41,13 @@ void BuildCommonTaskSpec(
   }
 
   // Compute return IDs.
-  return_ids->resize(num_returns);
-  for (size_t i = 0; i < num_returns; i++) {
-    (*return_ids)[i] =
-        ObjectID::ForTaskReturn(task_id, i + 1,
-                                /*transport_type=*/static_cast<int>(transport_type));
+  if (return_ids != nullptr) {
+    return_ids->resize(num_returns);
+    for (size_t i = 0; i < num_returns; i++) {
+      (*return_ids)[i] =
+          ObjectID::ForTaskReturn(task_id, i + 1,
+                                  /*transport_type=*/static_cast<int>(transport_type));
+    }
   }
 }
 
@@ -78,11 +82,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       check_signals_(check_signals),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
-      client_call_manager_(new rpc::ClientCallManager(io_service_)),
+      client_call_manager_(
+          new rpc::ClientCallManager(io_service_, kMaxSubmitParallelism)),
       heartbeat_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
+      rr_index_(0),
+      pool_(1),
       task_queue_length_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
@@ -241,6 +248,20 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           },
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
+  for (int i = 0; i < kMaxSubmitParallelism; i++) {
+    extra_task_submitters_.push_back(
+        std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
+            rpc_address_, local_raylet_client_, client_factory,
+            [this](const std::string ip_address, int port) {
+              auto grpc_client = rpc::NodeManagerWorkerClient::make(
+                  ip_address, port, *client_call_manager_);
+              return std::shared_ptr<raylet::RayletClient>(
+                  new raylet::RayletClient(std::move(grpc_client)));
+            },
+            memory_store_, task_manager_, local_raylet_id,
+            RayConfig::instance().worker_lease_timeout_milliseconds())));
+  }
+
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
@@ -649,14 +670,37 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
                               std::vector<ObjectID> *return_ids, int max_retries) {
-  TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
 
+  if (task_options.is_direct_call && kMaxSubmitParallelism > 1) {
+    // Compute return IDs.
+    return_ids->resize(task_options.num_returns);
+    for (int i = 0; i < task_options.num_returns; i++) {
+      (*return_ids)[i] = ObjectID::ForTaskReturn(
+          task_id, i + 1, static_cast<int>(TaskTransportType::DIRECT));
+    }
+    auto submit_index = rr_index_++ % extra_task_submitters_.size();
+    boost::asio::post(pool_, [this, function, args, task_options, max_retries,
+                              submit_index, next_task_index, task_id]() {
+      TaskSpecBuilder builder;
+      const std::unordered_map<std::string, double> required_resources;
+      BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+                          worker_context_.GetCurrentTaskID(), next_task_index,
+                          GetCallerId(), rpc_address_, function, args,
+                          task_options.num_returns, task_options.resources,
+                          required_resources, TaskTransportType::DIRECT, nullptr);
+      TaskSpecification task_spec = builder.Build();
+      task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
+      extra_task_submitters_[submit_index]->SubmitTask(task_spec);
+    });
+    return Status::OK();
+  }
+
+  TaskSpecBuilder builder;
   const std::unordered_map<std::string, double> required_resources;
-  // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(
       builder, worker_context_.GetCurrentJobID(), task_id,
       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
