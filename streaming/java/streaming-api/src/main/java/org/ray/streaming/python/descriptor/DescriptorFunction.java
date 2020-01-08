@@ -14,7 +14,7 @@ import org.ray.streaming.api.function.Function;
  * python worker will use `importlib` to load python
  * function. </p>
  *
- * <p>When python data stream api call is from python, `pythonFunction` will be not null.</p>
+ * <p>If this python data stream api is invoked from python, `pythonFunction` will be not null.</p>
  * <p>When python data stream api call is from java, `moduleName` and `className`/`functionName`
  * will be not null.</p>
  */
