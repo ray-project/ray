@@ -122,21 +122,33 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
  public:
   explicit RedisTaskInfoAccessor(RedisGcsClient *client_impl);
 
-  ~RedisTaskInfoAccessor() {}
+  virtual ~RedisTaskInfoAccessor() {}
 
   Status AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
-                  const StatusCallback &callback);
+                  const StatusCallback &callback) override;
 
   Status AsyncGet(const TaskID &task_id,
-                  const OptionalItemCallback<TaskTableData> &callback);
+                  const OptionalItemCallback<TaskTableData> &callback) override;
 
-  Status AsyncDelete(const std::vector<TaskID> &task_ids, const StatusCallback &callback);
+  Status AsyncDelete(const std::vector<TaskID> &task_ids,
+                     const StatusCallback &callback) override;
 
   Status AsyncSubscribe(const TaskID &task_id,
                         const SubscribeCallback<TaskID, TaskTableData> &subscribe,
-                        const StatusCallback &done);
+                        const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done);
+  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+
+  Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &data_ptr,
+                           const StatusCallback &callback) override;
+
+  Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                   const StatusCallback &done) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -151,6 +163,10 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
   typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
       TaskSubscriptionExecutor;
   TaskSubscriptionExecutor task_sub_executor_;
+
+  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
+      TaskLeaseSubscriptionExecutor;
+  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
 
 /// \class RedisObjectInfoAccessor

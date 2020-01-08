@@ -10,7 +10,7 @@ import os.path as osp
 import numpy as np
 import json
 
-from ray.tune.util import flatten_dict
+from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)
 
