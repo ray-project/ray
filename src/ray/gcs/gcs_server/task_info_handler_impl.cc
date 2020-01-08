@@ -69,5 +69,30 @@ void DefaultTaskInfoHandler::HandleDeleteTasks(const DeleteTasksRequest &request
   RAY_LOG(DEBUG) << "Finished deleting tasks, task id list size = " << task_ids.size();
 }
 
+void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &request,
+                                                AddTaskLeaseReply *reply,
+                                                SendReplyCallback send_reply_callback) {
+  TaskID task_id = TaskID::FromBinary(request.task_lease_data().task_id());
+  ClientID node_id = ClientID::FromBinary(request.task_lease_data().node_manager_id());
+  RAY_LOG(DEBUG) << "Adding task lease, task id = " << task_id
+                 << ", node id = " << node_id;
+  auto task_lease_data = std::make_shared<TaskLeaseData>();
+  task_lease_data->CopyFrom(request.task_lease_data());
+  auto on_done = [task_id, node_id, request, send_reply_callback](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to add task lease, task id = " << task_id
+                     << ", node id = " << node_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status = gcs_client_.Tasks().AsyncAddTaskLease(task_lease_data, on_done);
+  if (!status.ok()) {
+    on_done(status);
+  }
+  RAY_LOG(DEBUG) << "Finished adding task lease, task id = " << task_id
+                 << ", node id = " << node_id;
+}
+
 }  // namespace rpc
 }  // namespace ray
