@@ -479,7 +479,7 @@ class ErrorInfoAccessor {
  public:
   virtual ~ErrorInfoAccessor() = default;
 
-  /// Report error happend to GCS asynchronously.
+  /// Report an error to GCS asynchronously.
   ///
   /// \param data_ptr The error message that will be reported to GCS.
   /// \param callback Callback that will be called when report is complete.
