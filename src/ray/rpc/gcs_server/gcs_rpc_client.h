@@ -26,6 +26,8 @@ class GcsRpcClient {
         new GrpcClient<ObjectInfoGcsService>(address, port, client_call_manager));
     task_info_grpc_client_ = std::unique_ptr<GrpcClient<TaskInfoGcsService>>(
         new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
+    stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
+        new GrpcClient<StatsGcsService>(address, port, client_call_manager));
   };
 
   /// Add job info to gcs server.
@@ -109,6 +111,9 @@ class GcsRpcClient {
   VOID_RPC_CLIENT_METHOD(TaskInfoGcsService, AttemptTaskReconstruction,
                          task_info_grpc_client_, )
 
+  /// Add profile data to GCS Service.
+  VOID_RPC_CLIENT_METHOD(StatsGcsService, AddProfileData, stats_grpc_client_, )
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
@@ -116,6 +121,7 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
+  std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
 };
 
 }  // namespace rpc
