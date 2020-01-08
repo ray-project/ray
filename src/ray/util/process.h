@@ -35,14 +35,7 @@ struct greater<boost::process::child>;
 template <>
 struct greater_equal<boost::process::child>;
 template <>
-struct less<boost::process::child> : less<boost::process::pid_t> {
-  typedef less<boost::process::pid_t> base_type;
-  typedef boost::process::child argument_type;
-  typedef bool result_type;
-  result_type operator()(const argument_type &a, const argument_type &b) const {
-    return this->base_type::operator()(a.id(), b.id());
-  }
-};
+struct less<boost::process::child>;
 template <>
 struct less_equal<boost::process::child>;
 template <>
@@ -84,19 +77,7 @@ struct greater<shared_ptr<boost::process::child>>;
 template <>
 struct greater_equal<shared_ptr<boost::process::child>>;
 template <>
-struct less<shared_ptr<boost::process::child>> : less<boost::process::child> {
-  typedef less<boost::process::child> base_type;
-  typedef shared_ptr<boost::process::child> argument_type;
-  typedef bool result_type;
-  result_type operator()(const argument_type &a, const argument_type &b) const {
-    // For explanation, see note above.
-    return a ? b ? a->valid()
-                       ? b->valid() ? this->base_type::operator()(*a, *b) : false
-                       : b->valid() ? true : std::less<void const *>()(a.get(), b.get())
-                 : false
-             : !!b;
-  }
-};
+struct less<shared_ptr<boost::process::child>>;
 template <>
 struct less_equal<shared_ptr<boost::process::child>>;
 }  // namespace std
