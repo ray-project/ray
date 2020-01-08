@@ -20,7 +20,7 @@ import org.ray.api.options.ActorCreationOptions.Builder;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
-import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.transfer.ChannelID;
 import org.ray.streaming.runtime.util.EnvUtil;
@@ -158,7 +158,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
-    StreamSource<String> streamSource = StreamSource.buildSource(streamingContext, text);
+    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamingContext, text);
     streamSource
         .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
           String[] records = value.split(" ");
