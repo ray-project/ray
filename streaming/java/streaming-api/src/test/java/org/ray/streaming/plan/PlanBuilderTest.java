@@ -6,8 +6,8 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.impl.KeyPartition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
-import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.api.stream.DataStreamSink;
+import org.ray.streaming.api.stream.DataStreamSource;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,9 +39,9 @@ public class PlanBuilderTest {
 
   public Plan buildDataSyncPlan() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
-    StreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
+    DataStreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
     PlanBuilder planBuilder = new PlanBuilder(Lists.newArrayList(streamSink));
 
     Plan plan = planBuilder.buildPlan();
@@ -74,9 +74,9 @@ public class PlanBuilderTest {
 
   public Plan buildKeyByPlan() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("1", "2", "3", "4"));
-    StreamSink streamSink = dataStream.keyBy(x -> x)
+    DataStreamSink streamSink = dataStream.keyBy(x -> x)
         .sink(x -> LOGGER.info(x));
     PlanBuilder planBuilder = new PlanBuilder(Lists.newArrayList(streamSink));
 

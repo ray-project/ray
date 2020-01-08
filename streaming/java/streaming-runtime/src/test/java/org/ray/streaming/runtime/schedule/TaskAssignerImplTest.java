@@ -11,8 +11,8 @@ import org.ray.runtime.actor.LocalModeRayActor;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
-import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.api.stream.DataStreamSink;
+import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
@@ -65,9 +65,9 @@ public class TaskAssignerImplTest extends BaseUnitTest {
 
   public Plan buildDataSyncPlan() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
-    StreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
+    DataStreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
     PlanBuilder planBuilder = new PlanBuilder(Lists.newArrayList(streamSink));
 
     Plan plan = planBuilder.buildPlan();
