@@ -667,6 +667,8 @@ cdef execute_task(
                 errors.append(failure_object)
             core_worker.store_task_outputs(
                 worker, errors, c_return_ids, returns)
+            logger.warning("Failed to execute the task({}) with the error:{}"
+                           .format(task_id.Hex(), str(failure_object)))
             ray.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
