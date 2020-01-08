@@ -324,6 +324,16 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool AddTaskLease(const rpc::AddTaskLeaseRequest &request) {
+    std::promise<bool> promise;
+    client_->AddTaskLease(
+        request, [&promise](const Status &status, const rpc::AddTaskLeaseReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
@@ -368,6 +378,14 @@ class GcsServerTest : public RedisServiceManagerForTest {
     task.mutable_task_spec()->CopyFrom(task_spec);
     task_table_data.mutable_task()->CopyFrom(task);
     return task_table_data;
+  }
+
+  rpc::TaskLeaseData GenTaskLeaseData(const std::string &task_id,
+                                      const std::string &node_id) {
+    rpc::TaskLeaseData task_lease_data;
+    task_lease_data.set_task_id(task_id);
+    task_lease_data.set_node_manager_id(node_id);
+    return task_lease_data;
   }
 
  protected:
@@ -546,6 +564,14 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   ASSERT_TRUE(DeleteTasks(delete_tasks_request));
   result = GetTask(task_id.Binary());
   ASSERT_TRUE(!result.has_task());
+
+  // Add task lease
+  ClientID node_id = ClientID::FromRandom();
+  rpc::TaskLeaseData task_lease_data =
+      GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  rpc::AddTaskLeaseRequest add_task_lease_request;
+  add_task_lease_request.mutable_task_lease_data()->CopyFrom(task_lease_data);
+  ASSERT_TRUE(AddTaskLease(add_task_lease_request));
 }
 
 }  // namespace ray
