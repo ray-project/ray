@@ -131,7 +131,7 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
     return Status::OK();
   }
 
-  Status AsyncUpdateTaskReconstruction(
+  Status AttemptTaskReconstruction(
       const std::shared_ptr<TaskReconstructionData> &task_data,
       const gcs::StatusCallback &done) override {
     int log_index = task_data->num_reconstructions();
@@ -440,7 +440,7 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   task_reconstruction_data->set_task_id(task_id.Binary());
   task_reconstruction_data->set_node_manager_id(ClientID::FromRandom().Binary());
   task_reconstruction_data->set_num_reconstructions(0);
-  RAY_CHECK_OK(mock_gcs_->Tasks().AsyncUpdateTaskReconstruction(
+  RAY_CHECK_OK(mock_gcs_->Tasks().AttemptTaskReconstruction(
       task_reconstruction_data,
       /*done=*/
       [](Status status) { ASSERT_TRUE(status.ok()); }));
