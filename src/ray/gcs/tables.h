@@ -842,19 +842,13 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
   std::string DebugString() const;
 };
 
-class ProfileTable : private Log<UniqueID, ProfileTableData> {
+class ProfileTable : public Log<UniqueID, ProfileTableData> {
  public:
   ProfileTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                RedisGcsClient *client)
       : Log(contexts, client) {
     prefix_ = TablePrefix::PROFILE;
   };
-
-  /// Add a batch of profiling events to the profile table.
-  ///
-  /// \param profile_events The profile events to record.
-  /// \return Status.
-  Status AddProfileEventBatch(const ProfileTableData &profile_events);
 
   /// Returns debug string for class.
   ///

@@ -290,6 +290,22 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
 };
 
+/// \class RedisStatsAccessor
+/// RedisStatsAccessor is an implementation of `StatsAccessor`
+/// that uses Redis as the backend storage.
+class RedisStatsAccessor : public StatsAccessor {
+ public:
+  explicit RedisStatsAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisStatsAccessor() = default;
+
+  Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
+                             const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+};
+
 }  // namespace gcs
 
 }  // namespace ray

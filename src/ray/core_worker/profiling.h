@@ -18,14 +18,11 @@ class Profiler {
            const std::shared_ptr<gcs::RedisGcsClient> &gcs_client);
 
   // Add an event to the queue to be flushed periodically.
-  void AddEvent(const rpc::ProfileTableData::ProfileEvent &event) LOCKS_EXCLUDED(mutex_);
+  void AddEvent(const rpc::ProfileTableData::ProfileEvent &event);
 
  private:
   // Flush all of the events that have been added since last flush to the GCS.
-  void FlushEvents() LOCKS_EXCLUDED(mutex_);
-
-  // Mutex guarding rpc_profile_data_.
-  absl::Mutex mutex_;
+  void FlushEvents();
 
   // ASIO IO service event loop. Must be started by the caller.
   boost::asio::io_service &io_service_;
@@ -35,7 +32,7 @@ class Profiler {
 
   // RPC message containing profiling data. Holds the queue of profile events
   // until they are flushed.
-  rpc::ProfileTableData rpc_profile_data_ GUARDED_BY(mutex_);
+  std::shared_ptr<rpc::ProfileTableData> rpc_profile_data_;
 
   // Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;

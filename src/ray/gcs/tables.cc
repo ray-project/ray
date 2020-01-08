@@ -529,14 +529,6 @@ std::string ErrorTable::DebugString() const {
   return Log<JobID, ErrorTableData>::DebugString();
 }
 
-Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
-  // TODO(hchen): Change the parameter to shared_ptr to avoid copying data.
-  auto data = std::make_shared<ProfileTableData>();
-  data->CopyFrom(profile_events);
-  return Append(JobID::Nil(), UniqueID::FromRandom(), data,
-                /*done_callback=*/nullptr);
-}
-
 std::string ProfileTable::DebugString() const {
   return Log<UniqueID, ProfileTableData>::DebugString();
 }

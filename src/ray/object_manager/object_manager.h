@@ -235,7 +235,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \return All profiling information that has accumulated since the last call
   /// to this method.
-  rpc::ProfileTableData GetAndResetProfilingInfo();
+  std::shared_ptr<rpc::ProfileTableData> GetAndResetProfilingInfo();
 
   /// Returns debug string for class.
   ///

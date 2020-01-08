@@ -25,6 +25,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class RedisTaskInfoAccessor;
   friend class RedisNodeInfoAccessor;
   friend class RedisObjectInfoAccessor;
+  friend class RedisStatsAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
   friend class TaskTableTestHelper;
@@ -64,7 +65,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   // TODO: Some API for getting the error on the driver
   TaskReconstructionLog &task_reconstruction_log();
   ErrorTable &error_table();
-  ProfileTable &profile_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -93,7 +93,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ActorCheckpointIdTable &actor_checkpoint_id_table();
   /// This method will be deprecated, use method Jobs() instead.
   JobTable &job_table();
-  /// This method will be deprecated, use method Objects() instead
+  /// This method will be deprecated, use method Objects() instead.
   ObjectTable &object_table();
   /// The following four methods will be deprecated, use method Nodes() instead.
   ClientTable &client_table();
@@ -103,6 +103,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// The following two methods will be deprecated, use method Tasks() instead.
   raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
+  /// This method will be deprecated, use method Stats() instead.
+  ProfileTable &profile_table();
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.

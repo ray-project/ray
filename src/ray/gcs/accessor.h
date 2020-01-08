@@ -461,6 +461,22 @@ class NodeInfoAccessor {
   NodeInfoAccessor() = default;
 };
 
+/// \class StatsAccessor
+/// `StatsAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// stats in the GCS.
+class StatsAccessor {
+ public:
+  virtual ~StatsAccessor() = default;
+
+  virtual Status AsyncAddProfileData(
+      const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+ protected:
+  StatsAccessor() = default;
+};
+
 }  // namespace gcs
 
 }  // namespace ray
