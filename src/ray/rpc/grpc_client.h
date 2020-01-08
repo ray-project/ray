@@ -38,6 +38,7 @@ class GrpcClient {
  public:
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager)
       : client_call_manager_(call_manager) {
+    grpc::ChannelArguments argument;
     // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
     // this configurable, or selectively set it for known local connections only.
     argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);

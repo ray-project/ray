@@ -7,6 +7,7 @@ import collections
 import io
 import json
 import logging
+import os
 import re
 import string
 import sys
@@ -22,6 +23,19 @@ import ray.cluster_utils
 import ray.test_utils
 
 logger = logging.getLogger(__name__)
+
+
+# https://github.com/ray-project/ray/issues/6662
+def test_ignore_http_proxy(shutdown_only):
+    ray.init(num_cpus=1)
+    os.environ["http_proxy"] = "http://example.com"
+    os.environ["https_proxy"] = "http://example.com"
+
+    @ray.remote
+    def f():
+        return 1
+
+    assert ray.get(f.remote()) == 1
 
 
 def test_simple_serialization(ray_start_regular):
