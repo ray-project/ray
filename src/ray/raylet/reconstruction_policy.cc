@@ -135,7 +135,7 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   reconstruction_entry->set_task_id(task_id.Binary());
   reconstruction_entry->set_num_reconstructions(reconstruction_attempt);
   reconstruction_entry->set_node_manager_id(client_id_.Binary());
-  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUpdateTaskReconstruction(
+  RAY_CHECK_OK(gcs_client_->Tasks().AttemptTaskReconstruction(
       reconstruction_entry,
       /*done=*/
       [this, task_id, required_object_id](Status status) {

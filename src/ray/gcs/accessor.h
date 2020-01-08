@@ -232,15 +232,15 @@ class TaskInfoAccessor {
   virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
                                            const StatusCallback &done) = 0;
 
-  /// Updata task reconstruction to GCS asynchronously.
+  /// Attempt task reconstruction to GCS asynchronously.
   ///
   /// \param data_ptr The task reconstruction that will be added to GCS.
   /// \param callback Callback that will be called after task reconstruction
   /// has been added to GCS.
   /// \return Status
-  virtual Status AsyncUpdateTaskReconstruction(
+  virtual Status AttemptTaskReconstruction(
       const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
-      const StatusCallback &done) = 0;
+      const StatusCallback &callback) = 0;
 
  protected:
   TaskInfoAccessor() = default;

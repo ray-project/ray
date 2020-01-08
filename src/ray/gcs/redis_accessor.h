@@ -150,9 +150,9 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
   Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
                                    const StatusCallback &done) override;
 
-  Status AsyncUpdateTaskReconstruction(
+  Status AttemptTaskReconstruction(
       const std::shared_ptr<TaskReconstructionData> &data_ptr,
-      const StatusCallback &done) override;
+      const StatusCallback &callback) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};
