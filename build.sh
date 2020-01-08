@@ -120,15 +120,6 @@ export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
   "$BAZEL_EXECUTABLE" build //java:all --verbose_failures
-  echo "Start building ray jars"
-  echo "Generate maven deps for ray java"
-  "$BAZEL_EXECUTABLE" build //java:gen_maven_deps
-  echo "Build jars for ray java"
-  cd $ROOT_DIR/java && mvn clean install -DskipTests && cd -
-  echo "Generate maven deps for ray streaming java"
-  "$BAZEL_EXECUTABLE" build //streaming/java:gen_maven_deps
-  echo "Build jars for ray streaming java"
-  cd $ROOT_DIR/streaming/java && mvn clean install -DskipTests
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
