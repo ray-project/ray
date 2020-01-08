@@ -425,9 +425,8 @@ Status RedisNodeInfoAccessor::AsyncRegister(const GcsNodeInfo &node_info,
                                             const StatusCallback &callback) {
   ClientTable::WriteCallback on_done = nullptr;
   if (callback != nullptr) {
-    on_done = [callback](RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
-      callback(Status::OK());
-    };
+    on_done = [callback](RedisGcsClient *client, const ClientID &id,
+                         const GcsNodeInfo &data) { callback(Status::OK()); };
   }
   ClientTable &client_table = client_impl_->client_table();
   return client_table.MarkConnected(node_info, on_done);
