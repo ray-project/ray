@@ -245,7 +245,8 @@ class Dashboard(object):
             pid = int(req.query.get("pid"))
             duration = int(req.query.get("duration"))
             D = self.raylet_stats.get_profiling_stats(node_id=node_id, pid=pid, duration=duration)
-            return await json_response(result=D)
+            print(D["profilingStatsStdout"])  # TODO: direct to somewhere else
+            return aiohttp.web.json_response(json.loads(D["profilingStats"]))
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -271,6 +272,9 @@ class Dashboard(object):
                 "cd python/ray/dashboard/client && npm ci && "
                 "npm run build".format(static_dir))
         self.app.router.add_static("/static", static_dir)
+
+        speedscope_dir = os.path.join(static_dir, "speedscope")
+        self.app.router.add_static("/speedscope", speedscope_dir)
 
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
