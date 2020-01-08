@@ -972,8 +972,17 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   WorkerProcessHandle proc =
       worker_pool_.FindStartingWorkerByProcessId(language, message->worker_pid());
   if (!proc) {
-    RAY_LOG(WARNING) << "Unrecognized worker";
-    return;
+    RAY_LOG(WARNING)
+        << "Unrecognized worker " << worker_id << " with PID " << message->worker_pid();
+    // An unknown worker shouldn't normally occur, but it can happen if workers
+    // fail to start in time, and end up connecting to a different raylet than the
+    // one that was intended. We'll still allow it to occur here, letting
+    // RegisterWorker deal with it however it wants.
+    pid_t pid = message->worker_pid();
+    WorkerProcess worker_proc(pid);
+    // TODO(mehrdadn): We can't wait on a non-child, but should this really be detached?
+    worker_proc.detach();
+    proc = std::make_shared<WorkerProcess>(std::move(worker_proc));
   }
   auto worker = std::make_shared<Worker>(worker_id, proc, language, message->port(),
                                          client, client_call_manager_);
