@@ -68,10 +68,12 @@ message ObjectTableData {
 }
 
 message TaskReconstructionData {
+  // The ID of task.
+  bytes task_id = 1;
   // The number of times this task has been reconstructed so far.
-  uint64 num_reconstructions = 1;
+  uint64 num_reconstructions = 2;
   // The node manager that is trying to reconstruct the task.
-  bytes node_manager_id = 2;
+  bytes node_manager_id = 3;
 }
 
 message TaskTableData {
