@@ -241,6 +241,13 @@ message DeleteTasksRequest {
 message DeleteTasksReply {
 }
 
+message AddTaskLeaseRequest {
+  TaskLeaseData task_lease_data = 1;
+}
+
+message AddTaskLeaseReply {
+}
+
 // Service for task info access.
 service TaskInfoGcsService {
   // Add a task to GCS Service.
@@ -249,4 +256,6 @@ service TaskInfoGcsService {
   rpc GetTask(GetTaskRequest) returns (GetTaskReply);
   // Delete tasks from GCS Service.
   rpc DeleteTasks(DeleteTasksRequest) returns (DeleteTasksReply);
+  // Add a task lease to GCS Service.
+  rpc AddTaskLease(AddTaskLeaseRequest) returns (AddTaskLeaseReply);
 }
