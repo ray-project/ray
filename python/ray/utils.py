@@ -452,16 +452,6 @@ def estimate_available_memory():
         overestimate if psutil is not installed.
     """
 
-    # check cgroup memory first
-    try:
-        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
-            cgroup_memory_usage = int(f.read())
-    except IOError:
-        cgroup_memory_usage = None
-
-    if cgroup_memory_usage is not None:
-        return get_system_memory() - cgroup_memory_usage
-
     # Use psutil if it is available.
     try:
         import psutil
