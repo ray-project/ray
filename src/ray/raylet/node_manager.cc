@@ -972,7 +972,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   WorkerProcessHandle proc =
       worker_pool_.FindStartingWorkerByProcessId(language, message->worker_pid());
   if (!proc) {
-    RAY_LOG(FATAL) << "Unrecognized worker";
+    RAY_LOG(WARNING) << "Unrecognized worker";
+    return;
   }
   auto worker = std::make_shared<Worker>(worker_id, proc, language, message->port(),
                                          client, client_call_manager_);
