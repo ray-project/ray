@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -71,6 +73,14 @@ public abstract class BaseMultiLanguageTest {
 
     String nodeManagerPort = String.valueOf(NetworkUtil.getUnusedPort());
 
+    // jars in the `ray` wheel doesn't contains test classes, so we add test classes explicitly.
+    // Since mvn test classes contains `test` in path and bazel test classes is located at a jar
+    // with `test` included in the name, we can check classpath `test` to filter out test classes.
+    String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
+        .filter(s -> !s.contains(" ") && s.contains("test"))
+        .collect(Collectors.joining(":"));
+    String workerOptions =
+        " -classpath " + classpath;
     // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
@@ -81,7 +91,8 @@ public abstract class BaseMultiLanguageTest {
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
         String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
-        "--include-java" // classpath will use jars in the `ray` wheel
+        "--include-java",
+        "--java-worker-options=" + workerOptions
     );
     String numWorkersPerProcessJava = System
         .getProperty("ray.raylet.config.num_workers_per_process_java");

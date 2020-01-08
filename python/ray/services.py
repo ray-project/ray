@@ -1309,7 +1309,7 @@ def build_java_worker_command(
                 "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
 
     # Add ray jars path to java classpath
-    ray_jars_dir = get_ray_jars_dir()
+    ray_jars = os.path.join(get_ray_jars_dir(), "*")
     cp_sep = ":"
     import platform
     if platform.system() == "Windows":
@@ -1324,9 +1324,9 @@ def build_java_worker_command(
             cp_index = i + 1
             break
     if cp_index != -1:
-        options[cp_index] = options[cp_index] + cp_sep + ray_jars_dir
+        options[cp_index] = options[cp_index] + cp_sep + ray_jars
     else:
-        options = ["-cp", ray_jars_dir] + options
+        options = ["-cp", ray_jars] + options
     java_worker_options = " ".join(options)
     # Put `java_worker_options` in the last, so it can overwrite the
     # above options.
