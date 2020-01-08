@@ -1,7 +1,7 @@
 package org.ray.streaming.api.stream;
 
 /**
- * A Mark interface that represents a source of the Stream.
+ * A mark interface that represents a source of the Stream.
  *
  * @param <T> The type of StreamSource data.
  */
