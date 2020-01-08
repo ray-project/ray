@@ -8,7 +8,7 @@ import org.ray.streaming.python.descriptor.DescriptorFunction.PythonFunctionInte
 import org.ray.streaming.python.descriptor.DescriptorPartition;
 
 /**
- * Represents a stream of data which all transformations will be executed in python process
+ * Represents a stream of data whose transformations will be executed in python.
  */
 public class PythonDataStream extends Stream implements PythonStream {
 
