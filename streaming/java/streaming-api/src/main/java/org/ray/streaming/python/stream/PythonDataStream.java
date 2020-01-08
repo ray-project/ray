@@ -2,10 +2,10 @@ package org.ray.streaming.python.stream;
 
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.stream.Stream;
+import org.ray.streaming.python.PythonFunction;
+import org.ray.streaming.python.PythonFunction.FunctionInterface;
 import org.ray.streaming.python.PythonOperator;
-import org.ray.streaming.python.descriptor.DescriptorFunction;
-import org.ray.streaming.python.descriptor.DescriptorFunction.FunctionInterface;
-import org.ray.streaming.python.descriptor.DescriptorPartition;
+import org.ray.streaming.python.PythonPartition;
 
 /**
  * Represents a stream of data whose transformations will be executed in python.
@@ -27,7 +27,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @param func The python MapFunction.
    * @return A new PythonDataStream.
    */
-  public PythonDataStream map(DescriptorFunction func) {
+  public PythonDataStream map(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.MAP_FUNCTION);
     return new PythonDataStream(this, new PythonOperator(func));
   }
@@ -38,7 +38,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @param func The python FlapMapFunction.
    * @return A new PythonDataStream
    */
-  public PythonDataStream flatMap(DescriptorFunction func) {
+  public PythonDataStream flatMap(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.FLAT_MAP_FUNCTION);
     return new PythonDataStream(this, new PythonOperator(func));
   }
@@ -49,7 +49,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @param func The python SinkFunction.
    * @return A new StreamSink.
    */
-  public PythonStreamSink sink(DescriptorFunction func) {
+  public PythonStreamSink sink(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.SINK_FUNCTION);
     return new PythonStreamSink(this, new PythonOperator(func));
   }
@@ -60,7 +60,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @param func the  python keyFunction.
    * @return A new KeyDataStream.
    */
-  public PythonKeyDataStream keyBy(DescriptorFunction func) {
+  public PythonKeyDataStream keyBy(PythonFunction func) {
     func.setFunctionInterface(FunctionInterface.KEY_FUNCTION);
     return new PythonKeyDataStream(this, new PythonOperator(func));
   }
@@ -71,7 +71,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @return This stream.
    */
   public PythonDataStream broadcast() {
-    this.partition = DescriptorPartition.BroadcastPartition;
+    this.partition = PythonPartition.BroadcastPartition;
     return this;
   }
 
@@ -81,7 +81,7 @@ public class PythonDataStream extends Stream implements PythonStream {
    * @param partition The partitioning strategy.
    * @return This stream.
    */
-  public PythonDataStream partitionBy(DescriptorPartition partition) {
+  public PythonDataStream partitionBy(PythonPartition partition) {
     this.partition = partition;
     return this;
   }
