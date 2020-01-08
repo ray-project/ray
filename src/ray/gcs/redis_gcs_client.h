@@ -27,6 +27,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class RedisObjectInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
+  friend class LogLookupTestHelper;
+  friend class LogDeleteTestHelper;
   friend class TaskTableTestHelper;
   friend class ClientTableTestHelper;
   friend class SetTestHelper;
@@ -62,7 +64,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   void Disconnect();
 
   // TODO: Some API for getting the error on the driver
-  TaskReconstructionLog &task_reconstruction_log();
   ErrorTable &error_table();
   ProfileTable &profile_table();
 
@@ -100,9 +101,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   DynamicResourceTable &resource_table();
-  /// The following two methods will be deprecated, use method Tasks() instead.
+  /// The following three methods will be deprecated, use method Tasks() instead.
   raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
+  TaskReconstructionLog &task_reconstruction_log();
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.
