@@ -247,6 +247,13 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool AddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> task_lease) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAddTaskLease(
+        task_lease, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
  protected:
   bool WaitReady(const std::future<bool> &future,
                  const std::chrono::milliseconds &timeout_ms) {
@@ -283,16 +290,24 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     return gcs_node_info;
   }
 
-  rpc::TaskTableData GenTaskTableData(const std::string &job_id,
-                                      const std::string &task_id) {
-    rpc::TaskTableData task_table_data;
+  std::shared_ptr<rpc::TaskTableData> GenTaskTableData(const std::string &job_id,
+                                                       const std::string &task_id) {
+    auto task_table_data = std::make_shared<rpc::TaskTableData>();
     rpc::Task task;
     rpc::TaskSpec task_spec;
     task_spec.set_job_id(job_id);
     task_spec.set_task_id(task_id);
     task.mutable_task_spec()->CopyFrom(task_spec);
-    task_table_data.mutable_task()->CopyFrom(task);
+    task_table_data->mutable_task()->CopyFrom(task);
     return task_table_data;
+  }
+
+  std::shared_ptr<rpc::TaskLeaseData> GenTaskLeaseData(const std::string &task_id,
+                                                       const std::string &node_id) {
+    auto task_lease_data = std::make_shared<rpc::TaskLeaseData>();
+    task_lease_data->set_task_id(task_id);
+    task_lease_data->set_node_manager_id(node_id);
+    return task_lease_data;
   }
 
   // Gcs server
@@ -546,8 +561,7 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestNodeHeartbeat) {
 TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::ForDriverTask(job_id);
-  rpc::TaskTableData task_table_data =
-      GenTaskTableData(job_id.Binary(), task_id.Binary());
+  auto task_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
 
   int task_count = 0;
   auto task_subscribe = [&task_count](const TaskID &id,
@@ -555,22 +569,37 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribe(task_id, task_subscribe, nullptr));
 
   // Add task
-  auto task = std::make_shared<rpc::TaskTableData>();
-  task->CopyFrom(task_table_data);
-  RAY_CHECK(AddTask(task));
+  ASSERT_TRUE(AddTask(task_table_data));
 
   auto get_task_result = GetTask(task_id);
   ASSERT_TRUE(get_task_result.task().task_spec().task_id() == task_id.Binary());
   ASSERT_TRUE(get_task_result.task().task_spec().job_id() == job_id.Binary());
-
-  //  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id, nullptr));
+  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribe(task_id, nullptr));
+  ASSERT_TRUE(AddTask(task_table_data));
 
   // Delete task
-  std::vector<TaskID> task_ids;
-  task_ids.push_back(task_id);
-  RAY_CHECK(DeleteTask(task_ids));
-
+  std::vector<TaskID> task_ids = {task_id};
+  ASSERT_TRUE(DeleteTask(task_ids));
   EXPECT_EQ(task_count, 1);
+
+  // Add task lease
+  int task_lease_count = 0;
+  auto task_lease_subscribe = [&task_lease_count](
+                                  const TaskID &id,
+                                  const boost::optional<rpc::TaskLeaseData> &result) {
+    ++task_lease_count;
+  };
+  RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(task_id, task_lease_subscribe,
+                                                            nullptr));
+
+  ClientID node_id = ClientID::FromRandom();
+  auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
+  //  ASSERT_TRUE(AddTaskLease(task_lease));
+//  EXPECT_EQ(task_lease_count, 1);
+
+  RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id, nullptr));
+  //  ASSERT_TRUE(AddTaskLease(task_lease));
+//  EXPECT_EQ(task_lease_count, 1);
 }
 
 }  // namespace ray

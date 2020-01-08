@@ -70,6 +70,10 @@ class Raylet {
 
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+
+  std::unique_ptr<std::thread> thread_io_service_;
+  boost::asio::io_service io_service_;
+
   /// The object table. This is shared between the object manager and node
   /// manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;

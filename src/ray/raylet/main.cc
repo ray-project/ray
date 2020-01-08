@@ -81,6 +81,7 @@ int main(int argc, char *argv[]) {
   while (std::getline(config_string, config_name, ',')) {
     RAY_CHECK(std::getline(config_string, config_value, ','));
     // TODO(rkn): The line below could throw an exception. What should we do about this?
+    RAY_LOG(INFO) << "Key is: " << config_name << ", value is: " << config_value << ".";
     raylet_config[config_name] = config_value;
   }
 

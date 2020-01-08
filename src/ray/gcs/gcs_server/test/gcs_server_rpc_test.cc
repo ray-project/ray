@@ -235,7 +235,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
                           [&resources, &promise](const Status &status,
                                                  const rpc::GetResourcesReply &reply) {
                             RAY_CHECK_OK(status);
-                            for (auto resource : reply.resources()) {
+                            for (auto &resource : reply.resources()) {
                               resources[resource.first] = resource.second;
                             }
                             promise.set_value(true);
