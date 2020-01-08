@@ -43,7 +43,7 @@ void Profiler::FlushEvents() {
       RAY_LOG(WARNING) << "Failed to push profile events to GCS.";
     } else {
       RAY_LOG(DEBUG) << "Pushed " << cur_profile_data->profile_events_size()
-                     << "events to GCS.";
+                     << " events to GCS.";
     }
   }
 

@@ -25,7 +25,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class RedisTaskInfoAccessor;
   friend class RedisNodeInfoAccessor;
   friend class RedisObjectInfoAccessor;
-  friend class RedisStatsAccessor;
+  friend class RedisStatsInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
   friend class LogLookupTestHelper;

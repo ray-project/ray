@@ -608,10 +608,10 @@ Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
   return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
-RedisStatsAccessor::RedisStatsAccessor(RedisGcsClient *client_impl)
+RedisStatsInfoAccessor::RedisStatsInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl) {}
 
-Status RedisStatsAccessor::AsyncAddProfileData(
+Status RedisStatsInfoAccessor::AsyncAddProfileData(
     const std::shared_ptr<ProfileTableData> &data_ptr, const StatusCallback &callback) {
   ProfileTable::WriteCallback on_done = nullptr;
   if (callback != nullptr) {
