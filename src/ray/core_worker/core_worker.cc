@@ -15,7 +15,7 @@ namespace {
 // Duration between internal book-keeping heartbeats.
 const int kInternalHeartbeatMillis = 1000;
 
-const int kMaxSubmitParallelism = 2;
+const int kMaxSubmitParallelism = 8;
 
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
@@ -89,7 +89,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
       rr_index_(0),
-      pool_(1),
+      pool_(kMaxSubmitParallelism),
       task_queue_length_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
