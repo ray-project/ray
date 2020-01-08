@@ -20,6 +20,7 @@ import threading
 import time
 import traceback
 import yaml
+import urllib.parse
 
 from base64 import b64decode
 from collections import defaultdict
@@ -119,6 +120,12 @@ class Dashboard(object):
         self.app = aiohttp.web.Application()
         self.setup_routes()
 
+    def _get_profile(self, node_id, pid, duration):
+        webui_url = "{}:{}".format(self.host, self.port)
+        profile_url = "http://{}/api/profiling_info?node_id={}&pid={}&duration={}".format(webui_url, node_id, pid, duration)
+        encoded_profile_url = urllib.parse.quote(profile_url)
+        return "http://{}/speedscope/index.html#profileURL={}".format(webui_url, encoded_profile_url)
+
     def setup_routes(self):
         def forbidden() -> aiohttp.web.Response:
             return aiohttp.web.Response(status=403, text="403 Forbidden")
@@ -184,6 +191,10 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
+            for data in D.values():
+                node_id = data["nodeId"]
+                for worker_stats in data.get("workersStats", []):
+                    worker_stats["profile"] = self._get_profile(node_id, worker_stats["pid"], 600)
             workers_info = sum(
                 (data.get("workersStats", []) for data in D.values()), [])
             infeasible_tasks = sum(
@@ -249,9 +260,11 @@ class Dashboard(object):
             node_id = req.query.get("node_id")
             pid = int(req.query.get("pid"))
             duration = int(req.query.get("duration"))
+            t = time.time()
             reply_future = self.raylet_stats.get_profiling_stats(node_id=node_id, pid=pid, duration=duration)
+            print("after get profiling stats", time.time() - t)
             reply_future.add_done_callback(get_profiling_stats_callback)
-            return await get_profiling_stats_callback(reply_future)
+            return await reply_future
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -413,6 +426,7 @@ class NodeStats(threading.Thread):
                             core_worker_stats.pop("numPendingTasks")
                         format_reply(core_worker_stats)
                         actor_info.update(core_worker_stats)
+                        actor_info["profile"] = worker_info["profile"]
                         actor_info[
                             "averageTaskExecutionSpeed"] = round(actor_info["numExecutedTasks"] / (
                                 now - actor_info["timestamp"] / 1000), 2)
@@ -591,11 +605,12 @@ class RayletStats(threading.Thread):
                 stub = self.stubs[node_id]
                 reply = stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(), timeout=2)
-                for worker_stats in reply.workers_stats:
-                replies[node["NodeManagerAddress"]] = reply
+                reply_dict = MessageToDict(reply)
+                reply_dict["nodeId"] = node_id
+                replies[node["NodeManagerAddress"]] = reply_dict
             with self._raylet_stats_lock:
-                for address, reply in replies.items():
-                    self._raylet_stats[address] = MessageToDict(reply)
+                for address, reply_dict in replies.items():
+                    self._raylet_stats[address] = reply_dict
             counter += 1
             # From time to time, check if new nodes have joined the cluster
             # and update self.nodes
