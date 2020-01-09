@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.model import restore_original_dimensions, flatten
 from ray.rllib.utils.annotations import PublicAPI

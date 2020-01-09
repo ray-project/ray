@@ -1,10 +1,6 @@
 # This file is used by CrossLanguageInvocationTest.java to test cross-language
 # invocation.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import six
 
 import ray
