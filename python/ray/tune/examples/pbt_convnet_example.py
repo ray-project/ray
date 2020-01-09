@@ -17,7 +17,7 @@ from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
 import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.util import validate_save_restore
+from ray.tune.utils import validate_save_restore
 from ray.tune.trial import ExportFormat
 
 # __tutorial_imports_end__

@@ -42,6 +42,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     const auto &actor_id = task_spec.ActorId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    request->mutable_caller_address()->CopyFrom(rpc_address_);
     // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
     // fails, then the task data will be gone when the TaskManager attempts to
     // access the task.
@@ -77,6 +78,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Update the mapping so new RPCs go out with the right intended worker id.
   worker_ids_[actor_id] = address.worker_id();
   // Create a new connection to the actor.
+  // TODO(edoakes): are these clients cleaned up properly?
   if (rpc_clients_.count(actor_id) == 0) {
     rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
         client_factory_(address.ip_address(), address.port()));
@@ -168,13 +170,11 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
-                                        rpc::ClientFactoryFn client_factory,
+void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
                                         rpc::Address rpc_address) {
-  waiter_.reset(new DependencyWaiterImpl(raylet_client));
+  waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
-  local_raylet_client_ = raylet_client;
 }
 
 void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
@@ -252,7 +252,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   }
 
-  auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
+  const rpc::Address &caller_address = request.caller_address();
+  auto accept_callback = [this, caller_address, reply, send_reply_callback, task_spec,
+                          resource_ids]() {
     // We have posted an exit task onto the main event loop,
     // so shouldn't bother executing any further work.
     if (exiting_) return;
@@ -268,6 +270,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     auto status = task_handler_(task_spec, resource_ids, &return_objects);
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
+      std::vector<ObjectID> plasma_return_ids;
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
         ObjectID id = ObjectID::ForTaskReturn(
@@ -279,6 +282,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         const auto &result = return_objects[i];
         if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
+          plasma_return_ids.push_back(id);
         } else {
           if (result->GetData() != nullptr) {
             return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
@@ -289,7 +293,15 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
           }
         }
       }
-
+      // If we spilled any return objects to plasma, notify the raylet to pin them.
+      // The raylet will then coordinate with the caller to manage the objects'
+      // lifetimes.
+      // TODO(edoakes): the plasma objects could be evicted between creating them
+      // here and when raylet pins them.
+      if (!plasma_return_ids.empty()) {
+        RAY_CHECK_OK(
+            local_raylet_client_->PinObjectIDs(caller_address, plasma_return_ids));
+      }
       if (task_spec.IsActorCreationTask()) {
         RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
                       << ", actor_id: " << task_spec.ActorCreationId();

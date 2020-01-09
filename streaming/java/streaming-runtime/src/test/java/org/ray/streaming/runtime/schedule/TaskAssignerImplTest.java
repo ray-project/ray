@@ -11,8 +11,9 @@ import org.ray.runtime.actor.LocalModeRayActor;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
-import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.api.stream.DataStreamSink;
+import org.ray.streaming.api.stream.DataStreamSource;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -25,7 +26,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class TaskAssignerImplTest {
+public class TaskAssignerImplTest extends BaseUnitTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(TaskAssignerImplTest.class);
 
@@ -64,9 +65,9 @@ public class TaskAssignerImplTest {
 
   public JobGraph buildDataSyncPlan() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
-    StreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
+    DataStreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
     JobGraph jobGraph = jobGraphBuilder.build();

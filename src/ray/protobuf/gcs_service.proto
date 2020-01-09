@@ -133,6 +133,30 @@ message ReportBatchHeartbeatRequest {
 message ReportBatchHeartbeatReply {
 }
 
+message GetResourcesRequest {
+  bytes node_id = 1;
+}
+
+message GetResourcesReply {
+  map<string, ResourceTableData> resources = 1;
+}
+
+message UpdateResourcesRequest {
+  bytes node_id = 1;
+  map<string, ResourceTableData> resources = 2;
+}
+
+message UpdateResourcesReply {
+}
+
+message DeleteResourcesRequest {
+  bytes node_id = 1;
+  repeated string resource_name_list = 2;
+}
+
+message DeleteResourcesReply {
+}
+
 // Service for node info access.
 service NodeInfoGcsService {
   // Register a node to GCS Service.
@@ -146,6 +170,12 @@ service NodeInfoGcsService {
   // Report batch heartbeat to GCS Service.
   rpc ReportBatchHeartbeat(ReportBatchHeartbeatRequest)
       returns (ReportBatchHeartbeatReply);
+  // Get node's resources from GCS Service.
+  rpc GetResources(GetResourcesRequest) returns (GetResourcesReply);
+  // Update resources of a node in GCS Service.
+  rpc UpdateResources(UpdateResourcesRequest) returns (UpdateResourcesReply);
+  // Delete resources of a node in GCS Service.
+  rpc DeleteResources(DeleteResourcesRequest) returns (DeleteResourcesReply);
 }
 
 message GetObjectLocationsRequest {
@@ -187,4 +217,45 @@ service ObjectInfoGcsService {
   // Remove location of object from GCS Service.
   rpc RemoveObjectLocation(RemoveObjectLocationRequest)
       returns (RemoveObjectLocationReply);
+}
+
+message AddTaskRequest {
+  TaskTableData task_data = 1;
+}
+
+message AddTaskReply {
+}
+
+message GetTaskRequest {
+  bytes task_id = 1;
+}
+
+message GetTaskReply {
+  TaskTableData task_data = 1;
+}
+
+message DeleteTasksRequest {
+  repeated bytes task_id_list = 1;
+}
+
+message DeleteTasksReply {
+}
+
+message AddTaskLeaseRequest {
+  TaskLeaseData task_lease_data = 1;
+}
+
+message AddTaskLeaseReply {
+}
+
+// Service for task info access.
+service TaskInfoGcsService {
+  // Add a task to GCS Service.
+  rpc AddTask(AddTaskRequest) returns (AddTaskReply);
+  // Get task information from GCS Service.
+  rpc GetTask(GetTaskRequest) returns (GetTaskReply);
+  // Delete tasks from GCS Service.
+  rpc DeleteTasks(DeleteTasksRequest) returns (DeleteTasksReply);
+  // Add a task lease to GCS Service.
+  rpc AddTaskLease(AddTaskLeaseRequest) returns (AddTaskLeaseReply);
 }

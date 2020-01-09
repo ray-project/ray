@@ -27,6 +27,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class RedisObjectInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
+  friend class LogLookupTestHelper;
+  friend class LogDeleteTestHelper;
   friend class TaskTableTestHelper;
   friend class ClientTableTestHelper;
   friend class SetTestHelper;
@@ -62,14 +64,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   void Disconnect();
 
   // TODO: Some API for getting the error on the driver
-  TaskReconstructionLog &task_reconstruction_log();
-  TaskLeaseTable &task_lease_table();
   ErrorTable &error_table();
   ProfileTable &profile_table();
-  /// Used only for direct calls. Tasks submitted through the raylet transport
-  /// should use Actors(), which has a requirement on the order in which
-  /// entries can be appended to the log.
-  DirectActorTable &direct_actor_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -105,8 +101,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   DynamicResourceTable &resource_table();
-  /// This method will be deprecated, use method Tasks() instead.
+  /// The following three methods will be deprecated, use method Tasks() instead.
   raylet::TaskTable &raylet_task_table();
+  TaskLeaseTable &task_lease_table();
+  TaskReconstructionLog &task_reconstruction_log();
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.
@@ -115,7 +113,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
   std::unique_ptr<ActorTable> actor_table_;
-  std::unique_ptr<DirectActorTable> direct_actor_table_;
   std::unique_ptr<TaskReconstructionLog> task_reconstruction_log_;
   std::unique_ptr<TaskLeaseTable> task_lease_table_;
   std::unique_ptr<HeartbeatTable> heartbeat_table_;

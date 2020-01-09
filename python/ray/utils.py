@@ -452,16 +452,6 @@ def estimate_available_memory():
         overestimate if psutil is not installed.
     """
 
-    # check cgroup memory first
-    try:
-        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
-            cgroup_memory_usage = int(f.read())
-    except IOError:
-        cgroup_memory_usage = None
-
-    if cgroup_memory_usage is not None:
-        return get_system_memory() - cgroup_memory_usage
-
     # Use psutil if it is available.
     try:
         import psutil
@@ -545,26 +535,14 @@ def try_make_directory_shared(directory_path):
             raise
 
 
-def try_to_create_directory(directory_path, warn_if_exist=True):
+def try_to_create_directory(directory_path):
     """Attempt to create a directory that is globally readable/writable.
 
     Args:
         directory_path: The path of the directory to create.
-        warn_if_exist (bool): Warn if the directory already exists.
     """
     directory_path = os.path.expanduser(directory_path)
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise e
-            if warn_if_exist:
-                logger = logging.getLogger("ray")
-                logger.warning(
-                    "Attempted to create '{}', but the directory already "
-                    "exists.".format(directory_path))
-
+    os.makedirs(directory_path, exist_ok=True)
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)

@@ -5,7 +5,8 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.ReduceFunction;
 import org.ray.streaming.api.function.impl.SinkFunction;
-import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.api.stream.DataStreamSource;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.util.Config;
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -18,8 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-
-public class WordCountTest implements Serializable {
+public class WordCountTest extends BaseUnitTest implements Serializable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WordCountTest.class);
 
@@ -36,7 +36,7 @@ public class WordCountTest implements Serializable {
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
-    StreamSource<String> streamSource = StreamSource.buildSource(streamingContext, text);
+    DataStreamSource<String> streamSource = DataStreamSource.buildSource(streamingContext, text);
     streamSource
         .flatMap((FlatMapFunction<String, WordAndCount>) (value, collector) -> {
           String[] records = value.split(" ");

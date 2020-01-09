@@ -9,6 +9,7 @@ import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.operator.StreamOperator;
+import org.ray.streaming.python.stream.PythonDataStream;
 
 public class JobGraphBuilder {
 
@@ -55,7 +56,7 @@ public class JobGraphBuilder {
       processStream(parentStream);
     } else if (stream instanceof StreamSource) {
       jobVertex = new JobVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator);
-    } else if (stream instanceof DataStream) {
+    } else if (stream instanceof DataStream || stream instanceof PythonDataStream) {
       jobVertex = new JobVertex(vertexId, parallelism, VertexType.PROCESS, streamOperator);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();

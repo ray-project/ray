@@ -3,11 +3,11 @@
 
 #include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
+
+#include <boost/asio/detail/socket_holder.hpp>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
@@ -248,6 +248,9 @@ class RayletClient : public WorkerLeaseInterface {
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port, const WorkerID &worker_id,
                            bool disconnect_worker) override;
+
+  ray::Status PinObjectIDs(const rpc::Address &caller_address,
+                           const std::vector<ObjectID> &object_ids);
 
   WorkerID GetWorkerID() const { return worker_id_; }
 

@@ -640,10 +640,11 @@ Status ClientTable::Disconnect() {
   return status;
 }
 
-ray::Status ClientTable::Register(const GcsNodeInfo &node_info) {
+ray::Status ClientTable::MarkConnected(const GcsNodeInfo &node_info,
+                                       const WriteCallback &done) {
   RAY_CHECK(node_info.state() == GcsNodeInfo::ALIVE);
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(node_info);
-  return SyncAppend(JobID::Nil(), client_log_key_, node_info_ptr);
+  return Append(JobID::Nil(), client_log_key_, node_info_ptr, done);
 }
 
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id,
@@ -728,6 +729,25 @@ std::string ClientTable::DebugString() const {
   result << ", cache size: " << node_cache_.size()
          << ", num removed: " << removed_nodes_.size();
   return result.str();
+}
+
+Status TaskLeaseTable::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                 const Callback &subscribe,
+                                 const SubscriptionCallback &done) {
+  auto on_subscribe = [subscribe](RedisGcsClient *client, const TaskID &task_id,
+                                  const std::vector<TaskLeaseData> &data) {
+    std::vector<boost::optional<TaskLeaseData>> result;
+    for (const auto &item : data) {
+      boost::optional<TaskLeaseData> optional_item(item);
+      result.emplace_back(std::move(optional_item));
+    }
+    if (result.empty()) {
+      boost::optional<TaskLeaseData> optional_item;
+      result.emplace_back(std::move(optional_item));
+    }
+    subscribe(client, task_id, result);
+  };
+  return Table<TaskID, TaskLeaseData>::Subscribe(job_id, client_id, on_subscribe, done);
 }
 
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,

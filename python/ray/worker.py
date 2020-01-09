@@ -242,7 +242,7 @@ class Worker:
         """
         self.mode = mode
 
-    def put_object(self, value, object_id=None):
+    def put_object(self, value, object_id=None, pin_object=True):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -256,6 +256,7 @@ class Worker:
             value: The value to put in the object store.
             object_id (object_id.ObjectID): The object ID of the value to be
                 put. If None, one will be generated.
+            pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
             object_id.ObjectID: The object ID the object was put under.
@@ -276,7 +277,7 @@ class Worker:
 
         serialized_value = self.get_serialization_context().serialize(value)
         return self.core_worker.put_serialized_object(
-            serialized_value, object_id=object_id)
+            serialized_value, object_id=object_id, pin_object=pin_object)
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -673,6 +674,11 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
+
+    if "OMP_NUM_THREADS" in os.environ:
+        logger.warning("OMP_NUM_THREADS={} is set, this may impact "
+                       "object transfer performance.".format(
+                           os.environ["OMP_NUM_THREADS"]))
 
     if setproctitle is None:
         logger.warning(
@@ -1519,7 +1525,7 @@ def put(value, weakref=False):
             object_id = worker.local_mode_manager.put_object(value)
         else:
             try:
-                object_id = worker.put_object(value)
+                object_id = worker.put_object(value, pin_object=not weakref)
             except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
@@ -1528,16 +1534,6 @@ def put(value, weakref=False):
                     "ray.put(value, weakref=True) to allow object data to "
                     "be evicted early.")
                 raise
-        # Pin the object buffer with the returned id. This avoids put returns
-        # from getting evicted out from under the id.
-        # TODO(edoakes): we should be able to avoid this extra IPC by holding
-        # a reference to the buffer created when putting the object, but the
-        # buffer returned by the plasma store create method doesn't prevent
-        # the object from being evicted.
-        if not weakref and not worker.mode == LOCAL_MODE:
-            object_id.set_buffer_ref(
-                worker.core_worker.get_objects([object_id],
-                                               worker.current_task_id))
         return object_id
 
 
@@ -1736,7 +1732,12 @@ def remote(*args, **kwargs):
       number of times that the actor should be reconstructed when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be reconstructed. And the maximum valid
-      value is ray.ray_constants.INFINITE_RECONSTRUCTIONS.
+      value is ray.ray_constants.INFINITE_RECONSTRUCTION.
+    * **max_retries**: Only for *remote functions*. This specifies the maximum
+      number of times that the remote function should be rerun when the worker
+      process executing it crashes unexpectedly. The minimum valid value is 0,
+      the default is 4 (default), and the maximum valid value is
+      ray.ray_constants.INFINITE_RECONSTRUCTION.
 
     This can be done as follows:
 

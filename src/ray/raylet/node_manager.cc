@@ -4,6 +4,7 @@
 #include <fstream>
 #include <memory>
 
+#include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -77,12 +78,13 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
     : self_node_id_(self_node_id),
       io_service_(io_service),
       object_manager_(object_manager),
-      gcs_client_(std::move(gcs_client)),
-      object_directory_(std::move(object_directory)),
+      gcs_client_(gcs_client),
+      object_directory_(object_directory),
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
       fair_queueing_enabled_(config.fair_queueing_enabled),
+      object_pinning_enabled_(config.object_pinning_enabled),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       initial_config_(config),
@@ -96,12 +98,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
             HandleTaskReconstruction(task_id, required_object_id);
           },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          self_node_id_, gcs_client_->task_lease_table(), object_directory_,
-          gcs_client_->task_reconstruction_log()),
+          self_node_id_, gcs_client_, object_directory_),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service, self_node_id_,
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client_->task_lease_table()),
+          gcs_client_),
       lineage_cache_(self_node_id_, gcs_client_, config.max_lineage_size),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
@@ -136,30 +137,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 }
 
 ray::Status NodeManager::RegisterGcs() {
-  const auto task_lease_notification_callback = [this](gcs::RedisGcsClient *client,
-                                                       const TaskID &task_id,
-                                                       const TaskLeaseData &task_lease) {
-    const ClientID node_manager_id = ClientID::FromBinary(task_lease.node_manager_id());
-    if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
-      // The node manager that added the task lease is already removed. The
-      // lease is considered inactive.
-      reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
-    } else {
-      // NOTE(swang): The task_lease.timeout is an overestimate of the lease's
-      // expiration period since the entry may have been in the GCS for some
-      // time already. For a more accurate estimate, the age of the entry in
-      // the GCS should be subtracted from task_lease.timeout.
-      reconstruction_policy_.HandleTaskLeaseNotification(task_id, task_lease.timeout());
-    }
-  };
-  const auto task_lease_empty_callback = [this](gcs::RedisGcsClient *client,
-                                                const TaskID &task_id) {
-    reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
-  };
-  RAY_RETURN_NOT_OK(gcs_client_->task_lease_table().Subscribe(
-      JobID::Nil(), self_node_id_, task_lease_notification_callback,
-      task_lease_empty_callback, nullptr));
-
+  // The TaskLease subscription is done on demand in reconstruction policy.
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &data) {
@@ -989,7 +967,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
   if (message->is_worker()) {
     // Register the new worker.
-    if (worker_pool_.RegisterWorker(std::move(worker)).ok()) {
+    if (worker_pool_.RegisterWorker(worker).ok()) {
       HandleWorkerAvailable(worker->Connection());
     }
   } else {
@@ -999,7 +977,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
-    status = worker_pool_.RegisterDriver(std::move(worker));
+    status = worker_pool_.RegisterDriver(worker);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr = gcs::CreateJobTableData(
@@ -1080,7 +1058,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
 
   if (worker_idle) {
     // Return the worker to the idle pool.
-    worker_pool_.PushWorker(std::move(worker));
+    worker_pool_.PushWorker(worker);
   }
 
   if (new_scheduler_enabled_) {
@@ -1517,7 +1495,7 @@ void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   }
 };
 
-void NodeManager::HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest &request,
+void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
@@ -1618,7 +1596,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
-  std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_id]);
+  std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   if (new_scheduler_enabled_) {
     if (worker->IsBlocked()) {
@@ -2989,30 +2967,89 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request,
-                                         rpc::GetNodeStatsReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+                                     rpc::PinObjectIDsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  if (!object_pinning_enabled_) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+  WorkerID worker_id = WorkerID::FromBinary(request.owner_address().worker_id());
+  auto it = worker_rpc_clients_.find(worker_id);
+  if (it == worker_rpc_clients_.end()) {
+    auto client = std::unique_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient(request.owner_address().ip_address(),
+                                  request.owner_address().port(), client_call_manager_));
+    it = worker_rpc_clients_
+             .emplace(worker_id,
+                      std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(
+                          std::move(client), 0))
+             .first;
+  }
+
+  // Pin the objects in plasma by getting them and holding a reference to
+  // the returned buffer.
+  // NOTE: the caller must ensure that the objects already exist in plamsa before
+  // sending a PinObjectIDs request.
+  std::vector<plasma::ObjectID> plasma_ids;
+  plasma_ids.reserve(request.object_ids_size());
+  for (const auto &object_id_binary : request.object_ids()) {
+    plasma_ids.push_back(plasma::ObjectID::from_binary(object_id_binary));
+  }
+  std::vector<plasma::ObjectBuffer> plasma_results;
+  if (!store_client_.Get(plasma_ids, /*timeout_ms=*/0, &plasma_results).ok()) {
+    RAY_LOG(WARNING) << "Failed to get objects to be pinned from object store.";
+    send_reply_callback(Status::Invalid("Failed to get objects."), nullptr, nullptr);
+    return;
+  }
+
+  // Pin the requested objects until the owner notifies us that the objects can be
+  // unpinned by responding to the WaitForObjectEviction message.
+  // TODO(edoakes): we should be batching these requests instead of sending one per
+  // pinned object.
+  size_t i = 0;
+  for (const auto &object_id_binary : request.object_ids()) {
+    ObjectID object_id = ObjectID::FromBinary(object_id_binary);
+
+    RAY_LOG(DEBUG) << "Pinning object " << object_id;
+    pinned_objects_.emplace(
+        object_id, std::unique_ptr<RayObject>(new RayObject(
+                       std::make_shared<PlasmaBuffer>(plasma_results[i].data),
+                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata))));
+    i++;
+
+    // Send a long-running RPC request to the owner for each object. When we get a
+    // response or the RPC fails (due to the owner crashing), unpin the object.
+    rpc::WaitForObjectEvictionRequest wait_request;
+    wait_request.set_object_id(object_id_binary);
+    wait_request.set_intended_worker_id(request.owner_address().worker_id());
+    worker_rpc_clients_[worker_id].second++;
+    RAY_CHECK_OK(it->second.first->WaitForObjectEviction(
+        wait_request, [this, worker_id, object_id](
+                          Status status, const rpc::WaitForObjectEvictionReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(WARNING) << "Worker " << worker_id << " failed. Unpinning object "
+                             << object_id;
+          }
+          RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+          pinned_objects_.erase(object_id);
+
+          // Remove the cached worker client if there are no more pending requests.
+          if (--worker_rpc_clients_[worker_id].second == 0) {
+            worker_rpc_clients_.erase(worker_id);
+          }
+        }));
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
+                                     rpc::GetNodeStatsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
     auto worker_stats = reply->add_workers_stats();
     worker_stats->set_pid(driver->Pid());
     worker_stats->set_is_driver(true);
-  }
-  // Record available resources of this node.
-  const auto &available_resources =
-      cluster_resource_map_.at(self_node_id_).GetAvailableResources().GetResourceMap();
-  // Record total resources of this node.
-  const auto &total_resources =
-      cluster_resource_map_.at(self_node_id_).GetTotalResources().GetResourceMap();
-  auto available_resources_map = reply->mutable_available_resources();
-  auto total_resources_map = reply->mutable_total_resources();
-  for (const auto &pair : total_resources) {
-    (*total_resources_map)[pair.first] = pair.second;
-    auto it = available_resources.find(pair.first);
-    if (it != available_resources.end()) {
-      (*available_resources_map)[pair.first] = it->second;
-    } else {
-      (*available_resources_map)[pair.first] = 0.0;
-    }
   }
   for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
     auto infeasible_task = reply->add_infeasible_tasks();
@@ -3056,11 +3093,11 @@ void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request
       }
     }
   }
-  // As a result of the HandleNodeStatsRequest, we are collecting information from all
+  // As a result of the HandleGetNodeStats, we are collecting information from all
   // workers on this node. This is done by calling GetCoreWorkerStats on each worker. In
   // order to send up-to-date information back, we wait until all workers have replied,
   // and return the information from HandleNodesStatsRequest. The caller of
-  // HandleNodeStatsRequest should set a timeout so that the rpc finishes even if not all
+  // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
   auto all_workers = worker_pool_.GetAllWorkers();
   for (const auto &worker : all_workers) {
