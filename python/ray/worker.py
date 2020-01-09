@@ -431,19 +431,23 @@ class Worker:
             job_name=None):
         assert isinstance(job_id, ray.JobID)
         if job_name is None:
-            job_name = "JOB_{}".format(job_id.hex())
+            job_name = "{}{}".format(
+                ray_constants.DEFAULT_PREFIX_FOR_JOB_NAME, job_id.hex())
 
         # Register the index mapping from job_name to job_id.
-        result = self.redis_client.hexists("JOB_NAME_2_JOB_ID", job_name)
+        result = self.redis_client.hexists(
+            ray_constants.KEY_OF_JOB_NAMES_IN_REDIS, job_name)
         if result:
             raise ValueError("The job name you specified exists. "
                              "Please specify an unique one.")
-        self.redis_client.hmset("JOB_NAME_2_JOB_ID", {job_name: job_id.hex()})
+        self.redis_client.hmset(
+            ray_constants.KEY_OF_JOB_NAMES_IN_REDIS, {job_name: job_id.hex()})
 
         # Check if this job name is set with this job id rather than another
         # job id. This is used to avoid that some drivers register the  same
         # job name at the same time.
-        result = self.redis_client.hget("JOB_NAME_2_JOB_ID", job_name)
+        result = self.redis_client.hget(
+            ray_constants.KEY_OF_JOB_NAMES_IN_REDIS, job_name)
         if result is None or result.decode() != job_id.hex():
             raise ValueError("The job name you specified exists. "
                              "Please specify an unique one.")
@@ -1375,7 +1379,7 @@ def disconnect(exiting_interpreter=False):
         if (hasattr(global_worker, "redis_client")
                 and global_worker.redis_client is not None):
             result = global_worker.redis_client.hdel(
-                "JOB_NAME_2_JOB_ID", global_worker.job_name)
+                ray_constants.KEY_OF_JOB_NAMES_IN_REDIS, global_worker.job_name)
             if result != 1:
                 logger.warning("Maybe something wrong in GCS, please check it manually.")
 
