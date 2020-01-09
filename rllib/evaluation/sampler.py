@@ -31,7 +31,7 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
 ])
 
 
-class PerfStats(object):
+class PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
     def __init__(self):

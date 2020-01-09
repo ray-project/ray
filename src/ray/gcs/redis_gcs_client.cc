@@ -2,9 +2,8 @@
 
 #include <unistd.h>
 #include "ray/common/ray_config.h"
-#include "ray/gcs/redis_actor_info_accessor.h"
+#include "ray/gcs/redis_accessor.h"
 #include "ray/gcs/redis_context.h"
-#include "ray/gcs/redis_job_info_accessor.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -73,13 +72,8 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {
-#if RAY_USE_NEW_GCS
-  command_type_ = CommandType::kChain;
-#else
-  command_type_ = CommandType::kRegular;
-#endif
-}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options)
+    : GcsClient(options), command_type_(CommandType::kRegular) {}
 
 RedisGcsClient::RedisGcsClient(const GcsClientOptions &options, CommandType command_type)
     : GcsClient(options), command_type_(command_type) {}
@@ -126,13 +120,12 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   Attach(io_service);
 
   actor_table_.reset(new ActorTable({primary_context_}, this));
-  direct_actor_table_.reset(new DirectActorTable({primary_context_}, this));
 
   // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
   // We will use NodeID instead of ClientID.
   // For worker/driver, it might not have this field(NodeID).
   // For raylet, NodeID should be initialized in raylet layer(not here).
-  client_table_.reset(new ClientTable({primary_context_}, this, ClientID::FromRandom()));
+  client_table_.reset(new ClientTable({primary_context_}, this));
 
   error_table_.reset(new ErrorTable({primary_context_}, this));
   job_table_.reset(new JobTable({primary_context_}, this));
@@ -150,6 +143,9 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
   job_accessor_.reset(new RedisJobInfoAccessor(this));
+  object_accessor_.reset(new RedisObjectInfoAccessor(this));
+  node_accessor_.reset(new RedisNodeInfoAccessor(this));
+  task_accessor_.reset(new RedisTaskInfoAccessor(this));
 
   is_connected_ = true;
 
@@ -200,8 +196,6 @@ ObjectTable &RedisGcsClient::object_table() { return *object_table_; }
 raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
-
-DirectActorTable &RedisGcsClient::direct_actor_table() { return *direct_actor_table_; }
 
 TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;

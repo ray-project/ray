@@ -592,6 +592,10 @@ cdef execute_task(
                             c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
+            # function_executor is a generator to make sure python decrement
+            # stack counter on context switch for async mode. If it is not
+            # a generator, python will count the stacks of executor as part
+            # of the recursion limit, resulting in much lower concurrency.
             function = execution_info.function
 
             if PY3 and core_worker.current_actor_is_asyncio():
@@ -614,9 +618,9 @@ cdef execute_task(
                     (core_worker.core_worker.get()
                         .YieldCurrentFiber(fiber_event))
 
-                return future.result()
+                yield future.result()
 
-            return function(actor, *arguments, **kwarguments)
+            yield function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -634,6 +638,9 @@ cdef execute_task(
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
                     outputs = function_executor(*args, **kwargs)
+                    # The function_executor is a generator in actor mode.
+                    if inspect.isgenerator(outputs):
+                        outputs = next(outputs)
                     task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
@@ -787,11 +794,6 @@ cdef class CoreWorker:
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, True))
 
-    def disconnect(self):
-        self.destory_event_loop_if_exists()
-        with nogil:
-            self.core_worker.get().Disconnect()
-
     def run_task_loop(self):
         with nogil:
             self.core_worker.get().StartExecutingTasks()
@@ -842,7 +844,8 @@ cdef class CoreWorker:
                 if object_id is None:
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                    metadata, data_size, c_object_id, data))
+                                     metadata, data_size,
+                                     c_object_id, data))
                 else:
                     c_object_id[0] = object_id.native()
                     with nogil:
@@ -867,20 +870,29 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_serialized_object(self, serialized_object,
-                              ObjectID object_id=None):
+                              ObjectID object_id=None,
+                              c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+            # The object won't be pinned if an ObjectID is provided by the
+            # user (because we can't track its lifetime to unpin). Note that
+            # the API to do this isn't supported as a public API.
+            c_bool owns_object = object_id is None
+
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_id, &c_object_id, &data)
+            metadata, total_bytes, object_id,
+            &c_object_id, &data)
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
                 check_status(
-                    self.core_worker.get().Seal(c_object_id))
+                    self.core_worker.get().Seal(
+                        c_object_id, owns_object, pin_object))
+
         return ObjectID(c_object_id.Binary())
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
@@ -1033,6 +1045,14 @@ cdef class CoreWorker:
                       args_vector, task_options, &return_ids))
 
             return VectorToObjectIDs(return_ids)
+
+    def kill_actor(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            check_status(self.core_worker.get().KillActor(
+                  c_actor_id))
 
     def resource_ids(self):
         cdef:

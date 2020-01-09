@@ -56,7 +56,7 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
       upload=1
     elif [ -n "${encrypted_1c30b31fe1ee_key:+x}" ]; then
       {
-        openssl aes-256-cbc -K "${encrypted_1c30b31fe1ee_key}"
+        openssl aes-256-cbc -K "${encrypted_1c30b31fe1ee_key}" \
             -iv "${encrypted_1c30b31fe1ee_iv}" \
             -in "${ROOT_DIR}/bazel_cache_credential.json.enc" \
             -out "${HOME}/bazel_cache_credential.json" -d

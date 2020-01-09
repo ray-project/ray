@@ -40,6 +40,10 @@ RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 /// type of task from starving other types (see issue #3664).
 RAY_CONFIG(bool, fair_queueing_enabled, true)
 
+/// Whether to enable object pinning for plasma objects. When this is
+/// enabled, objects in scope in the cluster will not be LRU evicted.
+RAY_CONFIG(bool, object_pinning_enabled, true)
+
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.
@@ -48,6 +52,10 @@ RAY_CONFIG(bool, new_scheduler_enabled, false)
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
+
+// The min number of retries for direct actor creation tasks. The actual number
+// of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
+RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// The initial period for a task execution lease. The lease will expire this
 /// many milliseconds after the first acquisition of the lease. Nodes that

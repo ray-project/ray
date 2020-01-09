@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class Preprocessor(object):
+class Preprocessor:
     """Defines an abstract observation preprocessor function.
 
     Attributes:

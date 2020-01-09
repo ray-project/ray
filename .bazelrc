@@ -3,7 +3,7 @@ build --enable_platform_specific_config
 ###############################################################################
 build --action_env=BAZEL_LLVM
 build --action_env=BAZEL_SH
-build --action_env=PATH
+build --action_env=PATH=/Users/chaokunyang/bin:/Users/chaokunyang/anaconda3/envs/ray/bin:/Users/chaokunyang/anaconda3/bin:/Users/chaokunyang/anaconda3/condabin:/Users/chaokunyang/ant/Development/DevProjects/tools:/Users/chaokunyang/Desktop/Development/DevProjects/cpp/flatbuffers/flatbuffers-1.9.0/target:/Users/chaokunyang/ant/Development/DevEnv/spark/spark-2.4.3-bin-hadoop2.7/bin:/Users/chaokunyang/ant/Development/DevEnv/hadoop/hadoop-2.8.0ant0.3.1/bin:/Users/chaokunyang/ant/Development/DevEnv/odps/odps_clt_release_64/bin:/Users/chaokunyang/ant/Development/DevEnv/sofa/s_20170327_alipay_darwin_amd64:/Users/chaokunyang/ant/Development/DevEnv/scala-2.11.12/bin:/Users/chaokunyang/ant/Development/DevEnv/flink-1.7.1/bin:/Users/chaokunyang/ant/Development/DevEnv/oss/OSS_Python_API_20160419/osscmd:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin:/Users/chaokunyang/ant/Development/DevEnv/apache-maven-3.2.5/bin:/Users/chaokunyang/ant/Development/DevEnv/oss/:/Users/chaokunyang/ant/Development/DevEnv/bin
 build --action_env=PYTHON2_BIN_PATH
 build --action_env=PYTHON3_BIN_PATH
 # Use Clang-Cl (Clang front-end with Visual C++ backend) on Windows
@@ -29,3 +29,11 @@ build --http_timeout_scaling=5.0
 # This workaround is due to an incompatibility of
 # bazel_common/tools/maven/pom_file.bzl with Bazel 1.0
 build --incompatible_depset_is_not_iterable=false
+
+# Thread sanitizer configuration:
+build:tsan --strip=never
+build:tsan --copt -fsanitize=thread
+build:tsan --copt -DTHREAD_SANITIZER
+build:tsan --copt -g
+build:tsan --copt -fno-omit-frame-pointer
+build:tsan --linkopt -fsanitize=thread

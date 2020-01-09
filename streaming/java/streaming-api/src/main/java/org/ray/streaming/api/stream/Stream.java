@@ -5,8 +5,9 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.operator.StreamOperator;
+import org.ray.streaming.python.PythonOperator;
+import org.ray.streaming.python.PythonPartition;
 import org.ray.streaming.python.stream.PythonStream;
-import org.ray.streaming.python.descriptor.DescriptorPartition;
 
 /**
  * Abstract base class of all stream types.
@@ -21,11 +22,16 @@ public abstract class Stream<T> implements Serializable {
   protected StreamingContext streamingContext;
   protected Partition<T> partition;
 
+  @SuppressWarnings("unchecked")
   public Stream(StreamingContext streamingContext, StreamOperator streamOperator) {
     this.streamingContext = streamingContext;
     this.operator = streamOperator;
     this.id = streamingContext.generateId();
-    // partition should be set in sub class, because we don;thave info for input streamg ior source
+    if (streamOperator instanceof PythonOperator) {
+      this.partition = PythonPartition.RoundRobinPartition;
+    } else {
+      this.partition = new RoundRobinPartition<>();
+    }
   }
 
   public Stream(Stream<T> inputStream, StreamOperator streamOperator) {
@@ -40,7 +46,7 @@ public abstract class Stream<T> implements Serializable {
   @SuppressWarnings("unchecked")
   private Partition<T> selectPartition() {
     if (inputStream instanceof PythonStream) {
-      return DescriptorPartition.RoundRobinPartition;
+      return PythonPartition.RoundRobinPartition;
     } else {
       return new RoundRobinPartition<>();
     }

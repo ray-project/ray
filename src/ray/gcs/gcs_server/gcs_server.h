@@ -3,8 +3,6 @@
 
 #include <ray/gcs/redis_gcs_client.h>
 #include <ray/rpc/gcs_server/gcs_rpc_server.h>
-#include <ray/rpc/grpc_server.h>
-#include <string>
 
 namespace ray {
 namespace gcs {
@@ -52,6 +50,15 @@ class GcsServer {
   /// The actor info handler
   virtual std::unique_ptr<rpc::ActorInfoHandler> InitActorInfoHandler();
 
+  /// The node info handler
+  virtual std::unique_ptr<rpc::NodeInfoHandler> InitNodeInfoHandler();
+
+  /// The object info handler
+  virtual std::unique_ptr<rpc::ObjectInfoHandler> InitObjectInfoHandler();
+
+  /// The task info handler
+  virtual std::unique_ptr<rpc::TaskInfoHandler> InitTaskInfoHandler();
+
  private:
   /// Gcs server configuration
   GcsServerConfig config_;
@@ -65,6 +72,15 @@ class GcsServer {
   /// Actor info handler and service
   std::unique_ptr<rpc::ActorInfoHandler> actor_info_handler_;
   std::unique_ptr<rpc::ActorInfoGrpcService> actor_info_service_;
+  /// Node info handler and service
+  std::unique_ptr<rpc::NodeInfoHandler> node_info_handler_;
+  std::unique_ptr<rpc::NodeInfoGrpcService> node_info_service_;
+  /// Object info handler and service
+  std::unique_ptr<rpc::ObjectInfoHandler> object_info_handler_;
+  std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
+  /// Task info handler and service
+  std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
+  std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
 };

@@ -138,7 +138,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(work_handle)
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def work(self, timeout):
             time.sleep(timeout)
             return True

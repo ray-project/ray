@@ -21,7 +21,6 @@ class MagicCounter:
     def __call__(self, flask_request, base_number=None):
         if serve.context.web:
             base_number = int(flask_request.args.get("base_number", "0"))
-
         return base_number + self.increment
 
 

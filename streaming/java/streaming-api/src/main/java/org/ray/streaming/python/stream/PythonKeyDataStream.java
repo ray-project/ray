@@ -2,10 +2,10 @@ package org.ray.streaming.python.stream;
 
 import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.operator.StreamOperator;
+import org.ray.streaming.python.PythonFunction;
+import org.ray.streaming.python.PythonFunction.FunctionInterface;
 import org.ray.streaming.python.PythonOperator;
-import org.ray.streaming.python.descriptor.DescriptorFunction;
-import org.ray.streaming.python.descriptor.DescriptorFunction.PythonFunctionInterface;
-import org.ray.streaming.python.descriptor.DescriptorPartition;
+import org.ray.streaming.python.PythonPartition;
 
 /**
  * Represents a python DataStream returned by a key-by operation.
@@ -14,7 +14,7 @@ public class PythonKeyDataStream extends Stream implements PythonStream  {
 
   public PythonKeyDataStream(PythonDataStream input, StreamOperator streamOperator) {
     super(input, streamOperator);
-    this.partition = DescriptorPartition.KeyPartition;
+    this.partition = PythonPartition.KeyPartition;
   }
 
   /**
@@ -23,8 +23,8 @@ public class PythonKeyDataStream extends Stream implements PythonStream  {
    * @param func The reduce function.
    * @return A new DataStream.
    */
-  public PythonDataStream reduce(DescriptorFunction func) {
-    func.setFunctionInterface(PythonFunctionInterface.REDUCE_FUNCTION);
+  public PythonDataStream reduce(PythonFunction func) {
+    func.setFunctionInterface(FunctionInterface.REDUCE_FUNCTION);
     return new PythonDataStream(this, new PythonOperator(func));
   }
 

@@ -8,7 +8,7 @@ from __future__ import print_function
 import numpy as np
 
 
-class Optimizer(object):
+class Optimizer:
     def __init__(self, pi):
         self.pi = pi
         self.dim = pi.num_params
