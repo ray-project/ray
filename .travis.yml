@@ -147,6 +147,8 @@ install:
   - ./ci/suppress_output ./ci/travis/install-ray.sh
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
+  - eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
+
 script:
   - export PATH="$HOME/miniconda/bin:$PATH"
 
@@ -166,6 +168,12 @@ script:
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
 
   - ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
+
+  # ray operator tests
+  - cd ./deploy/ray-operator/
+  - go build
+  - go test ./...
+  - cd ../..
 
 deploy:
   - provider: s3
