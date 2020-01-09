@@ -334,6 +334,17 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool AttemptTaskReconstruction(const rpc::AttemptTaskReconstructionRequest &request) {
+    std::promise<bool> promise;
+    client_->AttemptTaskReconstruction(
+        request, [&promise](const Status &status,
+                            const rpc::AttemptTaskReconstructionReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
@@ -572,6 +583,16 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   rpc::AddTaskLeaseRequest add_task_lease_request;
   add_task_lease_request.mutable_task_lease_data()->CopyFrom(task_lease_data);
   ASSERT_TRUE(AddTaskLease(add_task_lease_request));
+
+  // Attempt task reconstruction
+  rpc::AttemptTaskReconstructionRequest attempt_task_reconstruction_request;
+  rpc::TaskReconstructionData task_reconstruction_data;
+  task_reconstruction_data.set_task_id(task_id.Binary());
+  task_reconstruction_data.set_node_manager_id(node_id.Binary());
+  task_reconstruction_data.set_num_reconstructions(0);
+  attempt_task_reconstruction_request.mutable_task_reconstruction()->CopyFrom(
+      task_reconstruction_data);
+  ASSERT_TRUE(AttemptTaskReconstruction(attempt_task_reconstruction_request));
 }
 
 }  // namespace ray
