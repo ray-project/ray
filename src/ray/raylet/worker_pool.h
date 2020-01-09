@@ -157,7 +157,7 @@ class WorkerPool {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  WorkerProcessHandle StartWorkerProcess(
+  ProcessHandle StartWorkerProcess(
       const Language &language, const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
@@ -166,7 +166,7 @@ class WorkerPool {
   ///
   /// \param worker_command_args The command arguments of new worker process.
   /// \return An object representing the started worker process.
-  virtual WorkerProcessHandle StartProcess(
+  virtual ProcessHandle StartProcess(
       const std::vector<std::string> &worker_command_args);
 
   /// Push an warning message to user if worker pool is getting to big.
@@ -192,12 +192,12 @@ class WorkerPool {
     std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
-    std::unordered_map<WorkerProcessHandle, int> starting_worker_processes;
+    std::unordered_map<ProcessHandle, int> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<WorkerProcessHandle, TaskID> dedicated_workers_to_tasks;
+    std::unordered_map<ProcessHandle, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, WorkerProcessHandle> tasks_to_dedicated_workers;
+    std::unordered_map<TaskID, ProcessHandle> tasks_to_dedicated_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;

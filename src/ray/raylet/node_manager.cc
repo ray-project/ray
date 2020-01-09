@@ -235,7 +235,7 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   // If we're just cleaning up a single worker, allow it some time to clean
   // up its state before force killing. The client socket will be closed
   // and the worker struct will be freed after the timeout.
-  kill(worker->Process()->id(), SIGTERM);
+  kill(worker->Process().get()->id(), SIGTERM);
 #endif
 
   auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
@@ -243,9 +243,9 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
       RayConfig::instance().kill_worker_timeout_milliseconds());
   retry_timer->expires_from_now(retry_duration);
   retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
-    RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->Process()->id();
+    RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->Process().get()->id();
     // Force kill worker
-    worker->Process()->terminate();
+    worker->Process().get()->terminate();
   });
 }
 
@@ -858,7 +858,7 @@ void NodeManager::ProcessClientMessage(
                  << protocol::EnumNameMessageType(message_type_value) << "("
                  << message_type << ") from worker with PID "
                  << (registered_worker
-                         ? std::to_string(registered_worker->Process()->id())
+                         ? std::to_string(registered_worker->Process().get()->id())
                          : "nil");
   if (registered_worker && registered_worker->IsDead()) {
     // For a worker that is marked as dead (because the job has died already),
@@ -993,10 +993,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     }
   } else {
     // Register the new driver.
-    WorkerProcess worker_proc(pid);
-    // TODO(mehrdadn): We can't wait on a non-child, but should this really be detached?
-    worker_proc.detach();
-    WorkerProcessHandle proc = std::make_shared<WorkerProcess>(std::move(worker_proc));
+    ProcessHandle proc = ProcessHandle::FromPid(pid);
     worker->SetProcess(proc);
     const JobID job_id = from_flatbuf<JobID>(*message->job_id());
     // Compute a dummy driver task id from a given driver.
@@ -1008,7 +1005,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr =
           gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
-                                  initial_config_.node_manager_address, proc->id());
+                                  initial_config_.node_manager_address,
+                                  proc.get()->id());
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
   }
@@ -1207,7 +1205,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     cluster_resource_map_[self_node_id_].Release(lifetime_resources.ToResourceSet());
     worker->ResetLifetimeResourceIds();
 
-    RAY_LOG(DEBUG) << "Worker (pid=" << worker->Process()->id() << ") is disconnected. "
+    RAY_LOG(DEBUG) << "Worker (pid=" << worker->Process().get()->id() << ") is disconnected. "
                    << "job_id: " << worker->GetAssignedJobId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
@@ -1221,7 +1219,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
     worker_pool_.DisconnectDriver(worker);
 
-    RAY_LOG(DEBUG) << "Driver (pid=" << worker->Process()->id() << ") is disconnected. "
+    RAY_LOG(DEBUG) << "Driver (pid=" << worker->Process().get()->id() << ") is disconnected. "
                    << "job_id: " << job_id;
   }
 
@@ -2301,7 +2299,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   }
 
   RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
-                 << worker->Process()->id() << ", worker id: " << worker->WorkerId();
+                 << worker->Process().get()->id() << ", worker id: " << worker->WorkerId();
   flatbuffers::FlatBufferBuilder fbb;
 
   // Resource accounting: acquire resources for the assigned task.
@@ -3087,7 +3085,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
     auto worker_stats = reply->add_workers_stats();
-    worker_stats->set_pid(driver->Process()->id());
+    worker_stats->set_pid(driver->Process().get()->id());
     worker_stats->set_is_driver(true);
   }
   for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
@@ -3150,7 +3148,7 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
                              << status.ToString();
           } else {
             auto worker_stats = reply->add_workers_stats();
-            worker_stats->set_pid(worker->Process()->id());
+            worker_stats->set_pid(worker->Process().get()->id());
             worker_stats->set_is_driver(false);
             reply->set_num_workers(reply->num_workers() + 1);
             worker_stats->mutable_core_worker_stats()->MergeFrom(r.core_worker_stats());

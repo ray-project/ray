@@ -90,7 +90,7 @@ void WorkerPool::Start(int num_workers) {
 }
 
 WorkerPool::~WorkerPool() {
-  std::unordered_set<WorkerProcessHandle> procs_to_kill;
+  std::unordered_set<ProcessHandle> procs_to_kill;
   for (const auto &entry : states_by_lang_) {
     // Kill all registered workers. NOTE(swang): This assumes that the registered
     // workers were started by the pool.
@@ -103,8 +103,8 @@ WorkerPool::~WorkerPool() {
     }
   }
   for (const auto &proc : procs_to_kill) {
-    proc->terminate();
-    proc->wait();
+    proc.get()->terminate();
+    proc.get()->wait();
   }
 }
 
@@ -118,7 +118,7 @@ uint32_t WorkerPool::Size(const Language &language) const {
   }
 }
 
-WorkerProcessHandle WorkerPool::StartWorkerProcess(
+ProcessHandle WorkerPool::StartWorkerProcess(
     const Language &language, const std::vector<std::string> &dynamic_options) {
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
@@ -132,7 +132,7 @@ WorkerProcessHandle WorkerPool::StartWorkerProcess(
     RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
                    << " pending registration";
-    return WorkerProcessHandle();
+    return ProcessHandle();
   }
   // Either there are no workers pending registration or the worker start is being forced.
   RAY_LOG(DEBUG) << "Starting new worker process, current pool has "
@@ -180,15 +180,15 @@ WorkerProcessHandle WorkerPool::StartWorkerProcess(
       << Language_Name(language) << " worker process. But the "
       << kWorkerNumWorkersPlaceholder << "placeholder is not found in worker command.";
 
-  WorkerProcessHandle proc = StartProcess(worker_command_args);
+  ProcessHandle proc = StartProcess(worker_command_args);
   RAY_CHECK(proc);
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
-                 << " worker(s) with pid " << proc->id();
+                 << " worker(s) with pid " << proc.get()->id();
   state.starting_worker_processes.emplace(proc, workers_to_start);
   return proc;
 }
 
-WorkerProcessHandle WorkerPool::StartProcess(
+ProcessHandle WorkerPool::StartProcess(
     const std::vector<std::string> &worker_command_args) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
@@ -203,12 +203,12 @@ WorkerProcessHandle WorkerPool::StartProcess(
                                         worker_command_args.end());
   // Launch the process to create the worker.
   std::error_code ec;
-  WorkerProcessHandle child(std::make_shared<WorkerProcess>(
+  ProcessHandle child(std::make_shared<Process>(
       *worker_command_args.begin(), ray::make_process_args(rest_of_args), ec));
-  if (!child->valid()) {
-    child.reset();
+  if (!child.get()->valid()) {
+    child = ProcessHandle();
   }
-  if (!child || !child->valid() || ec) {
+  if (!child || !child.get()->valid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start worker with return value " << ec << ": "
                    << ec.message();
@@ -220,11 +220,11 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t p
   const auto port = worker->Port();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  WorkerProcessHandle key;
+  ProcessHandle key;
   {
-    WorkerProcess temp(pid);  // make a dummy process as a lookup key
+    Process temp(pid);  // make a dummy process as a lookup key
     temp.detach();            // detach it to make sure it doesn't actually do anything!
-    key = std::make_shared<WorkerProcess>(std::move(temp));
+    key = std::make_shared<Process>(std::move(temp));
   }
   auto it = state.starting_worker_processes.find(key);
   if (it == state.starting_worker_processes.end()) {
@@ -297,7 +297,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<Worker> worker = nullptr;
-  WorkerProcessHandle proc;
+  ProcessHandle proc;
   if (task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) {
     // Code path of actor creation task with dynamic worker options.
     // Try to pop it from idle dedicated pool.
@@ -353,7 +353,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(worker->Process()->id())}});
+          {stats::WorkerPidKey, std::to_string(worker->Process().get()->id())}});
 
   return RemoveWorker(state.idle, worker);
 }
@@ -363,7 +363,7 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(driver->Process()->id())}});
+          {stats::WorkerPidKey, std::to_string(driver->Process().get()->id())}});
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
@@ -479,17 +479,17 @@ void WorkerPool::RecordMetrics() const {
     // Record worker.
     for (auto worker : entry.second.registered_workers) {
       stats::CurrentWorker().Record(
-          worker->Process()->id(),
+          worker->Process().get()->id(),
           {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(worker->Process()->id())}});
+           {stats::WorkerPidKey, std::to_string(worker->Process().get()->id())}});
     }
 
     // Record driver.
     for (auto driver : entry.second.registered_drivers) {
       stats::CurrentDriver().Record(
-          driver->Process()->id(),
+          driver->Process().get()->id(),
           {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(driver->Process()->id())}});
+           {stats::WorkerPidKey, std::to_string(driver->Process().get()->id())}});
     }
   }
 }
