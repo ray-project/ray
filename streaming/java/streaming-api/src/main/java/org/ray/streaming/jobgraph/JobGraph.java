@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 public class JobGraph implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(JobGraph.class);
-  private static final String LINE_SEPARATOR = "-";
 
   private final String jobName;
   private final Map<String, String> jobConfig;
