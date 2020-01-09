@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
+import org.ray.api.options.ActorGroupOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.api.runtimecontext.RuntimeContext;
@@ -116,6 +117,10 @@ public final class Ray extends RayCall {
    */
   public static <T> WaitResult<T> wait(List<RayObject<T>> waitList) {
     return runtime.wait(waitList, waitList.size(), Integer.MAX_VALUE);
+  }
+
+  public static RayActorGroup createActorGroup(List<RayActor<?>> actors, ActorGroupOptions options) {
+    return runtime.createActorGroup(actors, options);
   }
 
   /**

@@ -17,12 +17,15 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public final int maxConcurrency;
 
+  public final boolean pending;
+
   private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions,
-                               String jvmOptions, int maxConcurrency) {
+                               String jvmOptions, int maxConcurrency, boolean pending) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
+    this.pending = pending;
   }
 
   /**
@@ -34,6 +37,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxReconstructions = NO_RECONSTRUCTION;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
+    private boolean pending = false;
 
     public Builder setResources(Map<String, Double> resources) {
       this.resources = resources;
@@ -63,9 +67,14 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
+    public Builder setPending(boolean pending) {
+      this.pending = pending;
+      return this;
+    }
+
     public ActorCreationOptions createActorCreationOptions() {
       return new ActorCreationOptions(
-          resources, maxReconstructions, jvmOptions, maxConcurrency);
+          resources, maxReconstructions, jvmOptions, maxConcurrency, pending);
     }
   }
 

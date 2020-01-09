@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.BaseActor;
 import org.ray.api.RayActor;
+import org.ray.api.RayActorGroup;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.WaitResult;
@@ -14,6 +15,7 @@ import org.ray.api.function.RayFunc;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
+import org.ray.api.options.ActorGroupOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtimecontext.RuntimeContext;
 
@@ -150,6 +152,8 @@ public interface RayRuntime {
    */
   RayPyActor createActor(PyActorClass pyActorClass, Object[] args,
                          ActorCreationOptions options);
+
+  RayActorGroup createActorGroup(List<RayActor<?>> actors, ActorGroupOptions options);
 
   RuntimeContext getRuntimeContext();
 
