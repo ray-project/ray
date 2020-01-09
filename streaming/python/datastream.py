@@ -25,14 +25,14 @@ class Stream(ABC):
     def set_parallelism(self, parallelism: int):
         self.parallelism = parallelism
         self._gateway_client(). \
-            method_call(self._j_stream, "setParallelism", parallelism)
+            call_method(self._j_stream, "setParallelism", parallelism)
 
     def get_input_stream(self):
         return self.input_stream
 
     def get_id(self):
         return self._gateway_client(). \
-            method_call(self._j_stream, "getId")
+            call_method(self._j_stream, "getId")
 
     def _gateway_client(self):
         return self.get_streaming_context()._gateway_client
@@ -51,7 +51,7 @@ class DataStream(Stream):
             func = function.SimpleMapFunction(func)
         j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
-            method_call(self._j_stream, "map", j_func)
+            call_method(self._j_stream, "map", j_func)
         return DataStream(self, j_stream)
 
     def flat_map(self, func):
@@ -59,7 +59,7 @@ class DataStream(Stream):
             func = function.SimpleFlatMapFunction(func)
         j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
-            method_call(self._j_stream, "flatMap", j_func)
+            call_method(self._j_stream, "flatMap", j_func)
         return DataStream(self, j_stream)
 
     def filter(self, func):
@@ -67,7 +67,7 @@ class DataStream(Stream):
             func = function.SimpleFilterFunction(func)
         j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
-            method_call(self._j_stream, "filter", j_func)
+            call_method(self._j_stream, "filter", j_func)
         return DataStream(self, j_stream)
 
     def key_by(self, func):
@@ -75,11 +75,11 @@ class DataStream(Stream):
             func = function.SimpleKeyFunction(func)
         j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
-            method_call(self._j_stream, "keyBy", j_func)
+            call_method(self._j_stream, "keyBy", j_func)
         return KeyDataStream(self, j_stream)
 
     def broadcast(self):
-        self._gateway_client().method_call(self._j_stream, "broadcast")
+        self._gateway_client().call_method(self._j_stream, "broadcast")
         return self
 
     def partition_by(self, partition_func):
@@ -87,7 +87,7 @@ class DataStream(Stream):
             partition_func = partition.SimplePartition(partition_func)
         j_partition = self._gateway_client().create_py_func(partition.serialize(partition_func))
         self._gateway_client(). \
-            method_call(self._j_stream, "partitionBy", j_partition)
+            call_method(self._j_stream, "partitionBy", j_partition)
         return self
 
     def sink(self, func):
@@ -95,7 +95,7 @@ class DataStream(Stream):
             func = function.SimpleSinkFunction(func)
         j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
-            method_call(self._j_stream, "sink", j_func)
+            call_method(self._j_stream, "sink", j_func)
         return StreamSink(self, j_stream, func)
 
 
@@ -112,7 +112,7 @@ class KeyDataStream(Stream):
             func = function.SimpleReduceFunction(func)
         j_func = self._gateway_client().create_py_func(function.serialize(func))
         j_stream = self._gateway_client(). \
-            method_call(self._j_stream, "reduce", j_func)
+            call_method(self._j_stream, "reduce", j_func)
         return DataStream(self, j_stream)
 
 

@@ -1,4 +1,4 @@
-package org.ray.streaming.python;
+package org.ray.streaming.runtime.python;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
@@ -7,6 +7,8 @@ import java.util.Map;
 import org.msgpack.core.Preconditions;
 import org.ray.api.annotation.RayRemote;
 import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.python.PythonFunction;
+import org.ray.streaming.python.PythonPartition;
 import org.ray.streaming.python.stream.PythonStreamSource;
 import org.ray.streaming.util.ReflectionUtils;
 
@@ -73,7 +75,7 @@ public class PythonGateway {
     return serializer.serialize(getRefId(partition));
   }
 
-  public byte[] funcCall(byte[] paramsBytes) {
+  public byte[] callFunction(byte[] paramsBytes) {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
       String className = (String) params.get(0);
@@ -88,7 +90,7 @@ public class PythonGateway {
     }
   }
 
-  public byte[] methodCall(byte[] paramsBytes) {
+  public byte[] callMethod(byte[] paramsBytes) {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
       Integer objId = (Integer) params.get(0);

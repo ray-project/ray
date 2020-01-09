@@ -1,4 +1,4 @@
-package org.ray.streaming.python;
+package org.ray.streaming.runtime.python;
 
 import com.google.common.collect.Maps;
 import java.nio.ByteBuffer;

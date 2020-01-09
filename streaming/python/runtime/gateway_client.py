@@ -65,19 +65,19 @@ class GatewayClient:
                                                       msgpack.packb(serialized_partition))
         return msgpack.unpackb(ray.get(call))
 
-    def func_call(self, java_class, java_function, *args):
+    def call_function(self, java_class, java_function, *args):
         function_descriptor = FunctionDescriptor.from_bytes_list(
             [GatewayClient._PYTHON_GATEWAY_CLASSNAME,
-             b'funcCall',
+             b'callFunction',
              b'([B)[B'])
         java_params = msgpack.packb([java_class, java_function] + list(args))
         call = self._python_gateway_actor.submit_task(function_descriptor, java_params)
         return msgpack.unpackb(ray.get(call))
 
-    def method_call(self, java_object, java_method, *args):
+    def call_method(self, java_object, java_method, *args):
         function_descriptor = FunctionDescriptor.from_bytes_list(
             [GatewayClient._PYTHON_GATEWAY_CLASSNAME,
-             b'methodCall',
+             b'callMethod',
              b'([B)[B'])
         java_params = msgpack.packb([java_object, java_method] + list(args))
         call = self._python_gateway_actor.submit_task(function_descriptor, java_params)
