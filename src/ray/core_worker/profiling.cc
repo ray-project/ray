@@ -27,6 +27,7 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
 }
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
+  absl::MutexLock lock(&mutex_);
   rpc_profile_data_->add_profile_events()->CopyFrom(event);
 }
 
