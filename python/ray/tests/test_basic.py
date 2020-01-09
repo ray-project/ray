@@ -1667,6 +1667,7 @@ def test_job_name(ray_start_cluster):
     ray.init(address=cluster.address, job_name="test_2")
     assert ray.worker.global_worker.job_name == "test_2"
     ray.shutdown()
+    cluster.shutdown()
 
 
 if __name__ == "__main__":

@@ -1209,10 +1209,11 @@ def connect(node,
     # Create an object for interfacing with the global state.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
-    worker.register_job_name_with_redis(job_id, job_name=job_name)
 
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
+        worker.register_job_name_with_redis(job_id, job_name=job_name)
+
         # Register the driver with Redis here.
         import __main__ as main
         driver_info = {
@@ -1375,13 +1376,12 @@ def disconnect(exiting_interpreter=False):
         worker.threads_stopped.clear()
         worker._session_index += 1
 
-        # Remove the job name from GCS.
-        if (hasattr(global_worker, "redis_client")
-                and global_worker.redis_client is not None):
-            result = global_worker.redis_client.hdel(
-                ray_constants.KEY_OF_JOB_NAMES_IN_REDIS, global_worker.job_name)
-            if result != 1:
-                logger.warning("Maybe something wrong in GCS, please check it manually.")
+        if worker.mode == SCRIPT_MODE:
+            # Remove the job name from GCS if this is a driver.
+            if (hasattr(global_worker, "redis_client") and
+                    global_worker.redis_client is not None):
+                result = global_worker.redis_client.hdel(
+                    ray_constants.KEY_OF_JOB_NAMES_IN_REDIS, global_worker.job_name)
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
