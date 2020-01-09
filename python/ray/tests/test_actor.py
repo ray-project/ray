@@ -1,23 +1,23 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
-import random
-import numpy as np
 import os
+import random
+import sys
+import time
+
+import numpy as np
 import pytest
+
+import ray
+import ray.cluster_utils
+import ray.test_utils
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
+from ray.test_utils import run_string_as_driver
+
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import sys
-import time
-
-import ray
-import ray.test_utils
-import ray.cluster_utils
-from ray.test_utils import run_string_as_driver
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
 def test_actor_init_error_propagated(ray_start_regular):
@@ -195,6 +195,55 @@ def test_actor_class_attributes(ray_start_regular):
 
         @classmethod
         def f(cls):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.X == 3
+            return 4
+
+        def g(self):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.f() == 4
+            return TestActor.X
+
+    t = TestActor.remote()
+    assert ray.get(t.g.remote()) == 3
+
+
+def test_actor_static_attributes(ray_start_regular):
+    class Grandparent:
+        GRANDPARENT = 2
+
+        @staticmethod
+        def grandparent_static():
+            assert Grandparent.GRANDPARENT == 2
+            return 1
+
+    class Parent1(Grandparent):
+        PARENT1 = 6
+
+        @staticmethod
+        def parent1_static():
+            assert Parent1.PARENT1 == 6
+            return 2
+
+        def parent1(self):
+            assert Parent1.PARENT1 == 6
+
+    class Parent2:
+        PARENT2 = 7
+
+        def parent2(self):
+            assert Parent2.PARENT2 == 7
+
+    @ray.remote
+    class TestActor(Parent1, Parent2):
+        X = 3
+
+        @staticmethod
+        def f():
             assert TestActor.GRANDPARENT == 2
             assert TestActor.PARENT1 == 6
             assert TestActor.PARENT2 == 7
