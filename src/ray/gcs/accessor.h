@@ -480,6 +480,11 @@ class ErrorInfoAccessor {
   virtual ~ErrorInfoAccessor() = default;
 
   /// Report an error to GCS asynchronously.
+  /// The error message will be pushed for the driver of a specific.
+  ///
+  /// TODO(rkn): We need to make sure that the errors are unique because
+  /// duplicate messages currently cause failures (the GCS doesn't allow it). A
+  /// natural way to do this is to have finer-grained time stamps.
   ///
   /// \param data_ptr The error message that will be reported to GCS.
   /// \param callback Callback that will be called when report is complete.
