@@ -136,6 +136,8 @@ class Worker:
         # postprocessor must take two arguments ("object_ids", and "values").
         self._post_get_hooks = []
 
+        self.job_name = None
+
     @property
     def connected(self):
         return self.node is not None
@@ -422,6 +424,31 @@ class Worker:
                     arguments[object_indices[i]] = value
 
         return ray.signature.recover_args(arguments)
+
+    def register_job_name_with_redis(
+            self,
+            job_id,
+            job_name=None):
+        assert isinstance(job_id, ray.JobID)
+        if job_name is None:
+            job_name = "JOB_{}".format(job_id.hex())
+
+        # Register the index mapping from job_name to job_id.
+        result = self.redis_client.hexists("JOB_NAME_2_JOB_ID", job_name)
+        if result:
+            raise ValueError("The job name you specified exists. "
+                             "Please specify an unique one.")
+        self.redis_client.hmset("JOB_NAME_2_JOB_ID", {job_name: job_id.hex()})
+
+        # Check if this job name is set with this job id rather than another
+        # job id. This is used to avoid that some drivers register the  same
+        # job name at the same time.
+        result = self.redis_client.hget("JOB_NAME_2_JOB_ID", job_name)
+        if result is None or result.decode() != job_id.hex():
+            raise ValueError("The job name you specified exists. "
+                             "Please specify an unique one.")
+
+        self.job_name = job_name
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -808,7 +835,7 @@ def init(address=None,
         log_to_driver=log_to_driver,
         worker=global_worker,
         driver_object_store_memory=driver_object_store_memory,
-        job_id=job_id,
+        job_name=job_name,
         internal_config=json.loads(_internal_config)
         if _internal_config else {})
 
@@ -1084,6 +1111,7 @@ def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
+            job_name=None,
             driver_object_store_memory=None,
             internal_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
@@ -1095,6 +1123,7 @@ def connect(node,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
+        job_name(str): The name of this job.
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
         internal_config: Dictionary of (str,str) containing internal config
@@ -1176,10 +1205,8 @@ def connect(node,
     # Create an object for interfacing with the global state.
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
+    worker.register_job_name_with_redis(job_id, job_name=job_name)
 
-    # Register the index mapping from job_name to job_id.
-    # Check whether the job name exists.
-    worker.redis_client.hmset
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
         # Register the driver with Redis here.
@@ -1343,6 +1370,14 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
         worker._session_index += 1
+
+        # Remove the job name from GCS.
+        if (hasattr(global_worker, "redis_client")
+                and global_worker.redis_client is not None):
+            result = global_worker.redis_client.hdel(
+                "JOB_NAME_2_JOB_ID", global_worker.job_name)
+            if result != 1:
+                logger.warning("Maybe something wrong in GCS, please check it manually.")
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []

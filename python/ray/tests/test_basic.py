@@ -1648,6 +1648,27 @@ def test_wait(ray_start_regular):
         ray.wait([1])
 
 
+def test_job_name(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node()
+
+    ray.init(address=cluster.address)
+    assert ray.worker.global_worker.job_name == "JOB_0100"
+    ray.shutdown()
+
+    ray.init(address=cluster.address)
+    assert ray.worker.global_worker.job_name == "JOB_0200"
+    ray.shutdown()
+
+    ray.init(address=cluster.address, job_name="test_1")
+    assert ray.worker.global_worker.job_name == "test_1"
+    ray.shutdown()
+
+    ray.init(address=cluster.address, job_name="test_2")
+    assert ray.worker.global_worker.job_name == "test_2"
+    ray.shutdown()
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
