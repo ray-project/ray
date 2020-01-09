@@ -227,7 +227,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   const GcsNodeInfo &GetSelfInfo() const override;
 
-  Status Register(const GcsNodeInfo &node_info) override;
+  Status AsyncRegister(const GcsNodeInfo &node_info,
+                       const StatusCallback &callback) override;
 
   Status AsyncUnregister(const ClientID &node_id,
                          const StatusCallback &callback) override;
