@@ -1319,7 +1319,7 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto const &type = string_from_flatbuf(*message->type());
   auto const &error_message = string_from_flatbuf(*message->error_message());
-  int64_t timestamp = message->timestamp();
+  double timestamp = message->timestamp();
   auto error_info_ptr = gcs::CreateErrorTableData(job_id, type, error_message, timestamp);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportError(error_info_ptr, nullptr));
 }
