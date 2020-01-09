@@ -12,7 +12,7 @@ ServiceBasedJobInfoAccessor::ServiceBasedJobInfoAccessor(
 Status ServiceBasedJobInfoAccessor::AsyncAdd(
     const std::shared_ptr<JobTableData> &data_ptr, const StatusCallback &callback) {
   RAY_LOG(INFO) << "Adding job, job id = " << data_ptr->job_id()
-                 << ", driver pid = " << data_ptr->driver_pid();
+                << ", driver pid = " << data_ptr->driver_pid();
   rpc::AddJobRequest request;
   request.mutable_data()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().AddJob(
@@ -111,7 +111,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribeAll(
     const StatusCallback &done) {
   RAY_LOG(INFO) << "Subscribing all actors.";
   RAY_CHECK(subscribe != nullptr);
-  auto status =  actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  auto status = actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
   RAY_LOG(INFO) << "Finished subscribing all actors.";
   return status;
 }
@@ -133,7 +133,7 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
     const std::shared_ptr<rpc::ActorCheckpointData> &data_ptr,
     const StatusCallback &callback) {
   RAY_LOG(INFO) << "Adding actor checkpoint, actor id = " << data_ptr->actor_id()
-                 << ", checkpoint id = " << data_ptr->checkpoint_id();
+                << ", checkpoint id = " << data_ptr->checkpoint_id();
   rpc::AddActorCheckpointRequest request;
   request.mutable_checkpoint_data()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().AddActorCheckpoint(
@@ -144,7 +144,7 @@ Status ServiceBasedActorInfoAccessor::AsyncAddCheckpoint(
         }
       });
   RAY_LOG(INFO) << "Finished adding actor checkpoint, actor id = " << data_ptr->actor_id()
-                 << ", checkpoint id = " << data_ptr->checkpoint_id();
+                << ", checkpoint id = " << data_ptr->checkpoint_id();
   return Status::OK();
 }
 
@@ -161,8 +161,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
         checkpoint_data.CopyFrom(reply.checkpoint_data());
         callback(status, checkpoint_data);
       });
-  RAY_LOG(INFO) << "Finished getting actor checkpoint, checkpoint id = "
-                 << checkpoint_id;
+  RAY_LOG(INFO) << "Finished getting actor checkpoint, checkpoint id = " << checkpoint_id;
   return Status::OK();
 }
 
@@ -236,15 +235,17 @@ const GcsNodeInfo &ServiceBasedNodeInfoAccessor::GetSelfInfo() const {
   return local_node_info_;
 }
 
-Status ServiceBasedNodeInfoAccessor::Register(const GcsNodeInfo &node_info) {
+Status ServiceBasedNodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
+                                                   const StatusCallback &callback) {
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(node_info);
-  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().RegisterNode(
-      request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
-        promise.set_value(status);
+      request, [callback](const Status &status, const rpc::RegisterNodeReply &reply) {
+        if (callback) {
+          callback(status);
+        }
       });
-  return promise.get_future().get();
+  return Status::OK();
 }
 
 Status ServiceBasedNodeInfoAccessor::AsyncUnregister(const ClientID &node_id,
@@ -489,6 +490,12 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
 Status ServiceBasedTaskInfoAccessor::AsyncUnsubscribeTaskLease(
     const TaskID &task_id, const StatusCallback &done) {
   return task_lease_sub_executor_.AsyncUnsubscribe(subscribe_id_, task_id, done);
+}
+
+Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
+    const std::shared_ptr<rpc::TaskReconstructionData> &data_ptr,
+    const StatusCallback &callback) {
+  return Status::OK();
 }
 
 }  // namespace gcs
