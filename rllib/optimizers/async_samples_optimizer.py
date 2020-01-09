@@ -2,10 +2,6 @@
 
 https://arxiv.org/abs/1802.01561"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import time
 

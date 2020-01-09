@@ -22,10 +22,6 @@ Note that the hierarchical formulation actually converges slightly slower than
 using --flat in this example.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import random
 import gym

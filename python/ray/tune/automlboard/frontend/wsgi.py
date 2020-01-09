@@ -7,10 +7,6 @@ For more information on this file, see
 https://docs.djangoproject.com/en/1.11/howto/deployment/wsgi/
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from django.core.wsgi import get_wsgi_application
 
 import os
