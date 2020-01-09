@@ -3,7 +3,7 @@ from functools import wraps
 
 from ray import cloudpickle as pickle
 from ray import ray_constants
-from ray.function_manager import FunctionDescriptor
+from ray import PythonFunctionDescriptor
 import ray.signature
 
 # Default parameters for remote functions.
@@ -58,7 +58,7 @@ class RemoteFunction:
             different workers.
     """
 
-    def __init__(self, language, function_or_descriptor_list, num_cpus,
+    def __init__(self, language, function_or_function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  num_return_vals, max_calls, max_retries):
         # We do not set self._is_cross_language if self._language !=
@@ -66,24 +66,21 @@ class RemoteFunction:
         # cross calling PYTHON from PYTHON.
         self._language = language
 
-        if callable(function_or_descriptor_list):
-            self._function = function_or_descriptor_list
+        if callable(function_or_function_descriptor):
+            self._function = function_or_function_descriptor
             self._function_name = (
                 self._function.__module__ + "." + self._function.__name__)
             self._function_signature = ray.signature.extract_signature(
                 self._function)
             self._function_descriptor = None
-            self._function_descriptor_list = None
             self._is_cross_language = False
         else:
-            if not function_or_descriptor_list:
+            if not function_or_function_descriptor:
                 raise Exception("Function descriptor list is empty.")
             self._function = lambda *args, **kwargs: None
-            self._function_name = b".".join(
-                function_or_descriptor_list).decode("ascii")
+            self._function_name = repr(function_or_function_descriptor)
             self._function_signature = None
-            self._function_descriptor = None
-            self._function_descriptor_list = function_or_descriptor_list
+            self._function_descriptor = function_or_function_descriptor
             self._is_cross_language = True
 
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -187,10 +184,8 @@ class RemoteFunction:
             # which we do here.
             self._pickled_function = pickle.dumps(self._function)
 
-            self._function_descriptor = FunctionDescriptor.from_function(
+            self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._pickled_function)
-            self._function_descriptor_list = (
-                self._function_descriptor.get_function_descriptor_list())
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
@@ -234,7 +229,7 @@ class RemoteFunction:
                     num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_task(
-                    self._language, self._function_descriptor_list, list_args,
+                    self._language, self._function_descriptor, list_args,
                     num_return_vals, is_direct_call, self._is_cross_language,
                     resources, max_retries)
 

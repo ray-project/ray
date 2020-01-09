@@ -287,10 +287,18 @@ class StreamingWorker {
         JobID::FromInt(1), gcs_options, "", "127.0.0.1", node_manager_port,
         std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7));
 
-    RayFunction reader_async_call_func{ray::Language::PYTHON, {"reader_async_call_func"}};
-    RayFunction reader_sync_call_func{ray::Language::PYTHON, {"reader_sync_call_func"}};
-    RayFunction writer_async_call_func{ray::Language::PYTHON, {"writer_async_call_func"}};
-    RayFunction writer_sync_call_func{ray::Language::PYTHON, {"writer_sync_call_func"}};
+    RayFunction reader_async_call_func{ray::Language::PYTHON,
+                                       ray::FunctionDescriptorBuilder::BuildPython(
+                                           "reader_async_call_func", "", "", "")};
+    RayFunction reader_sync_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::BuildPython("reader_sync_call_func", "", "", "")};
+    RayFunction writer_async_call_func{ray::Language::PYTHON,
+                                       ray::FunctionDescriptorBuilder::BuildPython(
+                                           "writer_async_call_func", "", "", "")};
+    RayFunction writer_sync_call_func{
+        ray::Language::PYTHON,
+        ray::FunctionDescriptorBuilder::BuildPython("writer_sync_call_func", "", "", "")};
 
     reader_client_ = std::make_shared<ReaderClient>(worker_.get(), reader_async_call_func,
                                                     reader_sync_call_func);

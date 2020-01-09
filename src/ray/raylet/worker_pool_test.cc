@@ -127,6 +127,8 @@ static inline TaskSpecification ExampleTaskSpec(
     const std::vector<std::string> &dynamic_worker_options = {}) {
   rpc::TaskSpec message;
   message.set_language(language);
+  *message.mutable_function_descriptor() =
+      ray::FunctionDescriptorBuilder::BuildDriver()->GetMessage();
   if (!actor_id.IsNil()) {
     message.set_type(TaskType::ACTOR_TASK);
     message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());

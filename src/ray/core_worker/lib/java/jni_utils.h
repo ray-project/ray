@@ -3,6 +3,7 @@
 
 #include <jni.h>
 #include "ray/common/buffer.h"
+#include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
@@ -342,6 +343,20 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   env->DeleteLocalRef(java_metadata);
   env->DeleteLocalRef(java_data);
   return java_obj;
+}
+
+inline jobject NativeRayFunctionDescriptorToJavaStringList(
+    JNIEnv *env, const ray::FunctionDescriptor &function_descriptor) {
+  if (function_descriptor->Type() ==
+      ray::FunctionDescriptorType::kJavaFunctionDescriptor) {
+    ray::JavaFunctionDescriptor *typed_descriptor =
+        function_descriptor->As<ray::JavaFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {typed_descriptor->ClassName(),
+                                                         typed_descriptor->FunctionName(),
+                                                         typed_descriptor->Signature()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  }
+  return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
 
 #endif  // RAY_COMMON_JAVA_JNI_UTILS_H

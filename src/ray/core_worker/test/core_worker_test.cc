@@ -50,14 +50,17 @@ ActorID CreateActorHelper(CoreWorker &worker,
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-  RayFunction func(ray::Language::PYTHON, {"actor creation task"});
+  RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                              "actor creation task", "", "", ""));
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   ActorCreationOptions actor_options{
-      max_reconstructions,   is_direct_call,
-      /*max_concurrency*/ 1, resources,           resources, {},
-      /*is_detached*/ false, /*is_asyncio*/ false};
+      max_reconstructions,         is_direct_call,
+      /*is_cross_language*/ false,
+      /*max_concurrency*/ 1,       resources,      resources, {},
+      /*is_detached*/ false,
+      /*is_asyncio*/ false};
 
   // Create an actor.
   ActorID actor_id;
@@ -249,7 +252,8 @@ int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
   std::vector<TaskArg> args;
   TaskOptions options{1, is_direct_call, false, resources};
   std::vector<ObjectID> return_ids;
-  RayFunction func{Language::PYTHON, {"GetWorkerPid"}};
+  RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                         "GetWorkerPid", "", "", "")};
 
   RAY_CHECK_OK(worker.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -286,7 +290,8 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                  "MergeInputArgsAsOutput", "", "", ""));
       TaskOptions options;
       options.is_direct_call = true;
 
@@ -334,7 +339,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       TaskOptions options{1, false, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                  "MergeInputArgsAsOutput", "", "", ""));
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -377,7 +383,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     TaskOptions options{1, false, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+    RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                "MergeInputArgsAsOutput", "", "", ""));
     auto status = driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
     ASSERT_TRUE(status.ok());
 
@@ -442,7 +449,8 @@ void CoreWorkerTest::TestActorReconstruction(
 
       TaskOptions options{1, false, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                  "MergeInputArgsAsOutput", "", "", ""));
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -487,7 +495,8 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
 
       TaskOptions options{1, false, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+      RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                  "MergeInputArgsAsOutput", "", "", ""));
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -552,13 +561,15 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // to benchmark performance.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction function(ray::Language::PYTHON, {});
+  RayFunction function(ray::Language::PYTHON,
+                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0,
                                      /*is_direct_call*/ true,
+                                     /*is_cross_language*/ false,
                                      1,
                                      resources,
                                      resources,
@@ -635,7 +646,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{1, false, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
+    RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                "MergeInputArgsAsOutput", "", "", ""));
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
@@ -682,7 +694,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   JobID job_id = NextJobId();
   ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), job_id,
                        ObjectID::FromRandom(), Language::PYTHON, /*is_direct_call=*/false,
-                       {});
+                       ray::FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);

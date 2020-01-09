@@ -7,7 +7,10 @@ import weakref
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 
-from ray.function_manager import FunctionDescriptor
+from ray import (
+    PythonFunctionDescriptor,
+    JavaFunctionDescriptor,
+)
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
@@ -172,23 +175,22 @@ class ActorClassMetadata:
             each actor method.
     """
 
-    def __init__(self, language, modified_class_or_descriptor_list, class_id,
-                 max_reconstructions, num_cpus, num_gpus, memory,
+    def __init__(self, language, modified_class_or_function_descriptor,
+                 class_id, max_reconstructions, num_cpus, num_gpus, memory,
                  object_store_memory, resources):
         # We do not set self.is_cross_language ifself.language !=
         # Language.PYTHON in order to test cross language feature by
         # cross calling PYTHON from PYTHON.
         self.language = language
-        if inspect.isclass(modified_class_or_descriptor_list):
-            self.modified_class = modified_class_or_descriptor_list
-            self.descriptor_list = None
-            self.class_name = modified_class_or_descriptor_list.__name__
+        if inspect.isclass(modified_class_or_function_descriptor):
+            self.modified_class = modified_class_or_function_descriptor
+            self.function_descriptor = None
+            self.class_name = modified_class_or_function_descriptor.__name__
             self.is_cross_language = False
         else:
             self.modified_class = None
-            self.descriptor_list = modified_class_or_descriptor_list
-            self.class_name = b".".join(
-                modified_class_or_descriptor_list).decode("ascii")
+            self.function_descriptor = modified_class_or_function_descriptor
+            self.class_name = repr(modified_class_or_function_descriptor)
             self.is_cross_language = True
         self.class_id = class_id
         self.max_reconstructions = max_reconstructions
@@ -300,7 +302,7 @@ class ActorClass:
                                  memory, object_store_memory, resources):
         for attribute in [
                 "remote", "_remote", "_ray_from_modified_class",
-                "_ray_from_descriptor_list"
+                "_ray_from_function_descriptor"
         ]:
             if hasattr(modified_class, attribute):
                 logger.warning("Creating an actor from class {} overwrites "
@@ -326,13 +328,13 @@ class ActorClass:
         return self
 
     @classmethod
-    def _ray_from_descriptor_list(cls, language, descriptor_list,
-                                  max_reconstructions, num_cpus, num_gpus,
-                                  memory, object_store_memory, resources):
+    def _ray_from_function_descriptor(cls, language, function_descriptor,
+                                      max_reconstructions, num_cpus, num_gpus,
+                                      memory, object_store_memory, resources):
         self = ActorClass.__new__(ActorClass)
 
         self.__ray_metadata__ = ActorClassMetadata(
-            language, descriptor_list, None, max_reconstructions, num_cpus,
+            language, function_descriptor, None, max_reconstructions, num_cpus,
             num_gpus, memory, object_store_memory, resources)
 
         return self
@@ -482,14 +484,12 @@ class ActorClass:
 
         function_name = "__init__"
         if meta.is_cross_language:
-            function_descriptor_list = meta.descriptor_list
+            function_descriptor = meta.function_descriptor
             module_name = ""
         else:
-            function_descriptor = FunctionDescriptor(
+            function_descriptor = PythonFunctionDescriptor(
                 meta.modified_class.__module__, function_name,
                 meta.modified_class.__name__)
-            function_descriptor_list = \
-                function_descriptor.get_function_descriptor_list()
             module_name = meta.modified_class.__module__
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
@@ -541,7 +541,7 @@ class ActorClass:
                 creation_args = signature.flatten_args(function_signature,
                                                        args, kwargs)
             actor_id = worker.core_worker.create_actor(
-                meta.language, function_descriptor_list, creation_args,
+                meta.language, function_descriptor, creation_args,
                 meta.max_reconstructions, resources, actor_placement_resources,
                 is_direct_call, meta.is_cross_language, max_concurrency,
                 detached, is_asyncio)
@@ -557,6 +557,7 @@ class ActorClass:
             meta.actor_method_num_return_vals,
             actor_method_cpu,
             meta.is_cross_language,
+            meta.function_descriptor,
             worker.current_session_and_job,
             original_handle=True)
 
@@ -606,6 +607,7 @@ class ActorHandle:
                  method_num_return_vals,
                  actor_method_cpus,
                  is_cross_language,
+                 actor_creation_function_descriptor,
                  session_and_job,
                  original_handle=False):
         self._ray_actor_language = language
@@ -620,10 +622,11 @@ class ActorHandle:
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
         self._ray_is_cross_language = is_cross_language
-        self._ray_function_descriptor_lists = {
-            method_name: FunctionDescriptor(
-                self._ray_module_name, method_name,
-                self._ray_class_name).get_function_descriptor_list()
+        self._ray_actor_creation_function_descriptor = \
+            actor_creation_function_descriptor
+        self._ray_function_descriptor = {
+            method_name: PythonFunctionDescriptor(
+                self._ray_module_name, method_name, self._ray_class_name)
             for method_name in self._ray_method_signatures.keys()
         }
 
@@ -669,7 +672,19 @@ class ActorHandle:
                 raise Exception(
                     "Cross-lang needs --load-code-from-local to be set.")
             list_args = args
-            function_descriptor_list = [method_name.encode("ascii")]
+            if self._ray_actor_language == Language.PYTHON:
+                function_descriptor = PythonFunctionDescriptor(
+                    self._ray_actor_creation_function_descriptor.module_name,
+                    method_name,
+                    self._ray_actor_creation_function_descriptor.class_name)
+            elif self._ray_actor_language == Language.JAVA:
+                function_descriptor = JavaFunctionDescriptor(
+                    self._ray_actor_creation_function_descriptor.class_name,
+                    method_name,
+                    self._ray_actor_creation_function_descriptor.signature)
+            else:
+                raise NotImplementedError("not support language {}".format(
+                    Language.PYTHON))
         else:
             function_signature = self._ray_method_signatures[method_name]
 
@@ -678,8 +693,7 @@ class ActorHandle:
             else:
                 list_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
-            function_descriptor_list = self._ray_function_descriptor_lists[
-                method_name]
+            function_descriptor = self._ray_function_descriptor[method_name]
 
         if worker.mode == ray.LOCAL_MODE:
             if self._ray_is_cross_language:
@@ -691,7 +705,7 @@ class ActorHandle:
         else:
             object_ids = worker.core_worker.submit_actor_task(
                 self._ray_actor_language, self._ray_actor_id,
-                function_descriptor_list, list_args, num_return_vals,
+                function_descriptor, list_args, num_return_vals,
                 self._ray_actor_method_cpus, self._ray_is_cross_language)
 
         if len(object_ids) == 1:

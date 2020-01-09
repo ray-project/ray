@@ -209,11 +209,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // rerun the driver.
   if (worker_type_ == WorkerType::DRIVER) {
     TaskSpecBuilder builder;
-    std::vector<std::string> empty_descriptor;
     std::unordered_map<std::string, double> empty_resources;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
     builder.SetCommonTaskSpec(
-        task_id, language_, empty_descriptor, worker_context_.GetCurrentJobID(),
+        task_id, language_, ray::FunctionDescriptorBuilder::BuildDriver(),
+        worker_context_.GetCurrentJobID(),
         TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()), 0, GetCallerId(),
         rpc_address_, 0, false, false, empty_resources, empty_resources);
 
@@ -1167,12 +1167,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
-  if (!current_task_.TaskId().IsNil()) {
-    stats->set_current_task_desc(current_task_.DebugString());
-    for (auto const it : current_task_.FunctionDescriptor()) {
-      stats->add_current_task_func_desc(it);
-    }
-  }
+  stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_actor_id(actor_id_.Binary());

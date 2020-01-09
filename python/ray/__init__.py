@@ -94,6 +94,8 @@ from ray._raylet import (
     TaskID,
     UniqueID,
     Language,
+    PythonFunctionDescriptor,
+    JavaFunctionDescriptor,
 )  # noqa: E402
 
 _config = _Config()
@@ -171,6 +173,8 @@ __all__ = [
     "show_in_webui",
     "wait",
     "Language",
+    "PythonFunctionDescriptor",
+    "JavaFunctionDescriptor",
 ]
 
 # ID types

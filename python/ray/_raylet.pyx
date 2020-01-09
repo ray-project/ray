@@ -2,6 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
+# cython: c_string_encoding = default
 
 from cpython.exc cimport PyErr_CheckSignals
 
@@ -97,7 +98,6 @@ from ray.exceptions import (
     RayTimeoutError,
 )
 from ray.experimental.no_return import NoReturn
-from ray.function_manager import FunctionDescriptor
 from ray.utils import decode
 from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
@@ -119,6 +119,7 @@ cimport cpython
 
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
+include "includes/function_descriptor.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
@@ -308,7 +309,7 @@ cdef class Language:
 
     def __eq__(self, other):
         return (isinstance(other, Language) and
-                (<int32_t>self.lang) == (<int32_t>other.lang))
+                (<int32_t>self.lang) == (<int32_t>(<Language>other).lang))
 
     def __repr__(self):
         if <int32_t>self.lang == <int32_t>LANGUAGE_PYTHON:
@@ -541,11 +542,10 @@ cdef execute_task(
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-    descriptor = tuple(ray_function.GetFunctionDescriptor())
+    function_descriptor = CFunctionDescriptorToPython(
+        ray_function.GetFunctionDescriptor())
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
@@ -555,13 +555,11 @@ cdef execute_task(
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
 
-    execution_info = execution_infos.get(descriptor)
+    execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
         execution_info = manager.get_execution_info(
             job_id, function_descriptor)
-        execution_infos[descriptor] = execution_info
+        execution_infos[function_descriptor] = execution_info
 
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
@@ -683,9 +681,6 @@ cdef execute_task(
         ray_signal.reset()
 
     if execution_info.max_calls != 0:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
-
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
         manager.increase_task_counter(job_id, function_descriptor)
@@ -950,7 +945,7 @@ cdef class CoreWorker:
 
     def submit_task(self,
                     Language language,
-                    function_descriptor,
+                    FunctionDescriptorType function_descriptor,
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
@@ -970,7 +965,7 @@ cdef class CoreWorker:
                 num_return_vals, is_direct_call,
                 is_cross_language, c_resources)
             ray_function = CRayFunction(
-                language.lang, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(args, &args_vector)
 
             with nogil:
@@ -982,7 +977,7 @@ cdef class CoreWorker:
 
     def create_actor(self,
                      Language language,
-                     function_descriptor,
+                     FunctionDescriptorType function_descriptor,
                      args,
                      uint64_t max_reconstructions,
                      resources,
@@ -1004,7 +999,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
-                language.lang, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(args, &args_vector)
 
             with nogil:
@@ -1022,7 +1017,7 @@ cdef class CoreWorker:
     def submit_actor_task(self,
                           Language language,
                           ActorID actor_id,
-                          function_descriptor,
+                          FunctionDescriptorType function_descriptor,
                           args,
                           int num_return_vals,
                           double num_method_cpus,
@@ -1042,7 +1037,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(num_return_vals, False,
                                         is_cross_language, c_resources)
             ray_function = CRayFunction(
-                language.lang, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(args, &args_vector)
 
             with nogil:

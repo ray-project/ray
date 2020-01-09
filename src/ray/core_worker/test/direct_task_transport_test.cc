@@ -241,7 +241,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 }
 
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
-                                const std::vector<std::string> &function_descriptor) {
+                                const ray::FunctionDescriptor &function_descriptor) {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
   builder.SetCommonTaskSpec(TaskID::Nil(), Language::PYTHON, function_descriptor,
@@ -261,7 +261,8 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
                                           task_finisher, ClientID::Nil(), kLongTimeout);
 
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -291,7 +292,8 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -315,7 +317,8 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
@@ -360,7 +363,8 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
@@ -408,7 +412,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
 
@@ -446,7 +451,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -484,7 +490,8 @@ TEST(DirectTaskTransportTest, TestSpillback) {
                                           lease_client_factory, store, task_finisher,
                                           ClientID::Nil(), kLongTimeout);
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -534,7 +541,8 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
                                           lease_client_factory, store, task_finisher,
                                           local_raylet_id, kLongTimeout);
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -620,8 +628,10 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
-  std::vector<std::string> descriptor1({"a"});
-  std::vector<std::string> descriptor2({"b"});
+  ray::FunctionDescriptor descriptor1 =
+      ray::FunctionDescriptorBuilder::BuildPython("a", "", "", "");
+  ray::FunctionDescriptor descriptor2 =
+      ray::FunctionDescriptorBuilder::BuildPython("b", "", "", "");
 
   // Tasks with different resources should request different worker leases.
   RAY_LOG(INFO) << "Test different resources";
@@ -682,7 +692,8 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
                                           task_finisher, ClientID::Nil(),
                                           /*lease_timeout_ms=*/5);
   std::unordered_map<std::string, double> empty_resources;
-  std::vector<std::string> empty_descriptor;
+  ray::FunctionDescriptor empty_descriptor =
+      ray::FunctionDescriptorBuilder::BuildPython("", "", "", "");
   TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);

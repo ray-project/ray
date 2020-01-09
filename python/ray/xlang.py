@@ -4,6 +4,7 @@ from __future__ import print_function
 
 from ray import Language
 from ray.remote_function import RemoteFunction
+from ray import PythonFunctionDescriptor, JavaFunctionDescriptor
 from ray.actor import ActorClass
 
 __all__ = [
@@ -12,12 +13,10 @@ __all__ = [
 ]
 
 
-def java_function(class_name, function_name):
-    # Java Function Descriptor: [class name, function name, signature]
+def java_function(class_name, function_name, signature=""):
     return RemoteFunction(
         Language.JAVA,
-        [class_name.encode("ascii"),
-         function_name.encode("ascii"), b""],
+        JavaFunctionDescriptor(class_name, function_name, signature),
         None,  # num_cpus,
         None,  # num_gpus,
         None,  # memory,
@@ -28,11 +27,10 @@ def java_function(class_name, function_name):
         None)  # max_retries)
 
 
-def java_actor_class(class_name):
-    # Java Function Descriptor: [class name, function name, signature]
-    return ActorClass._ray_from_descriptor_list(
+def java_actor_class(class_name, signature=""):
+    return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
-        [class_name.encode("ascii"), b"<init>", b""],
+        JavaFunctionDescriptor(class_name, "<init>", signature),
         0,  # max_reconstructions,
         None,  # num_cpus,
         None,  # num_gpus,
@@ -42,11 +40,9 @@ def java_actor_class(class_name):
 
 
 def python_function(module_name, function_name):
-    # Python Function Descriptor: [module name, class name, function name]
     return RemoteFunction(
         Language.PYTHON,
-        [module_name.encode("ascii"), b"",
-         function_name.encode("ascii")],
+        PythonFunctionDescriptor(module_name, function_name),
         None,  # num_cpus,
         None,  # num_gpus,
         None,  # memory,
@@ -58,11 +54,9 @@ def python_function(module_name, function_name):
 
 
 def python_actor_class(module_name, class_name):
-    # Python Function Descriptor: [module name, class name, function name]
-    return ActorClass._ray_from_descriptor_list(
+    return ActorClass._ray_from_function_descriptor(
         Language.PYTHON,
-        [module_name.encode("ascii"),
-         class_name.encode("ascii"), b"__init__"],
+        PythonFunctionDescriptor(module_name, "__init__", class_name),
         0,  # max_reconstructions,
         None,  # num_cpus,
         None,  # num_gpus,
