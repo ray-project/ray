@@ -6,6 +6,7 @@ import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.impl.KeyPartition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
+import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.api.stream.StreamSource;
 import org.slf4j.Logger;
@@ -38,7 +39,7 @@ public class JobGraphBuilderTest {
 
   public JobGraph buildDataSyncJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
@@ -73,7 +74,7 @@ public class JobGraphBuilderTest {
 
   public JobGraph buildKeyByJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("1", "2", "3", "4"));
     StreamSink streamSink = dataStream.keyBy(x -> x)
         .sink(x -> LOG.info(x));
