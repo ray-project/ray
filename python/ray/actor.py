@@ -215,6 +215,13 @@ class ActorClassMetadata:
         self.method_signatures = {}
         self.actor_method_num_return_vals = {}
         for method_name, method in self.actor_methods:
+            # Check if this method is static, and if so treat it like a class
+            # method by mocking the `__self__` attribute to look bound.
+            for cls in inspect.getmro(self.modified_class):
+                if method_name in cls.__dict__:
+                    if isinstance(cls.__dict__[method_name], staticmethod):
+                        method.__self__ = self.modified_class
+
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor
             # inherits from a class that has a method whose signature we
