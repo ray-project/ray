@@ -22,7 +22,7 @@ class Profiler {
 
  private:
   // Flush all of the events that have been added since last flush to the GCS.
-  void FlushEvents();
+  void FlushEvents() LOCKS_EXCLUDED(mutex_);
 
   // Mutex guarding rpc_profile_data_.
   absl::Mutex mutex_;

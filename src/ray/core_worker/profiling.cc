@@ -32,14 +32,18 @@ void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
 }
 
 void Profiler::FlushEvents() {
-  if (rpc_profile_data_->profile_events_size() != 0) {
-    auto cur_profile_data = std::make_shared<rpc::ProfileTableData>();
-    cur_profile_data->set_component_type(rpc_profile_data_->component_type());
-    cur_profile_data->set_component_id(rpc_profile_data_->component_id());
-    cur_profile_data->set_node_ip_address(rpc_profile_data_->node_ip_address());
+  auto cur_profile_data = std::make_shared<rpc::ProfileTableData>();
+  {
+    absl::MutexLock lock(&mutex_);
+    if (rpc_profile_data_->profile_events_size() != 0) {
+      cur_profile_data->set_component_type(rpc_profile_data_->component_type());
+      cur_profile_data->set_component_id(rpc_profile_data_->component_id());
+      cur_profile_data->set_node_ip_address(rpc_profile_data_->node_ip_address());
+      rpc_profile_data_.swap(cur_profile_data);
+    }
+  }
 
-    rpc_profile_data_.swap(cur_profile_data);
-
+  if (cur_profile_data->profile_events_size() != 0) {
     if (!gcs_client_->Stats().AsyncAddProfileData(cur_profile_data, nullptr).ok()) {
       RAY_LOG(WARNING) << "Failed to push profile events to GCS.";
     } else {
