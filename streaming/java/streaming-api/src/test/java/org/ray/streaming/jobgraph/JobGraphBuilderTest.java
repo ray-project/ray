@@ -1,14 +1,13 @@
 package org.ray.streaming.jobgraph;
 
-
 import com.google.common.collect.Lists;
+import java.util.List;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.impl.KeyPartition;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.api.stream.StreamSource;
-import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -16,7 +15,7 @@ import org.testng.annotations.Test;
 
 public class JobGraphBuilderTest {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(JobGraphBuilderTest.class);
+  private static final Logger LOG = LoggerFactory.getLogger(JobGraphBuilderTest.class);
 
   @Test
   public void testDataSync() {
@@ -41,7 +40,7 @@ public class JobGraphBuilderTest {
     StreamingContext streamingContext = StreamingContext.buildContext();
     DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
-    StreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
+    StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
     JobGraph jobGraph = jobGraphBuilder.build();
@@ -77,11 +76,20 @@ public class JobGraphBuilderTest {
     DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
         Lists.newArrayList("1", "2", "3", "4"));
     StreamSink streamSink = dataStream.keyBy(x -> x)
-        .sink(x -> LOGGER.info(x));
+        .sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
     JobGraph jobGraph = jobGraphBuilder.build();
     return jobGraph;
   }
 
+  @Test
+  public void testJobGraphViz() {
+    JobGraph jobGraph = buildKeyByJobGraph();
+    jobGraph.generateDigraph();
+    String diGraph = jobGraph.getDigraph();
+    System.out.println(diGraph);
+    Assert.assertTrue(diGraph.contains("1-SourceOperator -> 2-KeyByOperator"));
+    Assert.assertTrue(diGraph.contains("2-KeyByOperator -> 3-SinkOperator"));
+  }
 }
