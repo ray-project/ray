@@ -216,18 +216,22 @@ WorkerProcessHandle WorkerPool::StartProcess(
   return child;
 }
 
-Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
-  const auto proc = worker->Process();
+Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid) {
   const auto port = worker->Port();
-  RAY_LOG(DEBUG) << "Registering worker with pid " << proc->id() << ", port: " << port;
+  RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-
-  auto it = state.starting_worker_processes.find(proc);
+  WorkerProcessHandle key;
+  {
+    WorkerProcess temp(pid);  // make a dummy process as a lookup key
+    temp.detach();            // detach it to make sure it doesn't actually do anything!
+    key = std::make_shared<WorkerProcess>(std::move(temp));
+  }
+  auto it = state.starting_worker_processes.find(key);
   if (it == state.starting_worker_processes.end()) {
-    RAY_LOG(WARNING) << "Received a register request from an unknown worker "
-                     << proc->id();
+    RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
     return Status::Invalid("Unknown worker");
   }
+  worker->SetProcess(it->first);
   it->second--;
   if (it->second == 0) {
     state.starting_worker_processes.erase(it);
@@ -360,21 +364,6 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->Process()->id())}});
-}
-
-WorkerProcessHandle WorkerPool::FindStartingWorkerByProcessId(const Language &language,
-                                                              pid_t pid) {
-  WorkerPool::State &state = GetStateForLanguage(language);
-  WorkerProcess proc(pid);  // make a dummy process as a lookup key
-  proc.detach();            // detach it to make sure it doesn't actually do anything!
-  WorkerProcessHandle key = std::make_shared<WorkerProcess>(std::move(proc));
-  auto it = state.starting_worker_processes.find(key);
-  if (it != state.starting_worker_processes.end()) {
-    key = it->first;
-  } else {
-    key.reset();
-  }
-  return key;
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {

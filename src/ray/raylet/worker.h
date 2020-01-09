@@ -35,8 +35,9 @@ typedef std::shared_ptr<WorkerProcess> WorkerProcessHandle;
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(const WorkerID &worker_id, WorkerProcessHandle proc, const Language &language,
-         int port, std::shared_ptr<LocalClientConnection> connection,
+  /// NOTE: You MUST manually set the worker process.
+  Worker(const WorkerID &worker_id, const Language &language, int port,
+         std::shared_ptr<LocalClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -49,6 +50,7 @@ class Worker {
   WorkerID WorkerId() const;
   /// Return the worker process.
   WorkerProcessHandle Process() const;
+  void SetProcess(const WorkerProcessHandle &proc);
   Language GetLanguage() const;
   int Port() const;
   void AssignTaskId(const TaskID &task_id);

@@ -52,7 +52,7 @@ class WorkerPool {
   ///
   /// \param The Worker to be registered.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<Worker> &worker);
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid);
 
   /// Register a new driver.
   ///
@@ -86,15 +86,6 @@ class WorkerPool {
   ///
   /// \param The driver to disconnect. The driver must be registered.
   void DisconnectDriver(const std::shared_ptr<Worker> &driver);
-
-  /// Finds a starting worker process by its PID. Returns null if it's not found.
-  ///
-  /// DO NOT USE THIS FUNCTION. It should really not need to exist!
-  /// TODO(mehrdadn): We should redesign the classes to avoid it.
-  ///
-  /// \param The language of the worker.
-  /// \param The worker's process ID. Must be valid.
-  WorkerProcessHandle FindStartingWorkerByProcessId(const Language &language, pid_t pid);
 
   /// Add an idle worker to the pool.
   ///

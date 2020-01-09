@@ -966,30 +966,6 @@ void NodeManager::ProcessClientMessage(
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   client->Register();
-  auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
-  Language language = static_cast<Language>(message->language());
-  WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
-  WorkerProcessHandle proc =
-      worker_pool_.FindStartingWorkerByProcessId(language, message->worker_pid());
-  if (!proc) {
-    // This might be a non-child driver, or another unknown worker.
-    // An unknown worker shouldn't normally occur, but it can happen if workers
-    // fail to start in time, and end up connecting to a different raylet than the
-    // one that was intended.
-    RAY_LOG(WARNING)
-        << "Unrecognized worker " << worker_id << " with PID " << message->worker_pid();
-    if (message->is_worker()) {
-      return;  // don't try to register non-drivers
-    }
-    pid_t pid = message->worker_pid();
-    WorkerProcess worker_proc(pid);
-    // TODO(mehrdadn): We can't wait on a non-child, but should this really be detached?
-    worker_proc.detach();
-    proc = std::make_shared<WorkerProcess>(std::move(worker_proc));
-  }
-  auto worker = std::make_shared<Worker>(worker_id, proc, language, message->port(),
-                                         client, client_call_manager_);
-  Status status;
   flatbuffers::FlatBufferBuilder fbb;
   auto reply =
       ray::protocol::CreateRegisterClientReply(fbb, to_flatbuf(fbb, self_node_id_));
@@ -1004,19 +980,30 @@ void NodeManager::ProcessRegisterClientRequestMessage(
         }
       });
 
+  auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
+  Language language = static_cast<Language>(message->language());
+  WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
+  pid_t pid = message->worker_pid();
+  auto worker = std::make_shared<Worker>(worker_id, language, message->port(), client,
+                                         client_call_manager_);
   if (message->is_worker()) {
     // Register the new worker.
-    if (worker_pool_.RegisterWorker(worker).ok()) {
+    if (worker_pool_.RegisterWorker(worker, pid).ok()) {
       HandleWorkerAvailable(worker->Connection());
     }
   } else {
     // Register the new driver.
+    WorkerProcess worker_proc(pid);
+    // TODO(mehrdadn): We can't wait on a non-child, but should this really be detached?
+    worker_proc.detach();
+    WorkerProcessHandle proc = std::make_shared<WorkerProcess>(std::move(worker_proc));
+    worker->SetProcess(proc);
     const JobID job_id = from_flatbuf<JobID>(*message->job_id());
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
     worker->AssignTaskId(driver_task_id);
     worker->AssignJobId(job_id);
-    status = worker_pool_.RegisterDriver(worker);
+    Status status = worker_pool_.RegisterDriver(worker);
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr =

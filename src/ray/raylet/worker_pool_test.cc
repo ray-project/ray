@@ -37,11 +37,6 @@ class WorkerPoolMock : public WorkerPool {
     states_by_lang_.clear();
   }
 
-  void StartWorkerProcess(const Language &language,
-                          const std::vector<std::string> &dynamic_options = {}) {
-    WorkerPool::StartWorkerProcess(language, dynamic_options);
-  }
-
   WorkerProcessHandle StartProcess(
       const std::vector<std::string> &worker_command_args) override {
     // A non-null process handle that points to an invalid process object
@@ -105,8 +100,13 @@ class WorkerPoolTest : public ::testing::Test {
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
-    return std::shared_ptr<Worker>(new Worker(WorkerID::FromRandom(), proc, language, -1,
-                                              client, client_call_manager_));
+    std::shared_ptr<Worker> worker = std::make_shared<Worker>(WorkerID::FromRandom(),
+                                                              language, -1, client,
+                                                              client_call_manager_));
+    if (proc) {
+      worker->SetProcess(proc);
+    }
+    return worker;
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
@@ -161,11 +161,10 @@ TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
-  worker_pool_.StartWorkerProcess(Language::PYTHON);
-  WorkerProcessHandle proc = worker_pool_.LastStartedWorkerProcess();
+  WorkerProcessHandle proc = worker_pool_.StartWorkerProcess(Language::PYTHON);
   std::vector<std::shared_ptr<Worker>> workers;
   for (int i = 0; i < NUM_WORKERS_PER_PROCESS; i++) {
-    workers.push_back(CreateWorker(proc));
+    workers.push_back(CreateWorker(WorkerProcessHandle()));
   }
   for (const auto &worker : workers) {
     // Check that there's still a starting worker process
@@ -173,7 +172,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
-    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker));
+    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker, proc->id()));
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), worker);
   }
