@@ -210,7 +210,9 @@ genrule(
 
 java_binary(
     name = "ray_dist",
-    main_class = "none",
+    # This rule is used to package all Ray Java code and the third-party dependencies into a
+    # fat jar file. It's not really an executable jar. So we set its `main_class` to empty.
+    main_class = "",
     runtime_deps = [
         "//java:org_ray_ray_api",
         "//java:org_ray_ray_runtime",
