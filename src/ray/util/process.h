@@ -27,8 +27,9 @@ static constexpr boost::process::detail::args_ make_process_args;
 class ProcessHandle {
   typedef std::shared_ptr<Process> Ptr;
   Ptr proc_;
-public:
-  ProcessHandle(const Ptr &proc = Ptr()) : proc_(proc) { }
+
+ public:
+  ProcessHandle(const Ptr &proc = Ptr()) : proc_(proc) {}
   Ptr::element_type *get() const { return proc_.get(); }
   explicit operator bool() const { return !!proc_; }
   static ProcessHandle FromPid(pid_t pid) {

@@ -75,8 +75,7 @@ class WorkerPoolMock : public WorkerPool {
  private:
   ProcessHandle last_worker_process_;
   // The worker commands by process.
-  std::unordered_map<ProcessHandle, std::vector<std::string>>
-      worker_commands_by_proc_;
+  std::unordered_map<ProcessHandle, std::vector<std::string>> worker_commands_by_proc_;
 };
 
 class WorkerPoolTest : public ::testing::Test {
@@ -102,7 +101,7 @@ class WorkerPoolTest : public ::testing::Test {
                                       "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker = std::make_shared<Worker>(WorkerID::FromRandom(),
                                                               language, -1, client,
-                                                              client_call_manager_));
+                                                              client_call_manager_);
     if (proc) {
       worker->SetProcess(proc);
     }
@@ -148,8 +147,7 @@ static inline TaskSpecification ExampleTaskSpec(
 
 TEST_F(WorkerPoolTest, CompareWorkerProcessObjects) {
   typedef ProcessHandle T;
-  T a = std::make_shared<T::element_type>(), b = std::make_shared<T::element_type>();
-  T empty = T();
+  T a(std::make_shared<Process>()), b(std::make_shared<Process>()), empty = T();
   ASSERT_TRUE(std::equal_to<T>()(a, a));
   ASSERT_TRUE(!std::equal_to<T>()(a, b));
   ASSERT_TRUE(!std::equal_to<T>()(b, a));
@@ -169,7 +167,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
-    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker, proc->id()));
+    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker, proc.get()->id()));
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), worker);
   }
@@ -201,8 +199,9 @@ TEST_F(WorkerPoolTest, StartupWorkerProcessCount) {
       worker_pool_.StartWorkerProcess(LANGUAGES[j]);
       ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
-      if (last_started_worker_process != worker_pool_.LastStartedWorkerProcess()) {
-        last_started_worker_process = worker_pool_.LastStartedWorkerProcess();
+      ProcessHandle prev = worker_pool_.LastStartedWorkerProcess();
+      if (last_started_worker_process.get() != prev.get()) {
+        last_started_worker_process = prev;
         const auto &real_command =
             worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
         ASSERT_EQ(real_command, worker_commands[j]);

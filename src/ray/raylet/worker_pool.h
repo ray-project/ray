@@ -157,8 +157,8 @@ class WorkerPool {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  ProcessHandle StartWorkerProcess(
-      const Language &language, const std::vector<std::string> &dynamic_options = {});
+  ProcessHandle StartWorkerProcess(const Language &language,
+                                   const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -166,8 +166,7 @@ class WorkerPool {
   ///
   /// \param worker_command_args The command arguments of new worker process.
   /// \return An object representing the started worker process.
-  virtual ProcessHandle StartProcess(
-      const std::vector<std::string> &worker_command_args);
+  virtual ProcessHandle StartProcess(const std::vector<std::string> &worker_command_args);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();

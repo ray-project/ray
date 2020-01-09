@@ -993,8 +993,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     }
   } else {
     // Register the new driver.
-    ProcessHandle proc = ProcessHandle::FromPid(pid);
-    worker->SetProcess(proc);
+    worker->SetProcess(ProcessHandle::FromPid(pid));
     const JobID job_id = from_flatbuf<JobID>(*message->job_id());
     // Compute a dummy driver task id from a given driver.
     const TaskID driver_task_id = TaskID::ComputeDriverTaskId(worker_id);
@@ -1005,8 +1004,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       local_queues_.AddDriverTaskId(driver_task_id);
       auto job_data_ptr =
           gcs::CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
-                                  initial_config_.node_manager_address,
-                                  proc.get()->id());
+                                  initial_config_.node_manager_address, pid);
       RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(job_data_ptr, nullptr));
     }
   }
@@ -1205,7 +1203,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     cluster_resource_map_[self_node_id_].Release(lifetime_resources.ToResourceSet());
     worker->ResetLifetimeResourceIds();
 
-    RAY_LOG(DEBUG) << "Worker (pid=" << worker->Process().get()->id() << ") is disconnected. "
+    RAY_LOG(DEBUG) << "Worker (pid=" << worker->Process().get()->id()
+                   << ") is disconnected. "
                    << "job_id: " << worker->GetAssignedJobId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
@@ -1219,7 +1218,8 @@ void NodeManager::ProcessDisconnectClientMessage(
     local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
     worker_pool_.DisconnectDriver(worker);
 
-    RAY_LOG(DEBUG) << "Driver (pid=" << worker->Process().get()->id() << ") is disconnected. "
+    RAY_LOG(DEBUG) << "Driver (pid=" << worker->Process().get()->id()
+                   << ") is disconnected. "
                    << "job_id: " << job_id;
   }
 
@@ -2299,7 +2299,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   }
 
   RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
-                 << worker->Process().get()->id() << ", worker id: " << worker->WorkerId();
+                 << worker->Process().get()->id()
+                 << ", worker id: " << worker->WorkerId();
   flatbuffers::FlatBufferBuilder fbb;
 
   // Resource accounting: acquire resources for the assigned task.

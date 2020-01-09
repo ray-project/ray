@@ -220,13 +220,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t p
   const auto port = worker->Port();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  ProcessHandle key;
-  {
-    Process temp(pid);  // make a dummy process as a lookup key
-    temp.detach();            // detach it to make sure it doesn't actually do anything!
-    key = std::make_shared<Process>(std::move(temp));
-  }
-  auto it = state.starting_worker_processes.find(key);
+  auto it = state.starting_worker_processes.find(ProcessHandle::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
     return Status::Invalid("Unknown worker");
