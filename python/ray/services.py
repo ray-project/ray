@@ -1259,8 +1259,10 @@ def get_ray_jars_dir():
     current_dir = os.path.abspath(os.path.dirname(__file__))
     jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
     if not os.path.exists(jars_dir):
-        raise Exception("Ray jars is not packaged into ray. "
-                        "Please build ray with java enabled (set env var RAY_INSTALL_JAVA=1")
+        raise Exception(
+            "Ray jars is not packaged into ray. "
+            "Please build ray with java enabled (set env var RAY_INSTALL_JAVA=1"
+        )
     return os.path.abspath(os.path.join(current_dir, "jars"))
 
 
