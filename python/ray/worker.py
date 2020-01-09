@@ -548,7 +548,7 @@ def init(address=None,
          huge_pages=False,
          include_webui=None,
          webui_host="localhost",
-         job_id=None,
+         job_name=None,
          configure_logging=True,
          logging_level=logging.INFO,
          logging_format=ray_constants.LOGGER_FORMAT,
@@ -633,8 +633,8 @@ def init(address=None,
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
             external machines.
-        job_id: The ID of this job.
-        configure_logging: True if allow the logging cofiguration here.
+        job_name: The human-readable name of this job.
+        configure_logging: True if allow the logging configuration here.
             Otherwise, the users may want to configure it by their own.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
@@ -1085,7 +1085,6 @@ def connect(node,
             log_to_driver=False,
             worker=global_worker,
             driver_object_store_memory=None,
-            job_id=None,
             internal_config=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
@@ -1098,7 +1097,6 @@ def connect(node,
         worker: The ray.Worker instance.
         driver_object_store_memory: Limit the amount of memory the driver can
             use in the object store when creating objects.
-        job_id: The ID of job. If it's None, then we will generate one.
         internal_config: Dictionary of (str,str) containing internal config
             options to override the defaults.
     """
@@ -1122,24 +1120,22 @@ def connect(node,
 
     # Initialize some fields.
     if mode is WORKER_MODE:
-        # We should not specify the job_id if it's `WORKER_MODE`.
-        assert job_id is None
+        # We should not specify the job_id if it's `WORKER_MODE`,
+        # so set it to nil.
         job_id = JobID.nil()
         # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
         if setproctitle:
             setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
-        if job_id is None:
-            job_id = JobID.from_int(random.randint(1, 65535))
+        job_id = JobID.from_int(random.randint(1, 65535))
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
     else:
         # This is the code path of driver mode.
-        if job_id is None:
-            # TODO(qwang): use `GcsClient::GenerateJobId()` here.
-            job_id = JobID.from_int(
-                int(worker.redis_client.incr("JobCounter")))
+        # TODO(qwang): use `GcsClient::GenerateJobId()` here.
+        job_id = JobID.from_int(
+            int(worker.redis_client.incr("JobCounter")))
         # When tasks are executed on remote workers in the context of multiple
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
@@ -1147,8 +1143,7 @@ def connect(node,
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
 
-    if not isinstance(job_id, JobID):
-        raise TypeError("The type of given job id must be JobID.")
+
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -1182,10 +1177,12 @@ def connect(node,
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
+    # Register the index mapping from job_name to job_id.
+    # Check whether the job name exists.
+    worker.redis_client.hmset
     # Register the worker with Redis.
     if mode == SCRIPT_MODE:
-        # The concept of a driver is the same as the concept of a "job".
-        # Register the driver/job with Redis here.
+        # Register the driver with Redis here.
         import __main__ as main
         driver_info = {
             "node_ip_address": node.node_ip_address,
