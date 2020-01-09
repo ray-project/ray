@@ -810,7 +810,6 @@ std::shared_ptr<rpc::ProfileTableData> ObjectManager::GetAndResetProfilingInfo()
   profile_info->set_component_id(self_node_id_.Binary());
 
   {
-    // TODO(micafan) Remove this mutex in next PR.
     std::lock_guard<std::mutex> lock(profile_mutex_);
     for (auto const &profile_event : profile_events_) {
       profile_info->add_profile_events()->CopyFrom(profile_event);
