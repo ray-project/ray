@@ -145,8 +145,10 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
   }
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
-    Status status = gcs_client_->Nodes().Register(node_info);
-    return status.ok();
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+        node_info, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   std::vector<rpc::GcsNodeInfo> GetNodeInfoList() {
@@ -251,6 +253,15 @@ class ServiceBasedGcsGcsClientTest : public RedisServiceManagerForTest {
     std::promise<bool> promise;
     RAY_CHECK_OK(gcs_client_->Tasks().AsyncAddTaskLease(
         task_lease, [&promise](Status status) { promise.set_value(status.ok()); }));
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool AttemptTaskReconstruction(
+      const std::shared_ptr<rpc::TaskReconstructionData> task_reconstruction_data) {
+    std::promise<bool> promise;
+    RAY_CHECK_OK(gcs_client_->Tasks().AttemptTaskReconstruction(
+        task_reconstruction_data,
+        [&promise](Status status) { promise.set_value(status.ok()); }));
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -591,15 +602,20 @@ TEST_F(ServiceBasedGcsGcsClientTest, TestTaskInfo) {
   };
   RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(task_id, task_lease_subscribe,
                                                             nullptr));
-
   ClientID node_id = ClientID::FromRandom();
   auto task_lease = GenTaskLeaseData(task_id.Binary(), node_id.Binary());
-  //  ASSERT_TRUE(AddTaskLease(task_lease));
-//  EXPECT_EQ(task_lease_count, 1);
+  ASSERT_TRUE(AddTaskLease(task_lease));
+  EXPECT_EQ(task_lease_count, 2);
 
   RAY_CHECK_OK(gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id, nullptr));
-  //  ASSERT_TRUE(AddTaskLease(task_lease));
-//  EXPECT_EQ(task_lease_count, 1);
+  ASSERT_TRUE(AddTaskLease(task_lease));
+  EXPECT_EQ(task_lease_count, 2);
+
+  // Attempt task reconstruction
+  auto task_reconstruction_data = std::make_shared<rpc::TaskReconstructionData>();
+  task_reconstruction_data->set_task_id(task_id.Binary());
+  task_reconstruction_data->set_num_reconstructions(0);
+  ASSERT_TRUE(AttemptTaskReconstruction(task_reconstruction_data));
 }
 
 }  // namespace ray
