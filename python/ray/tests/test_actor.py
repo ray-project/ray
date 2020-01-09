@@ -1,23 +1,19 @@
-from __future__ import absolute_import, division, print_function
-
-import os
 import random
-import sys
-import time
-
 import numpy as np
+import os
 import pytest
-
-import ray
-import ray.cluster_utils
-import ray.test_utils
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
-from ray.test_utils import run_string_as_driver
-
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
+import sys
+import time
+
+import ray
+import ray.test_utils
+import ray.cluster_utils
+from ray.test_utils import run_string_as_driver
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
 def test_actor_init_error_propagated(ray_start_regular):
