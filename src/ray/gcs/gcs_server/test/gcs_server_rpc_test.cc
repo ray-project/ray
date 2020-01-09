@@ -613,6 +613,16 @@ TEST_F(GcsServerTest, TestStats) {
   ASSERT_TRUE(AddProfileData(add_profile_data_request));
 }
 
+TEST_F(GcsServerTest, TestErrorInfo) {
+  // Report error
+  rpc::ReportErrorRequest report_error_request;
+  rpc::ErrorTableData error_table_data;
+  JobID job_id = JobID::FromInt(1);
+  error_table_data.set_job_id(job_id.Binary());
+  report_error_request.mutable_error_data()->CopyFrom(error_table_data);
+  //  ASSERT_TRUE(ReportError(report_error_request));
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
