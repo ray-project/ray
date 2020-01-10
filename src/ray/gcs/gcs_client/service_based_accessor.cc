@@ -210,7 +210,7 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   auto node_id = ClientID::FromBinary(local_node_info.node_id());
-  RAY_LOG(INFO) << "Registering node info, node id = " << node_id;
+  RAY_LOG(INFO) << "Registering node info, node id = " << node_id << ", address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
