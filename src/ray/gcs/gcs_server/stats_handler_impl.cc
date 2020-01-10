@@ -7,7 +7,7 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
                                                AddProfileDataReply *reply,
                                                SendReplyCallback send_reply_callback) {
   ClientID node_id = ClientID::FromBinary(request.profile_data().component_id());
-  RAY_LOG(INFO) << "Adding profile data, component type = "
+  RAY_LOG(DEBUG) << "Adding profile data, component type = "
                  << request.profile_data().component_type() << ", node id = " << node_id;
   auto profile_table_data = std::make_shared<ProfileTableData>();
   profile_table_data->CopyFrom(request.profile_data());
@@ -24,7 +24,7 @@ void DefaultStatsHandler::HandleAddProfileData(const AddProfileDataRequest &requ
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(INFO) << "Finished adding profile data, component type = "
+  RAY_LOG(DEBUG) << "Finished adding profile data, component type = "
                  << request.profile_data().component_type() << ", node id = " << node_id;
 }
 
