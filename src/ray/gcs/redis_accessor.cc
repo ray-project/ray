@@ -589,6 +589,21 @@ Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
   return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
+RedisStatsInfoAccessor::RedisStatsInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status RedisStatsInfoAccessor::AsyncAddProfileData(
+    const std::shared_ptr<ProfileTableData> &data_ptr, const StatusCallback &callback) {
+  ProfileTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const UniqueID &id,
+                         const ProfileTableData &data) { callback(Status::OK()); };
+  }
+
+  ProfileTable &profile_table = client_impl_->profile_table();
+  return profile_table.Append(JobID::Nil(), UniqueID::FromRandom(), data_ptr, on_done);
+}
+
 }  // namespace gcs
 
 }  // namespace ray
