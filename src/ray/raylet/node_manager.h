@@ -121,10 +121,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handle an unexpected failure notification from GCS pubsub.
   ///
-  /// \param worker_id The ID of the failed worker.
-  /// \param worker_data Data associated with the worker failure.
+  /// \param worker_address The address of the worker that died.
   void HandleUnexpectedWorkerFailure(const WorkerID &worker_id,
-                                     const gcs::WorkerFailureData &worker_failed_data);
+                                     const rpc::Address &worker_address);
 
   /// Handler for the addition of a new node.
   ///
@@ -656,6 +655,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Map of workers leased out to direct call clients.
   std::unordered_map<WorkerID, std::shared_ptr<Worker>> leased_workers_;
 
+  /// Map from owner worker ID to a list of worker IDs that the owner has a
+  /// lease on.
+  std::unordered_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
+
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
 
@@ -686,6 +689,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// XXX
   void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
+
+  // Cache for the WorkerFailureTable in the GCS.
+  // TODO(swang): Evict entries from the cache.
+  std::unordered_set<WorkerID> failed_workers_cache_;
 };
 
 }  // namespace raylet

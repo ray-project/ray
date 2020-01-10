@@ -159,6 +159,7 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
 
+  njjj
   // Subscribe to resource changes.
   const auto &resources_changed =
       [this](const ClientID &id,
@@ -197,7 +198,7 @@ ray::Status NodeManager::RegisterGcs() {
   // in their rpc::Address to the ID of a failed raylet.
   const auto &failure_handler = [this](gcs::RedisGcsClient *client, const WorkerID &id,
                                        const gcs::WorkerFailureData &worker_failure) {
-    HandleUnexpectedWorkerFailure(id, worker_failure);
+    HandleUnexpectedWorkerFailure(worker_failure.worker_address());
   };
   RAY_CHECK_OK(gcs_client_->worker_failure_table().Subscribe(
       JobID::Nil(), ClientID::Nil(), failure_handler,
@@ -525,6 +526,27 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // guarantee that all tasks get flushed eventually, in case one of the tasks
   // in our local cache was supposed to be flushed by the node that died.
   lineage_cache_.FlushAllUncommittedTasks();
+}
+
+
+void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &worker_address) {
+  const WorkerID worker_id = WorkerID::FromBinary(worker_address.worker_id());
+  RAY_CHECK(!worker_id.IsNil());
+  RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
+  failed_workers_cache_.insert(worker_id);
+
+  // TODO(swang): Also clean up any lease requests owned by the failed worker
+  // from the task queues. This is only necessary for lease requests that are
+  // infeasible, since requests that are fulfilled will get canceled during
+  // dispatch.
+  for (const auto &pair : leased_workers_) {
+    auto &worker = pair.second;
+    const auto owner_id = WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
+    if (owner_id == worker_id && !worker->IsDetachedActor()) {
+      RAY_LOG(INFO) << "Owner " << owner_id << " died, killing leased worker " << worker->WorkerId();
+      KillWorker(worker);
+    }
+  }
 }
 
 void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
@@ -1575,11 +1597,14 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   // task directly on the worker.
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
+  rpc::Address owner_address = task.GetTaskSpecification().CallerAddress();
   task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback](
+      [this, task_id, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
-        RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
+        const auto owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+        RAY_CHECK(!owner_worker_id.IsNil());
+        RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << ", owner ID " << owner_worker_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -1601,11 +1626,18 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         send_reply_callback(Status::OK(), nullptr, nullptr);
 
         // TODO(swang): Kill worker if other end hangs up.
-        // TODO(swang): Implement a lease term by which the owner needs to return the
-        // worker.
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
-        leased_workers_[worker_id] = std::static_pointer_cast<Worker>(granted);
+
+        auto worker = std::static_pointer_cast<Worker>(granted);
+        leased_workers_[worker_id] = worker;
+        worker->SetOwnerAddress(owner_address);
+
+        if (failed_workers_cache_.count(owner_worker_id) > 0) {
+          // TODO(swang): Skip assigning this task to this worker instead of
+          // killing the worker?
+          KillWorker(worker);
+        }
       });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
@@ -1674,6 +1706,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
       }
       HandleWorkerAvailable(worker);
     }
+    worker->SetOwnerAddress(rpc::Address());
   } else {
     status = Status::Invalid("Returned worker does not exist any more");
   }
