@@ -25,6 +25,10 @@ class DefaultTaskInfoHandler : public rpc::TaskInfoHandler {
   void HandleAddTaskLease(const AddTaskLeaseRequest &request, AddTaskLeaseReply *reply,
                           SendReplyCallback send_reply_callback) override;
 
+  void HandleAttemptTaskReconstruction(const AttemptTaskReconstructionRequest &request,
+                                       AttemptTaskReconstructionReply *reply,
+                                       SendReplyCallback send_reply_callback) override;
+
  private:
   gcs::RedisGcsClient &gcs_client_;
 };

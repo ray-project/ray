@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Simple example of setting up a multi-agent policy mapping.
 
 Control the number of agents and policies via --num-agents and --num-policies.
