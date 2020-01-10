@@ -227,7 +227,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   const GcsNodeInfo &GetSelfInfo() const override;
 
-  Status Register(const GcsNodeInfo &node_info) override;
+  Status AsyncRegister(const GcsNodeInfo &node_info,
+                       const StatusCallback &callback) override;
 
   Status AsyncUnregister(const ClientID &node_id,
                          const StatusCallback &callback) override;
@@ -300,6 +301,22 @@ class RedisErrorInfoAccessor : public ErrorInfoAccessor {
 
   Status AsyncReportError(const std::shared_ptr<ErrorTableData> &data_ptr,
                           const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+};
+
+/// \class RedisStatsInfoAccessor
+/// RedisStatsInfoAccessor is an implementation of `StatsInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisStatsInfoAccessor : public StatsInfoAccessor {
+ public:
+  explicit RedisStatsInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisStatsInfoAccessor() = default;
+
+  Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
+                             const StatusCallback &callback) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};

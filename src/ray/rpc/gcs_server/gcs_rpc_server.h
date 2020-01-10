@@ -259,6 +259,10 @@ class TaskInfoGcsServiceHandler {
   virtual void HandleAddTaskLease(const AddTaskLeaseRequest &request,
                                   AddTaskLeaseReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleAttemptTaskReconstruction(
+      const AttemptTaskReconstructionRequest &request,
+      AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `TaskInfoGcsService`.
@@ -282,6 +286,7 @@ class TaskInfoGrpcService : public GrpcService {
     TASK_INFO_SERVICE_RPC_HANDLER(GetTask, 1);
     TASK_INFO_SERVICE_RPC_HANDLER(DeleteTasks, 1);
     TASK_INFO_SERVICE_RPC_HANDLER(AddTaskLease, 1);
+    TASK_INFO_SERVICE_RPC_HANDLER(AttemptTaskReconstruction, 1);
   }
 
  private:

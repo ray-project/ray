@@ -35,7 +35,7 @@ class Profiler {
 
   // RPC message containing profiling data. Holds the queue of profile events
   // until they are flushed.
-  rpc::ProfileTableData rpc_profile_data_ GUARDED_BY(mutex_);
+  std::shared_ptr<rpc::ProfileTableData> rpc_profile_data_ GUARDED_BY(mutex_);
 
   // Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import glob
 from itertools import chain
 import os
@@ -31,6 +27,10 @@ ray_files = [
     "ray/dashboard/dashboard.py",
     "ray/streaming/_streaming.so",
 ]
+
+build_java = os.getenv("RAY_INSTALL_JAVA") == "1"
+if build_java:
+    ray_files.append("ray/jars/ray_dist.jar")
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
@@ -95,7 +95,7 @@ class build_ext(_build_ext.build_ext):
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
         command = ["../build.sh", "-p", sys.executable]
-        if os.getenv("RAY_INSTALL_JAVA") == "1":
+        if build_java:
             # Also build binaries for Java if the above env variable exists.
             command += ["-l", "python,java"]
         subprocess.check_call(command)
@@ -145,7 +145,7 @@ class build_ext(_build_ext.build_ext):
             os.makedirs(parent_directory)
         if not os.path.exists(destination):
             print("Copying {} to {}.".format(source, destination))
-            shutil.copy(source, destination)
+            shutil.copy(source, destination, follow_symlinks=True)
 
 
 class BinaryDistribution(Distribution):

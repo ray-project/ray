@@ -94,5 +94,34 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
                  << ", node id = " << node_id;
 }
 
+void DefaultTaskInfoHandler::HandleAttemptTaskReconstruction(
+    const AttemptTaskReconstructionRequest &request,
+    AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) {
+  ClientID node_id =
+      ClientID::FromBinary(request.task_reconstruction().node_manager_id());
+  RAY_LOG(DEBUG) << "Reconstructing task, reconstructions num = "
+                 << request.task_reconstruction().num_reconstructions()
+                 << ", node id = " << node_id;
+  auto task_reconstruction_data = std::make_shared<TaskReconstructionData>();
+  task_reconstruction_data->CopyFrom(request.task_reconstruction());
+  auto on_done = [node_id, request, send_reply_callback](Status status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to reconstruct task, reconstructions num = "
+                     << request.task_reconstruction().num_reconstructions()
+                     << ", node id = " << node_id;
+    }
+    send_reply_callback(status, nullptr, nullptr);
+  };
+
+  Status status =
+      gcs_client_.Tasks().AttemptTaskReconstruction(task_reconstruction_data, on_done);
+  if (!status.ok()) {
+    on_done(status);
+  }
+  RAY_LOG(DEBUG) << "Finished reconstructing task, reconstructions num = "
+                 << request.task_reconstruction().num_reconstructions()
+                 << ", node id = " << node_id;
+}
+
 }  // namespace rpc
 }  // namespace ray

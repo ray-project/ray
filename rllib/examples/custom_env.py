@@ -8,10 +8,6 @@ This example shows:
 You can visualize experiment results in ~/ray_results using TensorBoard.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import gym
 from ray.rllib.models import ModelCatalog

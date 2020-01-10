@@ -2,10 +2,6 @@
 # https://github.com/openai/evolution-strategies-starter and from
 # https://github.com/modestyachts/ARS
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 import logging
 import numpy as np
