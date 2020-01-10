@@ -4,6 +4,7 @@ import logging
 import multiprocessing
 import os
 import random
+import re
 import resource
 import socket
 import subprocess
@@ -1248,6 +1249,18 @@ def start_raylet(redis_address,
     return process_info
 
 
+def get_ray_jars_dir():
+    """Return a directory where all ray-related jars and
+      their dependencies locate."""
+    current_dir = os.path.abspath(os.path.dirname(__file__))
+    jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
+    if not os.path.exists(jars_dir):
+        raise Exception("Ray jars is not packaged into ray. "
+                        "Please build ray with java enabled "
+                        "(set env var RAY_INSTALL_JAVA=1)")
+    return os.path.abspath(os.path.join(current_dir, "jars"))
+
+
 def build_java_worker_command(
         java_worker_options,
         redis_address,
@@ -1270,8 +1283,6 @@ def build_java_worker_command(
     Returns:
         The command string for starting Java worker.
     """
-    assert java_worker_options is not None
-
     command = "java "
 
     if redis_address is not None:
@@ -1294,10 +1305,29 @@ def build_java_worker_command(
     command += ("-Dray.raylet.config.num_workers_per_process_java=" +
                 "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
 
-    if java_worker_options:
-        # Put `java_worker_options` in the last, so it can overwrite the
-        # above options.
-        command += java_worker_options + " "
+    # Add ray jars path to java classpath
+    ray_jars = os.path.join(get_ray_jars_dir(), "*")
+    cp_sep = ":"
+    import platform
+    if platform.system() == "Windows":
+        cp_sep = ";"
+    if java_worker_options is None:
+        java_worker_options = ""
+    options = re.split("\\s+", java_worker_options)
+    cp_index = -1
+    for i in range(len(options)):
+        option = options[i]
+        if option == "-cp" or option == "-classpath":
+            cp_index = i + 1
+            break
+    if cp_index != -1:
+        options[cp_index] = options[cp_index] + cp_sep + ray_jars
+    else:
+        options = ["-cp", ray_jars] + options
+    java_worker_options = " ".join(options)
+    # Put `java_worker_options` in the last, so it can overwrite the
+    # above options.
+    command += java_worker_options + " "
 
     command += "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0 "
     command += "org.ray.runtime.runner.worker.DefaultWorker"
