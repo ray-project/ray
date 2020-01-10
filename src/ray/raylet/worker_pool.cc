@@ -488,9 +488,8 @@ void WorkerPool::WarnAboutSize() {
                       << "using nested tasks "
                       << "(see https://github.com/ray-project/ray/issues/3644) for "
                       << "some a discussion of workarounds.";
-      auto error_info_ptr = gcs::CreateErrorTableData(
-          JobID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportError(error_info_ptr, nullptr));
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportRayError(
+          "worker_pool_large", warning_message.str(), current_time_ms(), nullptr));
     }
   }
 }

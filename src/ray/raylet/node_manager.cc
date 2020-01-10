@@ -390,10 +390,9 @@ void NodeManager::WarnResourceDeadlock() {
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
         << "if this Ray cluster is expected to auto-scale.";
-    auto error_info_ptr = gcs::CreateErrorTableData(
+    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
         exemplar.GetTaskSpecification().JobId(), "resource_deadlock", error_message.str(),
-        current_time_ms());
-    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportError(error_info_ptr, nullptr));
+        current_time_ms(), nullptr));
     resource_deadlock_warned_ = true;
   }
 }
@@ -1150,9 +1149,8 @@ void NodeManager::ProcessDisconnectClientMessage(
         std::ostringstream error_message;
         error_message << "A worker died or was killed while executing task " << task_id
                       << ".";
-        auto error_info_ptr = gcs::CreateErrorTableData(job_id, type, error_message.str(),
-                                                        current_time_ms());
-        RAY_CHECK_OK(gcs_client_->Errors().AsyncReportError(error_info_ptr, nullptr));
+        RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
+            job_id, type, error_message.str(), current_time_ms(), nullptr));
       }
     }
 
@@ -1320,8 +1318,8 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   auto const &type = string_from_flatbuf(*message->type());
   auto const &error_message = string_from_flatbuf(*message->error_message());
   double timestamp = message->timestamp();
-  auto error_info_ptr = gcs::CreateErrorTableData(job_id, type, error_message, timestamp);
-  RAY_CHECK_OK(gcs_client_->Errors().AsyncReportError(error_info_ptr, nullptr));
+  RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(job_id, type, error_message,
+                                                         timestamp, nullptr));
 }
 
 void NodeManager::ProcessPrepareActorCheckpointRequest(
@@ -1780,10 +1778,9 @@ void NodeManager::ScheduleTasks(
           << "provide the requested resources. To resolve this issue, consider "
           << "reducing the resource requests of this task or add nodes that "
           << "can fit the task.";
-      auto error_info_ptr =
-          gcs::CreateErrorTableData(task.GetTaskSpecification().JobId(), type,
-                                    error_message.str(), current_time_ms());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportError(error_info_ptr, nullptr));
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
+          task.GetTaskSpecification().JobId(), type, error_message.str(),
+          current_time_ms(), nullptr));
     }
     // Assert that this placeable task is not feasible locally (necessary but not
     // sufficient).
@@ -1859,9 +1856,8 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
              << " object may hang forever.";
       std::string error_message = stream.str();
       RAY_LOG(WARNING) << error_message;
-      auto error_info_ptr =
-          gcs::CreateErrorTableData(job_id, "task", error_message, current_time_ms());
-      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportError(error_info_ptr, nullptr));
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
+          job_id, "task", error_message, current_time_ms(), nullptr));
     }
   }
 }
@@ -2637,10 +2633,9 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
     error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
                   << " is a driver task and so the object created by ray.put "
                   << "could not be reconstructed.";
-    auto error_info_ptr =
-        gcs::CreateErrorTableData(task.GetTaskSpecification().JobId(), type,
-                                  error_message.str(), current_time_ms());
-    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportError(error_info_ptr, nullptr));
+    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(
+        task.GetTaskSpecification().JobId(), type, error_message.str(), current_time_ms(),
+        nullptr));
     MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
                         {required_object_id.ToPlasmaId()},
                         task.GetTaskSpecification().JobId());

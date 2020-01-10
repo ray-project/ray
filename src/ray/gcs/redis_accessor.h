@@ -299,10 +299,17 @@ class RedisErrorInfoAccessor : public ErrorInfoAccessor {
 
   virtual ~RedisErrorInfoAccessor() = default;
 
-  Status AsyncReportError(const std::shared_ptr<ErrorTableData> &data_ptr,
-                          const StatusCallback &callback) override;
+  Status AsyncReportJobError(const JobID &job_id, const std::string &error_type,
+                             const std::string &error_msg, double timestamp,
+                             const StatusCallback &callback) override;
+
+  Status AsyncReportRayError(const std::string &error_type, const std::string &error_msg,
+                             double timestamp, const StatusCallback &callback) override;
 
  private:
+  Status AsyncReportError(const std::shared_ptr<ErrorTableData> &data_ptr,
+                          const StatusCallback &callback);
+
   RedisGcsClient *client_impl_{nullptr};
 };
 

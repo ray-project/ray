@@ -592,6 +592,25 @@ Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
 RedisErrorInfoAccessor::RedisErrorInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl) {}
 
+Status RedisErrorInfoAccessor::AsyncReportJobError(const JobID &job_id,
+                                                   const std::string &error_type,
+                                                   const std::string &error_msg,
+                                                   double timestamp,
+                                                   const StatusCallback &callback) {
+  RAY_CHECK(!job_id.IsNil());
+  auto data_ptr = CreateErrorTableData(job_id, error_type, error_msg, timestamp);
+  return AsyncReportError(data_ptr, callback);
+}
+
+Status RedisErrorInfoAccessor::AsyncReportRayError(const std::string &error_type,
+                                                   const std::string &error_msg,
+                                                   double timestamp,
+                                                   const StatusCallback &callback) {
+  // We use the nil JobID to broadcast the message to all drivers.
+  auto data_ptr = CreateErrorTableData(JobID::Nil(), error_type, error_msg, timestamp);
+  return AsyncReportError(data_ptr, callback);
+}
+
 Status RedisErrorInfoAccessor::AsyncReportError(
     const std::shared_ptr<ErrorTableData> &data_ptr, const StatusCallback &callback) {
   ErrorTable::WriteCallback on_done = nullptr;

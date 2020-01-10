@@ -68,10 +68,8 @@ void Monitor::Tick() {
             error_message << "The node with client ID " << node_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
-            // We use the nil JobID to broadcast the message to all drivers.
-            auto error_info_ptr = gcs::CreateErrorTableData(
-                JobID::Nil(), type, error_message.str(), current_time_ms());
-            RAY_CHECK_OK(gcs_client_.Errors().AsyncReportError(error_info_ptr, nullptr));
+            RAY_CHECK_OK(gcs_client_.Errors().AsyncReportRayError(
+                type, error_message.str(), current_time_ms(), nullptr));
           }
         };
         RAY_CHECK_OK(gcs_client_.Nodes().AsyncGetAll(lookup_callback));
