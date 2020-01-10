@@ -207,3 +207,30 @@ genrule(
     local = 1,
     tags = ["no-cache"],
 )
+
+java_binary(
+    name = "ray_dist",
+    # This rule is used to package all Ray Java code and the third-party dependencies into a
+    # fat jar file. It's not really an executable jar. So we set its `main_class` to empty.
+    main_class = "",
+    runtime_deps = [
+        "//java:org_ray_ray_api",
+        "//java:org_ray_ray_runtime",
+        "//streaming/java:org_ray_ray_streaming-api",
+        "//streaming/java:org_ray_ray_streaming-runtime",
+    ]
+)
+
+genrule(
+    name = "ray_java_pkg",
+    srcs = ["//java:ray_dist_deploy.jar"],
+    outs = ["ray_java_pkg.out"],
+    cmd = """
+        WORK_DIR=$$(pwd)
+        rm -rf $$WORK_DIR/python/ray/jars && mkdir -p $$WORK_DIR/python/ray/jars
+        cp -f $(location //java:ray_dist_deploy.jar) $$WORK_DIR/python/ray/jars/ray_dist.jar
+        echo $$(date) > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)

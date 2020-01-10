@@ -98,7 +98,7 @@ matrix:
 
     # Build Linux wheels.
     - os: linux
-      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
@@ -124,7 +124,7 @@ matrix:
     # Build MacOS wheels.
     - os: osx
       osx_image: xcode7
-      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
