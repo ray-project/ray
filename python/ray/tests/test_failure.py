@@ -15,6 +15,7 @@ import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray.test_utils import (
     relevant_errors,
+    wait_for_condition,
     wait_for_errors,
     RayTestTimeoutException,
 )
@@ -989,6 +990,56 @@ def test_serialized_id(ray_start_cluster):
 
     obj = ray.put(1)
     ray.get(get.remote([obj], True))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_nodes": 2,
+        "num_gpus": 1,
+    }, {
+        "num_nodes": 1,
+        "num_gpus": 2,
+    }],
+    indirect=True)
+def test_fate_sharing(ray_start_cluster):
+    @ray.remote(num_gpus=1)
+    def sleep():
+        time.sleep(1000)
+
+    @ray.remote(num_gpus=1)
+    class Actor(object):
+        def __init__(self):
+            pass
+        def getpid(self):
+            return os.getpid()
+        def sleep(self):
+            time.sleep(1000)
+        def start_child(self, use_actors):
+            if use_actors:
+                child = Actor.remote()
+                ray.get(child.sleep.remote())
+            else:
+                ray.get(sleep.remote())
+
+    @ray.remote(num_gpus=1)
+    def probe():
+        return os.getpid()
+
+    pid = ray.get(probe.remote())
+    for _ in range(3):
+        a = Actor.remote()
+        pid = ray.get(a.getpid.remote())
+        a.start_child.remote(use_actors=True)
+        time.sleep(1)
+        # Kill the parent process.
+        os.kill(pid, 9)
+    for _ in range(3):
+        a = Actor.remote()
+        pid = ray.get(a.getpid.remote())
+        a.start_child.remote(use_actors=False)
+        time.sleep(1)
+        # Kill the parent process.
+        os.kill(pid, 9)
 
 
 if __name__ == "__main__":
