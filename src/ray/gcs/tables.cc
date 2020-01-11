@@ -529,14 +529,6 @@ std::string ErrorTable::DebugString() const {
   return Log<JobID, ErrorTableData>::DebugString();
 }
 
-Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
-  // TODO(hchen): Change the parameter to shared_ptr to avoid copying data.
-  auto data = std::make_shared<ProfileTableData>();
-  data->CopyFrom(profile_events);
-  return Append(JobID::Nil(), UniqueID::FromRandom(), data,
-                /*done_callback=*/nullptr);
-}
-
 std::string ProfileTable::DebugString() const {
   return Log<UniqueID, ProfileTableData>::DebugString();
 }
@@ -640,10 +632,11 @@ Status ClientTable::Disconnect() {
   return status;
 }
 
-ray::Status ClientTable::Register(const GcsNodeInfo &node_info) {
+ray::Status ClientTable::MarkConnected(const GcsNodeInfo &node_info,
+                                       const WriteCallback &done) {
   RAY_CHECK(node_info.state() == GcsNodeInfo::ALIVE);
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(node_info);
-  return SyncAppend(JobID::Nil(), client_log_key_, node_info_ptr);
+  return Append(JobID::Nil(), client_log_key_, node_info_ptr, done);
 }
 
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id,

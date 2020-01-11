@@ -278,12 +278,12 @@ RLlib's soft-actor critic implementation is ported from the `official SAC repo <
 
 Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/pendulum-sac.yaml>`__, `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/halfcheetah-sac.yaml>`__
 
-**MuJoCo results @500k steps:** `more details <https://github.com/ray-project/rl-experiments>`__
+**MuJoCo results @3M steps:** `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ==========  ===================
 MuJoCo env     RLlib SAC   Haarnoja et al SAC
 =============  ==========  ===================
-HalfCheetah    8752        ~9000
+HalfCheetah    13000       ~15000
 =============  ==========  ===================
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):

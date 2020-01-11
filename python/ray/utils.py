@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import binascii
 import errno
 import hashlib
@@ -451,16 +447,6 @@ def estimate_available_memory():
         The total amount of available memory in bytes. It may be an
         overestimate if psutil is not installed.
     """
-
-    # check cgroup memory first
-    try:
-        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
-            cgroup_memory_usage = int(f.read())
-    except IOError:
-        cgroup_memory_usage = None
-
-    if cgroup_memory_usage is not None:
-        return get_system_memory() - cgroup_memory_usage
 
     # Use psutil if it is available.
     try:

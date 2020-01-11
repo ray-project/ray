@@ -416,7 +416,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Implements gRPC server handler.
   void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
                                    rpc::WaitForObjectEvictionReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback);
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,

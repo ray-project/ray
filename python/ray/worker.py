@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from contextlib import contextmanager
 import colorama
 import atexit
@@ -674,6 +670,11 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
+
+    if "OMP_NUM_THREADS" in os.environ:
+        logger.warning("OMP_NUM_THREADS={} is set, this may impact "
+                       "object transfer performance.".format(
+                           os.environ["OMP_NUM_THREADS"]))
 
     if setproctitle is None:
         logger.warning(

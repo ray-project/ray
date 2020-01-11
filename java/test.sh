@@ -21,6 +21,12 @@ echo "Linting Java code with checkstyle."
 # Thus, we add the `build_tests_only` option to avoid re-building everything.
 bazel test //java:all --test_tag_filters="checkstyle" --build_tests_only
 
+echo "Build java maven deps."
+bazel build //java:gen_maven_deps
+
+echo "Build test jar."
+bazel build //java:all_tests_deploy.jar
+
 echo "Running tests under cluster mode."
 # TODO(hchen): Ideally, we should use the following bazel command to run Java tests. However, if there're skipped tests,
 # TestNG will exit with code 2. And bazel treats it as test failure.

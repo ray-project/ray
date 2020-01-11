@@ -804,15 +804,15 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
   return it->second;
 }
 
-rpc::ProfileTableData ObjectManager::GetAndResetProfilingInfo() {
-  rpc::ProfileTableData profile_info;
-  profile_info.set_component_type("object_manager");
-  profile_info.set_component_id(self_node_id_.Binary());
+std::shared_ptr<rpc::ProfileTableData> ObjectManager::GetAndResetProfilingInfo() {
+  auto profile_info = std::make_shared<rpc::ProfileTableData>();
+  profile_info->set_component_type("object_manager");
+  profile_info->set_component_id(self_node_id_.Binary());
 
   {
     std::lock_guard<std::mutex> lock(profile_mutex_);
     for (auto const &profile_event : profile_events_) {
-      profile_info.add_profile_events()->CopyFrom(profile_event);
+      profile_info->add_profile_events()->CopyFrom(profile_event);
     }
     profile_events_.clear();
   }

@@ -10,10 +10,6 @@ pattern, and a custom action distribution class that leverages that model.
 This examples shows both.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 from gym.spaces import Discrete, Tuple
 import argparse

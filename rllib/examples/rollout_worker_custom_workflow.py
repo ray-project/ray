@@ -5,10 +5,6 @@ a custom Policy class and manually coordinate distributed sample
 collection and policy optimization.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import gym
 
