@@ -119,6 +119,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
  private:
   /// Methods for handling clients.
 
+  /// Handle an unexpected failure notification from GCS pubsub.
+  ///
+  /// \param worker_id The ID of the failed worker.
+  /// \param worker_data Data associated with the worker failure.
+  void HandleUnexpectedWorkerFailure(const WorkerID &worker_id,
+                                     const gcs::WorkerFailureData &worker_failed_data);
+
   /// Handler for the addition of a new node.
   ///
   /// \param data Data associated with the new node.

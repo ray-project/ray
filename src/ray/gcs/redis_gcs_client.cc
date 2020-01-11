@@ -140,6 +140,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
+  worker_failure_table_.reset(new WorkerFailureTable(shard_contexts_, this));
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
   job_accessor_.reset(new RedisJobInfoAccessor(this));
@@ -197,6 +198,10 @@ ObjectTable &RedisGcsClient::object_table() { return *object_table_; }
 raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_table_; }
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
+
+WorkerFailureTable &RedisGcsClient::worker_failure_table() {
+  return *worker_failure_table_;
+}
 
 TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;

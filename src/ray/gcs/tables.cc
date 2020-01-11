@@ -790,6 +790,7 @@ template class Log<JobID, JobTableData>;
 template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
+template class Table<WorkerID, WorkerFailureData>;
 
 template class Log<ClientID, ResourceTableData>;
 template class Hash<ClientID, ResourceTableData>;

@@ -27,7 +27,8 @@ enum TablePrefix {
   ACTOR_CHECKPOINT_ID = 16;
   NODE_RESOURCE = 17;
   DIRECT_ACTOR = 18;
-  TABLE_PREFIX_MAX = 19;
+  WORKER_FAILURE = 19;
+  TABLE_PREFIX_MAX = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -46,7 +47,8 @@ enum TablePubsub {
   JOB_PUBSUB = 11;
   NODE_RESOURCE_PUBSUB = 12;
   DIRECT_ACTOR_PUBSUB = 13;
-  TABLE_PUBSUB_MAX = 14;
+  WORKER_FAILURE_PUBSUB = 14;
+  TABLE_PUBSUB_MAX = 15;
 }
 
 enum GcsChangeMode {
@@ -270,6 +272,13 @@ message ActorCheckpointIdData {
   repeated bytes checkpoint_ids = 2;
   // A list of the timestamps for each of the above `checkpoint_ids`.
   repeated uint64 timestamps = 3;
+}
+
+message WorkerFailureData {
+  // Address of the worker that failed.
+  Address worker_address = 1;
+  // The UNIX timestamp at which the worker failed.
+  int64 timestamp = 3;
 }
 
 // This enum type is used as object's metadata to indicate the object's creating

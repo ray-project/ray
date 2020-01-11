@@ -66,6 +66,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   // TODO: Some API for getting the error on the driver
   ErrorTable &error_table();
+  WorkerFailureTable &worker_failure_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -125,6 +126,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::unique_ptr<ActorCheckpointTable> actor_checkpoint_table_;
   std::unique_ptr<ActorCheckpointIdTable> actor_checkpoint_id_table_;
   std::unique_ptr<DynamicResourceTable> resource_table_;
+  std::unique_ptr<WorkerFailureTable> worker_failure_table_;
   // The following contexts write to the data shard
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
   std::vector<std::unique_ptr<RedisAsioClient>> shard_asio_async_clients_;
