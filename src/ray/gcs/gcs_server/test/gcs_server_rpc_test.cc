@@ -345,6 +345,16 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool AddProfileData(const rpc::AddProfileDataRequest &request) {
+    std::promise<bool> promise;
+    client_->AddProfileData(
+        request, [&promise](const Status &status, const rpc::AddProfileDataReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
@@ -593,6 +603,14 @@ TEST_F(GcsServerTest, TestTaskInfo) {
   attempt_task_reconstruction_request.mutable_task_reconstruction()->CopyFrom(
       task_reconstruction_data);
   ASSERT_TRUE(AttemptTaskReconstruction(attempt_task_reconstruction_request));
+}
+
+TEST_F(GcsServerTest, TestStats) {
+  rpc::ProfileTableData profile_table_data;
+  profile_table_data.set_component_id(ClientID::FromRandom().Binary());
+  rpc::AddProfileDataRequest add_profile_data_request;
+  add_profile_data_request.mutable_profile_data()->CopyFrom(profile_table_data);
+  ASSERT_TRUE(AddProfileData(add_profile_data_request));
 }
 
 }  // namespace ray
