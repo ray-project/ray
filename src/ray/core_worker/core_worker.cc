@@ -103,18 +103,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
-  // Subscribe to all unexpected worker failure notifications from the local
-  // and remote raylets. Note that this does not include workers that failed
-  // due to node failure.
-  const auto &worker_failed = [this](gcs::RedisGcsClient *client, const WorkerID &id,
-                                     const gcs::WorkerFailureData &worker_failure) {
-    HandleWorkerFailed(id, worker_failure);
-  };
-  RAY_CHECK_OK(gcs_client_->worker_failure_table().Subscribe(
-      JobID::Nil(), ClientID::Nil(), worker_failed,
-      /*subscribe_callback=*/nullptr,
-      /*done_callback=*/nullptr));
-
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
 
   // Initialize profiler.
@@ -258,19 +246,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (direct_task_receiver_ != nullptr) {
     direct_task_receiver_->Init(client_factory, rpc_address_);
   }
-}
-
-void CoreWorker::HandleWorkerFailed(const WorkerID &worker_id,
-                                    const gcs::WorkerFailureData &worker_failed_data) {
-  RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
-  // TODO: Clean up after the failure:
-  // - If the failed worker is our owner, then exit.
-  // - If the failed worker is the owner for any active ObjectID references,
-  // then throw an UnreconstructableError for these objects. This can happen if
-  // the ObjectID was serialized.
-  // - If the failed worker held an active ObjectID reference to an object that
-  // we own, decrement the reference count. This can happen if the ObjectID was
-  // serialized.
 }
 
 CoreWorker::~CoreWorker() {

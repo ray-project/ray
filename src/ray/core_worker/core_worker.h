@@ -427,13 +427,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                 rpc::GetCoreWorkerStatsReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a worker failure notification from GCS pubsub.
-  ///
-  /// \param worker_id The ID of the failed worker.
-  /// \param worker_data Data associated with the worker failure.
-  void HandleWorkerFailed(const WorkerID &worker_id,
-                          const gcs::WorkerFailureData &worker_failed_data);
-
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
