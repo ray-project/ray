@@ -40,6 +40,7 @@ using rpc::TablePubsub;
 using rpc::TaskLeaseData;
 using rpc::TaskReconstructionData;
 using rpc::TaskTableData;
+using rpc::WorkerFailureData;
 
 class RedisContext;
 
@@ -714,6 +715,17 @@ class ActorTable : public Log<ActorID, ActorTableData> {
     pubsub_channel_ = TablePubsub::ACTOR_PUBSUB;
     prefix_ = TablePrefix::ACTOR;
   }
+};
+
+class WorkerFailureTable : public Table<WorkerID, WorkerFailureData> {
+ public:
+  WorkerFailureTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                     RedisGcsClient *client)
+      : Table(contexts, client) {
+    pubsub_channel_ = TablePubsub::WORKER_FAILURE_PUBSUB;
+    prefix_ = TablePrefix::WORKER_FAILURE;
+  }
+  virtual ~WorkerFailureTable() {}
 };
 
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
