@@ -210,7 +210,8 @@ ServiceBasedNodeInfoAccessor::ServiceBasedNodeInfoAccessor(
 
 Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   auto node_id = ClientID::FromBinary(local_node_info.node_id());
-  RAY_LOG(INFO) << "Registering node info, node id = " << node_id << ", address is = " << local_node_info.node_manager_address();
+  RAY_LOG(INFO) << "Registering node info, node id = " << node_id
+                << ", address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
@@ -598,6 +599,89 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
   RAY_LOG(INFO) << "Finished reconstructing task, reconstructions num = "
                 << data_ptr->num_reconstructions() << ", node id = " << node_id;
   return Status::OK();
+}
+
+ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl),
+      object_sub_executor_(client_impl->GetRedisGcsClient().object_table()) {}
+
+Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
+    const ObjectID &object_id, const MultiItemCallback<rpc::ObjectTableData> &callback) {
+  RAY_LOG(INFO) << "Getting object locations, object id = " << object_id;
+  rpc::GetObjectLocationsRequest request;
+  request.set_object_id(object_id.Binary());
+  client_impl_->GetGcsRpcClient().GetObjectLocations(
+      request,
+      [callback](const Status &status, const rpc::GetObjectLocationsReply &reply) {
+        std::vector<ObjectTableData> result;
+        result.reserve((reply.object_table_data_list_size()));
+        for (int index = 0; index < reply.object_table_data_list_size(); ++index) {
+          result.emplace_back(reply.object_table_data_list(index));
+        }
+        callback(status, result);
+      });
+  RAY_LOG(INFO) << "Finished getting object locations, object id = " << object_id;
+  return Status::OK();
+}
+
+Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_id,
+                                                        const ClientID &node_id,
+                                                        const StatusCallback &callback) {
+  RAY_LOG(INFO) << "Adding object location, object id = " << object_id
+                << ", node id = " << node_id;
+  rpc::AddObjectLocationRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_node_id(node_id.Binary());
+  client_impl_->GetGcsRpcClient().AddObjectLocation(
+      request,
+      [callback](const Status &status, const rpc::AddObjectLocationReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  RAY_LOG(INFO) << "Finished adding object location, object id = " << object_id
+                 << ", node id = " << node_id;
+  return Status::OK();
+}
+
+Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
+    const ObjectID &object_id, const ClientID &node_id, const StatusCallback &callback) {
+  RAY_LOG(INFO) << "Removing object location, object id = " << object_id
+                << ", node id = " << node_id;
+  rpc::RemoveObjectLocationRequest request;
+  request.set_object_id(object_id.Binary());
+  request.set_node_id(node_id.Binary());
+  client_impl_->GetGcsRpcClient().RemoveObjectLocation(
+      request,
+      [callback](const Status &status, const rpc::RemoveObjectLocationReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  RAY_LOG(INFO) << "Finished removing object location, object id = " << object_id
+                 << ", node id = " << node_id;
+  return Status::OK();
+}
+
+Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
+    const ObjectID &object_id,
+    const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+    const StatusCallback &done) {
+  RAY_LOG(INFO) << "Subscribing object location, object id = " << object_id;
+  RAY_CHECK(subscribe != nullptr);
+  auto status =
+      object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
+  RAY_LOG(INFO) << "Finished subscribing object location, object id = " << object_id;
+  return status;
+}
+
+Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
+    const ObjectID &object_id, const StatusCallback &done) {
+  RAY_LOG(INFO) << "Unsubscribing object location, object id = " << object_id;
+  auto status = object_sub_executor_.AsyncUnsubscribe(subscribe_id_, object_id, done);
+  RAY_LOG(INFO) << "Finished unsubscribing object location, object id = " << object_id;
+  return status;
 }
 
 }  // namespace gcs

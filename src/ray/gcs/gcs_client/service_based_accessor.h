@@ -220,6 +220,43 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
   TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
 
+/// \class ServiceBasedObjectInfoAccessor
+/// ServiceBasedObjectInfoAccessor is an implementation of `ObjectInfoAccessor`
+/// that uses GCS service as the backend storage.
+class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
+ public:
+  explicit ServiceBasedObjectInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedObjectInfoAccessor() = default;
+
+  Status AsyncGetLocations(
+      const ObjectID &object_id,
+      const MultiItemCallback<rpc::ObjectTableData> &callback) override;
+
+  Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
+                          const StatusCallback &callback) override;
+
+  Status AsyncRemoveLocation(const ObjectID &object_id, const ClientID &node_id,
+                             const StatusCallback &callback) override;
+
+  Status AsyncSubscribeToLocations(
+      const ObjectID &object_id,
+      const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncUnsubscribeToLocations(const ObjectID &object_id,
+                                     const StatusCallback &done) override;
+
+ private:
+  ServiceBasedGcsClient *client_impl_{nullptr};
+
+  ClientID subscribe_id_{ClientID::FromRandom()};
+
+  typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
+      ObjectSubscriptionExecutor;
+  ObjectSubscriptionExecutor object_sub_executor_;
+};
+
 }  // namespace gcs
 }  // namespace ray
 
