@@ -333,11 +333,13 @@ class NodeInfoAccessor {
   /// \return GcsNodeInfo
   virtual const rpc::GcsNodeInfo &GetSelfInfo() const = 0;
 
-  /// Register node to GCS synchronously.
+  /// Register a node to GCS asynchronously.
   ///
   /// \param node_info The information of node to register to GCS.
+  /// \param callback Callback that will be called when registration is complete.
   /// \return Status
-  virtual Status Register(const rpc::GcsNodeInfo &node_info) = 0;
+  virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
+                               const StatusCallback &callback) = 0;
 
   /// Cancel registration of a node to GCS asynchronously.
   ///
@@ -469,6 +471,22 @@ class NodeInfoAccessor {
 
  protected:
   NodeInfoAccessor() = default;
+};
+
+/// \class StatsInfoAccessor
+/// `StatsInfoAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// stats in the GCS.
+class StatsInfoAccessor {
+ public:
+  virtual ~StatsInfoAccessor() = default;
+
+  virtual Status AsyncAddProfileData(
+      const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+ protected:
+  StatsInfoAccessor() = default;
 };
 
 }  // namespace gcs

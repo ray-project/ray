@@ -95,6 +95,13 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *task_accessor_;
   }
 
+  /// Get the sub-interface for accessing stats in GCS.
+  /// This function is thread safe.
+  StatsInfoAccessor &Stats() {
+    RAY_CHECK(stats_accessor_ != nullptr);
+    return *stats_accessor_;
+  }
+
  protected:
   /// Constructor of GcsClient.
   ///
@@ -111,6 +118,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<ObjectInfoAccessor> object_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
+  std::unique_ptr<StatsInfoAccessor> stats_accessor_;
 };
 
 }  // namespace gcs

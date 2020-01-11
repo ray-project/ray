@@ -109,8 +109,8 @@ element ``x_{i+1}`` is fetched from the source actor. This is useful if you need
 update the source actor between iterator steps. Note that for async gather, this
 ordering only applies per shard.
 
-**Operator state**: Operator state is preserved for each shard. This means that you can pass a stateful callable to ``.foreach()``:
-For example, this means you can pass a stateful callable to ``.foreach()``:
+**Operator state**: Operator state is preserved for each shard.
+This means that you can pass a stateful callable to ``.foreach()``:
 
 .. code-block:: python
 
