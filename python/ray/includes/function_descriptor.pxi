@@ -15,20 +15,17 @@ import cython
 cdef dict FunctionDescriptor_type_map = {}
 cdef CFunctionDescriptorToPython(CFunctionDescriptor function_descriptor):
     if len(FunctionDescriptor_type_map) == 0:
-        for subtype in FunctionDescriptorType.__subclasses__():
+        for subtype in FunctionDescriptor.__subclasses__():
             k = getattr(subtype, '__c_function_descriptor_type__')
             FunctionDescriptor_type_map[k] = subtype
     tp = FunctionDescriptor_type_map.get(<int>function_descriptor.get().Type())
-    cdef FunctionDescriptorType instance = tp.__new__(tp)
+    cdef FunctionDescriptor instance = tp.__new__(tp)
     instance.__setstate__(function_descriptor.get().Serialize())
     return instance
 
 
 @cython.auto_pickle(False)
-cdef class FunctionDescriptorType:
-    cdef:
-        CFunctionDescriptor descriptor
-
+cdef class FunctionDescriptor:
     def __init__(self):
         raise Exception("type {} is abstract".format(type(self).__name__))
 
@@ -46,7 +43,7 @@ cdef class FunctionDescriptorType:
 
 
 @cython.auto_pickle(False)
-cdef class DriverFunctionDescriptor(FunctionDescriptorType):
+cdef class DriverFunctionDescriptor(FunctionDescriptor):
     __c_function_descriptor_type__ = <int>DriverFunctionDescriptorType
 
     def __init__(self):
@@ -54,7 +51,7 @@ cdef class DriverFunctionDescriptor(FunctionDescriptorType):
 
 
 @cython.auto_pickle(False)
-cdef class JavaFunctionDescriptor(FunctionDescriptorType):
+cdef class JavaFunctionDescriptor(FunctionDescriptor):
     cdef:
         CJavaFunctionDescriptor *typed_descriptor
 
@@ -104,7 +101,7 @@ cdef class JavaFunctionDescriptor(FunctionDescriptorType):
 
 
 @cython.auto_pickle(False)
-cdef class PythonFunctionDescriptor(FunctionDescriptorType):
+cdef class PythonFunctionDescriptor(FunctionDescriptor):
     cdef:
         CPythonFunctionDescriptor *typed_descriptor
         object _function_id

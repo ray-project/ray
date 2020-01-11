@@ -350,16 +350,6 @@ cdef int prepare_resources(
     return 0
 
 
-cdef c_vector[c_string] string_vector_from_list(list string_list):
-    cdef:
-        c_vector[c_string] out
-    for s in string_list:
-        if not isinstance(s, bytes):
-            raise TypeError("string_list elements must be bytes")
-        out.push_back(s)
-    return out
-
-
 cdef:
     c_string pickle_metadata_str = PICKLE_BUFFER_METADATA
     shared_ptr[CBuffer] pickle_metadata = dynamic_pointer_cast[
@@ -945,7 +935,7 @@ cdef class CoreWorker:
 
     def submit_task(self,
                     Language language,
-                    FunctionDescriptorType function_descriptor,
+                    FunctionDescriptor function_descriptor,
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
@@ -977,7 +967,7 @@ cdef class CoreWorker:
 
     def create_actor(self,
                      Language language,
-                     FunctionDescriptorType function_descriptor,
+                     FunctionDescriptor function_descriptor,
                      args,
                      uint64_t max_reconstructions,
                      resources,
@@ -1017,7 +1007,7 @@ cdef class CoreWorker:
     def submit_actor_task(self,
                           Language language,
                           ActorID actor_id,
-                          FunctionDescriptorType function_descriptor,
+                          FunctionDescriptor function_descriptor,
                           args,
                           int num_return_vals,
                           double num_method_cpus,
