@@ -730,6 +730,25 @@ std::string ClientTable::DebugString() const {
   return result.str();
 }
 
+Status TaskLeaseTable::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                 const Callback &subscribe,
+                                 const SubscriptionCallback &done) {
+  auto on_subscribe = [subscribe](RedisGcsClient *client, const TaskID &task_id,
+                                  const std::vector<TaskLeaseData> &data) {
+    std::vector<boost::optional<TaskLeaseData>> result;
+    for (const auto &item : data) {
+      boost::optional<TaskLeaseData> optional_item(item);
+      result.emplace_back(std::move(optional_item));
+    }
+    if (result.empty()) {
+      boost::optional<TaskLeaseData> optional_item;
+      result.emplace_back(std::move(optional_item));
+    }
+    subscribe(client, task_id, result);
+  };
+  return Table<TaskID, TaskLeaseData>::Subscribe(job_id, client_id, on_subscribe, done);
+}
+
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id,

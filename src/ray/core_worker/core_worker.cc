@@ -83,6 +83,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
+      task_queue_length_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
@@ -880,6 +881,8 @@ Status CoreWorker::AllocateReturnObjects(
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects) {
+  task_queue_length_ -= 1;
+
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
   }
@@ -1026,6 +1029,7 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                         nullptr);
     return;
   } else {
+    task_queue_length_ += 1;
     task_execution_service_.post([=] {
       raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
     });
@@ -1040,6 +1044,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     return;
   }
 
+  task_queue_length_ += 1;
   task_execution_service_.post([=] {
     direct_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
@@ -1120,6 +1125,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   absl::MutexLock lock(&mutex_);
   auto stats = reply->mutable_core_worker_stats();
   stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  stats->set_task_queue_length(task_queue_length_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
   if (!current_task_.TaskId().IsNil()) {
     stats->set_current_task_desc(current_task_.DebugString());
@@ -1139,6 +1145,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     (*used_resources_map)[it.first] = quantity;
   }
   stats->set_webui_display(webui_display_);
+  MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
+  stats->set_num_local_objects(memory_store_stats.num_local_objects);
+  stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

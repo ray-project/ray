@@ -197,12 +197,40 @@ class TaskInfoAccessor {
       const StatusCallback &done) = 0;
 
   /// Cancel subscription to a task asynchronously.
-  /// This method is for node only (core worker shouldn't use this method).
   ///
   /// \param task_id The ID of the task to be unsubscribed to.
   /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
   virtual Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) = 0;
+
+  /// Add a task lease to GCS asynchronously.
+  ///
+  /// \param data_ptr The task lease that will be added to GCS.
+  /// \param callback Callback that will be called after task lease has been added
+  /// to GCS.
+  /// \return Status
+  virtual Status AsyncAddTaskLease(const std::shared_ptr<rpc::TaskLeaseData> &data_ptr,
+                                   const StatusCallback &callback) = 0;
+
+  /// Subscribe asynchronously to the event that the given task lease is added in GCS.
+  ///
+  /// \param task_id The ID of the task to be subscribed to.
+  /// \param subscribe Callback that will be called each time when the task lease is
+  /// updated or the task lease is empty currently.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
+      const StatusCallback &done) = 0;
+
+  /// Cancel subscription to a task lease asynchronously.
+  ///
+  /// \param task_id The ID of the task to be unsubscribed to.
+  /// \param done Callback that will be called when unsubscribe is complete.
+  /// \return Status
+  virtual Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                           const StatusCallback &done) = 0;
 
  protected:
   TaskInfoAccessor() = default;

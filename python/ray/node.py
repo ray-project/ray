@@ -198,7 +198,7 @@ class Node:
         else:
             self._temp_dir = ray.utils.decode(redis_client.get("temp_dir"))
 
-        try_to_create_directory(self._temp_dir, warn_if_exist=False)
+        try_to_create_directory(self._temp_dir)
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
@@ -212,12 +212,12 @@ class Node:
         try_to_symlink(session_symlink, self._session_dir)
         # Create a directory to be used for socket files.
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
-        try_to_create_directory(self._sockets_dir, warn_if_exist=False)
+        try_to_create_directory(self._sockets_dir)
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
-        try_to_create_directory(self._logs_dir, warn_if_exist=False)
+        try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
-        try_to_create_directory(old_logs_dir, warn_if_exist=False)
+        try_to_create_directory(old_logs_dir)
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""

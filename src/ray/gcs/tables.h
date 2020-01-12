@@ -716,16 +716,6 @@ class ActorTable : public Log<ActorID, ActorTableData> {
   }
 };
 
-class DirectActorTable : public Log<ActorID, ActorTableData> {
- public:
-  DirectActorTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-                   RedisGcsClient *client)
-      : Log(contexts, client) {
-    pubsub_channel_ = TablePubsub::DIRECT_ACTOR_PUBSUB;
-    prefix_ = TablePrefix::DIRECT_ACTOR;
-  }
-};
-
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::vector<std::shared_ptr<RedisContext>> &contexts,
@@ -737,6 +727,12 @@ class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
 
 class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
  public:
+  /// Use boost::optional to represent subscription results, so that we can
+  /// notify raylet whether the entry of task lease is empty.
+  using Callback =
+      std::function<void(RedisGcsClient *client, const TaskID &task_id,
+                         const std::vector<boost::optional<TaskLeaseData>> &data)>;
+
   TaskLeaseTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                  RedisGcsClient *client)
       : Table(contexts, client) {
@@ -759,6 +755,11 @@ class TaskLeaseTable : public Table<TaskID, TaskLeaseData> {
 
     return GetRedisContext(id)->RunArgvAsync(args);
   }
+
+  /// Implement this method for the subscription tools class SubscriptionExecutor.
+  /// In this way TaskLeaseTable() can also reuse class SubscriptionExecutor.
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const Callback &subscribe, const SubscriptionCallback &done);
 };
 
 class ActorCheckpointTable : public Table<ActorCheckpointID, ActorCheckpointData> {

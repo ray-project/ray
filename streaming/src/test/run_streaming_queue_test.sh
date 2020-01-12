@@ -22,7 +22,6 @@ fi
 # Cause the script to exit if a single command fails.
 set -e
 set -x
-export STREAMING_METRICS_MODE=DEV
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"

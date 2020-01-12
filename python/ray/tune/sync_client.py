@@ -9,10 +9,8 @@ import subprocess
 import tempfile
 import types
 
-try:  # py3
-    from shlex import quote
-except ImportError:  # py2
-    from pipes import quote
+from shlex import quote
+
 from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)

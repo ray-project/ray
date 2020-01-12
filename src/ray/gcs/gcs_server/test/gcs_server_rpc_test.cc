@@ -1,7 +1,5 @@
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/actor_info_handler_impl.h"
 #include "ray/gcs/gcs_server/gcs_server.h"
-#include "ray/gcs/gcs_server/job_info_handler_impl.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/test_util.h"
 
@@ -208,6 +206,44 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool UpdateResources(const rpc::UpdateResourcesRequest &request) {
+    std::promise<bool> promise;
+    client_->UpdateResources(request, [&promise](const Status &status,
+                                                 const rpc::UpdateResourcesReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool DeleteResources(const rpc::DeleteResourcesRequest &request) {
+    std::promise<bool> promise;
+    client_->DeleteResources(request, [&promise](const Status &status,
+                                                 const rpc::DeleteResourcesReply &reply) {
+      RAY_CHECK_OK(status);
+      promise.set_value(true);
+    });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  std::map<std::string, gcs::ResourceTableData> GetResources(const std::string &node_id) {
+    rpc::GetResourcesRequest request;
+    request.set_node_id(node_id);
+    std::map<std::string, gcs::ResourceTableData> resources;
+    std::promise<bool> promise;
+    client_->GetResources(request,
+                          [&resources, &promise](const Status &status,
+                                                 const rpc::GetResourcesReply &reply) {
+                            RAY_CHECK_OK(status);
+                            for (auto resource : reply.resources()) {
+                              resources[resource.first] = resource.second;
+                            }
+                            promise.set_value(true);
+                          });
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return resources;
+  }
+
   bool AddObjectLocation(const rpc::AddObjectLocationRequest &request) {
     std::promise<bool> promise;
     client_->AddObjectLocation(
@@ -251,6 +287,43 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return object_locations;
   }
 
+  bool AddTask(const rpc::AddTaskRequest &request) {
+    std::promise<bool> promise;
+    client_->AddTask(request,
+                     [&promise](const Status &status, const rpc::AddTaskReply &reply) {
+                       RAY_CHECK_OK(status);
+                       promise.set_value(true);
+                     });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  rpc::TaskTableData GetTask(const std::string &task_id) {
+    rpc::TaskTableData task_data;
+    rpc::GetTaskRequest request;
+    request.set_task_id(task_id);
+    std::promise<bool> promise;
+    client_->GetTask(request, [&task_data, &promise](const Status &status,
+                                                     const rpc::GetTaskReply &reply) {
+      if (status.ok()) {
+        task_data.CopyFrom(reply.task_data());
+      }
+      promise.set_value(true);
+    });
+
+    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    return task_data;
+  }
+
+  bool DeleteTasks(const rpc::DeleteTasksRequest &request) {
+    std::promise<bool> promise;
+    client_->DeleteTasks(
+        request, [&promise](const Status &status, const rpc::DeleteTasksReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
@@ -283,6 +356,18 @@ class GcsServerTest : public RedisServiceManagerForTest {
     gcs_node_info.set_node_id(node_id);
     gcs_node_info.set_state(rpc::GcsNodeInfo_GcsNodeState_ALIVE);
     return gcs_node_info;
+  }
+
+  rpc::TaskTableData GenTaskTableData(const std::string &job_id,
+                                      const std::string &task_id) {
+    rpc::TaskTableData task_table_data;
+    rpc::Task task;
+    rpc::TaskSpec task_spec;
+    task_spec.set_job_id(job_id);
+    task_spec.set_task_id(task_id);
+    task.mutable_task_spec()->CopyFrom(task_spec);
+    task_table_data.mutable_task()->CopyFrom(task);
+    return task_table_data;
   }
 
  protected:
@@ -390,6 +475,25 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(node_info_list.size() == 1);
   ASSERT_TRUE(node_info_list[0].state() ==
               rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+
+  // Update node resources
+  rpc::UpdateResourcesRequest update_resources_request;
+  update_resources_request.set_node_id(node_id.Binary());
+  rpc::ResourceTableData resource_table_data;
+  resource_table_data.set_resource_capacity(1.0);
+  std::string resource_name = "CPU";
+  (*update_resources_request.mutable_resources())[resource_name] = resource_table_data;
+  ASSERT_TRUE(UpdateResources(update_resources_request));
+  auto resources = GetResources(node_id.Binary());
+  ASSERT_TRUE(resources.size() == 1);
+
+  // Delete node resources
+  rpc::DeleteResourcesRequest delete_resources_request;
+  delete_resources_request.set_node_id(node_id.Binary());
+  delete_resources_request.add_resource_name_list(resource_name);
+  ASSERT_TRUE(DeleteResources(delete_resources_request));
+  resources = GetResources(node_id.Binary());
+  ASSERT_TRUE(resources.size() == 0);
 }
 
 TEST_F(GcsServerTest, TestObjectInfo) {
@@ -421,6 +525,27 @@ TEST_F(GcsServerTest, TestObjectInfo) {
   object_locations = GetObjectLocations(object_id.Binary());
   ASSERT_TRUE(object_locations.size() == 1);
   ASSERT_TRUE(object_locations[0].manager() == node2_id.Binary());
+}
+
+TEST_F(GcsServerTest, TestTaskInfo) {
+  // Create task_table_data
+  JobID job_id = JobID::FromInt(1);
+  TaskID task_id = TaskID::ForDriverTask(job_id);
+  rpc::TaskTableData job_table_data = GenTaskTableData(job_id.Binary(), task_id.Binary());
+
+  // Add task
+  rpc::AddTaskRequest add_task_request;
+  add_task_request.mutable_task_data()->CopyFrom(job_table_data);
+  ASSERT_TRUE(AddTask(add_task_request));
+  rpc::TaskTableData result = GetTask(task_id.Binary());
+  ASSERT_TRUE(result.task().task_spec().job_id() == job_id.Binary());
+
+  // Delete task
+  rpc::DeleteTasksRequest delete_tasks_request;
+  delete_tasks_request.add_task_id_list(task_id.Binary());
+  ASSERT_TRUE(DeleteTasks(delete_tasks_request));
+  result = GetTask(task_id.Binary());
+  ASSERT_TRUE(!result.has_task());
 }
 
 }  // namespace ray
