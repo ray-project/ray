@@ -11,15 +11,13 @@ ReconstructionPolicy::ReconstructionPolicy(
     std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
     int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
     std::shared_ptr<gcs::RedisGcsClient> gcs_client,
-    std::shared_ptr<ObjectDirectoryInterface> object_directory,
-    gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log)
+    std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : io_service_(io_service),
       reconstruction_handler_(reconstruction_handler),
       initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
       client_id_(client_id),
       gcs_client_(gcs_client),
-      object_directory_(std::move(object_directory)),
-      task_reconstruction_log_(task_reconstruction_log) {}
+      object_directory_(std::move(object_directory)) {}
 
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
@@ -134,21 +132,19 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   // reconstruction log. This will fail if another node has already inserted
   // an entry for this reconstruction.
   auto reconstruction_entry = std::make_shared<TaskReconstructionData>();
+  reconstruction_entry->set_task_id(task_id.Binary());
   reconstruction_entry->set_num_reconstructions(reconstruction_attempt);
   reconstruction_entry->set_node_manager_id(client_id_.Binary());
-  RAY_CHECK_OK(task_reconstruction_log_.AppendAt(
-      JobID::Nil(), task_id, reconstruction_entry,
-      /*success_callback=*/
-      [this, required_object_id](gcs::RedisGcsClient *client, const TaskID &task_id,
-                                 const TaskReconstructionData &data) {
-        HandleReconstructionLogAppend(task_id, required_object_id, /*success=*/true);
-      },
-      /*failure_callback=*/
-      [this, required_object_id](gcs::RedisGcsClient *client, const TaskID &task_id,
-                                 const TaskReconstructionData &data) {
-        HandleReconstructionLogAppend(task_id, required_object_id, /*success=*/false);
-      },
-      reconstruction_attempt));
+  RAY_CHECK_OK(gcs_client_->Tasks().AttemptTaskReconstruction(
+      reconstruction_entry,
+      /*done=*/
+      [this, task_id, required_object_id](Status status) {
+        if (status.ok()) {
+          HandleReconstructionLogAppend(task_id, required_object_id, /*success=*/true);
+        } else {
+          HandleReconstructionLogAppend(task_id, required_object_id, /*success=*/false);
+        }
+      }));
 
   // Increment the number of times reconstruction has been attempted. This is
   // used to suppress duplicate reconstructions of the same task. If

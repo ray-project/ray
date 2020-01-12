@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.agents.dqn.dqn_policy import minimize_and_clip, _adjust_nstep
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY

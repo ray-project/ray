@@ -44,8 +44,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
       std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
       int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
       std::shared_ptr<gcs::RedisGcsClient> gcs_client,
-      std::shared_ptr<ObjectDirectoryInterface> object_directory,
-      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log);
+      std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   /// Listen for task lease notifications about an object that may require
   /// reconstruction. If no notifications are received within the initial
@@ -146,7 +145,6 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// The object directory used to lookup object locations.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   /// The tasks that we are currently subscribed to in the GCS.
   std::unordered_map<TaskID, ReconstructionTask> listening_tasks_;
 };

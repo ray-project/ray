@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """A simple multi-agent env with two agents playing rock paper scissors.
 
 This demonstrates running the following policies in competition:

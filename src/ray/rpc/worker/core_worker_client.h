@@ -121,6 +121,13 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  /// Notify the owner of an object that the object has been pinned.
+  virtual ray::Status WaitForObjectEviction(
+      const WaitForObjectEvictionRequest &request,
+      const ClientCallback<WaitForObjectEvictionReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   /// Tell this actor to exit immediately.
   virtual ray::Status KillActor(const KillActorRequest &request,
                                 const ClientCallback<KillActorReply> &callback) {
@@ -160,6 +167,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   RPC_CLIENT_METHOD(CoreWorkerService, GetObjectStatus, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, KillActor, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 

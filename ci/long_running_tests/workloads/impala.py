@@ -1,9 +1,5 @@
 # This workload tests running IMPALA with remote envs
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.tune import run_experiments
 from ray.cluster_utils import Cluster

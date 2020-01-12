@@ -844,7 +844,8 @@ cdef class CoreWorker:
                 if object_id is None:
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                    metadata, data_size, c_object_id, data))
+                                     metadata, data_size,
+                                     c_object_id, data))
                 else:
                     c_object_id[0] = object_id.native()
                     with nogil:
@@ -869,20 +870,29 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_serialized_object(self, serialized_object,
-                              ObjectID object_id=None):
+                              ObjectID object_id=None,
+                              c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+            # The object won't be pinned if an ObjectID is provided by the
+            # user (because we can't track its lifetime to unpin). Note that
+            # the API to do this isn't supported as a public API.
+            c_bool owns_object = object_id is None
+
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_id, &c_object_id, &data)
+            metadata, total_bytes, object_id,
+            &c_object_id, &data)
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
                 check_status(
-                    self.core_worker.get().Seal(c_object_id))
+                    self.core_worker.get().Seal(
+                        c_object_id, owns_object, pin_object))
+
         return ObjectID(c_object_id.Binary())
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,

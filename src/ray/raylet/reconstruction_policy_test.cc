@@ -131,14 +131,33 @@ class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
     return Status::OK();
   }
 
+  Status AttemptTaskReconstruction(
+      const std::shared_ptr<TaskReconstructionData> &task_data,
+      const gcs::StatusCallback &done) override {
+    int log_index = task_data->num_reconstructions();
+    TaskID task_id = TaskID::FromBinary(task_data->task_id());
+    if (task_reconstruction_log_[task_id].size() == static_cast<size_t>(log_index)) {
+      task_reconstruction_log_[task_id].push_back(*task_data);
+      if (done != nullptr) {
+        done(Status::OK());
+      }
+    } else {
+      if (done != nullptr) {
+        done(Status::Invalid("Updating task reconstruction failed."));
+      }
+    }
+    return Status::OK();
+  }
+
  private:
   gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> subscribe_callback_;
   std::unordered_map<TaskID, std::shared_ptr<TaskLeaseData>> task_lease_table_;
   std::unordered_set<TaskID> subscribed_tasks_;
+  std::unordered_map<TaskID, std::vector<TaskReconstructionData>>
+      task_reconstruction_log_;
 };
 
-class MockGcs : public gcs::RedisGcsClient,
-                public ray::gcs::LogInterface<TaskID, TaskReconstructionData> {
+class MockGcs : public gcs::RedisGcsClient {
  public:
   MockGcs() : gcs::RedisGcsClient(gcs::GcsClientOptions("", 0, "")){};
 
@@ -146,37 +165,6 @@ class MockGcs : public gcs::RedisGcsClient,
     task_accessor_.reset(task_accessor);
     node_accessor_.reset(node_accessor);
   }
-
-  Status AppendAt(
-      const JobID &job_id, const TaskID &task_id,
-      const std::shared_ptr<TaskReconstructionData> &task_data,
-      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
-          &success_callback,
-      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
-          &failure_callback,
-      int log_index) {
-    if (task_reconstruction_log_[task_id].size() == static_cast<size_t>(log_index)) {
-      task_reconstruction_log_[task_id].push_back(*task_data);
-      if (success_callback != nullptr) {
-        success_callback(nullptr, task_id, *task_data);
-      }
-    } else {
-      if (failure_callback != nullptr) {
-        failure_callback(nullptr, task_id, *task_data);
-      }
-    }
-    return Status::OK();
-  }
-
-  MOCK_METHOD4(
-      Append,
-      ray::Status(
-          const JobID &, const TaskID &, const std::shared_ptr<TaskReconstructionData> &,
-          const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
-
- private:
-  std::unordered_map<TaskID, std::vector<TaskReconstructionData>>
-      task_reconstruction_log_;
 };
 
 class ReconstructionPolicyTest : public ::testing::Test {
@@ -194,7 +182,7 @@ class ReconstructionPolicyTest : public ::testing::Test {
               TriggerReconstruction(task_id);
             },
             reconstruction_timeout_ms_, ClientID::FromRandom(), mock_gcs_,
-            mock_object_directory_, *mock_gcs_)),
+            mock_object_directory_)),
         timer_canceled_(false) {
     subscribe_callback_ = [this](const TaskID &task_id,
                                  const boost::optional<TaskLeaseData> &task_lease) {
@@ -449,14 +437,13 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   // reconstruction first. This should suppress this node's first attempt at
   // reconstruction.
   auto task_reconstruction_data = std::make_shared<TaskReconstructionData>();
+  task_reconstruction_data->set_task_id(task_id.Binary());
   task_reconstruction_data->set_node_manager_id(ClientID::FromRandom().Binary());
   task_reconstruction_data->set_num_reconstructions(0);
-  RAY_CHECK_OK(
-      mock_gcs_->AppendAt(JobID::Nil(), task_id, task_reconstruction_data, nullptr,
-                          /*failure_callback=*/
-                          [](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
-                             const TaskReconstructionData &data) { ASSERT_TRUE(false); },
-                          /*log_index=*/0));
+  RAY_CHECK_OK(mock_gcs_->Tasks().AttemptTaskReconstruction(
+      task_reconstruction_data,
+      /*done=*/
+      [](Status status) { ASSERT_TRUE(status.ok()); }));
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);

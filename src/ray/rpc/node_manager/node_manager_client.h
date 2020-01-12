@@ -1,9 +1,9 @@
 #ifndef RAY_RPC_NODE_MANAGER_CLIENT_H
 #define RAY_RPC_NODE_MANAGER_CLIENT_H
 
-#include <thread>
-
 #include <grpcpp/grpcpp.h>
+
+#include <thread>
 
 #include "ray/common/status.h"
 #include "ray/rpc/grpc_client.h"
@@ -72,6 +72,9 @@ class NodeManagerWorkerClient
 
   /// Return a worker lease.
   RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
+
+  /// Notify the raylet to pin the provided object IDs.
+  RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
 
  private:
   /// Constructor.
