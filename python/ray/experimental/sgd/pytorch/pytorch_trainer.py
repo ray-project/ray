@@ -172,7 +172,7 @@ class PyTorchTrainer:
 
         Runs an average over all values returned from workers.
         """
-        assert retries > 0, "`retries` must be non-negative."
+        assert retries >= 0, "`retries` must be non-negative."
         if retries and checkpoint == "auto":
             logger.debug("Retrying detected. Automatically checkpointing.")
             checkpoint_dir = self.save(

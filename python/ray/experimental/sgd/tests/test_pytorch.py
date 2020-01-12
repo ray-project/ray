@@ -106,10 +106,10 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
 def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     config = {
-        "model_creator": tune.function(model_creator),
-        "data_creator": tune.function(data_creator),
-        "optimizer_creator": tune.function(optimizer_creator),
-        "loss_creator": tune.function(lambda config: nn.MSELoss()),
+        "model_creator": model_creator,
+        "data_creator": data_creator,
+        "optimizer_creator": optimizer_creator,
+        "loss_creator": lambda config: nn.MSELoss(),
         "num_replicas": num_replicas,
         "use_gpu": False,
         "batch_size": 512,
@@ -237,10 +237,10 @@ def test_resize(ray_start_2_cpus):
             num_replicas=2)
 
     @ray.remote
-    def test(sleeps):
+    def try_test(sleeps):
         import time
         time.sleep(100)
 
-    test.remote()
+    try_test.remote()
     trainer1.train(retries=1)
     assert len(trainer1.workers) == 1
