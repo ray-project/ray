@@ -262,6 +262,7 @@ class PyTorchTrainer:
     def _try_resize_workers(self, checkpoint, retries=5):
         # check available resources
         self.shutdown(force=True)
+        time.sleep(1)
         for i in range(retries):
             resources = ray.available_resources()
             new_workers = min(resources.get("CPU", 0), self.max_replicas)

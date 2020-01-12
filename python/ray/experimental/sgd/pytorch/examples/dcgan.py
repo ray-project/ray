@@ -238,8 +238,8 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo")
-    for i in range(5):
-        stats = trainer.train(retries=5)
+    for i in range(10):
+        stats = trainer.train(retries=3)
         print(stats)
 
     return trainer
@@ -249,6 +249,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--address",
+        required=False,
+        type=str,
+        help="the address to use for Redis")
     parser.add_argument(
         "--num-replicas",
         "-n",
@@ -261,7 +266,7 @@ if __name__ == "__main__":
         default=False,
         help="Enables GPU training")
     args, _ = parser.parse_known_args()
-    ray.init(address="auto")
+    ray.init(address=args.address)
 
     path = os.path.dirname(ray.__file__)
     model_path = os.path.join(
