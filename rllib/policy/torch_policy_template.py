@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
@@ -81,8 +77,9 @@ def build_torch_policy(name,
                     self.config["model"],
                     framework="torch")
 
-            TorchPolicy.__init__(self, obs_space, action_space, self.config,
-                                 self.model, loss_fn, self.dist_class)
+            TorchPolicy.__init__(
+                self, obs_space, action_space, config, self.config,
+                self.model, loss_fn, self.dist_class)
 
             if after_init:
                 after_init(self, obs_space, action_space, config)
@@ -105,13 +102,16 @@ def build_torch_policy(name,
                 return TorchPolicy.extra_grad_process(self)
 
         @override(TorchPolicy)
-        def extra_action_out(self, input_dict, state_batches, model):
+        def extra_action_out(self, input_dict, state_batches, model,
+                             action_dist=None):
             if extra_action_out_fn:
-                return extra_action_out_fn(self, input_dict, state_batches,
-                                           model)
+                return extra_action_out_fn(
+                    self, input_dict, state_batches, model, action_dist
+                )
             else:
-                return TorchPolicy.extra_action_out(self, input_dict,
-                                                    state_batches, model)
+                return TorchPolicy.extra_action_out(
+                    self, input_dict, state_batches, model, action_dist
+                )
 
         @override(TorchPolicy)
         def optimizer(self):

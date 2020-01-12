@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from deepmind_lab import dmenv_module
 
 from ray.rllib import env

@@ -1,10 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-import numpy as np
 import gym
+import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.components.explorations.exploration import Exploration
@@ -12,6 +9,9 @@ from ray.rllib.components.explorations.exploration import Exploration
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
 LEARNER_STATS_KEY = "learner_stats"
+
+ACTION_PROB = "action_prob"
+ACTION_LOGP = "action_logp"
 
 
 class TupleActions(namedtuple("TupleActions", ["batches"])):
@@ -25,7 +25,7 @@ class TupleActions(namedtuple("TupleActions", ["batches"])):
 
 
 @DeveloperAPI
-class Policy:
+class Policy(metaclass=ABCMeta):
     """An agent policy and loss, i.e., a TFPolicy or other subclass.
 
     This object defines how to act in the environment, and also losses used to
@@ -56,20 +56,21 @@ class Policy:
             action_space (gym.Space): Action space of the policy.
             config (dict): Policy-specific configuration data.
         """
-
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
+
         # Create the Exploration object to use for this Policy.
         self.exploration = Exploration.from_config(config.get("exploration"))
         # The default sampling behavior for actions if not explicitly given
         # in calls to `compute_actions`.
         self.deterministic = config.get("deterministic", False)
 
+    @abstractmethod
     @DeveloperAPI
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
@@ -78,14 +79,17 @@ class Policy:
                         explore=True,
                         time_step=None,
                         **kwargs):
-        """Compute actions for the current policy.
+        """Computes actions for the current policy.
 
-        Arguments:
-            obs_batch (np.ndarray): batch of observations
-            state_batches (list): list of RNN state input batches, if any
-            prev_action_batch (np.ndarray): batch of previous action values
-            prev_reward_batch (np.ndarray): batch of previous rewards
-            info_batch (info): batch of info objects
+        Args:
+            obs_batch (Union[List,np.ndarray]): Batch of observations.
+            state_batches (Optional[list]): List of RNN state input batches,
+                if any.
+            prev_action_batch (Optional[List,np.ndarray]): Batch of previous
+                action values.
+            prev_reward_batch (Optional[List,np.ndarray]): Batch of previous
+                rewards.
+            info_batch (info): Batch of info objects.
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
@@ -110,7 +114,7 @@ class Policy:
     @DeveloperAPI
     def compute_single_action(self,
                               obs,
-                              state,
+                              state=None,
                               prev_action=None,
                               prev_reward=None,
                               info=None,
@@ -123,10 +127,10 @@ class Policy:
         """Unbatched version of compute_actions.
 
         Arguments:
-            obs (obj): single observation
-            state_batches (list): list of RNN state inputs, if any
-            prev_action (obj): previous action value, if any
-            prev_reward (int): previous reward, if any
+            obs (obj): Single observation.
+            state (list): List of RNN state inputs, if any.
+            prev_action (obj): Previous action value, if any.
+            prev_reward (float): Previous reward, if any.
             info (dict): info object, if any
             episode (MultiAgentEpisode): this provides access to all of the
                 internal episode state, which may be useful for model-based or
@@ -145,7 +149,6 @@ class Policy:
             state_outs (list): list of RNN state outputs, if any
             info (dict): dictionary of extra features, if any
         """
-
         prev_action_batch = None
         prev_reward_batch = None
         info_batch = None
@@ -158,6 +161,7 @@ class Policy:
             info_batch = [info]
         if episode is not None:
             episodes = [episode]
+
         [action], state_out, info = self.compute_actions(
             [obs], [[s] for s in state],
             prev_action_batch=prev_action_batch,
@@ -170,7 +174,9 @@ class Policy:
         )
 
         if clip_actions:
-            action = clip_action(action, self.action_space)
+            action = self.clip_action(action, self.action_space)
+
+        # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
             {k: v[0] for k, v in info.items()}
 
@@ -195,7 +201,7 @@ class Policy:
                 multi-agent algorithms.
 
         Returns:
-            SampleBatch: postprocessed sample batch.
+            SampleBatch: Postprocessed sample batch.
         """
         return sample_batch
 
@@ -245,7 +251,7 @@ class Policy:
         Returns:
             weights (obj): Serializable copy or view of model weights
         """
-        raise NotImplementedError
+        pass
 
     @DeveloperAPI
     def set_weights(self, weights):
@@ -254,7 +260,15 @@ class Policy:
         Arguments:
             weights (obj): Serializable copy or view of model weights
         """
-        raise NotImplementedError
+        pass
+
+    @DeveloperAPI
+    def num_state_tensors(self):
+        """
+        Returns:
+            int: The number of RNN hidden states kept by this Policy's Model.
+        """
+        return 0
 
     @DeveloperAPI
     def get_initial_state(self):
@@ -306,27 +320,29 @@ class Policy:
         """
         raise NotImplementedError
 
+    @staticmethod
+    def clip_action(action, space):
+        """
+        Called to clip actions to the specified range of this policy.
 
-def clip_action(action, space):
-    """Called to clip actions to the specified range of this policy.
+        Arguments:
+            action: Single action.
+            space: Action space the actions should be present in.
 
-    Arguments:
-        action: Single action.
-        space: Action space the actions should be present in.
+        Returns:
+            Clipped batch of actions.
+        """
 
-    Returns:
-        Clipped batch of actions.
-    """
-
-    if isinstance(space, gym.spaces.Box):
-        return np.clip(action, space.low, space.high)
-    elif isinstance(space, gym.spaces.Tuple):
-        if type(action) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                action, space))
-        out = []
-        for a, s in zip(action, space.spaces):
-            out.append(clip_action(a, s))
-        return out
-    else:
-        return action
+        if isinstance(space, gym.spaces.Box):
+            return np.clip(action, space.low, space.high)
+        elif isinstance(space, gym.spaces.Tuple):
+            if type(action) not in (tuple, list):
+                raise ValueError(
+                    "Expected tuple space for actions {}: {}".
+                    format(action, space))
+            out = []
+            for a, s in zip(action, space.spaces):
+                out.append(Policy.clip_action(a, s))
+            return out
+        else:
+            return action

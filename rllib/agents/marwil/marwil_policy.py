@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
@@ -138,6 +134,7 @@ class MARWILPolicy(MARWILPostprocessing, TFPolicy):
             self,
             observation_space,
             action_space,
+            self.config,
             self.sess,
             obs_input=self.obs_t,
             action_sampler=self.output_actions,

@@ -98,8 +98,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
             HandleTaskReconstruction(task_id, required_object_id);
           },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          self_node_id_, gcs_client_, object_directory_,
-          gcs_client_->task_reconstruction_log()),
+          self_node_id_, gcs_client_, object_directory_),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service, self_node_id_,
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
@@ -192,6 +191,18 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
       heartbeat_batch_added, /*done*/ nullptr));
 
+  // Subscribe to all unexpected failure notifications from the local and
+  // remote raylets. Note that this does not include workers that failed due to
+  // node failure. These workers can be identified by comparing the raylet_id
+  // in their rpc::Address to the ID of a failed raylet.
+  const auto &failure_handler = [this](gcs::RedisGcsClient *client, const WorkerID &id,
+                                       const gcs::WorkerFailureData &worker_failure) {
+    HandleUnexpectedWorkerFailure(id, worker_failure);
+  };
+  RAY_CHECK_OK(gcs_client_->worker_failure_table().Subscribe(
+      JobID::Nil(), ClientID::Nil(), failure_handler,
+      /*done_callback=*/nullptr));
+
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
@@ -209,6 +220,12 @@ ray::Status NodeManager::RegisterGcs() {
   GetObjectManagerProfileInfo();
 
   return ray::Status::OK();
+}
+
+void NodeManager::HandleUnexpectedWorkerFailure(
+    const WorkerID &worker_id, const gcs::WorkerFailureData &worker_failed_data) {
+  RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
+  // TODO: Clean up after the failure: If the failed worker is our owner, then exit.
 }
 
 void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
@@ -403,8 +420,8 @@ void NodeManager::GetObjectManagerProfileInfo() {
 
   auto profile_info = object_manager_.GetAndResetProfilingInfo();
 
-  if (profile_info.profile_events_size() > 0) {
-    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_info));
+  if (profile_info->profile_events_size() > 0) {
+    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(profile_info, nullptr));
   }
 
   // Reset the timer.
@@ -906,10 +923,10 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::PushProfileEventsRequest: {
     auto fbs_message = flatbuffers::GetRoot<flatbuffers::String>(message_data);
-    rpc::ProfileTableData profile_table_data;
+    auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
     RAY_CHECK(
-        profile_table_data.ParseFromArray(fbs_message->data(), fbs_message->size()));
-    RAY_CHECK_OK(gcs_client_->profile_table().AddProfileEventBatch(profile_table_data));
+        profile_table_data->ParseFromArray(fbs_message->data(), fbs_message->size()));
+    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(profile_table_data, nullptr));
   } break;
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
@@ -1112,6 +1129,16 @@ void NodeManager::ProcessDisconnectClientMessage(
     }
     // Erase any lease metadata.
     leased_workers_.erase(worker->WorkerId());
+
+    // Publish the worker failure.
+    auto data = std::make_shared<rpc::WorkerFailureData>();
+    data->mutable_worker_address()->set_ip_address(initial_config_.node_manager_address);
+    data->mutable_worker_address()->set_port(worker->Port());
+    data->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+    data->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+    data->set_timestamp(std::time(nullptr));
+    RAY_CHECK_OK(gcs_client_->worker_failure_table().Add(JobID::Nil(), worker->WorkerId(),
+                                                         data, nullptr));
   }
 
   if (is_worker) {
@@ -1496,7 +1523,7 @@ void NodeManager::WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work) {
   }
 };
 
-void NodeManager::HandleWorkerLeaseRequest(const rpc::RequestWorkerLeaseRequest &request,
+void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest &request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task_message;
@@ -2968,9 +2995,9 @@ std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
   return result.str();
 }
 
-void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &request,
-                                            rpc::PinObjectIDsReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
+                                     rpc::PinObjectIDsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   if (!object_pinning_enabled_) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;
@@ -3044,9 +3071,9 @@ void NodeManager::HandlePinObjectIDsRequest(const rpc::PinObjectIDsRequest &requ
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request,
-                                         rpc::GetNodeStatsReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
+                                     rpc::GetNodeStatsReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   for (const auto &driver : worker_pool_.GetAllDrivers()) {
     auto worker_stats = reply->add_workers_stats();
     worker_stats->set_pid(driver->Pid());
@@ -3094,11 +3121,11 @@ void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request
       }
     }
   }
-  // As a result of the HandleNodeStatsRequest, we are collecting information from all
+  // As a result of the HandleGetNodeStats, we are collecting information from all
   // workers on this node. This is done by calling GetCoreWorkerStats on each worker. In
   // order to send up-to-date information back, we wait until all workers have replied,
   // and return the information from HandleNodesStatsRequest. The caller of
-  // HandleNodeStatsRequest should set a timeout so that the rpc finishes even if not all
+  // HandleGetNodeStats should set a timeout so that the rpc finishes even if not all
   // workers have replied.
   auto all_workers = worker_pool_.GetAllWorkers();
   for (const auto &worker : all_workers) {

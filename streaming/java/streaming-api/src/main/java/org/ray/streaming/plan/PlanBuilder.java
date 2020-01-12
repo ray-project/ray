@@ -7,6 +7,7 @@ import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.operator.StreamOperator;
+import org.ray.streaming.python.stream.PythonDataStream;
 
 public class PlanBuilder {
 
@@ -44,7 +45,7 @@ public class PlanBuilder {
       processStream(parentStream);
     } else if (stream instanceof StreamSource) {
       planVertex = new PlanVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator);
-    } else if (stream instanceof DataStream) {
+    } else if (stream instanceof DataStream || stream instanceof PythonDataStream) {
       planVertex = new PlanVertex(vertexId, parallelism, VertexType.PROCESS, streamOperator);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();

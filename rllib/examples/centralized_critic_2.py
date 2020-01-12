@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """An example of implementing a centralized critic by modifying the env.
 
 The advantage of this approach is that it's very simple and you don't have to

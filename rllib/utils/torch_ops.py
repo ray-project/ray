@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.utils.framework import try_import_torch
 
 torch, _ = try_import_torch()

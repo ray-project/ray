@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict, namedtuple
 import logging
 import numpy as np
@@ -21,7 +17,7 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.policy.policy import clip_action
+from ray.rllib.policy.policy import Policy
 
 logger = logging.getLogger(__name__)
 
@@ -591,7 +587,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
             if clip_actions:
-                actions_to_send[env_id][agent_id] = clip_action(
+                actions_to_send[env_id][agent_id] = Policy.clip_action(
                     action, policy.action_space)
             else:
                 actions_to_send[env_id][agent_id] = action

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
@@ -52,7 +48,8 @@ def add_advantages(policy,
                               policy.config["lambda"])
 
 
-def model_value_predictions(policy, input_dict, state_batches, model):
+def model_value_predictions(policy, input_dict, state_batches, model,
+                            action_dist):
     return {SampleBatch.VF_PREDS: model.value_function().cpu().numpy()}
 
 

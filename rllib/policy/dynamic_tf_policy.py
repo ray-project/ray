@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Graph mode TF policy built using build_tf_policy()."""
 
 from collections import OrderedDict
@@ -77,7 +74,7 @@ class DynamicTFPolicy(TFPolicy):
                 tuple of action and action logp tensors given
                 (policy, model, input_dict, obs_space, action_space, config).
                 If not specified, a default action distribution will be used.
-            existing_inputs (OrderedDict): when copying a policy, this
+            existing_inputs (OrderedDict): When copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
             existing_model (ModelV2): when copying a policy, this specifies
