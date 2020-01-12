@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from contextlib import contextmanager
 import colorama
 import atexit
@@ -674,6 +670,11 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
+
+    if "OMP_NUM_THREADS" in os.environ:
+        logger.warning("OMP_NUM_THREADS={} is set, this may impact "
+                       "object transfer performance.".format(
+                           os.environ["OMP_NUM_THREADS"]))
 
     if setproctitle is None:
         logger.warning(
@@ -1727,7 +1728,12 @@ def remote(*args, **kwargs):
       number of times that the actor should be reconstructed when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be reconstructed. And the maximum valid
-      value is ray.ray_constants.INFINITE_RECONSTRUCTIONS.
+      value is ray.ray_constants.INFINITE_RECONSTRUCTION.
+    * **max_retries**: Only for *remote functions*. This specifies the maximum
+      number of times that the remote function should be rerun when the worker
+      process executing it crashes unexpectedly. The minimum valid value is 0,
+      the default is 4 (default), and the maximum valid value is
+      ray.ray_constants.INFINITE_RECONSTRUCTION.
 
     This can be done as follows:
 

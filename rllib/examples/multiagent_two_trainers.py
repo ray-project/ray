@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Example of using two different training methods at once in multi-agent.
 
 Here we create a number of CartPole agents, some of which are trained with

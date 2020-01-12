@@ -1,4 +1,5 @@
 #include "ray/core_worker/actor_manager.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_accessor.h"
 
 namespace ray {
@@ -6,7 +7,7 @@ namespace ray {
 void ActorManager::PublishTerminatedActor(const TaskSpecification &actor_creation_task) {
   auto actor_id = actor_creation_task.ActorCreationId();
   auto data = gcs::CreateActorTableData(actor_creation_task, rpc::Address(),
-                                        gcs::ActorTableData::DEAD, 0);
+                                        rpc::ActorTableData::DEAD, 0);
 
   auto update_callback = [actor_id](Status status) {
     if (!status.ok()) {

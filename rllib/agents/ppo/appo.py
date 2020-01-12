@@ -75,7 +75,7 @@ def initialize_target(trainer):
     trainer.workers.local_worker().foreach_trainable_policy(
         lambda p, _: p.update_target())
     trainer.target_update_frequency = trainer.config["num_sgd_iter"] \
-                                      * trainer.config["minibatch_buffer_size"]
+        * trainer.config["minibatch_buffer_size"]
 
 
 APPOTrainer = impala.ImpalaTrainer.with_updates(

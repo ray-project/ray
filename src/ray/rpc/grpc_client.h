@@ -38,8 +38,13 @@ class GrpcClient {
  public:
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager)
       : client_call_manager_(call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
+    grpc::ChannelArguments argument;
+    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
+    // this configurable, or selectively set it for known local connections only.
+    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    std::shared_ptr<grpc::Channel> channel =
+        grpc::CreateCustomChannel(address + ":" + std::to_string(port),
+                                  grpc::InsecureChannelCredentials(), argument);
     stub_ = GrpcService::NewStub(channel);
   }
 
@@ -50,6 +55,7 @@ class GrpcClient {
     quota.SetMaxThreads(num_threads);
     grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
+    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);
