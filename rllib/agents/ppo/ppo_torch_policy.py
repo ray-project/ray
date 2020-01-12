@@ -37,8 +37,7 @@ class PPOLoss:
                  clip_param=0.1,
                  vf_clip_param=0.1,
                  vf_loss_coeff=1.0,
-                 use_gae=True,
-                 model_config=None):
+                 use_gae=True):
         """Constructs the loss for Proximal Policy Objective.
 
         Arguments:
@@ -66,8 +65,6 @@ class PPOLoss:
             vf_clip_param (float): Clip parameter for the value function
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
-            model_config (dict): (Optional) model config for use in specifying
-                action distributions.
         """
 
         def reduce_mean_valid(t):
@@ -138,7 +135,7 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         vf_clip_param=policy.config["vf_clip_param"],
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         use_gae=policy.config["use_gae"],
-        model_config=policy.config["model"])
+    )
 
     return policy.loss_obj.loss
 
