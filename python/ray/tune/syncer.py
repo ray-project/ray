@@ -1,16 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import distutils
 import logging
 import os
 import time
 
-try:  # py3
-    from shlex import quote
-except ImportError:  # py2
-    from pipes import quote
+from shlex import quote
 
 from ray import services
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
@@ -191,6 +184,8 @@ class NodeSyncer(Syncer):
     def sync_down(self):
         if not self.has_remote_target():
             return True
+        logger.debug("Syncing from %s to %s", self._remote_path,
+                     self._local_dir)
         return super(NodeSyncer, self).sync_down()
 
     @property
@@ -250,23 +245,23 @@ def get_node_syncer(local_dir, remote_dir=None, sync_function=None):
     Args:
         local_dir (str): Source directory for syncing.
         remote_dir (str): Target directory for syncing. If not provided, a
-            no-op Syncer is returned.
-        sync_function (func|str): Function for syncing the local_dir to
+            noop Syncer is returned.
+        sync_function (func|str|bool): Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
-            syncer to run. If not provided, it defaults rsync.
+            syncer to run. If True or not provided, it defaults rsync. If
+            False, a noop Syncer is returned.
     """
     key = (local_dir, remote_dir)
     if key in _syncers:
         return _syncers[key]
-    elif not remote_dir:
+    elif not remote_dir or sync_function is False:
         sync_client = NOOP
-    elif sync_function:
+    elif sync_function and sync_function is not True:
         sync_client = get_sync_client(sync_function)
     else:
-        sync_up = log_sync_template()
-        sync_down = log_sync_template(options="--remove-source-files")
-        if sync_up and sync_down:
-            sync_client = CommandBasedClient(sync_up, sync_down)
+        sync = log_sync_template()
+        if sync:
+            sync_client = CommandBasedClient(sync, sync)
             sync_client.set_logdir(local_dir)
         else:
             sync_client = NOOP

@@ -7,6 +7,7 @@
 #include <boost/asio.hpp>
 
 #include "ray/gcs/callback.h"
+#include "ray/gcs/redis_accessor.h"
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/reconstruction_policy.h"
@@ -84,85 +85,95 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::unordered_map<ObjectID, std::unordered_set<ClientID>> locations_;
 };
 
-class MockGcs : public gcs::PubsubInterface<TaskID>,
-                public ray::gcs::LogInterface<TaskID, TaskReconstructionData> {
+class MockNodeInfoAccessor : public gcs::RedisNodeInfoAccessor {
  public:
-  MockGcs() : notification_callback_(nullptr), failure_callback_(nullptr){};
+  MockNodeInfoAccessor(gcs::RedisGcsClient *client)
+      : gcs::RedisNodeInfoAccessor(client) {}
 
-  void Subscribe(const gcs::TaskLeaseTable::WriteCallback &notification_callback,
-                 const gcs::TaskLeaseTable::FailureCallback &failure_callback) {
-    notification_callback_ = notification_callback;
-    failure_callback_ = failure_callback;
-  }
+  bool IsRemoved(const ClientID &node_id) const override { return false; }
+};
 
-  void Add(const JobID &job_id, const TaskID &task_id,
-           const std::shared_ptr<TaskLeaseData> &task_lease_data) {
-    task_lease_table_[task_id] = task_lease_data;
-    if (subscribed_tasks_.count(task_id) == 1) {
-      notification_callback_(nullptr, task_id, *task_lease_data);
-    }
-  }
+class MockTaskInfoAccessor : public gcs::RedisTaskInfoAccessor {
+ public:
+  MockTaskInfoAccessor(gcs::RedisGcsClient *client) : RedisTaskInfoAccessor(client) {}
 
-  Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
-                              const ClientID &client_id,
-                              const gcs::StatusCallback &done) {
+  Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
+      const gcs::StatusCallback &done) override {
+    subscribe_callback_ = subscribe;
     subscribed_tasks_.insert(task_id);
     auto entry = task_lease_table_.find(task_id);
     if (entry == task_lease_table_.end()) {
-      failure_callback_(nullptr, task_id);
+      boost::optional<TaskLeaseData> result;
+      subscribe(task_id, result);
     } else {
-      notification_callback_(nullptr, task_id, *entry->second);
+      boost::optional<TaskLeaseData> result(*entry->second);
+      subscribe(task_id, result);
     }
     return ray::Status::OK();
   }
 
-  Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
-                             const ClientID &client_id, const gcs::StatusCallback &done) {
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                   const gcs::StatusCallback &done) override {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }
 
-  Status AppendAt(
-      const JobID &job_id, const TaskID &task_id,
+  Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &task_lease_data,
+                           const gcs::StatusCallback &done) override {
+    TaskID task_id = TaskID::FromBinary(task_lease_data->task_id());
+    task_lease_table_[task_id] = task_lease_data;
+    if (subscribed_tasks_.count(task_id) == 1) {
+      boost::optional<TaskLeaseData> result(*task_lease_data);
+      subscribe_callback_(task_id, result);
+    }
+    return Status::OK();
+  }
+
+  Status AttemptTaskReconstruction(
       const std::shared_ptr<TaskReconstructionData> &task_data,
-      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
-          &success_callback,
-      const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback
-          &failure_callback,
-      int log_index) {
+      const gcs::StatusCallback &done) override {
+    int log_index = task_data->num_reconstructions();
+    TaskID task_id = TaskID::FromBinary(task_data->task_id());
     if (task_reconstruction_log_[task_id].size() == static_cast<size_t>(log_index)) {
       task_reconstruction_log_[task_id].push_back(*task_data);
-      if (success_callback != nullptr) {
-        success_callback(nullptr, task_id, *task_data);
+      if (done != nullptr) {
+        done(Status::OK());
       }
     } else {
-      if (failure_callback != nullptr) {
-        failure_callback(nullptr, task_id, *task_data);
+      if (done != nullptr) {
+        done(Status::Invalid("Updating task reconstruction failed."));
       }
     }
     return Status::OK();
   }
 
-  MOCK_METHOD4(
-      Append,
-      ray::Status(
-          const JobID &, const TaskID &, const std::shared_ptr<TaskReconstructionData> &,
-          const ray::gcs::LogInterface<TaskID, TaskReconstructionData>::WriteCallback &));
-
  private:
-  gcs::TaskLeaseTable::WriteCallback notification_callback_;
-  gcs::TaskLeaseTable::FailureCallback failure_callback_;
+  gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> subscribe_callback_;
   std::unordered_map<TaskID, std::shared_ptr<TaskLeaseData>> task_lease_table_;
   std::unordered_set<TaskID> subscribed_tasks_;
   std::unordered_map<TaskID, std::vector<TaskReconstructionData>>
       task_reconstruction_log_;
 };
 
+class MockGcs : public gcs::RedisGcsClient {
+ public:
+  MockGcs() : gcs::RedisGcsClient(gcs::GcsClientOptions("", 0, "")){};
+
+  void Init(gcs::TaskInfoAccessor *task_accessor, gcs::NodeInfoAccessor *node_accessor) {
+    task_accessor_.reset(task_accessor);
+    node_accessor_.reset(node_accessor);
+  }
+};
+
 class ReconstructionPolicyTest : public ::testing::Test {
  public:
   ReconstructionPolicyTest()
       : io_service_(),
-        mock_gcs_(),
+        mock_gcs_(new MockGcs()),
+        task_accessor_(new MockTaskInfoAccessor(mock_gcs_.get())),
+        node_accessor_(new MockNodeInfoAccessor(mock_gcs_.get())),
         mock_object_directory_(std::make_shared<MockObjectDirectory>()),
         reconstruction_timeout_ms_(50),
         reconstruction_policy_(std::make_shared<ReconstructionPolicy>(
@@ -171,17 +182,19 @@ class ReconstructionPolicyTest : public ::testing::Test {
               TriggerReconstruction(task_id);
             },
             reconstruction_timeout_ms_, ClientID::FromRandom(), mock_gcs_,
-            mock_object_directory_, mock_gcs_)),
+            mock_object_directory_)),
         timer_canceled_(false) {
-    mock_gcs_.Subscribe(
-        [this](gcs::RedisGcsClient *client, const TaskID &task_id,
-               const TaskLeaseData &task_lease) {
-          reconstruction_policy_->HandleTaskLeaseNotification(task_id,
-                                                              task_lease.timeout());
-        },
-        [this](gcs::RedisGcsClient *client, const TaskID &task_id) {
-          reconstruction_policy_->HandleTaskLeaseNotification(task_id, 0);
-        });
+    subscribe_callback_ = [this](const TaskID &task_id,
+                                 const boost::optional<TaskLeaseData> &task_lease) {
+      if (task_lease) {
+        reconstruction_policy_->HandleTaskLeaseNotification(task_id,
+                                                            task_lease->timeout());
+      } else {
+        reconstruction_policy_->HandleTaskLeaseNotification(task_id, 0);
+      }
+    };
+
+    mock_gcs_->Init(task_accessor_, node_accessor_);
   }
 
   void TriggerReconstruction(const TaskID &task_id) { reconstructed_tasks_[task_id]++; }
@@ -230,7 +243,10 @@ class ReconstructionPolicyTest : public ::testing::Test {
 
  protected:
   boost::asio::io_service io_service_;
-  MockGcs mock_gcs_;
+  std::shared_ptr<MockGcs> mock_gcs_;
+  MockTaskInfoAccessor *task_accessor_;
+  MockNodeInfoAccessor *node_accessor_;
+  gcs::SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> subscribe_callback_;
   std::shared_ptr<MockObjectDirectory> mock_object_directory_;
   uint64_t reconstruction_timeout_ms_;
   std::shared_ptr<ReconstructionPolicy> reconstruction_policy_;
@@ -340,7 +356,8 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   task_lease_data->set_node_manager_id(ClientID::FromRandom().Binary());
   task_lease_data->set_acquired_at(absl::GetCurrentTimeNanos() / 1000000);
   task_lease_data->set_timeout(2 * test_period);
-  mock_gcs_.Add(JobID::Nil(), task_id, task_lease_data);
+  task_lease_data->set_task_id(task_id.Binary());
+  RAY_CHECK_OK(mock_gcs_->Tasks().AsyncAddTaskLease(task_lease_data, nullptr));
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);
@@ -368,7 +385,8 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
     task_lease_data->set_node_manager_id(ClientID::FromRandom().Binary());
     task_lease_data->set_acquired_at(absl::GetCurrentTimeNanos() / 1000000);
     task_lease_data->set_timeout(reconstruction_timeout_ms_);
-    mock_gcs_.Add(JobID::Nil(), task_id, task_lease_data);
+    task_lease_data->set_task_id(task_id.Binary());
+    RAY_CHECK_OK(mock_gcs_->Tasks().AsyncAddTaskLease(task_lease_data, nullptr));
   });
   // Run the test for much longer than the reconstruction timeout.
   Run(reconstruction_timeout_ms_ * 2);
@@ -419,14 +437,13 @@ TEST_F(ReconstructionPolicyTest, TestSimultaneousReconstructionSuppressed) {
   // reconstruction first. This should suppress this node's first attempt at
   // reconstruction.
   auto task_reconstruction_data = std::make_shared<TaskReconstructionData>();
+  task_reconstruction_data->set_task_id(task_id.Binary());
   task_reconstruction_data->set_node_manager_id(ClientID::FromRandom().Binary());
   task_reconstruction_data->set_num_reconstructions(0);
-  RAY_CHECK_OK(
-      mock_gcs_.AppendAt(JobID::Nil(), task_id, task_reconstruction_data, nullptr,
-                         /*failure_callback=*/
-                         [](ray::gcs::RedisGcsClient *client, const TaskID &task_id,
-                            const TaskReconstructionData &data) { ASSERT_TRUE(false); },
-                         /*log_index=*/0));
+  RAY_CHECK_OK(mock_gcs_->Tasks().AttemptTaskReconstruction(
+      task_reconstruction_data,
+      /*done=*/
+      [](Status status) { ASSERT_TRUE(status.ok()); }));
 
   // Listen for an object.
   reconstruction_policy_->ListenAndMaybeReconstruct(object_id);

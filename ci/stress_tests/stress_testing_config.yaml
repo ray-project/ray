@@ -26,8 +26,9 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-east-1
-    availability_zone: us-east-1a
+    region: us-west-2
+    availability_zone: us-west-2a
+    cache_stopped_nodes: False
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -43,7 +44,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m4.16xlarge
-    ImageId: ami-0757fc5a639fe7666
+    ImageId: ami-06d51e91cea0dac8d # Ubuntu 18.04
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
@@ -59,7 +60,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m4.large
-    ImageId: ami-0757fc5a639fe7666
+    ImageId: ami-06d51e91cea0dac8d # Ubuntu 18.04
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
@@ -85,13 +86,9 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # Consider uncommenting these if you run into dpkg locking issues
-    - sudo pkill -9 apt-get || true
-    - sudo pkill -9 dpkg || true
-    - sudo dpkg --configure -a
-    # Install basics.
-    - sudo apt-get -qq update
-    - sudo apt-get install -y build-essential curl unzip
+    # Uncomment these if you want to build ray from source.
+    # - sudo apt-get -qq update
+    # - sudo apt-get install -y build-essential curl unzip
     # Install Anaconda.
     - wget --quiet https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true

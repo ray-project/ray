@@ -60,8 +60,7 @@ ClientID local_client_id = ClientID::FromRandom();
 class TestGcsWithAsio : public TestGcs {
  public:
   TestGcsWithAsio(CommandType command_type)
-      : TestGcs(command_type), io_service_(), work_(io_service_) {
-  }
+      : TestGcs(command_type), io_service_(), work_(io_service_) {}
 
   TestGcsWithAsio() : TestGcsWithAsio(CommandType::kRegular) {}
 
@@ -365,109 +364,115 @@ class TaskTableTestHelper {
 
 TEST_TASK_TABLE_MACRO(TestGcsWithAsio, TestTableLookup);
 
-void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  // Append some entries to the log at an object ID.
-  TaskID task_id = RandomTaskId();
-  std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
-  for (auto &node_manager_id : node_manager_ids) {
-    auto data = std::make_shared<TaskReconstructionData>();
-    data->set_node_manager_id(node_manager_id);
-    // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
-                                        const TaskReconstructionData &d) {
+class LogLookupTestHelper {
+ public:
+  static void TestLogLookup(const JobID &job_id,
+                            std::shared_ptr<gcs::RedisGcsClient> client) {
+    // Append some entries to the log at an object ID.
+    TaskID task_id = RandomTaskId();
+    std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
+    for (auto &node_manager_id : node_manager_ids) {
+      auto data = std::make_shared<TaskReconstructionData>();
+      data->set_node_manager_id(node_manager_id);
+      // Check that we added the correct object entries.
+      auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
+                                          const TaskReconstructionData &d) {
+        ASSERT_EQ(id, task_id);
+        ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
+      };
+      RAY_CHECK_OK(
+          client->task_reconstruction_log().Append(job_id, task_id, data, add_callback));
+    }
+
+    // Check that lookup returns the added object entries.
+    auto lookup_callback = [task_id, node_manager_ids](
+                               gcs::RedisGcsClient *client, const TaskID &id,
+                               const std::vector<TaskReconstructionData> &data) {
       ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
+      for (const auto &entry : data) {
+        ASSERT_EQ(entry.node_manager_id(), node_manager_ids[test->NumCallbacks()]);
+        test->IncrementNumCallbacks();
+      }
+      if (test->NumCallbacks() == node_manager_ids.size()) {
+        test->Stop();
+      }
     };
+
+    // Do a lookup at the object ID.
     RAY_CHECK_OK(
-        client->task_reconstruction_log().Append(job_id, task_id, data, add_callback));
+        client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+    // Run the event loop. The loop will only stop if the Lookup callback is
+    // called (or an assertion failure).
+    test->Start();
+    ASSERT_EQ(test->NumCallbacks(), node_manager_ids.size());
   }
 
-  // Check that lookup returns the added object entries.
-  auto lookup_callback = [task_id, node_manager_ids](
-                             gcs::RedisGcsClient *client, const TaskID &id,
-                             const std::vector<TaskReconstructionData> &data) {
-    ASSERT_EQ(id, task_id);
-    for (const auto &entry : data) {
-      ASSERT_EQ(entry.node_manager_id(), node_manager_ids[test->NumCallbacks()]);
-      test->IncrementNumCallbacks();
+  static void TestLogAppendAt(const JobID &job_id,
+                              std::shared_ptr<gcs::RedisGcsClient> client) {
+    TaskID task_id = RandomTaskId();
+    std::vector<std::string> node_manager_ids = {"A", "B"};
+    std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
+    for (const auto &node_manager_id : node_manager_ids) {
+      auto data = std::make_shared<TaskReconstructionData>();
+      data->set_node_manager_id(node_manager_id);
+      data_log.push_back(data);
     }
-    if (test->NumCallbacks() == node_manager_ids.size()) {
-      test->Stop();
-    }
-  };
 
-  // Do a lookup at the object ID.
-  RAY_CHECK_OK(
-      client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  // Run the event loop. The loop will only stop if the Lookup callback is
-  // called (or an assertion failure).
-  test->Start();
-  ASSERT_EQ(test->NumCallbacks(), node_manager_ids.size());
-}
+    // Check that we added the correct task.
+    auto failure_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
+                                      const TaskReconstructionData &d) {
+      ASSERT_EQ(id, task_id);
+      test->IncrementNumCallbacks();
+    };
+
+    // Will succeed.
+    RAY_CHECK_OK(client->task_reconstruction_log().Append(job_id, task_id,
+                                                          data_log.front(),
+                                                          /*done callback=*/nullptr));
+    // Append at index 0 will fail.
+    RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
+        job_id, task_id, data_log[1],
+        /*done callback=*/nullptr, failure_callback, /*log_length=*/0));
+
+    // Append at index 2 will fail.
+    RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
+        job_id, task_id, data_log[1],
+        /*done callback=*/nullptr, failure_callback, /*log_length=*/2));
+
+    // Append at index 1 will succeed.
+    RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
+        job_id, task_id, data_log[1],
+        /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
+
+    auto lookup_callback = [node_manager_ids](
+                               gcs::RedisGcsClient *client, const TaskID &id,
+                               const std::vector<TaskReconstructionData> &data) {
+      std::vector<std::string> appended_managers;
+      for (const auto &entry : data) {
+        appended_managers.push_back(entry.node_manager_id());
+      }
+      ASSERT_EQ(appended_managers, node_manager_ids);
+      test->Stop();
+    };
+    RAY_CHECK_OK(
+        client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+    // Run the event loop. The loop will only stop if the Lookup callback is
+    // called (or an assertion failure).
+    test->Start();
+    ASSERT_EQ(test->NumCallbacks(), 2);
+  }
+};
 
 TEST_F(TestGcsWithAsio, TestLogLookup) {
   test = this;
-  TestLogLookup(job_id_, client_);
+  LogLookupTestHelper::TestLogLookup(job_id_, client_);
 }
 
 TEST_TASK_TABLE_MACRO(TestGcsWithAsio, TestTableLookupFailure);
 
-void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  TaskID task_id = RandomTaskId();
-  std::vector<std::string> node_manager_ids = {"A", "B"};
-  std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
-  for (const auto &node_manager_id : node_manager_ids) {
-    auto data = std::make_shared<TaskReconstructionData>();
-    data->set_node_manager_id(node_manager_id);
-    data_log.push_back(data);
-  }
-
-  // Check that we added the correct task.
-  auto failure_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
-                                    const TaskReconstructionData &d) {
-    ASSERT_EQ(id, task_id);
-    test->IncrementNumCallbacks();
-  };
-
-  // Will succeed.
-  RAY_CHECK_OK(client->task_reconstruction_log().Append(job_id, task_id, data_log.front(),
-                                                        /*done callback=*/nullptr));
-  // Append at index 0 will fail.
-  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
-      job_id, task_id, data_log[1],
-      /*done callback=*/nullptr, failure_callback, /*log_length=*/0));
-
-  // Append at index 2 will fail.
-  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
-      job_id, task_id, data_log[1],
-      /*done callback=*/nullptr, failure_callback, /*log_length=*/2));
-
-  // Append at index 1 will succeed.
-  RAY_CHECK_OK(client->task_reconstruction_log().AppendAt(
-      job_id, task_id, data_log[1],
-      /*done callback=*/nullptr, failure_callback, /*log_length=*/1));
-
-  auto lookup_callback = [node_manager_ids](
-                             gcs::RedisGcsClient *client, const TaskID &id,
-                             const std::vector<TaskReconstructionData> &data) {
-    std::vector<std::string> appended_managers;
-    for (const auto &entry : data) {
-      appended_managers.push_back(entry.node_manager_id());
-    }
-    ASSERT_EQ(appended_managers, node_manager_ids);
-    test->Stop();
-  };
-  RAY_CHECK_OK(
-      client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  // Run the event loop. The loop will only stop if the Lookup callback is
-  // called (or an assertion failure).
-  test->Start();
-  ASSERT_EQ(test->NumCallbacks(), 2);
-}
-
 TEST_F(TestGcsWithAsio, TestLogAppendAt) {
   test = this;
-  TestLogAppendAt(job_id_, client_);
+  LogLookupTestHelper::TestLogAppendAt(job_id_, client_);
 }
 
 class SetTestHelper {
@@ -807,52 +812,55 @@ TEST_F(TestGcsWithAsio, TestSet) {
   SetTestHelper::TestSet(job_id_, client_);
 }
 
-void TestDeleteKeysFromLog(
-    const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client,
-    std::vector<std::shared_ptr<TaskReconstructionData>> &data_vector) {
-  std::vector<TaskID> ids;
-  TaskID task_id;
-  for (auto &data : data_vector) {
-    task_id = RandomTaskId();
-    ids.push_back(task_id);
-    // Check that we added the correct object entries.
-    auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
-                                        const TaskReconstructionData &d) {
-      ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(
-        client->task_reconstruction_log().Append(job_id, task_id, data, add_callback));
+class LogDeleteTestHelper {
+ public:
+  static void TestDeleteKeysFromLog(
+      const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client,
+      std::vector<std::shared_ptr<TaskReconstructionData>> &data_vector) {
+    std::vector<TaskID> ids;
+    TaskID task_id;
+    for (auto &data : data_vector) {
+      task_id = RandomTaskId();
+      ids.push_back(task_id);
+      // Check that we added the correct object entries.
+      auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
+                                          const TaskReconstructionData &d) {
+        ASSERT_EQ(id, task_id);
+        ASSERT_EQ(data->node_manager_id(), d.node_manager_id());
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(
+          client->task_reconstruction_log().Append(job_id, task_id, data, add_callback));
+    }
+    for (const auto &task_id : ids) {
+      // Check that lookup returns the added object entries.
+      auto lookup_callback = [task_id, data_vector](
+                                 gcs::RedisGcsClient *client, const TaskID &id,
+                                 const std::vector<TaskReconstructionData> &data) {
+        ASSERT_EQ(id, task_id);
+        ASSERT_EQ(data.size(), 1);
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(
+          client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+    }
+    if (ids.size() == 1) {
+      client->task_reconstruction_log().Delete(job_id, ids[0]);
+    } else {
+      client->task_reconstruction_log().Delete(job_id, ids);
+    }
+    for (const auto &task_id : ids) {
+      auto lookup_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
+                                       const std::vector<TaskReconstructionData> &data) {
+        ASSERT_EQ(id, task_id);
+        ASSERT_TRUE(data.size() == 0);
+        test->IncrementNumCallbacks();
+      };
+      RAY_CHECK_OK(
+          client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
+    }
   }
-  for (const auto &task_id : ids) {
-    // Check that lookup returns the added object entries.
-    auto lookup_callback = [task_id, data_vector](
-                               gcs::RedisGcsClient *client, const TaskID &id,
-                               const std::vector<TaskReconstructionData> &data) {
-      ASSERT_EQ(id, task_id);
-      ASSERT_EQ(data.size(), 1);
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(
-        client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  }
-  if (ids.size() == 1) {
-    client->task_reconstruction_log().Delete(job_id, ids[0]);
-  } else {
-    client->task_reconstruction_log().Delete(job_id, ids);
-  }
-  for (const auto &task_id : ids) {
-    auto lookup_callback = [task_id](gcs::RedisGcsClient *client, const TaskID &id,
-                                     const std::vector<TaskReconstructionData> &data) {
-      ASSERT_EQ(id, task_id);
-      ASSERT_TRUE(data.size() == 0);
-      test->IncrementNumCallbacks();
-    };
-    RAY_CHECK_OK(
-        client->task_reconstruction_log().Lookup(job_id, task_id, lookup_callback));
-  }
-}
+};
 
 // Test delete function for keys of Log or Table.
 void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
@@ -868,7 +876,7 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cl
   // Test one element case.
   AppendTaskReconstructionData(1);
   ASSERT_EQ(task_reconstruction_vector.size(), 1);
-  TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
+  LogDeleteTestHelper::TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
   // Test the case for more than one elements and less than
   // maximum_gcs_deletion_batch_size.
   AppendTaskReconstructionData(RayConfig::instance().maximum_gcs_deletion_batch_size() /
@@ -876,14 +884,14 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cl
   ASSERT_GT(task_reconstruction_vector.size(), 1);
   ASSERT_LT(task_reconstruction_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
-  TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
+  LogDeleteTestHelper::TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
   // Test the case for more than maximum_gcs_deletion_batch_size.
   // The Delete function will split the data into two commands.
   AppendTaskReconstructionData(RayConfig::instance().maximum_gcs_deletion_batch_size() /
                                2);
   ASSERT_GT(task_reconstruction_vector.size(),
             RayConfig::instance().maximum_gcs_deletion_batch_size());
-  TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
+  LogDeleteTestHelper::TestDeleteKeysFromLog(job_id, client, task_reconstruction_vector);
 
   // Test delete function for keys of Table.
   std::vector<std::shared_ptr<TaskTableData>> task_vector;
@@ -1302,153 +1310,162 @@ TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
   ClientTableTestHelper::TestClientTableMarkDisconnected(job_id_, client_);
 }
 
-void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  const int expected_count = 14;
-  ClientID client_id = ClientID::FromRandom();
-  // Prepare the first resource map: data_map1.
-  DynamicResourceTable::DataMap data_map1;
-  auto cpu_data = std::make_shared<ResourceTableData>();
-  cpu_data->set_resource_capacity(100);
-  data_map1.emplace("CPU", cpu_data);
-  auto gpu_data = std::make_shared<ResourceTableData>();
-  gpu_data->set_resource_capacity(2);
-  data_map1.emplace("GPU", gpu_data);
-  // Prepare the second resource map: data_map2 which decreases CPU,
-  // increases GPU and add a new CUSTOM compared to data_map1.
-  DynamicResourceTable::DataMap data_map2;
-  auto data_cpu = std::make_shared<ResourceTableData>();
-  data_cpu->set_resource_capacity(50);
-  data_map2.emplace("CPU", data_cpu);
-  auto data_gpu = std::make_shared<ResourceTableData>();
-  data_gpu->set_resource_capacity(10);
-  data_map2.emplace("GPU", data_gpu);
-  auto data_custom = std::make_shared<ResourceTableData>();
-  data_custom->set_resource_capacity(2);
-  data_map2.emplace("CUSTOM", data_custom);
-  data_map2["CPU"]->set_resource_capacity(50);
-  // This is a common comparison function for the test.
-  auto compare_test = [](const DynamicResourceTable::DataMap &data1,
-                         const DynamicResourceTable::DataMap &data2) {
-    ASSERT_EQ(data1.size(), data2.size());
-    for (const auto &data : data1) {
-      auto iter = data2.find(data.first);
-      ASSERT_TRUE(iter != data2.end());
-      ASSERT_EQ(iter->second->resource_capacity(), data.second->resource_capacity());
-    }
-  };
-  auto subscribe_callback = [](RedisGcsClient *client) {
-    ASSERT_TRUE(true);
-    test->IncrementNumCallbacks();
-  };
-  auto notification_callback = [data_map1, data_map2, compare_test](
-                                   RedisGcsClient *client, const ClientID &id,
-                                   const GcsChangeMode change_mode,
-                                   const DynamicResourceTable::DataMap &data) {
-    if (change_mode == GcsChangeMode::REMOVE) {
-      ASSERT_EQ(data.size(), 2);
-      ASSERT_TRUE(data.find("GPU") != data.end());
-      ASSERT_TRUE(data.find("CUSTOM") != data.end() || data.find("CPU") != data.end());
-      // The key "None-Existent" will not appear in the notification.
-    } else {
-      if (data.size() == 2) {
-        compare_test(data_map1, data);
-      } else if (data.size() == 3) {
-        compare_test(data_map2, data);
-      } else {
-        ASSERT_TRUE(false);
+class HashTableTestHelper {
+ public:
+  static void TestHashTable(const JobID &job_id,
+                            std::shared_ptr<gcs::RedisGcsClient> client) {
+    const int expected_count = 14;
+    ClientID client_id = ClientID::FromRandom();
+    // Prepare the first resource map: data_map1.
+    DynamicResourceTable::DataMap data_map1;
+    auto cpu_data = std::make_shared<ResourceTableData>();
+    cpu_data->set_resource_capacity(100);
+    data_map1.emplace("CPU", cpu_data);
+    auto gpu_data = std::make_shared<ResourceTableData>();
+    gpu_data->set_resource_capacity(2);
+    data_map1.emplace("GPU", gpu_data);
+    // Prepare the second resource map: data_map2 which decreases CPU,
+    // increases GPU and add a new CUSTOM compared to data_map1.
+    DynamicResourceTable::DataMap data_map2;
+    auto data_cpu = std::make_shared<ResourceTableData>();
+    data_cpu->set_resource_capacity(50);
+    data_map2.emplace("CPU", data_cpu);
+    auto data_gpu = std::make_shared<ResourceTableData>();
+    data_gpu->set_resource_capacity(10);
+    data_map2.emplace("GPU", data_gpu);
+    auto data_custom = std::make_shared<ResourceTableData>();
+    data_custom->set_resource_capacity(2);
+    data_map2.emplace("CUSTOM", data_custom);
+    data_map2["CPU"]->set_resource_capacity(50);
+    // This is a common comparison function for the test.
+    auto compare_test = [](const DynamicResourceTable::DataMap &data1,
+                           const DynamicResourceTable::DataMap &data2) {
+      ASSERT_EQ(data1.size(), data2.size());
+      for (const auto &data : data1) {
+        auto iter = data2.find(data.first);
+        ASSERT_TRUE(iter != data2.end());
+        ASSERT_EQ(iter->second->resource_capacity(), data.second->resource_capacity());
       }
-    }
-    test->IncrementNumCallbacks();
-    // It is not sure which of the notification or lookup callback will come first.
-    if (test->NumCallbacks() == expected_count) {
-      test->Stop();
-    }
-  };
-  // Step 0: Subscribe the change of the hash table.
-  RAY_CHECK_OK(client->resource_table().Subscribe(
-      job_id, ClientID::Nil(), notification_callback, subscribe_callback));
-  RAY_CHECK_OK(client->resource_table().RequestNotifications(job_id, client_id,
-                                                             local_client_id, nullptr));
+    };
+    auto subscribe_callback = [](RedisGcsClient *client) {
+      ASSERT_TRUE(true);
+      test->IncrementNumCallbacks();
+    };
+    auto notification_callback =
+        [data_map1, data_map2, compare_test](
+            RedisGcsClient *client, const ClientID &id,
+            const std::vector<ResourceChangeNotification> &result) {
+          RAY_CHECK(result.size() == 1);
+          const ResourceChangeNotification &notification = result.back();
+          if (notification.IsRemoved()) {
+            ASSERT_EQ(notification.GetData().size(), 2);
+            ASSERT_TRUE(notification.GetData().find("GPU") !=
+                        notification.GetData().end());
+            ASSERT_TRUE(
+                notification.GetData().find("CUSTOM") != notification.GetData().end() ||
+                notification.GetData().find("CPU") != notification.GetData().end());
+            // The key "None-Existent" will not appear in the notification.
+          } else {
+            if (notification.GetData().size() == 2) {
+              compare_test(data_map1, notification.GetData());
+            } else if (notification.GetData().size() == 3) {
+              compare_test(data_map2, notification.GetData());
+            } else {
+              ASSERT_TRUE(false);
+            }
+          }
+          test->IncrementNumCallbacks();
+          // It is not sure which of the notification or lookup callback will come first.
+          if (test->NumCallbacks() == expected_count) {
+            test->Stop();
+          }
+        };
+    // Step 0: Subscribe the change of the hash table.
+    RAY_CHECK_OK(client->resource_table().Subscribe(
+        job_id, ClientID::Nil(), notification_callback, subscribe_callback));
+    RAY_CHECK_OK(client->resource_table().RequestNotifications(job_id, client_id,
+                                                               local_client_id, nullptr));
 
-  // Step 1: Add elements to the hash table.
-  auto update_callback1 = [data_map1, compare_test](
-                              RedisGcsClient *client, const ClientID &id,
-                              const DynamicResourceTable::DataMap &callback_data) {
-    compare_test(data_map1, callback_data);
-    test->IncrementNumCallbacks();
-  };
-  RAY_CHECK_OK(
-      client->resource_table().Update(job_id, client_id, data_map1, update_callback1));
-  auto lookup_callback1 = [data_map1, compare_test](
-                              RedisGcsClient *client, const ClientID &id,
-                              const DynamicResourceTable::DataMap &callback_data) {
-    compare_test(data_map1, callback_data);
-    test->IncrementNumCallbacks();
-  };
-  RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback1));
+    // Step 1: Add elements to the hash table.
+    auto update_callback1 = [data_map1, compare_test](
+                                RedisGcsClient *client, const ClientID &id,
+                                const DynamicResourceTable::DataMap &callback_data) {
+      compare_test(data_map1, callback_data);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(
+        client->resource_table().Update(job_id, client_id, data_map1, update_callback1));
+    auto lookup_callback1 = [data_map1, compare_test](
+                                RedisGcsClient *client, const ClientID &id,
+                                const DynamicResourceTable::DataMap &callback_data) {
+      compare_test(data_map1, callback_data);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback1));
 
-  // Step 2: Decrease one element, increase one and add a new one.
-  RAY_CHECK_OK(client->resource_table().Update(job_id, client_id, data_map2, nullptr));
-  auto lookup_callback2 = [data_map2, compare_test](
-                              RedisGcsClient *client, const ClientID &id,
-                              const DynamicResourceTable::DataMap &callback_data) {
-    compare_test(data_map2, callback_data);
-    test->IncrementNumCallbacks();
-  };
-  RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback2));
-  std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
-  auto remove_callback = [delete_keys](RedisGcsClient *client, const ClientID &id,
-                                       const std::vector<std::string> &callback_data) {
-    for (size_t i = 0; i < callback_data.size(); ++i) {
-      // All deleting keys exist in this argument even if the key doesn't exist.
-      ASSERT_EQ(callback_data[i], delete_keys[i]);
-    }
-    test->IncrementNumCallbacks();
-  };
-  RAY_CHECK_OK(client->resource_table().RemoveEntries(job_id, client_id, delete_keys,
-                                                      remove_callback));
-  DynamicResourceTable::DataMap data_map3(data_map2);
-  data_map3.erase("GPU");
-  data_map3.erase("CUSTOM");
-  auto lookup_callback3 = [data_map3, compare_test](
-                              RedisGcsClient *client, const ClientID &id,
-                              const DynamicResourceTable::DataMap &callback_data) {
-    compare_test(data_map3, callback_data);
-    test->IncrementNumCallbacks();
-  };
-  RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback3));
+    // Step 2: Decrease one element, increase one and add a new one.
+    RAY_CHECK_OK(client->resource_table().Update(job_id, client_id, data_map2, nullptr));
+    auto lookup_callback2 = [data_map2, compare_test](
+                                RedisGcsClient *client, const ClientID &id,
+                                const DynamicResourceTable::DataMap &callback_data) {
+      compare_test(data_map2, callback_data);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback2));
+    std::vector<std::string> delete_keys({"GPU", "CUSTOM", "None-Existent"});
+    auto remove_callback = [delete_keys](RedisGcsClient *client, const ClientID &id,
+                                         const std::vector<std::string> &callback_data) {
+      for (size_t i = 0; i < callback_data.size(); ++i) {
+        // All deleting keys exist in this argument even if the key doesn't exist.
+        ASSERT_EQ(callback_data[i], delete_keys[i]);
+      }
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->resource_table().RemoveEntries(job_id, client_id, delete_keys,
+                                                        remove_callback));
+    DynamicResourceTable::DataMap data_map3(data_map2);
+    data_map3.erase("GPU");
+    data_map3.erase("CUSTOM");
+    auto lookup_callback3 = [data_map3, compare_test](
+                                RedisGcsClient *client, const ClientID &id,
+                                const DynamicResourceTable::DataMap &callback_data) {
+      compare_test(data_map3, callback_data);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback3));
 
-  // Step 3: Reset the the resources to data_map1.
-  RAY_CHECK_OK(
-      client->resource_table().Update(job_id, client_id, data_map1, update_callback1));
-  auto lookup_callback4 = [data_map1, compare_test](
-                              RedisGcsClient *client, const ClientID &id,
-                              const DynamicResourceTable::DataMap &callback_data) {
-    compare_test(data_map1, callback_data);
-    test->IncrementNumCallbacks();
-  };
-  RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback4));
+    // Step 3: Reset the the resources to data_map1.
+    RAY_CHECK_OK(
+        client->resource_table().Update(job_id, client_id, data_map1, update_callback1));
+    auto lookup_callback4 = [data_map1, compare_test](
+                                RedisGcsClient *client, const ClientID &id,
+                                const DynamicResourceTable::DataMap &callback_data) {
+      compare_test(data_map1, callback_data);
+      test->IncrementNumCallbacks();
+    };
+    RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback4));
 
-  // Step 4: Removing all elements will remove the home Hash table from GCS.
-  RAY_CHECK_OK(client->resource_table().RemoveEntries(
-      job_id, client_id, {"GPU", "CPU", "CUSTOM", "None-Existent"}, nullptr));
-  auto lookup_callback5 = [](RedisGcsClient *client, const ClientID &id,
-                             const DynamicResourceTable::DataMap &callback_data) {
-    ASSERT_EQ(callback_data.size(), 0);
-    test->IncrementNumCallbacks();
-    // It is not sure which of notification or lookup callback will come first.
-    if (test->NumCallbacks() == expected_count) {
-      test->Stop();
-    }
-  };
-  RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback5));
-  test->Start();
-  ASSERT_EQ(test->NumCallbacks(), expected_count);
-}
+    // Step 4: Removing all elements will remove the home Hash table from GCS.
+    RAY_CHECK_OK(client->resource_table().RemoveEntries(
+        job_id, client_id, {"GPU", "CPU", "CUSTOM", "None-Existent"}, nullptr));
+    auto lookup_callback5 = [](RedisGcsClient *client, const ClientID &id,
+                               const DynamicResourceTable::DataMap &callback_data) {
+      ASSERT_EQ(callback_data.size(), 0);
+      test->IncrementNumCallbacks();
+      // It is not sure which of notification or lookup callback will come first.
+      if (test->NumCallbacks() == expected_count) {
+        test->Stop();
+      }
+    };
+    RAY_CHECK_OK(client->resource_table().Lookup(job_id, client_id, lookup_callback5));
+    test->Start();
+    ASSERT_EQ(test->NumCallbacks(), expected_count);
+  }
+};
 
 TEST_F(TestGcsWithAsio, TestHashTable) {
   test = this;
-  TestHashTable(job_id_, client_);
+  HashTableTestHelper::TestHashTable(job_id_, client_);
 }
 
 #undef TEST_TASK_TABLE_MACRO

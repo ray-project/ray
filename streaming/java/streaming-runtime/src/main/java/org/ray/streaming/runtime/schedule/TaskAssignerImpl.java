@@ -13,11 +13,9 @@ import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
-import org.ray.streaming.runtime.core.processor.ProcessBuilder;
-import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.worker.JobWorker;
 
-public class TaskAssignImpl implements ITaskAssign {
+public class TaskAssignerImpl implements TaskAssigner {
 
   /**
    * Assign an optimized logical plan to execution graph.
@@ -42,10 +40,8 @@ public class TaskAssignImpl implements ITaskAssign {
         vertexTasks.add(new ExecutionTask(taskId, taskIndex, workers.get(taskId)));
         taskId++;
       }
-      StreamProcessor streamProcessor = ProcessBuilder
-          .buildProcessor(planVertex.getStreamOperator());
       executionNode.setExecutionTasks(vertexTasks);
-      executionNode.setStreamProcessor(streamProcessor);
+      executionNode.setStreamOperator(planVertex.getStreamOperator());
       idToExecutionNode.put(executionNode.getNodeId(), executionNode);
     }
 

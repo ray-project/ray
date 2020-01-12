@@ -5,7 +5,7 @@ import collections
 from ray.tune.result import (DEFAULT_RESULT_KEYS, CONFIG_PREFIX,
                              EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
                              TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL)
-from ray.tune.util import flatten_dict
+from ray.tune.utils import flatten_dict
 
 try:
     from tabulate import tabulate
@@ -238,7 +238,7 @@ def _get_trial_info(trial, parameters, metrics):
         metrics (List[str]): Names of metrics to include.
     """
     result = flatten_dict(trial.last_result)
-    trial_info = [str(trial), trial.status, str(trial.address)]
+    trial_info = [str(trial), trial.status, str(trial.location)]
     trial_info += [result.get(CONFIG_PREFIX + param) for param in parameters]
     trial_info += [result.get(metric) for metric in metrics]
     return trial_info

@@ -368,8 +368,8 @@ Status Set<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   auto on_subscribe = [subscribe](RedisGcsClient *client, const ID &id,
                                   const GcsChangeMode change_mode,
                                   const std::vector<Data> &data) {
-    EntryChangeNotification<Data> change_notification(change_mode, data);
-    std::vector<EntryChangeNotification<Data>> notification_vec;
+    ArrayNotification<Data> change_notification(change_mode, data);
+    std::vector<ArrayNotification<Data>> notification_vec;
     notification_vec.emplace_back(std::move(change_notification));
     subscribe(client, id, notification_vec);
   };
@@ -498,7 +498,11 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
             data_map.emplace(key, std::move(value));
           }
         }
-        subscribe(client_, id, gcs_entry.change_mode(), data_map);
+        MapNotification<std::string, Data> notification(gcs_entry.change_mode(),
+                                                        data_map);
+        std::vector<MapNotification<std::string, Data>> notification_vec;
+        notification_vec.emplace_back(std::move(notification));
+        subscribe(client_, id, notification_vec);
       }
     }
   };
@@ -523,14 +527,6 @@ Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &typ
 
 std::string ErrorTable::DebugString() const {
   return Log<JobID, ErrorTableData>::DebugString();
-}
-
-Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
-  // TODO(hchen): Change the parameter to shared_ptr to avoid copying data.
-  auto data = std::make_shared<ProfileTableData>();
-  data->CopyFrom(profile_events);
-  return Append(JobID::Nil(), UniqueID::FromRandom(), data,
-                /*done_callback=*/nullptr);
 }
 
 std::string ProfileTable::DebugString() const {
@@ -636,10 +632,11 @@ Status ClientTable::Disconnect() {
   return status;
 }
 
-ray::Status ClientTable::Register(const GcsNodeInfo &node_info) {
+ray::Status ClientTable::MarkConnected(const GcsNodeInfo &node_info,
+                                       const WriteCallback &done) {
   RAY_CHECK(node_info.state() == GcsNodeInfo::ALIVE);
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(node_info);
-  return SyncAppend(JobID::Nil(), client_log_key_, node_info_ptr);
+  return Append(JobID::Nil(), client_log_key_, node_info_ptr, done);
 }
 
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id,
@@ -726,6 +723,25 @@ std::string ClientTable::DebugString() const {
   return result.str();
 }
 
+Status TaskLeaseTable::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                 const Callback &subscribe,
+                                 const SubscriptionCallback &done) {
+  auto on_subscribe = [subscribe](RedisGcsClient *client, const TaskID &task_id,
+                                  const std::vector<TaskLeaseData> &data) {
+    std::vector<boost::optional<TaskLeaseData>> result;
+    for (const auto &item : data) {
+      boost::optional<TaskLeaseData> optional_item(item);
+      result.emplace_back(std::move(optional_item));
+    }
+    if (result.empty()) {
+      boost::optional<TaskLeaseData> optional_item;
+      result.emplace_back(std::move(optional_item));
+    }
+    subscribe(client, task_id, result);
+  };
+  return Table<TaskID, TaskLeaseData>::Subscribe(job_id, client_id, on_subscribe, done);
+}
+
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id,
@@ -774,6 +790,7 @@ template class Log<JobID, JobTableData>;
 template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
+template class Table<WorkerID, WorkerFailureData>;
 
 template class Log<ClientID, ResourceTableData>;
 template class Hash<ClientID, ResourceTableData>;

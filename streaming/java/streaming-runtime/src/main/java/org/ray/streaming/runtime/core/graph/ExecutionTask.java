@@ -11,7 +11,6 @@ import org.ray.streaming.runtime.worker.JobWorker;
  * An ExecutionNode has n ExecutionTasks if parallelism is n.
  */
 public class ExecutionTask implements Serializable {
-
   private int taskId;
   private int taskIndex;
   private RayActor<JobWorker> worker;

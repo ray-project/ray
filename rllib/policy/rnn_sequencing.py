@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """RNN utils for RLlib.
 
 The main trick here is that we add the time dimension at the last moment.
