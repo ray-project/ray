@@ -166,7 +166,18 @@ class PyTorchTrainer:
     def train(self, retries=0, checkpoint="auto"):
         """Runs a training epoch.
 
-        Runs an average over all values returned from workers.
+        Runs an average over all values returned from workers. Set `retries`
+        to enable fault handling in case of instance pre-emption.
+
+        Args:
+            retries (int): Must be non-negative. If set to N, will
+                kill all current workers, query the Ray global state for
+                total available resources, and re-launch up to the
+                available resources. Behavior is not well-defined
+                in case of shared cluster usage.
+            checkpoint (str): Path to checkpoint to restore from if retrying.
+                If retries is set and checkpoint == "auto", PyTorchTrainer
+                will save a checkpoint before starting to train.
         """
         assert retries >= 0, "`retries` must be non-negative."
         if retries and checkpoint == "auto":
