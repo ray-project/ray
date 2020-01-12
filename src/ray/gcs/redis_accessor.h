@@ -2,7 +2,6 @@
 #define RAY_GCS_REDIS_ACCESSOR_H
 
 #include "ray/common/id.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
@@ -13,10 +12,6 @@ namespace ray {
 namespace gcs {
 
 class RedisGcsClient;
-
-std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
-    const TaskSpecification &task_spec, const rpc::Address &address,
-    gcs::ActorTableData::ActorState state, uint64_t remaining_reconstructions);
 
 /// \class RedisActorInfoAccessor
 /// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
@@ -122,21 +117,37 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
  public:
   explicit RedisTaskInfoAccessor(RedisGcsClient *client_impl);
 
-  ~RedisTaskInfoAccessor() {}
+  virtual ~RedisTaskInfoAccessor() {}
 
   Status AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
-                  const StatusCallback &callback);
+                  const StatusCallback &callback) override;
 
   Status AsyncGet(const TaskID &task_id,
-                  const OptionalItemCallback<TaskTableData> &callback);
+                  const OptionalItemCallback<TaskTableData> &callback) override;
 
-  Status AsyncDelete(const std::vector<TaskID> &task_ids, const StatusCallback &callback);
+  Status AsyncDelete(const std::vector<TaskID> &task_ids,
+                     const StatusCallback &callback) override;
 
   Status AsyncSubscribe(const TaskID &task_id,
                         const SubscribeCallback<TaskID, TaskTableData> &subscribe,
-                        const StatusCallback &done);
+                        const StatusCallback &done) override;
 
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done);
+  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) override;
+
+  Status AsyncAddTaskLease(const std::shared_ptr<TaskLeaseData> &data_ptr,
+                           const StatusCallback &callback) override;
+
+  Status AsyncSubscribeTaskLease(
+      const TaskID &task_id,
+      const SubscribeCallback<TaskID, boost::optional<TaskLeaseData>> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
+                                   const StatusCallback &done) override;
+
+  Status AttemptTaskReconstruction(
+      const std::shared_ptr<TaskReconstructionData> &data_ptr,
+      const StatusCallback &callback) override;
 
  private:
   RedisGcsClient *client_impl_{nullptr};
@@ -151,6 +162,10 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
   typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
       TaskSubscriptionExecutor;
   TaskSubscriptionExecutor task_sub_executor_;
+
+  typedef SubscriptionExecutor<TaskID, boost::optional<TaskLeaseData>, TaskLeaseTable>
+      TaskLeaseSubscriptionExecutor;
+  TaskLeaseSubscriptionExecutor task_lease_sub_executor_;
 };
 
 /// \class RedisObjectInfoAccessor
@@ -212,7 +227,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   const GcsNodeInfo &GetSelfInfo() const override;
 
-  Status Register(const GcsNodeInfo &node_info) override;
+  Status AsyncRegister(const GcsNodeInfo &node_info,
+                       const StatusCallback &callback) override;
 
   Status AsyncUnregister(const ClientID &node_id,
                          const StatusCallback &callback) override;
@@ -228,6 +244,20 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
 
   bool IsRemoved(const ClientID &node_id) const override;
+
+  Status AsyncGetResources(const ClientID &node_id,
+                           const OptionalItemCallback<ResourceMap> &callback) override;
+
+  Status AsyncUpdateResources(const ClientID &node_id, const ResourceMap &resources,
+                              const StatusCallback &callback) override;
+
+  Status AsyncDeleteResources(const ClientID &node_id,
+                              const std::vector<std::string> &resource_names,
+                              const StatusCallback &callback) override;
+
+  Status AsyncSubscribeToResources(
+      const SubscribeCallback<ClientID, ResourceChangeNotification> &subscribe,
+      const StatusCallback &done) override;
 
   Status AsyncReportHeartbeat(const std::shared_ptr<HeartbeatTableData> &data_ptr,
                               const StatusCallback &callback) override;
@@ -247,6 +277,10 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
  private:
   RedisGcsClient *client_impl_{nullptr};
 
+  typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
+      DynamicResourceSubscriptionExecutor;
+  DynamicResourceSubscriptionExecutor resource_sub_executor_;
+
   typedef SubscriptionExecutor<ClientID, HeartbeatTableData, HeartbeatTable>
       HeartbeatSubscriptionExecutor;
   HeartbeatSubscriptionExecutor heartbeat_sub_executor_;
@@ -254,6 +288,22 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
       HeartbeatBatchSubscriptionExecutor;
   HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
+};
+
+/// \class RedisStatsInfoAccessor
+/// RedisStatsInfoAccessor is an implementation of `StatsInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisStatsInfoAccessor : public StatsInfoAccessor {
+ public:
+  explicit RedisStatsInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisStatsInfoAccessor() = default;
+
+  Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
+                             const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
 };
 
 }  // namespace gcs

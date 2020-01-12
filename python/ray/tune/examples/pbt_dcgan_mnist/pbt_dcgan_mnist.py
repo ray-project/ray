@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
@@ -11,6 +7,7 @@ from ray.tune.trial import ExportFormat
 
 import argparse
 import os
+from filelock import FileLock
 import random
 import torch
 import torch.nn as nn
@@ -248,7 +245,8 @@ class PytorchTrainable(tune.Trainable):
             self.netG.parameters(),
             lr=config.get("lr", 0.01),
             betas=(beta1, 0.999))
-        self.dataloader = get_data_loader()
+        with FileLock(os.path.expanduser("~/.data.lock")):
+            self.dataloader = get_data_loader()
 
     def _train(self):
         lossG, lossD, is_score = train(

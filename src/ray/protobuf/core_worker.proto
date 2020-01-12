@@ -65,22 +65,24 @@ message ReturnObject {
 message PushTaskRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
+  // Address of the caller.
+  Address caller_address = 2;
   // The task to be pushed.
-  TaskSpec task_spec = 2;
+  TaskSpec task_spec = 3;
   // The sequence number of the task for this client. This must increase
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
   // If set to -1, ordering is disabled and the task executes immediately.
   // This mode of behaviour is used for direct task submission only.
-  int64 sequence_number = 3;
+  int64 sequence_number = 4;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
   // to cancel any PushTaskRequests with seqno <= this value, rather than
   // waiting for the server to time out waiting for missing messages.
-  int64 client_processed_up_to = 4;
+  int64 client_processed_up_to = 5;
   // Resource mapping ids assigned to the worker executing the task.
-  repeated ResourceMapEntry resource_mapping = 5;
+  repeated ResourceMapEntry resource_mapping = 6;
 }
 
 message PushTaskReply {
@@ -117,6 +119,16 @@ message GetObjectStatusReply {
   ObjectStatus status = 1;
 }
 
+message WaitForObjectEvictionRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ObjectID of the pinned object.
+  bytes object_id = 2;
+}
+
+message WaitForObjectEvictionReply {
+}
+
 message KillActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
@@ -145,6 +157,10 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Notify the object's owner that it has been pinned by a raylet. Replying
+  // to this message indicates that the raylet should unpin the object.
+  rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
+      returns (WaitForObjectEvictionReply);
   // Request that the worker shut down without completing outstanding work.
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Get metrics from core workers.

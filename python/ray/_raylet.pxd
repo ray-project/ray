@@ -38,7 +38,6 @@ cdef class BaseID:
 cdef class ObjectID(BaseID):
     cdef:
         CObjectID data
-        object buffer_ref
         # Flag indicating whether or not this object ID was added to the set
         # of active IDs in the core worker so we know whether we should clean
         # it up.

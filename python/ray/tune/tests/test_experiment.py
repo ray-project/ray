@@ -1,14 +1,24 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import unittest
 
+import ray
+from ray.rllib import _register_all
+from ray.tune import register_trainable
 from ray.tune.experiment import Experiment, convert_to_experiment_list
 from ray.tune.error import TuneError
 
 
 class ExperimentTest(unittest.TestCase):
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def setUp(self):
+        def train(config, reporter):
+            for i in range(100):
+                reporter(timesteps_total=i)
+
+        register_trainable("f1", train)
+
     def testConvertExperimentFromExperiment(self):
         exp1 = Experiment(**{
             "name": "foo",

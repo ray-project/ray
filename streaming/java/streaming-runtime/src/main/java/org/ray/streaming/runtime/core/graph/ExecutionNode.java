@@ -3,18 +3,17 @@ package org.ray.streaming.runtime.core.graph;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.plan.VertexType;
-import org.ray.streaming.runtime.core.processor.StreamProcessor;
 
 /**
  * A node in the physical execution graph.
  */
 public class ExecutionNode implements Serializable {
-
   private int nodeId;
   private int parallelism;
   private NodeType nodeType;
-  private StreamProcessor streamProcessor;
+  private StreamOperator streamOperator;
   private List<ExecutionTask> executionTasks;
   private List<ExecutionEdge> inputsEdges;
   private List<ExecutionEdge> outputEdges;
@@ -71,12 +70,12 @@ public class ExecutionNode implements Serializable {
     return inputsEdges;
   }
 
-  public StreamProcessor getStreamProcessor() {
-    return streamProcessor;
+  public StreamOperator getStreamOperator() {
+    return streamOperator;
   }
 
-  public void setStreamProcessor(StreamProcessor streamProcessor) {
-    this.streamProcessor = streamProcessor;
+  public void setStreamOperator(StreamOperator streamOperator) {
+    this.streamOperator = streamOperator;
   }
 
   public NodeType getNodeType() {
@@ -102,7 +101,7 @@ public class ExecutionNode implements Serializable {
     sb.append("nodeId=").append(nodeId);
     sb.append(", parallelism=").append(parallelism);
     sb.append(", nodeType=").append(nodeType);
-    sb.append(", streamProcessor=").append(streamProcessor);
+    sb.append(", streamOperator=").append(streamOperator);
     sb.append('}');
     return sb.toString();
   }

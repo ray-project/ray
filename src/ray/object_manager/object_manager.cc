@@ -665,9 +665,8 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 }
 
 /// Implementation of ObjectManagerServiceHandler
-void ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
-                                      rpc::PushReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
+void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
 
@@ -712,9 +711,8 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
   return status;
 }
 
-void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
-                                      rpc::PullReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
+void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
   RAY_LOG(DEBUG) << "Received pull request from client " << client_id << " for object ["
@@ -735,9 +733,9 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
-                                             rpc::FreeObjectsReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
+void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
+                                      rpc::FreeObjectsReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   for (const auto &e : request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));
@@ -806,15 +804,15 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
   return it->second;
 }
 
-rpc::ProfileTableData ObjectManager::GetAndResetProfilingInfo() {
-  rpc::ProfileTableData profile_info;
-  profile_info.set_component_type("object_manager");
-  profile_info.set_component_id(self_node_id_.Binary());
+std::shared_ptr<rpc::ProfileTableData> ObjectManager::GetAndResetProfilingInfo() {
+  auto profile_info = std::make_shared<rpc::ProfileTableData>();
+  profile_info->set_component_type("object_manager");
+  profile_info->set_component_id(self_node_id_.Binary());
 
   {
     std::lock_guard<std::mutex> lock(profile_mutex_);
     for (auto const &profile_event : profile_events_) {
-      profile_info.add_profile_events()->CopyFrom(profile_event);
+      profile_info->add_profile_events()->CopyFrom(profile_event);
     }
     profile_events_.clear();
   }
@@ -837,6 +835,13 @@ std::string ObjectManager::DebugString() const {
 }
 
 void ObjectManager::RecordMetrics() const {
+  int64_t used_memory = 0;
+  for (const auto &it : local_objects_) {
+    object_manager::protocol::ObjectInfoT object_info = it.second.object_info;
+    used_memory += object_info.data_size + object_info.metadata_size;
+  }
+  stats::ObjectManagerStats().Record(used_memory,
+                                     {{stats::ValueTypeKey, "used_object_store_memory"}});
   stats::ObjectManagerStats().Record(local_objects_.size(),
                                      {{stats::ValueTypeKey, "num_local_objects"}});
   stats::ObjectManagerStats().Record(active_wait_requests_.size(),

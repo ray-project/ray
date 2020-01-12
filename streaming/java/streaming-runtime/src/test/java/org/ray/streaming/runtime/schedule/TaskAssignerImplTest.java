@@ -11,8 +11,9 @@ import org.ray.runtime.actor.LocalModeRayActor;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
-import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.api.stream.StreamSource;
+import org.ray.streaming.api.stream.DataStreamSink;
+import org.ray.streaming.api.stream.DataStreamSource;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -25,9 +26,9 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class TaskAssignImplTest {
+public class TaskAssignerImplTest extends BaseUnitTest {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(TaskAssignImplTest.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(TaskAssignerImplTest.class);
 
   @Test
   public void testTaskAssignImpl() {
@@ -38,8 +39,8 @@ public class TaskAssignImplTest {
       workers.add(new LocalModeRayActor(ActorId.fromRandom(), ObjectId.fromRandom()));
     }
 
-    ITaskAssign taskAssign = new TaskAssignImpl();
-    ExecutionGraph executionGraph = taskAssign.assign(plan, workers);
+    TaskAssigner taskAssigner = new TaskAssignerImpl();
+    ExecutionGraph executionGraph = taskAssigner.assign(plan, workers);
 
     List<ExecutionNode> executionNodeList = executionGraph.getExecutionNodeList();
 
@@ -64,9 +65,9 @@ public class TaskAssignImplTest {
 
   public Plan buildDataSyncPlan() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
-    StreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
+    DataStreamSink streamSink = dataStream.sink(x -> LOGGER.info(x));
     PlanBuilder planBuilder = new PlanBuilder(Lists.newArrayList(streamSink));
 
     Plan plan = planBuilder.buildPlan();

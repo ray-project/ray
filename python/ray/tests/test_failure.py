@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import logging
 import os
@@ -936,11 +932,10 @@ def test_direct_call_serialized_id_eviction(ray_start_cluster):
 
     @ray.remote
     def get(obj_ids):
-        print("get", obj_ids)
         obj_id = obj_ids[0]
         assert (isinstance(ray.get(obj_id), np.ndarray))
-        # Evict the object.
-        ray.internal.free(obj_ids)
+        # Wait for the object to be evicted.
+        ray.internal.free(obj_id)
         while ray.worker.global_worker.core_worker.object_exists(obj_id):
             time.sleep(1)
         with pytest.raises(ray.exceptions.UnreconstructableError):
@@ -948,7 +943,9 @@ def test_direct_call_serialized_id_eviction(ray_start_cluster):
         print("get done", obj_ids)
 
     obj = large_object.remote()
-    ray.get(get.remote([obj]))
+    result = get.remote([obj])
+    ray.internal.free(obj)
+    ray.get(result)
 
 
 @pytest.mark.parametrize(

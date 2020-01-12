@@ -396,4 +396,16 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id, bool *in_plasma)
   return false;
 }
 
+MemoryStoreStats CoreWorkerMemoryStore::GetMemoryStoreStatisticalData() {
+  absl::MutexLock lock(&mu_);
+  MemoryStoreStats item;
+  for (const auto &it : objects_) {
+    if (!it.second->IsInPlasmaError()) {
+      item.num_local_objects += 1;
+      item.used_object_store_memory += it.second->GetSize();
+    }
+  }
+  return item;
+}
+
 }  // namespace ray

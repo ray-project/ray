@@ -9,6 +9,7 @@ import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.context.RuntimeContext;
+import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.runtime.core.collector.OutputCollector;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
@@ -81,7 +82,8 @@ public abstract class StreamTask implements Runnable {
         DataWriter writer = new DataWriter(channelIDs, toActorIds, queueConf);
         LOG.info("Create DataWriter succeed.");
         writers.put(edge, writer);
-        collectors.add(new OutputCollector(channelIDs, writer, edge.getPartition()));
+        Partition partition = edge.getPartition();
+        collectors.add(new OutputCollector(channelIDs, writer, partition));
       }
     }
 

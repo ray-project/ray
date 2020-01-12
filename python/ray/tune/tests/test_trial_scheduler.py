@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import json
 import random
@@ -203,7 +199,7 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None):
         pass
 
-    def save(self, trial, type=Checkpoint.DISK, result=None):
+    def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
         return trial.trainable_name
 
     def reset_trial(self, trial, new_config, new_experiment_tag):

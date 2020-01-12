@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import unittest
 
@@ -19,9 +15,11 @@ from ray.tune.suggest import BasicVariantGenerator
 
 
 class TrialRunnerTest(unittest.TestCase):
+    def setUp(self):
+        _register_all()  # re-register the evicted objects
+
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def testTrialStatus(self):
         ray.init()
