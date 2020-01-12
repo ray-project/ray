@@ -172,23 +172,75 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     for k in model1_state_dict:
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
 
-def step_with_fail(self):
-    worker_stats = [w.step.remote() for w in self.workers]
-    if self._num_failures < 3:
-        self.workers[0].__ray_kill__()
-    success = check_for_failure(worker_stats)
-    return success, worker_stats
 
-@patch.object(PyTorchTrainer, '_train_step', step_with_fail)
 def test_fail_thrice(ray_start_2_cpus):
     if not dist.is_available():
         return
 
-    trainer1 = PyTorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
-        loss_creator=lambda config: nn.MSELoss(),
-        num_replicas=2)
+    def step_with_fail(self):
+        worker_stats = [w.step.remote() for w in self.workers]
+        if self._num_failures < 3:
+            self.workers[0].__ray_kill__()
+        success = check_for_failure(worker_stats)
+        return success, worker_stats
+
+    with patch.object(PyTorchTrainer, '_train_step', step_with_fail):
+        trainer1 = PyTorchTrainer(
+            model_creator,
+            data_creator,
+            optimizer_creator,
+            loss_creator=lambda config: nn.MSELoss(),
+            num_replicas=2)
 
     trainer1.train(retries=2)
+
+
+def test_fail_with_recover(ray_start_2_cpus):
+    if not dist.is_available():
+        return
+
+    def step_with_fail(self):
+        worker_stats = [w.step.remote() for w in self.workers]
+        if self._num_failures < 3:
+            self.workers[0].__ray_kill__()
+        success = check_for_failure(worker_stats)
+        return success, worker_stats
+
+    with patch.object(PyTorchTrainer, '_train_step', step_with_fail):
+        trainer1 = PyTorchTrainer(
+            model_creator,
+            data_creator,
+            optimizer_creator,
+            loss_creator=lambda config: nn.MSELoss(),
+            num_replicas=2)
+
+    trainer1.train(retries=1)
+
+
+def test_resize(ray_start_2_cpus):
+    if not dist.is_available():
+        return
+
+    def step_with_fail(self):
+        worker_stats = [w.step.remote() for w in self.workers]
+        if self._num_failures < 1:
+            self.workers[0].__ray_kill__()
+        success = check_for_failure(worker_stats)
+        return success, worker_stats
+
+    with patch.object(PyTorchTrainer, '_train_step', step_with_fail):
+        trainer1 = PyTorchTrainer(
+            model_creator,
+            data_creator,
+            optimizer_creator,
+            loss_creator=lambda config: nn.MSELoss(),
+            num_replicas=2)
+
+    @ray.remote
+    def test(sleeps):
+        import time
+        time.sleep(100)
+
+    test.remote()
+    trainer1.train(retries=1)
+    assert len(trainer1.workers) == 1
