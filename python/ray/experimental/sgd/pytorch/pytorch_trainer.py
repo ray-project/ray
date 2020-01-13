@@ -166,7 +166,7 @@ class PyTorchTrainer:
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set
-        `max_retries` to enable fault handling in case of instance pre-emption.
+        `max_retries` to enable fault handling in case of instance preemption.
 
         Args:
             max_retries (int): Must be non-negative. If set to N, will

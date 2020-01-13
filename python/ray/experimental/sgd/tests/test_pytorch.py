@@ -9,7 +9,6 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 from ray.experimental.sgd.pytorch.utils import train
 from ray.experimental.sgd.utils import check_for_failure
@@ -20,7 +19,7 @@ from ray.experimental.sgd.examples.train_example import (
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
-def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
+def test_train(ray_start_2_cpus, num_replicas):
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
@@ -42,7 +41,7 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
-def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
+def test_multi_model(ray_start_2_cpus, num_replicas):
     def custom_train(models, dataloader, criterion, optimizers, config):
         result = {}
         for i, (model, optimizer) in enumerate(zip(models, optimizers)):
@@ -100,7 +99,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
-def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
+def test_tune_train(ray_start_2_cpus, num_replicas):
 
     config = {
         "model_creator": model_creator,
@@ -133,7 +132,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
-def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
+def test_save_and_restore(ray_start_2_cpus, num_replicas):
     trainer1 = PyTorchTrainer(
         model_creator,
         data_creator,
@@ -170,7 +169,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
 
 
-def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
+def test_fail_with_recover(ray_start_2_cpus):
     if not dist.is_available():
         return
 
@@ -193,7 +192,7 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
             trainer1.train(max_retries=1)
 
 
-def test_resize(ray_start_2_cpus):  # noqa: F811
+def test_resize(ray_start_2_cpus):
     if not dist.is_available():
         return
 
@@ -222,7 +221,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
         assert len(trainer1.workers) == 1
 
 
-def test_fail_thrice(ray_start_2_cpus):  # noqa: F811
+def test_fail_thrice(ray_start_2_cpus):
     if not dist.is_available():
         return
 

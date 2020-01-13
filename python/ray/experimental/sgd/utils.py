@@ -129,6 +129,16 @@ class AverageMeter:
 
 
 def check_for_failure(remote_values):
+    """Checks remote values for any that returned and failed.
+
+    Args:
+        remote_values (list): List of object IDs representing functions
+            that may fail in the middle of execution. For example, running
+            a SGD training loop in multiple parallel actor calls.
+
+    Returns:
+        Bool for success in executing given remote tasks.
+    """
     unfinished = remote_values
     try:
         while len(unfinished) > 0:
