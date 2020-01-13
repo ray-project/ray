@@ -24,6 +24,9 @@ namespace rpc {
 #define TASK_INFO_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
   RPC_SERVICE_HANDLER(TaskInfoGcsService, HANDLER, CONCURRENCY)
 
+#define STATS_SERVICE_RPC_HANDLER(HANDLER, CONCURRENCY) \
+  RPC_SERVICE_HANDLER(StatsGcsService, HANDLER, CONCURRENCY)
+
 class JobInfoGcsServiceHandler {
  public:
   virtual ~JobInfoGcsServiceHandler() = default;
@@ -296,11 +299,48 @@ class TaskInfoGrpcService : public GrpcService {
   TaskInfoGcsServiceHandler &service_handler_;
 };
 
+class StatsGcsServiceHandler {
+ public:
+  virtual ~StatsGcsServiceHandler() = default;
+
+  virtual void HandleAddProfileData(const AddProfileDataRequest &request,
+                                    AddProfileDataReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+};
+
+/// The `GrpcService` for `StatsGcsService`.
+class StatsGrpcService : public GrpcService {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] handler The service handler that actually handle the requests.
+  explicit StatsGrpcService(boost::asio::io_service &io_service,
+                            StatsGcsServiceHandler &handler)
+      : GrpcService(io_service), service_handler_(handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
+          *server_call_factories_and_concurrencies) override {
+    STATS_SERVICE_RPC_HANDLER(AddProfileData, 1);
+  }
+
+ private:
+  /// The grpc async service object.
+  StatsGcsService::AsyncService service_;
+  /// The service handler that actually handle the requests.
+  StatsGcsServiceHandler &service_handler_;
+};
+
 using JobInfoHandler = JobInfoGcsServiceHandler;
 using ActorInfoHandler = ActorInfoGcsServiceHandler;
 using NodeInfoHandler = NodeInfoGcsServiceHandler;
 using ObjectInfoHandler = ObjectInfoGcsServiceHandler;
 using TaskInfoHandler = TaskInfoGcsServiceHandler;
+using StatsHandler = StatsGcsServiceHandler;
 
 }  // namespace rpc
 }  // namespace ray
