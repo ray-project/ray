@@ -267,7 +267,9 @@ class PyTorchTrainer:
         for worker in self.workers:
             if not force:
                 worker.shutdown.remote()
-            worker.__ray_terminate__.remote()
+                worker.__ray_terminate__.remote()
+            else:
+                worker.__ray_kill__()
 
     def _try_resize_workers(self, checkpoint, max_retries=5):
         # check available resources
@@ -283,9 +285,9 @@ class PyTorchTrainer:
                 self.restore(checkpoint)
                 return
             else:
-                delay = 2**max_retries
+                delay = 2**i
                 logger.warning(
-                    "No new workers found. Retrying in %n sec." % delay)
+                    "No new workers found. Retrying in %d sec." % delay)
                 time.sleep(delay)
         raise RuntimeError("Exceeded max_retries for relaunching workers.")
 

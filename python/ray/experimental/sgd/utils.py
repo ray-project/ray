@@ -5,6 +5,7 @@ import socket
 import time
 
 import ray
+from ray.exceptions import RayActorError
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +146,6 @@ def check_for_failure(remote_values):
             finished, unfinished = ray.wait(unfinished)
             finished = ray.get(finished)
         return True
-    except Exception as exc:
+    except RayActorError as exc:
         logger.exception(str(exc))
     return False

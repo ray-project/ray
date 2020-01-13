@@ -45,6 +45,7 @@ def data_creator(batch_size, config):
         ]))
 
     # Create the dataloader
+    train_sampler = None
     if distributed.is_initialized():
         train_sampler = DistributedSampler(dataset)
     dataloader = torch.utils.data.DataLoader(
