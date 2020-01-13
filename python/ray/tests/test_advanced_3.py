@@ -363,23 +363,6 @@ def test_workers(shutdown_only):
         worker_ids = set(ray.get([f.remote() for _ in range(10)]))
 
 
-def test_specific_job_id():
-    dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
-
-    # in driver
-    assert dummy_driver_id == ray._get_runtime_context().current_driver_id
-
-    # in worker
-    @ray.remote
-    def f():
-        return ray._get_runtime_context().current_driver_id
-
-    assert dummy_driver_id == ray.get(f.remote())
-
-    ray.shutdown()
-
-
 def test_object_id_properties():
     id_bytes = b"00112233445566778899"
     object_id = ray.ObjectID(id_bytes)
