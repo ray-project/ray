@@ -1153,8 +1153,11 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
     return;
   }
-  RAY_LOG(INFO) << "Got KillActor, shutting down...";
-  Shutdown();
+  RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
+  if (log_dir_ != "") {
+    RayLog::ShutDownRayLog();
+  }
+  exit(1);
 }
 
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
