@@ -100,9 +100,10 @@ class PPOLoss:
                 vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
-            loss = reduce_mean_valid(-surrogate_loss +
-                                     cur_kl_coeff * action_kl -
-                                     entropy_coeff * curr_entropy)
+            loss = reduce_mean_valid(
+                -surrogate_loss +
+                cur_kl_coeff * action_kl - entropy_coeff * curr_entropy
+            )
         self.loss = loss
 
 

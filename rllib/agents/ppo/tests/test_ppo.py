@@ -5,14 +5,15 @@ import ray
 from ray.rllib.agents.impala.vtrace_policy import BEHAVIOR_LOGITS
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae as \
-    postprocess_ppo_gae_tf, PPOLoss as PPOLossTf
+    postprocess_ppo_gae_tf, ppo_surrogate_loss as ppo_surrogate_loss_tf
 from ray.rllib.agents.ppo.ppo_torch_policy import postprocess_ppo_gae as \
-    postprocess_ppo_gae_torch, PPOLoss as PPOLossTorch
+    postprocess_ppo_gae_torch, ppo_surrogate_loss as ppo_surrogate_loss_torch
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check
 
@@ -55,19 +56,18 @@ class TestPPO(unittest.TestCase):
                 [0.1, 0.2, 0.3, 0.4],
                 [0.5, 0.6, 0.7, 0.8],
                 [0.9, 1.0, 1.1, 1.2]
-            ]),
+            ], dtype=np.float32),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-            BEHAVIOR_LOGITS: np.array([[-2., 0.5, -0.2], [-3., -0.3, 1.1], [-0.1, 2.5, -0.2]], dtype=np.float32),
+            BEHAVIOR_LOGITS: np.array([[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
             ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32)
         }
 
         # tf.
         trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
         policy = trainer.get_policy()
-        vars = policy.model.trainable_variables()
 
         # Post-process (calculate simple (non-GAE) advantages) and attach to
         # train_batch dict.
@@ -77,75 +77,110 @@ class TestPPO(unittest.TestCase):
         # Check Advantage values.
         check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
 
-        # Actual loss results.
-        loss_obj = PPOLossTf(
-            Categorical,
-            policy.model,
-            train_batch[Postprocessing.VALUE_TARGETS],
-            train_batch[Postprocessing.ADVANTAGES],
-            train_batch[SampleBatch.ACTIONS],
-            train_batch[BEHAVIOR_LOGITS],
-            train_batch[ACTION_LOGP],
-            train_batch[SampleBatch.VF_PREDS],
-            Categorical(train_batch[BEHAVIOR_LOGITS], policy.model),
-            policy.model.value_function(),
-            policy.kl_coeff,
-            None,  # RNN valid mask
-            entropy_coeff=policy.entropy_coeff,
-            clip_param=policy.config["clip_param"],
-            vf_clip_param=policy.config["vf_clip_param"],
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            use_gae=policy.config["use_gae"]
-        )
+        # Calculate actual PPO loss (results are stored in policy.loss_obj) for tf.
+        ppo_surrogate_loss_tf(policy, policy.model, Categorical, train_batch)
 
-        # Calculate expected results.
+        vars = policy.model.trainable_variables()
         expected_logits = fc(
             fc(
                 train_batch[SampleBatch.CUR_OBS],
                 vars[0].numpy(), vars[1].numpy()
-            ),
-            vars[2].numpy(), vars[3].numpy()
+            ), vars[4].numpy(), vars[5].numpy()
         )
-        expected_logp = Categorical(expected_logits, policy.model).logp(
-            train_batch[SampleBatch.ACTIONS]
+        expected_value_outs = fc(
+            fc(
+                train_batch[SampleBatch.CUR_OBS],
+                vars[2].numpy(), vars[3].numpy()
+            ), vars[6].numpy(), vars[7].numpy()
         )
-        expected_loss = -np.mean(  # TODO: calculate
-            expected_logp * train_batch[Postprocessing.ADVANTAGES]
-        )
-        check(loss_obj.loss.numpy(), expected_loss, decimals=4)
+
+        kl, entropy, pg_loss, vf_loss, overall_loss = \
+            self._ppo_loss_helper(
+                policy, policy.model, Categorical, train_batch,
+                expected_logits, expected_value_outs
+            )
+        check(kl, policy.loss_obj.mean_kl)
+        check(entropy, policy.loss_obj.mean_entropy)
+        check(np.mean(-pg_loss), policy.loss_obj.mean_policy_loss)
+        check(np.mean(vf_loss), policy.loss_obj.mean_vf_loss, decimals=4)
+        check(policy.loss_obj.loss.numpy(), overall_loss, decimals=4)
 
         # Torch.
         config["use_pytorch"] = True
         trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
         policy = trainer.get_policy()
+        train_batch = postprocess_ppo_gae_torch(policy, train_batch)
         train_batch = policy._lazy_tensor_dict(train_batch)
-        results = PPOLossTorch(
-            TorchCategorical,
-            policy.model,
-            train_batch[Postprocessing.VALUE_TARGETS],
-            train_batch[Postprocessing.ADVANTAGES],
-            train_batch[SampleBatch.ACTIONS],
-            train_batch[BEHAVIOR_LOGITS],
-            train_batch[ACTION_LOGP],
-            train_batch[SampleBatch.VF_PREDS],
-            TorchCategorical(train_batch[BEHAVIOR_LOGITS], policy.model),
-            policy.model.value_function(),
-            policy.kl_coeff,
-            None,  # RNN valid mask
-            entropy_coeff=policy.entropy_coeff,
-            clip_param=policy.config["clip_param"],
-            vf_clip_param=policy.config["vf_clip_param"],
-            vf_loss_coeff=policy.config["vf_loss_coeff"],
-            use_gae=policy.config["use_gae"]
-        )
-        expected_logits = policy.model._last_output
-        expected_logp = TorchCategorical(expected_logits, policy.model).logp(
-            train_batch[SampleBatch.ACTIONS]
-        )
-        # TODO: calculate.
-        expected_loss = -np.mean(
-            expected_logp.detach().numpy() *
-            train_batch[Postprocessing.ADVANTAGES].numpy()
-        )
-        check(results.detach().numpy(), expected_loss, decimals=4)
 
+        # Check Advantage values.
+        check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
+
+        # Calculate actual PPO loss (results are stored in policy.loss_obj) for tf.
+        ppo_surrogate_loss_torch(policy, policy.model, TorchCategorical, train_batch)
+
+        kl, entropy, pg_loss, vf_loss, overall_loss = \
+            self._ppo_loss_helper(
+                policy, policy.model, TorchCategorical, train_batch,
+                policy.model._last_output,
+                policy.model.value_function().detach().numpy()
+            )
+        check(kl, policy.loss_obj.mean_kl.detach().numpy())
+        check(entropy, policy.loss_obj.mean_entropy.detach().numpy())
+        check(np.mean(-pg_loss), policy.loss_obj.mean_policy_loss.detach().numpy())
+        check(np.mean(vf_loss), policy.loss_obj.mean_vf_loss.detach().numpy(), decimals=4)
+        check(policy.loss_obj.loss.detach().numpy(), overall_loss, decimals=4)
+
+    def _ppo_loss_helper(self, policy, model, dist_class, train_batch, logits, vf_outs):
+        """
+        Calculates the expected PPO loss (components) given Policy,
+        Model, distribution, some batch, logits & vf outputs, using numpy.
+        """
+        # Calculate expected PPO loss results.
+        dist = dist_class(logits, policy.model)
+        dist_prev = dist_class(train_batch[BEHAVIOR_LOGITS], policy.model)
+        expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
+        if isinstance(model, TorchModelV2):
+            expected_rho = np.exp(expected_logp.detach().numpy() - train_batch.get(ACTION_LOGP))
+            # KL(prev vs current action dist)-loss component.
+            kl = np.mean(dist_prev.kl(dist).detach().numpy())
+            # Entropy-loss component.
+            entropy = np.mean(dist.entropy().detach().numpy())
+        else:
+            expected_rho = np.exp(expected_logp - train_batch[ACTION_LOGP])
+            # KL(prev vs current action dist)-loss component.
+            kl = np.mean(dist_prev.kl(dist))
+            # Entropy-loss component.
+            entropy = np.mean(dist.entropy())
+
+        # Policy loss component.
+        pg_loss = np.minimum(
+            train_batch.get(Postprocessing.ADVANTAGES) * expected_rho,
+            train_batch.get(Postprocessing.ADVANTAGES) * np.clip(
+                expected_rho,
+                1 - policy.config["clip_param"],
+                1 + policy.config["clip_param"]
+            )
+        )
+
+        # Value function loss component.
+        vf_loss1 = np.power(
+            vf_outs - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0
+        )
+        vf_clipped = train_batch.get(SampleBatch.VF_PREDS) + np.clip(
+            vf_outs - train_batch.get(SampleBatch.VF_PREDS),
+            -policy.config["vf_clip_param"],
+            policy.config["vf_clip_param"]
+        )
+        vf_loss2 = np.power(
+            vf_clipped - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0
+        )
+        vf_loss = np.maximum(vf_loss1, vf_loss2)
+
+        # Overall loss.
+        overall_loss = np.mean(
+            -pg_loss +
+            policy.kl_coeff * kl +
+            policy.config["vf_loss_coeff"] * vf_loss -
+            policy.entropy_coeff * entropy
+        )
+        return kl, entropy, pg_loss, vf_loss, overall_loss
