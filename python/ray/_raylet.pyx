@@ -949,11 +949,12 @@ cdef class CoreWorker:
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
 
+        # TODO(fyrestone): is_cross_language is for object serialization
+
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(
-                num_return_vals, is_direct_call,
-                is_cross_language, c_resources)
+                num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(args, &args_vector)
@@ -985,6 +986,8 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
 
+        # TODO(fyrestone): is_cross_language is for object serialization
+
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
@@ -996,8 +999,7 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call,
-                        is_cross_language, max_concurrency,
+                        max_reconstructions, is_direct_call, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
                     &c_actor_id))
@@ -1021,11 +1023,12 @@ cdef class CoreWorker:
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
 
+        # TODO(fyrestone): is_cross_language is for object serialization
+
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_return_vals, False,
-                                        is_cross_language, c_resources)
+            task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args(args, &args_vector)

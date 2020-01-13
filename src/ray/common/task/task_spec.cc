@@ -216,8 +216,6 @@ ObjectID TaskSpecification::ActorDummyObject() const {
 
 bool TaskSpecification::IsDirectCall() const { return message_->is_direct_call(); }
 
-bool TaskSpecification::IsCrossLanguage() const { return message_->is_cross_language(); }
-
 bool TaskSpecification::IsDirectActorCreationCall() const {
   if (IsActorCreationTask()) {
     return message_->actor_creation_task_spec().is_direct_call();

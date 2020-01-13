@@ -55,12 +55,10 @@ ActorID CreateActorHelper(CoreWorker &worker,
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
-  ActorCreationOptions actor_options{
-      max_reconstructions,         is_direct_call,
-      /*is_cross_language*/ false,
-      /*max_concurrency*/ 1,       resources,      resources, {},
-      /*is_detached*/ false,
-      /*is_asyncio*/ false};
+  ActorCreationOptions actor_options{max_reconstructions,   is_direct_call,
+                                     /*max_concurrency*/ 1, resources,      resources, {},
+                                     /*is_detached*/ false,
+                                     /*is_asyncio*/ false};
 
   // Create an actor.
   ActorID actor_id;
@@ -250,7 +248,7 @@ int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
                                 std::unordered_map<std::string, double> &resources,
                                 bool is_direct_call) {
   std::vector<TaskArg> args;
-  TaskOptions options{1, is_direct_call, false, resources};
+  TaskOptions options{1, is_direct_call, resources};
   std::vector<ObjectID> return_ids;
   RayFunction func{Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                          "GetWorkerPid", "", "", "")};
@@ -337,7 +335,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       args.emplace_back(
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
 
-      TaskOptions options{1, false, false, resources};
+      TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
@@ -381,7 +379,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
 
-    TaskOptions options{1, false, false, resources};
+    TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "MergeInputArgsAsOutput", "", "", ""));
@@ -447,7 +445,7 @@ void CoreWorkerTest::TestActorReconstruction(
       args.emplace_back(
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
 
-      TaskOptions options{1, false, false, resources};
+      TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
@@ -493,7 +491,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
       args.emplace_back(
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
 
-      TaskOptions options{1, false, false, resources};
+      TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                   "MergeInputArgsAsOutput", "", "", ""));
@@ -569,7 +567,6 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0,
                                      /*is_direct_call*/ true,
-                                     /*is_cross_language*/ false,
                                      1,
                                      resources,
                                      resources,
@@ -589,7 +586,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   RAY_LOG(INFO) << "start creating " << num_tasks << " PushTaskRequests";
   rpc::Address address;
   for (int i = 0; i < num_tasks; i++) {
-    TaskOptions options{1, false, false, resources};
+    TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
     auto num_returns = options.num_returns;
 
@@ -597,7 +594,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, /*is_direct*/ false,
-                              /*is_cross_language*/ false, resources, resources);
+                              resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {
@@ -644,7 +641,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
                                                       sizeof(array));
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
-    TaskOptions options{1, false, false, resources};
+    TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "MergeInputArgsAsOutput", "", "", ""));
