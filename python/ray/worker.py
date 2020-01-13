@@ -1374,7 +1374,7 @@ def disconnect(exiting_interpreter=False):
             # Remove the job name from GCS if this is a driver.
             if (hasattr(global_worker, "redis_client")
                     and global_worker.redis_client is not None):
-                result = global_worker.redis_client.hdel(
+                global_worker.redis_client.hdel(
                     ray_constants.KEY_OF_JOB_NAMES_IN_REDIS,
                     global_worker.job_name)
 
