@@ -498,7 +498,7 @@ class ActorClass:
         if worker.mode == ray.LOCAL_MODE:
             if meta.is_cross_language:
                 raise Exception(
-                    "Cross-lang ActorClass cannot be executed locally.")
+                    "Cross language ActorClass cannot be executed locally.")
             actor_id = ActorID.from_random()
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
@@ -530,11 +530,11 @@ class ActorClass:
                 actor_placement_resources["CPU"] += 1
             if meta.is_cross_language:
                 if kwargs:
-                    raise Exception(
-                        "Cross-lang remote actor creation not support kwargs.")
+                    raise Exception("Cross language remote actor creation "
+                                    "not support kwargs.")
                 if not worker.load_code_from_local:
-                    raise Exception(
-                        "Cross-lang needs --load-code-from-local to be set.")
+                    raise Exception("Cross language feature needs "
+                                    "--load-code-from-local to be set.")
                 creation_args = args
             else:
                 function_signature = meta.method_signatures[function_name]
@@ -666,11 +666,11 @@ class ActorHandle:
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
             if kwargs:
-                raise Exception(
-                    "Cross-lang remote actor method not support kwargs.")
+                raise Exception("Cross language remote actor method "
+                                "not support kwargs.")
             if not worker.load_code_from_local:
-                raise Exception(
-                    "Cross-lang needs --load-code-from-local to be set.")
+                raise Exception("Cross language feature needs "
+                                "--load-code-from-local to be set.")
             list_args = args
             if self._ray_actor_language == Language.PYTHON:
                 function_descriptor = PythonFunctionDescriptor(
@@ -683,8 +683,9 @@ class ActorHandle:
                     method_name,
                     self._ray_actor_creation_function_descriptor.signature)
             else:
-                raise NotImplementedError("not support language {}".format(
-                    Language.PYTHON))
+                raise NotImplementedError("Cross language remote actor method "
+                                          "not support language {}".format(
+                                              self._ray_actor_language))
         else:
             function_signature = self._ray_method_signatures[method_name]
 
@@ -697,7 +698,7 @@ class ActorHandle:
 
         if worker.mode == ray.LOCAL_MODE:
             if self._ray_is_cross_language:
-                raise Exception("Cross-lang remote actor method "
+                raise Exception("Cross language remote actor method "
                                 "cannot be executed locally.")
             function = getattr(worker.actors[self._actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(

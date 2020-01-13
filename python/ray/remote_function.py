@@ -208,11 +208,11 @@ class RemoteFunction:
         def invocation(args, kwargs):
             if self._is_cross_language:
                 if kwargs:
-                    raise Exception(
-                        "Cross-lang remote functions not support kwargs.")
+                    raise Exception("Cross language remote functions "
+                                    "not support kwargs.")
                 if not worker.load_code_from_local:
-                    raise Exception(
-                        "Cross-lang needs --load-code-from-local to be set.")
+                    raise Exception("Cross language feature needs "
+                                    "--load-code-from-local to be set.")
                 list_args = args
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
@@ -222,7 +222,7 @@ class RemoteFunction:
 
             if worker.mode == ray.worker.LOCAL_MODE:
                 if self._is_cross_language:
-                    raise Exception("Cross-lang remote functions "
+                    raise Exception("Cross language remote functions "
                                     "cannot be executed locally.")
                 object_ids = worker.local_mode_manager.execute(
                     self._function, self._function_descriptor, args, kwargs,
