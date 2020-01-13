@@ -93,12 +93,12 @@ class PyTorchTrainer:
         self.use_gpu = use_gpu
         self.batch_size = batch_size
         self.max_replicas = num_replicas
-        self.tmpdir = tempfile.mkdtemp(prefix="raysgd")
+        self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._start_workers(self.max_replicas)
 
     def _start_workers(self, num_replicas):
-        logger.info(f"start_workers: Setting {num_replicas} replicas.")
+        logger.info(f"start_workers: Setting %d replicas." % num_replicas)
         if num_replicas == 1:
             # Generate actor class
             Runner = ray.remote(
@@ -182,7 +182,7 @@ class PyTorchTrainer:
         if max_retries and checkpoint == "auto":
             logger.debug("Retrying detected. Automatically checkpointing.")
             checkpoint_dir = self.save(
-                os.path.join(self.tmpdir, "tmp_checkpoint"))
+                os.path.join(self.temp_dir, "tmp_checkpoint"))
         with self.optimizer_timer:
             success, worker_stats = self._train_step()
             # Fault handling
