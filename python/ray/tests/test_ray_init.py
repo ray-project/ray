@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import pytest
 import redis
@@ -18,7 +14,7 @@ def password():
     return random_bytes.encode("hex")  # Python 2
 
 
-class TestRedisPassword(object):
+class TestRedisPassword:
     @pytest.mark.skipif(
         os.environ.get("RAY_USE_NEW_GCS") == "on",
         reason="New GCS API doesn't support Redis authentication yet.")

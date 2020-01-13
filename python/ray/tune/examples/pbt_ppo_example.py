@@ -9,10 +9,6 @@ Note that Tune in general does not need 8 GPUs, and this is just a more
 computationally demainding example.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 
 import ray

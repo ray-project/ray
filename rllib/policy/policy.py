@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 import numpy as np
 import gym
@@ -24,7 +20,7 @@ class TupleActions(namedtuple("TupleActions", ["batches"])):
 
 
 @DeveloperAPI
-class Policy(object):
+class Policy:
     """An agent policy and loss, i.e., a TFPolicy or other subclass.
 
     This object defines how to act in the environment, and also losses used to

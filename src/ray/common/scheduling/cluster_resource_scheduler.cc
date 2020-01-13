@@ -372,7 +372,9 @@ void ClusterResourceScheduler::ResourceMapToTaskRequest(
     const std::unordered_map<std::string, double> &resource_map,
     TaskRequest *task_request) {
   size_t i = 0;
+
   task_request->predefined_resources.resize(PredefinedResources_MAX);
+  task_request->custom_resources.resize(resource_map.size());
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     task_request->predefined_resources[0].demand = 0;
     task_request->predefined_resources[0].soft = false;
@@ -388,13 +390,13 @@ void ClusterResourceScheduler::ResourceMapToTaskRequest(
     } else if (it->first == ray::kMemory_ResourceLabel) {
       task_request->predefined_resources[MEM].demand = it->second;
     } else {
-      // This is a custom resource.
       task_request->custom_resources[i].id = string_to_int_map_.Insert(it->first);
       task_request->custom_resources[i].req.demand = it->second;
       task_request->custom_resources[i].req.soft = false;
       i++;
     }
   }
+  task_request->custom_resources.resize(i);
 }
 
 void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,

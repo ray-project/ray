@@ -1,9 +1,5 @@
 """Experimental: scalable Ape-X variant of QMIX"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.agents.dqn.apex import APEX_TRAINER_PROPERTIES
 from ray.rllib.agents.qmix.qmix import QMixTrainer, \
     DEFAULT_CONFIG as QMIX_CONFIG

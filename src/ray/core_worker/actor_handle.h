@@ -54,10 +54,16 @@ class ActorHandle {
   void Reset();
 
   // Mark the actor handle as dead.
-  void MarkDead() { state_ = rpc::ActorTableData::DEAD; }
+  void MarkDead() {
+    absl::MutexLock lock(&mutex_);
+    state_ = rpc::ActorTableData::DEAD;
+  }
 
   // Returns whether the actor is known to be dead.
-  bool IsDead() const { return state_ == rpc::ActorTableData::DEAD; }
+  bool IsDead() const {
+    absl::MutexLock lock(&mutex_);
+    return state_ == rpc::ActorTableData::DEAD;
+  }
 
  private:
   // Protobuf-defined persistent state of the actor handle.
@@ -65,18 +71,18 @@ class ActorHandle {
 
   /// The actor's state (alive or dead). This defaults to ALIVE. Once marked
   /// DEAD, the actor handle can never go back to being ALIVE.
-  rpc::ActorTableData::ActorState state_ = rpc::ActorTableData::ALIVE;
+  rpc::ActorTableData::ActorState state_ GUARDED_BY(mutex_) = rpc::ActorTableData::ALIVE;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
   /// only.
   // TODO: Save this state in the core worker.
-  ObjectID actor_cursor_;
+  ObjectID actor_cursor_ GUARDED_BY(mutex_);
   // Number of tasks that have been submitted on this handle.
-  uint64_t task_counter_ = 0;
+  uint64_t task_counter_ GUARDED_BY(mutex_) = 0;
 
-  /// Guards actor_cursor_ and task_counter_.
-  std::mutex mutex_;
+  /// Mutex to protect fields in the actor handle.
+  mutable absl::Mutex mutex_;
 
   FRIEND_TEST(ZeroNodeTest, TestActorHandle);
 };

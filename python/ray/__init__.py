@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 from os.path import dirname
 import sys
@@ -102,7 +98,7 @@ from ray._raylet import (
 _config = _Config()
 
 from ray.profiling import profile  # noqa: E402
-from ray.state import (global_state, jobs, nodes, tasks, objects, timeline,
+from ray.state import (jobs, nodes, actors, tasks, objects, timeline,
                        object_transfer_timeline, cluster_resources,
                        available_resources, errors)  # noqa: E402
 from ray.worker import (
@@ -136,9 +132,9 @@ from ray.runtime_context import _get_runtime_context  # noqa: E402
 __version__ = "0.9.0.dev0"
 
 __all__ = [
-    "global_state",
     "jobs",
     "nodes",
+    "actors",
     "tasks",
     "objects",
     "timeline",

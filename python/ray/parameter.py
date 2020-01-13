@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 import numpy as np
@@ -10,7 +6,7 @@ from packaging import version
 import ray.ray_constants as ray_constants
 
 
-class RayParams(object):
+class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:

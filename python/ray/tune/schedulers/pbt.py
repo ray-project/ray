@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import itertools
 import logging
@@ -21,7 +17,7 @@ from ray.tune.trial import Trial, Checkpoint
 logger = logging.getLogger(__name__)
 
 
-class PBTTrialState(object):
+class PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
     def __init__(self, trial):

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.impala.vtrace_policy import VTraceTFPolicy
 from ray.rllib.agents.trainer import Trainer, with_common_config
@@ -139,7 +135,7 @@ def make_aggregators_and_optimizer(workers, config):
     return optimizer
 
 
-class OverrideDefaultResourceRequest(object):
+class OverrideDefaultResourceRequest:
     @classmethod
     @override(Trainable)
     def default_resource_request(cls, config):

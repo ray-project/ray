@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import deque
 import time
 
@@ -16,7 +12,7 @@ class Full(Exception):
     pass
 
 
-class Queue(object):
+class Queue:
     """Queue implementation on Ray.
 
     Args:
@@ -132,7 +128,7 @@ class Queue(object):
 
 
 @ray.remote
-class _QueueActor(object):
+class _QueueActor:
     def __init__(self, maxsize):
         self.maxsize = maxsize
         self._init(maxsize)

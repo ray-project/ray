@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -12,7 +8,7 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer
 DEFAULT_CONFIG = with_common_config({
     # Size of rollout batch
     "sample_batch_size": 10,
-    # Use PyTorch as backend - no LSTM support
+    # Use PyTorch as framework - no LSTM support
     "use_pytorch": False,
     # GAE(gamma) parameter
     "lambda": 1.0,

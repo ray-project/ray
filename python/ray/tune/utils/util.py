@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import logging
 import threading
@@ -111,7 +107,7 @@ def get_pinned_object(pinned_id):
     return ray.get(pinned_id)
 
 
-class warn_if_slow(object):
+class warn_if_slow:
     """Prints a warning if a given operation is slower than 100ms.
 
     Example:

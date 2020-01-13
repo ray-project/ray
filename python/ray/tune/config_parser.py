@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import json
 import os
@@ -183,6 +179,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         local_dir=os.path.join(spec["local_dir"], output_path),
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
+        remote_checkpoint_dir=spec.get("remote_checkpoint_dir"),
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
         sync_on_checkpoint=not args.no_sync_on_checkpoint,

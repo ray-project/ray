@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from six.moves import queue
 import threading
 import uuid
@@ -181,7 +177,7 @@ class ExternalEnv(threading.Thread):
         return self._episodes[episode_id]
 
 
-class _ExternalEnvEpisode(object):
+class _ExternalEnvEpisode:
     """Tracked state for each active episode."""
 
     def __init__(self,

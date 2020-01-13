@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import time
 
@@ -13,7 +9,7 @@ from ray import ray_constants
 logger = logging.getLogger(__name__)
 
 
-class Cluster(object):
+class Cluster:
     def __init__(self,
                  initialize_head=False,
                  connect=False,

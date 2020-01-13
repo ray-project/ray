@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import errno
 import logging
 import os
@@ -564,7 +560,7 @@ class TFPolicy(Policy):
 
 
 @DeveloperAPI
-class LearningRateSchedule(object):
+class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
@@ -589,7 +585,7 @@ class LearningRateSchedule(object):
 
 
 @DeveloperAPI
-class EntropyCoeffSchedule(object):
+class EntropyCoeffSchedule:
     """Mixin for TFPolicy that adds entropy coeff decay."""
 
     @DeveloperAPI

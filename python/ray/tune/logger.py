@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import csv
 import json
 import logging
@@ -13,12 +9,12 @@ import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.tune.util import flatten_dict
-from ray.tune.syncer import get_node_syncer
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
                              EXPR_RESULT_FILE)
+from ray.tune.syncer import get_node_syncer
+from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +22,7 @@ tf = None
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
 
 
-class Logger(object):
+class Logger:
     """Logging interface for ray.tune.
 
     By default, the UnifiedLogger implementation is used which logs results in
@@ -430,11 +426,13 @@ class UnifiedLogger(Logger):
         for _logger in self._loggers:
             _logger.close()
 
-    def flush(self):
+    def flush(self, sync_down=True):
         for _logger in self._loggers:
             _logger.flush()
-        if not self._log_syncer.sync_down():
-            logger.warning("Trial %s: Post-flush sync skipped.", self.trial)
+        if sync_down:
+            if not self._log_syncer.sync_down():
+                logger.warning("Trial %s: Post-flush sync skipped.",
+                               self.trial)
 
     def sync_up(self):
         return self._log_syncer.sync_up()

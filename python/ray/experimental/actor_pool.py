@@ -1,11 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 
 
-class ActorPool(object):
+class ActorPool:
     """Utility class to operate on a fixed pool of actors.
 
     Arguments:

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray.rllib.models import ModelCatalog
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
@@ -21,13 +17,13 @@ POLICY_SCOPE = "p_func"
 VALUE_SCOPE = "v_func"
 
 
-class ValueLoss(object):
+class ValueLoss:
     def __init__(self, state_values, cumulative_rewards):
         self.loss = 0.5 * tf.reduce_mean(
             tf.square(state_values - cumulative_rewards))
 
 
-class ReweightedImitationLoss(object):
+class ReweightedImitationLoss:
     def __init__(self, state_values, cumulative_rewards, logits, actions,
                  action_space, beta, model):
         ma_adv_norm = tf.get_variable(
@@ -56,7 +52,7 @@ class ReweightedImitationLoss(object):
             tf.stop_gradient(exp_advs) * logprobs)
 
 
-class MARWILPostprocessing(object):
+class MARWILPostprocessing:
     """Adds the advantages field to the trajectory."""
 
     @override(Policy)

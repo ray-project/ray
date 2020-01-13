@@ -10,7 +10,7 @@ import org.ray.streaming.runtime.worker.JobWorker;
 /**
  * Interface of the task assigning strategy.
  */
-public interface ITaskAssign extends Serializable {
+public interface TaskAssigner extends Serializable {
 
   /**
    * Assign logical plan to physical execution graph.

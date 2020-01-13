@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 import logging
 import numpy as np
@@ -92,7 +88,7 @@ MODEL_DEFAULTS = {
 
 
 @PublicAPI
-class ModelCatalog(object):
+class ModelCatalog:
     """Registry of models, preprocessors, and action distributions for envs.
 
     Examples:

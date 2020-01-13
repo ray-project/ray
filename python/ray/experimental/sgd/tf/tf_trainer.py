@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import os
 import logging
@@ -16,7 +12,7 @@ from ray.experimental.sgd.tf.tf_runner import TFRunner
 logger = logging.getLogger(__name__)
 
 
-class TFTrainer(object):
+class TFTrainer:
     def __init__(self,
                  model_creator,
                  data_creator,

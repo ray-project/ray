@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 from collections import defaultdict
@@ -18,7 +14,7 @@ ACTOR_DIED_STR = "ACTOR_DIED_SIGNAL"
 logger = logging.getLogger(__name__)
 
 
-class Signal(object):
+class Signal:
     """Base class for Ray signals."""
     pass
 

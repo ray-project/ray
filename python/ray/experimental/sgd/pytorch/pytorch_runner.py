@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 from filelock import FileLock
 import logging
@@ -17,7 +13,7 @@ from ray.experimental.sgd import utils
 logger = logging.getLogger(__name__)
 
 
-class PyTorchRunner(object):
+class PyTorchRunner:
     """Manages a PyTorch model for training."""
 
     def __init__(self,

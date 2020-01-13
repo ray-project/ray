@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 import logging
 
@@ -15,7 +11,7 @@ OffPolicyEstimate = namedtuple("OffPolicyEstimate",
 
 
 @DeveloperAPI
-class OffPolicyEstimator(object):
+class OffPolicyEstimator:
     """Interface for an off policy reward estimator."""
 
     @DeveloperAPI

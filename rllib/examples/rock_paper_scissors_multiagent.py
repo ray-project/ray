@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """A simple multi-agent env with two agents playing rock paper scissors.
 
 This demonstrates running the following policies in competition:
@@ -15,7 +12,7 @@ from gym.spaces import Discrete
 
 from ray import tune
 from ray.rllib.agents.pg.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy import PGTFPolicy
+from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import try_import_tf

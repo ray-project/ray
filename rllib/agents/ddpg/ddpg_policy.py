@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from gym.spaces import Box
 import numpy as np
 
@@ -32,7 +28,7 @@ TWIN_Q_TARGET_SCOPE = "twin_target_critic"
 PRIO_WEIGHTS = "weights"
 
 
-class DDPGPostprocessing(object):
+class DDPGPostprocessing:
     """Implements n-step learning and param noise adjustments."""
 
     @override(Policy)

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import atexit
 import collections
 import datetime
@@ -27,11 +23,10 @@ from ray.utils import try_to_create_directory, try_to_symlink
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
-PY3 = sys.version_info.major >= 3
 SESSION_LATEST = "session_latest"
 
 
-class Node(object):
+class Node:
     """An encapsulation of the Ray processes on a single node.
 
     This class is responsible for starting Ray processes and killing them,
@@ -199,7 +194,7 @@ class Node(object):
         else:
             self._temp_dir = ray.utils.decode(redis_client.get("temp_dir"))
 
-        try_to_create_directory(self._temp_dir, warn_if_exist=False)
+        try_to_create_directory(self._temp_dir)
 
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
@@ -213,12 +208,12 @@ class Node(object):
         try_to_symlink(session_symlink, self._session_dir)
         # Create a directory to be used for socket files.
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
-        try_to_create_directory(self._sockets_dir, warn_if_exist=False)
+        try_to_create_directory(self._sockets_dir)
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
-        try_to_create_directory(self._logs_dir, warn_if_exist=False)
+        try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
-        try_to_create_directory(old_logs_dir, warn_if_exist=False)
+        try_to_create_directory(old_logs_dir)
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -599,12 +594,10 @@ class Node(object):
         self.start_redis()
         self.start_monitor()
         self.start_raylet_monitor()
-        # The dashboard is Python3.x only.
-        if PY3:
-            if self._ray_params.include_webui:
-                self.start_dashboard(require_webui=True)
-            elif self._ray_params.include_webui is None:
-                self.start_dashboard(require_webui=False)
+        if self._ray_params.include_webui:
+            self.start_dashboard(require_webui=True)
+        elif self._ray_params.include_webui is None:
+            self.start_dashboard(require_webui=False)
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""
@@ -614,8 +607,7 @@ class Node(object):
 
         self.start_plasma_store()
         self.start_raylet()
-        if PY3:
-            self.start_reporter()
+        self.start_reporter()
 
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
@@ -755,10 +747,8 @@ class Node(object):
             check_alive (bool): Raise an exception if the process was already
                 dead.
         """
-        # reporter is started only in PY3.
-        if PY3:
-            self._kill_process_type(
-                ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_REPORTER, check_alive=check_alive)
 
     def kill_dashboard(self, check_alive=True):
         """Kill the dashboard.
@@ -888,7 +878,7 @@ class Node(object):
         return not any(self.dead_processes())
 
 
-class LocalNode(object):
+class LocalNode:
     """Imitate the node that manages the processes in local mode."""
 
     def kill_all_processes(self, *args, **kwargs):

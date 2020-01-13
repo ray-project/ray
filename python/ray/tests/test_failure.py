@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import logging
 import os
@@ -167,7 +163,7 @@ def temporary_helper_function():
     # Define an actor that closes over this temporary module. This should
     # fail when it is unpickled.
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self, arg1, arg2=3):
             self.x = module.temporary_python_file()
 
@@ -213,7 +209,7 @@ def test_failed_actor_init(ray_start_regular):
     error_message2 = "actor method failed"
 
     @ray.remote
-    class FailedActor(object):
+    class FailedActor:
         def __init__(self):
             raise Exception(error_message1)
 
@@ -240,7 +236,7 @@ def test_failed_actor_method(ray_start_regular):
     error_message2 = "actor method failed"
 
     @ray.remote
-    class FailedActor(object):
+    class FailedActor:
         def __init__(self):
             pass
 
@@ -259,7 +255,7 @@ def test_failed_actor_method(ray_start_regular):
 
 def test_incorrect_method_calls(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self, missing_variable_name):
             pass
 
@@ -325,7 +321,7 @@ def test_worker_dying(ray_start_regular):
 
 def test_actor_worker_dying(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         def kill(self):
             eval("exit()")
 
@@ -344,7 +340,7 @@ def test_actor_worker_dying(ray_start_regular):
 
 def test_actor_worker_dying_future_tasks(ray_start_regular):
     @ray.remote(max_reconstructions=0)
-    class Actor(object):
+    class Actor:
         def getpid(self):
             return os.getpid()
 
@@ -366,7 +362,7 @@ def test_actor_worker_dying_future_tasks(ray_start_regular):
 
 def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
     @ray.remote(max_reconstructions=0)
-    class Actor(object):
+    class Actor:
         def getpid(self):
             return os.getpid()
 
@@ -381,7 +377,7 @@ def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
 
 def test_actor_scope_or_intentionally_killed_message(ray_start_regular):
     @ray.remote
-    class Actor(object):
+    class Actor:
         pass
 
     a = Actor.remote()
@@ -532,7 +528,7 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 1)
 
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self):
             large_object
 
@@ -548,7 +544,7 @@ def test_warning_for_resource_deadlock(shutdown_only):
     ray.init(num_cpus=1)
 
     @ray.remote(num_cpus=1)
-    class Foo(object):
+    class Foo:
         def f(self):
             return 0
 
@@ -572,7 +568,7 @@ def test_warning_for_infeasible_tasks(ray_start_regular):
         pass
 
     @ray.remote(resources={"Custom": 1})
-    class Foo(object):
+    class Foo:
         pass
 
     # This task is infeasible.
@@ -592,7 +588,7 @@ def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
     ray.init(num_cpus=0)
 
     @ray.remote
-    class Foo(object):
+    class Foo:
         pass
 
     # The actor creation should be infeasible.
@@ -607,7 +603,7 @@ def test_warning_for_too_many_actors(shutdown_only):
     ray.init(num_cpus=num_cpus)
 
     @ray.remote
-    class Foo(object):
+    class Foo:
         def __init__(self):
             time.sleep(1000)
 
@@ -644,8 +640,6 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -691,7 +685,7 @@ def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
         # Require a GPU so that the actor is never actually created and we
         # don't spawn an unreasonable number of processes.
         @ray.remote(num_gpus=1)
-        class Foo(object):
+        class Foo:
             pass
 
         Foo.remote()
@@ -852,7 +846,7 @@ def test_connect_with_disconnected_node(shutdown_only):
 @pytest.mark.parametrize("num_actors", [1, 2, 5])
 def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
     @ray.remote
-    class LargeMemoryActor(object):
+    class LargeMemoryActor:
         def some_expensive_task(self):
             return np.zeros(10**8 // 2, dtype=np.uint8)
 
@@ -871,7 +865,7 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
     indirect=True)
 def test_fill_object_store_exception(ray_start_cluster_head):
     @ray.remote
-    class LargeMemoryActor(object):
+    class LargeMemoryActor:
         def some_expensive_task(self):
             return np.zeros(10**8 + 2, dtype=np.uint8)
 
@@ -938,11 +932,10 @@ def test_direct_call_serialized_id_eviction(ray_start_cluster):
 
     @ray.remote
     def get(obj_ids):
-        print("get", obj_ids)
         obj_id = obj_ids[0]
         assert (isinstance(ray.get(obj_id), np.ndarray))
-        # Evict the object.
-        ray.internal.free(obj_ids)
+        # Wait for the object to be evicted.
+        ray.internal.free(obj_id)
         while ray.worker.global_worker.core_worker.object_exists(obj_id):
             time.sleep(1)
         with pytest.raises(ray.exceptions.UnreconstructableError):
@@ -950,7 +943,9 @@ def test_direct_call_serialized_id_eviction(ray_start_cluster):
         print("get done", obj_ids)
 
     obj = large_object.remote()
-    ray.get(get.remote([obj]))
+    result = get.remote([obj])
+    ray.internal.free(obj)
+    ray.get(result)
 
 
 @pytest.mark.parametrize(

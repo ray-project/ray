@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import inspect
 import logging
@@ -27,7 +23,7 @@ def method(*args, **kwargs):
     .. code-block:: python
 
         @ray.remote
-        class Foo(object):
+        class Foo:
             @ray.method(num_return_vals=2)
             def bar(self):
                 return 1, 2
@@ -54,7 +50,7 @@ def method(*args, **kwargs):
 
 # Create objects to wrap method invocations. This is done so that we can
 # invoke methods with actor.method.remote() instead of actor.method().
-class ActorMethod(object):
+class ActorMethod:
     """A class used to invoke an actor method.
 
     Note: This class only keeps a weak ref to the actor, unless it has been
@@ -143,7 +139,7 @@ class ActorMethod(object):
             hardref=True)
 
 
-class ActorClassMetadata(object):
+class ActorClassMetadata:
     """Metadata for an actor class.
 
     Attributes:
@@ -234,7 +230,7 @@ class ActorClassMetadata(object):
                     method.__ray_invocation_decorator__)
 
 
-class ActorClass(object):
+class ActorClass:
     """An actor class.
 
     This is a decorated class. It can be used to create actors.
@@ -339,7 +335,7 @@ class ActorClass(object):
 
         actor_cls = self
 
-        class ActorOptionWrapper(object):
+        class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **options)
 
@@ -377,7 +373,7 @@ class ActorClass(object):
             is_direct_call: Use direct actor calls.
             max_concurrency: The max number of concurrent calls to allow for
                 this actor. This only works with direct actor calls. The max
-                concurrency defaults to 1 for threaded execution, and 100 for
+                concurrency defaults to 1 for threaded execution, and 1000 for
                 asyncio execution. Note that the execution order is not
                 guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
@@ -397,7 +393,7 @@ class ActorClass(object):
             is_direct_call = ray_constants.direct_call_enabled()
         if max_concurrency is None:
             if is_asyncio:
-                max_concurrency = 100
+                max_concurrency = 1000
             else:
                 max_concurrency = 1
 
@@ -518,7 +514,7 @@ class ActorClass(object):
         return actor_handle
 
 
-class ActorHandle(object):
+class ActorHandle:
     """A handle to an actor.
 
     The fields in this class are prefixed with _ray_ to hide them from the user

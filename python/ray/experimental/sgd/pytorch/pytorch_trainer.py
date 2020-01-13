@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import os
 import torch
@@ -21,7 +17,7 @@ from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 logger = logging.getLogger(__name__)
 
 
-class PyTorchTrainer(object):
+class PyTorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
     Launches a set of actors which connect via distributed PyTorch and

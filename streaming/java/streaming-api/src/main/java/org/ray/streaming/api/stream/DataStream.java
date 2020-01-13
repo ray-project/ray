@@ -86,8 +86,8 @@ public class DataStream<T> extends Stream<T> {
    * @param sinkFunction The sink function.
    * @return A new StreamSink.
    */
-  public StreamSink<T> sink(SinkFunction<T> sinkFunction) {
-    return new StreamSink<>(this, new SinkOperator(sinkFunction));
+  public DataStreamSink<T> sink(SinkFunction<T> sinkFunction) {
+    return new DataStreamSink<>(this, new SinkOperator(sinkFunction));
   }
 
   /**

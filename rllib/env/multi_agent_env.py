@@ -1,12 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.utils.annotations import PublicAPI
 
 
 @PublicAPI
-class MultiAgentEnv(object):
+class MultiAgentEnv:
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here

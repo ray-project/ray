@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import logging
 import os
@@ -17,7 +13,7 @@ from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX
 logger = logging.getLogger(__name__)
 
 
-class Analysis(object):
+class Analysis:
     """Analyze all results from a directory of experiments."""
 
     def __init__(self, experiment_dir):

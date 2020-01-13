@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Eager mode TF policy built using build_tf_policy().
 
 It supports both traced and non-traced eager execution modes."""
@@ -409,7 +406,7 @@ def build_eager_tf_policy(name,
 
             if gradients_fn:
 
-                class OptimizerWrapper(object):
+                class OptimizerWrapper:
                     def __init__(self, tape):
                         self.tape = tape
 
