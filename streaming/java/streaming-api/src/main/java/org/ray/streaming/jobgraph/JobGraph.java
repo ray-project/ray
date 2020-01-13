@@ -41,20 +41,19 @@ public class JobGraph implements Serializable {
     StringBuilder digraph = new StringBuilder();
     digraph.append("digraph ").append(jobName + " ").append(" {");
 
-    jobEdgeList.stream().forEach(jobEdge -> {
-      AtomicReference<String> srcNode = new AtomicReference<>();
-      AtomicReference<String> targetNode = new AtomicReference<>();
-      jobVertexList.stream().forEach(jobVertex -> {
+    for (JobEdge jobEdge: jobEdgeList) {
+      String srcNode = null;
+      String targetNode = null;
+      for (JobVertex jobVertex : jobVertexList) {
         if (jobEdge.getSrcVertexId() == jobVertex.getVertexId()) {
-          srcNode.set(jobVertex.getVertexId() + "-" + jobVertex.getStreamOperator().getName());
+          srcNode = jobVertex.getVertexId() + "-" + jobVertex.getStreamOperator().getName();
         } else if (jobEdge.getTargetVertexId() == jobVertex.getVertexId()) {
-          targetNode.set(jobVertex.getVertexId() + "-" + jobVertex.getStreamOperator().getName());
+          targetNode = jobVertex.getVertexId() + "-" + jobVertex.getStreamOperator().getName();
         }
-      });
+      }
       digraph.append(System.getProperty("line.separator"));
       digraph.append(srcNode).append(" -> ").append(targetNode);
-    });
-
+    }
     digraph.append(System.getProperty("line.separator")).append("}");
 
     this.digraph = digraph.toString();
