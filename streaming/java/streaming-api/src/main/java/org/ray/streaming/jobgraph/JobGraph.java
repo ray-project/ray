@@ -33,7 +33,7 @@ public class JobGraph implements Serializable {
    * @return Digraph in string type.
    *
    * Notice:
-   * This is a temporarily implement in hard code.
+   * This is temporarily implemented in hard code.
    * May use 'guru.nidi:graphviz-java' in the future if needed.
    */
   public String generateDigraph() {
