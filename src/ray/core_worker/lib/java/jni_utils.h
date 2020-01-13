@@ -349,8 +349,7 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
     JNIEnv *env, const ray::FunctionDescriptor &function_descriptor) {
   if (function_descriptor->Type() ==
       ray::FunctionDescriptorType::kJavaFunctionDescriptor) {
-    ray::JavaFunctionDescriptor *typed_descriptor =
-        function_descriptor->As<ray::JavaFunctionDescriptor>();
+    auto typed_descriptor = function_descriptor->As<ray::JavaFunctionDescriptor>();
     std::vector<std::string> function_descriptor_list = {typed_descriptor->ClassName(),
                                                          typed_descriptor->FunctionName(),
                                                          typed_descriptor->Signature()};

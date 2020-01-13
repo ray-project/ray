@@ -39,20 +39,19 @@ class MockWorker {
         ray_function.GetFunctionDescriptor();
     RAY_CHECK(function_descriptor->Type() ==
               ray::FunctionDescriptorType::kPythonFunctionDescriptor);
-    const ray::PythonFunctionDescriptor *typed_function_descriptor =
-        function_descriptor->As<ray::PythonFunctionDescriptor>();
+    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
 
-    if ("actor creation task" == typed_function_descriptor->ModuleName()) {
+    if ("actor creation task" == typed_descriptor->ModuleName()) {
       return Status::OK();
-    } else if ("GetWorkerPid" == typed_function_descriptor->ModuleName()) {
+    } else if ("GetWorkerPid" == typed_descriptor->ModuleName()) {
       // Get mock worker pid
       return GetWorkerPid(results);
-    } else if ("MergeInputArgsAsOutput" == typed_function_descriptor->ModuleName()) {
+    } else if ("MergeInputArgsAsOutput" == typed_descriptor->ModuleName()) {
       // Merge input args and write the merged content to each of return ids
       return MergeInputArgsAsOutput(args, return_ids, results);
     } else {
       return Status::TypeError("Unknown function descriptor: " +
-                               typed_function_descriptor->ModuleName());
+                               typed_descriptor->ModuleName());
     }
   }
 
