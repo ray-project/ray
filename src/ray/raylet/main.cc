@@ -164,21 +164,13 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<std::thread> thread_io_service;
   boost::asio::io_service io_service;
 
+  RAY_LOG(INFO) << "Gcs service enable = " << RayConfig::instance().gcs_service_enabled();
   if (RayConfig::instance().gcs_service_enabled()) {
-    RAY_LOG(INFO) << "Gcs service enable.";
     gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
-
-    thread_io_service.reset(new std::thread([&io_service] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service));
-      io_service.run();
-    }));
-
-    RAY_CHECK_OK(gcs_client->Connect(io_service));
   } else {
     gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
-    RAY_CHECK_OK(gcs_client->Connect(main_service));
   }
+  RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
       main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,

@@ -164,7 +164,9 @@ class CoreWorkerTest : public ::testing::Test {
         .append(" --python_worker_command=\"" + mock_worker_executable + " " +
                 store_socket_name + " " + raylet_socket_name + " " +
                 std::to_string(port) + "\"")
-        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000,gcs_service_enabled,1")
+        .append(
+            " --config_list=initial_reconstruction_timeout_milliseconds,2000,gcs_service_"
+            "enabled,1")
         .append(" & echo $! > " + raylet_socket_name + ".pid");
 
     RAY_LOG(DEBUG) << "Ray Start command: " << ray_start_cmd;
@@ -1021,33 +1023,33 @@ TEST_F(SingleNodeTest, TestDirectActorTaskLocal) {
   TestActorTask(resources, true);
 }
 
-//TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
-//  std::unordered_map<std::string, double> resources;
-//  resources.emplace("resource1", 1);
-//  TestActorTask(resources, true);
-//}
-//
-//TEST_F(SingleNodeTest, TestDirectActorTaskLocalReconstruction) {
-//  std::unordered_map<std::string, double> resources;
-//  TestActorReconstruction(resources, true);
-//}
-//
-//TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesReconstruction) {
-//  std::unordered_map<std::string, double> resources;
-//  resources.emplace("resource1", 1);
-//  TestActorReconstruction(resources, true);
-//}
-//
-//TEST_F(SingleNodeTest, TestDirectActorTaskLocalFailure) {
-//  std::unordered_map<std::string, double> resources;
-//  TestActorFailure(resources, true);
-//}
-//
-//TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
-//  std::unordered_map<std::string, double> resources;
-//  resources.emplace("resource1", 1);
-//  TestActorFailure(resources, true);
-//}
+TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
+  std::unordered_map<std::string, double> resources;
+  resources.emplace("resource1", 1);
+  TestActorTask(resources, true);
+}
+
+TEST_F(SingleNodeTest, TestDirectActorTaskLocalReconstruction) {
+  std::unordered_map<std::string, double> resources;
+  TestActorReconstruction(resources, true);
+}
+
+TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesReconstruction) {
+  std::unordered_map<std::string, double> resources;
+  resources.emplace("resource1", 1);
+  TestActorReconstruction(resources, true);
+}
+
+TEST_F(SingleNodeTest, TestDirectActorTaskLocalFailure) {
+  std::unordered_map<std::string, double> resources;
+  TestActorFailure(resources, true);
+}
+
+TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
+  std::unordered_map<std::string, double> resources;
+  resources.emplace("resource1", 1);
+  TestActorFailure(resources, true);
+}
 
 }  // namespace ray
 

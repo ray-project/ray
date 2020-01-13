@@ -69,9 +69,13 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
   request.set_actor_id(actor_id.Binary());
   client_impl_->GetGcsRpcClient().GetActorInfo(
       request, [callback](const Status &status, const rpc::GetActorInfoReply &reply) {
-        rpc::ActorTableData actor_table_data;
-        actor_table_data.CopyFrom(reply.actor_table_data());
-        callback(status, actor_table_data);
+        if (reply.has_actor_table_data()) {
+          rpc::ActorTableData actor_table_data;
+          actor_table_data.CopyFrom(reply.actor_table_data());
+          callback(status, actor_table_data);
+        } else {
+          callback(status, boost::none);
+        }
       });
   RAY_LOG(INFO) << "Finished getting actor info, actor id = " << actor_id;
   return Status::OK();
@@ -175,9 +179,13 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
   client_impl_->GetGcsRpcClient().GetActorCheckpoint(
       request,
       [callback](const Status &status, const rpc::GetActorCheckpointReply &reply) {
-        rpc::ActorCheckpointData checkpoint_data;
-        checkpoint_data.CopyFrom(reply.checkpoint_data());
-        callback(status, checkpoint_data);
+        if (reply.has_checkpoint_data()) {
+          rpc::ActorCheckpointData checkpoint_data;
+          checkpoint_data.CopyFrom(reply.checkpoint_data());
+          callback(status, checkpoint_data);
+        } else {
+          callback(status, boost::none);
+        }
       });
   RAY_LOG(INFO) << "Finished getting actor checkpoint, checkpoint id = " << checkpoint_id;
   return Status::OK();
@@ -192,9 +200,13 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
   client_impl_->GetGcsRpcClient().GetActorCheckpointID(
       request,
       [callback](const Status &status, const rpc::GetActorCheckpointIDReply &reply) {
-        rpc::ActorCheckpointIdData checkpoint_id_data;
-        checkpoint_id_data.CopyFrom(reply.checkpoint_id_data());
-        callback(status, checkpoint_id_data);
+        if (reply.has_checkpoint_id_data()) {
+          rpc::ActorCheckpointIdData checkpoint_id_data;
+          checkpoint_id_data.CopyFrom(reply.checkpoint_id_data());
+          callback(status, checkpoint_id_data);
+        } else {
+          callback(status, boost::none);
+        }
       });
   RAY_LOG(INFO) << "Finished getting actor checkpoint id, actor id = " << actor_id;
   return Status::OK();
@@ -216,17 +228,15 @@ Status ServiceBasedNodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(local_node_info);
-  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().RegisterNode(
-      request, [&promise](const Status &status, const rpc::RegisterNodeReply &reply) {
-        promise.set_value(status);
+      request, [this, &local_node_info](const Status &status,
+                                        const rpc::RegisterNodeReply &reply) {
+        if (status.ok()) {
+          local_node_info_.CopyFrom(local_node_info);
+          local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
+        }
       });
 
-  Status ret = promise.get_future().get();
-  if (ret.ok()) {
-    local_node_info_.CopyFrom(local_node_info);
-    local_node_id_ = ClientID::FromBinary(local_node_info.node_id());
-  }
   RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id;
   return Status::OK();
 }
@@ -237,18 +247,15 @@ Status ServiceBasedNodeInfoAccessor::UnregisterSelf() {
   RAY_LOG(INFO) << "Unregistering node info, node id = " << node_id;
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
-  std::promise<Status> promise;
   client_impl_->GetGcsRpcClient().UnregisterNode(
-      request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
-        promise.set_value(status);
+      request, [this](const Status &status, const rpc::UnregisterNodeReply &reply) {
+        if (status.ok()) {
+          local_node_info_.set_state(GcsNodeInfo::DEAD);
+          local_node_id_ = ClientID::Nil();
+        }
       });
-  Status ret = promise.get_future().get();
-  if (ret.ok()) {
-    local_node_info_.set_state(GcsNodeInfo::DEAD);
-    local_node_id_ = ClientID::Nil();
-  }
   RAY_LOG(INFO) << "Finished unregistering node info, node id = " << node_id;
-  return ret;
+  return Status::OK();
 }
 
 const ClientID &ServiceBasedNodeInfoAccessor::GetSelfId() const { return local_node_id_; }
@@ -410,7 +417,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
     const std::shared_ptr<rpc::HeartbeatTableData> &data_ptr,
     const StatusCallback &callback) {
   ClientID node_id = ClientID::FromBinary(data_ptr->client_id());
-  RAY_LOG(INFO) << "Reporting heartbeat, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Reporting heartbeat, node id = " << node_id;
   rpc::ReportHeartbeatRequest request;
   request.mutable_heartbeat()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().ReportHeartbeat(
@@ -419,7 +426,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncReportHeartbeat(
           callback(status);
         }
       });
-  RAY_LOG(INFO) << "Finished reporting heartbeat, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Finished reporting heartbeat, node id = " << node_id;
   return Status::OK();
 }
 
@@ -498,9 +505,13 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
   request.set_task_id(task_id.Binary());
   client_impl_->GetGcsRpcClient().GetTask(
       request, [callback](const Status &status, const rpc::GetTaskReply &reply) {
-        TaskTableData task_table_data;
-        task_table_data.CopyFrom(reply.task_data());
-        callback(status, task_table_data);
+        if (reply.has_task_data()) {
+          TaskTableData task_table_data;
+          task_table_data.CopyFrom(reply.task_data());
+          callback(status, task_table_data);
+        } else {
+          callback(status, boost::none);
+        }
       });
   RAY_LOG(INFO) << "Finished getting task, task id = " << task_id;
   return Status::OK();
@@ -641,7 +652,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncAddLocation(const ObjectID &object_i
         }
       });
   RAY_LOG(INFO) << "Finished adding object location, object id = " << object_id
-                 << ", node id = " << node_id;
+                << ", node id = " << node_id;
   return Status::OK();
 }
 
@@ -660,7 +671,7 @@ Status ServiceBasedObjectInfoAccessor::AsyncRemoveLocation(
         }
       });
   RAY_LOG(INFO) << "Finished removing object location, object id = " << object_id
-                 << ", node id = " << node_id;
+                << ", node id = " << node_id;
   return Status::OK();
 }
 
