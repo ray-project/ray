@@ -124,7 +124,6 @@ class PyTorchTrainer:
             Runner = ray.remote(
                 num_cpus=1,
                 num_gpus=int(self.use_gpu))(DistributedPyTorchRunner)
-            Runner = Runner.options(is_direct_call=True, max_concurrency=2)
             # Compute batch size per replica
             batch_size_per_replica = self.batch_size // num_replicas
             if self.batch_size % num_replicas > 0:
@@ -163,31 +162,31 @@ class PyTorchTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self, retries=0, checkpoint="auto"):
+    def train(self, max_retries=0, checkpoint="auto"):
         """Runs a training epoch.
 
-        Runs an average over all values returned from workers. Set `retries`
-        to enable fault handling in case of instance pre-emption.
+        Runs an average over all values returned from workers. Set
+        `max_retries` to enable fault handling in case of instance pre-emption.
 
         Args:
-            retries (int): Must be non-negative. If set to N, will
+            max_retries (int): Must be non-negative. If set to N, will
                 kill all current workers, query the Ray global state for
                 total available resources, and re-launch up to the
                 available resources. Behavior is not well-defined
                 in case of shared cluster usage.
             checkpoint (str): Path to checkpoint to restore from if retrying.
-                If retries is set and checkpoint == "auto", PyTorchTrainer
+                If max_retries is set and checkpoint == "auto", PyTorchTrainer
                 will save a checkpoint before starting to train.
         """
-        assert retries >= 0, "`retries` must be non-negative."
-        if retries and checkpoint == "auto":
+        assert max_retries >= 0, "`max_retries` must be non-negative."
+        if max_retries and checkpoint == "auto":
             logger.debug("Retrying detected. Automatically checkpointing.")
             checkpoint_dir = self.save(
                 os.path.join(self.tmpdir, "tmp_checkpoint"))
         with self.optimizer_timer:
             success, worker_stats = self._train_step()
             # Fault handling
-            for i in range(retries):
+            for i in range(max_retries):
                 if success:
                     break
                 else:
@@ -270,11 +269,11 @@ class PyTorchTrainer:
                 worker.shutdown.remote()
             worker.__ray_terminate__.remote()
 
-    def _try_resize_workers(self, checkpoint, retries=5):
+    def _try_resize_workers(self, checkpoint, max_retries=5):
         # check available resources
         self.shutdown(force=True)
         time.sleep(1)
-        for i in range(retries):
+        for i in range(max_retries):
             resources = ray.available_resources()
             new_workers = min(resources.get("CPU", 0), self.max_replicas)
             if self.use_gpu:
@@ -284,8 +283,11 @@ class PyTorchTrainer:
                 self.restore(checkpoint)
                 return
             else:
-                time.sleep(2**retries)
-        raise RuntimeError("Exceeded max retries for relaunching workers.")
+                delay = 2**max_retries
+                logger.warning(
+                    "No new workers found. Retrying in %n sec." % delay)
+                time.sleep(delay)
+        raise RuntimeError("Exceeded max_retries for relaunching workers.")
 
 
 class PyTorchTrainable(Trainable):

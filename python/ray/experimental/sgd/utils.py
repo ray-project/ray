@@ -130,12 +130,11 @@ class AverageMeter:
 
 def check_for_failure(remote_values):
     unfinished = remote_values
-    success = False
     try:
         while len(unfinished) > 0:
             finished, unfinished = ray.wait(unfinished)
             finished = ray.get(finished)
-        success = True
+        return True
     except Exception as exc:
         logger.exception(str(exc))
-    return success
+    return False

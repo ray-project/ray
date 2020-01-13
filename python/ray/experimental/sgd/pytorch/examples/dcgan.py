@@ -239,7 +239,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo")
     for i in range(10):
-        stats = trainer.train(retries=3)
+        stats = trainer.train(max_retries=3)
         print(stats)
 
     return trainer

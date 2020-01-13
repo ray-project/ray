@@ -1,10 +1,11 @@
 import os
-import pytest
 import tempfile
+from unittest.mock import patch
+
+import pytest
 import torch
 import torch.nn as nn
 import torch.distributed as dist
-from unittest.mock import patch
 
 import ray
 from ray import tune
@@ -189,7 +190,7 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
             num_replicas=2)
 
         with pytest.raises(RuntimeError):
-            trainer1.train(retries=1)
+            trainer1.train(max_retries=1)
 
 
 def test_resize(ray_start_2_cpus):  # noqa: F811
@@ -217,7 +218,7 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
             time.sleep(100)
 
         try_test.remote()
-        trainer1.train(retries=1)
+        trainer1.train(max_retries=1)
         assert len(trainer1.workers) == 1
 
 
@@ -240,4 +241,4 @@ def test_fail_thrice(ray_start_2_cpus):  # noqa: F811
             loss_creator=lambda config: nn.MSELoss(),
             num_replicas=2)
 
-        trainer1.train(retries=2)
+        trainer1.train(max_retries=2)
