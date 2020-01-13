@@ -4,7 +4,9 @@
 
 #include <algorithm>
 
+#include <boost/asio/io_service.hpp>
 #include <boost/process/args.hpp>
+#include <boost/process/async.hpp>
 
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
@@ -43,10 +45,12 @@ namespace raylet {
 
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
-WorkerPool::WorkerPool(int num_workers, int maximum_startup_concurrency,
+WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
+                       int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
-    : maximum_startup_concurrency_(maximum_startup_concurrency),
+    : io_service_(&io_service),
+      maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(maximum_startup_concurrency > 0);
   for (const auto &entry : worker_commands) {
@@ -202,9 +206,14 @@ ProcessHandle WorkerPool::StartProcess(
   std::vector<std::string> rest_of_args(worker_command_args.begin() + 1,
                                         worker_command_args.end());
   // Launch the process to create the worker.
+  auto exit_callback = [=](int, const std::error_code &ec) {
+    // This callback seems to be necessary for proper zombie cleanup.
+    // However, it doesn't need to do anything.
+  };
   std::error_code ec;
   ProcessHandle child(std::make_shared<Process>(
-      *worker_command_args.begin(), ray::make_process_args(rest_of_args), ec));
+      *worker_command_args.begin(), ray::make_process_args(rest_of_args), *io_service_,
+      boost::process::on_exit = exit_callback, ec));
   if (!child.get()->valid()) {
     child = ProcessHandle();
   }

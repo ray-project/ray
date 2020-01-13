@@ -16,16 +16,18 @@ std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  WorkerPoolMock()
+  WorkerPoolMock(boost::asio::io_service &ios)
       : WorkerPoolMock(
+            ios,
             {{Language::PYTHON,
               {"dummy_py_worker_command", "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}},
              {Language::JAVA,
               {"dummy_java_worker_command",
                "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}}) {}
 
-  explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
-      : WorkerPool(0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
+  explicit WorkerPoolMock(boost::asio::io_service &ios,
+                          const WorkerCommandMap &worker_commands)
+      : WorkerPool(ios, 0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
         last_worker_process_() {
     for (auto &entry : states_by_lang_) {
       entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;
@@ -37,11 +39,20 @@ class WorkerPoolMock : public WorkerPool {
     states_by_lang_.clear();
   }
 
+  using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
+
   ProcessHandle StartProcess(
       const std::vector<std::string> &worker_command_args) override {
-    // A non-null process handle that points to an invalid process object
-    // is used to represent a dummy process for testing.
-    last_worker_process_ = std::make_shared<Process>();
+#ifndef PID_MAX_LIMIT
+    // This is defined by Linux to be the maximum allowable number of processes
+    // There's no guarantee for other OSes, but it's good enough for testing...
+    enum { PID_MAX_LIMIT = 1 << 22 };
+#endif
+    // Use a bogus process ID that won't conflict with those in the system
+    pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
+    Process proc(pid);
+    proc.detach();
+    last_worker_process_ = std::make_shared<Process>(std::move(proc));
     worker_commands_by_proc_[last_worker_process_] = worker_command_args;
     return last_worker_process_;
   }
@@ -81,8 +92,7 @@ class WorkerPoolMock : public WorkerPool {
 class WorkerPoolTest : public ::testing::Test {
  public:
   WorkerPoolTest()
-      : worker_pool_(),
-        io_service_(),
+      : worker_pool_(io_service_),
         error_message_type_(1),
         client_call_manager_(io_service_) {}
 
@@ -99,9 +109,8 @@ class WorkerPoolTest : public ::testing::Test {
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
-    std::shared_ptr<Worker> worker = std::make_shared<Worker>(WorkerID::FromRandom(),
-                                                              language, -1, client,
-                                                              client_call_manager_);
+    std::shared_ptr<Worker> worker = std::make_shared<Worker>(
+        WorkerID::FromRandom(), language, -1, client, client_call_manager_);
     if (proc) {
       worker->SetProcess(proc);
     }
@@ -109,13 +118,13 @@ class WorkerPoolTest : public ::testing::Test {
   }
 
   void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
-    WorkerPoolMock worker_pool(worker_commands);
+    WorkerPoolMock worker_pool(io_service_, worker_commands);
     this->worker_pool_ = std::move(worker_pool);
   }
 
  protected:
-  WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
+  WorkerPoolMock worker_pool_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
 

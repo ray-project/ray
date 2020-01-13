@@ -4,6 +4,7 @@
 #include <functional>  // std::equal_to, std::hash, std::less
 #include <memory>      // std::shared_ptr
 
+#include <boost/asio/io_service.hpp>
 #include <boost/process/args.hpp>
 #include <boost/process/child.hpp>
 

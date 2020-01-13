@@ -5,6 +5,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/asio/io_service.hpp>
+
 #include "gtest/gtest.h"
 
 #include "ray/common/client_connection.h"
@@ -40,7 +43,8 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(int num_workers, int maximum_startup_concurrency,
+  WorkerPool(boost::asio::io_service &io_service, int num_workers,
+             int maximum_startup_concurrency,
              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
@@ -219,6 +223,8 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
+  /// Required by Boost.Process for managing subprocesses (e.g. reaping zombies).
+  boost::asio::io_service *io_service_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// A client connection to the GCS.
