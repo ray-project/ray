@@ -1,3 +1,4 @@
+import logging
 from multiprocessing import TimeoutError
 import os
 import time
@@ -8,6 +9,8 @@ import queue
 import copy
 
 import ray
+
+logger = logging.getLogger(__name__)
 
 RAY_ADDRESS_ENV = "RAY_ADDRESS"
 
@@ -317,12 +320,16 @@ class Pool:
                  initializer=None,
                  initargs=None,
                  maxtasksperchild=None,
+                 context=None,
                  ray_address=None):
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs
         self._maxtasksperchild = maxtasksperchild or -1
         self._actor_deletion_ids = []
+
+        if context:
+            logger.warning("context argument is ignored")
 
         processes = self._init_ray(processes, ray_address)
         self._start_actor_pool(processes)
