@@ -5,9 +5,8 @@ package org.ray.api.exception;
  */
 public class RayWorkerException extends RayException {
 
-  public static final RayWorkerException INSTANCE = new RayWorkerException();
-
-  private RayWorkerException() {
+  public RayWorkerException() {
     super("The worker died unexpectedly while executing this task.");
   }
+
 }
