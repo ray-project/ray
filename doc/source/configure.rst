@@ -79,24 +79,27 @@ start a new worker with the given *root temporary directory*.
   /tmp
   └── ray
       └── session_{datetime}_{pid}
-          ├── logs  # for logging
-          │   ├── log_monitor.err
-          │   ├── log_monitor.out
-          │   ├── monitor.err
-          │   ├── monitor.out
-          │   ├── plasma_store.err  # outputs of the plasma store
-          │   ├── plasma_store.out
-          │   ├── raylet.err  # outputs of the raylet process
-          │   ├── raylet.out
-          │   ├── redis-shard_0.err   # outputs of redis shards
-          │   ├── redis-shard_0.out
-          │   ├── redis.err  # redis
-          │   ├── redis.out
-          │   ├── webui.err  # ipython notebook web ui
-          │   ├── webui.out
-          │   ├── worker-{worker_id}.err  # redirected output of workers
-          │   ├── worker-{worker_id}.out
-          │   └── {other workers}
+          └── logs  # for logging
+              ├── log_monitor.err
+              ├── log_monitor.out
+              ├── monitor.err
+              ├── monitor.out
+              ├── plasma_store.err  # outputs of the plasma store
+              ├── plasma_store.out
+              ├── raylet.err  # outputs of the raylet process
+              ├── raylet.out
+              ├── redis-shard_0.err   # outputs of redis shards
+              ├── redis-shard_0.out
+              ├── redis.err  # redis
+              ├── redis.out
+              ├── webui.err  # ipython notebook web ui
+              ├── webui.out
+              ├── worker-{worker_id}.err  # redirected output of workers
+              ├── worker-{worker_id}.out
+              └── {other workers}
+  /var/run
+  └── ray
+      └── session_{datetime}_{pid}
           └── sockets  # for sockets
               ├── plasma_store
               └── raylet  # this could be deleted by Ray's shutdown cleanup.

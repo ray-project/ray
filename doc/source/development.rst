@@ -88,8 +88,8 @@ like so:
  #   'NodeManagerAddress': '1.2.3.4',
  #   'NodeManagerPort': 43280,
  #   'ObjectManagerPort': 38062,
- #   'ObjectStoreSocketName': '/tmp/ray/session_2019-01-21_16-28-05_4216/sockets/plasma_store',
- #   'RayletSocketName': '/tmp/ray/session_2019-01-21_16-28-05_4216/sockets/raylet',
+ #   'ObjectStoreSocketName': '/var/run/session_2019-01-21_16-28-05_4216/sockets/plasma_store',
+ #   'RayletSocketName': '/var/run/session_2019-01-21_16-28-05_4216/sockets/raylet',
  #   'Resources': {'CPU': 8.0, 'GPU': 1.0}}]
 
 To inspect the primary Redis shard manually, you can also query with commands

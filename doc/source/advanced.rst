@@ -210,8 +210,8 @@ To get information about the current nodes in your cluster, you can use ``ray.no
       'NodeManagerAddress': '192.168.19.108',
       'NodeManagerPort': 37428,
       'ObjectManagerPort': 43415,
-      'ObjectStoreSocketName': '/tmp/ray/session_2019-07-28_17-03-53_955034_24883/sockets/plasma_store',
-      'RayletSocketName': '/tmp/ray/session_2019-07-28_17-03-53_955034_24883/sockets/raylet',
+      'ObjectStoreSocketName': '/var/run/session_2019-07-28_17-03-53_955034_24883/sockets/plasma_store',
+      'RayletSocketName': '/var/run/session_2019-07-28_17-03-53_955034_24883/sockets/raylet',
       'Resources': {'CPU': 4.0},
       'alive': True}]
     """

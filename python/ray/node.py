@@ -203,11 +203,16 @@ class Node:
                 redis_client.get("session_dir"))
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
+        # /var/run is a POSIX-compatible tmpfs that gets cleaned on reboot.
+        # It should be used for run-time files that are useless and must be
+        # cleaned after reboot, such as UNIX domain sockets.
+        self._session_run_dir = os.path.join("/var/run/ray", self.session_name)
+
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
         try_to_symlink(session_symlink, self._session_dir)
         # Create a directory to be used for socket files.
-        self._sockets_dir = os.path.join(self._session_dir, "sockets")
+        self._sockets_dir = os.path.join(self._session_run_dir, "sockets")
         try_to_create_directory(self._sockets_dir)
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
