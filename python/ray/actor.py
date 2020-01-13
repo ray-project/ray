@@ -681,7 +681,8 @@ class ActorHandle:
                 function_descriptor = JavaFunctionDescriptor(
                     self._ray_actor_creation_function_descriptor.class_name,
                     method_name,
-                    self._ray_actor_creation_function_descriptor.signature)
+                    # Currently not support call actor method with signature.
+                    "")
             else:
                 raise NotImplementedError("Cross language remote actor method "
                                           "not support language {}".format(

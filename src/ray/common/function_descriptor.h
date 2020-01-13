@@ -101,7 +101,7 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
     typed_message_ = &(message_->python_function_descriptor());
   }
 
-  size_t Hash() const {
+  virtual size_t Hash() const {
     return std::hash<int>()(ray::FunctionDescriptorType::kPythonFunctionDescriptor) ^
            std::hash<std::string>()(typed_message_->module_name()) ^
            std::hash<std::string>()(typed_message_->class_name()) ^
@@ -109,7 +109,7 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
            std::hash<std::string>()(typed_message_->function_hash());
   }
 
-  std::string ToString() const {
+  virtual std::string ToString() const {
     return "{type=PythonFunctionDescriptor, module_name=" +
            typed_message_->module_name() +
            ", class_name=" + typed_message_->class_name() +

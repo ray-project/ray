@@ -191,6 +191,11 @@ public class FunctionManager {
           RayFunction rayFunction = new RayFunction(e, classLoader,
               new JavaFunctionDescriptor(className, methodName, typeDescriptor));
           map.put(ImmutablePair.of(methodName, typeDescriptor), rayFunction);
+          // For cross language call java function without signature
+          final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");
+          if (!map.containsKey(emptyDescriptor)) {
+            map.put(emptyDescriptor, rayFunction);
+          }
         }
       } catch (Exception e) {
         throw new RuntimeException("Failed to load functions from class " + className, e);

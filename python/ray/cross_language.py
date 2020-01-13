@@ -13,10 +13,10 @@ __all__ = [
 ]
 
 
-def java_function(class_name, function_name, signature=""):
+def java_function(class_name, function_name):
     return RemoteFunction(
         Language.JAVA,
-        JavaFunctionDescriptor(class_name, function_name, signature),
+        JavaFunctionDescriptor(class_name, function_name, ""),
         None,  # num_cpus,
         None,  # num_gpus,
         None,  # memory,
@@ -27,10 +27,10 @@ def java_function(class_name, function_name, signature=""):
         None)  # max_retries)
 
 
-def java_actor_class(class_name, signature=""):
+def java_actor_class(class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
-        JavaFunctionDescriptor(class_name, "<init>", signature),
+        JavaFunctionDescriptor(class_name, "<init>", ""),
         0,  # max_reconstructions,
         None,  # num_cpus,
         None,  # num_gpus,

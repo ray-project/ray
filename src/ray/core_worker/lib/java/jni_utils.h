@@ -354,6 +354,13 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
                                                          typed_descriptor->FunctionName(),
                                                          typed_descriptor->Signature()};
     return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  } else if (function_descriptor->Type() ==
+             ray::FunctionDescriptorType::kPythonFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {
+        typed_descriptor->ModuleName(), typed_descriptor->ClassName(),
+        typed_descriptor->FunctionName(), typed_descriptor->FunctionHash()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
   }
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
