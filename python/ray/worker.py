@@ -425,14 +425,11 @@ class Worker:
 
         return ray.signature.recover_args(arguments)
 
-    def register_job_name_with_redis(
-            self,
-            job_id,
-            job_name=None):
+    def register_job_name_with_redis(self, job_id, job_name=None):
         assert isinstance(job_id, ray.JobID)
         if job_name is None:
-            job_name = "{}{}".format(
-                ray_constants.DEFAULT_PREFIX_FOR_JOB_NAME, job_id.hex())
+            job_name = "{}{}".format(ray_constants.DEFAULT_PREFIX_FOR_JOB_NAME,
+                                     job_id.hex())
 
         # Register the index mapping from job_name to job_id.
         result = self.redis_client.hexists(
@@ -440,8 +437,8 @@ class Worker:
         if result:
             raise ValueError("The job name you specified exists. "
                              "Please specify an unique one.")
-        self.redis_client.hmset(
-            ray_constants.KEY_OF_JOB_NAMES_IN_REDIS, {job_name: job_id.hex()})
+        self.redis_client.hmset(ray_constants.KEY_OF_JOB_NAMES_IN_REDIS,
+                                {job_name: job_id.hex()})
 
         # Check if this job name is set with this job id rather than another
         # job id. This is used to avoid that some drivers register the  same
@@ -1167,16 +1164,13 @@ def connect(node,
     else:
         # This is the code path of driver mode.
         # TODO(qwang): use `GcsClient::GenerateJobId()` here.
-        job_id = JobID.from_int(
-            int(worker.redis_client.incr("JobCounter")))
+        job_id = JobID.from_int(int(worker.redis_client.incr("JobCounter")))
         # When tasks are executed on remote workers in the context of multiple
         # drivers, the current job ID is used to keep track of which job is
         # responsible for the task so that error messages will be propagated to
         # the correct driver.
         worker.worker_id = ray.utils.compute_driver_id_from_job(
             job_id).binary()
-
-
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -1378,10 +1372,11 @@ def disconnect(exiting_interpreter=False):
 
         if worker.mode == SCRIPT_MODE:
             # Remove the job name from GCS if this is a driver.
-            if (hasattr(global_worker, "redis_client") and
-                    global_worker.redis_client is not None):
+            if (hasattr(global_worker, "redis_client")
+                    and global_worker.redis_client is not None):
                 result = global_worker.redis_client.hdel(
-                    ray_constants.KEY_OF_JOB_NAMES_IN_REDIS, global_worker.job_name)
+                    ray_constants.KEY_OF_JOB_NAMES_IN_REDIS,
+                    global_worker.job_name)
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
