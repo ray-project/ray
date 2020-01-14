@@ -90,7 +90,7 @@ void Raylet::Stop() {
 ray::Status Raylet::RegisterGcs() {
   RAY_RETURN_NOT_OK(gcs_client_->Nodes().RegisterSelf(self_node_info_));
 
-  RAY_LOG(INFO) << "Node manager " << self_node_id_ << " started on "
+  RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
                  << self_node_info_.node_manager_address() << ":"
                  << self_node_info_.node_manager_port() << " object manager at "
                  << self_node_info_.node_manager_address() << ":"

@@ -11,7 +11,7 @@ class ServiceBasedGcsClient;
 
 /// \class ServiceBasedJobInfoAccessor
 /// ServiceBasedJobInfoAccessor is an implementation of `JobInfoAccessor`
-/// that uses GCS Service as the backend storage.
+/// that uses GCS Service as the backend.
 class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
  public:
   explicit ServiceBasedJobInfoAccessor(ServiceBasedGcsClient *client_impl);
@@ -36,7 +36,7 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
 
 /// \class ServiceBasedActorInfoAccessor
 /// ServiceBasedActorInfoAccessor is an implementation of `ActorInfoAccessor`
-/// that uses GCS Service as the backend storage.
+/// that uses GCS Service as the backend.
 class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
  public:
   explicit ServiceBasedActorInfoAccessor(ServiceBasedGcsClient *client_impl);
@@ -86,7 +86,7 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
 
 /// \class ServiceBasedNodeInfoAccessor
 /// ServiceBasedNodeInfoAccessor is an implementation of `NodeInfoAccessor`
-/// that uses GCS Service as the backend storage.
+/// that uses GCS Service as the backend.
 class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
  public:
   explicit ServiceBasedNodeInfoAccessor(ServiceBasedGcsClient *client_impl);
@@ -169,7 +169,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
 
 /// \class ServiceBasedTaskInfoAccessor
 /// ServiceBasedTaskInfoAccessor is an implementation of `TaskInfoAccessor`
-/// that uses GCS service as the backend storage.
+/// that uses GCS service as the backend.
 class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
  public:
   explicit ServiceBasedTaskInfoAccessor(ServiceBasedGcsClient *client_impl);
@@ -222,7 +222,7 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
 
 /// \class ServiceBasedObjectInfoAccessor
 /// ServiceBasedObjectInfoAccessor is an implementation of `ObjectInfoAccessor`
-/// that uses GCS service as the backend storage.
+/// that uses GCS service as the backend.
 class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
  public:
   explicit ServiceBasedObjectInfoAccessor(ServiceBasedGcsClient *client_impl);
@@ -255,6 +255,23 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
   typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
       ObjectSubscriptionExecutor;
   ObjectSubscriptionExecutor object_sub_executor_;
+};
+
+/// \class ServiceBasedStatsInfoAccessor
+/// ServiceBasedStatsInfoAccessor is an implementation of `StatsInfoAccessor`
+/// that uses GCS Service as the backend.
+class ServiceBasedStatsInfoAccessor : public StatsInfoAccessor {
+ public:
+  explicit ServiceBasedStatsInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedStatsInfoAccessor() = default;
+
+  Status AsyncAddProfileData(
+      const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
+      const StatusCallback &callback) override;
+
+ private:
+  ServiceBasedGcsClient *client_impl_{nullptr};
 };
 
 }  // namespace gcs

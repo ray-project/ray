@@ -65,6 +65,7 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
   node_accessor_.reset(new ServiceBasedNodeInfoAccessor(this));
   task_accessor_.reset(new ServiceBasedTaskInfoAccessor(this));
   object_accessor_.reset(new ServiceBasedObjectInfoAccessor(this));
+  stats_accessor_.reset(new ServiceBasedStatsInfoAccessor(this));
 
   is_connected_ = true;
 
@@ -76,6 +77,12 @@ void ServiceBasedGcsClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
   RAY_LOG(INFO) << "ServiceBasedGcsClient Disconnected.";
+}
+
+std::string ServiceBasedGcsClient::DebugString() const {
+  std::stringstream result;
+  result << "ServiceBasedGcsClient:";
+  return result.str();
 }
 
 }  // namespace gcs

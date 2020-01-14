@@ -695,5 +695,28 @@ Status ServiceBasedObjectInfoAccessor::AsyncUnsubscribeToLocations(
   return status;
 }
 
+ServiceBasedStatsInfoAccessor::ServiceBasedStatsInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedStatsInfoAccessor::AsyncAddProfileData(
+    const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
+    const StatusCallback &callback) {
+  ClientID node_id = ClientID::FromBinary(data_ptr->component_id());
+  RAY_LOG(DEBUG) << "Adding profile data, component type = "
+                 << data_ptr->component_type() << ", node id = " << node_id;
+  rpc::AddProfileDataRequest request;
+  request.mutable_profile_data()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().AddProfileData(
+      request, [callback](const Status &status, const rpc::AddProfileDataReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+      });
+  RAY_LOG(DEBUG) << "Finished adding profile data, component type = "
+                 << data_ptr->component_type() << ", node id = " << node_id;
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray

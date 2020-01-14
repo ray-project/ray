@@ -21,6 +21,8 @@ class RAY_EXPORT ServiceBasedGcsClient : public GcsClient {
 
   rpc::GcsRpcClient &GetGcsRpcClient() { return *gcs_rpc_client_; }
 
+  std::string DebugString() const override;
+
  private:
   std::unique_ptr<RedisGcsClient> redis_gcs_client_;
 

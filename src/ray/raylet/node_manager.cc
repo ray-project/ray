@@ -859,7 +859,7 @@ void NodeManager::ProcessClientMessage(
     const uint8_t *message_data) {
   auto registered_worker = worker_pool_.GetRegisteredWorker(client);
   auto message_type_value = static_cast<protocol::MessageType>(message_type);
-  RAY_LOG(INFO) << "[Worker] Message "
+  RAY_LOG(DEBUG) << "[Worker] Message "
                  << protocol::EnumNameMessageType(message_type_value) << "("
                  << message_type << ") from worker with PID "
                  << (registered_worker ? std::to_string(registered_worker->Pid())
@@ -966,7 +966,6 @@ void NodeManager::ProcessClientMessage(
 
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  RAY_LOG(INFO) << "00000000000000000000000000000000000";
   client->Register();
   auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
@@ -1067,7 +1066,6 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 
 void NodeManager::HandleWorkerAvailable(
     const std::shared_ptr<LocalClientConnection> &client) {
-  RAY_LOG(INFO) << "HandleWorkerAvailable...........";
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   HandleWorkerAvailable(worker);
 }
@@ -1137,11 +1135,11 @@ void NodeManager::ProcessDisconnectClientMessage(
     leased_workers_.erase(worker->WorkerId());
 
     // Publish the worker failure.
-    auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
-        self_node_id_, worker->WorkerId(), initial_config_.node_manager_address,
-        worker->Port());
-    RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
-                                                                 nullptr));
+//    auto worker_failure_data_ptr = gcs::CreateWorkerFailureData(
+//        self_node_id_, worker->WorkerId(), initial_config_.node_manager_address,
+//        worker->Port());
+//    RAY_CHECK_OK(gcs_client_->Workers().AsyncReportWorkerFailure(worker_failure_data_ptr,
+//                                                                 nullptr));
   }
 
   if (is_worker) {
@@ -2349,7 +2347,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
 
 bool NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
-  RAY_LOG(INFO) << "Finished task " << task_id;
+  RAY_LOG(DEBUG) << "Finished task " << task_id;
 
   // (See design_docs/task_states.rst for the state transition diagram.)
   Task task;
@@ -2439,7 +2437,6 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
 
   // Set the new fields for the actor's state to indicate that the actor is
   // now alive on this node manager.
-  RAY_LOG(INFO) << "Ip address is = " << gcs_client_->Nodes().GetSelfInfo().node_manager_address();
   actor_info_ptr->mutable_address()->set_ip_address(
       gcs_client_->Nodes().GetSelfInfo().node_manager_address());
   actor_info_ptr->mutable_address()->set_port(port);
@@ -2485,7 +2482,6 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
             /*callback=*/
             [this, task_spec, resumed_from_checkpoint, port, parent_task_id, worker_id](
                 Status status, const boost::optional<TaskTableData> &parent_task_data) {
-              RAY_LOG(INFO) << "AsyncGet..........";
               if (parent_task_data) {
                 // The task was in the GCS task table. Use the stored task spec to
                 // get the parent actor id.
@@ -2551,7 +2547,6 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
                                                   const TaskSpecification &task_spec,
                                                   bool resumed_from_checkpoint, int port,
                                                   const WorkerID &worker_id) {
-  RAY_LOG(INFO) << "FinishAssignedActorCreationTask..........";
   // Notify the other node managers that the actor has been created.
   const ActorID actor_id = task_spec.ActorCreationId();
   auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, port, worker_id);
@@ -2596,12 +2591,10 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     HandleActorStateTransition(actor_id, ActorRegistration(*new_actor_info));
     if (actor_registry_.find(actor_id) != actor_registry_.end()) {
       // The actor was created before.
-      RAY_LOG(INFO) << "AsyncUpdate..........";
       RAY_CHECK_OK(
           gcs_client_->Actors().AsyncUpdate(actor_id, new_actor_info, update_callback));
     } else {
       // The actor was never created before.
-      RAY_LOG(INFO) << "AsyncRegister..........";
       RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(new_actor_info, update_callback));
     }
   }
@@ -3016,7 +3009,7 @@ std::string NodeManager::DebugString() const {
     result << "\n" << pair.first.Hex() << ": " << pair.second.DebugString();
   }
   result << "\n" << object_manager_.DebugString();
-//  result << "\n" << gcs_client_->DebugString();
+  result << "\n" << gcs_client_->DebugString();
   result << "\n" << worker_pool_.DebugString();
   result << "\n" << local_queues_.DebugString();
   result << "\n" << reconstruction_policy_.DebugString();

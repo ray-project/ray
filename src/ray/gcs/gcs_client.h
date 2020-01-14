@@ -119,6 +119,11 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *worker_accessor_;
   }
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  virtual std::string DebugString() const = 0;
+
  protected:
   /// Constructor of GcsClient.
   ///
