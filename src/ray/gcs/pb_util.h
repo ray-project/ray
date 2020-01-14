@@ -32,13 +32,13 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
 
 /// Helper function to produce error table data.
 inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
-    const JobID &job_id, const std::string &error_type, const std::string &error_msg,
-    double timestamp) {
+    const std::string &error_type, const std::string &error_msg, double timestamp,
+    const JobID &job_id = JobID::Nil()) {
   auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
-  error_info_ptr->set_job_id(job_id.Binary());
   error_info_ptr->set_type(error_type);
   error_info_ptr->set_error_message(error_msg);
   error_info_ptr->set_timestamp(timestamp);
+  error_info_ptr->set_job_id(job_id.Binary());
   return error_info_ptr;
 }
 

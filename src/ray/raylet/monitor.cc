@@ -68,8 +68,10 @@ void Monitor::Tick() {
             error_message << "The node with client ID " << node_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
-            RAY_CHECK_OK(gcs_client_.Errors().AsyncReportRayError(
-                type, error_message.str(), current_time_ms(), nullptr));
+            auto error_data_ptr =
+                gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+            RAY_CHECK_OK(
+                gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
           }
         };
         RAY_CHECK_OK(gcs_client_.Nodes().AsyncGetAll(lookup_callback));

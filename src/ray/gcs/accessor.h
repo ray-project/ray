@@ -482,36 +482,17 @@ class ErrorInfoAccessor {
   virtual ~ErrorInfoAccessor() = default;
 
   /// Report a job error to GCS asynchronously.
-  /// The error message will be pushed for the driver of a specific.
+  /// The error message will be pushed to the driver of a specific if it is
+  /// a job internal error, or broadcast to all drivers if it is a system error.
   ///
   /// TODO(rkn): We need to make sure that the errors are unique because
   /// duplicate messages currently cause failures (the GCS doesn't allow it). A
   /// natural way to do this is to have finer-grained time stamps.
   ///
-  /// \param job_id The id of job which the error occurred.
-  /// \param error_type The type of this error.
-  /// \param error_msg The content of this error.
-  /// \param timestamp The timestamp when the error occurred.
+  /// \param data_ptr The error message that will be reported to GCS.
   /// \param callback Callback that will be called when report is complete.
   /// \return Status
-  virtual Status AsyncReportJobError(const JobID &job_id, const std::string &error_type,
-                                     const std::string &error_msg, double timestamp,
-                                     const StatusCallback &callback) = 0;
-
-  /// Report a ray error to GCS asynchronously.
-  /// The error message will be pushed to all drivers.
-  ///
-  /// TODO(rkn): We need to make sure that the errors are unique because
-  /// duplicate messages currently cause failures (the GCS doesn't allow it). A
-  /// natural way to do this is to have finer-grained time stamps.
-  ///
-  /// \param error_type The type of this error.
-  /// \param error_msg The content of this error.
-  /// \param timestamp The timestamp when the error occurred.
-  /// \param callback Callback that will be called when report is complete.
-  /// \return Status
-  virtual Status AsyncReportRayError(const std::string &error_type,
-                                     const std::string &error_msg, double timestamp,
+  virtual Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
                                      const StatusCallback &callback) = 0;
 
  protected:
