@@ -44,7 +44,7 @@ class TestComponents(unittest.TestCase):
         check(component.prop_d, 3)
         check(component.add(1.2), torch.Tensor([2.2]))  # prop_b == 1.0
 
-        # Create from json-string (e.g. on command line).
+        # Create tf Component from json-string (e.g. on command line).
         component = DummyComponent.from_config(
             '{"prop_a": "A", "prop_b": -1.0, "prop_c": "non-default"}'
         )
@@ -52,14 +52,14 @@ class TestComponents(unittest.TestCase):
         check(component.prop_d, 4)  # default
         check(component.add(-1.1).numpy(), -2.1)  # prop_b == -1.0
 
-        # Create from yaml-string.
+        # Create torch Component from yaml-string.
         component = Component.from_config(
             "type: ray.rllib.components.tests.test_components.DummyComponent\n"
-            "prop_a: B\nprop_b: -1.5\nprop_c: non-default"
+            "prop_a: B\nprop_b: -1.5\nprop_c: non-default\nframework: torch"
         )
         check(component.prop_a, "B")
         check(component.prop_d, 4)  # default
-        check(component.add(-5.1).numpy(), -6.6)  # prop_b == -1.5
+        check(component.add(-5.1), torch.Tensor([-6.6]))  # prop_b == -1.5
 
 
 class DummyComponent(Component, metaclass=ABCMeta):
