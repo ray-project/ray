@@ -66,6 +66,7 @@ inline std::shared_ptr<ray::rpc::WorkerFailureData> CreateWorkerFailureData(
   worker_failure_info_ptr->mutable_worker_address()->set_ip_address(address);
   worker_failure_info_ptr->mutable_worker_address()->set_port(port);
   worker_failure_info_ptr->set_timestamp(timestamp);
+  return worker_failure_info_ptr;
 }
 
 }  // namespace gcs
