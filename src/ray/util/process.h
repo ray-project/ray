@@ -1,8 +1,16 @@
 #ifndef RAY_UTIL_PROCESS_H
 #define RAY_UTIL_PROCESS_H
 
+#ifdef __linux__
+#include <fcntl.h>     // O_RDONLY
+#include <sys/stat.h>  // open()
+#include <unistd.h>    // close(), dup()
+#endif
+
+#include <algorithm>   // std::swap
 #include <functional>  // std::equal_to, std::hash, std::less
 #include <memory>      // std::shared_ptr
+#include <utility>     // std::std::forward
 
 #include <boost/asio/io_service.hpp>
 #include <boost/process/args.hpp>
@@ -14,7 +22,51 @@
 namespace ray {
 
 typedef boost::process::pid_t pid_t;
-typedef boost::process::child Process;
+
+class Process : public boost::process::child {
+  typedef boost::process::child base_type;
+
+ protected:
+  class ProcessFD {
+    // This class makes a best-effort attempt to keep a PID alive.
+    // However, it cannot make any guarantees.
+    // The kernel might not even support this mechanism.
+    // See here: https://unix.stackexchange.com/a/181249
+#ifdef __linux__
+    int fd_;
+#endif
+   public:
+#ifdef __linux__
+    ~ProcessFD() {
+      if (fd_ != -1) {
+        ::close(fd_);
+      }
+    }
+    ProcessFD(pid_t pid) : fd_(-1) {
+      if (pid != -1) {
+        char path[64];
+        sprintf(path, "/proc/%d/ns/pid", static_cast<int>(pid));
+        fd_ = ::open(path, O_RDONLY);
+      }
+    }
+    ProcessFD(ProcessFD &&other) : fd_(std::move(other.fd_)) { other.fd_ = -1; }
+    ProcessFD(const ProcessFD &other) : fd_(other.fd_ != -1 ? ::dup(other.fd_) : -1) {}
+    ProcessFD &operator=(ProcessFD other) {
+      using std::swap;
+      swap(fd_, other.fd_);
+      return *this;
+    }
+#else
+    ProcessFD(pid_t) {}
+#endif
+  };
+  ProcessFD fd_;
+
+ public:
+  template <typename... T>
+  explicit Process(T &&... args)
+      : base_type(std::forward<T>(args)...), fd_(base_type::id()) {}
+};
 
 static constexpr boost::process::detail::args_ make_process_args;
 
