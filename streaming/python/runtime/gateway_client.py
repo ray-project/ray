@@ -8,7 +8,7 @@ import msgpack
 
 
 class GatewayClient:
-    _PYTHON_GATEWAY_CLASSNAME = b"org.ray.streaming.python.PythonGateway"
+    _PYTHON_GATEWAY_CLASSNAME = b"org.ray.streaming.runtime.python.PythonGateway"
 
     def __init__(self, python_gateway_actor):
         self._python_gateway_actor = python_gateway_actor
