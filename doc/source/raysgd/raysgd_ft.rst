@@ -3,6 +3,13 @@ RaySGD Fault Tolerance
 
 .. note:: Fault tolerance is currently only enabled for the PyTorchTrainer.
 
+For distributed deep learning, jobs are often run on infrastructure where nodes can be pre-empted frequently (i.e., spot instances in the cloud). To overcome this, RaySGD provides **fault handling** features that enable training to continue regardless of node failures.
+
+.. code-block:: bash
+
+    trainer.train(max_retries=N)
+
+
 How does it work?
 -----------------
 
