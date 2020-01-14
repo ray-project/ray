@@ -20,17 +20,17 @@ namespace rpc {
   })
 
 // Define a void RPC client method.
-#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, request, callback, rpc_client, SPECS) \
-  void METHOD(const METHOD##Request &request,                                         \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {                  \
-    RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client));      \
+#define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
+  void METHOD(const METHOD##Request &request,                                    \
+              const ClientCallback<METHOD##Reply> &callback) SPECS {             \
+    RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client)); \
   }
 
 // Define a RPC client method that returns ray::Status.
-#define RPC_CLIENT_METHOD(SERVICE, METHOD, request, callback, rpc_client, SPECS) \
-  ray::Status METHOD(const METHOD##Request &request,                             \
-                     const ClientCallback<METHOD##Reply> &callback) SPECS {      \
-    return INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client);      \
+#define RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, SPECS)               \
+  ray::Status METHOD(const METHOD##Request &request,                        \
+                     const ClientCallback<METHOD##Reply> &callback) SPECS { \
+    return INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client); \
   }
 
 template <class GrpcService>
@@ -38,8 +38,13 @@ class GrpcClient {
  public:
   GrpcClient(const std::string &address, const int port, ClientCallManager &call_manager)
       : client_call_manager_(call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
+    grpc::ChannelArguments argument;
+    // Disable http proxy since it disrupts local connections. TODO(ekl) we should make
+    // this configurable, or selectively set it for known local connections only.
+    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
+    std::shared_ptr<grpc::Channel> channel =
+        grpc::CreateCustomChannel(address + ":" + std::to_string(port),
+                                  grpc::InsecureChannelCredentials(), argument);
     stub_ = GrpcService::NewStub(channel);
   }
 
@@ -50,6 +55,7 @@ class GrpcClient {
     quota.SetMaxThreads(num_threads);
     grpc::ChannelArguments argument;
     argument.SetResourceQuota(quota);
+    argument.SetInt(GRPC_ARG_ENABLE_HTTP_PROXY, 0);
     std::shared_ptr<grpc::Channel> channel =
         grpc::CreateCustomChannel(address + ":" + std::to_string(port),
                                   grpc::InsecureChannelCredentials(), argument);

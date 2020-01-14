@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from .gcs_flush_policy import (set_flushing_policy, GcsFlushPolicy,
                                SimpleGcsFlushPolicy)
 from .named_actors import get_actor, register_actor

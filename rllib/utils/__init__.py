@@ -10,7 +10,7 @@ from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
 from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
 from ray.rllib.utils.test_utils import check
-from ray.tune.util import merge_dicts, deep_update
+from ray.tune.utils import merge_dicts, deep_update
 
 
 def add_mixins(base, mixins):

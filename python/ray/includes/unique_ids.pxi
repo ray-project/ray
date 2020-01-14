@@ -176,12 +176,6 @@ cdef class ObjectID(BaseID):
     def task_id(self):
         return TaskID(self.data.TaskId().Binary())
 
-    def set_buffer_ref(self, ref):
-        self.buffer_ref = ref
-
-    def get_buffer_ref(self):
-        return self.buffer_ref
-
     cdef size_t hash(self):
         return self.data.Hash()
 

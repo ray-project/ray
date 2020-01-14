@@ -40,6 +40,7 @@ using rpc::TablePubsub;
 using rpc::TaskLeaseData;
 using rpc::TaskReconstructionData;
 using rpc::TaskTableData;
+using rpc::WorkerFailureData;
 
 class RedisContext;
 
@@ -716,6 +717,17 @@ class ActorTable : public Log<ActorID, ActorTableData> {
   }
 };
 
+class WorkerFailureTable : public Table<WorkerID, WorkerFailureData> {
+ public:
+  WorkerFailureTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
+                     RedisGcsClient *client)
+      : Table(contexts, client) {
+    pubsub_channel_ = TablePubsub::WORKER_FAILURE_PUBSUB;
+    prefix_ = TablePrefix::WORKER_FAILURE;
+  }
+  virtual ~WorkerFailureTable() {}
+};
+
 class TaskReconstructionLog : public Log<TaskID, TaskReconstructionData> {
  public:
   TaskReconstructionLog(const std::vector<std::shared_ptr<RedisContext>> &contexts,
@@ -842,19 +854,13 @@ class ErrorTable : private Log<JobID, ErrorTableData> {
   std::string DebugString() const;
 };
 
-class ProfileTable : private Log<UniqueID, ProfileTableData> {
+class ProfileTable : public Log<UniqueID, ProfileTableData> {
  public:
   ProfileTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
                RedisGcsClient *client)
       : Log(contexts, client) {
     prefix_ = TablePrefix::PROFILE;
   };
-
-  /// Add a batch of profiling events to the profile table.
-  ///
-  /// \param profile_events The profile events to record.
-  /// \return Status.
-  Status AddProfileEventBatch(const ProfileTableData &profile_events);
 
   /// Returns debug string for class.
   ///
@@ -894,16 +900,17 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return Status
   ray::Status Disconnect();
 
-  /// Register a new client to the GCS.
+  /// Mark a new node as connected to GCS asynchronously.
   ///
-  /// \param node_info Information about the client.
+  /// \param node_info Information about the node.
+  /// \param done Callback that is called once the node has been marked to connected.
   /// \return Status
-  ray::Status Register(const GcsNodeInfo &node_info);
+  ray::Status MarkConnected(const GcsNodeInfo &node_info, const WriteCallback &done);
 
-  /// Mark a different client as disconnected. The client ID should never be
-  /// reused for a new client.
+  /// Mark a different node as disconnected. The client ID should never be
+  /// reused for a new node.
   ///
-  /// \param dead_node_id The ID of the client to mark as dead.
+  /// \param dead_node_id The ID of the node to mark as dead.
   /// \param done Callback that is called once the node has been marked to
   /// disconnected.
   /// \return Status
