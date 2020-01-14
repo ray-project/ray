@@ -38,8 +38,10 @@ public class JobSchedulerImpl implements JobScheduler {
   public void schedule(Plan plan, Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
     this.plan = plan;
-    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
-    Ray.init();
+    if (Ray.internal() == null) {
+      System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+      Ray.init();
+    }
 
     List<RayActor<JobWorker>> workers = this.resourceManager.createWorkers(getPlanWorker());
     ExecutionGraph executionGraph = this.taskAssigner.assign(this.plan, workers);
