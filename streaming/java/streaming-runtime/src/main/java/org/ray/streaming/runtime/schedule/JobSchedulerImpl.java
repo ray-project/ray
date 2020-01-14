@@ -7,8 +7,6 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanVertex;
-import org.ray.streaming.runtime.cluster.ResourceManager;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
@@ -23,11 +21,9 @@ import org.ray.streaming.schedule.JobScheduler;
 public class JobSchedulerImpl implements JobScheduler {
   private Plan plan;
   private Map<String, String> jobConfig;
-  private ResourceManager resourceManager;
   private TaskAssigner taskAssigner;
 
   public JobSchedulerImpl() {
-    this.resourceManager = new ResourceManager();
     this.taskAssigner = new TaskAssignerImpl();
   }
 
@@ -43,8 +39,7 @@ public class JobSchedulerImpl implements JobScheduler {
       Ray.init();
     }
 
-    List<RayActor<JobWorker>> workers = this.resourceManager.createWorkers(getPlanWorker());
-    ExecutionGraph executionGraph = this.taskAssigner.assign(this.plan, workers);
+    ExecutionGraph executionGraph = this.taskAssigner.assign(this.plan);
 
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
     List<RayObject<Boolean>> waits = new ArrayList<>();
@@ -52,7 +47,7 @@ public class JobSchedulerImpl implements JobScheduler {
       List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
       for (ExecutionTask executionTask : executionTasks) {
         int taskId = executionTask.getTaskId();
-        RayActor<JobWorker> streamWorker = executionTask.getWorker();
+        RayActor streamWorker = executionTask.getWorker();
         waits.add(Ray.call(JobWorker::init, streamWorker,
             new WorkerContext(taskId, executionGraph, jobConfig)));
       }
@@ -60,8 +55,4 @@ public class JobSchedulerImpl implements JobScheduler {
     Ray.wait(waits);
   }
 
-  private int getPlanWorker() {
-    List<PlanVertex> planVertexList = plan.getPlanVertexList();
-    return planVertexList.stream().map(PlanVertex::getParallelism).reduce(0, Integer::sum);
-  }
 }

@@ -4,11 +4,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.streaming.plan.Plan;
 import org.ray.streaming.plan.PlanEdge;
 import org.ray.streaming.plan.PlanVertex;
+import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -21,11 +22,10 @@ public class TaskAssignerImpl implements TaskAssigner {
    * Assign an optimized logical plan to execution graph.
    *
    * @param plan    The logical plan.
-   * @param workers The worker actors.
    * @return The physical execution graph.
    */
   @Override
-  public ExecutionGraph assign(Plan plan, List<RayActor<JobWorker>> workers) {
+  public ExecutionGraph assign(Plan plan) {
     List<PlanVertex> planVertices = plan.getPlanVertexList();
     List<PlanEdge> planEdges = plan.getPlanEdgeList();
 
@@ -37,7 +37,7 @@ public class TaskAssignerImpl implements TaskAssigner {
       executionNode.setNodeType(planVertex.getVertexType());
       List<ExecutionTask> vertexTasks = new ArrayList<>();
       for (int taskIndex = 0; taskIndex < planVertex.getParallelism(); taskIndex++) {
-        vertexTasks.add(new ExecutionTask(taskId, taskIndex, workers.get(taskId)));
+        vertexTasks.add(new ExecutionTask(taskId, taskIndex, createWorker(planVertex)));
         taskId++;
       }
       executionNode.setExecutionTasks(vertexTasks);
@@ -55,8 +55,15 @@ public class TaskAssignerImpl implements TaskAssigner {
       idToExecutionNode.get(targetNodeId).addInputEdge(executionEdge);
     }
 
-    List<ExecutionNode> executionNodes = idToExecutionNode.values().stream()
-        .collect(Collectors.toList());
+    List<ExecutionNode> executionNodes = new ArrayList<>(idToExecutionNode.values());
     return new ExecutionGraph(executionNodes);
+  }
+
+  private RayActor createWorker(PlanVertex planVertex) {
+    if (planVertex.getStreamOperator() instanceof PythonOperator) {
+      return Ray.createPyActor("ray.streaming.runtime.worker", "JobWorker");
+    } else {
+      return Ray.createActor(JobWorker::new);
+    }
   }
 }

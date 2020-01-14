@@ -1,9 +1,8 @@
 package org.ray.streaming.runtime.schedule;
 
+import com.google.common.collect.Lists;
 import java.util.ArrayList;
 import java.util.List;
-
-import com.google.common.collect.Lists;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.ObjectId;
@@ -13,14 +12,13 @@ import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.DataStreamSink;
 import org.ray.streaming.api.stream.DataStreamSource;
+import org.ray.streaming.plan.Plan;
+import org.ray.streaming.plan.PlanBuilder;
 import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;
-import org.ray.streaming.runtime.worker.JobWorker;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -34,13 +32,13 @@ public class TaskAssignerImplTest extends BaseUnitTest {
   public void testTaskAssignImpl() {
     Plan plan = buildDataSyncPlan();
 
-    List<RayActor<JobWorker>> workers = new ArrayList<>();
+    List<RayActor> workers = new ArrayList<>();
     for(int i = 0; i < plan.getPlanVertexList().size(); i++) {
       workers.add(new LocalModeRayActor(ActorId.fromRandom(), ObjectId.fromRandom()));
     }
 
     TaskAssigner taskAssigner = new TaskAssignerImpl();
-    ExecutionGraph executionGraph = taskAssigner.assign(plan, workers);
+    ExecutionGraph executionGraph = taskAssigner.assign(plan);
 
     List<ExecutionNode> executionNodeList = executionGraph.getExecutionNodeList();
 
