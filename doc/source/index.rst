@@ -274,10 +274,14 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
+   :caption: RaySGD
+
+   raysgd/raysgd.rst
+
+.. toctree::
+   :maxdepth: -1
    :caption: Experimental
 
-   distributed_training.rst
-   tf_distributed_training.rst
    pandas_on_ray.rst
    projects.rst
    signals.rst
