@@ -215,6 +215,9 @@ class ActorClassMetadata:
         self.method_signatures = {}
         self.actor_method_num_return_vals = {}
         for method_name, method in self.actor_methods:
+            # Whether or not this method requires binding of its first
+            # argument. For class and static methods, we do not want to bind
+            # the first argument, but we do for instance methods
             is_bound = (
                 ray.utils.is_class_method(method) or
                 ray.utils.is_static_method(self.modified_class, method_name))
