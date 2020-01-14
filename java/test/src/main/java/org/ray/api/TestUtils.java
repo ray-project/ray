@@ -31,7 +31,11 @@ public class TestUtils {
     skipTestIfDirectActorCallEnabled(true);
   }
 
-  public static void skipTestIfDirectActorCallEnabled(boolean enabled) {
+  public static void skipTestIfDirectActorCallDisabled() {
+    skipTestIfDirectActorCallEnabled(false);
+  }
+
+  private static void skipTestIfDirectActorCallEnabled(boolean enabled) {
     if (enabled == ActorCreationOptions.DEFAULT_USE_DIRECT_CALL) {
       throw new SkipException(String.format("This test doesn't work when direct actor call is %s.",
           enabled ? "enabled" : "disabled"));
