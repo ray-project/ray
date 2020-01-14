@@ -59,6 +59,26 @@ public class PythonFunction implements Function {
     this.functionInterface = functionInterface.functionInterface;
   }
 
+  public byte[] getFunction() {
+    return function;
+  }
+
+  public String getModuleName() {
+    return moduleName;
+  }
+
+  public String getClassName() {
+    return className;
+  }
+
+  public String getFunctionName() {
+    return functionName;
+  }
+
+  public String getFunctionInterface() {
+    return functionInterface;
+  }
+
   /**
    * Create a {@link PythonFunction} using python serialized function
    *

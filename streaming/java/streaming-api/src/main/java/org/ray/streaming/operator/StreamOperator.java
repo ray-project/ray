@@ -31,6 +31,10 @@ public abstract class StreamOperator<F extends Function> implements Operator {
 
   }
 
+  @Override
+  public Function getFunction() {
+    return function;
+  }
 
   protected void collect(Record record) {
     for (Collector collector : this.collectorList) {

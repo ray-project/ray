@@ -18,9 +18,10 @@ class ExecutionNode:
     def __init__(self, node_pb):
         self.node_id = node_pb.node_id
         self.node_type = NodeType[node_pb.node_type.name]
-        func_bytes = node_pb.stream_operator  # stream_operator only contains descriptor python function
-        func = function.load_function(func_bytes)
-        self.stream_operator = operator.create_operator(func)
+        if node_pb.function:
+            func_bytes = node_pb.function  # python function descriptor
+            func = function.load_function(func_bytes)
+            self.stream_operator = operator.create_operator(func)
         self.execution_tasks = [ExecutionTask(task) for task in node_pb.execution_tasks]
         self.inputs_edges = [ExecutionEdge(edge) for edge in node_pb.inputs_edges]
         self.output_edges = [ExecutionEdge(edge) for edge in node_pb.output_edges]
@@ -31,14 +32,20 @@ class ExecutionEdge:
         self.src_node_id = edge_pb.src_node_id
         self.target_node_id = edge_pb.target_node_id
         partition_bytes = edge_pb.partition
-        self.partition = partition.load_partition(partition_bytes)
+        if partition_bytes:
+            self.partition = partition.load_partition(partition_bytes)
 
 
 class ExecutionTask:
     def __init__(self, task_pb):
         self.task_id = task_pb.task_id
         self.task_index = task_pb.task_index
-        self.worker_actor_id = ray.ActorID(task_pb.worker_actor_id)
+        self.worker_actor = self.__create_actor_handle(task_pb.worker_actor)
+
+    def __create_actor_handle(self, worker_actor_bytes):
+        # is_python_actor/module_name/class_name/actor_id_bytes
+        # is_python_actor/java_class_name/actor_id_bytes
+        return ray.ActorID(worker_actor_bytes)
 
 
 class ExecutionGraph:
@@ -71,7 +78,6 @@ class ExecutionGraph:
             if execution_node.node_id == node_id:
                 task_id2_worker = {}
                 for task in execution_node.execution_tasks:
-                    worker_actor_id_bytes = task.worker_actor_id
-                    task_id2_worker[task.task_id] = worker_actor_id_bytes
+                    task_id2_worker[task.task_id] = task.worker_actor
                 return task_id2_worker
         raise Exception("Node %s does not exist!".format(node_id))

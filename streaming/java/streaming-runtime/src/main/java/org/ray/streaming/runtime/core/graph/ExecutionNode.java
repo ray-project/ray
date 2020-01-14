@@ -91,7 +91,7 @@ public class ExecutionNode implements Serializable {
         this.nodeType = NodeType.SINK;
         break;
       default:
-        this.nodeType = NodeType.PROCESS;
+        this.nodeType = NodeType.TRANSFORM;
     }
   }
 
@@ -108,7 +108,7 @@ public class ExecutionNode implements Serializable {
 
   public enum NodeType {
     SOURCE,
-    PROCESS,
+    TRANSFORM,
     SINK,
   }
 }
