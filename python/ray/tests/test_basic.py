@@ -1593,29 +1593,20 @@ def test_wait(ray_start_regular):
     @ray.remote
     def f(delay):
         time.sleep(delay)
-        return 1
+        return
 
-    objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
-    ready_ids, remaining_ids = ray.wait(objectids)
+    object_ids = [f.remote(0), f.remote(0), f.remote(0), f.remote(0)]
+    ready_ids, remaining_ids = ray.wait(object_ids)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
-    ready_ids, remaining_ids = ray.wait(objectids, num_returns=4)
-    assert set(ready_ids) == set(objectids)
+    ready_ids, remaining_ids = ray.wait(object_ids, num_returns=4)
+    assert set(ready_ids) == set(object_ids)
     assert remaining_ids == []
 
-    objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
-    start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(objectids, timeout=1.75, num_returns=4)
-    assert time.time() - start_time < 2
-    assert len(ready_ids) == 3
-    assert len(remaining_ids) == 1
-    ray.wait(objectids)
-    objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
-    start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(objectids, timeout=5.0)
-    assert time.time() - start_time < 5
+    object_ids = [f.remote(0), f.remote(5)]
+    ready_ids, remaining_ids = ray.wait(object_ids, timeout=0.5, num_returns=2)
     assert len(ready_ids) == 1
-    assert len(remaining_ids) == 3
+    assert len(remaining_ids) == 1
 
     # Verify that calling wait with duplicate object IDs throws an
     # exception.
