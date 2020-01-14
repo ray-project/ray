@@ -203,5 +203,8 @@ REDIS_DEFAULT_PASSWORD = "5241590000000000"
 # The default ip address to bind to.
 NODE_DEFAULT_IP = "127.0.0.1"
 
-KEY_OF_JOB_NAMES_IN_REDIS = "JOB_NAME_2_JOB_ID"
+# Note that the `_` before the words as a prefix here is used to
+# distinguish the key from `JOB_PREFIX` of job table. Otherwise,
+# `keys JOB_*` will return this item.
+KEY_OF_JOB_NAMES_IN_REDIS = "_JOB_NAME_2_JOB_ID"
 DEFAULT_PREFIX_FOR_JOB_NAME = "JOB_"
