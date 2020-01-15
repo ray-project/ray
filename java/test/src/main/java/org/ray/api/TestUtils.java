@@ -27,6 +27,12 @@ public class TestUtils {
     }
   }
 
+  public static void skipTestUnderClusterMode() {
+    if (getRuntime().getRayConfig().runMode == RunMode.CLUSTER) {
+      throw new SkipException("This test doesn't work under cluster mode.");
+    }
+  }
+
   public static void skipTestIfDirectActorCallEnabled() {
     skipTestIfDirectActorCallEnabled(true);
   }

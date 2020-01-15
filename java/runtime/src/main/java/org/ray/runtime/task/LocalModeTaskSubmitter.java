@@ -14,8 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
@@ -50,7 +50,13 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final Object taskAndObjectLock = new Object();
   private final RayDevRuntime runtime;
   private final LocalModeObjectStore objectStore;
-  private final ExecutorService exec;
+
+  /// The thread pool to execute actor tasks.
+  private final Map<ActorId, ExecutorService> actorTaskExecutorServices;
+
+  /// The thread pool to execute normal tasks.
+  private final ExecutorService normalTaskExecutorService;
+
   private final Deque<TaskExecutor> idleTaskExecutors = new ArrayDeque<>();
   private final Map<ActorId, TaskExecutor> actorTaskExecutors = new HashMap<>();
   private final Object taskExecutorLock = new Object();
@@ -60,8 +66,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       int numberThreads) {
     this.runtime = runtime;
     this.objectStore = objectStore;
-    // The thread pool that executes tasks in parallel.
-    exec = Executors.newFixedThreadPool(numberThreads);
+    // The thread pool that executes normal tasks in parallel.
+    normalTaskExecutorService = Executors.newFixedThreadPool(numberThreads);
+    // The thread pool that executes actor tasks in parallel.
+    actorTaskExecutorServices = new HashMap<>();
   }
 
   public void onObjectPut(ObjectId id) {
@@ -211,7 +219,14 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   public void shutdown() {
-    exec.shutdown();
+    // Shutdown actor task executor service.
+    synchronized (actorTaskExecutorServices) {
+      for (Map.Entry<ActorId, ExecutorService> item : actorTaskExecutorServices.entrySet()) {
+        item.getValue().shutdown();
+      }
+    }
+    // Shutdown normal task executor service.
+    normalTaskExecutorService.shutdown();
   }
 
   public static ActorId getActorId(TaskSpec taskSpec) {
@@ -231,37 +246,54 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     LOGGER.debug("Submitting task: {}.", taskSpec);
     synchronized (taskAndObjectLock) {
       Set<ObjectId> unreadyObjects = getUnreadyObjects(taskSpec);
+
+      final Runnable runnable = () -> {
+        TaskExecutor taskExecutor = getTaskExecutor(taskSpec);
+        try {
+          List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
+              .map(arg -> arg.id != null ?
+                  objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
+                  : arg.value)
+              .collect(Collectors.toList());
+          ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
+          List<NativeRayObject> returnObjects = taskExecutor
+              .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
+          ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(null);
+          List<ObjectId> returnIds = getReturnIds(taskSpec);
+          for (int i = 0; i < returnIds.size(); i++) {
+            NativeRayObject putObject;
+            if (i >= returnObjects.size()) {
+              // If the task is an actor task or an actor creation task,
+              // put the dummy object in object store, so those tasks which depends on it
+              // can be executed.
+              putObject = new NativeRayObject(new byte[]{1}, null);
+            } else {
+              putObject = returnObjects.get(i);
+            }
+            objectStore.putRaw(putObject, returnIds.get(i));
+          }
+        } finally {
+          returnTaskExecutor(taskExecutor, taskSpec);
+        }
+      };
+
       if (unreadyObjects.isEmpty()) {
         // If all dependencies are ready, execute this task.
-        exec.submit(() -> {
-          TaskExecutor taskExecutor = getTaskExecutor(taskSpec);
-          try {
-            List<NativeRayObject> args = getFunctionArgs(taskSpec).stream()
-                .map(arg -> arg.id != null ?
-                    objectStore.getRaw(Collections.singletonList(arg.id), -1).get(0)
-                    : arg.value)
-                .collect(Collectors.toList());
-            ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(taskSpec);
-            List<NativeRayObject> returnObjects = taskExecutor
-                .execute(getJavaFunctionDescriptor(taskSpec).toList(), args);
-            ((LocalModeWorkerContext) runtime.getWorkerContext()).setCurrentTask(null);
-            List<ObjectId> returnIds = getReturnIds(taskSpec);
-            for (int i = 0; i < returnIds.size(); i++) {
-              NativeRayObject putObject;
-              if (i >= returnObjects.size()) {
-                // If the task is an actor task or an actor creation task,
-                // put the dummy object in object store, so those tasks which depends on it
-                // can be executed.
-                putObject = new NativeRayObject(new byte[]{1}, null);
-              } else {
-                putObject = returnObjects.get(i);
-              }
-              objectStore.putRaw(putObject, returnIds.get(i));
-            }
-          } finally {
-            returnTaskExecutor(taskExecutor, taskSpec);
+        if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
+          ExecutorService actorExecutorService = Executors.newSingleThreadExecutor();
+          synchronized (actorTaskExecutorServices) {
+            actorTaskExecutorServices.put(getActorId(taskSpec), actorExecutorService);
           }
-        });
+          actorExecutorService.submit(runnable);
+        } else if (taskSpec.getType() == TaskType.ACTOR_TASK) {
+          synchronized (actorTaskExecutorServices) {
+            ExecutorService actorExecutorService = actorTaskExecutorServices.get(getActorId(taskSpec));
+            actorExecutorService.submit(runnable);
+          }
+        } else {
+          // Normal task.
+          normalTaskExecutorService.submit(runnable);
+        }
       } else {
         // If some dependencies aren't ready yet, put this task in waiting list.
         for (ObjectId id : unreadyObjects) {
