@@ -55,7 +55,7 @@ class Component:
             as the constructor.
         - A python callable: Use that very callable as constructor.
         - A string: Either a json/yaml filename or the name of a python
-            module+class (e.g. "rlgraph.components.Component")
+            module+class (e.g. "ray.rllib. [...] .[some class name]")
 
         Args:
             config (Optional[dict,str]): The config dict or type-string or
