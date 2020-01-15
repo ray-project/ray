@@ -78,6 +78,22 @@ class ListSourceFunction(SourceFunction):
             ctx.collect(v)
 
 
+class LocalFileSourceFunction(SourceFunction):
+    def __init__(self, filename):
+        self.filename = filename
+
+    def init(self, parallel, index):
+        pass
+
+    def run(self, ctx: SourceContext):
+        with open(self.filename, "r") as f:
+            line = f.readline()
+            if line == "":
+                return
+            ctx.collect(line[:-1])
+
+
+
 class SimpleMapFunction(MapFunction):
     def __init__(self, func):
         self.func = func

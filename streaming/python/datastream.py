@@ -134,15 +134,14 @@ class StreamSource(DataStream):
         self.source_func = source_func
 
     @staticmethod
-    def build_source(streaming_context, values: list):
+    def build_source(streaming_context, func):
         """Build a StreamSource source from a collection.
         Args:
             streaming_context: Stream context
-            values: A collection of values
+            func: A instance of `SourceFunction`
         Returns:
             A StreamSource
         """
-        func = function.ListSourceFunction(values)
         j_stream = streaming_context._gateway_client. \
             create_py_stream_source(function.serialize(func))
         return StreamSource(j_stream, streaming_context, func)
