@@ -4,11 +4,28 @@
 #include <iostream>
 #include <string>
 
+#if defined(_WIN32)
+#ifndef _WINDOWS_
+#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
+                             // headers you need manually.
+                             // (https://stackoverflow.com/a/8294669)
+#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
+#endif
+#include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
+#endif
+#ifdef ERROR  // Should be true unless someone else undef'd it already
+#undef ERROR  // Windows GDI defines this macro; make it a global enum so it doesn't
+              // conflict with our code
+enum { ERROR = 0 };
+#endif
+#endif
 namespace ray {
 
 enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3 };
 
 #define RAY_LOG_INTERNAL(level) ::ray::RayLog(__FILE__, __LINE__, level)
+
+#define RAY_LOG_ENABLED(level) ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)
 
 #define RAY_LOG(level)                                      \
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
@@ -16,19 +33,19 @@ enum class RayLogLevel { DEBUG = -1, INFO = 0, WARNING = 1, ERROR = 2, FATAL = 3
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                   \
-  (condition) ? RAY_IGNORE_EXPR(0)                                             \
-              : ::ray::Voidify() &                                             \
-                    ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                        << " Check failed: " #condition " "
+#define RAY_CHECK(condition)                                                          \
+  (condition)                                                                         \
+      ? RAY_IGNORE_EXPR(0)                                                            \
+      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                               << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition)                                                  \
-  (condition) ? RAY_IGNORE_EXPR(0)                                             \
-              : ::ray::Voidify() &                                             \
-                    ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
-                        << " Debug check failed: " #condition " "
+#define RAY_DCHECK(condition)                                                         \
+  (condition)                                                                         \
+      ? RAY_IGNORE_EXPR(0)                                                            \
+      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
+                               << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)
@@ -111,6 +128,9 @@ class RayLog : public RayLogBase {
   /// The directory where the log files are stored.
   /// If this is empty, logs are printed to stdout.
   static std::string log_dir_;
+  /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
+  /// InstallFailureSignalHandler was not called.
+  static bool is_failure_signal_handler_installed_;
 
  protected:
   virtual std::ostream &Stream();

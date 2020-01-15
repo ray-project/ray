@@ -1,8 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 from django.shortcuts import HttpResponse
 
 from ray.tune.automlboard.models.models import JobRecord, TrialRecord
@@ -36,7 +31,7 @@ def query_job(request):
         "success_trials": 4
     }
     """
-    job_id = request.GET.get('job_id')
+    job_id = request.GET.get("job_id")
     jobs = JobRecord.objects.filter(job_id=job_id)
     trials = TrialRecord.objects.filter(job_id=job_id)
 
@@ -68,7 +63,7 @@ def query_job(request):
             "progress": progress
         }
         resp = json.dumps(result)
-    return HttpResponse(resp, content_type='application/json;charset=utf-8')
+    return HttpResponse(resp, content_type="application/json;charset=utf-8")
 
 
 def query_trial(request):
@@ -90,10 +85,10 @@ def query_trial(request):
         "trial_id": "2067R2ZD",
     }
     """
-    trial_id = request.GET.get('trial_id')
+    trial_id = request.GET.get("trial_id")
     trials = TrialRecord.objects \
         .filter(trial_id=trial_id) \
-        .order_by('-start_time')
+        .order_by("-start_time")
     if len(trials) == 0:
         resp = "Unkonwn trial id %s.\n" % trials
     else:
@@ -107,4 +102,4 @@ def query_trial(request):
             "params": trial.params
         }
         resp = json.dumps(result)
-    return HttpResponse(resp, content_type='application/json;charset=utf-8')
+    return HttpResponse(resp, content_type="application/json;charset=utf-8")

@@ -4,8 +4,8 @@
 #include <random>
 #include <unordered_map>
 
+#include "ray/common/task/scheduling_resources.h"
 #include "ray/raylet/scheduling_queue.h"
-#include "ray/raylet/scheduling_resources.h"
 
 namespace ray {
 

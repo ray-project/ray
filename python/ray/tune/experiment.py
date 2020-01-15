@@ -1,16 +1,14 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
+import inspect
 import logging
 import os
 import six
 import types
 
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable
+from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.sample import sample_from
 
 logger = logging.getLogger(__name__)
 
@@ -32,59 +30,26 @@ def _raise_deprecation_note(deprecated, replacement, soft=False):
         raise DeprecationWarning(error_msg)
 
 
-class Experiment(object):
+def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
+    trainable_cls = get_trainable_cls(trainable_name)
+    from ray.tune.durable_trainable import DurableTrainable
+    if issubclass(trainable_cls, DurableTrainable):
+        if sync_to_driver is not False:
+            raise ValueError(
+                "EXPERIMENTAL: DurableTrainable will automatically sync "
+                "results to the provided upload_dir. "
+                "Set `sync_to_driver=False` to avoid data inconsistencies.")
+        if not upload_dir:
+            raise ValueError(
+                "EXPERIMENTAL: DurableTrainable will automatically sync "
+                "results to the provided upload_dir. "
+                "`upload_dir` must be provided.")
+
+
+class Experiment:
     """Tracks experiment specifications.
 
-    Parameters:
-        name (str): Name of experiment.
-        run (function|class|str): The algorithm or model to train.
-            This may refer to the name of a built-on algorithm
-            (e.g. RLLib's DQN or PPO), a user-defined trainable
-            function or class, or the string identifier of a
-            trainable function or class registered in the tune registry.
-        stop (dict): The stopping criteria. The keys may be any field in
-            the return result of 'train()', whichever is reached first.
-            Defaults to empty dict.
-        config (dict): Algorithm-specific configuration for Tune variant
-            generation (e.g. env, hyperparams). Defaults to empty dict.
-            Custom search algorithms may ignore this.
-        resources_per_trial (dict): Machine resources to allocate per trial,
-            e.g. ``{"cpu": 64, "gpu": 8}``. Note that GPUs will not be
-            assigned unless you specify them here. Defaults to 1 CPU and 0
-            GPUs in ``Trainable.default_resource_request()``.
-        num_samples (int): Number of times to sample from the
-            hyperparameter space. Defaults to 1. If `grid_search` is
-            provided as an argument, the grid will be repeated
-            `num_samples` of times.
-        local_dir (str): Local dir to save training results to.
-            Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results
-            to (e.g. ``s3://bucket``).
-        trial_name_creator (func): Optional function for generating
-            the trial string representation.
-        custom_loggers (list): List of custom logger creators to be used with
-            each Trial. See `ray/tune/logger.py`.
-        sync_function (func|str): Function for syncing the local_dir to
-            upload_dir. If string, then it must be a string template for
-            syncer to run. If not provided, the sync command defaults
-            to standard S3 or gsutil sync comamnds.
-        checkpoint_freq (int): How many training iterations between
-            checkpoints. A value of 0 (default) disables checkpointing.
-        checkpoint_at_end (bool): Whether to checkpoint at the end of the
-            experiment regardless of the checkpoint_freq. Default is False.
-        export_formats (list): List of formats that exported at the end of
-            the experiment. Default is None.
-        max_failures (int): Try to recover a trial from its last
-            checkpoint at least this many times. Only applies if
-            checkpointing is enabled. Setting to -1 will lead to infinite
-            recovery retries. Defaults to 3.
-        restore (str): Path to checkpoint. Only makes sense to set if
-            running 1 trial. Defaults to None.
-        repeat: Deprecated and will be removed in future versions of
-            Ray. Use `num_samples` instead.
-        trial_resources: Deprecated and will be removed in future versions of
-            Ray. Use `resources_per_trial` instead.
-
+    Implicitly registers the Trainable if needed.
 
     Examples:
         >>> experiment_spec = Experiment(
@@ -101,10 +66,8 @@ class Experiment(object):
         >>>     },
         >>>     num_samples=10,
         >>>     local_dir="~/ray_results",
-        >>>     upload_dir="s3://your_bucket/path",
         >>>     checkpoint_freq=10,
         >>>     max_failures=2)
-
     """
 
     def __init__(self,
@@ -117,44 +80,78 @@ class Experiment(object):
                  local_dir=None,
                  upload_dir=None,
                  trial_name_creator=None,
-                 custom_loggers=None,
-                 sync_function=None,
+                 loggers=None,
+                 sync_to_driver=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 sync_on_checkpoint=True,
+                 keep_checkpoints_num=None,
+                 checkpoint_score_attr=None,
                  export_formats=None,
-                 max_failures=3,
+                 max_failures=0,
                  restore=None,
                  repeat=None,
-                 trial_resources=None):
-        if sync_function:
-            assert upload_dir, "Need `upload_dir` if sync_function given."
+                 trial_resources=None,
+                 sync_function=None):
+        """Initialize a new Experiment.
 
+        The args here take the same meaning as the command line flags defined
+        in `tune.py:run`.
+        """
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
             _raise_deprecation_note(
-                "trial_resources", "resources_per_trial", soft=True)
-            resources_per_trial = trial_resources
+                "trial_resources", "resources_per_trial", soft=False)
+        if sync_function:
+            _raise_deprecation_note(
+                "sync_function", "sync_to_driver", soft=False)
+
+        stop = stop or {}
+        if not isinstance(stop, dict) and not callable(stop):
+            raise ValueError("Invalid stop criteria: {}. Must be a callable "
+                             "or dict".format(stop))
+        if callable(stop):
+            nargs = len(inspect.getargspec(stop).args)
+            is_method = isinstance(stop, types.MethodType)
+            if (is_method and nargs != 3) or (not is_method and nargs != 2):
+                raise ValueError(
+                    "Invalid stop criteria: {}. Callable "
+                    "criteria must take exactly 2 parameters.".format(stop))
+
+        config = config or {}
+        self._run_identifier = Experiment.register_if_needed(run)
+        self.name = name or self._run_identifier
+        if upload_dir:
+            self.remote_checkpoint_dir = os.path.join(upload_dir, self.name)
+        else:
+            self.remote_checkpoint_dir = None
+
+        _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
         spec = {
-            "run": Experiment._register_if_needed(run),
-            "stop": stop or {},
-            "config": config or {},
+            "run": self._run_identifier,
+            "stop": stop,
+            "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
-            "upload_dir": upload_dir or "",  # argparse converts None to "null"
+            "local_dir": os.path.abspath(
+                os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
+            "upload_dir": upload_dir,
+            "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
-            "custom_loggers": custom_loggers,
-            "sync_function": sync_function,
+            "loggers": loggers,
+            "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
+            "sync_on_checkpoint": sync_on_checkpoint,
+            "keep_checkpoints_num": keep_checkpoints_num,
+            "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": restore
+            "restore": os.path.abspath(os.path.expanduser(restore))
+            if restore else None
         }
-
-        self.name = name
         self.spec = spec
 
     @classmethod
@@ -185,11 +182,10 @@ class Experiment(object):
         return exp
 
     @classmethod
-    def _register_if_needed(cls, run_object):
+    def register_if_needed(cls, run_object):
         """Registers Trainable or Function at runtime.
 
-        Assumes already registered if run_object is a string. Does not
-        register lambdas because they could be part of variant generation.
+        Assumes already registered if run_object is a string.
         Also, does not inspect interface of given run_object.
 
         Arguments:
@@ -203,21 +199,34 @@ class Experiment(object):
 
         if isinstance(run_object, six.string_types):
             return run_object
-        elif isinstance(run_object, types.FunctionType):
-            if run_object.__name__ == "<lambda>":
-                logger.warning(
-                    "Not auto-registering lambdas - resolving as variant.")
-                return run_object
-            else:
+        elif isinstance(run_object, sample_from):
+            logger.warning("Not registering trainable. Resolving as variant.")
+            return run_object
+        elif isinstance(run_object, type) or callable(run_object):
+            name = "DEFAULT"
+            if hasattr(run_object, "__name__"):
                 name = run_object.__name__
-                register_trainable(name, run_object)
-                return name
-        elif isinstance(run_object, type):
-            name = run_object.__name__
+            else:
+                logger.warning(
+                    "No name detected on trainable. Using {}.".format(name))
             register_trainable(name, run_object)
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")
+
+    @property
+    def local_dir(self):
+        return self.spec.get("local_dir")
+
+    @property
+    def checkpoint_dir(self):
+        if self.local_dir:
+            return os.path.join(self.local_dir, self.name)
+
+    @property
+    def run_identifier(self):
+        """Returns a string representing the trainable identifier."""
+        return self._run_identifier
 
 
 def convert_to_experiment_list(experiments):

@@ -33,23 +33,21 @@ The command will print out the address of the Redis server that was started
 (and some other address information).
 
 **Then on all of the other nodes**, run the following. Make sure to replace
-``<redis-address>`` with the value printed by the command on the head node (it
+``<address>`` with the value printed by the command on the head node (it
 should look something like ``123.45.67.89:6379``).
 
 .. code-block:: bash
 
-  ray start --redis-address=<redis-address>
+  ray start --address=<address>
 
 If you wish to specify that a machine has 10 CPUs and 1 GPU, you can do this
-with the flags ``--num-cpus=10`` and ``--num-gpus=1``. If these flags are not
-used, then Ray will detect the number of CPUs automatically and will assume
-there are 0 GPUs.
+with the flags ``--num-cpus=10`` and ``--num-gpus=1``. See the `Configuration <configure.html>`__ page for more information.
 
 Now we've started all of the Ray processes on each node Ray. This includes
 
 - Some worker processes on each machine.
 - An object store on each machine.
-- A local scheduler on each machine.
+- A raylet on each machine.
 - Multiple Redis servers (on the head node).
 
 To run some commands, start up Python on one of the nodes in the cluster, and do
@@ -58,7 +56,7 @@ the following.
 .. code-block:: python
 
   import ray
-  ray.init(redis_address="<redis-address>")
+  ray.init(address="<address>")
 
 Now you can define remote functions and execute tasks. For example, to verify
 that the correct number of nodes have joined the cluster, you can run the

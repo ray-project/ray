@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import os
 import re
@@ -37,8 +33,8 @@ def run_board(args):
     # frontend service
     logger.info("Try to start automlboard on port %s\n" % args.port)
     command = [
-        os.path.join(root_path, 'manage.py'), 'runserver',
-        '0.0.0.0:%s' % args.port, '--noreload'
+        os.path.join(root_path, "manage.py"), "runserver",
+        "0.0.0.0:%s" % args.port, "--noreload"
     ]
     execute_from_command_line(command)
 
@@ -76,7 +72,7 @@ def init_config(args):
     os.environ.setdefault("DJANGO_SETTINGS_MODULE",
                           "ray.tune.automlboard.settings")
     django.setup()
-    command = [os.path.join(root_path, 'manage.py'), 'migrate', '--run-syncdb']
+    command = [os.path.join(root_path, "manage.py"), "migrate", "--run-syncdb"]
     execute_from_command_line(command)
 
 

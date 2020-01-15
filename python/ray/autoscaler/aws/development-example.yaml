@@ -87,14 +87,19 @@ setup_commands:
     # - sudo dpkg --configure -a
     # Install basics.
     - sudo apt-get update
-    - sudo apt-get install -y cmake pkg-config build-essential autoconf curl libtool unzip flex bison python
+    - sudo apt-get install -y build-essential curl unzip
+    # Install Node.js in order to build the dashboard.
+    - curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash
+    - sudo apt-get install -y nodejs
     # Install Anaconda.
     - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # Build Ray.
     - git clone https://github.com/ray-project/ray || true
-    - pip install boto3==1.4.8 cython==0.29.0
+    - ray/ci/travis/install-bazel.sh
+    - cd ray/python/ray/dashboard/client; npm ci; npm run build
+    - pip install boto3==1.4.8 cython==0.29.0 aiohttp grpcio psutil setproctitle
     - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
@@ -111,4 +116,4 @@ head_start_ray_commands:
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379

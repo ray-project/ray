@@ -9,19 +9,20 @@
 // clang-format off
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
-#include "ray/raylet/scheduling_resources.h"
+#include "ray/common/task/scheduling_resources.h"
 // clang-format on
 
 namespace ray {
 
 namespace raylet {
 
-class Task;
+using rpc::GcsNodeInfo;
+
 class NodeManager;
 
 class Raylet {
  public:
-  /// Create a node manager server and listen for new clients.
+  /// Create a raylet server and listen for local clients.
   ///
   /// \param main_service The event loop to run the server on.
   /// \param object_manager_service The asio io_service tied to the object manager.
@@ -40,36 +41,35 @@ class Raylet {
          int redis_port, const std::string &redis_password,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
-         std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
+         std::shared_ptr<gcs::RedisGcsClient> gcs_client);
+
+  /// Start this raylet.
+  void Start();
+
+  /// Stop this raylet.
+  void Stop();
 
   /// Destroy the NodeServer.
   ~Raylet();
 
  private:
   /// Register GCS client.
-  ray::Status RegisterGcs(const std::string &node_ip_address,
-                          const std::string &raylet_socket_name,
-                          const std::string &object_store_socket_name,
-                          const std::string &redis_address, int redis_port,
-                          const std::string &redis_password,
-                          boost::asio::io_service &io_service, const NodeManagerConfig &);
+  ray::Status RegisterGcs();
 
-  ray::Status RegisterPeriodicTimer(boost::asio::io_service &io_service);
   /// Accept a client connection.
   void DoAccept();
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
-  /// Accept a tcp client connection.
-  void DoAcceptObjectManager();
-  /// Handle an accepted tcp client connection.
-  void HandleAcceptObjectManager(const boost::system::error_code &error);
-  void DoAcceptNodeManager();
-  void HandleAcceptNodeManager(const boost::system::error_code &error);
 
   friend class TestObjectManagerIntegration;
 
+  /// ID of this node.
+  ClientID self_node_id_;
+  /// Information of this node.
+  GcsNodeInfo self_node_info_;
+
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// The object table. This is shared between the object manager and node
   /// manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
@@ -81,17 +81,9 @@ class Raylet {
   std::string socket_name_;
 
   /// An acceptor for new clients.
-  boost::asio::local::stream_protocol::acceptor acceptor_;
+  boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;
   /// The socket to listen on for new clients.
-  boost::asio::local::stream_protocol::socket socket_;
-  /// An acceptor for new object manager tcp clients.
-  boost::asio::ip::tcp::acceptor object_manager_acceptor_;
-  /// The socket to listen on for new object manager tcp clients.
-  boost::asio::ip::tcp::socket object_manager_socket_;
-  /// An acceptor for new tcp clients.
-  boost::asio::ip::tcp::acceptor node_manager_acceptor_;
-  /// The socket to listen on for new tcp clients.
-  boost::asio::ip::tcp::socket node_manager_socket_;
+  local_stream_protocol::socket socket_;
 };
 
 }  // namespace raylet

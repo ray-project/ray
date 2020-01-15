@@ -1,7 +1,5 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import glob
+from itertools import chain
 import os
 import re
 import shutil
@@ -17,35 +15,57 @@ import setuptools.command.build_ext as _build_ext
 # before these files have been created, so we have to move the files
 # manually.
 
-# NOTE: The lists below must be kept in sync with ray/CMakeLists.txt.
+# NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server", "ray/_raylet.so",
-    "ray/core/src/ray/raylet/raylet_monitor", "ray/core/src/ray/raylet/raylet",
-    "ray/WebUI.ipynb"
+    "ray/core/src/plasma/plasma_store_server",
+    "ray/_raylet.so",
+    "ray/core/src/ray/raylet/raylet_monitor",
+    "ray/core/src/ray/raylet/raylet",
+    "ray/dashboard/dashboard.py",
+    "ray/streaming/_streaming.so",
 ]
 
-# These are the directories where automatically generated Python flatbuffer
+build_java = os.getenv("RAY_INSTALL_JAVA") == "1"
+if build_java:
+    ray_files.append("ray/jars/ray_dist.jar")
+
+# These are the directories where automatically generated Python protobuf
 # bindings are created.
 generated_python_directories = [
-    "ray/core/generated", "ray/core/generated/ray",
-    "ray/core/generated/ray/protocol"
+    "ray/core/generated",
+    "ray/streaming/generated",
 ]
 
 optional_ray_files = []
-
-ray_ui_files = [
-    "ray/core/src/catapult_files/index.html",
-    "ray/core/src/catapult_files/trace_viewer_full.html"
-]
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
+    "ray/autoscaler/kubernetes/example-full.yaml",
+    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
 ]
+
+ray_project_files = [
+    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
+    "ray/projects/templates/project_template.yaml",
+    "ray/projects/templates/requirements.txt"
+]
+
+ray_dashboard_files = [
+    "ray/dashboard/client/build/favicon.ico",
+    "ray/dashboard/client/build/index.html",
+]
+for dirname in ["css", "js", "media"]:
+    ray_dashboard_files += glob.glob(
+        "ray/dashboard/client/build/static/{}/*".format(dirname))
+
+optional_ray_files += ray_autoscaler_files
+optional_ray_files += ray_project_files
+optional_ray_files += ray_dashboard_files
 
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files += [
@@ -54,19 +74,18 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
         "ray/core/src/credis/redis/src/redis-server"
     ]
 
-# The UI files are mandatory if the INCLUDE_UI environment variable equals 1.
-# Otherwise, they are optional.
-if "INCLUDE_UI" in os.environ and os.environ["INCLUDE_UI"] == "1":
-    ray_files += ray_ui_files
-else:
-    optional_ray_files += ray_ui_files
-
-optional_ray_files += ray_autoscaler_files
-
 extras = {
-    "rllib": ["pyyaml", "gym[atari]", "opencv-python", "lz4", "scipy"],
-    "debug": ["psutil", "setproctitle", "py-spy"],
+    "rllib": [
+        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
+        "tabulate"
+    ],
+    "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
+    "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
+    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
+    "tune": ["tabulate"],
 }
+
+extras["all"] = list(set(chain.from_iterable(extras.values())))
 
 
 class build_ext(_build_ext.build_ext):
@@ -75,7 +94,11 @@ class build_ext(_build_ext.build_ext):
         # version of Python to build pyarrow inside the build.sh script. Note
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
-        subprocess.check_call(["../build.sh", "-p", sys.executable])
+        command = ["../build.sh", "-p", sys.executable]
+        if build_java:
+            # Also build binaries for Java if the above env variable exists.
+            command += ["-l", "python,java"]
+        subprocess.check_call(command)
 
         # We also need to install pyarrow along with Ray, so make sure that the
         # relevant non-Python pyarrow files get copied.
@@ -84,9 +107,16 @@ class build_ext(_build_ext.build_ext):
             for name in filenames:
                 pyarrow_files.append(os.path.join(root, name))
 
-        files_to_include = ray_files + pyarrow_files
+        # We also need to install pickle5 along with Ray, so make sure that the
+        # relevant non-Python pickle5 files get copied.
+        pickle5_files = []
+        for (root, dirs, filenames) in os.walk("./ray/pickle5_files/pickle5"):
+            for name in filenames:
+                pickle5_files.append(os.path.join(root, name))
 
-        # Copy over the autogenerated flatbuffer Python bindings.
+        files_to_include = ray_files + pyarrow_files + pickle5_files
+
+        # Copy over the autogenerated protobuf Python bindings.
         for directory in generated_python_directories:
             for filename in os.listdir(directory):
                 if filename[-3:] == ".py":
@@ -113,8 +143,9 @@ class build_ext(_build_ext.build_ext):
         parent_directory = os.path.dirname(destination)
         if not os.path.exists(parent_directory):
             os.makedirs(parent_directory)
-        print("Copying {} to {}.".format(source, destination))
-        shutil.copy(source, destination)
+        if not os.path.exists(destination):
+            print("Copying {} to {}.".format(source, destination))
+            shutil.copy(source, destination, follow_symlinks=True)
 
 
 class BinaryDistribution(Distribution):
@@ -134,18 +165,22 @@ def find_version(*filepath):
 
 
 requires = [
-    "numpy >= 1.10.4",
+    "numpy >= 1.16",
     "filelock",
+    "jsonschema",
     "funcsigs",
     "click",
     "colorama",
+    "packaging",
     "pytest",
     "pyyaml",
-    "redis",
-    # The six module is required by pyarrow.
+    "redis>=3.3.2",
+    # NOTE: Don't upgrade the version of six! Doing so causes installation
+    # problems. See https://github.com/ray-project/ray/issues/4169.
     "six >= 1.0.0",
-    "flatbuffers",
     "faulthandler;python_version<'3.3'",
+    "protobuf >= 3.8.0",
+    "cloudpickle",
 ]
 
 setup(
@@ -169,7 +204,7 @@ setup(
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]"
+            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
         ]
     },
     include_package_data=True,

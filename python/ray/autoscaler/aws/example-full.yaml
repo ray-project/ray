@@ -14,12 +14,29 @@ max_workers: 2
 # subsequent `ray up`) this number of nodes will be started.
 initial_workers: 0
 
+# Whether or not to autoscale aggressively. If this is enabled, if at any point
+#   we would start more workers, we start at least enough to bring us to
+#   initial_workers.
+autoscaling_mode: default
+
 # This executes all commands on all nodes in the docker container,
 # and opens all the necessary ports to support the Ray cluster.
 # Empty string means disabled.
 docker:
     image: "" # e.g., tensorflow/tensorflow:1.5.0-py3
     container_name: "" # e.g. ray_docker
+    # If true, pulls latest version of image. Otherwise, `docker run` will only pull the image
+    # if no cached version is present.
+    pull_before_run: True
+    run_options: []  # Extra options to pass into "docker run"
+
+    # Example of running a GPU head with CPU workers
+    # head_image: "tensorflow/tensorflow:1.13.1-py3"
+    # head_run_options:
+    #     - --runtime=nvidia
+
+    # worker_image: "ubuntu:18.04"
+    # worker_run_options: []
 
 # The autoscaler will scale up the cluster to this target fraction of resource
 # usage. For example, if a cluster of 10 nodes is 100% busy and
@@ -54,13 +71,13 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    ImageId: ami-05931d11d2bf831c3 # Deep Learning AMI (Ubuntu) Version 24.3
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 50
+              VolumeSize: 100
 
     # Additional options in the boto docs.
 
@@ -70,7 +87,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-3b6bce43  # Amazon Deep Learning AMI (Ubuntu)
+    ImageId: ami-05931d11d2bf831c3 # Deep Learning AMI (Ubuntu) Version 24.3
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -88,15 +105,20 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
 # List of shell commands to run to set up nodes.
 setup_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
     - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp27-cp27mu-manylinux1_x86_64.whl
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp35-cp35m-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.6.2-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp27-cp27mu-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp35-cp35m-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
@@ -117,4 +139,4 @@ head_start_ray_commands:
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076

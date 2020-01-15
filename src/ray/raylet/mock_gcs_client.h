@@ -12,8 +12,8 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
@@ -80,7 +80,6 @@ class GcsClient {
   }
   // Register the ip and port of the connecting client.
   ClientID Register(const std::string &ip, uint16_t port);
-  ObjectTable &object_table();
   ClientTable &client_table();
 
  private:

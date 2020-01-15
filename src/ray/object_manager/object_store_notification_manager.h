@@ -11,8 +11,9 @@
 
 #include "plasma/client.h"
 
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/client_connection.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 
 #include "ray/object_manager/object_directory.h"
 
@@ -70,7 +71,7 @@ class ObjectStoreNotificationManager {
   int64_t num_adds_processed_;
   int64_t num_removes_processed_;
   std::vector<uint8_t> notification_;
-  boost::asio::local::stream_protocol::socket socket_;
+  local_stream_protocol::socket socket_;
 };
 
 }  // namespace ray

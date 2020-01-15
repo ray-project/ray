@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include "ray/raylet/task.h"
+#include "ray/common/task/task.h"
 #include "ray/util/logging.h"
 #include "ray/util/ordered_set.h"
 
@@ -33,6 +33,13 @@ enum class TaskState {
   // The task is an actor method and is waiting to learn where the actor was
   // created.
   WAITING_FOR_ACTOR_CREATION,
+  // Swap queue for tasks that are in between states. This can happen when a
+  // task is removed from one queue, and an async callback is responsible for
+  // re-queuing the task. For example, a READY task that has just been assigned
+  // to a worker will get moved to the SWAP queue while waiting for a response
+  // from the worker. If the worker accepts the task, the task will be added to
+  // the RUNNING queue, else it will be returned to READY.
+  SWAP,
   // The number of task queues. All states that precede this enum must have an
   // associated TaskQueue in SchedulingQueue. All states that succeed
   // this enum do not have an associated TaskQueue, since the tasks
@@ -125,12 +132,11 @@ class ReadyQueue : public TaskQueue {
   /// \brief Get a mapping from resource shape to tasks.
   ///
   /// \return Mapping from resource set to task IDs with these resource requirements.
-  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetTasksWithResources()
-      const;
+  const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &GetTasksByClass() const;
 
  private:
-  /// Index from resource shape to tasks that require these resources.
-  std::unordered_map<ResourceSet, ordered_set<TaskID>> tasks_with_resources_;
+  /// Index from task description to tasks queued of that type.
+  std::unordered_map<SchedulingClass, ordered_set<TaskID>> tasks_by_class_;
 };
 
 /// \class SchedulingQueue
@@ -142,9 +148,13 @@ class SchedulingQueue {
   /// Create a scheduling queue.
   SchedulingQueue() : ready_queue_(std::make_shared<ReadyQueue>()) {
     for (const auto &task_state : {
-             TaskState::PLACEABLE, TaskState::WAITING, TaskState::READY,
-             TaskState::RUNNING, TaskState::INFEASIBLE,
+             TaskState::PLACEABLE,
+             TaskState::WAITING,
+             TaskState::READY,
+             TaskState::RUNNING,
+             TaskState::INFEASIBLE,
              TaskState::WAITING_FOR_ACTOR_CREATION,
+             TaskState::SWAP,
          }) {
       if (task_state == TaskState::READY) {
         task_queues_[static_cast<int>(task_state)] = ready_queue_;
@@ -172,7 +182,7 @@ class SchedulingQueue {
   /// Get a reference to the queue of ready tasks.
   ///
   /// \return A reference to the queue of ready tasks.
-  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetReadyTasksWithResources()
+  const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &GetReadyTasksByClass()
       const;
 
   /// Get a task from the queue of a given state. The caller must ensure that
@@ -216,10 +226,12 @@ class SchedulingQueue {
   ///
   /// \param task_id The task ID to remove from the queue. The corresponding
   /// task must be contained in the queue.
+  /// \param task The removed task will be written here, if any.
   /// \param task_state If this is not nullptr, then the state of the removed
   /// task will be written here.
-  /// \return The task that was removed.
-  Task RemoveTask(const TaskID &task_id, TaskState *task_state = nullptr);
+  /// \return true if the task was removed, false if it is not in the queue.
+  bool RemoveTask(const TaskID &task_id, Task *removed_task,
+                  TaskState *removed_task_state = nullptr);
 
   /// Remove a driver task ID. This is an empty task used to represent a driver.
   ///
@@ -272,11 +284,11 @@ class SchedulingQueue {
   /// \param filter_state The task state to filter out.
   void FilterState(std::unordered_set<TaskID> &task_ids, TaskState filter_state) const;
 
-  /// \brief Get all the task IDs for a driver.
+  /// \brief Get all the task IDs for a job.
   ///
-  /// \param driver_id All the tasks that have the given driver_id are returned.
-  /// \return All the tasks that have the given driver ID.
-  std::unordered_set<TaskID> GetTaskIdsForDriver(const DriverID &driver_id) const;
+  /// \param job_id All the tasks that have the given job_id are returned.
+  /// \return All the tasks that have the given job ID.
+  std::unordered_set<TaskID> GetTaskIdsForJob(const JobID &job_id) const;
 
   /// \brief Get all the task IDs for an actor.
   ///
@@ -289,10 +301,18 @@ class SchedulingQueue {
   /// \return Aggregate resource demand from ready tasks.
   ResourceSet GetReadyQueueResources() const;
 
+  /// Returns the number of running tasks in this class.
+  ///
+  /// \return int.
+  int NumRunning(const SchedulingClass &cls) const;
+
   /// Returns debug string for class.
   ///
   /// \return string.
   std::string DebugString() const;
+
+  /// Record metrics.
+  void RecordMetrics() const;
 
  private:
   /// Get the task queue in the given state. The requested task state must
@@ -305,7 +325,7 @@ class SchedulingQueue {
   /// TaskState::kNumTaskQueues).
   void RemoveTasksFromQueue(ray::raylet::TaskState task_state,
                             std::unordered_set<ray::TaskID> &task_ids,
-                            std::vector<ray::raylet::Task> *removed_tasks);
+                            std::vector<ray::Task> *removed_tasks);
 
   /// A helper function to filter out tasks of a given state from the set of
   /// task IDs. The requested task state must correspond to one of the task
@@ -315,6 +335,8 @@ class SchedulingQueue {
 
   // A pointer to the ready queue.
   const std::shared_ptr<ReadyQueue> ready_queue_;
+  /// Track the breakdown of tasks by class in the RUNNING queue.
+  std::unordered_map<SchedulingClass, int32_t> num_running_tasks_;
   // A pointer to the task queues. These contain all tasks that have a task
   // state < TaskState::kNumTaskQueues.
   std::array<std::shared_ptr<TaskQueue>, static_cast<int>(TaskState::kNumTaskQueues)>

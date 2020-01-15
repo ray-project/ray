@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import importlib
 import logging
 import os
@@ -28,10 +24,22 @@ def import_local():
     return bootstrap_local, LocalNodeProvider
 
 
+def import_kubernetes():
+    from ray.autoscaler.kubernetes.config import bootstrap_kubernetes
+    from ray.autoscaler.kubernetes.node_provider import KubernetesNodeProvider
+    return bootstrap_kubernetes, KubernetesNodeProvider
+
+
 def load_local_example_config():
     import ray.autoscaler.local as ray_local
     return os.path.join(
         os.path.dirname(ray_local.__file__), "example-full.yaml")
+
+
+def load_kubernetes_example_config():
+    import ray.autoscaler.kubernetes as ray_kubernetes
+    return os.path.join(
+        os.path.dirname(ray_kubernetes.__file__), "example-full.yaml")
 
 
 def load_aws_example_config():
@@ -58,7 +66,7 @@ NODE_PROVIDERS = {
     "aws": import_aws,
     "gcp": import_gcp,
     "azure": None,  # TODO: support more node providers
-    "kubernetes": None,
+    "kubernetes": import_kubernetes,
     "docker": None,
     "external": import_external  # Import an external module
 }
@@ -68,7 +76,7 @@ DEFAULT_CONFIGS = {
     "aws": load_aws_example_config,
     "gcp": load_gcp_example_config,
     "azure": None,  # TODO: support more node providers
-    "kubernetes": None,
+    "kubernetes": load_kubernetes_example_config,
     "docker": None,
 }
 
@@ -112,12 +120,12 @@ def get_default_config(provider_config):
             provider_config["type"]))
     path_to_default = load_config()
     with open(path_to_default) as f:
-        defaults = yaml.load(f)
+        defaults = yaml.safe_load(f)
 
     return defaults
 
 
-class NodeProvider(object):
+class NodeProvider:
     """Interface for getting and returning nodes from a Cloud.
 
     NodeProviders are namespaced by the `cluster_name` parameter; they only
@@ -132,7 +140,7 @@ class NodeProvider(object):
         self.provider_config = provider_config
         self.cluster_name = cluster_name
 
-    def nodes(self, tag_filters):
+    def non_terminated_nodes(self, tag_filters):
         """Return a list of node ids filtered by the specified tags dict.
 
         This list must not include terminated nodes. For performance reasons,
@@ -141,7 +149,7 @@ class NodeProvider(object):
         nodes() must be called again to refresh results.
 
         Examples:
-            >>> provider.nodes({TAG_RAY_NODE_TYPE: "worker"})
+            >>> provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
             ["node-1", "node-2"]
         """
         raise NotImplementedError

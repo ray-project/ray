@@ -1,21 +1,19 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
+
+import numpy as np
+from packaging import version
 
 import ray.ray_constants as ray_constants
 
 
-class RayParams(object):
+class RayParams:
     """A class used to store the parameters used by Ray.
 
     Attributes:
         redis_address (str): The address of the Redis server to connect to. If
             this address is not provided, then this command will start Redis, a
-            global scheduler, a local scheduler, a plasma store, a plasma
-            manager, and some workers. It will also kill these processes when
-            Python exits.
+            raylet, a plasma store, a plasma manager, and some workers.
+            It will also kill these processes when Python exits.
         redis_port (int): The port that the primary Redis shard should listen
             to. If None, then a random port will be chosen.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
@@ -24,6 +22,7 @@ class RayParams(object):
         num_gpus (int): Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         redis_max_memory: The max amount of memory (in bytes) to allow redis
@@ -56,7 +55,13 @@ class RayParams(object):
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which is a Jupyter notebook.
+            UI, which displays the status of the Ray cluster. If this value is
+            None, then the UI will be started if the relevant dependencies are
+            present.
+        webui_host: The host to bind the web UI server to. Can either be
+            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to localhost to prevent access from
+            external machines.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -73,6 +78,8 @@ class RayParams(object):
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (str): The command options for Java worker.
+        load_code_from_local: Whether load code from local file or from GCS.
+        use_pickle: Whether data objects should be serialized with cloudpickle.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -82,6 +89,7 @@ class RayParams(object):
                  num_cpus=None,
                  num_gpus=None,
                  resources=None,
+                 memory=None,
                  object_store_memory=None,
                  redis_max_memory=None,
                  redis_port=None,
@@ -90,18 +98,18 @@ class RayParams(object):
                  node_manager_port=None,
                  node_ip_address=None,
                  object_id_seed=None,
-                 num_workers=None,
                  local_mode=False,
                  driver_mode=None,
-                 redirect_worker_output=False,
-                 redirect_output=True,
+                 redirect_worker_output=None,
+                 redirect_output=None,
                  num_redis_shards=None,
                  redis_max_clients=None,
-                 redis_password=None,
+                 redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
                  plasma_directory=None,
                  worker_path=None,
                  huge_pages=False,
                  include_webui=None,
+                 webui_host="localhost",
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -111,20 +119,22 @@ class RayParams(object):
                  autoscaling_config=None,
                  include_java=False,
                  java_worker_options=None,
+                 load_code_from_local=False,
+                 use_pickle=False,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
-        self.resources = resources
+        self.memory = memory
         self.object_store_memory = object_store_memory
+        self.resources = resources
         self.redis_max_memory = redis_max_memory
         self.redis_port = redis_port
         self.redis_shard_ports = redis_shard_ports
         self.object_manager_port = object_manager_port
         self.node_manager_port = node_manager_port
         self.node_ip_address = node_ip_address
-        self.num_workers = num_workers
         self.local_mode = local_mode
         self.driver_mode = driver_mode
         self.redirect_worker_output = redirect_worker_output
@@ -136,6 +146,7 @@ class RayParams(object):
         self.worker_path = worker_path
         self.huge_pages = huge_pages
         self.include_webui = include_webui
+        self.webui_host = webui_host
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
@@ -143,6 +154,8 @@ class RayParams(object):
         self.autoscaling_config = autoscaling_config
         self.include_java = include_java
         self.java_worker_options = java_worker_options
+        self.load_code_from_local = load_code_from_local
+        self.use_pickle = use_pickle
         self._internal_config = _internal_config
         self._check_usage()
 
@@ -186,11 +199,19 @@ class RayParams(object):
                 "'GPU' should not be included in the resource dictionary. Use "
                 "num_gpus instead.")
 
-        if self.num_workers is not None:
-            raise ValueError(
-                "The 'num_workers' argument is deprecated. Please use "
-                "'num_cpus' instead.")
+        if self.redirect_worker_output is not None:
+            raise DeprecationWarning(
+                "The redirect_worker_output argument is deprecated. To "
+                "control logging to the driver, use the 'log_to_driver' "
+                "argument to 'ray.init()'")
 
-        if self.include_java is None and self.java_worker_options is not None:
-            raise ValueError("Should not specify `java-worker-options` "
-                             "without providing `include-java`.")
+        if self.redirect_output is not None:
+            raise DeprecationWarning(
+                "The redirect_output argument is deprecated.")
+
+        if self.use_pickle:
+            assert (version.parse(
+                np.__version__) >= version.parse("1.16.0")), (
+                    "numpy >= 1.16.0 required for use_pickle=True support. "
+                    "You can use ray.init(use_pickle=False) for older numpy "
+                    "versions, but this may be removed in future versions.")

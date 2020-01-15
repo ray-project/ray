@@ -1,18 +1,18 @@
-from libc.stdint cimport int64_t, uint64_t
+from libc.stdint cimport int64_t, uint64_t, uint32_t
 from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
 
 
-cdef extern from "ray/ray_config.h" nogil:
+cdef extern from "ray/common/ray_config.h" nogil:
     cdef cppclass RayConfig "RayConfig":
         @staticmethod
         RayConfig &instance()
 
-        int64_t ray_protocol_version() const
+        int64_t ray_cookie() const
 
         int64_t handler_warning_timeout_ms() const
 
-        int64_t heartbeat_timeout_milliseconds() const
+        int64_t raylet_heartbeat_timeout_milliseconds() const
 
         int64_t debug_dump_period_milliseconds() const
 
@@ -36,13 +36,13 @@ cdef extern from "ray/ray_config.h" nogil:
 
         int64_t connect_timeout_milliseconds() const
 
-        int64_t local_scheduler_fetch_timeout_milliseconds() const
+        int64_t raylet_fetch_timeout_milliseconds() const
 
-        int64_t local_scheduler_reconstruction_timeout_milliseconds() const
+        int64_t raylet_reconstruction_timeout_milliseconds() const
 
         int64_t max_num_to_reconstruct() const
 
-        int64_t local_scheduler_fetch_request_size() const
+        int64_t raylet_fetch_request_size() const
 
         int64_t kill_worker_timeout_milliseconds() const
 
@@ -76,8 +76,14 @@ cdef extern from "ray/ray_config.h" nogil:
 
         uint64_t object_manager_default_chunk_size() const
 
-        int num_workers_per_process() const
+        int num_workers_per_process_python() const
+
+        int num_workers_per_process_java() const
 
         int64_t max_task_lease_timeout_ms() const
 
-        void initialize(const unordered_map[c_string, int] &config_map)
+        uint32_t num_actor_checkpoints_to_keep() const
+
+        uint32_t maximum_gcs_deletion_batch_size() const
+
+        void initialize(const unordered_map[c_string, c_string] &config_map)

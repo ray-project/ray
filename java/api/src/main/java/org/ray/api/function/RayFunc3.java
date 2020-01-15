@@ -7,5 +7,6 @@ package org.ray.api.function;
  */
 @FunctionalInterface
 public interface RayFunc3<T0, T1, T2, R> extends RayFunc {
-  R apply(T0 t0, T1 t1, T2 t2);
+
+  R apply(T0 t0, T1 t1, T2 t2) throws Exception;
 }

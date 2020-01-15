@@ -1,11 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
+import hashlib
 import logging
 import os
 import subprocess
@@ -13,67 +10,174 @@ import sys
 import time
 
 from threading import Thread
+from getpass import getuser
 
-from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
+from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
+    STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
 
 # How long to wait for a node to start, in seconds
 NODE_START_WAIT_S = 300
-SSH_CHECK_INTERVAL = 5
-SSH_CONTROL_PATH = "/tmp/ray_ssh_sockets"
+READY_CHECK_INTERVAL = 5
+HASH_MAX_LENGTH = 10
+KUBECTL_RSYNC = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "kubernetes/kubectl-rsync.sh")
 
 
-def get_default_ssh_options(private_key, connect_timeout):
-    OPTS = [
-        ("ConnectTimeout", "{}s".format(connect_timeout)),
-        ("StrictHostKeyChecking", "no"),
-        ("ControlMaster", "auto"),
-        ("ControlPath", "{}/%C".format(SSH_CONTROL_PATH)),
-        ("ControlPersist", "yes"),
-    ]
-
-    return ["-i", private_key] + [
-        x for y in (["-o", "{}={}".format(k, v)] for k, v in OPTS) for x in y
-    ]
+def with_interactive(cmd):
+    force_interactive = ("true && source ~/.bashrc && "
+                         "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
+    return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 
-class NodeUpdater(object):
-    """A process for syncing files and running init commands on a node."""
+class KubernetesCommandRunner:
+    def __init__(self, log_prefix, namespace, node_id, auth_config,
+                 process_runner):
 
-    def __init__(self,
-                 node_id,
-                 provider_config,
-                 provider,
-                 auth_config,
-                 cluster_name,
-                 file_mounts,
-                 setup_cmds,
-                 runtime_hash,
-                 process_runner=subprocess,
-                 use_internal_ip=False):
-        self.daemon = True
+        self.log_prefix = log_prefix
         self.process_runner = process_runner
         self.node_id = node_id
-        self.use_internal_ip = (use_internal_ip or provider_config.get(
-            "use_internal_ips", False))
+        self.namespace = namespace
+        self.kubectl = ["kubectl", "-n", self.namespace]
+
+    def run(self,
+            cmd,
+            timeout=120,
+            allocate_tty=False,
+            exit_on_fail=False,
+            port_forward=None):
+
+        logger.info(self.log_prefix + "Running {}...".format(cmd))
+
+        if port_forward:
+            if not isinstance(port_forward, list):
+                port_forward = [port_forward]
+            port_forward_cmd = self.kubectl + [
+                "port-forward",
+                self.node_id,
+            ] + [str(fwd) for fwd in port_forward]
+            port_forward_process = subprocess.Popen(port_forward_cmd)
+            # Give port-forward a grace period to run and print output before
+            # running the actual command. This is a little ugly, but it should
+            # work in most scenarios and nothing should go very wrong if the
+            # command starts running before the port forward starts.
+            time.sleep(1)
+
+        final_cmd = self.kubectl + [
+            "exec",
+            "-it" if allocate_tty else "-i",
+            self.node_id,
+            "--",
+        ] + with_interactive(cmd)
+        try:
+            self.process_runner.check_call(" ".join(final_cmd), shell=True)
+        except subprocess.CalledProcessError:
+            if exit_on_fail:
+                quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
+                logger.error(self.log_prefix +
+                             "Command failed: \n\n  {}\n".format(quoted_cmd))
+                sys.exit(1)
+            else:
+                raise
+        finally:
+            # Clean up the port forward process. First, try to let it exit
+            # gracefull with SIGTERM. If that doesn't work after 1s, send
+            # SIGKILL.
+            if port_forward:
+                port_forward_process.terminate()
+                for _ in range(10):
+                    time.sleep(0.1)
+                    port_forward_process.poll()
+                    if port_forward_process.returncode:
+                        break
+                    logger.info(self.log_prefix +
+                                "Waiting for port forward to die...")
+                else:
+                    logger.warning(self.log_prefix +
+                                   "Killing port forward with SIGKILL.")
+                    port_forward_process.kill()
+
+    def run_rsync_up(self, source, target):
+        if target.startswith("~"):
+            target = "/root" + target[1:]
+
+        try:
+            self.process_runner.check_call([
+                KUBECTL_RSYNC,
+                "-avz",
+                source,
+                "{}@{}:{}".format(self.node_id, self.namespace, target),
+            ])
+        except Exception as e:
+            logger.warning(self.log_prefix +
+                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
+                           .format(e))
+            self.process_runner.check_call(self.kubectl + [
+                "cp", source, "{}/{}:{}".format(self.namespace, self.node_id,
+                                                target)
+            ])
+
+    def run_rsync_down(self, source, target):
+        if target.startswith("~"):
+            target = "/root" + target[1:]
+
+        try:
+            self.process_runner.check_call([
+                KUBECTL_RSYNC,
+                "-avz",
+                "{}@{}:{}".format(self.node_id, self.namespace, source),
+                target,
+            ])
+        except Exception as e:
+            logger.warning(self.log_prefix +
+                           "rsync failed: '{}'. Falling back to 'kubectl cp'"
+                           .format(e))
+            self.process_runner.check_call(self.kubectl + [
+                "cp", "{}/{}:{}".format(self.namespace, self.node_id, source),
+                target
+            ])
+
+    def remote_shell_command_str(self):
+        return "{} exec -it {} bash".format(" ".join(self.kubectl),
+                                            self.node_id)
+
+
+class SSHCommandRunner:
+    def __init__(self, log_prefix, node_id, provider, auth_config,
+                 cluster_name, process_runner, use_internal_ip):
+
+        ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
+        ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
+        ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
+            ssh_user_hash[:HASH_MAX_LENGTH],
+            ssh_control_hash[:HASH_MAX_LENGTH])
+
+        self.log_prefix = log_prefix
+        self.process_runner = process_runner
+        self.node_id = node_id
+        self.use_internal_ip = use_internal_ip
         self.provider = provider
         self.ssh_private_key = auth_config["ssh_private_key"]
         self.ssh_user = auth_config["ssh_user"]
+        self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
-        self.file_mounts = {
-            remote: os.path.expanduser(local)
-            for remote, local in file_mounts.items()
-        }
-        self.setup_cmds = setup_cmds
-        self.runtime_hash = runtime_hash
 
-    def get_caller(self, check_error):
-        if check_error:
-            return self.process_runner.call
-        else:
-            return self.process_runner.check_call
+    def get_default_ssh_options(self, connect_timeout):
+        OPTS = [
+            ("ConnectTimeout", "{}s".format(connect_timeout)),
+            ("StrictHostKeyChecking", "no"),
+            ("ControlMaster", "auto"),
+            ("ControlPath", "{}/%C".format(self.ssh_control_path)),
+            ("ControlPersist", "10s"),
+        ]
+
+        return ["-i", self.ssh_private_key] + [
+            x for y in (["-o", "{}={}".format(k, v)] for k, v in OPTS)
+            for x in y
+        ]
 
     def get_node_ip(self):
         if self.use_internal_ip:
@@ -84,8 +188,7 @@ class NodeUpdater(object):
     def wait_for_ip(self, deadline):
         while time.time() < deadline and \
                 not self.provider.is_terminated(self.node_id):
-            logger.info("NodeUpdater: "
-                        "Waiting for IP of {}...".format(self.node_id))
+            logger.info(self.log_prefix + "Waiting for IP...")
             ip = self.get_node_ip()
             if ip is not None:
                 return ip
@@ -100,7 +203,7 @@ class NodeUpdater(object):
         # We assume that this never changes.
         #   I think that's reasonable.
         deadline = time.time() + NODE_START_WAIT_S
-        with LogTimer("NodeUpdater: {}: Got IP".format(self.node_id)):
+        with LogTimer(self.log_prefix + "Got IP"):
             ip = self.wait_for_ip(deadline)
             assert ip is not None, "Unable to find IP of node"
 
@@ -109,91 +212,145 @@ class NodeUpdater(object):
         # This should run before any SSH commands and therefore ensure that
         #   the ControlPath directory exists, allowing SSH to maintain
         #   persistent sessions later on.
-        with open("/dev/null", "w") as redirect:
-            self.get_caller(False)(
-                ["mkdir", "-p", SSH_CONTROL_PATH],
-                stdout=redirect,
-                stderr=redirect)
+        try:
+            self.process_runner.check_call(
+                ["mkdir", "-p", self.ssh_control_path])
+        except subprocess.CalledProcessError as e:
+            logger.warning(e)
 
-            self.get_caller(False)(
-                ["chmod", "0700", SSH_CONTROL_PATH],
-                stdout=redirect,
-                stderr=redirect)
+        try:
+            self.process_runner.check_call(
+                ["chmod", "0700", self.ssh_control_path])
+        except subprocess.CalledProcessError as e:
+            logger.warning(self.log_prefix + str(e))
+
+    def run(self,
+            cmd,
+            timeout=120,
+            allocate_tty=False,
+            exit_on_fail=False,
+            port_forward=None):
+
+        self.set_ssh_ip_if_required()
+
+        logger.info(self.log_prefix +
+                    "Running {} on {}...".format(cmd, self.ssh_ip))
+        ssh = ["ssh"]
+        if allocate_tty:
+            ssh.append("-tt")
+
+        if port_forward:
+            if not isinstance(port_forward, list):
+                port_forward = [port_forward]
+            for fwd in port_forward:
+                ssh += ["-L", "{}:localhost:{}".format(fwd, fwd)]
+
+        final_cmd = ssh + self.get_default_ssh_options(timeout) + [
+            "{}@{}".format(self.ssh_user, self.ssh_ip)
+        ] + with_interactive(cmd)
+        try:
+            self.process_runner.check_call(final_cmd)
+        except subprocess.CalledProcessError:
+            if exit_on_fail:
+                quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
+                logger.error(self.log_prefix +
+                             "Command failed: \n\n  {}\n".format(quoted_cmd))
+                sys.exit(1)
+            else:
+                raise
+
+    def run_rsync_up(self, source, target):
+        self.set_ssh_ip_if_required()
+        self.process_runner.check_call([
+            "rsync", "--rsh",
+            " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
+            source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)
+        ])
+
+    def run_rsync_down(self, source, target):
+        self.set_ssh_ip_if_required()
+        self.process_runner.check_call([
+            "rsync", "--rsh",
+            " ".join(["ssh"] + self.get_default_ssh_options(120)), "-avz",
+            "{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target
+        ])
+
+    def remote_shell_command_str(self):
+        return "ssh -i {} {}@{}\n".format(self.ssh_private_key, self.ssh_user,
+                                          self.ssh_ip)
+
+
+class NodeUpdater:
+    """A process for syncing files and running init commands on a node."""
+
+    def __init__(self,
+                 node_id,
+                 provider_config,
+                 provider,
+                 auth_config,
+                 cluster_name,
+                 file_mounts,
+                 initialization_commands,
+                 setup_commands,
+                 ray_start_commands,
+                 runtime_hash,
+                 process_runner=subprocess,
+                 use_internal_ip=False):
+
+        self.log_prefix = "NodeUpdater: {}: ".format(node_id)
+        if provider_config["type"] == "kubernetes":
+            self.cmd_runner = KubernetesCommandRunner(
+                self.log_prefix, provider.namespace, node_id, auth_config,
+                process_runner)
+        else:
+            use_internal_ip = (use_internal_ip or provider_config.get(
+                "use_internal_ips", False))
+            self.cmd_runner = SSHCommandRunner(
+                self.log_prefix, node_id, provider, auth_config, cluster_name,
+                process_runner, use_internal_ip)
+
+        self.daemon = True
+        self.process_runner = process_runner
+        self.node_id = node_id
+        self.provider = provider
+        self.file_mounts = {
+            remote: os.path.expanduser(local)
+            for remote, local in file_mounts.items()
+        }
+        self.initialization_commands = initialization_commands
+        self.setup_commands = setup_commands
+        self.ray_start_commands = ray_start_commands
+        self.runtime_hash = runtime_hash
 
     def run(self):
-        logger.info("NodeUpdater: "
-                    "{}: Updating to {}".format(self.node_id,
-                                                self.runtime_hash))
+        logger.info(self.log_prefix +
+                    "Updating to {}".format(self.runtime_hash))
         try:
-            m = "{}: Applied config {}".format(self.node_id, self.runtime_hash)
-            with LogTimer("NodeUpdater: {}".format(m)):
+            with LogTimer(self.log_prefix +
+                          "Applied config {}".format(self.runtime_hash)):
                 self.do_update()
         except Exception as e:
             error_str = str(e)
             if hasattr(e, "cmd"):
                 error_str = "(Exit Status {}) {}".format(
                     e.returncode, " ".join(e.cmd))
-            logger.error("NodeUpdater: "
-                         "{}: Error updating {}".format(
-                             self.node_id, error_str))
-            self.provider.set_node_tags(self.node_id,
-                                        {TAG_RAY_NODE_STATUS: "update-failed"})
+            logger.error(self.log_prefix +
+                         "Error updating {}".format(error_str))
+            self.provider.set_node_tags(
+                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
             raise e
 
         self.provider.set_node_tags(
             self.node_id, {
-                TAG_RAY_NODE_STATUS: "up-to-date",
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
 
         self.exitcode = 0
 
-    def wait_for_ssh(self, deadline):
-        logger.info("NodeUpdater: "
-                    "{}: Waiting for SSH...".format(self.node_id))
-
-        while time.time() < deadline and \
-                not self.provider.is_terminated(self.node_id):
-            try:
-                logger.debug("NodeUpdater: "
-                             "{}: Waiting for SSH...".format(self.node_id))
-                self.ssh_cmd(
-                    "uptime",
-                    connect_timeout=5,
-                    redirect=open("/dev/null", "w"))
-                return True
-
-            except Exception as e:
-                retry_str = str(e)
-                if hasattr(e, "cmd"):
-                    retry_str = "(Exit Status {}): {}".format(
-                        e.returncode, " ".join(e.cmd))
-                logger.debug("NodeUpdater: "
-                             "{}: SSH not up, retrying: {}".format(
-                                 self.node_id, retry_str))
-                time.sleep(SSH_CHECK_INTERVAL)
-
-        return False
-
-    def do_update(self):
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "waiting-for-ssh"})
-
-        deadline = time.time() + NODE_START_WAIT_S
-        self.set_ssh_ip_if_required()
-
-        # Wait for SSH access
-        with LogTimer("NodeUpdater: " "{}: Got SSH".format(self.node_id)):
-            ssh_ok = self.wait_for_ssh(deadline)
-            assert ssh_ok, "Unable to SSH to node"
-
+    def sync_file_mounts(self, sync_cmd):
         # Rsync file mounts
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
         for remote_path, local_path in self.file_mounts.items():
-            logger.info("NodeUpdater: "
-                        "{}: Syncing {} to {}...".format(
-                            self.node_id, local_path, remote_path))
             assert os.path.exists(local_path), local_path
             if os.path.isdir(local_path):
                 if not local_path.endswith("/"):
@@ -201,91 +358,80 @@ class NodeUpdater(object):
                 if not remote_path.endswith("/"):
                     remote_path += "/"
 
-            m = "{}: Synced {} to {}".format(self.node_id, local_path,
-                                             remote_path)
-            with LogTimer("NodeUpdater {}".format(m)):
-                self.ssh_cmd(
-                    "mkdir -p {}".format(os.path.dirname(remote_path)),
-                    redirect=open("/dev/null", "w"),
-                )
-                self.rsync_up(
-                    local_path, remote_path, redirect=open("/dev/null", "w"))
+            with LogTimer(self.log_prefix +
+                          "Synced {} to {}".format(local_path, remote_path)):
+                self.cmd_runner.run("mkdir -p {}".format(
+                    os.path.dirname(remote_path)))
+                sync_cmd(local_path, remote_path)
 
-        # Run init commands
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "setting-up"})
+    def wait_ready(self, deadline):
+        with LogTimer(self.log_prefix + "Got remote shell"):
+            logger.info(self.log_prefix + "Waiting for remote shell...")
 
-        m = "{}: Setup commands completed".format(self.node_id)
-        with LogTimer("NodeUpdater: {}".format(m)):
-            for cmd in self.setup_cmds:
-                self.ssh_cmd(
-                    cmd,
-                    # verbose=True,
-                    redirect=open("/dev/null", "w"))
+            while time.time() < deadline and \
+                    not self.provider.is_terminated(self.node_id):
+                try:
+                    logger.debug(self.log_prefix +
+                                 "Waiting for remote shell...")
 
-    def rsync_up(self, source, target, redirect=None, check_error=True):
-        self.set_ssh_ip_if_required()
-        self.get_caller(check_error)(
-            [
-                "rsync", "-e",
-                " ".join(["ssh"] +
-                         get_default_ssh_options(self.ssh_private_key, 120)),
-                "--delete", "-avz", source, "{}@{}:{}".format(
-                    self.ssh_user, self.ssh_ip, target)
-            ],
-            stdout=redirect or sys.stdout,
-            stderr=redirect or sys.stderr)
+                    self.cmd_runner.run("uptime", timeout=5)
+                    logger.debug("Uptime succeeded.")
+                    return True
 
-    def rsync_down(self, source, target, redirect=None, check_error=True):
-        self.set_ssh_ip_if_required()
-        self.get_caller(check_error)(
-            [
-                "rsync", "-e",
-                " ".join(["ssh"] +
-                         get_default_ssh_options(self.ssh_private_key, 120)),
-                "-avz", "{}@{}:{}".format(self.ssh_user, self.ssh_ip,
-                                          source), target
-            ],
-            stdout=redirect or sys.stdout,
-            stderr=redirect or sys.stderr)
+                except Exception as e:
+                    retry_str = str(e)
+                    if hasattr(e, "cmd"):
+                        retry_str = "(Exit Status {}): {}".format(
+                            e.returncode, " ".join(e.cmd))
+                    logger.debug(self.log_prefix +
+                                 "Node not up, retrying: {}".format(retry_str))
+                    time.sleep(READY_CHECK_INTERVAL)
 
-    def ssh_cmd(self,
-                cmd,
-                connect_timeout=120,
-                redirect=None,
-                verbose=False,
-                allocate_tty=False,
-                emulate_interactive=True,
-                expect_error=False,
-                port_forward=None):
+        assert False, "Unable to connect to node"
 
-        self.set_ssh_ip_if_required()
+    def do_update(self):
+        self.provider.set_node_tags(
+            self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
 
-        if verbose:
-            logger.info("NodeUpdater: "
-                        "Running {} on {}...".format(cmd, self.ssh_ip))
-        ssh = ["ssh"]
-        if allocate_tty:
-            ssh.append("-tt")
-        if emulate_interactive:
-            force_interactive = (
-                "set -i || true && source ~/.bashrc && "
-                "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-            cmd = "bash --login -c {}".format(quote(force_interactive + cmd))
+        deadline = time.time() + NODE_START_WAIT_S
+        self.wait_ready(deadline)
 
-        if port_forward is None:
-            ssh_opt = []
+        node_tags = self.provider.node_tags(self.node_id)
+        logger.debug("Node tags: {}".format(str(node_tags)))
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+            logger.info(self.log_prefix +
+                        "{} already up-to-date, skip to ray start".format(
+                            self.node_id))
         else:
-            ssh_opt = [
-                "-L", "{}:localhost:{}".format(port_forward, port_forward)
-            ]
+            self.provider.set_node_tags(
+                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
+            self.sync_file_mounts(self.rsync_up)
 
-        self.get_caller(expect_error)(
-            ssh + ssh_opt + get_default_ssh_options(self.ssh_private_key,
-                                                    connect_timeout) +
-            ["{}@{}".format(self.ssh_user, self.ssh_ip), cmd],
-            stdout=redirect or sys.stdout,
-            stderr=redirect or sys.stderr)
+            # Run init commands
+            self.provider.set_node_tags(
+                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
+            with LogTimer(self.log_prefix +
+                          "Initialization commands completed"):
+                for cmd in self.initialization_commands:
+                    self.cmd_runner.run(cmd)
+
+            with LogTimer(self.log_prefix + "Setup commands completed"):
+                for cmd in self.setup_commands:
+                    self.cmd_runner.run(cmd)
+
+        with LogTimer(self.log_prefix + "Ray start commands completed"):
+            for cmd in self.ray_start_commands:
+                self.cmd_runner.run(cmd)
+
+    def rsync_up(self, source, target):
+        logger.info(self.log_prefix +
+                    "Syncing {} to {}...".format(source, target))
+        self.cmd_runner.run_rsync_up(source, target)
+
+    def rsync_down(self, source, target):
+        logger.info(self.log_prefix +
+                    "Syncing {} from {}...".format(source, target))
+        self.cmd_runner.run_rsync_down(source, target)
 
 
 class NodeUpdaterThread(NodeUpdater, Thread):

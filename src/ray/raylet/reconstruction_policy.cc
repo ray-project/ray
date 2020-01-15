@@ -1,23 +1,23 @@
 #include "reconstruction_policy.h"
 
+#include "ray/stats/stats.h"
+
 namespace ray {
 
 namespace raylet {
 
 ReconstructionPolicy::ReconstructionPolicy(
     boost::asio::io_service &io_service,
-    std::function<void(const TaskID &, bool)> reconstruction_handler,
+    std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
     int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
-    gcs::PubsubInterface<TaskID> &task_lease_pubsub,
-    std::shared_ptr<ObjectDirectoryInterface> object_directory,
-    gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log)
+    std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+    std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : io_service_(io_service),
       reconstruction_handler_(reconstruction_handler),
       initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
       client_id_(client_id),
-      task_lease_pubsub_(task_lease_pubsub),
-      object_directory_(std::move(object_directory)),
-      task_reconstruction_log_(task_reconstruction_log) {}
+      gcs_client_(gcs_client),
+      object_directory_(std::move(object_directory)) {}
 
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
@@ -41,6 +41,11 @@ void ReconstructionPolicy::SetTaskTimeout(
             // received. The current lease is now considered expired.
             HandleTaskLeaseExpired(task_id);
           } else {
+            const auto task_lease_notification_callback =
+                [this](const TaskID &task_id,
+                       const boost::optional<rpc::TaskLeaseData> &task_lease) {
+                  OnTaskLeaseNotification(task_id, task_lease);
+                };
             // This task is still required, so subscribe to task lease
             // notifications.  Reconstruction will be triggered if the current
             // task lease expires, or if no one has acquired the task lease.
@@ -50,8 +55,8 @@ void ReconstructionPolicy::SetTaskTimeout(
             // required by the task are no longer needed soon after.  If the
             // task is still required after this initial period, then we now
             // subscribe to task lease notifications.
-            RAY_CHECK_OK(task_lease_pubsub_.RequestNotifications(JobID::nil(), task_id,
-                                                                 client_id_));
+            RAY_CHECK_OK(gcs_client_->Tasks().AsyncSubscribeTaskLease(
+                task_id, task_lease_notification_callback, /*done*/ nullptr));
             it->second.subscribed = true;
           }
         } else {
@@ -61,8 +66,30 @@ void ReconstructionPolicy::SetTaskTimeout(
       });
 }
 
-void ReconstructionPolicy::HandleReconstructionLogAppend(const TaskID &task_id,
-                                                         bool success) {
+void ReconstructionPolicy::OnTaskLeaseNotification(
+    const TaskID &task_id, const boost::optional<rpc::TaskLeaseData> &task_lease) {
+  if (!task_lease) {
+    // Task lease not exist.
+    HandleTaskLeaseNotification(task_id, 0);
+    return;
+  }
+
+  const ClientID node_manager_id = ClientID::FromBinary(task_lease->node_manager_id());
+  if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
+    // The node manager that added the task lease is already removed. The
+    // lease is considered inactive.
+    HandleTaskLeaseNotification(task_id, 0);
+  } else {
+    // NOTE(swang): The task_lease.timeout is an overestimate of the
+    // lease's expiration period since the entry may have been in the GCS
+    // for some time already. For a more accurate estimate, the age of the
+    // entry in the GCS should be subtracted from task_lease.timeout.
+    HandleTaskLeaseNotification(task_id, task_lease->timeout());
+  }
+}
+
+void ReconstructionPolicy::HandleReconstructionLogAppend(
+    const TaskID &task_id, const ObjectID &required_object_id, bool success) {
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     return;
@@ -74,14 +101,13 @@ void ReconstructionPolicy::HandleReconstructionLogAppend(const TaskID &task_id,
   SetTaskTimeout(it, initial_reconstruction_timeout_ms_);
 
   if (success) {
-    reconstruction_handler_(task_id, it->second.return_values_lost);
+    reconstruction_handler_(task_id, required_object_id);
   }
 }
 
 void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
                                                  const ObjectID &required_object_id,
-                                                 int reconstruction_attempt,
-                                                 bool created) {
+                                                 int reconstruction_attempt) {
   // If we are no longer listening for objects created by this task, give up.
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
@@ -91,10 +117,6 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   // If the object is no longer required, give up.
   if (it->second.created_objects.count(required_object_id) == 0) {
     return;
-  }
-
-  if (created) {
-    it->second.return_values_lost = true;
   }
 
   // Suppress duplicate reconstructions of the same task. This can happen if,
@@ -109,22 +131,20 @@ void ReconstructionPolicy::AttemptReconstruction(const TaskID &task_id,
   // Attempt to reconstruct the task by inserting an entry into the task
   // reconstruction log. This will fail if another node has already inserted
   // an entry for this reconstruction.
-  auto reconstruction_entry = std::make_shared<TaskReconstructionDataT>();
-  reconstruction_entry->num_reconstructions = reconstruction_attempt;
-  reconstruction_entry->node_manager_id = client_id_.binary();
-  RAY_CHECK_OK(task_reconstruction_log_.AppendAt(
-      JobID::nil(), task_id, reconstruction_entry,
-      /*success_callback=*/
-      [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
-             const TaskReconstructionDataT &data) {
-        HandleReconstructionLogAppend(task_id, /*success=*/true);
-      },
-      /*failure_callback=*/
-      [this](gcs::AsyncGcsClient *client, const TaskID &task_id,
-             const TaskReconstructionDataT &data) {
-        HandleReconstructionLogAppend(task_id, /*success=*/false);
-      },
-      reconstruction_attempt));
+  auto reconstruction_entry = std::make_shared<TaskReconstructionData>();
+  reconstruction_entry->set_task_id(task_id.Binary());
+  reconstruction_entry->set_num_reconstructions(reconstruction_attempt);
+  reconstruction_entry->set_node_manager_id(client_id_.Binary());
+  RAY_CHECK_OK(gcs_client_->Tasks().AttemptTaskReconstruction(
+      reconstruction_entry,
+      /*done=*/
+      [this, task_id, required_object_id](Status status) {
+        if (status.ok()) {
+          HandleReconstructionLogAppend(task_id, required_object_id, /*success=*/true);
+        } else {
+          HandleReconstructionLogAppend(task_id, required_object_id, /*success=*/false);
+        }
+      }));
 
   // Increment the number of times reconstruction has been attempted. This is
   // used to suppress duplicate reconstructions of the same task. If
@@ -142,14 +162,13 @@ void ReconstructionPolicy::HandleTaskLeaseExpired(const TaskID &task_id) {
   // attempted asynchronously.
   for (const auto &created_object_id : it->second.created_objects) {
     RAY_CHECK_OK(object_directory_->LookupLocations(
-        created_object_id,
-        [this, task_id, reconstruction_attempt](
-            const ray::ObjectID &object_id,
-            const std::unordered_set<ray::ClientID> &clients, bool created) {
+        created_object_id, [this, task_id, reconstruction_attempt](
+                               const ray::ObjectID &object_id,
+                               const std::unordered_set<ray::ClientID> &clients) {
           if (clients.empty()) {
             // The required object no longer exists on any live nodes. Attempt
             // reconstruction.
-            AttemptReconstruction(task_id, object_id, reconstruction_attempt, created);
+            AttemptReconstruction(task_id, object_id, reconstruction_attempt);
           }
         }));
   }
@@ -175,7 +194,8 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
 }
 
 void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) {
-  TaskID task_id = ComputeTaskId(object_id);
+  RAY_LOG(DEBUG) << "Listening and maybe reconstructing object " << object_id;
+  TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
   // Add this object to the list of objects created by the same task.
   if (it == listening_tasks_.end()) {
@@ -189,7 +209,8 @@ void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) 
 }
 
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
-  TaskID task_id = ComputeTaskId(object_id);
+  RAY_LOG(DEBUG) << "Reconstruction for object " << object_id << " canceled";
+  TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);
   if (it == listening_tasks_.end()) {
     // We already stopped listening for this task.
@@ -203,7 +224,7 @@ void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
     // Cancel notifications for the task lease if we were subscribed to them.
     if (it->second.subscribed) {
       RAY_CHECK_OK(
-          task_lease_pubsub_.CancelNotifications(JobID::nil(), task_id, client_id_));
+          gcs_client_->Tasks().AsyncUnsubscribeTaskLease(task_id, /*done*/ nullptr));
     }
     listening_tasks_.erase(it);
   }
@@ -214,6 +235,11 @@ std::string ReconstructionPolicy::DebugString() const {
   result << "ReconstructionPolicy:";
   result << "\n- num reconstructing: " << listening_tasks_.size();
   return result.str();
+}
+
+void ReconstructionPolicy::RecordMetrics() const {
+  stats::ReconstructionPolicyStats().Record(
+      listening_tasks_.size(), {{stats::ValueTypeKey, "num_reconstructing_tasks"}});
 }
 
 }  // namespace raylet

@@ -1,20 +1,24 @@
-Cluster Setup and Auto-Scaling
-==============================
+Automatic Cluster Setup
+=======================
 
-This document provides instructions for launching a Ray cluster either privately, on AWS, or on GCP.
+Ray comes with a built-in autoscaler that makes deploying a Ray cluster simple, just run ``ray up`` from your local machine to start or update a cluster in the cloud or on an on-premise cluster. Once the Ray cluster is running, you can manually SSH into it or use provided commands like ``ray attach``, ``ray rsync-up``, and ``ray-exec`` to access it and run Ray programs.
 
-The ``ray up`` command starts or updates a Ray cluster from your personal computer. Once the cluster is up, you can then SSH into it to run Ray programs.
+Setup
+-----
 
-Quick start (AWS)
------------------
+This section provides instructions for configuring the autoscaler to launch a Ray cluster on AWS/GCP, an existing Kubernetes cluster, or on a private cluster of host machines.
+
+Once you have finished configuring the autoscaler to create a cluster, see the Quickstart guide below for more details on how to get started running Ray programs on it.
+
+AWS
+~~~
 
 First, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials``,
 as described in `the boto docs <http://boto3.readthedocs.io/en/latest/guide/configuration.html>`__.
 
-Then you're ready to go. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with a m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
+Once boto is configured to manage resources on your AWS account, you should be ready to run the autoscaler. The provided `ray/python/ray/autoscaler/aws/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__ cluster config file will create a small cluster with an m5.large head node (on-demand) configured to autoscale up to two m5.large `spot workers <https://aws.amazon.com/ec2/spot/>`__.
 
-Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node, ``source activate tensorflow_p36``, and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+Test that it works by running the following commands from your local machine:
 
 .. code-block:: bash
 
@@ -22,22 +26,22 @@ SSH into the head node, ``source activate tensorflow_p36``, and then run Ray pro
     # out the command that can be used to SSH into the cluster head node.
     $ ray up ray/python/ray/autoscaler/aws/example-full.yaml
 
-    # Reconfigure autoscaling behavior without interrupting running jobs
-    $ ray up ray/python/ray/autoscaler/aws/example-full.yaml \
-        --max-workers=N --no-restart
+    # Get a remote screen on the head node.
+    $ ray attach ray/python/ray/autoscaler/aws/example-full.yaml
+    $ source activate tensorflow_p36
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
 
-    # Teardown the cluster
+    # Tear down the cluster.
     $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
-Quick start (GCP)
------------------
+GCP
+~~~
 
 First, install the Google API client (``pip install google-api-python-client``), set up your GCP credentials, and create a new GCP project.
 
-Then you're ready to go. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__. Note that you'll need to fill in your project id in those templates.
+Once the API client is configured to manage resources on your GCP account, you should be ready to run the autoscaler. The provided `ray/python/ray/autoscaler/gcp/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/gcp/example-full.yaml>`__ cluster config file will create a small cluster with a n1-standard-2 head node (on-demand) configured to autoscale up to two n1-standard-2 `preemptible workers <https://cloud.google.com/preemptible-vms/>`__. Note that you'll need to fill in your project id in those templates.
 
-Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+Test that it works by running the following commands from your local machine:
 
 .. code-block:: bash
 
@@ -45,39 +49,114 @@ SSH into the head node and then run Ray programs with ``ray.init(redis_address="
     # out the command that can be used to SSH into the cluster head node.
     $ ray up ray/python/ray/autoscaler/gcp/example-full.yaml
 
-    # Reconfigure autoscaling behavior without interrupting running jobs
-    $ ray up ray/python/ray/autoscaler/gcp/example-full.yaml \
-        --max-workers=N --no-restart
+    # Get a remote screen on the head node.
+    $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
+    $ source activate tensorflow_p36
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
 
-    # Teardown the cluster
+    # Tear down the cluster.
     $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
 
-Quick start (Private Cluster)
------------------------------
+Kubernetes
+~~~~~~~~~~
 
-This is used when you have a list of machine IP addresses to connect in a Ray cluster. You can get started by filling out the fields in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
-Be sure to specify the proper ``head_ip``, list of ``worker_ips``, and the ``ssh_user`` field.
+The autoscaler can also be used to start Ray clusters on an existing Kubernetes cluster. First, install the Kubernetes API client (``pip install kubernetes``), then make sure your Kubernetes credentials are set up properly to access the cluster (if a command like ``kubectl get pods`` succeeds, you should be good to go).
 
-Try it out by running these commands from your personal computer. Once the cluster is started, you can then
-SSH into the head node and then run Ray programs with ``ray.init(redis_address="localhost:6379")``.
+Once you have ``kubectl`` configured locally to access the remote cluster, you should be ready to run the autoscaler. The provided `ray/python/ray/autoscaler/kubernetes/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/kubernetes/example-full.yaml>`__ cluster config file will create a small cluster of one pod for the head node configured to autoscale up to two worker node pods, with all pods requiring 1 CPU and 0.5GiB of memory.
+
+Test that it works by running the following commands from your local machine:
 
 .. code-block:: bash
 
     # Create or update the cluster. When the command finishes, it will print
-    # out the command that can be used to SSH into the cluster head node.
+    # out the command that can be used to get a remote shell into the head node.
+    $ ray up ray/python/ray/autoscaler/kubernetes/example-full.yaml
+
+    # List the pods running in the cluster. You shoud only see one head node
+    # until you start running an application, at which point worker nodes
+    # should be started. Don't forget to include the Ray namespace in your
+    # 'kubectl' commands ('ray' by default).
+    $ kubectl -n ray get pods
+
+    # Get a remote screen on the head node.
+    $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
+
+    # Tear down the cluster
+    $ ray down ray/python/ray/autoscaler/kubernetes/example-full.yaml
+
+Private Cluster
+~~~~~~~~~~~~~~~
+
+The autoscaler can also be used to run a Ray cluster on a private cluster of hosts, specified as a list of machine IP addresses to connect to. You can get started by filling out the fields in the provided `ray/python/ray/autoscaler/local/example-full.yaml <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/local/example-full.yaml>`__.
+Be sure to specify the proper ``head_ip``, list of ``worker_ips``, and the ``ssh_user`` field.
+
+Test that it works by running the following commands from your local machine:
+
+.. code-block:: bash
+
+    # Create or update the cluster. When the command finishes, it will print
+    # out the command that can be used to get a remote shell into the head node.
     $ ray up ray/python/ray/autoscaler/local/example-full.yaml
 
-    # Reconfigure autoscaling behavior without interrupting running jobs
-    $ ray up ray/python/ray/autoscaler/local/example-full.yaml \
-        --max-workers=N --no-restart
+    # Get a remote screen on the head node.
+    $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
 
-    # Teardown the cluster
+    # Tear down the cluster
     $ ray down ray/python/ray/autoscaler/local/example-full.yaml
 
-Running commands on new and existing clusters
----------------------------------------------
+External Node Provider
+~~~~~~~~~~~~~~~~~~~~~~
 
-You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(redis_address="localhost:6379")``.
+Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
+You can specify the external node provider using the yaml config:
+
+.. code-block:: yaml
+
+    provider:
+        type: external
+        module: mypackage.myclass
+
+The module needs to be in the format `package.provider_class` or `package.sub_package.provider_class`.
+
+Additional Cloud Providers
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To use Ray autoscaling on other Cloud providers or cluster management systems, you can implement the ``NodeProvider`` interface (~100 LOC) and register it in `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__. Contributions are welcome!
+
+Quickstart
+----------
+
+Starting and updating a cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When you run ``ray up`` with an existing cluster, the command checks if the local configuration differs from the applied configuration of the cluster. This includes any changes to synced files specified in the ``file_mounts`` section of the config. If so, the new files and config will be uploaded to the cluster. Following that, Ray services will be restarted.
+
+You can also run ``ray up`` to restart a cluster if it seems to be in a bad state (this will restart all Ray services even if there are no config changes).
+
+If you don't want the update to restart services (e.g., because the changes don't require a restart), pass ``--no-restart`` to the update call.
+
+.. code-block:: bash
+
+    # Replace '<your_backend>' with one of: 'aws', 'gcp', 'kubernetes', or 'local'.
+    $ BACKEND=<your_backend>
+
+    # Create or update the cluster.
+    $ ray up ray/python/ray/autoscaler/$BACKEND/example-full.yaml
+
+    # Reconfigure autoscaling behavior without interrupting running jobs.
+    $ ray up ray/python/ray/autoscaler/$BACKEND/example-full.yaml \
+        --max-workers=N --no-restart
+
+    # Tear down the cluster.
+    $ ray down ray/python/ray/autoscaler/$BACKEND/example-full.yaml
+
+
+Running commands on new and existing clusters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(address="auto")``.
 
 .. code-block:: bash
 
@@ -108,10 +187,10 @@ You can also use ``ray submit`` to execute Python scripts on clusters. This will
     $ ray submit cluster.yaml --tmux --start --stop tune_experiment.py
 
 
-Attaching to the cluster
-------------------------
+Attaching to a running cluster
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use ``ray attach`` to attach to an interactive console on the cluster.
+You can use ``ray attach`` to attach to an interactive screen session on the cluster.
 
 .. code-block:: bash
 
@@ -126,16 +205,16 @@ You can use ``ray attach`` to attach to an interactive console on the cluster.
 
 
 Port-forwarding applications
-----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To run connect to applications running on the cluster (e.g. Jupyter notebook) using a web browser, you can use the port-forward option for ``ray exec``. The local port opened is the same as the remote port:
+If you want to run applications on the cluster that are accessible from a web browser (e.g., Jupyter notebook), you can use the ``--port-forward`` option for ``ray exec``. The local port opened is the same as the remote port.
 
 .. code-block:: bash
 
     $ ray exec cluster.yaml --port-forward=8899 'source ~/anaconda3/bin/activate tensorflow_p36 && jupyter notebook --port=8899'
 
 Manually synchronizing files
-----------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To download or upload files to the cluster head node, use ``ray rsync_down`` or ``ray rsync_up``:
 
@@ -144,29 +223,20 @@ To download or upload files to the cluster head node, use ``ray rsync_down`` or 
     $ ray rsync_down cluster.yaml '/path/on/cluster' '/local/path'
     $ ray rsync_up cluster.yaml '/local/path' '/path/on/cluster'
 
-Updating your cluster
----------------------
-
-When you run ``ray up`` with an existing cluster, the command checks if the local configuration differs from the applied configuration of the cluster. This includes any changes to synced files specified in the ``file_mounts`` section of the config. If so, the new files and config will be uploaded to the cluster. Following that, Ray services will be restarted.
-
-You can also run ``ray up`` to restart a cluster if it seems to be in a bad state (this will restart all Ray services even if there are no config changes).
-
-If you don't want the update to restart services (e.g. because the changes don't require a restart), pass ``--no-restart`` to the update call.
-
 Security
---------
+~~~~~~~~
 
-By default, the nodes will be launched into their own security group, with traffic allowed only between nodes in the same group. A new SSH key will also be created and saved to your local machine for access to the cluster.
+On cloud providers, nodes will be launched into their own security group by default, with traffic allowed only between nodes in the same group. A new SSH key will also be created and saved to your local machine for access to the cluster.
 
 Autoscaling
------------
+~~~~~~~~~~~
 
-Ray clusters come with a load-based auto-scaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
+Ray clusters come with a load-based autoscaler. When cluster resource usage exceeds a configurable threshold (80% by default), new nodes will be launched up the specified ``max_workers`` limit. When nodes are idle for more than a timeout, they will be removed, down to the ``min_workers`` limit. The head node is never removed.
 
 The default idle timeout is 5 minutes. This is to prevent excessive node churn which could impact performance and increase costs (in AWS / GCP there is a minimum billing charge of 1 minute per instance, after which usage is billed by the second).
 
 Monitoring cluster status
--------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can monitor cluster usage and auto-scaling status by tailing the autoscaling
 logs in ``/tmp/ray/session_*/logs/monitor*``.
@@ -176,18 +246,18 @@ The Ray autoscaler also reports per-node status in the form of instance tags. In
 .. image:: autoscaler-status.png
 
 Customizing cluster setup
--------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You are encouraged to copy the example YAML file and modify it to your needs. This may include adding additional setup commands to install libraries or sync local data files.
 
-.. note:: After you have customized the nodes, it is also a good idea to create a new machine image and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
+.. note:: After you have customized the nodes, it is also a good idea to create a new machine image (or docker container) and use that in the config file. This reduces worker setup time, improving the efficiency of auto-scaling.
 
 The setup commands you use should ideally be *idempotent*, that is, can be run more than once. This allows Ray to update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. ``git clone foo`` can be rewritten as ``test -e foo || git clone foo`` which checks if the repo is already cloned first.
 
 Most of the example YAML file is optional. Here is a `reference minimal YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-minimal.yaml>`__, and you can find the defaults for `optional fields in this YAML file <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/aws/example-full.yaml>`__.
 
 Syncing git branches
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 A common use case is syncing a particular local git branch to all workers of the cluster. However, if you just put a `git checkout <branch>` in the setup commands, the autoscaler won't know when to rerun the command to pull in updates. There is a nice workaround for this by including the git SHA in the input (the hash of the file will change if the branch is updated):
 
@@ -207,8 +277,37 @@ This tells ``ray up`` to sync the current git branch SHA from your personal comp
 2. Commit the changes with ``git commit`` and ``git push``
 3. Update files on your Ray cluster with ``ray up``
 
+
+Using Amazon EFS
+~~~~~~~~~~~~~~~~
+
+To use Amazon EFS, install some utilities and mount the EFS in ``setup_commands``. Note that these instructions only work if you are using the AWS Autoscaler.
+
+.. note::
+
+  You need to replace the ``{{FileSystemId}}`` to your own EFS ID before using the config. You may also need to set correct ``SecurityGroupIds`` for the instances in the config file.
+
+.. code-block:: yaml
+
+    setup_commands:
+        - sudo kill -9 `sudo lsof /var/lib/dpkg/lock-frontend | awk '{print $2}' | tail -n 1`;
+            sudo pkill -9 apt-get;
+            sudo pkill -9 dpkg;
+            sudo dpkg --configure -a;
+            sudo apt-get -y install binutils;
+            cd $HOME;
+            git clone https://github.com/aws/efs-utils;
+            cd $HOME/efs-utils;
+            ./build-deb.sh;
+            sudo apt-get -y install ./build/amazon-efs-utils*deb;
+            cd $HOME;
+            mkdir efs;
+            sudo mount -t efs {{FileSystemId}}:/ efs;
+            sudo chmod 777 efs;
+
+
 Common cluster configurations
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``example-full.yaml`` configuration is enough to get started with Ray, but for more compute intensive workloads you will want to change the instance types to e.g. use GPU or larger compute instance by editing the yaml file. Here are a few common configurations:
 
@@ -261,7 +360,7 @@ with GPU worker nodes instead.
 
 .. code-block:: yaml
 
-    min_workers: 1  # must have at least 1 GPU worker (issue #2106)
+    min_workers: 0  # NOTE: older Ray versions may need 1+ GPU workers (#2106)
     max_workers: 10
     head_node:
         InstanceType: m4.large
@@ -270,28 +369,8 @@ with GPU worker nodes instead.
             MarketType: spot
         InstanceType: p2.xlarge
 
-
-External Node Provider
---------------------------
-
-Ray also supports external node providers (check `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__ implementation).
-You can specify the external node provider using the yaml config:
-
-.. code-block:: yaml
-
-    provider:
-        type: external
-        module: mypackage.myclass
-
-The module needs to be in the format `package.provider_class` or `package.sub_package.provider_class`.
-
-Additional Cloud providers
---------------------------
-
-To use Ray autoscaling on other Cloud providers or cluster management systems, you can implement the ``NodeProvider`` interface (~100 LOC) and register it in `node_provider.py <https://github.com/ray-project/ray/tree/master/python/ray/autoscaler/node_provider.py>`__. Contributions are welcome!
-
 Questions or Issues?
---------------------
+~~~~~~~~~~~~~~~~~~~~
 
 You can post questions or issues or feedback through the following channels:
 

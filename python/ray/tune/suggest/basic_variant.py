@@ -1,13 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
+import random
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.variant_generator import generate_variants
+from ray.tune.suggest.variant_generator import (generate_variants, format_vars,
+                                                flatten_resolved_vars)
 from ray.tune.suggest.search import SearchAlgorithm
 
 
@@ -23,11 +21,17 @@ class BasicVariantGenerator(SearchAlgorithm):
         >>> searcher.is_finished == True
     """
 
-    def __init__(self):
+    def __init__(self, shuffle=False):
+        """Initializes the Variant Generator.
+
+        Arguments:
+            shuffle (bool): Shuffles the generated list of configurations.
+        """
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
         self._finished = False
+        self._shuffle = shuffle
 
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.
@@ -48,6 +52,8 @@ class BasicVariantGenerator(SearchAlgorithm):
             trials (list): Returns a list of trials.
         """
         trials = list(self._trial_generator)
+        if self._shuffle:
+            random.shuffle(trials)
         self._finished = True
         return trials
 
@@ -69,12 +75,13 @@ class BasicVariantGenerator(SearchAlgorithm):
             for resolved_vars, spec in generate_variants(unresolved_spec):
                 experiment_tag = str(self._counter)
                 if resolved_vars:
-                    experiment_tag += "_{}".format(resolved_vars)
+                    experiment_tag += "_{}".format(format_vars(resolved_vars))
                 self._counter += 1
                 yield create_trial_from_spec(
                     spec,
                     output_path,
                     self._parser,
+                    evaluated_params=flatten_resolved_vars(resolved_vars),
                     experiment_tag=experiment_tag)
 
     def is_finished(self):

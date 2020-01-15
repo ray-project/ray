@@ -2,11 +2,13 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.Ray;
+import org.ray.api.TestUtils;
+import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.ObjectId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -65,13 +67,15 @@ public class RayCallTest extends BaseTest {
     return val;
   }
 
-  public static class LargeObject implements Serializable {
-    private byte[] data = new byte[1024 * 1024];
-  }
-
   @RayRemote
   private static LargeObject testLargeObject(LargeObject largeObject) {
     return largeObject;
+  }
+
+  @RayRemote
+  private static void testNoReturn(ObjectId objectId) {
+    // Put an object in object store to inform driver that this function is executing.
+    TestUtils.getRuntime().getObjectStore().put(1, objectId);
   }
 
   /**
@@ -93,6 +97,10 @@ public class RayCallTest extends BaseTest {
     Assert.assertEquals(map, Ray.call(RayCallTest::testMap, map).get());
     LargeObject largeObject = new LargeObject();
     Assert.assertNotNull(Ray.call(RayCallTest::testLargeObject, largeObject).get());
+
+    ObjectId randomObjectId = ObjectId.fromRandom();
+    Ray.call(RayCallTest::testNoReturn, randomObjectId);
+    Assert.assertEquals(((int) Ray.get(randomObjectId)), 1);
   }
 
   @RayRemote

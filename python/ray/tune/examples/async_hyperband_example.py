@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import json
 import os
@@ -12,7 +8,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run_experiments, sample_from
+from ray.tune import Trainable, run, sample_from
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
 
@@ -28,8 +24,8 @@ class MyTrainableClass(Trainable):
 
     def _train(self):
         self.timestep += 1
-        v = np.tanh(float(self.timestep) / self.config["width"])
-        v *= self.config["height"]
+        v = np.tanh(float(self.timestep) / self.config.get("width", 1))
+        v *= self.config.get("height", 1)
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
@@ -50,8 +46,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--ray-address",
+        help="Address of Ray cluster for seamless distributed execution.")
     args, _ = parser.parse_known_args()
-    ray.init()
+    ray.init(address=args.ray_address)
 
     # asynchronous hyperband early stopping, configured with
     # `episode_reward_mean` as the
@@ -59,28 +58,21 @@ if __name__ == "__main__":
     # which is automatically filled by Tune.
     ahb = AsyncHyperBandScheduler(
         time_attr="training_iteration",
-        reward_attr="episode_reward_mean",
+        metric="episode_reward_mean",
+        mode="max",
         grace_period=5,
         max_t=100)
 
-    run_experiments(
-        {
-            "asynchyperband_test": {
-                "run": MyTrainableClass,
-                "stop": {
-                    "training_iteration": 1 if args.smoke_test else 99999
-                },
-                "num_samples": 20,
-                "resources_per_trial": {
-                    "cpu": 1,
-                    "gpu": 0
-                },
-                "config": {
-                    "width": sample_from(
-                        lambda spec: 10 + int(90 * random.random())),
-                    "height": sample_from(
-                        lambda spec: int(100 * random.random())),
-                },
-            }
+    run(MyTrainableClass,
+        name="asynchyperband_test",
+        scheduler=ahb,
+        stop={"training_iteration": 1 if args.smoke_test else 99999},
+        num_samples=20,
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": 0
         },
-        scheduler=ahb)
+        config={
+            "width": sample_from(lambda spec: 10 + int(90 * random.random())),
+            "height": sample_from(lambda spec: int(100 * random.random())),
+        })

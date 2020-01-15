@@ -3,62 +3,75 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
-from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
-
 from ray.includes.common cimport (
-    CUniqueID, CTaskID, CObjectID, CFunctionID, CActorClassID, CActorID,
-    CActorHandleID, CWorkerID, CDriverID, CConfigID, CClientID,
-    CLanguage, CRayStatus)
-from ray.includes.task cimport CTaskSpecification
+    CLanguage,
+    CRayStatus,
+)
+from ray.includes.unique_ids cimport (
+    CActorCheckpointID,
+    CActorID,
+    CClientID,
+    CJobID,
+    CWorkerID,
+    CObjectID,
+    CTaskID,
+)
+from ray.includes.task cimport CTaskSpec
 
 
-cdef extern from "ray/gcs/format/gcs_generated.h" nogil:
-    cdef cppclass GCSProfileEventT "ProfileEventT":
-        c_string event_type
-        double start_time
-        double end_time
-        c_string extra_data
-        GCSProfileEventT()
+cdef extern from "ray/protobuf/gcs.pb.h" nogil:
+    cdef cppclass GCSProfileEvent "ProfileTableData::ProfileEvent":
+        void set_event_type(const c_string &value)
+        void set_start_time(double value)
+        void set_end_time(double value)
+        c_string set_extra_data(const c_string &value)
+        GCSProfileEvent()
 
-    cdef cppclass GCSProfileTableDataT "ProfileTableDataT":
-        c_string component_type
-        c_string component_id
-        c_string node_ip_address
-        c_vector[unique_ptr[GCSProfileEventT]] profile_events
-        GCSProfileTableDataT()
+    cdef cppclass GCSProfileTableData "ProfileTableData":
+        void set_component_type(const c_string &value)
+        void set_component_id(const c_string &value)
+        void set_node_ip_address(const c_string &value)
+        GCSProfileEvent *add_profile_events()
+        GCSProfileTableData()
 
 
-ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] ResourceMappingType
 ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
 
 
 cdef extern from "ray/raylet/raylet_client.h" nogil:
-    cdef cppclass CRayletClient "RayletClient":
+    cdef cppclass CRayletClient "ray::raylet::RayletClient":
         CRayletClient(const c_string &raylet_socket,
-                      const CClientID &client_id,
-                      c_bool is_worker, const CDriverID &driver_id,
+                      const CWorkerID &worker_id,
+                      c_bool is_worker, const CJobID &job_id,
                       const CLanguage &language)
         CRayStatus Disconnect()
-        CRayStatus SubmitTask(const c_vector[CObjectID] &execution_dependencies,
-                             const CTaskSpecification &task_spec)
-        CRayStatus GetTask(unique_ptr[CTaskSpecification] *task_spec)
-        CRayStatus TaskDone()
+        CRayStatus SubmitTask(const CTaskSpec &task_spec)
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
-                                     c_bool fetch_only,
-                                     const CTaskID &current_task_id)
+                                      c_bool fetch_only,
+                                      c_bool is_direct_call_task,
+                                      const CTaskID &current_task_id)
         CRayStatus NotifyUnblocked(const CTaskID &current_task_id)
-        CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_returns,
-                       int64_t timeout_milliseconds, c_bool wait_local,
-                       const CTaskID &current_task_id, WaitResultPair *result)
-        CRayStatus PushError(const CDriverID &job_id, const c_string &type,
+        CRayStatus Wait(const c_vector[CObjectID] &object_ids,
+                        int num_returns, int64_t timeout_milliseconds,
+                        c_bool wait_local, c_bool is_direct_call_task,
+                        const CTaskID &current_task_id,
+                        WaitResultPair *result)
+        CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
-        CRayStatus PushProfileEvents(const GCSProfileTableDataT &profile_events)
+        CRayStatus PushProfileEvents(
+            const GCSProfileTableData &profile_events)
         CRayStatus FreeObjects(const c_vector[CObjectID] &object_ids,
-                              c_bool local_only)
+                               c_bool local_only, c_bool delete_creating_tasks)
+        CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
+                                          CActorCheckpointID &checkpoint_id)
+        CRayStatus NotifyActorResumedFromCheckpoint(
+            const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
+        CRayStatus SetResource(const c_string &resource_name,
+                               const double capacity,
+                               const CClientID &client_Id)
         CLanguage GetLanguage() const
-        CClientID GetClientID() const
-        CDriverID GetDriverID() const
+        CWorkerID GetWorkerID() const
+        CJobID GetJobID() const
         c_bool IsWorker() const
-        const ResourceMappingType &GetResourceIDs() const

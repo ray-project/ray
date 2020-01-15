@@ -34,7 +34,7 @@ fi
 
 # Build the current Ray source
 git rev-parse HEAD > ./docker/deploy/git-rev
-git archive -o ./docker/deploy/ray.tar $(git rev-parse HEAD)
+git archive -o ./docker/deploy/ray.tar "$(git rev-parse HEAD)"
 if [ $OUTPUT_SHA ]; then
     IMAGE_SHA=$(docker build --no-cache -q -t ray-project/deploy docker/deploy)
 else
@@ -52,5 +52,5 @@ if [ ! $SKIP_EXAMPLES ]; then
 fi
 
 if [ $OUTPUT_SHA ]; then
-    echo $IMAGE_SHA | sed 's/sha256://'
+    echo "$IMAGE_SHA" | sed 's/sha256://'
 fi

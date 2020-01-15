@@ -4,8 +4,13 @@
 #include <memory>
 
 #include "ray/common/client_connection.h"
-#include "ray/id.h"
-#include "ray/raylet/scheduling_resources.h"
+#include "ray/common/id.h"
+#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/task/task.h"
+#include "ray/common/task/task_common.h"
+#include "ray/rpc/worker/core_worker_client.h"
+
+#include <unistd.h>  // pid_t
 
 namespace ray {
 
@@ -17,8 +22,9 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(pid_t pid, const Language &language,
-         std::shared_ptr<LocalClientConnection> connection);
+  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
+         std::shared_ptr<LocalClientConnection> connection,
+         rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
   void MarkDead();
@@ -26,19 +32,23 @@ class Worker {
   void MarkBlocked();
   void MarkUnblocked();
   bool IsBlocked() const;
+  /// Return the worker's ID.
+  WorkerID WorkerId() const;
   /// Return the worker's PID.
   pid_t Pid() const;
   Language GetLanguage() const;
+  int Port() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
-  void AssignDriverId(const DriverID &driver_id);
-  const DriverID &GetAssignedDriverId() const;
+  void AssignJobId(const JobID &job_id);
+  const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
-  /// Return the worker's connection.
+  void MarkDetachedActor();
+  bool IsDetachedActor() const;
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;
@@ -51,17 +61,37 @@ class Worker {
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
+  const std::unordered_set<ObjectID> &GetActiveObjectIds() const;
+  void SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids);
+
+  Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
+  void DirectActorCallArgWaitComplete(int64_t tag);
+  void WorkerLeaseGranted(const std::string &address, int port);
+
+  /// Cpus borrowed by the worker. This happens when the machine is oversubscribed
+  /// and the worker does not get back the cpu resources when unblocked.
+  /// TODO (ion): Add methods to access this variable.
+  /// TODO (ion): Investigate a more intuitive alternative to track these Cpus.
+  ResourceSet borrowed_cpu_resources_;
+
+  rpc::CoreWorkerClient *rpc_client() { return rpc_client_.get(); }
+
  private:
+  /// The worker's ID.
+  WorkerID worker_id_;
   /// The worker's PID.
   pid_t pid_;
   /// The language type of this worker.
   Language language_;
+  /// Port that this worker listens on.
+  /// If port <= 0, this indicates that the worker will not listen to a port.
+  int port_;
   /// Connection state of a worker.
   std::shared_ptr<LocalClientConnection> connection_;
   /// The worker's currently assigned task.
   TaskID assigned_task_id_;
-  /// Driver ID for the worker's current assigned task.
-  DriverID assigned_driver_id_;
+  /// Job ID for the worker's current assigned task.
+  JobID assigned_job_id_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
   /// Whether the worker is dead.
@@ -76,6 +106,16 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
+  /// The set of object IDs that are currently in use on the worker.
+  std::unordered_set<ObjectID> active_object_ids_;
+  /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
+  /// workers.
+  rpc::ClientCallManager &client_call_manager_;
+  /// The rpc client to send tasks to this worker.
+  std::unique_ptr<rpc::CoreWorkerClient> rpc_client_;
+  /// Whether the worker is detached. This is applies when the worker is actor.
+  /// Detached actor means the actor's creator can exit without killing this actor.
+  bool is_detached_actor_;
 };
 
 }  // namespace raylet

@@ -13,30 +13,36 @@ MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
-PY_VERSIONS=("2.7.13"
-             "3.4.4"
-             "3.5.3"
+PY_VERSIONS=("3.5.3"
              "3.6.1"
              "3.7.0")
-PY_INSTS=("python-2.7.13-macosx10.6.pkg"
-          "python-3.4.4-macosx10.6.pkg"
-          "python-3.5.3-macosx10.6.pkg"
+PY_INSTS=("python-3.5.3-macosx10.6.pkg"
           "python-3.6.1-macosx10.6.pkg"
           "python-3.7.0-macosx10.6.pkg")
-PY_MMS=("2.7"
-        "3.4"
-        "3.5"
+PY_MMS=("3.5"
         "3.6"
         "3.7")
-# On python 3.7, a newer version of numpy seems to be necessary.
-NUMPY_VERSIONS=("1.10.4"
-                "1.10.4"
-                "1.10.4"
-                "1.10.4"
+
+# The minimum supported numpy version is 1.14, see
+# https://issues.apache.org/jira/browse/ARROW-3141
+NUMPY_VERSIONS=("1.14.5"
+                "1.14.5"
                 "1.14.5")
+
+./ci/travis/install-bazel.sh
 
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
+
+# Use the latest version of Node.js in order to build the dashboard.
+source $HOME/.nvm/nvm.sh
+nvm use node
+
+# Build the dashboard so its static assets can be included in the wheel.
+pushd python/ray/dashboard/client
+  npm ci
+  npm run build
+popd
 
 for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PY_VERSION=${PY_VERSIONS[i]}
@@ -47,7 +53,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
-  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR
+  git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR -e python/ray/dashboard/client
 
   # Install Python.
   INST_PATH=python_downloads/$PY_INST
@@ -58,7 +64,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
   pushd /tmp
-    # Install latest version of pip to avoid brownouts
+    # Install latest version of pip to avoid brownouts.
     curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
   popd
 
@@ -75,7 +81,7 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q wheel
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
-    INCLUDE_UI=1 PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
+    PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
 done

@@ -23,10 +23,10 @@ public class RayFunction {
   /**
    * Function's metadata.
    */
-  public final FunctionDescriptor functionDescriptor;
+  public final JavaFunctionDescriptor functionDescriptor;
 
   public RayFunction(Executable executable, ClassLoader classLoader,
-      FunctionDescriptor functionDescriptor) {
+      JavaFunctionDescriptor functionDescriptor) {
     this.executable = executable;
     this.classLoader = classLoader;
     this.functionDescriptor = functionDescriptor;
@@ -53,7 +53,7 @@ public class RayFunction {
     return (Method) executable;
   }
 
-  public FunctionDescriptor getFunctionDescriptor() {
+  public JavaFunctionDescriptor getFunctionDescriptor() {
     return functionDescriptor;
   }
 
@@ -70,6 +70,17 @@ public class RayFunction {
     }
 
     return rayRemote;
+  }
+
+  /**
+   * @return Whether this function has a return value.
+   */
+  public boolean hasReturn() {
+    if (isConstructor()) {
+      return true;
+    } else {
+      return !getMethod().getReturnType().equals(void.class);
+    }
   }
 
   @Override

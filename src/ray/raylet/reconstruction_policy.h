@@ -7,15 +7,16 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/id.h"
 #include "ray/gcs/tables.h"
-#include "ray/id.h"
-#include "ray/util/util.h"
 
 #include "ray/object_manager/object_directory.h"
 
 namespace ray {
 
 namespace raylet {
+
+using rpc::TaskReconstructionData;
 
 class ReconstructionPolicyInterface {
  public:
@@ -36,15 +37,14 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// will be triggered.
   /// \param client_id The client ID to use when requesting notifications from
   /// the GCS.
-  /// \param task_lease_pubsub The GCS pub-sub storage system to request task
+  /// \param gcs_client The Client of GCS.
   /// lease notifications from.
   ReconstructionPolicy(
       boost::asio::io_service &io_service,
-      std::function<void(const TaskID &, bool)> reconstruction_handler,
+      std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
       int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
-      gcs::PubsubInterface<TaskID> &task_lease_pubsub,
-      std::shared_ptr<ObjectDirectoryInterface> object_directory,
-      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log);
+      std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+      std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   /// Listen for task lease notifications about an object that may require
   /// reconstruction. If no notifications are received within the initial
@@ -76,6 +76,9 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// \return string.
   std::string DebugString() const;
 
+  /// Record metrics.
+  void RecordMetrics() const;
+
  private:
   struct ReconstructionTask {
     ReconstructionTask(boost::asio::io_service &io_service)
@@ -93,7 +96,6 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
     bool subscribed;
     // The number of times we've attempted reconstructing this task so far.
     int reconstruction_attempt;
-    bool return_values_lost;
     // The task's reconstruction timer. If this expires before a lease
     // notification is received, then the task will be reconstructed.
     std::unique_ptr<boost::asio::deadline_timer> reconstruction_timer;
@@ -106,6 +108,10 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   void SetTaskTimeout(std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
                       int64_t timeout_ms);
 
+  /// Handle task lease notification from GCS.
+  void OnTaskLeaseNotification(const TaskID &task_id,
+                               const boost::optional<rpc::TaskLeaseData> &task_lease);
+
   /// Attempt to re-execute a task to reconstruct the required object.
   ///
   /// \param task_id The task to attempt to re-execute.
@@ -116,29 +122,29 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// reconstructions of the same task (e.g., if a task creates two objects
   /// that both require reconstruction).
   void AttemptReconstruction(const TaskID &task_id, const ObjectID &required_object_id,
-                             int reconstruction_attempt, bool created);
+                             int reconstruction_attempt);
 
   /// Handle expiration of a task lease.
   void HandleTaskLeaseExpired(const TaskID &task_id);
 
   /// Handle the response for an attempt at adding an entry to the task
   /// reconstruction log.
-  void HandleReconstructionLogAppend(const TaskID &task_id, bool success);
+  void HandleReconstructionLogAppend(const TaskID &task_id, const ObjectID &object_id,
+                                     bool success);
 
   /// The event loop.
   boost::asio::io_service &io_service_;
   /// The handler to call for tasks that require reconstruction.
-  const std::function<void(const TaskID &, bool)> reconstruction_handler_;
+  const std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler_;
   /// The initial timeout within which a task lease notification must be
   /// received. Otherwise, reconstruction will be triggered.
   const int64_t initial_reconstruction_timeout_ms_;
   /// The client ID to use when requesting notifications from the GCS.
   const ClientID client_id_;
-  /// The GCS pub-sub storage system to request task lease notifications from.
-  gcs::PubsubInterface<TaskID> &task_lease_pubsub_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// The object directory used to lookup object locations.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   /// The tasks that we are currently subscribed to in the GCS.
   std::unordered_map<TaskID, ReconstructionTask> listening_tasks_;
 };

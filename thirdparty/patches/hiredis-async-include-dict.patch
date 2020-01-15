@@ -1,0 +1,7 @@
+diff --git deps/hiredis/async.c deps/hiredis/async.c
+--- deps/hiredis/async.c
++++ deps/hiredis/async.c
+@@ -41,1 +41,1 @@
+-#include "dict.c"
++#include "hiredis/dict.c"
+-- 

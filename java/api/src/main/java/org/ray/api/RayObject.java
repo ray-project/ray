@@ -1,6 +1,6 @@
 package org.ray.api;
 
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 
 /**
  * Represents an object in the object store.
@@ -17,7 +17,7 @@ public interface RayObject<T> {
   /**
    * Get the object id.
    */
-  UniqueId getId();
+  ObjectId getId();
 
 }
 

@@ -1,9 +1,12 @@
 package org.ray.api;
 
 import java.util.List;
+import java.util.concurrent.Callable;
+import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
+import org.ray.api.runtimecontext.RuntimeContext;
 
 /**
  * This class contains all public APIs of Ray.
@@ -34,6 +37,7 @@ public final class Ray extends RayCall {
   public static synchronized void init(RayRuntimeFactory factory) {
     if (runtime == null) {
       runtime = factory.createRayRuntime();
+      Runtime.getRuntime().addShutdownHook(new Thread(Ray::shutdown));
     }
   }
 
@@ -63,7 +67,7 @@ public final class Ray extends RayCall {
    * @param objectId The ID of the object to get.
    * @return The Java object.
    */
-  public static <T> T get(UniqueId objectId) {
+  public static <T> T get(ObjectId objectId) {
     return runtime.get(objectId);
   }
 
@@ -73,7 +77,7 @@ public final class Ray extends RayCall {
    * @param objectIds The list of object IDs.
    * @return A list of Java objects.
    */
-  public static <T> List<T> get(List<UniqueId> objectIds) {
+  public static <T> List<T> get(List<ObjectId> objectIds) {
     return runtime.get(objectIds);
   }
 
@@ -115,9 +119,82 @@ public final class Ray extends RayCall {
   }
 
   /**
+   * If users want to use Ray API in their own threads, call this method to get the async context
+   * and then call {@link #setAsyncContext} at the beginning of the new thread.
+   *
+   * @return The async context.
+   */
+  public static Object getAsyncContext() {
+    return runtime.getAsyncContext();
+  }
+
+  /**
+   * Set the async context for the current thread.
+   *
+   * @param asyncContext The async context to set.
+   */
+  public static void setAsyncContext(Object asyncContext) {
+    runtime.setAsyncContext(asyncContext);
+  }
+
+  /**
+   * If users want to use Ray API in their own threads, they should wrap their {@link Runnable}
+   * objects with this method.
+   *
+   * @param runnable The runnable to wrap.
+   * @return The wrapped runnable.
+   */
+  public static Runnable wrapRunnable(Runnable runnable) {
+    return runtime.wrapRunnable(runnable);
+  }
+
+  /**
+   * If users want to use Ray API in their own threads, they should wrap their {@link Callable}
+   * objects with this method.
+   *
+   * @param callable The callable to wrap.
+   * @return The wrapped callable.
+   */
+  public static Callable wrapCallable(Callable callable) {
+    return runtime.wrapCallable(callable);
+  }
+
+  /**
    * Get the underlying runtime instance.
    */
   public static RayRuntime internal() {
     return runtime;
+  }
+
+  /**
+   * Update the resource for the specified client.
+   * Set the resource for the specific node.
+   */
+  public static void setResource(UniqueId nodeId, String resourceName, double capacity) {
+    runtime.setResource(resourceName, capacity, nodeId);
+  }
+
+  /**
+   * Set the resource for local node.
+   */
+  public static void setResource(String resourceName, double capacity) {
+    runtime.setResource(resourceName, capacity, UniqueId.NIL);
+  }
+
+  /**
+   * Kill the actor immediately. This will cause any outstanding tasks submitted to the actor to
+   * fail and the actor to exit in the same way as if it crashed.
+   *
+   * @param actor The actor to be killed.
+   */
+  public static void killActor(RayActor<?> actor) {
+    runtime.killActor(actor);
+  }
+
+  /**
+   * Get the runtime context.
+   */
+  public static RuntimeContext getRuntimeContext() {
+    return runtime.getRuntimeContext();
   }
 }

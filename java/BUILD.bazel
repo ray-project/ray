@@ -1,0 +1,243 @@
+load("//bazel:ray.bzl", "define_java_module")
+load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
+
+exports_files([
+    "testng.xml",
+    "checkstyle.xml",
+    "checkstyle-suppressions.xml",
+])
+
+all_modules = [
+    "api",
+    "runtime",
+    "test",
+    "tutorial",
+]
+
+java_import(
+    name = "all_modules",
+    jars = [
+        "liborg_ray_ray_" + module + ".jar"
+        for module in all_modules
+    ] + [
+        "liborg_ray_ray_" + module + "-src.jar"
+        for module in all_modules
+    ] + [
+        "all_tests_deploy.jar",
+        "all_tests_deploy-src.jar",
+    ],
+    deps = [
+        ":org_ray_ray_" + module
+        for module in all_modules
+    ] + [
+        ":all_tests",
+    ],
+)
+
+define_java_module(
+    name = "api",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@maven//:com_sun_xml_bind_jaxb_core",
+        "@maven//:com_sun_xml_bind_jaxb_impl",
+        "@maven//:javax_xml_bind_jaxb_api",
+        "@maven//:log4j_log4j",
+        "@maven//:org_slf4j_slf4j_log4j12",
+    ],
+)
+
+define_java_module(
+    name = "runtime",
+    additional_resources = [
+        ":java_native_deps",
+    ],
+    additional_srcs = [
+        ":all_java_proto",
+    ],
+    define_test_lib = True,
+    exclude_srcs = [
+        "runtime/src/main/java/org/ray/runtime/generated/*.java",
+    ],
+    test_deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:com_beust_jcommander",
+        "@maven//:org_testng_testng",
+        "@maven//:commons_io_commons_io",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":org_ray_ray_api",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_google_protobuf_protobuf_java",
+        "@maven//:com_typesafe_config",
+        "@maven//:commons_io_commons_io",
+        "@maven//:de_ruedigermoeller_fst",
+        "@maven//:net_java_dev_jna_jna",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_ow2_asm_asm",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_slf4j_slf4j_log4j12",
+        "@maven//:redis_clients_jedis",
+    ],
+)
+
+define_java_module(
+    name = "tutorial",
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@maven//:com_google_guava_guava",
+    ],
+)
+
+define_java_module(
+    name = "test",
+    deps = [
+        ":org_ray_ray_api",
+        ":org_ray_ray_runtime",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_sun_xml_bind_jaxb_core",
+        "@maven//:com_sun_xml_bind_jaxb_impl",
+        "@maven//:commons_io_commons_io",
+        "@maven//:javax_xml_bind_jaxb_api",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:org_testng_testng",
+    ],
+)
+
+java_binary(
+    name = "all_tests",
+    args = ["java/testng.xml"],
+    data = ["testng.xml"],
+    main_class = "org.testng.TestNG",
+    runtime_deps = [
+        ":org_ray_ray_runtime_test",
+        ":org_ray_ray_test",
+    ],
+)
+
+java_proto_compile(
+    name = "common_java_proto",
+    deps = ["@//:common_proto"],
+)
+
+java_proto_compile(
+    name = "gcs_java_proto",
+    deps = ["@//:gcs_proto"],
+)
+
+filegroup(
+    name = "all_java_proto",
+    srcs = [
+        ":common_java_proto",
+        ":gcs_java_proto",
+    ],
+)
+
+# plasma_store_server binary should be located in jar root path
+# and keep in sync with mvn resource
+genrule(
+    name = "cp_plasma_store_server",
+    srcs = [
+        "@plasma//:plasma_store_server",
+    ],
+    outs = ["plasma_store_server"],
+    cmd = """
+        cp -f $(location @plasma//:plasma_store_server) $@
+    """,
+)
+
+filegroup(
+    name = "java_native_deps",
+    srcs = [
+        ":cp_plasma_store_server",
+        "//:core_worker_library_java",
+        "//:libray_redis_module.so",
+        "//:raylet",
+        "//:redis-server",
+    ],
+)
+
+# Generates the depedencies needed by maven.
+genrule(
+    name = "gen_maven_deps",
+    srcs = [
+        ":all_java_proto",
+        ":java_native_deps",
+        ":copy_pom_file",
+    ],
+    outs = ["gen_maven_deps.out"],
+    cmd = """
+        set -x
+        WORK_DIR=$$(pwd)
+        # Copy protobuf-generated files.
+        rm -rf $$WORK_DIR/java/runtime/src/main/java/org/ray/runtime/generated
+        for f in $(locations //java:all_java_proto); do
+            unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/java/runtime/src/main/java
+        done
+        # Copy native dependecies.
+        NATIVE_DEPS_DIR=$$WORK_DIR/java/runtime/native_dependencies/
+        rm -rf $$NATIVE_DEPS_DIR
+        mkdir -p $$NATIVE_DEPS_DIR
+        for f in $(locations //java:java_native_deps); do
+            chmod +w $$f
+            cp $$f $$NATIVE_DEPS_DIR
+        done
+        echo $$(date) > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)
+
+genrule(
+    name = "copy_pom_file",
+    srcs = [
+        "//java:org_ray_ray_" + module + "_pom"
+        for module in all_modules
+    ],
+    outs = ["copy_pom_file.out"],
+    cmd = """
+        set -x
+        WORK_DIR=$$(pwd)
+        cp -f $(location //java:org_ray_ray_api_pom) $$WORK_DIR/java/api/pom.xml
+        cp -f $(location //java:org_ray_ray_runtime_pom) $$WORK_DIR/java/runtime/pom.xml
+        cp -f $(location //java:org_ray_ray_tutorial_pom) $$WORK_DIR/java/tutorial/pom.xml
+        cp -f $(location //java:org_ray_ray_test_pom) $$WORK_DIR/java/test/pom.xml
+        echo $$(date) > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)
+
+java_binary(
+    name = "ray_dist",
+    # This rule is used to package all Ray Java code and the third-party dependencies into a
+    # fat jar file. It's not really an executable jar. So we set its `main_class` to empty.
+    main_class = "",
+    runtime_deps = [
+        "//java:org_ray_ray_api",
+        "//java:org_ray_ray_runtime",
+        "//streaming/java:org_ray_ray_streaming-api",
+        "//streaming/java:org_ray_ray_streaming-runtime",
+    ],
+)
+
+genrule(
+    name = "ray_java_pkg",
+    srcs = [
+        "//java:ray_dist_deploy.jar",
+        "//java:gen_maven_deps",
+    ],
+    outs = ["ray_java_pkg.out"],
+    cmd = """
+        WORK_DIR=$$(pwd)
+        rm -rf $$WORK_DIR/python/ray/jars && mkdir -p $$WORK_DIR/python/ray/jars
+        cp -f $(location //java:ray_dist_deploy.jar) $$WORK_DIR/python/ray/jars/ray_dist.jar
+        echo $$(date) > $@
+    """,
+    local = 1,
+    tags = ["no-cache"],
+)

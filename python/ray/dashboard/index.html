@@ -1,0 +1,99 @@
+<!doctype html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>ray dashboard</title>
+    <meta name="description" content="ray dashboard"</meta>
+    <link rel="stylesheet" href="res/main.css">
+
+    <meta name="referrer" content="same-origin">
+    <!--
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.6.4/vue.min.js"
+    integrity="sha384-rldcjlIPDkF0mEihgyEOIFhd2NW5YL717okjKC5YF2LrqoiBeMk4tpcgbRrlDHj5"
+    crossorigin="anonymous"></script>
+    -->
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.6.4/vue.js"
+    integrity="sha384-94H2I+MU5hfBDUinQG+/Y9JbHALTPlQmHO26R3Jv60MT6WWkOD5hlYNyT9ciiLsR"
+    crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div id="dashboard">
+        <table v-if="clients && !error" class="ray_node_grid">
+            <thead>
+                <tr>
+                    <th class="hostname">Hostname</th>
+                    <th class="uptime">Uptime</th>
+                    <th class="workers">Workers</th>
+                    <th class="mem">RAM</th>
+                    <th class="storage">Disk</th>
+                    <th class="load">Load (1m, 5m, 15m)</th>
+                    <th class="netsent">Sent (M/s)</th>
+                    <th class="netrecv">Recv (M/s)</th>
+                </tr>
+            </thead>
+            <tbody is="node"
+                v-for="v in clients"
+                :key="v.hostname"
+                :now="now"
+                :hostname="v.hostname"
+                :boot_time="v.boot_time"
+                :n_workers="v.workers.length"
+                :n_cores="v.cpus[0]"
+                :m_avail="v.mem[1]"
+                :m_total="v.mem[0]"
+                :d_avail="v.disk['/'].free"
+                :d_total="v.disk['/'].total"
+                :load="v.load_avg[0]"
+                :n_sent="v.net[0]"
+                :n_recv="v.net[1]"
+                :workers="v.workers"
+            ></tbody>
+            <tbody is="node"
+                class="totals"
+                v-if="totals"
+                :now="now"
+                :hostname="Object.keys(clients).length"
+                :boot_time="totals.boot_time"
+                :n_workers="totals.n_workers"
+                :n_cores="totals.n_cores"
+                :m_avail="totals.m_avail"
+                :m_total="totals.m_total"
+                :d_avail="totals.d_avail"
+                :d_total="totals.d_total"
+                :load="totals.load"
+                :n_sent="totals.n_sent"
+                :n_recv="totals.n_recv"
+                :workers="[]"
+            ></tbody>
+        </table>
+
+        <template v-if="error">
+            <h2>{{error}}</h2>
+        </template>
+
+        <h2 v-if="last_update" :class="outdated_cls">Last updated {{age}} ago</h2>
+
+        <div class="cols">
+            <div class="tasks">
+                <template v-if="tasks && !error">
+                    <h2>tasks</h2>
+                    <ul>
+                        <li v-for="v, k, _ in tasks">{{k}}: {{v}}</li>
+                    </ul>
+                </template>
+            </div>
+
+            <div class="ray_config">
+                <template v-if="ray_config">
+                    <h2>ray config</h2>
+                    <pre>{{ray_config}}</pre>
+                </template>
+            </div>
+        </div>
+    </div>
+</body>
+
+<script src="res/main.js"></script>

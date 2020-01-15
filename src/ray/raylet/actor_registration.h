@@ -3,12 +3,17 @@
 
 #include <unordered_map>
 
-#include "ray/gcs/format/gcs_generated.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
+#include "ray/common/task/task.h"
+#include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
 namespace raylet {
+
+using rpc::ActorTableData;
+using ActorState = rpc::ActorTableData::ActorState;
+using rpc::ActorCheckpointData;
 
 /// \class ActorRegistration
 ///
@@ -22,7 +27,13 @@ class ActorRegistration {
   ///
   /// \param actor_table_data Information from the global actor table about
   /// this actor. This includes the actor's node manager location.
-  ActorRegistration(const ActorTableDataT &actor_table_data);
+  explicit ActorRegistration(const ActorTableData &actor_table_data);
+
+  /// Recreate an actor's registration from a checkpoint.
+  ///
+  /// \param checkpoint_data The checkpoint used to restore the actor.
+  ActorRegistration(const ActorTableData &actor_table_data,
+                    const ActorCheckpointData &checkpoint_data);
 
   /// Each actor may have multiple callers, or "handles". A frontier leaf
   /// represents the execution state of the actor with respect to a single
@@ -39,15 +50,15 @@ class ActorRegistration {
   /// Get the actor table data.
   ///
   /// \return The actor table data.
-  const ActorTableDataT &GetTableData() const { return actor_table_data_; }
+  const ActorTableData &GetTableData() const { return actor_table_data_; }
 
   /// Get the actor's current state (ALIVE or DEAD).
   ///
   /// \return The actor's current state.
-  const ActorState &GetState() const { return actor_table_data_.state; }
+  const ActorState GetState() const { return actor_table_data_.state(); }
 
   /// Update actor's state.
-  void SetState(const ActorState &state) { actor_table_data_.state = state; }
+  void SetState(const ActorState &state) { actor_table_data_.set_state(state); }
 
   /// Get the actor's node manager location.
   ///
@@ -62,8 +73,8 @@ class ActorRegistration {
   /// \return The execution dependency returned by the actor's creation task.
   const ObjectID GetActorCreationDependency() const;
 
-  /// Get actor's driver ID.
-  const DriverID GetDriverId() const;
+  /// Get actor's job ID.
+  const JobID GetJobId() const;
 
   /// Get the max number of times this actor should be reconstructed.
   const int64_t GetMaxReconstructions() const;
@@ -86,7 +97,7 @@ class ActorRegistration {
   ///
   /// \return The actor frontier, a map from handle ID to execution state for
   /// that handle.
-  const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
+  const std::unordered_map<TaskID, FrontierLeaf> &GetFrontier() const;
 
   /// Get all the dummy objects of this actor's tasks.
   const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const {
@@ -101,28 +112,26 @@ class ActorRegistration {
   /// state. This is the execution dependency returned by the task.
   /// \return The dummy object that can be released as a result of the executed
   /// task. If no dummy object can be released, then this is nil.
-  ObjectID ExtendFrontier(const ActorHandleID &handle_id,
-                          const ObjectID &execution_dependency);
-
-  /// Add a new handle to the actor frontier. This does nothing if the actor
-  /// handle already exists.
-  ///
-  /// \param handle_id The ID of the handle to add.
-  /// \param execution_dependency This is the expected execution dependency for
-  /// the first task submitted on the new handle. If the new handle hasn't been
-  /// seen yet, then this dependency will be added to the actor frontier and is
-  /// not safe to release until the first task has been submitted.
-  void AddHandle(const ActorHandleID &handle_id, const ObjectID &execution_dependency);
+  ObjectID ExtendFrontier(const TaskID &caller_id, const ObjectID &execution_dependency);
 
   /// Returns num handles to this actor entry.
   ///
   /// \return int.
   int NumHandles() const;
 
+  /// Generate checkpoint data based on actor's current state.
+  ///
+  /// \param actor_id ID of this actor.
+  /// \param task The task that just finished on the actor. (nullptr when it's direct
+  /// call.)
+  /// \return A shared pointer to the generated checkpoint data.
+  std::shared_ptr<ActorCheckpointData> GenerateCheckpointData(const ActorID &actor_id,
+                                                              const Task *task);
+
  private:
   /// Information from the global actor table about this actor, including the
   /// node manager location.
-  ActorTableDataT actor_table_data_;
+  ActorTableData actor_table_data_;
   /// The object representing the state following the actor's most recently
   /// executed task. The next task to execute on the actor should be marked as
   /// execution-dependent on this object.
@@ -130,7 +139,7 @@ class ActorRegistration {
   /// The execution frontier of the actor, which represents which tasks have
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
-  std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
+  std::unordered_map<TaskID, FrontierLeaf> frontier_;
   /// This map is used to track all the unreleased dummy objects for this
   /// actor.  The map key is the dummy object ID, and the map value is the
   /// number of actor handles that depend on that dummy object. When the map

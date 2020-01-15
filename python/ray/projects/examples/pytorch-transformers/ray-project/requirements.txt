@@ -1,0 +1,17 @@
+# Adapted from https://github.com/huggingface/pytorch-transformers/blob/master/requirements.txt
+# PyTorch
+torch>=1.0.0
+# progress bars in model download and training scripts
+tqdm
+# Accessing files from S3 directly.
+boto3
+# Used for downloading models over HTTP
+requests
+# For OpenAI GPT
+regex
+# For XLNet
+sentencepiece
+# TensorBoard visualization
+tensorboardX
+# Pytorch transformers
+pytorch_transformers

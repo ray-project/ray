@@ -1,17 +1,13 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import copy
 
 from ray.tune.error import TuneError
-from ray.tune.trial import Trial
-from ray.tune.util import merge_dicts
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
+from ray.tune.trial import Trial
+from ray.tune.utils import merge_dicts, flatten_dict
 
 
 class SuggestionAlgorithm(SearchAlgorithm):
@@ -32,13 +28,14 @@ class SuggestionAlgorithm(SearchAlgorithm):
         >>> better_parameters = suggester._suggest()
     """
 
-    def __init__(self):
+    def __init__(self, use_early_stopped_trials=True):
         """Constructs a generator given experiment specifications.
         """
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
         self._finished = False
+        self._use_early_stopped = use_early_stopped_trials
 
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.
@@ -89,7 +86,8 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 else:
                     break
             spec = copy.deepcopy(experiment_spec)
-            spec["config"] = merge_dicts(spec["config"], suggested_config)
+            spec["config"] = merge_dicts(spec["config"],
+                                         copy.deepcopy(suggested_config))
             flattened_config = resolve_nested_dict(spec["config"])
             self._counter += 1
             tag = "{0}_{1}".format(
@@ -98,6 +96,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 spec,
                 output_path,
                 self._parser,
+                evaluated_params=flatten_dict(suggested_config),
                 experiment_tag=tag,
                 trial_id=trial_id)
 
@@ -127,13 +126,21 @@ class SuggestionAlgorithm(SearchAlgorithm):
         """
         raise NotImplementedError
 
+    def save(self, checkpoint_dir):
+        raise NotImplementedError
+
+    def restore(self, checkpoint_dir):
+        raise NotImplementedError
+
 
 class _MockSuggestionAlgorithm(SuggestionAlgorithm):
     def __init__(self, max_concurrent=2, **kwargs):
         self._max_concurrent = max_concurrent
         self.live_trials = {}
         self.counter = {"result": 0, "complete": 0}
+        self.final_results = []
         self.stall = False
+        self.results = []
         super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
@@ -144,7 +151,18 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
 
     def on_trial_result(self, trial_id, result):
         self.counter["result"] += 1
+        self.results += [result]
 
-    def on_trial_complete(self, trial_id, **kwargs):
+    def on_trial_complete(self,
+                          trial_id,
+                          result=None,
+                          error=False,
+                          early_terminated=False):
         self.counter["complete"] += 1
+        if result:
+            self._process_result(result, early_terminated)
         del self.live_trials[trial_id]
+
+    def _process_result(self, result, early_terminated):
+        if early_terminated and self._use_early_stopped:
+            self.final_results += [result]

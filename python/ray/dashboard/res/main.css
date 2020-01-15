@@ -1,0 +1,58 @@
+* { font-family: monospace; margin: 0; padding: 0; }
+h1, h2 { text-align: center; margin: 1rem 0; }
+h1 { font-size: 3rem; margin: 0.5rem auto; text-align: center; }
+h2 { font-size: 2rem; margin: 1rem auto; text-align: center; }
+div#dashboard {
+    width: 116rem; margin: 1rem auto;
+}
+
+table, tbody, thead {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+tr {
+    cursor: pointer;
+}
+tr.workerlist td, tr.workerlist th {
+    font-size: 0.8rem;
+}
+tr:hover {
+    filter: brightness(0.85);
+}
+td, th {
+    padding: 0.3rem;
+    font-size: 1.4rem;
+    font-family: monospace;
+    text-align: center;
+    background-color: white;
+}
+th {
+    background-color: #eeeeee;
+    border: 1px solid black;
+}
+
+tbody.totals {
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+ul { list-style-position: inside; }
+
+.critical { background-color: magenta; }
+.bad { background-color: red; }
+.high { background-color: orange; }
+.average { background-color: limegreen; }
+.low { background-color: aquamarine; }
+
+div.cols {
+    width: 100%;
+    margin: 1rem 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+div.cols div {
+    padding: 1rem 0;
+}
+
+.outdated { background-color: red; }

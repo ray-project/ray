@@ -18,7 +18,9 @@ To contribute a patch:
    harder to merge in a large change with a lot of disjoint features.
 2. Submit the patch as a GitHub pull request against the master branch.
 3. Make sure that your code passes the unit tests.
-4. Add new unit tests for your code.
+4. Make sure that your code passes the linter. Run setup_hooks.sh to create
+   a git hook that will run the linter before you push your changes.
+5. Add new unit tests for your code.
 
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues

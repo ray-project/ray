@@ -1,16 +1,15 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import os
-
+import logging
+import pickle
 try:
     import sigopt as sgo
-except Exception:
+except ImportError:
     sgo = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
+logger = logging.getLogger(__name__)
 
 
 class SigOptSearch(SuggestionAlgorithm):
@@ -26,8 +25,9 @@ class SigOptSearch(SuggestionAlgorithm):
         name (str): Name of experiment. Required by SigOpt.
         max_concurrent (int): Number of maximum concurrent trials supported
             based on the user's SigOpt plan. Defaults to 1.
-        reward_attr (str): The training result objective value attribute.
-            This refers to an increasing value.
+        metric (str): The training result objective value attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
 
     Example:
         >>> space = [
@@ -48,36 +48,46 @@ class SigOptSearch(SuggestionAlgorithm):
         >>>         },
         >>>     },
         >>> ]
-        >>> config = {
-        >>>     "my_exp": {
-        >>>         "run": "exp",
-        >>>         "num_samples": 10 if args.smoke_test else 1000,
-        >>>         "stop": {
-        >>>             "training_iteration": 100
-        >>>         },
-        >>>     }
-        >>> }
         >>> algo = SigOptSearch(
-        >>>     parameters, name="SigOpt Example Experiment",
-        >>>     max_concurrent=1, reward_attr="neg_mean_loss")
+        >>>     space, name="SigOpt Example Experiment",
+        >>>     max_concurrent=1, metric="mean_loss", mode="min")
     """
 
     def __init__(self,
                  space,
                  name="Default Tune Experiment",
                  max_concurrent=1,
-                 reward_attr="episode_reward_mean",
+                 reward_attr=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  **kwargs):
         assert sgo is not None, "SigOpt must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
         assert "SIGOPT_KEY" in os.environ, \
             "SigOpt API key must be stored as environ variable at SIGOPT_KEY"
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+        if "use_early_stopped_trials" in kwargs:
+            logger.warning(
+                "`use_early_stopped_trials` is not used in SigOptSearch.")
+
         self._max_concurrent = max_concurrent
-        self._reward_attr = reward_attr
+        self._metric = metric
+        if mode == "max":
+            self._metric_op = 1.
+        elif mode == "min":
+            self._metric_op = -1.
         self._live_trial_mapping = {}
 
         # Create a connection with SigOpt API, requires API key
-        self.conn = sgo.Connection(client_token=os.environ['SIGOPT_KEY'])
+        self.conn = sgo.Connection(client_token=os.environ["SIGOPT_KEY"])
 
         self.experiment = self.conn.experiments().create(
             name=name,
@@ -107,7 +117,7 @@ class SigOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to SigOpt unless early terminated or errored.
+        """Notification for the completion of trial.
 
         If a trial fails, it will be reported as a failed Observation, telling
         the optimizer that the Suggestion led to a metric failure, which
@@ -118,7 +128,7 @@ class SigOptSearch(SuggestionAlgorithm):
         if result:
             self.conn.experiments(self.experiment.id).observations().create(
                 suggestion=self._live_trial_mapping[trial_id].id,
-                value=result[self._reward_attr],
+                value=self._metric_op * result[self._metric],
             )
             # Update the experiment object
             self.experiment = self.conn.experiments(self.experiment.id).fetch()
@@ -130,3 +140,14 @@ class SigOptSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
+
+    def save(self, checkpoint_dir):
+        trials_object = (self.conn, self.experiment)
+        with open(checkpoint_dir, "wb") as outputFile:
+            pickle.dump(trials_object, outputFile)
+
+    def restore(self, checkpoint_dir):
+        with open(checkpoint_dir, "rb") as inputFile:
+            trials_object = pickle.load(inputFile)
+        self.conn = trials_object[0]
+        self.experiment = trials_object[1]

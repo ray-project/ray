@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+message ActiveObjectIDs {
+  repeated bytes object_ids = 1;
+}
+
+// Persistent state of an ActorHandle.
+message ActorHandle {
+  // ID of the actor.
+  bytes actor_id = 1;
+
+  // ID of the job that created the actor (it is possible that the handle
+  // exists on a job with a different job ID).
+  bytes creation_job_id = 3;
+
+  // Language of the actor.
+  Language actor_language = 4;
+
+  // Function descriptor of actor creation task.
+  repeated string actor_creation_task_function_descriptor = 5;
+
+  // The unique id of the dummy object returned by the actor creation task.
+  // It's used as a dependency for the first task.
+  // TODO: Remove this once scheduling is done by task counter only.
+  bytes actor_cursor = 6;
+
+  // Whether direct actor call is used.
+  bool is_direct_call = 7;
+}
+
+message AssignTaskRequest {
+  // The ID of the worker this message is intended for. This is used to
+  // ensure that workers don't try to execute tasks assigned to workers
+  // that used to be bound to the same port.
+  bytes intended_worker_id = 1;
+
+  // The task to be pushed.
+  Task task = 2;
+
+  // A list of the resources reserved for this worker.
+  // TODO(zhijunfu): `resource_ids` is represented as
+  // flatbutters-serialized bytes, will be moved to protobuf later.
+  bytes resource_ids = 3;
+}
+
+message AssignTaskReply {
+}
+
+message ReturnObject {
+  // Object ID.
+  bytes object_id = 1;
+  // If set, indicates the data is in plasma instead of inline. This
+  // means that data and metadata will be empty.
+  bool in_plasma = 2;
+  // Data of the object.
+  bytes data = 3;
+  // Metadata of the object.
+  bytes metadata = 4;
+}
+
+message PushTaskRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Address of the caller.
+  Address caller_address = 2;
+  // The task to be pushed.
+  TaskSpec task_spec = 3;
+  // The sequence number of the task for this client. This must increase
+  // sequentially starting from zero for each actor handle. The server
+  // will guarantee tasks execute in this sequence, waiting for any
+  // out-of-order request messages to arrive as necessary.
+  // If set to -1, ordering is disabled and the task executes immediately.
+  // This mode of behaviour is used for direct task submission only.
+  int64 sequence_number = 4;
+  // The max sequence number the client has processed responses for. This
+  // is a performance optimization that allows the client to tell the server
+  // to cancel any PushTaskRequests with seqno <= this value, rather than
+  // waiting for the server to time out waiting for missing messages.
+  int64 client_processed_up_to = 5;
+  // Resource mapping ids assigned to the worker executing the task.
+  repeated ResourceMapEntry resource_mapping = 6;
+}
+
+message PushTaskReply {
+  // The returned objects.
+  repeated ReturnObject return_objects = 1;
+  // Set to true if the worker will be exiting.
+  bool worker_exiting = 2;
+}
+
+message DirectActorCallArgWaitCompleteRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // Id used to uniquely identify this request. This is sent back to the core
+  // worker to notify the wait has completed.
+  int64 tag = 2;
+}
+
+message DirectActorCallArgWaitCompleteReply {
+}
+
+message GetObjectStatusRequest {
+  // The owner of the object. Note that we do not need to include
+  // intended_worker_id since the new worker can service this request too by
+  // inspecting the owner_id field.
+  bytes owner_id = 1;
+  // Wait for this object's status.
+  bytes object_id = 2;
+}
+
+message GetObjectStatusReply {
+  enum ObjectStatus {
+    CREATED = 0;
+  }
+  ObjectStatus status = 1;
+}
+
+message WaitForObjectEvictionRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ObjectID of the pinned object.
+  bytes object_id = 2;
+}
+
+message WaitForObjectEvictionReply {
+}
+
+message KillActorRequest {
+  // ID of the actor that is intended to be killed.
+  bytes intended_actor_id = 1;
+}
+
+message KillActorReply {
+}
+
+message GetCoreWorkerStatsRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+}
+
+message GetCoreWorkerStatsReply {
+  // Debug information returned from the core worker.
+  CoreWorkerStats core_worker_stats = 1;
+}
+
+service CoreWorkerService {
+  // Push a task to a worker from the raylet.
+  rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
+  // Push a task directly to this worker from another.
+  rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+  // Reply from raylet that wait for direct actor call args has completed.
+  rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
+      returns (DirectActorCallArgWaitCompleteReply);
+  // Ask the object's owner about the object's current status.
+  rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Notify the object's owner that it has been pinned by a raylet. Replying
+  // to this message indicates that the raylet should unpin the object.
+  rpc WaitForObjectEviction(WaitForObjectEvictionRequest)
+      returns (WaitForObjectEvictionReply);
+  // Request that the worker shut down without completing outstanding work.
+  rpc KillActor(KillActorRequest) returns (KillActorReply);
+  // Get metrics from core workers.
+  rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
+}

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import logging
 try:  # py3
@@ -15,30 +11,49 @@ logger = logging.getLogger(__name__)
 def dockerize_if_needed(config):
     if "docker" not in config:
         return config
+
     docker_image = config["docker"].get("image")
+    docker_pull = config["docker"].get("pull_before_run", True)
     cname = config["docker"].get("container_name")
-    if not docker_image:
+    run_options = config["docker"].get("run_options", [])
+
+    head_docker_image = config["docker"].get("head_image", docker_image)
+    head_run_options = config["docker"].get("head_run_options", [])
+
+    worker_docker_image = config["docker"].get("worker_image", docker_image)
+    worker_run_options = config["docker"].get("worker_run_options", [])
+
+    ssh_user = config["auth"]["ssh_user"]
+    if not docker_image and not (head_docker_image and worker_docker_image):
         if cname:
             logger.warning(
                 "dockerize_if_needed: "
-                "Container name given but no Docker image - continuing...")
+                "Container name given but no Docker image(s) - continuing...")
         return config
     else:
         assert cname, "Must provide container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
-    config["setup_commands"] = (
-        docker_install_cmds() + docker_start_cmds(
-            config["auth"]["ssh_user"], docker_image, docker_mounts, cname) +
-        with_docker_exec(config["setup_commands"], container_name=cname))
 
-    config["head_setup_commands"] = with_docker_exec(
-        config["head_setup_commands"], container_name=cname)
+    if docker_pull:
+        docker_pull_cmd = "docker pull {}".format(docker_image)
+        config["initialization_commands"].append(docker_pull_cmd)
+
+    head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
+                                          docker_mounts, cname,
+                                          run_options + head_run_options)
+
+    worker_docker_start = docker_start_cmds(ssh_user, worker_docker_image,
+                                            docker_mounts, cname,
+                                            run_options + worker_run_options)
+
+    config["head_setup_commands"] = head_docker_start + (with_docker_exec(
+        config["head_setup_commands"], container_name=cname))
     config["head_start_ray_commands"] = (
         docker_autoscaler_setup(cname) + with_docker_exec(
             config["head_start_ray_commands"], container_name=cname))
 
-    config["worker_setup_commands"] = with_docker_exec(
-        config["worker_setup_commands"], container_name=cname)
+    config["worker_setup_commands"] = worker_docker_start + (with_docker_exec(
+        config["worker_setup_commands"], container_name=cname))
     config["worker_start_ray_commands"] = with_docker_exec(
         config["worker_start_ray_commands"],
         container_name=cname,
@@ -58,13 +73,6 @@ def with_docker_exec(cmds, container_name, env_vars=None):
     ]
 
 
-def docker_install_cmds():
-    return [
-        aptwait_cmd() + " && sudo apt-get update",
-        aptwait_cmd() + " && sudo apt-get install -y docker.io"
-    ]
-
-
 def aptwait_cmd():
     return ("while sudo fuser"
             " /var/{lib/{dpkg,apt/lists},cache/apt/archives}/lock"
@@ -72,13 +80,8 @@ def aptwait_cmd():
             "do echo 'Waiting for release of dpkg/apt locks'; sleep 5; done")
 
 
-def docker_start_cmds(user, image, mount, cname):
+def docker_start_cmds(user, image, mount, cname, user_options):
     cmds = []
-    cmds.append("sudo kill -SIGUSR1 $(pidof dockerd) || true")
-    cmds.append("sudo service docker start")
-    cmds.append("sudo usermod -a -G docker {}".format(user))
-    cmds.append("docker rm -f {} || true".format(cname))
-    cmds.append("docker pull {}".format(image))
 
     # create flags
     # ports for the redis, object manager, and tune client
@@ -94,17 +97,18 @@ def docker_start_cmds(user, image, mount, cname):
     env_flags = " ".join(
         ["-e {name}={val}".format(name=k, val=v) for k, v in env_vars.items()])
 
+    user_options_str = " ".join(user_options)
     # docker run command
+    docker_check = [
+        "docker", "inspect", "-f", "'{{.State.Running}}'", cname, "||"
+    ]
     docker_run = [
         "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
-        port_flags, mount_flags, env_flags, "--net=host", image, "bash"
+        port_flags, mount_flags, env_flags, user_options_str, "--net=host",
+        image, "bash"
     ]
-    cmds.append(" ".join(docker_run))
-    docker_update = []
-    docker_update.append("apt-get -y update")
-    docker_update.append("apt-get -y upgrade")
-    docker_update.append("apt-get install -y git wget cmake psmisc")
-    cmds.extend(with_docker_exec(docker_update, container_name=cname))
+    cmds.append(" ".join(docker_check + docker_run))
+
     return cmds
 
 

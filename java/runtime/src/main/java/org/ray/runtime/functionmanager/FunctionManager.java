@@ -1,27 +1,38 @@
 package org.ray.runtime.functionmanager;
 
+import com.google.common.base.Strings;
+import java.io.File;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.DirectoryFileFilter;
+import org.apache.commons.io.filefilter.RegexFileFilter;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.objectweb.asm.Type;
 import org.ray.api.function.RayFunc;
-import org.ray.api.id.UniqueId;
-import org.ray.runtime.util.JarLoader;
+import org.ray.api.id.JobId;
 import org.ray.runtime.util.LambdaUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Manages functions by driver id.
+ * Manages functions by job id.
  */
 public class FunctionManager {
 
@@ -30,103 +41,131 @@ public class FunctionManager {
   static final String CONSTRUCTOR_NAME = "<init>";
 
   /**
-   * Cache from a RayFunc object to its corresponding FunctionDescriptor. Because
+   * Cache from a RayFunc object to its corresponding JavaFunctionDescriptor. Because
    * `LambdaUtils.getSerializedLambda` is expensive.
    */
-  private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, FunctionDescriptor>>
+  // If the cache is not thread local, we'll need a lock to protect it,
+  // which means competition is highly possible.
+  private static final ThreadLocal<WeakHashMap<Class<? extends RayFunc>, JavaFunctionDescriptor>>
       RAY_FUNC_CACHE = ThreadLocal.withInitial(WeakHashMap::new);
 
   /**
-   * Mapping from the driver id to the functions that belong to this driver.
+   * Mapping from the job id to the functions that belong to this job.
    */
-  private Map<UniqueId, DriverFunctionTable> driverFunctionTables = new HashMap<>();
+  private ConcurrentMap<JobId, JobFunctionTable> jobFunctionTables = new ConcurrentHashMap<>();
 
   /**
-   * The resource path which we can load the driver's jar resources.
+   * The resource path which we can load the job's jar resources.
    */
-  private String driverResourcePath;
+  private final String jobResourcePath;
 
   /**
-   * Construct a FunctionManager with the specified driver resource path.
+   * Construct a FunctionManager with the specified job resource path.
    *
-   * @param driverResourcePath The specified driver resource that
-   *     can store the driver's resources.
+   * @param jobResourcePath The specified job resource that can store the job's
+   * resources.
    */
-  public FunctionManager(String driverResourcePath) {
-    this.driverResourcePath = driverResourcePath;
+  public FunctionManager(String jobResourcePath) {
+    this.jobResourcePath = jobResourcePath;
   }
 
   /**
    * Get the RayFunction from a RayFunc instance (a lambda).
    *
-   * @param driverId current driver id.
+   * @param jobId current job id.
    * @param func The lambda.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(UniqueId driverId, RayFunc func) {
-    FunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
+  public RayFunction getFunction(JobId jobId, RayFunc func) {
+    JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
     if (functionDescriptor == null) {
+      // It's OK to not lock here, because it's OK to have multiple JavaFunctionDescriptor instances
+      // for the same RayFunc instance.
       SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(func);
       final String className = serializedLambda.getImplClass().replace('/', '.');
       final String methodName = serializedLambda.getImplMethodName();
       final String typeDescriptor = serializedLambda.getImplMethodSignature();
-      functionDescriptor = new FunctionDescriptor(className, methodName, typeDescriptor);
-      RAY_FUNC_CACHE.get().put(func.getClass(),functionDescriptor);
+      functionDescriptor = new JavaFunctionDescriptor(className, methodName, typeDescriptor);
+      RAY_FUNC_CACHE.get().put(func.getClass(), functionDescriptor);
     }
-    return getFunction(driverId, functionDescriptor);
+    return getFunction(jobId, functionDescriptor);
   }
 
   /**
    * Get the RayFunction from a function descriptor.
    *
-   * @param driverId Current driver id.
+   * @param jobId Current job id.
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(UniqueId driverId, FunctionDescriptor functionDescriptor) {
-    DriverFunctionTable driverFunctionTable = driverFunctionTables.get(driverId);
-    if (driverFunctionTable == null) {
-      String resourcePath = driverResourcePath + "/" + driverId.toString() + "/";
-      ClassLoader classLoader;
-
-      if (driverResourcePath != null && !driverResourcePath.isEmpty()) {
-        classLoader = JarLoader.loadJars(resourcePath, false);
-        LOGGER.info("Succeeded to load driver({}) resource. Resource path is {}",
-            driverId, resourcePath);
-      } else {
-        classLoader = getClass().getClassLoader();
+  public RayFunction getFunction(JobId jobId,
+      JavaFunctionDescriptor functionDescriptor) {
+    JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
+    if (jobFunctionTable == null) {
+      synchronized (this) {
+        jobFunctionTable = jobFunctionTables.get(jobId);
+        if (jobFunctionTable == null) {
+          jobFunctionTable = createJobFunctionTable(jobId);
+          jobFunctionTables.put(jobId, jobFunctionTable);
+        }
       }
-
-      driverFunctionTable = new DriverFunctionTable(classLoader);
-      driverFunctionTables.put(driverId, driverFunctionTable);
     }
-    return driverFunctionTable.getFunction(functionDescriptor);
+    return jobFunctionTable.getFunction(functionDescriptor);
+  }
+
+  private JobFunctionTable createJobFunctionTable(JobId jobId) {
+    ClassLoader classLoader;
+    if (Strings.isNullOrEmpty(jobResourcePath)) {
+      classLoader = getClass().getClassLoader();
+    } else {
+      File resourceDir = new File(jobResourcePath + "/" + jobId.toString() + "/");
+      Collection<File> files = FileUtils.listFiles(resourceDir,
+          new RegexFileFilter(".*\\.jar"), DirectoryFileFilter.DIRECTORY);
+      files.add(resourceDir);
+      final List<URL> urlList = files.stream().map(file -> {
+        try {
+          return file.toURI().toURL();
+        } catch (MalformedURLException e) {
+          throw new RuntimeException(e);
+        }
+      }).collect(Collectors.toList());
+      classLoader = new URLClassLoader(urlList.toArray(new URL[urlList.size()]));
+      LOGGER.debug("Resource loaded for job {} from path {}.", jobId,
+          resourceDir.getAbsolutePath());
+    }
+
+    return new JobFunctionTable(classLoader);
   }
 
   /**
-   * Manages all functions that belong to one driver.
+   * Manages all functions that belong to one job.
    */
-  static class DriverFunctionTable {
+  static class JobFunctionTable {
 
     /**
-     * The driver's corresponding class loader.
+     * The job's corresponding class loader.
      */
-    ClassLoader classLoader;
+    final ClassLoader classLoader;
     /**
      * Functions per class, per function name + type descriptor.
      */
-    Map<String, Map<Pair<String, String>, RayFunction>> functions;
+    ConcurrentMap<String, Map<Pair<String, String>, RayFunction>> functions;
 
-    DriverFunctionTable(ClassLoader classLoader) {
+    JobFunctionTable(ClassLoader classLoader) {
       this.classLoader = classLoader;
-      this.functions = new HashMap<>();
+      this.functions = new ConcurrentHashMap<>();
     }
 
-    RayFunction getFunction(FunctionDescriptor descriptor) {
+    RayFunction getFunction(JavaFunctionDescriptor descriptor) {
       Map<Pair<String, String>, RayFunction> classFunctions = functions.get(descriptor.className);
       if (classFunctions == null) {
-        classFunctions = loadFunctionsForClass(descriptor.className);
-        functions.put(descriptor.className, classFunctions);
+        synchronized (this) {
+          classFunctions = functions.get(descriptor.className);
+          if (classFunctions == null) {
+            classFunctions = loadFunctionsForClass(descriptor.className);
+            functions.put(descriptor.className, classFunctions);
+          }
+        }
       }
       return classFunctions.get(ImmutablePair.of(descriptor.name, descriptor.typeDescriptor));
     }
@@ -150,7 +189,7 @@ public class FunctionManager {
               e instanceof Method ? Type.getType((Method) e) : Type.getType((Constructor) e);
           final String typeDescriptor = type.getDescriptor();
           RayFunction rayFunction = new RayFunction(e, classLoader,
-              new FunctionDescriptor(className, methodName, typeDescriptor));
+              new JavaFunctionDescriptor(className, methodName, typeDescriptor));
           map.put(ImmutablePair.of(methodName, typeDescriptor), rayFunction);
         }
       } catch (Exception e) {

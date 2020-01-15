@@ -52,6 +52,17 @@ documentation:
 
 .. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
 
+Running Microbenchmarks
+-----------------------
+
+To run a set of single-node Ray microbenchmarks, use:
+
+.. code-block:: bash
+
+  ray microbenchmark
+
+You can find the microbenchmark results for Ray releases in the `GitHub release logs <https://github.com/ray-project/ray/tree/master/doc/dev/release_logs>`__.
+
 References
 ----------
 

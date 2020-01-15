@@ -11,10 +11,27 @@
 #include <iostream>
 
 #ifdef RAY_USE_GLOG
+#include <sys/stat.h>
 #include "glog/logging.h"
 #endif
 
 namespace ray {
+
+#ifdef RAY_USE_GLOG
+struct StdoutLogger : public google::base::Logger {
+  virtual void Write(bool /* should flush */, time_t /* timestamp */, const char *message,
+                     int length) {
+    // note: always flush otherwise it never shows up in raylet.out
+    std::cout << std::string(message, length) << std::flush;
+  }
+
+  virtual void Flush() { std::cout.flush(); }
+
+  virtual google::uint32 LogSize() { return 0; }
+};
+
+static StdoutLogger stdout_logger_singleton;
+#endif
 
 // This is the default implementation of ray log,
 // which is independent of any libs.
@@ -68,6 +85,7 @@ typedef ray::CerrLog LoggingProvider;
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
 std::string RayLog::log_dir_ = "";
+bool RayLog::is_failure_signal_handler_installed_ = false;
 
 #ifdef RAY_USE_GLOG
 using namespace google;
@@ -120,10 +138,13 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   app_name_ = app_name;
   log_dir_ = log_dir;
 #ifdef RAY_USE_GLOG
-  int mapped_severity_threshold = GetMappedSeverity(severity_threshold_);
-  google::SetStderrLogging(mapped_severity_threshold);
-  // Enable log file if log_dir_ is not empty.
-  if (!log_dir_.empty()) {
+  google::InitGoogleLogging(app_name_.c_str());
+  if (log_dir_.empty()) {
+    google::SetStderrLogging(GetMappedSeverity(RayLogLevel::ERROR));
+    int level = GetMappedSeverity(severity_threshold_);
+    google::base::SetLogger(level, &stdout_logger_singleton);
+  } else {
+    // Enable log file if log_dir_ is not empty.
     auto dir_ends_with_slash = log_dir_;
     if (log_dir_[log_dir_.length() - 1] != '/') {
       dir_ends_with_slash += "/";
@@ -138,30 +159,36 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
         app_name_without_path = app_name.substr(pos + 1);
       }
     }
-    google::InitGoogleLogging(app_name_.c_str());
     google::SetLogFilenameExtension(app_name_without_path.c_str());
-    for (int i = static_cast<int>(severity_threshold_);
-         i <= static_cast<int>(RayLogLevel::FATAL); ++i) {
-      int level = GetMappedSeverity(static_cast<RayLogLevel>(i));
-      google::SetLogDestination(level, dir_ends_with_slash.c_str());
-    }
+    int level = GetMappedSeverity(severity_threshold_);
+    google::SetLogDestination(level, dir_ends_with_slash.c_str());
   }
 #endif
 }
 
 void RayLog::UninstallSignalAction() {
 #ifdef RAY_USE_GLOG
+  if (!is_failure_signal_handler_installed_) {
+    return;
+  }
   RAY_LOG(DEBUG) << "Uninstall signal handlers.";
   // This signal list comes from glog's signalhandler.cc.
   // https://github.com/google/glog/blob/master/src/signalhandler.cc#L58-L70
-  static std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
+  std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
+#ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
+  for (int signal_num : installed_signals) {
+    RAY_CHECK(signal(signal_num, SIG_DFL) != SIG_ERR);
+  }
+#else
   struct sigaction sig_action;
   memset(&sig_action, 0, sizeof(sig_action));
   sigemptyset(&sig_action.sa_mask);
   sig_action.sa_handler = SIG_DFL;
   for (int signal_num : installed_signals) {
-    sigaction(signal_num, &sig_action, NULL);
+    RAY_CHECK(sigaction(signal_num, &sig_action, NULL) == 0);
   }
+#endif
+  is_failure_signal_handler_installed_ = false;
 #endif
 }
 
@@ -176,7 +203,11 @@ void RayLog::ShutDownRayLog() {
 
 void RayLog::InstallFailureSignalHandler() {
 #ifdef RAY_USE_GLOG
+  if (is_failure_signal_handler_installed_) {
+    return;
+  }
   google::InstallFailureSignalHandler();
+  is_failure_signal_handler_installed_ = true;
 #endif
 }
 
@@ -186,8 +217,7 @@ bool RayLog::IsLevelEnabled(RayLogLevel log_level) {
 
 RayLog::RayLog(const char *file_name, int line_number, RayLogLevel severity)
     // glog does not have DEBUG level, we can handle it using is_enabled_.
-    : logging_provider_(nullptr),
-      is_enabled_(severity >= severity_threshold_) {
+    : logging_provider_(nullptr), is_enabled_(severity >= severity_threshold_) {
 #ifdef RAY_USE_GLOG
   if (is_enabled_) {
     logging_provider_ =

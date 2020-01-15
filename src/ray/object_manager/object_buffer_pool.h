@@ -12,8 +12,8 @@
 
 #include "plasma/client.h"
 
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 
 namespace ray {
 
@@ -157,7 +157,7 @@ class ObjectBufferPool {
   };
 
   /// The state of a chunk associated with a create operation.
-  enum class CreateChunkState : uint { AVAILABLE = 0, REFERENCED, SEALED };
+  enum class CreateChunkState : unsigned int { AVAILABLE = 0, REFERENCED, SEALED };
 
   /// Holds the state of a create buffer.
   struct CreateBufferState {

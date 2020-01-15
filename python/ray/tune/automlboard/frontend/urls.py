@@ -18,10 +18,6 @@ Including another URLconf
     2. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from django.conf.urls import url
 from django.contrib import admin
 
@@ -29,10 +25,10 @@ import ray.tune.automlboard.frontend.view as view
 import ray.tune.automlboard.frontend.query as query
 
 urlpatterns = [
-    url(r'^admin/', admin.site.urls),
-    url(r'^$', view.index),
-    url(r'^job$', view.job),
-    url(r'^trial$', view.trial),
-    url(r'^query_job', query.query_job),
-    url(r'^query_trial', query.query_trial)
+    url(r"^admin/", admin.site.urls),
+    url(r"^$", view.index),
+    url(r"^job$", view.job),
+    url(r"^trial$", view.trial),
+    url(r"^query_job", query.query_job),
+    url(r"^query_trial", query.query_trial)
 ]

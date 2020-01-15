@@ -19,15 +19,16 @@ import tensorflow as tf
 from tensorflow.python.keras.datasets import cifar10
 from tensorflow.python.keras.layers import Input, Dense, Dropout, Flatten
 from tensorflow.python.keras.layers import Convolution2D, MaxPooling2D
-from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.models import Model, load_model
 from tensorflow.python.keras.preprocessing.image import ImageDataGenerator
 
 import ray
-from ray.tune import grid_search, run_experiments, sample_from
+from ray.tune import grid_search, run, sample_from
 from ray.tune import Trainable
 from ray.tune.schedulers import PopulationBasedTraining
 
 num_classes = 10
+NUM_SAMPLES = 128
 
 
 class Cifar10Model(Trainable):
@@ -98,7 +99,7 @@ class Cifar10Model(Trainable):
         y = MaxPooling2D(pool_size=2, strides=2, padding="same")(y)
 
         y = Flatten()(y)
-        y = Dropout(self.config["dropout"])(y)
+        y = Dropout(self.config.get("dropout", 0.5))(y)
         y = Dense(
             units=10, activation="softmax", kernel_initializer="he_normal")(y)
 
@@ -111,7 +112,8 @@ class Cifar10Model(Trainable):
         model = self._build_model(x_train.shape[1:])
 
         opt = tf.keras.optimizers.Adadelta(
-            lr=self.config["lr"], decay=self.config["decay"])
+            lr=self.config.get("lr", 1e-4),
+            decay=self.config.get("decay", 1e-4))
         model.compile(
             loss="categorical_crossentropy",
             optimizer=opt,
@@ -120,7 +122,9 @@ class Cifar10Model(Trainable):
 
     def _train(self):
         x_train, y_train = self.train_data
+        x_train, y_train = x_train[:NUM_SAMPLES], y_train[:NUM_SAMPLES]
         x_test, y_test = self.test_data
+        x_test, y_test = x_test[:NUM_SAMPLES], y_test[:NUM_SAMPLES]
 
         aug_gen = ImageDataGenerator(
             # set input mean to 0 over the dataset
@@ -146,12 +150,11 @@ class Cifar10Model(Trainable):
         )
 
         aug_gen.fit(x_train)
-        gen = aug_gen.flow(
-            x_train, y_train, batch_size=self.config["batch_size"])
+        batch_size = self.config.get("batch_size", 64)
+        gen = aug_gen.flow(x_train, y_train, batch_size=batch_size)
         self.model.fit_generator(
             generator=gen,
-            steps_per_epoch=50000 // self.config["batch_size"],
-            epochs=self.config["epochs"],
+            epochs=self.config.get("epochs", 1),
             validation_data=None)
 
         # loss, accuracy
@@ -160,11 +163,13 @@ class Cifar10Model(Trainable):
 
     def _save(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
-        self.model.save_weights(file_path)
+        self.model.save(file_path)
         return file_path
 
     def _restore(self, path):
-        self.model.load_weights(path)
+        # See https://stackoverflow.com/a/42763323
+        del self.model
+        self.model = load_model(path)
 
     def _stop(self):
         # If need, save your model when exit.
@@ -180,7 +185,6 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     train_spec = {
-        "run": Cifar10Model,
         "resources_per_trial": {
             "cpu": 1,
             "gpu": 1
@@ -207,10 +211,11 @@ if __name__ == "__main__":
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        reward_attr="mean_accuracy",
+        metric="mean_accuracy",
+        mode="max",
         perturbation_interval=10,
         hyperparam_mutations={
             "dropout": lambda _: np.random.uniform(0, 1),
         })
 
-    run_experiments({"pbt_cifar10": train_spec}, scheduler=pbt)
+    run(Cifar10Model, name="pbt_cifar10", scheduler=pbt, **train_spec)
