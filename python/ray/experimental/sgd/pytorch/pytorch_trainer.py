@@ -17,6 +17,7 @@ from ray.experimental.sgd import utils
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 
 logger = logging.getLogger(__name__)
+RESIZE_COOLDOWN_S = 10
 
 
 class PyTorchTrainer:
@@ -95,6 +96,7 @@ class PyTorchTrainer:
         self.max_replicas = num_replicas
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
+        self._last_resize = float("-inf")
         self._start_workers(self.max_replicas)
 
     def _start_workers(self, num_replicas):
@@ -162,7 +164,7 @@ class PyTorchTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self, max_retries=0, checkpoint="auto"):
+    def train(self, max_retries=10, checkpoint="auto"):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set
@@ -179,10 +181,18 @@ class PyTorchTrainer:
                 will save a checkpoint before starting to train.
         """
         assert max_retries >= 0, "`max_retries` must be non-negative."
-        if max_retries and checkpoint == "auto":
-            logger.debug("Retrying detected. Automatically checkpointing.")
-            checkpoint_dir = self.save(
-                os.path.join(self.temp_dir, "tmp_checkpoint"))
+        if max_retries:
+            if checkpoint == "auto":
+                logger.debug("Retrying detected. Automatically checkpointing.")
+                checkpoint = self.save(
+                    os.path.join(self.temp_dir, "tmp_checkpoint"))
+            elif not checkpoint:
+                raise ValueError("Cannot retry from empty checkpoint.")
+
+        if checkpoint and self._should_resize():
+            logger.info("Resize opportunity detected. Attempting to scale up.")
+            self._resize_workers(checkpoint=checkpoint)
+
         with self.optimizer_timer:
             success, worker_stats = self._train_step()
             # Fault handling
@@ -191,7 +201,7 @@ class PyTorchTrainer:
                     break
                 else:
                     self._num_failures += 1
-                self._try_resize_workers(checkpoint=checkpoint_dir)
+                self._resize_workers(checkpoint=checkpoint)
                 logger.info("Retrying training step with %d workers." % len(
                     self.workers))
                 success, worker_stats = self._train_step()
@@ -269,11 +279,16 @@ class PyTorchTrainer:
                 worker.shutdown.remote()
                 worker.__ray_terminate__.remote()
             else:
+                logger.warning("Killing worker {}.".format(worker))
                 worker.__ray_kill__()
 
-    def _try_resize_workers(self, checkpoint, max_retries=5):
+        self.workers = []
+
+    def _resize_workers(self, checkpoint, max_retries=10):
         # check available resources
         self.shutdown(force=True)
+        assert checkpoint, "Cannot restore without checkpoint."
+
         time.sleep(1)
         for i in range(max_retries):
             resources = ray.available_resources()
@@ -281,15 +296,30 @@ class PyTorchTrainer:
             if self.use_gpu:
                 new_workers = min(resources.get("GPU", 0), new_workers)
             if new_workers:
+                self._last_resize = time.time()
                 self._start_workers(int(new_workers))
                 self.restore(checkpoint)
                 return
             else:
                 delay = 2**i
+                logger.info("Resources: {}".format(resources))
                 logger.warning(
                     "No new workers found. Retrying in %d sec." % delay)
                 time.sleep(delay)
         raise RuntimeError("Exceeded max_retries for relaunching workers.")
+
+    def _should_resize(self):
+        """Returns True if past cooldown and exists resources to scale up."""
+        worker_gap = self.max_replicas - len(self.workers)
+        past_cooldown = (time.time() - self._last_resize) > RESIZE_COOLDOWN_S
+        if past_cooldown and worker_gap:
+            resources = ray.available_resources()
+            potential_workers = min(resources.get("CPU", 0), self.max_replicas)
+            if self.use_gpu:
+                potential_workers = min(
+                    resources.get("GPU", 0), potential_workers)
+            return potential_workers > 0
+        return False
 
 
 class PyTorchTrainable(Trainable):
