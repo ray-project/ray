@@ -2,7 +2,7 @@ import importlib
 from abc import ABC, abstractmethod
 
 import cloudpickle
-import msgpack
+import ray.streaming.runtime.gateway_client as gateway_client
 
 
 class Partition(ABC):
@@ -75,7 +75,7 @@ def deserialize(partition_bytes):
 
 
 def load_partition(descriptor_partition_bytes):
-    partition_bytes, module_name, class_name, function_name = msgpack.loads(
+    partition_bytes, module_name, class_name, function_name = gateway_client.deserialize(
         descriptor_partition_bytes)
     if partition_bytes:
         return deserialize(partition_bytes)

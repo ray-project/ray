@@ -4,7 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 
 import cloudpickle
-import msgpack
+import ray.streaming.runtime.gateway_client as gateway_client
 
 
 class Function(ABC):
@@ -136,7 +136,7 @@ def deserialize(func_bytes):
 
 def load_function(descriptor_func_bytes):
     function_bytes, module_name, class_name, function_name, function_interface\
-        = msgpack.loads(descriptor_func_bytes)
+        = gateway_client.deserialize(descriptor_func_bytes)
     if function_bytes:
         return deserialize(function_bytes)
     else:
