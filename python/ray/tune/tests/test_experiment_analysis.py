@@ -70,7 +70,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         self.assertTrue(logdir2.startswith(self.test_path))
         self.assertNotEquals(logdir, logdir2)
 
-    def testGetTrialCheckpointsPathsWithTrial(self):
+    def testGetTrialCheckpointsPathsByTrial(self):
         best_trial = self.ea.get_best_trial(self.metric)
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(best_trial)
         logdir = self.ea.get_best_logdir(self.metric)
@@ -78,14 +78,14 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
-    def testGetTrialCheckpointsPathsWithPath(self):
+    def testGetTrialCheckpointsPathsByPath(self):
         logdir = self.ea.get_best_logdir(self.metric)
         checkpoints_metrics = self.ea.get_trial_checkpoints_paths(logdir)
         expected_path = os.path.join(logdir, "checkpoint_1/", "checkpoint")
         assert checkpoints_metrics[0][0] == expected_path
         assert checkpoints_metrics[0][1] == 1
 
-    def testGetTrialCheckpointsPathsWithMetric(self):
+    def testGetTrialCheckpointsPathsWithMetricByTrial(self):
         best_trial = self.ea.get_best_trial(self.metric)
         paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
         logdir = self.ea.get_best_logdir(self.metric)
@@ -93,7 +93,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
         assert paths[0][0] == expected_path
         assert paths[0][1] == best_trial.metric_analysis[self.metric]["last"]
 
-    def testGetTrialCheckpointsPathsWithMetricWithPath(self):
+    def testGetTrialCheckpointsPathsWithMetricByPath(self):
         best_trial = self.ea.get_best_trial(self.metric)
         logdir = self.ea.get_best_logdir(self.metric)
         paths = self.ea.get_trial_checkpoints_paths(best_trial, self.metric)
