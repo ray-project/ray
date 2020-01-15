@@ -14,11 +14,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
@@ -55,10 +52,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final LocalModeObjectStore objectStore;
 
   /// The thread pool to execute actor tasks.
-  private final ConcurrentHashMap<ActorId, ActorThread> actorThreads = new ConcurrentHashMap<>();
+  private final Map<ActorId, ActorThread> actorTaskExecutorService;
 
   /// The thread pool to execute normal tasks.
-  private final ExecutorService normalTaskExec;
+  private final ExecutorService normalTaskExecutorService;
 
   private final Deque<TaskExecutor> idleTaskExecutors = new ArrayDeque<>();
   private final Map<ActorId, TaskExecutor> actorTaskExecutors = new HashMap<>();
@@ -67,6 +64,11 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   private static class ActorThread extends Thread {
     private BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
+    private AtomicBoolean running = new AtomicBoolean(true);
+
+    public void terminate() {
+      running.set(false);
+    }
 
     public void submit(Runnable runnable) {
       try {
@@ -78,9 +80,17 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
     @Override
     public void run() {
-      while (true) {
+      while (running.get()) {
         try {
-          Runnable runnable = queue.take();
+          Runnable runnable = queue.poll(1, TimeUnit.SECONDS);
+          if (!running.get()) {
+            // Return immediately if this thread is terminated.
+            return;
+          }
+          if (runnable == null) {
+            // No pending task, let's continue.
+            continue;
+          }
           runnable.run();
         } catch (InterruptedException e) {
           throw new RuntimeException("Failed to execute the actor task.", e);
@@ -93,8 +103,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       int numberThreads) {
     this.runtime = runtime;
     this.objectStore = objectStore;
-    // The thread pool that executes tasks in parallel.
-    exec = Executors.newFixedThreadPool(numberThreads);
+    // The thread pool that executes normal tasks in parallel.
+    normalTaskExecutorService = Executors.newFixedThreadPool(numberThreads);
+    // The thread pool that executes actor tasks in parallel.
+    actorTaskExecutorService = new HashMap<>();
   }
 
   public void onObjectPut(ObjectId id) {
@@ -244,7 +256,21 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   public void shutdown() {
-    exec.shutdown();
+    // Shutdown actor task executor service.
+    synchronized (actorTaskExecutorService) {
+      for (Map.Entry<ActorId, ActorThread> item : actorTaskExecutorService.entrySet()) {
+        item.getValue().terminate();
+      }
+      for (Map.Entry<ActorId, ActorThread> item : actorTaskExecutorService.entrySet()) {
+        try {
+          item.getValue().join();
+        } catch (InterruptedException e) {
+          throw new RuntimeException("Failed to shutdown Ray in single process.", e);
+        }
+      }
+    }
+    // Shutdown normal task executor service.
+    normalTaskExecutorService.shutdown();
   }
 
   public static ActorId getActorId(TaskSpec taskSpec) {
@@ -299,15 +325,19 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
         // If all dependencies are ready, execute this task.
         if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
           ActorThread actorThread = new ActorThread();
-          actorThread.start();
+          synchronized (actorTaskExecutorService) {
+            actorTaskExecutorService.put(getActorId(taskSpec), actorThread);
+          }
           actorThread.submit(runnable);
-          actorThreads.put(getActorId(taskSpec), actorThread);
+          actorThread.start();
         } else if (taskSpec.getType() == TaskType.ACTOR_TASK) {
-          ActorThread th = actorThreads.get(getActorId(taskSpec));
-          th.submit(runnable);
+          synchronized (actorTaskExecutorService) {
+            ActorThread th = actorTaskExecutorService.get(getActorId(taskSpec));
+            th.submit(runnable);
+          }
         } else {
           // Normal task.
-          exec.submit(runnable);
+          normalTaskExecutorService.submit(runnable);
         }
       } else {
         // If some dependencies aren't ready yet, put this task in waiting list.
