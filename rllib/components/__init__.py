@@ -4,7 +4,7 @@ from ray.rllib.components.explorations import Exploration, \
 
 __all__ = [
     "Component",
-    "EpsilonGreedy",
+    "EpsilonGreedyExploration",
     "Exploration",
 ]
 

@@ -155,9 +155,6 @@ class Component:
                 else:
                     return obj
 
-                if type_.find('.') != -1:
-            # A string: Filename or a python module+class.
-            elif isinstance(type_, str):
                 if re.search(r'\.(yaml|yml|json)$', type_):
                     return cls.from_file(type_, *ctor_args, **ctor_kwargs)
                 elif type_.find('.') != -1:
