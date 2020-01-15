@@ -9,28 +9,32 @@ import org.ray.streaming.message.Record;
 
 public abstract class StreamOperator<F extends Function> implements Operator {
 
+  protected String name;
   protected F function;
   protected List<Collector> collectorList;
   protected RuntimeContext runtimeContext;
 
 
   public StreamOperator(F function) {
+    this.name = getClass().getSimpleName();
     this.function = function;
   }
 
+  @Override
   public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
     this.collectorList = collectorList;
     this.runtimeContext = runtimeContext;
   }
 
+  @Override
   public void finish() {
 
   }
 
+  @Override
   public void close() {
 
   }
-
 
   protected void collect(Record record) {
     for (Collector collector : this.collectorList) {
@@ -44,4 +48,7 @@ public abstract class StreamOperator<F extends Function> implements Operator {
     }
   }
 
+  public String getName() {
+    return name;
+  }
 }

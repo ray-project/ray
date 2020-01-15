@@ -473,6 +473,32 @@ class NodeInfoAccessor {
   NodeInfoAccessor() = default;
 };
 
+/// \class ErrorInfoAccessor
+/// `ErrorInfoAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// error information in the GCS.
+class ErrorInfoAccessor {
+ public:
+  virtual ~ErrorInfoAccessor() = default;
+
+  /// Report a job error to GCS asynchronously.
+  /// The error message will be pushed to the driver of a specific if it is
+  /// a job internal error, or broadcast to all drivers if it is a system error.
+  ///
+  /// TODO(rkn): We need to make sure that the errors are unique because
+  /// duplicate messages currently cause failures (the GCS doesn't allow it). A
+  /// natural way to do this is to have finer-grained time stamps.
+  ///
+  /// \param data_ptr The error message that will be reported to GCS.
+  /// \param callback Callback that will be called when report is complete.
+  /// \return Status
+  virtual Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
+                                     const StatusCallback &callback) = 0;
+
+ protected:
+  ErrorInfoAccessor() = default;
+};
+
 /// \class StatsInfoAccessor
 /// `StatsInfoAccessor` is a sub-interface of `GcsClient`.
 /// This class includes all the methods that are related to accessing

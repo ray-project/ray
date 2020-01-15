@@ -290,6 +290,22 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
 };
 
+/// \class RedisErrorInfoAccessor
+/// RedisErrorInfoAccessor is an implementation of `ErrorInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisErrorInfoAccessor : public ErrorInfoAccessor {
+ public:
+  explicit RedisErrorInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisErrorInfoAccessor() = default;
+
+  Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
+                             const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+};
+
 /// \class RedisStatsInfoAccessor
 /// RedisStatsInfoAccessor is an implementation of `StatsInfoAccessor`
 /// that uses Redis as the backend storage.
