@@ -19,7 +19,7 @@ class GatewayClient:
              b'createStreamingContext',
              b'()[B'])
         call = self._python_gateway_actor.submit_task(function_descriptor)
-        return msgpack.unpackb(ray.get(call))
+        return deserialize(ray.get(call))
 
     def with_config(self, conf):
         function_descriptor = FunctionDescriptor.from_bytes_list(
@@ -27,7 +27,7 @@ class GatewayClient:
              b'withConfig',
              b'([B)[B'])
         call = self._python_gateway_actor.submit_task(function_descriptor,
-                                                      msgpack.packb(conf))
+                                                      serialize(conf))
         ray.get(call)
 
     def execute(self):
@@ -44,8 +44,8 @@ class GatewayClient:
              b'createPythonStreamSource',
              b'([B)[B'])
         call = self._python_gateway_actor.submit_task(function_descriptor,
-                                                      msgpack.packb(serialized_func))
-        return msgpack.unpackb(ray.get(call))
+                                                      serialize(serialized_func))
+        return deserialize(ray.get(call))
 
     def create_py_func(self, serialized_func):
         function_descriptor = FunctionDescriptor.from_bytes_list(
@@ -53,8 +53,8 @@ class GatewayClient:
              b'createPyFunc',
              b'([B)[B'])
         call = self._python_gateway_actor.submit_task(function_descriptor,
-                                                      msgpack.packb(serialized_func))
-        return msgpack.unpackb(ray.get(call))
+                                                      serialize(serialized_func))
+        return deserialize(ray.get(call))
 
     def create_py_partition(self, serialized_partition):
         function_descriptor = FunctionDescriptor.from_bytes_list(
@@ -62,23 +62,31 @@ class GatewayClient:
              b'createPyPartition',
              b'([B)[B'])
         call = self._python_gateway_actor.submit_task(function_descriptor,
-                                                      msgpack.packb(serialized_partition))
-        return msgpack.unpackb(ray.get(call))
+                                                      serialize(serialized_partition))
+        return deserialize(ray.get(call))
 
     def call_function(self, java_class, java_function, *args):
         function_descriptor = FunctionDescriptor.from_bytes_list(
             [GatewayClient._PYTHON_GATEWAY_CLASSNAME,
              b'callFunction',
              b'([B)[B'])
-        java_params = msgpack.packb([java_class, java_function] + list(args))
+        java_params = serialize([java_class, java_function] + list(args))
         call = self._python_gateway_actor.submit_task(function_descriptor, java_params)
-        return msgpack.unpackb(ray.get(call))
+        return deserialize(ray.get(call))
 
     def call_method(self, java_object, java_method, *args):
         function_descriptor = FunctionDescriptor.from_bytes_list(
             [GatewayClient._PYTHON_GATEWAY_CLASSNAME,
              b'callMethod',
              b'([B)[B'])
-        java_params = msgpack.packb([java_object, java_method] + list(args))
+        java_params = serialize([java_object, java_method] + list(args))
         call = self._python_gateway_actor.submit_task(function_descriptor, java_params)
-        return msgpack.unpackb(ray.get(call))
+        return deserialize(ray.get(call))
+
+
+def serialize(obj):
+    return msgpack.packb(obj)
+
+
+def deserialize(data):
+    return msgpack.unpackb(data)

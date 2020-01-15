@@ -5,6 +5,8 @@ import ray.streaming.function as function
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 import ray.streaming.operator as operator
 import ray.streaming.partition as partition
+import ray.streaming.runtime.gateway_client as gateway_client
+from ray.streaming.generated.remote_call_pb2 import Language
 
 
 class NodeType(enum.Enum):
@@ -18,34 +20,40 @@ class ExecutionNode:
     def __init__(self, node_pb):
         self.node_id = node_pb.node_id
         self.node_type = NodeType[node_pb.node_type.name]
-        if node_pb.function:
+        if node_pb.language == Language.PYTHON:
             func_bytes = node_pb.function  # python function descriptor
             func = function.load_function(func_bytes)
             self.stream_operator = operator.create_operator(func)
-        self.execution_tasks = [ExecutionTask(task) for task in node_pb.execution_tasks]
-        self.inputs_edges = [ExecutionEdge(edge) for edge in node_pb.inputs_edges]
-        self.output_edges = [ExecutionEdge(edge) for edge in node_pb.output_edges]
+        self.execution_tasks = [ExecutionTask(task, node_pb.language) for task in node_pb.execution_tasks]
+        self.inputs_edges = [ExecutionEdge(edge, node_pb.language) for edge in node_pb.inputs_edges]
+        self.output_edges = [ExecutionEdge(edge, node_pb.language) for edge in node_pb.output_edges]
 
 
 class ExecutionEdge:
-    def __init__(self, edge_pb):
+    def __init__(self, edge_pb, language):
         self.src_node_id = edge_pb.src_node_id
         self.target_node_id = edge_pb.target_node_id
         partition_bytes = edge_pb.partition
-        if partition_bytes:
+        if language == Language.PYTHON:
             self.partition = partition.load_partition(partition_bytes)
 
 
 class ExecutionTask:
-    def __init__(self, task_pb):
+    def __init__(self, task_pb, language):
         self.task_id = task_pb.task_id
         self.task_index = task_pb.task_index
-        self.worker_actor = self.__create_actor_handle(task_pb.worker_actor)
-
-    def __create_actor_handle(self, worker_actor_bytes):
-        # is_python_actor/module_name/class_name/actor_id_bytes
-        # is_python_actor/java_class_name/actor_id_bytes
-        return ray.ActorID(worker_actor_bytes)
+        if language == Language.PYTHON:
+            # module_name/class_name/actor_id_bytes
+            module_name, class_name, actor_id_bytes =\
+                gateway_client.deserialize(task_pb.worker_actor)
+            actor_id = ray.ActorID(actor_id_bytes)
+            # TODO deserialize actor
+            # self.worker_actor = None
+        elif language == Language.JAVA:
+            java_class_name, actor_id_bytes = gateway_client.deserialize(task_pb.worker_actor)
+            actor_id = ray.ActorID(actor_id_bytes)
+            # TODO deserialize actor
+            # self.worker_actor = None
 
 
 class ExecutionGraph:

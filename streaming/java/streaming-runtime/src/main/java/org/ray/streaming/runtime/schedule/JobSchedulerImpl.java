@@ -6,10 +6,13 @@ import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
+import org.ray.api.RayPyActor;
 import org.ray.streaming.plan.Plan;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
+import org.ray.streaming.runtime.generated.RemoteCall;
+import org.ray.streaming.runtime.python.GraphPbBuilder;
 import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.runtime.worker.context.WorkerContext;
 import org.ray.streaming.schedule.JobScheduler;
@@ -30,6 +33,7 @@ public class JobSchedulerImpl implements JobScheduler {
   /**
    * Schedule physical plan to execution graph, and call streaming worker to init and run.
    */
+  @SuppressWarnings("unchecked")
   @Override
   public void schedule(Plan plan, Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
@@ -40,19 +44,46 @@ public class JobSchedulerImpl implements JobScheduler {
     }
 
     ExecutionGraph executionGraph = this.taskAssigner.assign(this.plan);
-
+    RemoteCall.ExecutionGraph executionGraphPb =
+        GraphPbBuilder.buildExecutionGraphPb(executionGraph);
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
-    List<RayObject<Boolean>> waits = new ArrayList<>();
+    List<RayObject<Object>> waits = new ArrayList<>();
     for (ExecutionNode executionNode : executionNodes) {
       List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
       for (ExecutionTask executionTask : executionTasks) {
         int taskId = executionTask.getTaskId();
-        RayActor streamWorker = executionTask.getWorker();
-        waits.add(Ray.call(JobWorker::init, streamWorker,
-            new WorkerContext(taskId, executionGraph, jobConfig)));
+        RayActor worker = executionTask.getWorker();
+        switch (executionNode.getLanguage()) {
+          case JAVA:
+            RayActor<JobWorker> jobWorker = (RayActor<JobWorker>) worker;
+            waits.add(Ray.call(JobWorker::init, jobWorker,
+                new WorkerContext(taskId, executionGraph, jobConfig)));
+            break;
+          case PYTHON:
+            byte[] workerContextBytes = buildPythonWorkerContext(
+                taskId, executionGraphPb, jobConfig);
+            waits.add(Ray.callPy((RayPyActor) worker,
+                "init", workerContextBytes));
+            break;
+          default:
+            throw new UnsupportedOperationException(
+                "Unsupported language " + executionNode.getLanguage());
+        }
       }
     }
     Ray.wait(waits);
+  }
+
+  private byte[] buildPythonWorkerContext(
+      int taskId,
+      RemoteCall.ExecutionGraph executionGraphPb,
+      Map<String, String> jobConfig) {
+    return RemoteCall.WorkerContext.newBuilder()
+        .setTaskId(taskId)
+        .putAllConf(jobConfig)
+        .setGraph(executionGraphPb)
+        .build()
+        .toByteArray();
   }
 
 }

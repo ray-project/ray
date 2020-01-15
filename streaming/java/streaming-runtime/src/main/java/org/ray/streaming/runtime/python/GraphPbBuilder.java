@@ -7,7 +7,6 @@ import org.ray.api.RayPyActor;
 import org.ray.streaming.api.function.Function;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.python.PythonFunction;
-import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.python.PythonPartition;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
@@ -22,7 +21,7 @@ public class GraphPbBuilder {
    * For simple scenario, a single ExecutionNode is enough. Buf some cases may need
    * sub-graph information, so we serialize entire graph.
    */
-  private RemoteCall.ExecutionGraph buildExecutionGraphPb(ExecutionGraph graph) {
+  public static RemoteCall.ExecutionGraph buildExecutionGraphPb(ExecutionGraph graph) {
     RemoteCall.ExecutionGraph.Builder builder = RemoteCall.ExecutionGraph.newBuilder();
     builder.setBuildTime(graph.getBuildTime());
     for (ExecutionNode node : graph.getExecutionNodeList()) {
@@ -32,7 +31,7 @@ public class GraphPbBuilder {
       nodeBuilder.setParallelism(node.getParallelism());
       nodeBuilder.setNodeType(
           RemoteCall.ExecutionGraph.NodeType.valueOf(node.getNodeType().name()));
-      nodeBuilder.setLanguage(getLanguage(node));
+      nodeBuilder.setLanguage(node.getLanguage());
       byte[] functionBytes = serializeFunction(node.getStreamOperator().getFunction());
       nodeBuilder.setFunction(ByteString.copyFrom(functionBytes));
 
@@ -61,15 +60,7 @@ public class GraphPbBuilder {
     return builder.build();
   }
 
-  private RemoteCall.ExecutionGraph.Language getLanguage(ExecutionNode node) {
-    if (node.getStreamOperator() instanceof PythonOperator) {
-      return RemoteCall.ExecutionGraph.Language.PYTHON;
-    } else {
-      return RemoteCall.ExecutionGraph.Language.JAVA;
-    }
-  }
-
-  private RemoteCall.ExecutionGraph.ExecutionEdge buildEdge(ExecutionEdge edge) {
+  private static RemoteCall.ExecutionGraph.ExecutionEdge buildEdge(ExecutionEdge edge) {
     RemoteCall.ExecutionGraph.ExecutionEdge.Builder edgeBuilder =
         RemoteCall.ExecutionGraph.ExecutionEdge.newBuilder();
     edgeBuilder.setSrcNodeId(edge.getSrcNodeId());
@@ -78,7 +69,7 @@ public class GraphPbBuilder {
     return edgeBuilder.build();
   }
 
-  private byte[] serializeFunction(Function function) {
+  private static byte[] serializeFunction(Function function) {
     if (function instanceof PythonFunction) {
       PythonFunction pyFunc = (PythonFunction) function;
       // function_bytes, module_name, class_name, function_name, function_interface
@@ -92,7 +83,7 @@ public class GraphPbBuilder {
     }
   }
 
-  private byte[] serializePartition(Partition partition) {
+  private static byte[] serializePartition(Partition partition) {
     if (partition instanceof PythonPartition) {
       PythonPartition pythonPartition = (PythonPartition) partition;
       // partition_bytes, module_name, class_name, function_name
@@ -105,16 +96,15 @@ public class GraphPbBuilder {
     }
   }
 
-  private byte[] serializeWorkerActor(RayActor actor) {
-    // first argument indicate whether this actor is a java or python python actor
+  private static byte[] serializeWorkerActor(RayActor actor) {
     if (actor instanceof RayPyActor) {
       RayPyActor pyActor = (RayPyActor) actor;
       return new MsgPackSerializer().serialize(Arrays.asList(
-          true, pyActor.getModuleName(), pyActor.getClassName(), pyActor.getId().getBytes()
+          pyActor.getModuleName(), pyActor.getClassName(), pyActor.getId().getBytes()
       ));
     } else {
       return new MsgPackSerializer().serialize(Arrays.asList(
-          false, JobWorker.class.getName(), actor.getId().getBytes()
+          JobWorker.class.getName(), actor.getId().getBytes()
       ));
     }
   }

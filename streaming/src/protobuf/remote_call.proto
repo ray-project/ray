@@ -1,15 +1,17 @@
 syntax = "proto3";
 
+option java_package = "org.ray.streaming.runtime.generated";
+
+enum Language {
+    JAVA = 0;
+    PYTHON = 1;
+}
+
 message ExecutionGraph {
     enum NodeType {
         SOURCE = 0;
         TRANSFORM = 1;
         SINK = 2;
-    }
-
-    enum Language {
-        JAVA = 0;
-        PYTHON = 1;
     }
 
     message ExecutionNode {
@@ -43,6 +45,4 @@ message WorkerContext {
     string job_name = 1;
     int32 task_id = 2;
     map<string, string> conf = 3;
-    bytes master_actor = 4;
-    ExecutionGraph graph = 5;
 }

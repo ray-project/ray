@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.plan.VertexType;
+import org.ray.streaming.python.PythonOperator;
+import org.ray.streaming.runtime.generated.RemoteCall;
+import org.ray.streaming.runtime.generated.RemoteCall.Language;
 
 /**
  * A node in the physical execution graph.
@@ -14,6 +17,7 @@ public class ExecutionNode implements Serializable {
   private int parallelism;
   private NodeType nodeType;
   private StreamOperator streamOperator;
+  private Language language;
   private List<ExecutionTask> executionTasks;
   private List<ExecutionEdge> inputsEdges;
   private List<ExecutionEdge> outputEdges;
@@ -76,6 +80,15 @@ public class ExecutionNode implements Serializable {
 
   public void setStreamOperator(StreamOperator streamOperator) {
     this.streamOperator = streamOperator;
+    if (streamOperator instanceof PythonOperator) {
+      this.language = RemoteCall.Language.PYTHON;
+    } else {
+      this.language = RemoteCall.Language.JAVA;
+    }
+  }
+
+  public Language getLanguage() {
+    return language;
   }
 
   public NodeType getNodeType() {
