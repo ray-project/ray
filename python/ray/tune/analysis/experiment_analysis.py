@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import glob
 
 try:
     import pandas as pd
@@ -13,6 +12,7 @@ from ray.tune.error import TuneError
 from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE,\
     CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
+from ray.tune.trainable import TrainableUtil
 
 logger = logging.getLogger(__name__)
 
@@ -131,29 +131,9 @@ class Analysis:
 
         if isinstance(trial, str):
             trial_dir = os.path.expanduser(trial)
-            if not os.path.isdir(trial_dir):
-                raise ValueError(
-                    "{} is not a valid directory.".format(trial_dir))
 
             # get checkpoints from logdir
-            marker_paths = glob.glob(
-                os.path.join(trial_dir, "checkpoint_*/.is_checkpoint"))
-            iter_chkpt_pairs = []
-            for marker_path in marker_paths:
-                chkpt_dir = os.path.dirname(marker_path)
-                metadata_file = glob.glob(
-                    os.path.join(chkpt_dir, "*.tune_metadata"))
-                if len(metadata_file) != 1:
-                    raise ValueError(
-                        "{} has 0 or more than one tune_metadata.".format(
-                            chkpt_dir))
-
-                chkpt_path = metadata_file[0][:-len(".tune_metadata")]
-                chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1:])
-                iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
-
-            chkpt_df = pd.DataFrame(
-                iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
+            chkpt_df = TrainableUtil.get_checkpoints_paths(trial_dir)
 
             # join with trial dataframe to get metrics
             trial_df = self.trial_dataframes[trial_dir]
