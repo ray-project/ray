@@ -589,6 +589,22 @@ Status RedisNodeInfoAccessor::AsyncSubscribeToResources(
   return resource_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
+RedisErrorInfoAccessor::RedisErrorInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status RedisErrorInfoAccessor::AsyncReportJobError(
+    const std::shared_ptr<ErrorTableData> &data_ptr, const StatusCallback &callback) {
+  ErrorTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const JobID &job_id,
+                         const ErrorTableData &data) { callback(Status::OK()); };
+  }
+
+  JobID job_id = JobID::FromBinary(data_ptr->job_id());
+  ErrorTable &error_table = client_impl_->error_table();
+  return error_table.Append(job_id, job_id, data_ptr, on_done);
+}
+
 RedisStatsInfoAccessor::RedisStatsInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl) {}
 

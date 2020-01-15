@@ -25,6 +25,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class RedisTaskInfoAccessor;
   friend class RedisNodeInfoAccessor;
   friend class RedisObjectInfoAccessor;
+  friend class RedisErrorInfoAccessor;
   friend class RedisStatsInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
@@ -64,8 +65,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Disconnect with GCS Service. Non-thread safe.
   void Disconnect();
 
-  // TODO: Some API for getting the error on the driver
-  ErrorTable &error_table();
   WorkerFailureTable &worker_failure_table();
 
   // We also need something to export generic code to run on workers from the
@@ -106,6 +105,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
   TaskReconstructionLog &task_reconstruction_log();
+  /// This method will be deprecated, use method Errors() instead.
+  // TODO: Some API for getting the error on the driver
+  ErrorTable &error_table();
   /// This method will be deprecated, use method Stats() instead.
   ProfileTable &profile_table();
 

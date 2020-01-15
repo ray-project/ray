@@ -2,6 +2,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -67,9 +68,10 @@ void Monitor::Tick() {
             error_message << "The node with client ID " << node_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
-            // We use the nil JobID to broadcast the message to all drivers.
-            RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
-                JobID::Nil(), type, error_message.str(), current_time_ms()));
+            auto error_data_ptr =
+                gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+            RAY_CHECK_OK(
+                gcs_client_.Errors().AsyncReportJobError(error_data_ptr, nullptr));
           }
         };
         RAY_CHECK_OK(gcs_client_.Nodes().AsyncGetAll(lookup_callback));
