@@ -58,7 +58,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final ConcurrentHashMap<ActorId, ActorThread> actorThreads = new ConcurrentHashMap<>();
 
   /// The thread pool to execute normal tasks.
-  private final ExecutorService exec;
+  private final ExecutorService normalTaskExec;
 
   private final Deque<TaskExecutor> idleTaskExecutors = new ArrayDeque<>();
   private final Map<ActorId, TaskExecutor> actorTaskExecutors = new HashMap<>();
