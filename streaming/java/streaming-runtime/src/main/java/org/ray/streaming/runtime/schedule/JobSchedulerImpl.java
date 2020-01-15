@@ -32,7 +32,7 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   /**
-   * Schedule logical plan to execution graph, and call streaming worker to init and run.
+   * Schedule physical plan to execution graph, and call streaming worker to init and run.
    */
   @Override
   public void schedule(JobGraph jobGraph, Map<String, String> jobConfig) {
@@ -59,7 +59,7 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   private int getPlanWorker() {
-    List<JobVertex> planVertexList = jobGraph.getJobVertexList();
-    return planVertexList.stream().map(JobVertex::getParallelism).reduce(0, Integer::sum);
+    List<JobVertex> jobVertexList = jobGraph.getJobVertexList();
+    return jobVertexList.stream().map(JobVertex::getParallelism).reduce(0, Integer::sum);
   }
 }

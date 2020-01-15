@@ -19,15 +19,18 @@ public abstract class StreamOperator<F extends Function> implements Operator {
     this.function = function;
   }
 
+  @Override
   public void open(List<Collector> collectorList, RuntimeContext runtimeContext) {
     this.collectorList = collectorList;
     this.runtimeContext = runtimeContext;
   }
 
+  @Override
   public void finish() {
 
   }
 
+  @Override
   public void close() {
 
   }

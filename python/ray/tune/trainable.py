@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from datetime import datetime
 
 import copy
@@ -21,8 +17,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
-
-from ray.tune.util import UtilMonitor
+from ray.tune.utils import UtilMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +69,7 @@ class TrainableUtil:
     @staticmethod
     def make_checkpoint_dir(checkpoint_dir):
         """Creates a checkpoint directory at the provided path."""
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
 
@@ -127,8 +121,7 @@ class Trainable:
             self._logdir = self._result_logger.logdir
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            ray.utils.try_to_create_directory(
-                DEFAULT_RESULTS_DIR, warn_if_exist=False)
+            ray.utils.try_to_create_directory(DEFAULT_RESULTS_DIR)
             self._logdir = tempfile.mkdtemp(
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(
@@ -411,8 +404,7 @@ class Trainable:
             path = os.path.join(tmpdir, relpath_name)
 
             # This may be a subdirectory, hence not just using tmpdir
-            if not os.path.exists(os.path.dirname(path)):
-                os.makedirs(os.path.dirname(path))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
                 f.write(file_contents)
 
@@ -527,7 +519,7 @@ class Trainable:
         Use ``validate_save_restore`` to catch ``_save``/``_restore`` errors
         before execution.
 
-        >>> from ray.tune.util import validate_save_restore
+        >>> from ray.tune.utils import validate_save_restore
         >>> validate_save_restore(MyTrainableClass)
         >>> validate_save_restore(MyTrainableClass, use_object_store=True)
 

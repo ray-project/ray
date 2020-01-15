@@ -4,10 +4,6 @@
 It gets to 75% validation accuracy in 25 epochs, and 79% after 50 epochs.
 (it"s still underfitting at that point, though).
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 
 from tensorflow.keras.datasets import cifar10

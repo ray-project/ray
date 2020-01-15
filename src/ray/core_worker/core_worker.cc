@@ -83,6 +83,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
+      task_queue_length_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
@@ -130,9 +131,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
-    direct_task_receiver_ =
-        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
-            worker_context_, task_execution_service_, execute_task, exit));
+    direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
+        new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
+                                         task_execution_service_, execute_task, exit));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -148,8 +149,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       node_ip_address, node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-      std::move(grpc_client), raylet_socket,
-      WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
+      std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
   connected_ = true;
@@ -159,6 +159,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_ip_address(node_ip_address);
   rpc_address_.set_port(core_worker_server_.GetPort());
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
+  rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
@@ -226,12 +227,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
+      new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
                                              task_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          local_raylet_client_, client_factory,
+          rpc_address_, local_raylet_client_, client_factory,
           [this](const std::string ip_address, int port) {
             auto grpc_client = rpc::NodeManagerWorkerClient::make(ip_address, port,
                                                                   *client_call_manager_);
@@ -243,7 +244,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
-    direct_task_receiver_->Init(*local_raylet_client_, client_factory, rpc_address_);
+    direct_task_receiver_->Init(client_factory, rpc_address_);
   }
 }
 
@@ -384,7 +385,10 @@ Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
-  return Put(object, *object_id);
+  RAY_RETURN_NOT_OK(Put(object, *object_id));
+  // Tell the raylet to pin the object **after** it is created.
+  RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
+  return Status::OK();
 }
 
 Status CoreWorker::Put(const RayObject &object, const ObjectID &object_id) {
@@ -407,8 +411,16 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
 
-Status CoreWorker::Seal(const ObjectID &object_id) {
-  return plasma_store_provider_->Seal(object_id);
+Status CoreWorker::Seal(const ObjectID &object_id, bool owns_object, bool pin_object) {
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
+  if (owns_object) {
+    reference_counter_->AddOwnedObject(object_id, GetCallerId(), rpc_address_);
+    if (pin_object) {
+      // Tell the raylet to pin the object **after** it is created.
+      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
+    }
+  }
+  return Status::OK();
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
@@ -607,6 +619,9 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
 
+  // TODO(edoakes): what are the desired semantics for deleting from a non-owner?
+  // Should we just delete locally or ping the owner and delete globally?
+  reference_counter_->DeleteReferences(object_ids);
   memory_store_->Delete(memory_object_ids, &plasma_object_ids);
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
@@ -880,6 +895,8 @@ Status CoreWorker::AllocateReturnObjects(
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects) {
+  task_queue_length_ -= 1;
+
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
   }
@@ -929,7 +946,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       continue;
     }
     if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i]).ok()) {
+      if (!Seal(return_ids[i], /*owns_object=*/false, /*pin_object=*/false).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
@@ -1026,6 +1043,7 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                         nullptr);
     return;
   } else {
+    task_queue_length_ += 1;
     task_execution_service_.post([=] {
       raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
     });
@@ -1040,6 +1058,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
     return;
   }
 
+  task_queue_length_ += 1;
   task_execution_service_.post([=] {
     direct_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
@@ -1096,6 +1115,30 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   }
 }
 
+void CoreWorker::HandleWaitForObjectEviction(
+    const rpc::WaitForObjectEvictionRequest &request,
+    rpc::WaitForObjectEvictionReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+
+  // Send a response to trigger unpinning the object when it is no longer in scope.
+  auto respond = [send_reply_callback](const ObjectID &object_id) {
+    RAY_LOG(DEBUG) << "Replying to HandleWaitForObjectEviction for " << object_id;
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  };
+
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  // Returns true if the object was present and the callback was added. It might have
+  // already been evicted by the time we get this request, in which case we should
+  // respond immediately so the raylet unpins the object.
+  if (!reference_counter_->SetDeleteCallback(object_id, respond)) {
+    RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
+    respond(object_id);
+  }
+}
+
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
                                  rpc::KillActorReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
@@ -1110,8 +1153,11 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
     return;
   }
-  RAY_LOG(INFO) << "Got KillActor, shutting down...";
-  Shutdown();
+  RAY_LOG(INFO) << "Got KillActor, exiting immediately...";
+  if (log_dir_ != "") {
+    RayLog::ShutDownRayLog();
+  }
+  exit(1);
 }
 
 void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
@@ -1120,6 +1166,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   absl::MutexLock lock(&mutex_);
   auto stats = reply->mutable_core_worker_stats();
   stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  stats->set_task_queue_length(task_queue_length_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
   if (!current_task_.TaskId().IsNil()) {
     stats->set_current_task_desc(current_task_.DebugString());
@@ -1139,6 +1186,9 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     (*used_resources_map)[it.first] = quantity;
   }
   stats->set_webui_display(webui_display_);
+  MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
+  stats->set_num_local_objects(memory_store_stats.num_local_objects);
+  stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

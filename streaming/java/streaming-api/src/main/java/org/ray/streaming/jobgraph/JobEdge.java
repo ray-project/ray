@@ -4,7 +4,7 @@ import java.io.Serializable;
 import org.ray.streaming.api.partition.Partition;
 
 /**
- * JobEdge is connection and partition rules of upstream and downstream execution nodes.
+ * Job edge is connection and partition rules of upstream and downstream execution nodes.
  */
 public class JobEdge implements Serializable {
 

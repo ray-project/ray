@@ -1,12 +1,9 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import io
 import json
 import logging
+import os
 import re
 import string
 import sys
@@ -22,6 +19,19 @@ import ray.cluster_utils
 import ray.test_utils
 
 logger = logging.getLogger(__name__)
+
+
+# https://github.com/ray-project/ray/issues/6662
+def test_ignore_http_proxy(shutdown_only):
+    ray.init(num_cpus=1)
+    os.environ["http_proxy"] = "http://example.com"
+    os.environ["https_proxy"] = "http://example.com"
+
+    @ray.remote
+    def f():
+        return 1
+
+    assert ray.get(f.remote()) == 1
 
 
 def test_simple_serialization(ray_start_regular):
@@ -63,9 +73,6 @@ def test_simple_serialization(ray_start_regular):
         np.float64(1.9),
     ]
 
-    if sys.version_info < (3, 0):
-        primitive_objects.append(long(0))  # noqa: E501,F821
-
     composite_objects = (
         [[obj]
          for obj in primitive_objects] + [(obj, )
@@ -89,6 +96,25 @@ def test_simple_serialization(ray_start_regular):
         if type(obj).__module__ != "numpy":
             assert type(obj) == type(new_obj_1)
             assert type(obj) == type(new_obj_2)
+
+
+def test_background_tasks_with_max_calls(shutdown_only):
+    ray.init(num_cpus=2)
+
+    @ray.remote
+    def g():
+        time.sleep(.1)
+        return 0
+
+    @ray.remote(max_calls=1, max_retries=0)
+    def f():
+        return [g.remote()]
+
+    nested = ray.get([f.remote() for _ in range(10)])
+
+    # Should still be able to retrieve these objects, since f's workers will
+    # wait for g to finish before exiting.
+    ray.get([x[0] for x in nested])
 
 
 def test_fair_queueing(shutdown_only):
@@ -166,17 +192,7 @@ def complex_serialization(use_pickle):
             assert obj1 == obj2, "Objects {} and {} are different.".format(
                 obj1, obj2)
 
-    if sys.version_info >= (3, 0):
-        long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
-    else:
-
-        long_extras = [
-            long(0),  # noqa: E501,F821
-            np.array([
-                ["hi", u"hi"],
-                [1.3, long(1)]  # noqa: E501,F821
-            ])
-        ]
+    long_extras = [0, np.array([["hi", u"hi"], [1.3, 1]])]
 
     PRIMITIVE_OBJECTS = [
         0, 0.0, 0.9, 1 << 62, 1 << 100, 1 << 999, [1 << 100, [1 << 100]], "a",
@@ -791,8 +807,6 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -828,8 +842,6 @@ def test_args_starkwargs(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -871,8 +883,6 @@ def test_args_named_and_star(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -1583,29 +1593,20 @@ def test_wait(ray_start_regular):
     @ray.remote
     def f(delay):
         time.sleep(delay)
-        return 1
+        return
 
-    objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
-    ready_ids, remaining_ids = ray.wait(objectids)
+    object_ids = [f.remote(0), f.remote(0), f.remote(0), f.remote(0)]
+    ready_ids, remaining_ids = ray.wait(object_ids)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 3
-    ready_ids, remaining_ids = ray.wait(objectids, num_returns=4)
-    assert set(ready_ids) == set(objectids)
+    ready_ids, remaining_ids = ray.wait(object_ids, num_returns=4)
+    assert set(ready_ids) == set(object_ids)
     assert remaining_ids == []
 
-    objectids = [f.remote(0.5), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
-    start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(objectids, timeout=1.75, num_returns=4)
-    assert time.time() - start_time < 2
-    assert len(ready_ids) == 3
-    assert len(remaining_ids) == 1
-    ray.wait(objectids)
-    objectids = [f.remote(1.0), f.remote(0.5), f.remote(0.5), f.remote(0.5)]
-    start_time = time.time()
-    ready_ids, remaining_ids = ray.wait(objectids, timeout=5.0)
-    assert time.time() - start_time < 5
+    object_ids = [f.remote(0), f.remote(5)]
+    ready_ids, remaining_ids = ray.wait(object_ids, timeout=0.5, num_returns=2)
     assert len(ready_ids) == 1
-    assert len(remaining_ids) == 3
+    assert len(remaining_ids) == 1
 
     # Verify that calling wait with duplicate object IDs throws an
     # exception.
@@ -1636,5 +1637,4 @@ def test_wait(ray_start_regular):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

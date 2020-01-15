@@ -20,11 +20,17 @@ import org.ray.streaming.schedule.JobScheduler;
 public class StreamingContext implements Serializable {
 
   private transient AtomicInteger idGenerator;
+
   /**
    * The sinks of this streaming job.
    */
   private List<StreamSink> streamSinks;
+
+  /**
+   * The user custom streaming job configuration.
+   */
   private Map<String, String> jobConfig;
+
   /**
    * The logic plan.
    */
@@ -44,8 +50,8 @@ public class StreamingContext implements Serializable {
    * Construct job DAG, and execute the job.
    */
   public void execute(String jobName) {
-    JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(this.streamSinks, jobName, jobConfig);
-    this.jobGraph = jobGraphBuilder.buildJobGraph();
+    JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(this.streamSinks, jobName);
+    this.jobGraph = jobGraphBuilder.build();
     jobGraph.printJobGraph();
 
     ServiceLoader<JobScheduler> serviceLoader = ServiceLoader.load(JobScheduler.class);

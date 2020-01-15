@@ -1,16 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import distutils
 import logging
 import os
 import time
 
-try:  # py3
-    from shlex import quote
-except ImportError:  # py2
-    from pipes import quote
+from shlex import quote
 
 from ray import services
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user

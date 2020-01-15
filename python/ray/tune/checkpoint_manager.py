@@ -1,15 +1,6 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import heapq
 import logging
-
-try:
-    FileNotFoundError
-except NameError:
-    FileNotFoundError = IOError
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +34,6 @@ class QueueItem:
     def __init__(self, priority, value):
         self.priority = priority
         self.value = value
-
-    def __cmp__(self, other):
-        # For python2.7 compatibility.
-        if self.priority == other.priority:
-            return 0
-        return -1 if self.priority < other.priority else 1
 
     def __lt__(self, other):
         return self.priority < other.priority

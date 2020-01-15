@@ -1,6 +1,7 @@
 package org.ray.streaming.runtime.config;
 
 import com.google.common.base.Preconditions;
+import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,30 +15,35 @@ import org.slf4j.LoggerFactory;
 /**
  * Streaming general config. May used by both JobMaster and JobWorker.
  */
-public class StreamingGlobalConfig {
+public class StreamingGlobalConfig implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingGlobalConfig.class);
 
-  public CommonConfig commonConfig;
+  public final CommonConfig commonConfig;
 
-  public Map<String, String> configMap;
+  public final Map<String, String> configMap;
 
-  public StreamingGlobalConfig(Map<String, String> conf) {
+  public StreamingGlobalConfig(final Map<String, String> conf) {
     configMap = new HashMap<>(conf);
 
     commonConfig = ConfigFactory.create(CommonConfig.class, conf);
     globalConfig2Map();
   }
 
-  public void globalConfig2Map() {
+  @Override
+  public String toString() {
+    return configMap.toString();
+  }
+
+  private void globalConfig2Map() {
     try {
       configMap.putAll(config2Map(this.commonConfig));
     } catch (Exception e) {
-      LOG.error("Global config to map occur error.", e);
+      LOG.error("Couldn't convert global config to a map.", e);
     }
   }
 
-  public Map<String, String> config2Map(org.aeonbits.owner.Config config)
+  protected Map<String, String> config2Map(org.aeonbits.owner.Config config)
       throws ClassNotFoundException {
     Map<String, String> result = new HashMap<>();
 
@@ -51,7 +57,6 @@ public class StreamingGlobalConfig {
         break;
       }
     }
-    assert configInterface != null;
     Preconditions.checkArgument(configInterface != null,
         "Can not get config interface.");
     Method[] methods = configInterface.getMethods();

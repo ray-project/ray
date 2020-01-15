@@ -41,22 +41,22 @@ class ObjectManagerClient {
   ///
   /// \param request The request message.
   /// \param callback The callback function that handles reply from server
-  VOID_RPC_CLIENT_METHOD(ObjectManagerService, Push, request, callback,
-                         grpc_clients_[push_rr_index_++ % num_connections_])
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, Push,
+                         grpc_clients_[push_rr_index_++ % num_connections_], )
 
   /// Pull object from remote object manager
   ///
   /// \param request The request message
   /// \param callback The callback function that handles reply from server
-  VOID_RPC_CLIENT_METHOD(ObjectManagerService, Pull, request, callback,
-                         grpc_clients_[pull_rr_index_++ % num_connections_])
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, Pull,
+                         grpc_clients_[pull_rr_index_++ % num_connections_], )
 
   /// Tell remote object manager to free objects
   ///
   /// \param request The request message
   /// \param callback  The callback function that handles reply
-  VOID_RPC_CLIENT_METHOD(ObjectManagerService, FreeObjects, request, callback,
-                         grpc_clients_[freeobjects_rr_index_++ % num_connections_])
+  VOID_RPC_CLIENT_METHOD(ObjectManagerService, FreeObjects,
+                         grpc_clients_[freeobjects_rr_index_++ % num_connections_], )
 
  private:
   /// To optimize object manager performance we create multiple concurrent

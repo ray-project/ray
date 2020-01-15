@@ -13,8 +13,6 @@ import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
-import org.ray.streaming.runtime.core.processor.ProcessBuilder;
-import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 public class TaskAssignerImpl implements TaskAssigner {
@@ -22,18 +20,18 @@ public class TaskAssignerImpl implements TaskAssigner {
   /**
    * Assign an optimized logical plan to execution graph.
    *
-   * @param jobGraph The logical plan.
+   * @param jobGraph    The logical plan.
    * @param workers The worker actors.
    * @return The physical execution graph.
    */
   @Override
   public ExecutionGraph assign(JobGraph jobGraph, List<RayActor<JobWorker>> workers) {
-    List<JobVertex> jobVertexList = jobGraph.getJobVertexList();
-    List<JobEdge> jobEdgeList = jobGraph.getJobEdgeList();
+    List<JobVertex> jobVertices = jobGraph.getJobVertexList();
+    List<JobEdge> jobEdges = jobGraph.getJobEdgeList();
 
     int taskId = 0;
     Map<Integer, ExecutionNode> idToExecutionNode = new HashMap<>();
-    for (JobVertex jobVertex : jobVertexList) {
+    for (JobVertex jobVertex : jobVertices) {
       ExecutionNode executionNode = new ExecutionNode(jobVertex.getVertexId(),
           jobVertex.getParallelism());
       executionNode.setNodeType(jobVertex.getVertexType());
@@ -42,14 +40,12 @@ public class TaskAssignerImpl implements TaskAssigner {
         vertexTasks.add(new ExecutionTask(taskId, taskIndex, workers.get(taskId)));
         taskId++;
       }
-      StreamProcessor streamProcessor = ProcessBuilder
-          .buildProcessor(jobVertex.getStreamOperator());
       executionNode.setExecutionTasks(vertexTasks);
-      executionNode.setStreamProcessor(streamProcessor);
+      executionNode.setStreamOperator(jobVertex.getStreamOperator());
       idToExecutionNode.put(executionNode.getNodeId(), executionNode);
     }
 
-    for (JobEdge jobEdge : jobEdgeList) {
+    for (JobEdge jobEdge : jobEdges) {
       int srcNodeId = jobEdge.getSrcVertexId();
       int targetNodeId = jobEdge.getTargetVertexId();
 

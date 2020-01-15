@@ -72,8 +72,13 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.napoleon',
-    'sphinx_click.ext', 'sphinx-jsonschema', 'sphinx_gallery.gen_gallery'
+    'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',
+    'sphinx_click.ext',
+    'sphinx-jsonschema',
+    'sphinx_gallery.gen_gallery',
+    'sphinx_copybutton',
 ]
 
 sphinx_gallery_conf = {

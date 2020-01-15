@@ -12,18 +12,51 @@ import org.slf4j.LoggerFactory;
  */
 public class JobGraph implements Serializable {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(JobGraph.class);
+  private static final Logger LOG = LoggerFactory.getLogger(JobGraph.class);
 
   private final String jobName;
   private final Map<String, String> jobConfig;
   private List<JobVertex> jobVertexList;
   private List<JobEdge> jobEdgeList;
+  private String digraph;
 
   public JobGraph(String jobName, Map<String, String> jobConfig) {
     this.jobName = jobName;
     this.jobConfig = jobConfig;
     this.jobVertexList = new ArrayList<>();
     this.jobEdgeList = new ArrayList<>();
+  }
+
+  /**
+   * Generate direct-graph(made up of a set of vertices and connected by edges)
+   * by current job graph for simple log printing.
+   * @return Digraph in string type.
+   *
+   * Notice:
+   * This is temporarily implemented in hard code.
+   * May use 'guru.nidi:graphviz-java' as 3rd dependency in the future if needed.
+   */
+  public String generateDigraph() {
+    StringBuilder digraph = new StringBuilder();
+    digraph.append("digraph ").append(jobName + " ").append(" {");
+
+    for (JobEdge jobEdge: jobEdgeList) {
+      String srcNode = null;
+      String targetNode = null;
+      for (JobVertex jobVertex : jobVertexList) {
+        if (jobEdge.getSrcVertexId() == jobVertex.getVertexId()) {
+          srcNode = jobVertex.getVertexId() + "-" + jobVertex.getStreamOperator().getName();
+        } else if (jobEdge.getTargetVertexId() == jobVertex.getVertexId()) {
+          targetNode = jobVertex.getVertexId() + "-" + jobVertex.getStreamOperator().getName();
+        }
+      }
+      digraph.append(System.getProperty("line.separator"));
+      digraph.append(srcNode).append(" -> ").append(targetNode);
+    }
+    digraph.append(System.getProperty("line.separator")).append("}");
+
+    this.digraph = digraph.toString();
+    return this.digraph;
   }
 
   public void addVertex(JobVertex vertex) {
@@ -42,8 +75,8 @@ public class JobGraph implements Serializable {
     return jobEdgeList;
   }
 
-  public String getGraphViz() {
-    return "";
+  public String getDigraph() {
+    return digraph;
   }
 
   public String getJobName() {
@@ -55,15 +88,15 @@ public class JobGraph implements Serializable {
   }
 
   public void printJobGraph() {
-    if (!LOGGER.isInfoEnabled()) {
+    if (!LOG.isInfoEnabled()) {
       return;
     }
-    LOGGER.info("Printing job graph:");
+    LOG.info("Printing job graph:");
     for (JobVertex jobVertex : jobVertexList) {
-      LOGGER.info(jobVertex.toString());
+      LOG.info(jobVertex.toString());
     }
     for (JobEdge jobEdge : jobEdgeList) {
-      LOGGER.info(jobEdge.toString());
+      LOG.info(jobEdge.toString());
     }
   }
 

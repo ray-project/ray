@@ -12,6 +12,7 @@
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
@@ -487,8 +488,9 @@ void WorkerPool::WarnAboutSize() {
                       << "using nested tasks "
                       << "(see https://github.com/ray-project/ray/issues/3644) for "
                       << "some a discussion of workarounds.";
-      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          JobID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          "worker_pool_large", warning_message.str(), current_time_ms());
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
 }
