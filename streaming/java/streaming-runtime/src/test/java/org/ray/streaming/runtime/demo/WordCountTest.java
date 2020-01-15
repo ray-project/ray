@@ -50,7 +50,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
         .sink((SinkFunction<WordAndCount>)
             result -> wordCount.put(result.word, result.count));
 
-    streamingContext.execute();
+    streamingContext.execute("testWordCount");
 
     // Sleep until the count for every word is computed.
     while (wordCount.size() < 3) {

@@ -7,7 +7,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
-import org.ray.streaming.plan.Plan;
+import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
@@ -22,7 +22,7 @@ import org.ray.streaming.schedule.JobScheduler;
  * from ResourceManager.
  */
 public class JobSchedulerImpl implements JobScheduler {
-  private Plan plan;
+  private JobGraph jobGraph;
   private Map<String, String> jobConfig;
   private TaskAssigner taskAssigner;
 
@@ -35,15 +35,15 @@ public class JobSchedulerImpl implements JobScheduler {
    */
   @SuppressWarnings("unchecked")
   @Override
-  public void schedule(Plan plan, Map<String, String> jobConfig) {
+  public void schedule(JobGraph jobGraph, Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
-    this.plan = plan;
+    this.jobGraph = jobGraph;
     if (Ray.internal() == null) {
       System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
       Ray.init();
     }
 
-    ExecutionGraph executionGraph = this.taskAssigner.assign(this.plan);
+    ExecutionGraph executionGraph = this.taskAssigner.assign(this.jobGraph);
     RemoteCall.ExecutionGraph executionGraphPb =
         GraphPbBuilder.buildExecutionGraphPb(executionGraph);
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();

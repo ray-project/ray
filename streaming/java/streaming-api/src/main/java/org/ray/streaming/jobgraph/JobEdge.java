@@ -1,18 +1,18 @@
-package org.ray.streaming.plan;
+package org.ray.streaming.jobgraph;
 
 import java.io.Serializable;
 import org.ray.streaming.api.partition.Partition;
 
 /**
- * PlanEdge is connection and partition rules of upstream and downstream execution nodes.
+ * Job edge is connection and partition rules of upstream and downstream execution nodes.
  */
-public class PlanEdge implements Serializable {
+public class JobEdge implements Serializable {
 
   private int srcVertexId;
   private int targetVertexId;
   private Partition partition;
 
-  public PlanEdge(int srcVertexId, int targetVertexId, Partition partition) {
+  public JobEdge(int srcVertexId, int targetVertexId, Partition partition) {
     this.srcVertexId = srcVertexId;
     this.targetVertexId = targetVertexId;
     this.partition = partition;

@@ -1,4 +1,4 @@
-package org.ray.streaming.plan;
+package org.ray.streaming.jobgraph;
 
 public enum Language {
   JAVA,

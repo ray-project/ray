@@ -191,6 +191,18 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeBatchHeartbeat(
       heartbeat_batch_added, /*done*/ nullptr));
 
+  // Subscribe to all unexpected failure notifications from the local and
+  // remote raylets. Note that this does not include workers that failed due to
+  // node failure. These workers can be identified by comparing the raylet_id
+  // in their rpc::Address to the ID of a failed raylet.
+  const auto &failure_handler = [this](gcs::RedisGcsClient *client, const WorkerID &id,
+                                       const gcs::WorkerFailureData &worker_failure) {
+    HandleUnexpectedWorkerFailure(id, worker_failure);
+  };
+  RAY_CHECK_OK(gcs_client_->worker_failure_table().Subscribe(
+      JobID::Nil(), ClientID::Nil(), failure_handler,
+      /*done_callback=*/nullptr));
+
   // Subscribe to job updates.
   const auto job_subscribe_handler = [this](const JobID &job_id,
                                             const JobTableData &job_data) {
@@ -208,6 +220,12 @@ ray::Status NodeManager::RegisterGcs() {
   GetObjectManagerProfileInfo();
 
   return ray::Status::OK();
+}
+
+void NodeManager::HandleUnexpectedWorkerFailure(
+    const WorkerID &worker_id, const gcs::WorkerFailureData &worker_failed_data) {
+  RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
+  // TODO: Clean up after the failure: If the failed worker is our owner, then exit.
 }
 
 void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
@@ -390,9 +408,10 @@ void NodeManager::WarnResourceDeadlock() {
         << "To resolve the issue, consider creating fewer actors or increase the "
         << "resources available to this Ray cluster. You can ignore this message "
         << "if this Ray cluster is expected to auto-scale.";
-    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        exemplar.GetTaskSpecification().JobId(), "resource_deadlock", error_message.str(),
-        current_time_ms()));
+    auto error_data_ptr = gcs::CreateErrorTableData(
+        "resource_deadlock", error_message.str(), current_time_ms(),
+        exemplar.GetTaskSpecification().JobId());
+    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     resource_deadlock_warned_ = true;
   }
 }
@@ -1111,6 +1130,16 @@ void NodeManager::ProcessDisconnectClientMessage(
     }
     // Erase any lease metadata.
     leased_workers_.erase(worker->WorkerId());
+
+    // Publish the worker failure.
+    auto data = std::make_shared<rpc::WorkerFailureData>();
+    data->mutable_worker_address()->set_ip_address(initial_config_.node_manager_address);
+    data->mutable_worker_address()->set_port(worker->Port());
+    data->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+    data->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+    data->set_timestamp(std::time(nullptr));
+    RAY_CHECK_OK(gcs_client_->worker_failure_table().Add(JobID::Nil(), worker->WorkerId(),
+                                                         data, nullptr));
   }
 
   if (is_worker) {
@@ -1149,8 +1178,9 @@ void NodeManager::ProcessDisconnectClientMessage(
         std::ostringstream error_message;
         error_message << "A worker died or was killed while executing task " << task_id
                       << ".";
-        RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-            job_id, type, error_message.str(), current_time_ms()));
+        auto error_data_ptr = gcs::CreateErrorTableData(type, error_message.str(),
+                                                        current_time_ms(), job_id);
+        RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
       }
     }
 
@@ -1314,13 +1344,12 @@ void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
 void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::PushErrorRequest>(message_data);
 
-  JobID job_id = from_flatbuf<JobID>(*message->job_id());
   auto const &type = string_from_flatbuf(*message->type());
   auto const &error_message = string_from_flatbuf(*message->error_message());
   double timestamp = message->timestamp();
-
-  RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(job_id, type, error_message,
-                                                            timestamp));
+  JobID job_id = from_flatbuf<JobID>(*message->job_id());
+  auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
+  RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
 void NodeManager::ProcessPrepareActorCheckpointRequest(
@@ -1779,9 +1808,10 @@ void NodeManager::ScheduleTasks(
           << "provide the requested resources. To resolve this issue, consider "
           << "reducing the resource requests of this task or add nodes that "
           << "can fit the task.";
-      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          task.GetTaskSpecification().JobId(), type, error_message.str(),
-          current_time_ms()));
+      auto error_data_ptr =
+          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
+                                    task.GetTaskSpecification().JobId());
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
     // Assert that this placeable task is not feasible locally (necessary but not
     // sufficient).
@@ -1857,8 +1887,9 @@ void NodeManager::MarkObjectsAsFailed(const ErrorType &error_type,
              << " object may hang forever.";
       std::string error_message = stream.str();
       RAY_LOG(WARNING) << error_message;
-      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-          job_id, "task", error_message, current_time_ms()));
+      auto error_data_ptr =
+          gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
+      RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
 }
@@ -2634,9 +2665,10 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
     error_message << "The task with ID " << task.GetTaskSpecification().TaskId()
                   << " is a driver task and so the object created by ray.put "
                   << "could not be reconstructed.";
-    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        task.GetTaskSpecification().JobId(), type, error_message.str(),
-        current_time_ms()));
+    auto error_data_ptr =
+        gcs::CreateErrorTableData(type, error_message.str(), current_time_ms(),
+                                  task.GetTaskSpecification().JobId());
+    RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     MarkObjectsAsFailed(ErrorType::OBJECT_UNRECONSTRUCTABLE,
                         {required_object_id.ToPlasmaId()},
                         task.GetTaskSpecification().JobId());

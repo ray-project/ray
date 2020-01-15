@@ -1413,12 +1413,12 @@ def test_kill(ray_start_regular):
     @ray.remote
     class Actor:
         def hang(self):
-            # Never returns.
-            ray.get(ray.ObjectID.from_random())
+            while True:
+                time.sleep(1)
 
     actor = Actor.remote()
     result = actor.hang.remote()
-    ready, _ = ray.wait([result], timeout=0.1)
+    ready, _ = ray.wait([result], timeout=0.5)
     assert len(ready) == 0
     actor.__ray_kill__()
     with pytest.raises(ray.exceptions.RayActorError):

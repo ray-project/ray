@@ -6,9 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
 import org.ray.api.RayActor;
-import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
  * Physical execution graph.

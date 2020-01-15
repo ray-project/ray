@@ -177,7 +177,7 @@ public class StreamingQueueTest extends BaseUnitTest implements Serializable {
           serializeResultToFile(resultFile, wordCount);
         });
 
-    streamingContext.execute();
+    streamingContext.execute("testWordCount");
 
     Map<String, Integer> checkWordCount =
         (Map<String, Integer>) deserializeResultFromFile(resultFile);

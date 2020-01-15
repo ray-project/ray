@@ -17,6 +17,6 @@ def gen_streaming_java_deps():
             "org.msgpack:msgpack-core:0.8.20",
         ],
         repositories = [
-            "https://repo1.maven.org/maven2/",
+            "http://mvn.dev.alipay.net:8080/artifactory/repo/",
         ],
     )

@@ -59,8 +59,8 @@ public class PythonGateway {
     }
   }
 
-  public void execute() {
-    streamingContext.execute();
+  public void execute(byte[] jobNameBytes) {
+    streamingContext.execute((String) serializer.deserialize(jobNameBytes));
   }
 
   public byte[] createPyFunc(byte[] pyFunc) {
