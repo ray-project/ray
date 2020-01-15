@@ -13,8 +13,9 @@ class DefaultErrorInfoHandler : public rpc::ErrorInfoHandler {
   explicit DefaultErrorInfoHandler(gcs::RedisGcsClient &gcs_client)
       : gcs_client_(gcs_client) {}
 
-  void HandleReportError(const ReportErrorRequest &request, ReportErrorReply *reply,
-                         SendReplyCallback send_reply_callback) override;
+  void HandleReportJobError(const ReportJobErrorRequest &request,
+                            ReportJobErrorReply *reply,
+                            SendReplyCallback send_reply_callback) override;
 
  private:
   gcs::RedisGcsClient &gcs_client_;

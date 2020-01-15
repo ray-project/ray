@@ -355,6 +355,16 @@ class GcsServerTest : public RedisServiceManagerForTest {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
+  bool ReportJobError(const rpc::ReportJobErrorRequest &request) {
+    std::promise<bool> promise;
+    client_->ReportJobError(
+        request, [&promise](const Status &status, const rpc::ReportJobErrorReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
   bool WaitReady(const std::future<bool> &future, uint64_t timeout_ms) {
     auto status = future.wait_for(std::chrono::milliseconds(timeout_ms));
     return status == std::future_status::ready;
@@ -615,12 +625,12 @@ TEST_F(GcsServerTest, TestStats) {
 
 TEST_F(GcsServerTest, TestErrorInfo) {
   // Report error
-  rpc::ReportErrorRequest report_error_request;
+  rpc::ReportJobErrorRequest report_error_request;
   rpc::ErrorTableData error_table_data;
   JobID job_id = JobID::FromInt(1);
   error_table_data.set_job_id(job_id.Binary());
   report_error_request.mutable_error_data()->CopyFrom(error_table_data);
-  //  ASSERT_TRUE(ReportError(report_error_request));
+  ASSERT_TRUE(ReportJobError(report_error_request));
 }
 
 }  // namespace ray
