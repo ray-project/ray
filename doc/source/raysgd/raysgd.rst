@@ -11,7 +11,7 @@ The main features are:
 
   - Ease of use: Scale Pytorch's native ``DistributedDataParallel`` and TensorFlow's ``tf.distribute.MirroredStrategy`` without needing to monitor individual nodes.
   - Composibility: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications.
-  - Scale up and down: Start on single CPU. Scale up to multi-node multi-gpu by changing 2 lines of code.
+  - Scale up and down: Start on single CPU. Scale up to multi-node, multi-gpu by changing 2 lines of code.
 
 
 
