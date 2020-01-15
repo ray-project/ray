@@ -28,7 +28,7 @@ for i in range(num_nodes):
         resources={str(i): 5},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory)
-ray.init(address=cluster.address)
+ray.init(address=cluster.address, webui_host="0.0.0.0")
 
 # Run the workload.
 
