@@ -116,7 +116,7 @@ class GcsRpcClient {
   /// Add profile data to GCS Service.
   VOID_RPC_CLIENT_METHOD(StatsGcsService, AddProfileData, stats_grpc_client_, )
 
-  /// Report error happened to GCS Service.
+  /// Report a job error to GCS Service.
   VOID_RPC_CLIENT_METHOD(ErrorInfoGcsService, ReportJobError, error_info_grpc_client_, )
 
  private:

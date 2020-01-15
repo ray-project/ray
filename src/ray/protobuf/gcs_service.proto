@@ -292,6 +292,6 @@ message ReportJobErrorReply {
 
 // Service for error info access.
 service ErrorInfoGcsService {
-  // Report error happened to GCS Service.
+  // Report a job error to GCS Service.
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
 }
