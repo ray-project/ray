@@ -136,20 +136,27 @@ class Analysis:
                     "{} is not a valid directory.".format(trial_dir))
 
             # get checkpoints from logdir
-            metadata_paths = glob.glob(
-                os.path.join(trial_dir, "checkpoint_*/*.tune_metadata"))
+            marker_paths = glob.glob(
+                os.path.join(trial_dir, "checkpoint_*/.is_checkpoint"))
             iter_chkpt_pairs = []
-            for metadata_path in metadata_paths:
-                chkpt_path = metadata_path[:-len(".tune_metadata")]
-                chkpt_dir = os.path.dirname(metadata_path)
+            for marker_path in marker_paths:
+                chkpt_dir = os.path.dirname(marker_path)
+                metadata_file = glob.glob(
+                    os.path.join(chkpt_dir, "*.tune_metadata"))
+                if len(metadata_file) != 1:
+                    raise ValueError(
+                        "{} has 0 or more than one tune_metadata.".format(
+                            chkpt_dir))
+
+                chkpt_path = metadata_file[0][:-len(".tune_metadata")]
                 chkpt_iter = int(chkpt_dir[chkpt_dir.rfind("_") + 1:])
                 iter_chkpt_pairs.append([chkpt_iter, chkpt_path])
 
             chkpt_df = pd.DataFrame(
                 iter_chkpt_pairs, columns=["training_iteration", "chkpt_path"])
-            trial_df = self.trial_dataframes[trial_dir]
 
             # join with trial dataframe to get metrics
+            trial_df = self.trial_dataframes[trial_dir]
             path_metric_df = chkpt_df.merge(
                 trial_df, on="training_iteration", how="inner")
             return path_metric_df[["chkpt_path", metric]].values.tolist()
