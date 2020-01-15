@@ -12,16 +12,18 @@ import hashlib
 import cython
 
 
-cdef dict FunctionDescriptor_type_map = {}
+ctypedef object (*FunctionDescriptor_from_cpp)(const CFunctionDescriptor &)
+cdef unordered_map[int, FunctionDescriptor_from_cpp] \
+    FunctionDescriptor_constructor_map
 cdef CFunctionDescriptorToPython(CFunctionDescriptor function_descriptor):
-    if len(FunctionDescriptor_type_map) == 0:
-        for subtype in FunctionDescriptor.__subclasses__():
-            k = getattr(subtype, '__c_function_descriptor_type__')
-            FunctionDescriptor_type_map[k] = subtype
-    tp = FunctionDescriptor_type_map.get(<int>function_descriptor.get().Type())
-    cdef FunctionDescriptor instance = tp.__new__(tp)
-    instance.__setstate__(function_descriptor.get().Serialize())
-    return instance
+    cdef int function_descriptor_type = <int>function_descriptor.get().Type()
+    it = FunctionDescriptor_constructor_map.find(function_descriptor_type)
+    if it == FunctionDescriptor_constructor_map.end():
+        raise Exception("Can't construct FunctionDescriptor from type {}"
+                        .format(function_descriptor_type))
+    else:
+        constructor = dereference(it).second
+        return constructor(function_descriptor)
 
 
 @cython.auto_pickle(False)
@@ -42,23 +44,31 @@ cdef class FunctionDescriptor:
         return self.descriptor.get().ToString().decode('ascii')
 
 
+FunctionDescriptor_constructor_map[<int>DriverFunctionDescriptorType] = \
+    DriverFunctionDescriptor.from_cpp
+
+
 @cython.auto_pickle(False)
 cdef class DriverFunctionDescriptor(FunctionDescriptor):
-    __c_function_descriptor_type__ = <int>DriverFunctionDescriptorType
-
     def __cinit__(self):
         self.descriptor = CFunctionDescriptorBuilder.BuildDriver()
 
     def __reduce__(self):
         return DriverFunctionDescriptor, ()
 
+    @staticmethod
+    cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
+        return DriverFunctionDescriptor()
+
+
+FunctionDescriptor_constructor_map[<int>JavaFunctionDescriptorType] = \
+    JavaFunctionDescriptor.from_cpp
+
 
 @cython.auto_pickle(False)
 cdef class JavaFunctionDescriptor(FunctionDescriptor):
     cdef:
         CJavaFunctionDescriptor *typed_descriptor
-
-    __c_function_descriptor_type__ = <int>JavaFunctionDescriptorType
 
     def __cinit__(self,
                   class_name,
@@ -73,6 +83,14 @@ cdef class JavaFunctionDescriptor(FunctionDescriptor):
         return JavaFunctionDescriptor, (self.typed_descriptor.ClassName(),
                                         self.typed_descriptor.FunctionName(),
                                         self.typed_descriptor.Signature())
+
+    @staticmethod
+    cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
+        cdef CJavaFunctionDescriptor *typed_descriptor = \
+            <CJavaFunctionDescriptor*>(c_function_descriptor.get())
+        return JavaFunctionDescriptor(typed_descriptor.ClassName(),
+                                      typed_descriptor.FunctionName(),
+                                      typed_descriptor.Signature())
 
     @property
     def class_name(self):
@@ -103,13 +121,15 @@ cdef class JavaFunctionDescriptor(FunctionDescriptor):
         return <str>self.typed_descriptor.Signature()
 
 
+FunctionDescriptor_constructor_map[<int>PythonFunctionDescriptorType] = \
+    PythonFunctionDescriptor.from_cpp
+
+
 @cython.auto_pickle(False)
 cdef class PythonFunctionDescriptor(FunctionDescriptor):
     cdef:
         CPythonFunctionDescriptor *typed_descriptor
         object _function_id
-
-    __c_function_descriptor_type__ = <int>PythonFunctionDescriptorType
 
     def __cinit__(self,
                   module_name,
@@ -126,6 +146,15 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
                                           self.typed_descriptor.FunctionName(),
                                           self.typed_descriptor.ClassName(),
                                           self.typed_descriptor.FunctionHash())
+
+    @staticmethod
+    cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
+        cdef CPythonFunctionDescriptor *typed_descriptor = \
+            <CPythonFunctionDescriptor*>(c_function_descriptor.get())
+        return PythonFunctionDescriptor(typed_descriptor.ModuleName(),
+                                        typed_descriptor.FunctionName(),
+                                        typed_descriptor.ClassName(),
+                                        typed_descriptor.FunctionHash())
 
     @classmethod
     def from_function(cls, function, pickled_function):

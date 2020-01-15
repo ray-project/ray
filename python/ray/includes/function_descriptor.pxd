@@ -18,7 +18,7 @@ from ray.includes.unique_ids cimport (
 
 cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef cppclass CFunctionDescriptorType \
-            "ray::FunctionDescriptorType::FunctionDescriptorCase":
+            "ray::FunctionDescriptorType":
         pass
 
     cdef CFunctionDescriptorType DriverFunctionDescriptorType \
