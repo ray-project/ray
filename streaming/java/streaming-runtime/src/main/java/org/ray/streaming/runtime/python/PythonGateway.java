@@ -17,7 +17,7 @@ import org.ray.streaming.util.ReflectionUtils;
  * All calls on DataStream in python will be mapped to DataStream call in java by this
  * PythonGateway using ray calls.
  * <p>
- * Note: this class needs to be in sync with `ray.streaming.gateway_client.GatewayClient.py`
+ * Note: this class needs to be in sync with `ray.streaming.gateway_client.GatewayClient`
  */
 @SuppressWarnings("unchecked")
 @RayRemote

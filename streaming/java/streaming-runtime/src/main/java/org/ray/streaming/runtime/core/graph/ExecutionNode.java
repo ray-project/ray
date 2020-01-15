@@ -4,10 +4,8 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import org.ray.streaming.operator.StreamOperator;
+import org.ray.streaming.plan.Language;
 import org.ray.streaming.plan.VertexType;
-import org.ray.streaming.python.PythonOperator;
-import org.ray.streaming.runtime.generated.RemoteCall;
-import org.ray.streaming.runtime.generated.RemoteCall.Language;
 
 /**
  * A node in the physical execution graph.
@@ -80,11 +78,10 @@ public class ExecutionNode implements Serializable {
 
   public void setStreamOperator(StreamOperator streamOperator) {
     this.streamOperator = streamOperator;
-    if (streamOperator instanceof PythonOperator) {
-      this.language = RemoteCall.Language.PYTHON;
-    } else {
-      this.language = RemoteCall.Language.JAVA;
-    }
+  }
+
+  public void setLanguage(Language language) {
+    this.language = language;
   }
 
   public Language getLanguage() {

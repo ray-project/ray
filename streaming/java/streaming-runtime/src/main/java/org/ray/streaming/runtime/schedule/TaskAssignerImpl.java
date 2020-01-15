@@ -9,7 +9,6 @@ import org.ray.api.RayActor;
 import org.ray.streaming.plan.Plan;
 import org.ray.streaming.plan.PlanEdge;
 import org.ray.streaming.plan.PlanVertex;
-import org.ray.streaming.python.PythonOperator;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -21,7 +20,7 @@ public class TaskAssignerImpl implements TaskAssigner {
   /**
    * Assign an optimized logical plan to execution graph.
    *
-   * @param plan    The logical plan.
+   * @param plan The logical plan.
    * @return The physical execution graph.
    */
   @Override
@@ -42,6 +41,7 @@ public class TaskAssignerImpl implements TaskAssigner {
       }
       executionNode.setExecutionTasks(vertexTasks);
       executionNode.setStreamOperator(planVertex.getStreamOperator());
+      executionNode.setLanguage(planVertex.getLanguage());
       idToExecutionNode.put(executionNode.getNodeId(), executionNode);
     }
 
@@ -60,10 +60,16 @@ public class TaskAssignerImpl implements TaskAssigner {
   }
 
   private RayActor createWorker(PlanVertex planVertex) {
-    if (planVertex.getStreamOperator() instanceof PythonOperator) {
-      return Ray.createPyActor("ray.streaming.runtime.worker", "JobWorker");
-    } else {
-      return Ray.createActor(JobWorker::new);
+    switch (planVertex.getLanguage()) {
+      case PYTHON:
+        return Ray.createPyActor(
+            "ray.streaming.runtime.worker", "JobWorker");
+      case JAVA:
+        return Ray.createActor(JobWorker::new);
+      default:
+        throw new UnsupportedOperationException(
+            "Unsupported language " + planVertex.getLanguage());
+
     }
   }
 }

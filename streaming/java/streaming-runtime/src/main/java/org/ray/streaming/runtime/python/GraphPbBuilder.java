@@ -31,7 +31,7 @@ public class GraphPbBuilder {
       nodeBuilder.setParallelism(node.getParallelism());
       nodeBuilder.setNodeType(
           RemoteCall.ExecutionGraph.NodeType.valueOf(node.getNodeType().name()));
-      nodeBuilder.setLanguage(node.getLanguage());
+      nodeBuilder.setLanguage(RemoteCall.Language.valueOf(node.getLanguage().name()));
       byte[] functionBytes = serializeFunction(node.getStreamOperator().getFunction());
       nodeBuilder.setFunction(ByteString.copyFrom(functionBytes));
 
