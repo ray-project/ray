@@ -758,8 +758,8 @@ class FunctionActorManager:
 
             # Execute the assigned method and save a checkpoint if necessary.
             try:
-                is_bound = (is_class_method(method) or
-                            is_static_method(type(actor), method_name))
+                is_bound = (is_class_method(method)
+                            or is_static_method(type(actor), method_name))
                 if is_bound:
                     method_returns = method(*args, **kwargs)
                 else:

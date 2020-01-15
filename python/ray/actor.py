@@ -218,9 +218,9 @@ class ActorClassMetadata:
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
             # the first argument, but we do for instance methods
-            is_bound = (
-                ray.utils.is_class_method(method) or
-                ray.utils.is_static_method(self.modified_class, method_name))
+            is_bound = (ray.utils.is_class_method(method)
+                        or ray.utils.is_static_method(self.modified_class,
+                                                      method_name))
 
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor
