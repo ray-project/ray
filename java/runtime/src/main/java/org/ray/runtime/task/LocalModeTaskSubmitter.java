@@ -52,7 +52,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final LocalModeObjectStore objectStore;
 
   /// The thread pool to execute actor tasks.
-  private final Map<ActorId, ActorThread> actorTaskExecutorService;
+  private final Map<ActorId, ExecutorService> actorTaskExecutorServices;
 
   /// The thread pool to execute normal tasks.
   private final ExecutorService normalTaskExecutorService;
@@ -62,43 +62,6 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   private final Object taskExecutorLock = new Object();
   private final ThreadLocal<TaskExecutor> currentTaskExecutor = new ThreadLocal<>();
 
-  private static class ActorThread extends Thread {
-    private BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
-    private AtomicBoolean running = new AtomicBoolean(true);
-
-    public void terminate() {
-      running.set(false);
-    }
-
-    public void submit(Runnable runnable) {
-      try {
-        queue.put(runnable);
-      } catch (InterruptedException e) {
-        throw new RuntimeException("Failed to submit runnable to thread pool.", e);
-      }
-    }
-
-    @Override
-    public void run() {
-      while (running.get()) {
-        try {
-          Runnable runnable = queue.poll(1, TimeUnit.SECONDS);
-          if (!running.get()) {
-            // Return immediately if this thread is terminated.
-            return;
-          }
-          if (runnable == null) {
-            // No pending task, let's continue.
-            continue;
-          }
-          runnable.run();
-        } catch (InterruptedException e) {
-          throw new RuntimeException("Failed to execute the actor task.", e);
-        }
-      }
-    }
-  }
-
   public LocalModeTaskSubmitter(RayDevRuntime runtime, LocalModeObjectStore objectStore,
       int numberThreads) {
     this.runtime = runtime;
@@ -106,7 +69,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     // The thread pool that executes normal tasks in parallel.
     normalTaskExecutorService = Executors.newFixedThreadPool(numberThreads);
     // The thread pool that executes actor tasks in parallel.
-    actorTaskExecutorService = new HashMap<>();
+    actorTaskExecutorServices = new HashMap<>();
   }
 
   public void onObjectPut(ObjectId id) {
@@ -257,16 +220,9 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
   public void shutdown() {
     // Shutdown actor task executor service.
-    synchronized (actorTaskExecutorService) {
-      for (Map.Entry<ActorId, ActorThread> item : actorTaskExecutorService.entrySet()) {
-        item.getValue().terminate();
-      }
-      for (Map.Entry<ActorId, ActorThread> item : actorTaskExecutorService.entrySet()) {
-        try {
-          item.getValue().join();
-        } catch (InterruptedException e) {
-          throw new RuntimeException("Failed to shutdown Ray in single process.", e);
-        }
+    synchronized (actorTaskExecutorServices) {
+      for (Map.Entry<ActorId, ExecutorService> item : actorTaskExecutorServices.entrySet()) {
+        item.getValue().shutdown();
       }
     }
     // Shutdown normal task executor service.
@@ -324,16 +280,15 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       if (unreadyObjects.isEmpty()) {
         // If all dependencies are ready, execute this task.
         if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
-          ActorThread actorThread = new ActorThread();
-          synchronized (actorTaskExecutorService) {
-            actorTaskExecutorService.put(getActorId(taskSpec), actorThread);
+          ExecutorService actorExecutorService = Executors.newSingleThreadExecutor();
+          synchronized (actorTaskExecutorServices) {
+            actorTaskExecutorServices.put(getActorId(taskSpec), actorExecutorService);
           }
-          actorThread.submit(runnable);
-          actorThread.start();
+          actorExecutorService.submit(runnable);
         } else if (taskSpec.getType() == TaskType.ACTOR_TASK) {
-          synchronized (actorTaskExecutorService) {
-            ActorThread th = actorTaskExecutorService.get(getActorId(taskSpec));
-            th.submit(runnable);
+          synchronized (actorTaskExecutorServices) {
+            ExecutorService actorExecutorService = actorTaskExecutorServices.get(getActorId(taskSpec));
+            actorExecutorService.submit(runnable);
           }
         } else {
           // Normal task.
