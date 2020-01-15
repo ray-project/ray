@@ -297,6 +297,7 @@ def check_simple_value(value):
     return is_simple_value(value, &num_elements_contained)
 
 
+@cython.auto_pickle(False)
 cdef class Language:
     cdef CLanguage lang
 
@@ -320,6 +321,9 @@ cdef class Language:
             return "JAVA"
         else:
             raise Exception("Unexpected error")
+
+    def __reduce__(self):
+        return Language, (<int32_t>self.lang,)
 
     PYTHON = Language.from_native(LANGUAGE_PYTHON)
     CPP = Language.from_native(LANGUAGE_CPP)

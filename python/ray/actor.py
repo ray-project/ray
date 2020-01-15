@@ -813,6 +813,8 @@ class ActorHandle:
             "method_num_return_vals": self._ray_method_num_return_vals,
             "actor_method_cpus": self._ray_actor_method_cpus,
             "is_cross_language": self._ray_is_cross_language,
+            "actor_creation_function_descriptor": self.
+            _ray_actor_creation_function_descriptor,
         }
 
         return state
@@ -844,6 +846,7 @@ class ActorHandle:
             state["method_num_return_vals"],
             state["actor_method_cpus"],
             state["is_cross_language"],
+            state["actor_creation_function_descriptor"],
             worker.current_session_and_job)
 
     def __getstate__(self):

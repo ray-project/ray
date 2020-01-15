@@ -7,7 +7,7 @@
 *ray*RayObject*
 *ray*Status*
 *ray*RayFunction*
-*ray*FunctionDescriptor*
+*ray*FunctionDescriptorBuilder*
 *ray*TaskArg*
 *ray*TaskOptions*
 *ray*Buffer*

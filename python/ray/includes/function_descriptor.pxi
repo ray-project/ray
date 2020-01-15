@@ -26,17 +26,17 @@ cdef CFunctionDescriptorToPython(CFunctionDescriptor function_descriptor):
 
 @cython.auto_pickle(False)
 cdef class FunctionDescriptor:
-    def __init__(self):
-        raise Exception("type {} is abstract".format(type(self).__name__))
-
-    def __setstate__(self, state):
-        self.descriptor = CFunctionDescriptorBuilder.Deserialize(state)
-
-    def __getstate__(self):
-        return self.descriptor.get().Serialize()
+    def __cinit__(self, *args, **kwargs):
+        if type(self) == FunctionDescriptor:
+            raise Exception("type {} is abstract".format(type(self).__name__))
 
     def __hash__(self):
         return hash(self.descriptor.get().ToString())
+
+    def __eq__(self, other):
+        return (type(self) == type(other) and
+                self.descriptor.get().ToString() ==
+                (<FunctionDescriptor>other).descriptor.get().ToString())
 
     def __repr__(self):
         return self.descriptor.get().ToString().decode('ascii')
@@ -46,8 +46,11 @@ cdef class FunctionDescriptor:
 cdef class DriverFunctionDescriptor(FunctionDescriptor):
     __c_function_descriptor_type__ = <int>DriverFunctionDescriptorType
 
-    def __init__(self):
+    def __cinit__(self):
         self.descriptor = CFunctionDescriptorBuilder.BuildDriver()
+
+    def __reduce__(self):
+        return DriverFunctionDescriptor, ()
 
 
 @cython.auto_pickle(False)
@@ -57,19 +60,19 @@ cdef class JavaFunctionDescriptor(FunctionDescriptor):
 
     __c_function_descriptor_type__ = <int>JavaFunctionDescriptorType
 
-    def __init__(self,
-                 str class_name,
-                 str function_name,
-                 str signature):
+    def __cinit__(self,
+                  class_name,
+                  function_name,
+                  signature):
         self.descriptor = CFunctionDescriptorBuilder.BuildJava(
             class_name, function_name, signature)
         self.typed_descriptor = <CJavaFunctionDescriptor*>(
             self.descriptor.get())
 
-    def __setstate__(self, state):
-        super(JavaFunctionDescriptor, self).__setstate__(state)
-        self.typed_descriptor = <CJavaFunctionDescriptor*>(
-            self.descriptor.get())
+    def __reduce__(self):
+        return JavaFunctionDescriptor, (self.typed_descriptor.ClassName(),
+                                        self.typed_descriptor.FunctionName(),
+                                        self.typed_descriptor.Signature())
 
     @property
     def class_name(self):
@@ -108,20 +111,21 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
 
     __c_function_descriptor_type__ = <int>PythonFunctionDescriptorType
 
-    def __init__(self,
-                 str module_name,
-                 str function_name,
-                 str class_name="",
-                 str function_source_hash=""):
+    def __cinit__(self,
+                  module_name,
+                  function_name,
+                  class_name="",
+                  function_source_hash=""):
         self.descriptor = CFunctionDescriptorBuilder.BuildPython(
             module_name, class_name, function_name, function_source_hash)
         self.typed_descriptor = <CPythonFunctionDescriptor*>(
             self.descriptor.get())
 
-    def __setstate__(self, state):
-        super(PythonFunctionDescriptor, self).__setstate__(state)
-        self.typed_descriptor = <CPythonFunctionDescriptor*>(
-            self.descriptor.get())
+    def __reduce__(self):
+        return PythonFunctionDescriptor, (self.typed_descriptor.ModuleName(),
+                                          self.typed_descriptor.FunctionName(),
+                                          self.typed_descriptor.ClassName(),
+                                          self.typed_descriptor.FunctionHash())
 
     @classmethod
     def from_function(cls, function, pickled_function):
@@ -212,7 +216,7 @@ cdef class PythonFunctionDescriptor(FunctionDescriptor):
         Returns:
             The value of ray.ObjectID that represents the function id.
         """
-        if not hasattr(self, "_function_id"):
+        if not self._function_id:
             self._function_id = self._get_function_id()
         return self._function_id
 
