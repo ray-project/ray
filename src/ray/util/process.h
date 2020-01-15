@@ -2,19 +2,18 @@
 #define RAY_UTIL_PROCESS_H
 
 #ifdef __linux__
-#include <fcntl.h>     // O_RDONLY
-#include <sys/stat.h>  // open()
-#include <unistd.h>    // close(), dup()
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
-#include <algorithm>   // std::swap
-#include <functional>  // std::equal_to, std::hash, std::less
-#include <memory>      // std::shared_ptr
-#include <utility>     // std::std::forward
-
+#include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <boost/process/args.hpp>
 #include <boost/process/child.hpp>
+#include <functional>
+#include <memory>
+#include <utility>
 
 // We only define operators required by the standard library (<, ==, hash).
 // We declare but avoid defining the rest so that they're not used by accident.
@@ -24,8 +23,6 @@ namespace ray {
 typedef boost::process::pid_t pid_t;
 
 class Process : public boost::process::child {
-  typedef boost::process::child base_type;
-
  protected:
   class ProcessFD {
     // This class makes a best-effort attempt to keep a PID alive.
@@ -65,10 +62,9 @@ class Process : public boost::process::child {
  public:
   template <typename... T>
   explicit Process(T &&... args)
-      : base_type(std::forward<T>(args)...), fd_(base_type::id()) {}
+      : boost::process::child(std::forward<T>(args)...),
+        fd_(boost::process::child::id()) {}
 };
-
-static constexpr boost::process::detail::args_ make_process_args;
 
 /// A managed equivalent of a pid_t (to manage the lifetime of each process).
 /// TODO(mehrdadn): This hasn't been a great design, but we play along to
@@ -78,12 +74,12 @@ static constexpr boost::process::detail::args_ make_process_args;
 /// Once this code is running properly, refactor the data structures to create
 /// a better ownership structure between the worker processes and the workers.
 class ProcessHandle {
-  typedef std::shared_ptr<Process> Ptr;
-  Ptr proc_;
+  std::shared_ptr<Process> proc_;
 
  public:
-  ProcessHandle(const Ptr &proc = Ptr()) : proc_(proc) {}
-  Ptr::element_type *get() const { return proc_.get(); }
+  ProcessHandle(const std::shared_ptr<Process> &proc = std::shared_ptr<Process>())
+      : proc_(proc) {}
+  Process *get() const { return proc_.get(); }
   explicit operator bool() const { return !!proc_; }
   static ProcessHandle FromPid(pid_t pid) {
     Process temp(pid);
@@ -101,9 +97,7 @@ namespace std {
 
 template <>
 struct equal_to<ray::ProcessHandle> {
-  typedef ray::ProcessHandle argument_type;
-  typedef bool result_type;
-  result_type operator()(const argument_type &x, const argument_type &y) const {
+  bool operator()(const ray::ProcessHandle &x, const ray::ProcessHandle &y) const {
     const ray::Process *a = x.get(), *b = y.get();
     // See explanation above
     return a ? b ? a->valid()
@@ -116,13 +110,11 @@ struct equal_to<ray::ProcessHandle> {
 
 template <>
 struct hash<ray::ProcessHandle> {
-  typedef ray::ProcessHandle argument_type;
-  typedef size_t result_type;
-  result_type operator()(const argument_type &value) const {
+  size_t operator()(const ray::ProcessHandle &value) const {
     const ray::Process *p = value.get();
     // See explanation above
     return p ? p->valid() ? hash<ray::pid_t>()(p->id()) : hash<void const *>()(p)
-             : result_type();
+             : size_t();
   }
 };
 

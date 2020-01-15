@@ -211,7 +211,7 @@ ProcessHandle WorkerPool::StartProcess(
   };
   std::error_code ec;
   ProcessHandle child(
-      std::make_shared<Process>(ray::make_process_args(worker_command_args), *io_service_,
+      std::make_shared<Process>(boost::process::args(worker_command_args), *io_service_,
                                 boost::process::on_exit = exit_callback, ec));
   if (!child.get()->valid()) {
     child = ProcessHandle();
