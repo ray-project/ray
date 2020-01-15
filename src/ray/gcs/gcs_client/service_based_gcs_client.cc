@@ -2,8 +2,12 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 
+/// Get gcs server address from redis.
+///
+/// \param context The context of redis.
+/// \param address The address of gcs server.
 static void GetGcsServerAddress(redisContext *context,
-                                std::pair<std::string, int> &addresses) {
+                                std::pair<std::string, int> *address) {
   // Get gcs server address.
   int num_attempts = 0;
   redisReply *reply = nullptr;
@@ -22,15 +26,15 @@ static void GetGcsServerAddress(redisContext *context,
       << "No entry found for GcsServerAddress";
   RAY_CHECK(reply->type == REDIS_REPLY_STRING)
       << "Expected string, found Redis type " << reply->type << " for GcsServerAddress";
-  std::string address(reply->str);
+  std::string result(reply->str);
   freeReplyObject(reply);
 
-  RAY_CHECK(!address.empty()) << "Gcs service address is empty";
-  size_t pos = address.find(':');
+  RAY_CHECK(!result.empty()) << "Gcs service address is empty";
+  size_t pos = result.find(':');
   RAY_CHECK(pos != std::string::npos)
-      << "Gcs service address format is error: " << address;
-  addresses.first = address.substr(0, pos);
-  addresses.second = std::stoi(address.substr(pos + 1));
+      << "Gcs service address format is error: " << result;
+  address->first = result.substr(0, pos);
+  address->second = std::stoi(result.substr(pos + 1));
 }
 
 namespace ray {

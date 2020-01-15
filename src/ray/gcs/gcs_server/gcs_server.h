@@ -69,6 +69,7 @@ class GcsServer {
   virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
 
  private:
+  /// Set gcs server address to redis.
   void SetGcsServerAddress();
 
   /// Gcs server configuration
