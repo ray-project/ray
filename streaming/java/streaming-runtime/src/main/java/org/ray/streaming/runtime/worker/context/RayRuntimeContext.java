@@ -3,7 +3,6 @@ package org.ray.streaming.runtime.worker.context;
 import static org.ray.streaming.util.Config.STREAMING_BATCH_MAX_COUNT;
 
 import java.util.Map;
-
 import org.ray.streaming.api.context.RuntimeContext;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
 

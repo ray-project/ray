@@ -2,7 +2,6 @@ package org.ray.streaming.schedule;
 
 
 import java.util.Map;
-
 import org.ray.streaming.jobgraph.JobGraph;
 
 /**
