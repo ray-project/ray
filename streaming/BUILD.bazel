@@ -20,6 +20,7 @@ proto_library(
     name = "remote_call_proto",
     srcs = ["src/protobuf/remote_call.proto"],
     visibility = ["//visibility:public"],
+    deps = ["streaming_proto"],
 )
 
 cc_proto_library(
@@ -233,8 +234,8 @@ python_proto_compile(
 filegroup(
     name = "all_py_proto",
     srcs = [
-        ":streaming_py_proto",
         ":remote_call_py_proto",
+        ":streaming_py_proto",
     ],
 )
 
@@ -256,7 +257,7 @@ genrule(
         mkdir -p $$GENERATED_DIR
         touch $$GENERATED_DIR/__init__.py
         for f in $(locations //streaming:all_py_proto); do
-            cp $$f $$GENERATED_DIR
+            cp -f $$f $$GENERATED_DIR
         done
         echo $$(date) > $@
     """,

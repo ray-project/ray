@@ -28,8 +28,8 @@ void StreamingConfig::FromProto(const uint8_t *data, uint32_t size) {
   if (!config.op_name().empty()) {
     SetOpName(config.op_name());
   }
-  if (config.role() != proto::OperatorType::UNKNOWN) {
-    SetOperatorType(config.role());
+  if (config.role() != proto::NodeType::UNKNOWN) {
+    SetNodeType(config.role());
   }
   if (config.ring_buffer_capacity() != 0) {
     SetRingBufferCapacity(config.ring_buffer_capacity());
@@ -54,12 +54,12 @@ void StreamingConfig::SetEmptyMessageTimeInterval(uint32_t empty_message_time_in
   StreamingConfig::empty_message_time_interval_ = empty_message_time_interval;
 }
 
-streaming::proto::OperatorType StreamingConfig::GetOperatorType() const {
-  return operator_type_;
+streaming::proto::NodeType StreamingConfig::GetNodeType() const {
+  return node_type_;
 }
 
-void StreamingConfig::SetOperatorType(streaming::proto::OperatorType type) {
-  StreamingConfig::operator_type_ = type;
+void StreamingConfig::SetNodeType(streaming::proto::NodeType type) {
+  StreamingConfig::node_type_ = type;
 }
 
 const std::string &StreamingConfig::GetJobName() const { return job_name_; }

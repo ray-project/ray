@@ -13,6 +13,7 @@ import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
 import org.ray.streaming.runtime.generated.RemoteCall;
+import org.ray.streaming.runtime.generated.Streaming;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 public class GraphPbBuilder {
@@ -30,8 +31,8 @@ public class GraphPbBuilder {
       nodeBuilder.setNodeId(node.getNodeId());
       nodeBuilder.setParallelism(node.getParallelism());
       nodeBuilder.setNodeType(
-          RemoteCall.ExecutionGraph.NodeType.valueOf(node.getNodeType().name()));
-      nodeBuilder.setLanguage(RemoteCall.Language.valueOf(node.getLanguage().name()));
+          Streaming.NodeType.valueOf(node.getNodeType().name()));
+      nodeBuilder.setLanguage(Streaming.Language.valueOf(node.getLanguage().name()));
       byte[] functionBytes = serializeFunction(node.getStreamOperator().getFunction());
       nodeBuilder.setFunction(ByteString.copyFrom(functionBytes));
 

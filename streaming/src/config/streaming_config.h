@@ -22,8 +22,8 @@ class StreamingConfig {
 
   uint32_t empty_message_time_interval_ = DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
 
-  streaming::proto::OperatorType operator_type_ =
-      streaming::proto::OperatorType::TRANSFORM;
+  streaming::proto::NodeType node_type_ =
+      streaming::proto::NodeType::TRANSFORM;
 
   std::string job_name_ = "DEFAULT_JOB_NAME";
 
@@ -56,9 +56,9 @@ class StreamingConfig {
 
   void SetRingBufferCapacity(uint32_t ring_buffer_capacity);
 
-  streaming::proto::OperatorType GetOperatorType() const;
+  streaming::proto::NodeType GetNodeType() const;
 
-  void SetOperatorType(streaming::proto::OperatorType type);
+  void SetNodeType(streaming::proto::NodeType type);
 
   const std::string &GetJobName() const;
 
