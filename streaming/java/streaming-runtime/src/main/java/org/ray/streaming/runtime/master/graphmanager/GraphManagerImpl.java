@@ -11,7 +11,6 @@ import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobEdge;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
-import org.ray.streaming.runtime.master.JobMaster;
 import org.ray.streaming.runtime.master.JobMasterRuntimeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

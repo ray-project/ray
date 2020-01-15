@@ -14,11 +14,7 @@ import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 public class JobMasterRuntimeContext implements Serializable {
 
   private StreamingConfig conf;
-
   private volatile Graphs graphs;
-  // private volatile Resources resources;
-
-  public volatile JobMasterRuntimeStatus status = JobMasterRuntimeStatus.NONE;
 
   public JobMasterRuntimeContext(StreamingConfig conf) {
     this.conf = conf;
@@ -40,23 +36,10 @@ public class JobMasterRuntimeContext implements Serializable {
     this.graphs = new Graphs(jobGraph, executionGraph);
   }
 
-  /*
-  public Resources getResources() {
-    return resources;
-  }
-
-  public void setResources(Resources resources) {
-    this.resources = resources;
-  }
-
-   */
-
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("status", status)
         .add("graphs", graphs.getExecutionGraph())
-        // .add("resources", resources)
         .add("conf", conf.getMap())
         .toString();
   }
