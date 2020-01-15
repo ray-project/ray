@@ -7,6 +7,7 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/process/args.hpp>
 #include <boost/process/async.hpp>
+#include <boost/process/search_path.hpp>
 
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
@@ -203,17 +204,15 @@ ProcessHandle WorkerPool::StartProcess(
     RAY_LOG(DEBUG) << stream.str();
   }
 
-  std::vector<std::string> rest_of_args(worker_command_args.begin() + 1,
-                                        worker_command_args.end());
   // Launch the process to create the worker.
   auto exit_callback = [=](int, const std::error_code &ec) {
     // This callback seems to be necessary for proper zombie cleanup.
     // However, it doesn't need to do anything.
   };
   std::error_code ec;
-  ProcessHandle child(std::make_shared<Process>(
-      *worker_command_args.begin(), ray::make_process_args(rest_of_args), *io_service_,
-      boost::process::on_exit = exit_callback, ec));
+  ProcessHandle child(
+      std::make_shared<Process>(ray::make_process_args(worker_command_args), *io_service_,
+                                boost::process::on_exit = exit_callback, ec));
   if (!child.get()->valid()) {
     child = ProcessHandle();
   }
