@@ -1,6 +1,12 @@
 from copy import deepcopy
+from functools import partial
+import importlib
+import json
+import os
+import re
+import yaml
 
-from ray.rllib.utils import force_list
+from ray.rllib.utils import force_list, merge_dicts
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 
 tf = try_import_tf()
@@ -19,11 +25,10 @@ class Component:
         self.framework = framework
         if self.framework == "tf":
             assert tf, \
-                "Cannot construct tf-Configurable object if tf not installed!"
+                "Cannot construct tf-Component if not installed!"
         elif self.framework == "torch":
             assert torch, \
-                "Cannot construct torch-Configurable object if torch not " \
-                "installed!"
+                "Cannot construct torch-Component if torch not installed!"
 
     @classmethod
     def from_config(cls, config, **kwargs):
@@ -50,7 +55,7 @@ class Component:
             as the constructor.
         - A python callable: Use that very callable as constructor.
         - A string: Either a json/yaml filename or the name of a python
-            module+class (e.g. "rlgraph.components.Component")
+            module+class (e.g. "ray.rllib. [...] .[some class name]")
 
         Args:
             config (Optional[dict,str]): The config dict or type-string or
@@ -99,24 +104,28 @@ class Component:
         ctor_args = force_list(ctor_kwargs.pop("_args", []))
 
         # Figure out the actual constructor (class) from `type_`.
-        # None: Try __default__object (if no args/kwargs), only then constructor of cls (using args/kwargs).
+        # None: Try __default__object (if no args/kwargs), only then
+        # constructor of cls (using args/kwargs).
         if type_ is None:
-            # We have a default constructor that was defined directly by cls (not by its children).
-            if cls.__default_constructor__ is not None and ctor_args == [] and \
-                    (not hasattr(cls.__bases__[0], "__default_constructor__") or
+            # We have a default constructor that was defined directly by cls
+            # (not by its children).
+            if cls.__default_constructor__ is not None and \
+                    ctor_args == [] and \
+                    (not hasattr(cls.__bases__[0], "__default_constructor__")
+                     or
                      cls.__bases__[0].__default_constructor__ is None or
-                     cls.__bases__[0].__default_constructor__ is not cls.__default_constructor__
+                     cls.__bases__[0].__default_constructor__ is not
+                     cls.__default_constructor__
                     ):
                 constructor = cls.__default_constructor__
-                # Default partial's keywords into ctor_kwargs.
+                # Default constructor's keywords into ctor_kwargs.
                 if isinstance(constructor, partial):
-                    kwargs = default_dict(ctor_kwargs, constructor.keywords)
+                    kwargs = merge_dicts(ctor_kwargs, constructor.keywords)
                     constructor = partial(constructor.func, **kwargs)
                     ctor_kwargs = {}  # erase to avoid duplicate kwarg error
-            # No default constructor -> Return None.
+            # No default constructor -> Try cls itself as c'tor.
             else:
-                #constructor = cls
-                return None
+                constructor = cls
         # Try the __type_registry__ of this class.
         else:
             constructor = cls.lookup_type(type_)
@@ -131,6 +140,22 @@ class Component:
             # Python callable.
             elif callable(type_):
                 constructor = type_
+            # A string: Filename or a python module+class or a json/yaml str.
+            elif isinstance(type_, str):
+                if re.search(r'\.(yaml|yml|json)$', type_):
+                    return cls.from_file(type_, *ctor_args, **ctor_kwargs)
+                # Try un-json/un-yaml'ing the string into a dict.
+                obj = yaml.load(type_)
+                if isinstance(obj, dict):
+                    return cls.from_config(obj)
+                try:
+                    obj = cls.from_config(json.loads(type_))
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    return obj
+
+                if type_.find('.') != -1:
             # A string: Filename or a python module+class.
             elif isinstance(type_, str):
                 if re.search(r'\.(yaml|yml|json)$', type_):
@@ -142,9 +167,8 @@ class Component:
                 else:
                     raise ValueError(
                         "String specifier ({}) in `from_config` must be a "
-                        "filename, a module+class, or a key "
-                        "into {}.__type_registry__!".
-                        format(type_, cls.__name__)
+                        "filename, a module+class, or a key into "
+                        "{}.__type_registry__!".format(type_, cls.__name__)
                     )
 
         if not constructor:
@@ -153,7 +177,13 @@ class Component:
             )
 
         # Create object with inferred constructor.
-        object_ = constructor(*ctor_args, **ctor_kwargs)
+        try:
+            object_ = constructor(*ctor_args, **ctor_kwargs)
+        # Catch attempts to construct from an abstract class and return None.
+        except TypeError as e:
+            if re.match(r'Can\'t instantiate abstract class', e.args[0]):
+                return None
+            raise e  # Re-raise
         # No sanity check for fake (lambda)-"constructors".
         if type(constructor).__name__ != "function":
             assert isinstance(
