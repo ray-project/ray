@@ -2,11 +2,11 @@ package org.ray.streaming.runtime.worker;
 
 import java.io.Serializable;
 import java.util.Map;
+
 import org.ray.api.Ray;
 import org.ray.api.annotation.RayRemote;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
-import org.ray.streaming.api.stream.Stream;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionNode.NodeType;

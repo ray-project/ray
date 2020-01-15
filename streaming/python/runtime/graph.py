@@ -1,6 +1,5 @@
 import enum
 
-import ray
 import ray.streaming.function as function
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 import ray.streaming.operator as operator
@@ -16,7 +15,6 @@ class NodeType(enum.Enum):
 
 
 class ExecutionNode:
-
     def __init__(self, node_pb):
         self.node_id = node_pb.node_id
         self.node_type = NodeType[node_pb.node_type.name]
@@ -24,9 +22,18 @@ class ExecutionNode:
             func_bytes = node_pb.function  # python function descriptor
             func = function.load_function(func_bytes)
             self.stream_operator = operator.create_operator(func)
-        self.execution_tasks = [ExecutionTask(task, node_pb.language) for task in node_pb.execution_tasks]
-        self.inputs_edges = [ExecutionEdge(edge, node_pb.language) for edge in node_pb.inputs_edges]
-        self.output_edges = [ExecutionEdge(edge, node_pb.language) for edge in node_pb.output_edges]
+        self.execution_tasks = [
+            ExecutionTask(task, node_pb.language)
+            for task in node_pb.execution_tasks
+        ]
+        self.inputs_edges = [
+            ExecutionEdge(edge, node_pb.language)
+            for edge in node_pb.inputs_edges
+        ]
+        self.output_edges = [
+            ExecutionEdge(edge, node_pb.language)
+            for edge in node_pb.output_edges
+        ]
 
 
 class ExecutionEdge:
@@ -46,12 +53,13 @@ class ExecutionTask:
             # module_name/class_name/actor_id_bytes
             module_name, class_name, actor_id_bytes =\
                 gateway_client.deserialize(task_pb.worker_actor)
-            actor_id = ray.ActorID(actor_id_bytes)
+            # actor_id = ray.ActorID(actor_id_bytes)
             # TODO deserialize actor
             # self.worker_actor = None
         elif language == Language.JAVA:
-            java_class_name, actor_id_bytes = gateway_client.deserialize(task_pb.worker_actor)
-            actor_id = ray.ActorID(actor_id_bytes)
+            java_class_name, actor_id_bytes = gateway_client.deserialize(
+                task_pb.worker_actor)
+            # actor_id = ray.ActorID(actor_id_bytes)
             # TODO deserialize actor
             # self.worker_actor = None
 
@@ -59,7 +67,9 @@ class ExecutionTask:
 class ExecutionGraph:
     def __init__(self, graph_pb: remote_call_pb.ExecutionGraph):
         self._graph_pb = graph_pb
-        self.execution_nodes = [ExecutionNode(node) for node in graph_pb.execution_nodes()]
+        self.execution_nodes = [
+            ExecutionNode(node) for node in graph_pb.execution_nodes()
+        ]
 
     def build_time(self):
         return self._graph_pb.build_time()

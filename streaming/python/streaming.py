@@ -5,7 +5,6 @@ class StreamingContext:
     """Wrapper of java org.ray.streaming.api.context.StreamingContext"""
 
     class Builder:
-
         def __init__(self):
             self._options = {}
 

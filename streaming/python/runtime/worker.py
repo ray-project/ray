@@ -72,9 +72,11 @@ class JobWorker(object):
         if isinstance(self.stream_processor, processor.SourceProcessor):
             return SourceStreamTask(self.task_id, self.stream_processor, self)
         elif isinstance(self.stream_processor, processor.OneInputProcessor):
-            return OneInputStreamTask(self.task_id, self.stream_processor, self)
+            return OneInputStreamTask(self.task_id, self.stream_processor,
+                                      self)
         else:
-            raise Exception("Unsupported processor type: " + type(self.stream_processor))
+            raise Exception("Unsupported processor type: " +
+                            type(self.stream_processor))
 
     def on_reader_message(self, buffer: bytes):
         """used in direct call mode"""

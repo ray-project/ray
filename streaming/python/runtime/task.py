@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 class StreamTask(ABC):
-
     def __init__(self, task_id, processor, worker):
         self.task_id = task_id
         self.processor = processor
@@ -26,9 +25,13 @@ class StreamTask(ABC):
 
     def prepare_task(self):
         channel_conf = dict(self.worker.config)
-        channel_size = int(self.worker.config.get(Config.CHANNEL_SIZE, Config.CHANNEL_SIZE_DEFAULT))
+        channel_size = int(
+            self.worker.config.get(Config.CHANNEL_SIZE,
+                                   Config.CHANNEL_SIZE_DEFAULT))
         channel_conf[Config.CHANNEL_SIZE] = channel_size
-        channel_conf[Config.TASK_JOB_ID] = ray.runtime_context._get_runtime_context().current_driver_id,
+        channel_conf[
+            Config.TASK_JOB_ID] = ray.runtime_context._get_runtime_context(
+            ).current_driver_id,
         channel_conf[Config.CHANNEL_TYPE] = self.worker.config \
             .get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL)
 
@@ -40,9 +43,11 @@ class StreamTask(ABC):
         collectors = []
         for edge in execution_node.output_edges():
             output_actor_ids = {}
-            task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(edge.target_node_id)
+            task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
+                edge.target_node_id)
             for target_task_id, target_actor_id in task_id2_worker.items():
-                channel_name = ChannelID.gen_id(self.task_id, target_task_id, execution_graph.build_time())
+                channel_name = ChannelID.gen_id(self.task_id, target_task_id,
+                                                execution_graph.build_time())
                 output_actor_ids[channel_name] = target_actor_id
             if len(output_actor_ids) > 0:
                 channel_ids = list(output_actor_ids.keys())
@@ -50,14 +55,17 @@ class StreamTask(ABC):
                 writer = DataWriter(channel_ids, to_actor_ids, channel_conf)
                 logger.info("Create DataWriter succeed.")
                 writers[edge] = writer
-                collectors.append(OutputCollector(channel_ids, writer, edge.partition))
+                collectors.append(
+                    OutputCollector(channel_ids, writer, edge.partition))
 
         # readers
         input_actor_ids = {}
         for edge in execution_node.input_edges:
-            task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(edge.src_node_id)
+            task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
+                edge.src_node_id)
             for src_task_id, src_actor_id in task_id2_worker.items():
-                channel_name = ChannelID.gen_id(src_task_id, self.task_id, execution_graph.build_time())
+                channel_name = ChannelID.gen_id(src_task_id, self.task_id,
+                                                execution_graph.build_time())
                 input_actor_ids[channel_name] = src_actor_id
         if len(input_actor_ids) > 0:
             channel_ids = list(input_actor_ids.keys())
@@ -71,7 +79,8 @@ class StreamTask(ABC):
             self.processor.open(collectors, runtime_context)
 
             def exit_handler():
-                # Make DataReader stop read data when MockQueue destructor gets called to avoid crash
+                # Make DataReader stop read data when MockQueue destructor
+                # gets called to avoid crash
                 self.cancel_task()
 
             import atexit
@@ -99,7 +108,8 @@ class InputStreamTask(StreamTask):
         self.running = True
         self.stopped = False
         self.read_timeout_millis = \
-            int(worker.config.get(Config.READ_TIMEOUT_MS, Config.DEFAULT_READ_TIMEOUT_MS))
+            int(worker.config.get(Config.READ_TIMEOUT_MS,
+                                  Config.DEFAULT_READ_TIMEOUT_MS))
 
     def init(self):
         pass
@@ -125,7 +135,6 @@ class OneInputStreamTask(InputStreamTask):
 
 
 class SourceStreamTask(StreamTask):
-
     def __init__(self, task_id, processor_instance, worker):
         super().__init__(task_id, processor_instance, worker)
 

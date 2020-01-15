@@ -54,9 +54,7 @@ void StreamingConfig::SetEmptyMessageTimeInterval(uint32_t empty_message_time_in
   StreamingConfig::empty_message_time_interval_ = empty_message_time_interval;
 }
 
-streaming::proto::NodeType StreamingConfig::GetNodeType() const {
-  return node_type_;
-}
+streaming::proto::NodeType StreamingConfig::GetNodeType() const { return node_type_; }
 
 void StreamingConfig::SetNodeType(streaming::proto::NodeType type) {
   StreamingConfig::node_type_ = type;

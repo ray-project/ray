@@ -67,7 +67,6 @@ class SinkFunction(Function):
 
 
 class ListSourceFunction(SourceFunction):
-
     def __init__(self, values):
         self.values = values
 
@@ -136,8 +135,8 @@ def deserialize(func_bytes):
 
 
 def load_function(descriptor_func_bytes):
-    function_bytes, module_name, class_name, function_name, function_interface =\
-        msgpack.loads(descriptor_func_bytes)
+    function_bytes, module_name, class_name, function_name, function_interface\
+        = msgpack.loads(descriptor_func_bytes)
     if function_bytes:
         return deserialize(function_bytes)
     else:
@@ -162,4 +161,5 @@ def get_simple_function_class(function_interface):
         if inspect.isclass(obj) and issubclass(obj, function_interface):
             if obj is not function_interface:
                 return obj
-    raise Exception("SimpleFunction for %s doesn't exist".format(function_interface))
+    raise Exception(
+        "SimpleFunction for %s doesn't exist".format(function_interface))

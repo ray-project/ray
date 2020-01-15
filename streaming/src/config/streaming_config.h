@@ -22,8 +22,7 @@ class StreamingConfig {
 
   uint32_t empty_message_time_interval_ = DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
 
-  streaming::proto::NodeType node_type_ =
-      streaming::proto::NodeType::TRANSFORM;
+  streaming::proto::NodeType node_type_ = streaming::proto::NodeType::TRANSFORM;
 
   std::string job_name_ = "DEFAULT_JOB_NAME";
 

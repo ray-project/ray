@@ -12,7 +12,6 @@ class OperatorType(enum.Enum):
 
 
 class Operator(ABC):
-
     @abstractmethod
     def open(self, collectors, runtime_context):
         pass
@@ -49,7 +48,6 @@ class TwoInputOperator(Operator, ABC):
 
 
 class StreamOperator(Operator, ABC):
-
     def __init__(self, func):
         self.func = func
         self.collectors = None
@@ -72,7 +70,6 @@ class StreamOperator(Operator, ABC):
 
 class SourceOperator(StreamOperator):
     class SourceContextImpl(function.SourceContext):
-
         def __init__(self, collectors):
             self.collectors = collectors
 
@@ -87,7 +84,8 @@ class SourceOperator(StreamOperator):
     def open(self, collectors, runtime_context):
         super().open(collectors, runtime_context)
         self.source_context = SourceOperator.SourceContextImpl(collectors)
-        self.func.init(runtime_context.get_parallelism(), runtime_context.get_task_index())
+        self.func.init(runtime_context.get_parallelism(),
+                       runtime_context.get_task_index())
 
     def run(self):
         self.func.run(self.source_context)
@@ -111,7 +109,8 @@ class FlatMapOperator(StreamOperator, OneInputOperator):
 
     def open(self, collectors, runtime_context):
         super().open(collectors, runtime_context)
-        self.collection_collector = streaming.collector.CollectionCollector(collectors)
+        self.collection_collector = streaming.collector.CollectionCollector(
+            collectors)
 
     def process_element(self, record):
         self.collect(message.Record(self.func.map(record.value)))

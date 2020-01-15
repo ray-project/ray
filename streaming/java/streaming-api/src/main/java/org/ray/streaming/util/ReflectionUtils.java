@@ -18,8 +18,8 @@ public class ReflectionUtils {
   }
 
   /**
+   * For covariant return type, return the most specific method.
    * @return all methods named by {@code methodName},
-   * for covariant return type, return the most specific method.
    */
   public static List<Method> findMethods(Class<?> cls, String methodName) {
     List<Class<?>> classes = new ArrayList<>();
@@ -34,8 +34,8 @@ public class ReflectionUtils {
     }
 
     LinkedHashMap<List<Class<?>>, Method> methods = new LinkedHashMap<>();
-    for (Class<?> aClass : classes) {
-      for (Method m : aClass.getDeclaredMethods()) {
+    for (Class<?> superClass : classes) {
+      for (Method m : superClass.getDeclaredMethods()) {
         if (m.getName().equals(methodName)) {
           List<Class<?>> params = Arrays.asList(m.getParameterTypes());
           Method method = methods.get(params);
