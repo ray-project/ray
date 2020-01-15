@@ -126,7 +126,7 @@ class Analysis:
         Arguments:
             trial(Trial): The log directory of a trial, or a trial instance.
             metric (str): key for trial info to return, e.g. "mean_accuracy".
-            "training_iteration" is used by default.
+                "training_iteration" is used by default.
         """
 
         if isinstance(trial, str):
