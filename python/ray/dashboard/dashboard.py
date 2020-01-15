@@ -251,10 +251,14 @@ class Dashboard(object):
             D["actorInfo"] = actor_tree
             return await json_response(result=D)
 
-        async def get_profiling_stats_callback(reply_future) -> aiohttp.web.Response:
+        def get_profiling_stats_callback(reply_future) -> aiohttp.web.Response:
+            t = time.time()
+            print("calling get_profiling_stats_callback", t)
             reply = reply_future.result()
+            print("getting result", time.time() - t)
             print(reply.profiling_stats_stdout)
-            return aiohttp.web.json_response(json.loads(reply.profiling_stats))
+            result = aiohttp.web.json_response(json.loads(reply.profiling_stats))
+            print(result)
 
         async def profiling_info(req) -> aiohttp.web.Response:
             node_id = req.query.get("node_id")
@@ -262,9 +266,9 @@ class Dashboard(object):
             duration = int(req.query.get("duration"))
             t = time.time()
             reply_future = self.raylet_stats.get_profiling_stats(node_id=node_id, pid=pid, duration=duration)
-            print("after get profiling stats", time.time() - t)
+            print("time to get future", time.time() - t)
             reply_future.add_done_callback(get_profiling_stats_callback)
-            return await reply_future
+            return aiohttp.web.json_response("start profiling on node_id = {}, pid = {} with duration {}".format(node_id, pid, duration))
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -298,6 +302,7 @@ class Dashboard(object):
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
         self.app.router.add_get("/api/profiling_info", profiling_info)
+        # self.app.router.add_get("/api/profiling_info_result", get_profiling_stats_callback)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
 
@@ -591,8 +596,10 @@ class RayletStats(threading.Thread):
 
     def get_profiling_stats(self, node_id, pid, duration) -> Dict:
         stub = self.stubs[node_id]
+        t = time.time()
         reply_future = stub.GetProfilingStats.future(
             node_manager_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
+        print("time to get future in node stats", time.time() - t)
         return reply_future
         
     def run(self):

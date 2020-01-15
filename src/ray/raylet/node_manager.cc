@@ -3051,9 +3051,9 @@ void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request
   }
 }
 
-void NodeManager::HandleProfilingStatsRequest(const rpc::GetProfilingStatsRequest &request,
-                                              rpc::GetProfilingStatsReply *reply,
-                                              rpc::SendReplyCallback send_reply_callback) {
+void StartProfiling(const rpc::GetProfilingStatsRequest &request,
+                    rpc::GetProfilingStatsReply *reply,
+                    rpc::SendReplyCallback send_reply_callback) {
   int pid = request.pid();
   int duration = request.duration();
   // TODO: append a random number to file name to avoid overwriting
@@ -3079,6 +3079,13 @@ void NodeManager::HandleProfilingStatsRequest(const rpc::GetProfilingStatsReques
   profiling_file_stream << profiling_file.rdbuf();
   reply->set_profiling_stats(profiling_file_stream.str());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleProfilingStatsRequest(const rpc::GetProfilingStatsRequest &request,
+                                              rpc::GetProfilingStatsReply *reply,
+                                              rpc::SendReplyCallback send_reply_callback) {
+  std::thread t(StartProfiling,request,reply,send_reply_callback);
+  t.join();
 }
 
 void NodeManager::RecordMetrics() {
