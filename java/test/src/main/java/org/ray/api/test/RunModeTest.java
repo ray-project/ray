@@ -7,7 +7,7 @@ import org.ray.api.annotation.RayRemote;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class RunModeTest extends BaseTest {
+public class SingleProcessModeTest extends BaseTest {
 
   @RayRemote
   static class MyActor {
