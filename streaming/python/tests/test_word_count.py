@@ -1,18 +1,23 @@
 import ray
+from ray.streaming import StreamingContext
 from ray.streaming.config import Config
-from ray.streaming.streaming import Environment, Conf
 
 
 def test_word_count():
     ray.init()
-    env = Environment(config=Conf(channel_type=Config.NATIVE_CHANNEL))
-    env.read_text_file(__file__) \
+    ctx = StreamingContext.Builder() \
+        .option(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL) \
+        .build()
+    ctx.read_text_file(__file__) \
         .set_parallelism(1) \
-        .filter(lambda x: "word" in x) \
-        .inspect(lambda x: print("result", x))
-    env_handle = env.execute()
-    ray.get(env_handle)  # Stay alive until execution finishes
-    env.wait_finish()
+        .flat_map(lambda x: x.split) \
+        .map(lambda x: (x, 1)) \
+        .key_by(lambda x: x[0]) \
+        .reduce(lambda old_value, new_value:
+                (old_value[0], old_value[1] + new_value[1])) \
+        .filter(lambda x: "ray" not in x) \
+        .sink(lambda x: print("result", x))
+    ctx.execute()
     ray.shutdown()
 
 

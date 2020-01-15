@@ -46,10 +46,17 @@ class StreamingContext:
         func = function.LocalFileSourceFunction(filename)
         return self.source(func)
 
-    def execute(self):
+    def submit(self, job_name):
+        self._gateway_client.execute()
+
+    def execute(self, job_name):
         """Construct job DAG, and execute the job.
         """
         self._gateway_client.execute()
+        self.wait_finish()
+
+    def wait_finish(self):
+        pass
 
     def _do_init(self):
         pass

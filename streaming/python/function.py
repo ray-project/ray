@@ -107,7 +107,8 @@ class SimpleFlatMapFunction(FlatMapFunction):
         self.func = func
 
     def flat_map(self, value, collector):
-        self.func(value, collector)
+        for elem in self.func(value):
+            collector.collect(elem)
 
 
 class SimpleFilterFunction(FilterFunction):
