@@ -479,7 +479,7 @@ class TFPolicy(Policy):
             assert "behavior_logits" in extra_action_fetches
             sampler_fetch = self.exploration.get_action(
                 extra_action_fetches["behavior_logits"], self.model, None,
-                time_step
+                explore, time_step
             )
 
         fetches = builder.add_fetches([sampler_fetch] + self._state_outputs +

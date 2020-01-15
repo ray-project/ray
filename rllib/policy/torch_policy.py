@@ -78,15 +78,12 @@ class TorchPolicy(Policy):
             model_out = self.model(input_dict, state_batches, [1])
             logits, state = model_out
             action_dist = self.dist_class(logits, self.model)
-            actions = None
             # Try our Exploration, if any.
-            if explore and self.exploration:
+            if self.exploration:
                 actions = self.exploration.get_action(
-                    model_out, self.model, action_dist, time_step
+                    model_out, self.model, action_dist, explore, time_step
                 )
-            # If Exploration returns None or we don't have an Exploration,
-            # simply sample an action.
-            if actions is None:
+            else:
                 # TODO: pass deterministic flag into sample (deterministic=deterministic).
                 actions = action_dist.sample()
 

@@ -41,7 +41,7 @@ class Component:
 
         The rest of `config` (if it's a dict) will be used as kwargs for the
         constructor. Additional keys in **kwargs will always have precedence
-        (overwrite keys in `config` (if a dict)).
+        (overwrite keys in `config`).
         Also, if the config-dict or **kwargs contains the special key "_args",
         it will be popped from the dict and used as *args list to be passed
         separately to the constructor.
@@ -54,8 +54,9 @@ class Component:
             dict: The value in `__type_registry__` for that key will be used
             as the constructor.
         - A python callable: Use that very callable as constructor.
-        - A string: Either a json/yaml filename or the name of a python
-            module+class (e.g. "ray.rllib. [...] .[some class name]")
+        - A string: Either a json/yaml filename, a json/yaml string, or the
+            name of a python module+class
+            (e.g. "ray.rllib. [...] .[some class name]")
 
         Args:
             config (Optional[dict,str]): The config dict or type-string or
@@ -73,7 +74,7 @@ class Component:
                 (e.g. kwargs={"_args": [arg1, arg2, arg3]}).
 
         Returns:
-            any: The object generated from the config.
+            Component: The Component object generated from `config`.
         """
         # `config` is already a created object of this class ->
         # Take it as is.
