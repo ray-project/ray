@@ -23,7 +23,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
-.. _`RaySGD`:=raysgd/raysgd.rst
+.. _`RaySGD`: raysgd/raysgd.html
 
 
 Quick Start
