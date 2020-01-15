@@ -13,7 +13,6 @@ import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants
-from ray.services import get_ip_address, get_port
 from ray.utils import (binary_to_hex, binary_to_object_id, binary_to_task_id,
                        hex_to_binary, setup_logger)
 from ray.autoscaler.commands import teardown_cluster
