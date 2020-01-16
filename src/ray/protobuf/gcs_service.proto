@@ -295,3 +295,16 @@ service ErrorInfoGcsService {
   // Report a job error to GCS Service.
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
 }
+
+message ReportWorkerFailureRequest {
+  WorkerFailureData worker_failure = 1;
+}
+
+message ReportWorkerFailureReply {
+}
+
+// Service for worker info access.
+service WorkerInfoGcsService {
+  // Report a worker failure to GCS Service.
+  rpc ReportWorkerFailure(ReportWorkerFailureRequest) returns (ReportWorkerFailureReply);
+}

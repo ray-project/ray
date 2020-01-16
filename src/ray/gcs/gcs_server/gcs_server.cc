@@ -6,6 +6,7 @@
 #include "object_info_handler_impl.h"
 #include "stats_handler_impl.h"
 #include "task_info_handler_impl.h"
+#include "worker_info_handler_impl.h"
 
 namespace ray {
 namespace gcs {
@@ -54,6 +55,11 @@ void GcsServer::Start() {
   error_info_service_.reset(
       new rpc::ErrorInfoGrpcService(main_service_, *error_info_handler_));
   rpc_server_.RegisterService(*error_info_service_);
+
+  worker_info_handler_ = InitWorkerInfoHandler();
+  worker_info_service_.reset(
+      new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
+  rpc_server_.RegisterService(*worker_info_service_);
 
   // Run rpc server.
   rpc_server_.Run();
@@ -114,6 +120,11 @@ std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
 std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
   return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
       new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
+      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
 }
 
 }  // namespace gcs
