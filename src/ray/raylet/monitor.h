@@ -22,7 +22,8 @@ class Monitor {
   /// \param io_service The event loop to run the monitor on.
   /// \param redis_address The GCS Redis address to connect to.
   /// \param redis_port The GCS Redis port to connect to.
-  Monitor(boost::asio::io_service &io_service, const gcs::GcsClientOptions &gcs_client_options);
+  Monitor(boost::asio::io_service &io_service,
+          const gcs::GcsClientOptions &gcs_client_options);
 
   /// Start the monitor. Listen for heartbeats from Raylets and mark Raylets
   /// that do not send a heartbeat within a given period as dead.

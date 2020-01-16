@@ -61,9 +61,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
   virtual void Disconnect() = 0;
 
   /// Return client information for debug.
-  virtual std::string DebugString() const {
-    return "";
-  }
+  virtual std::string DebugString() const { return ""; }
 
   /// Get the sub-interface for accessing actor information in GCS.
   /// This function is thread safe.

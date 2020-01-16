@@ -209,8 +209,7 @@ class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
-  LineageCache(const ClientID &self_node_id,
-               std::shared_ptr<gcs::GcsClient> gcs_client,
+  LineageCache(const ClientID &self_node_id, std::shared_ptr<gcs::GcsClient> gcs_client,
                uint64_t max_lineage_size);
 
   /// Asynchronously commit a task to the GCS.

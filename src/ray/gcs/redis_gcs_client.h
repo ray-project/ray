@@ -50,7 +50,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ///
   /// \return string.
   std::string DebugString() const;
-  
+
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
 
@@ -62,29 +62,31 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
   std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
 
-  /// The following three methods will be deprecated, use method Actors() instead.
+  /// The following xxx_table methods is no longer used as interface,
+  /// just used as implementation.
+  /// Use new interface method Actors() instead of the following three methods.
   ActorTable &actor_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
-  /// This method will be deprecated, use method Jobs() instead.
+  /// Use new interface method Jobs() instead of this method.
   JobTable &job_table();
-  /// This method will be deprecated, use method Objects() instead.
+  /// Use new interface method Objects() instead of this method.
   ObjectTable &object_table();
-  /// The following four methods will be deprecated, use method Nodes() instead.
+  /// Use new interface method Nodes() instead of the following four methods.
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   DynamicResourceTable &resource_table();
-  /// The following three methods will be deprecated, use method Tasks() instead.
+  /// Use new interface method Tasks() instead of the following three methods.
   raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
   TaskReconstructionLog &task_reconstruction_log();
-  /// This method will be deprecated, use method Errors() instead.
+  /// Use new interface method Errors() instead of this method.
   // TODO: Some API for getting the error on the driver
   ErrorTable &error_table();
-  /// This method will be deprecated, use method Stats() instead.
+  /// Use new interface method Stats() instead of this method.
   ProfileTable &profile_table();
-  /// This method will be deprecated, use method Workers() instead.
+  /// Use new interface method Workers() instead of this method.
   WorkerFailureTable &worker_failure_table();
 
  private:

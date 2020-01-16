@@ -16,7 +16,8 @@ namespace raylet {
 /// within heartbeat_timeout_milliseconds * num_heartbeats_timeout (defined in
 /// the Ray configuration), then the monitor will mark that Raylet as dead in
 /// the client table, which broadcasts the event to all other Raylets.
-Monitor::Monitor(boost::asio::io_service &io_service, const gcs::GcsClientOptions &gcs_client_options)
+Monitor::Monitor(boost::asio::io_service &io_service,
+                 const gcs::GcsClientOptions &gcs_client_options)
     : gcs_client_(new gcs::RedisGcsClient(gcs_client_options)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service) {

@@ -24,7 +24,8 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   gflags::ShutDownCommandLineFlags();
 
-  ray::gcs::GcsClientOptions gcs_client_options(redis_address, redis_port, redis_password);
+  ray::gcs::GcsClientOptions gcs_client_options(redis_address, redis_port,
+                                                redis_password);
 
   std::unordered_map<std::string, std::string> raylet_config;
 
