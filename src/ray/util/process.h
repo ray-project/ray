@@ -15,7 +15,7 @@
 #include <memory>
 #include <utility>
 
-// We only define operators required by the standard library (<, ==, hash).
+// We only define operators required by the standard library (==, hash).
 // We declare but avoid defining the rest so that they're not used by accident.
 
 namespace ray {

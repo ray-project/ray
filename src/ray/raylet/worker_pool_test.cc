@@ -16,18 +16,18 @@ std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
 class WorkerPoolMock : public WorkerPool {
  public:
-  WorkerPoolMock(boost::asio::io_service &ios)
+  WorkerPoolMock(boost::asio::io_service &io_service)
       : WorkerPoolMock(
-            ios,
+            io_service,
             {{Language::PYTHON,
               {"dummy_py_worker_command", "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}},
              {Language::JAVA,
               {"dummy_java_worker_command",
                "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}}) {}
 
-  explicit WorkerPoolMock(boost::asio::io_service &ios,
+  explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(ios, 0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
+      : WorkerPool(io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
         last_worker_process_() {
     for (auto &entry : states_by_lang_) {
       entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;
