@@ -208,6 +208,55 @@ def test_actor_class_attributes(ray_start_regular):
     assert ray.get(t.g.remote()) == 3
 
 
+def test_actor_static_attributes(ray_start_regular):
+    class Grandparent:
+        GRANDPARENT = 2
+
+        @staticmethod
+        def grandparent_static():
+            assert Grandparent.GRANDPARENT == 2
+            return 1
+
+    class Parent1(Grandparent):
+        PARENT1 = 6
+
+        @staticmethod
+        def parent1_static():
+            assert Parent1.PARENT1 == 6
+            return 2
+
+        def parent1(self):
+            assert Parent1.PARENT1 == 6
+
+    class Parent2:
+        PARENT2 = 7
+
+        def parent2(self):
+            assert Parent2.PARENT2 == 7
+
+    @ray.remote
+    class TestActor(Parent1, Parent2):
+        X = 3
+
+        @staticmethod
+        def f():
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.X == 3
+            return 4
+
+        def g(self):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.f() == 4
+            return TestActor.X
+
+    t = TestActor.remote()
+    assert ray.get(t.g.remote()) == 3
+
+
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
