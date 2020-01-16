@@ -17,7 +17,6 @@ from ray.utils import (binary_to_hex, binary_to_object_id, binary_to_task_id,
                        hex_to_binary, setup_logger)
 from ray.autoscaler.commands import teardown_cluster
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -369,7 +368,8 @@ class Monitor:
 
         if self.autoscaling_config is None:
             # This is a logic error in the program. Can't do anything.
-            logger.error("Monitor: Cleanup failed due to lack of autoscaler config.")
+            logger.error(
+                "Monitor: Cleanup failed due to lack of autoscaler config.")
             return
 
         logger.info("Monitor: Exception caught. Taking down workers...")

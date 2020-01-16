@@ -66,7 +66,8 @@ def _bootstrap_config(config):
     return resolved_config
 
 
-def teardown_cluster(config_file, yes, workers_only, override_cluster_name, keep_min_workers):
+def teardown_cluster(config_file, yes, workers_only, override_cluster_name,
+                     keep_min_workers):
     """Destroys all nodes of a Ray cluster described by a config json."""
 
     config = yaml.safe_load(open(config_file).read())
@@ -79,9 +80,12 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name, keep
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
+
         def remaining_nodes():
 
-            workers = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
+            workers = provider.non_terminated_nodes({
+                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            })
 
             if keep_min_workers:
                 min_workers = config.get("min_workers", 0)
@@ -92,7 +96,9 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name, keep
             if workers_only:
                 return workers
 
-            head = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD})
+            head = provider.non_terminated_nodes({
+                TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
+            })
 
             return head + workers
 

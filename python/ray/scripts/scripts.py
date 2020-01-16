@@ -548,9 +548,11 @@ def create_or_update(cluster_config_file, min_workers, max_workers, no_restart,
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def teardown(cluster_config_file, yes, workers_only, cluster_name, keep_min_workers):
+def teardown(cluster_config_file, yes, workers_only, cluster_name,
+             keep_min_workers):
     """Tear down the Ray cluster."""
-    teardown_cluster(cluster_config_file, yes, workers_only, cluster_name, keep_min_workers)
+    teardown_cluster(cluster_config_file, yes, workers_only, cluster_name,
+                     keep_min_workers)
 
 
 @cli.command()
