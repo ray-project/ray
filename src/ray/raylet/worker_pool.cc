@@ -47,7 +47,7 @@ namespace raylet {
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
 WorkerPool::WorkerPool(int num_workers, int maximum_startup_concurrency,
-                       std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                       std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
     : maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
