@@ -159,7 +159,6 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
 
-  njjj
   // Subscribe to resource changes.
   const auto &resources_changed =
       [this](const ClientID &id,
@@ -221,12 +220,6 @@ ray::Status NodeManager::RegisterGcs() {
   GetObjectManagerProfileInfo();
 
   return ray::Status::OK();
-}
-
-void NodeManager::HandleUnexpectedWorkerFailure(
-    const WorkerID &worker_id, const gcs::WorkerFailureData &worker_failed_data) {
-  RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
-  // TODO: Clean up after the failure: If the failed worker is our owner, then exit.
 }
 
 void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
