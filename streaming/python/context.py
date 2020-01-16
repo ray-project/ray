@@ -39,7 +39,7 @@ class StreamingContext:
         func = ListSourceFunction(values)
         return self.source(func)
 
-    def reset_text_file(self, filename):
+    def read_text_file(self, filename):
         """Reads the given file line-by-line and creates a data stream that
          contains a string with the contents of each such line."""
         func = LocalFileSourceFunction(filename)
