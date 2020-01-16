@@ -9,7 +9,7 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
-from ray.tests import conftest  # noqa: F401
+from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 from ray.experimental.sgd.pytorch.utils import train
 from ray.experimental.sgd.utils import check_for_failure
