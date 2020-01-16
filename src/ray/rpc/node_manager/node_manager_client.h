@@ -39,18 +39,9 @@ class NodeManagerClient {
   VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, request, callback,
                          grpc_client_)
 
-  /// Get current node stats.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetProfilingStats, request, callback,
-                         grpc_client_)
-
   void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
     GetNodeStatsRequest request;
     GetNodeStats(request, callback);
-  }
-
-  void GetProfilingStats(const ClientCallback<GetProfilingStatsReply> &callback) {
-    GetProfilingStatsRequest request;
-    GetProfilingStats(request, callback);
   }
 
  private:

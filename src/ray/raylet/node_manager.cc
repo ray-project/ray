@@ -3051,43 +3051,6 @@ void NodeManager::HandleNodeStatsRequest(const rpc::GetNodeStatsRequest &request
   }
 }
 
-void StartProfiling(const rpc::GetProfilingStatsRequest &request,
-                    rpc::GetProfilingStatsReply *reply,
-                    rpc::SendReplyCallback send_reply_callback) {
-  int pid = request.pid();
-  int duration = request.duration();
-  // TODO: append a random number to file name to avoid overwriting
-  std::string profiling_file_path = "/tmp/ray/profiling_stats_" + std::to_string(pid) + ".svg";
-  std::string command;
-  command = "sudo py-spy record -o " + profiling_file_path + " -p " + std::to_string(pid) + " -d " + std::to_string(duration) + " -f speedscope 2>&1";
-  const int max_buffer = 256;
-  char buffer[max_buffer];
-  std::string profiling_stdout;
-  FILE* stream = popen(command.c_str(), "r");
-  if (stream) {
-    while (!feof(stream)) {
-      if (fgets(buffer, max_buffer, stream) != NULL) profiling_stdout.append(buffer);
-    }
-    reply->set_profiling_stats_stdout(profiling_stdout);
-    RAY_LOG(WARNING) << "XXX got profiling stdout" << profiling_stdout;
-  } else {
-    reply->set_profiling_stats_stdout("popen failed");
-  }
-  pclose(stream);
-  std::ifstream profiling_file(profiling_file_path);
-  std::stringstream profiling_file_stream;
-  profiling_file_stream << profiling_file.rdbuf();
-  reply->set_profiling_stats(profiling_file_stream.str());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void NodeManager::HandleProfilingStatsRequest(const rpc::GetProfilingStatsRequest &request,
-                                              rpc::GetProfilingStatsReply *reply,
-                                              rpc::SendReplyCallback send_reply_callback) {
-  std::thread t(StartProfiling,request,reply,send_reply_callback);
-  t.join();
-}
-
 void NodeManager::RecordMetrics() {
   recorded_metrics_ = true;
   if (stats::StatsConfig::instance().IsStatsDisabled()) {

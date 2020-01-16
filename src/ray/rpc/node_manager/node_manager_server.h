@@ -39,10 +39,6 @@ class NodeManagerServiceHandler {
   virtual void HandleNodeStatsRequest(const GetNodeStatsRequest &request,
                                       GetNodeStatsReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleProfilingStatsRequest(const GetProfilingStatsRequest &request,
-                                      GetProfilingStatsReply *reply,
-                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
@@ -92,13 +88,6 @@ class NodeManagerGrpcService : public GrpcService {
             service_handler_, &NodeManagerServiceHandler::HandleNodeStatsRequest, cq,
             main_service_));
 
-    std::unique_ptr<ServerCallFactory> profiling_stats_call_factory(
-        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
-                                  GetProfilingStatsRequest, GetProfilingStatsReply>(
-            service_, &NodeManagerService::AsyncService::RequestGetProfilingStats,
-            service_handler_, &NodeManagerServiceHandler::HandleProfilingStatsRequest, cq,
-            main_service_));
-
     // Set accept concurrency.
     server_call_factories_and_concurrencies->emplace_back(
         std::move(request_worker_lease_call_factory), 100);
@@ -108,8 +97,6 @@ class NodeManagerGrpcService : public GrpcService {
         std::move(forward_task_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
         std::move(node_stats_call_factory), 1);
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(profiling_stats_call_factory), 1);
   }
 
  private:

@@ -64,7 +64,6 @@ message GetNodeStatsReply {
   repeated TaskSpec infeasible_tasks = 4;
 }
 
-message GetProfilingStatsRequest {
   // PID of the worker process.
   uint32 pid = 1;
   // Duration of the profiling in seconds. 
@@ -87,6 +86,4 @@ service NodeManagerService {
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Get the current node stats.
   rpc GetNodeStats(GetNodeStatsRequest) returns (GetNodeStatsReply);
-  // Get the profiling stats.
-  rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
 }

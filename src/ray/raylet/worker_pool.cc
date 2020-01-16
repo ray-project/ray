@@ -51,6 +51,13 @@ WorkerPool::WorkerPool(int num_workers, int maximum_startup_concurrency,
     : maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(maximum_startup_concurrency > 0);
+#ifdef _WIN32		
+  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?		
+#else		
+  // Ignore SIGCHLD signals. If we don't do this, then worker processes will		
+  // become zombies instead of dying gracefully.		
+  signal(SIGCHLD, SIG_IGN);		
+#endif
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
