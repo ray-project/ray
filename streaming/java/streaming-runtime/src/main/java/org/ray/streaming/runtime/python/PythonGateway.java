@@ -11,6 +11,8 @@ import org.ray.streaming.python.PythonFunction;
 import org.ray.streaming.python.PythonPartition;
 import org.ray.streaming.python.stream.PythonStreamSource;
 import org.ray.streaming.util.ReflectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Gateway for streaming python api.
@@ -22,6 +24,8 @@ import org.ray.streaming.util.ReflectionUtils;
 @SuppressWarnings("unchecked")
 @RayRemote
 public class PythonGateway {
+  private static final Logger LOGGER = LoggerFactory.getLogger(PythonGateway.class);
+
   private MsgPackSerializer serializer;
   private Map<Integer, Object> objectMap;
   private StreamingContext streamingContext;
@@ -29,10 +33,12 @@ public class PythonGateway {
   public PythonGateway() {
     serializer = new MsgPackSerializer();
     objectMap = new HashMap<>();
+    LOGGER.info("PythonGateway created");
   }
 
   public byte[] createStreamingContext() {
     streamingContext = StreamingContext.buildContext();
+    LOGGER.info("StreamingContext created");
     objectMap.put(getRefId(streamingContext), streamingContext);
     return serializer.serialize(getRefId(streamingContext));
   }
@@ -41,6 +47,7 @@ public class PythonGateway {
     Preconditions.checkNotNull(streamingContext);
     try {
       Map<String, String> config = (Map<String, String>) serializer.deserialize(confBytes);
+      LOGGER.info("Set config {}", config);
       streamingContext.withConfig(config);
     } catch (Exception e) {
       throw new RuntimeException(e);
@@ -60,6 +67,7 @@ public class PythonGateway {
   }
 
   public void execute(byte[] jobNameBytes) {
+    LOGGER.info("Starting executing");
     streamingContext.execute((String) serializer.deserialize(jobNameBytes));
   }
 
