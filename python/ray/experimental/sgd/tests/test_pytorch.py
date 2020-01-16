@@ -3,6 +3,7 @@ import tempfile
 from unittest.mock import patch
 
 import pytest
+import time
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -15,12 +16,12 @@ from ray.experimental.sgd.pytorch.utils import train
 from ray.experimental.sgd.utils import check_for_failure
 
 from ray.experimental.sgd.examples.train_example import (
-    model_creator, optimizer_creator, data_creator)
+    model_creator, optimizer_creator, data_creator, LinearDataset)
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
-def test_train(ray_start_2_cpus, num_replicas):
+def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
@@ -42,7 +43,7 @@ def test_train(ray_start_2_cpus, num_replicas):
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
-def test_multi_model(ray_start_2_cpus, num_replicas):
+def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
     def custom_train(models, dataloader, criterion, optimizers, config):
         result = {}
         for i, (model, optimizer) in enumerate(zip(models, optimizers)):
@@ -100,7 +101,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
-def test_tune_train(ray_start_2_cpus, num_replicas):
+def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     config = {
         "model_creator": model_creator,
@@ -133,7 +134,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
-def test_save_and_restore(ray_start_2_cpus, num_replicas):
+def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
     trainer1 = PyTorchTrainer(
         model_creator,
         data_creator,
@@ -170,13 +171,20 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
 
 
-def test_fail_with_recover(ray_start_2_cpus):
+def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
+
+    def single_loader(batch_size, config):
+        train_dataset = LinearDataset(2, 5, size=1000000)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size)
+        return train_loader
 
     def step_with_fail(self):
         worker_stats = [w.step.remote() for w in self.workers]
         if self._num_failures < 3:
+            time.sleep(1)  # Make the batch will fail correctly.
             self.workers[0].__ray_kill__()
         success = check_for_failure(worker_stats)
         return success, worker_stats
@@ -184,8 +192,9 @@ def test_fail_with_recover(ray_start_2_cpus):
     with patch.object(PyTorchTrainer, "_train_step", step_with_fail):
         trainer1 = PyTorchTrainer(
             model_creator,
-            data_creator,
+            single_loader,
             optimizer_creator,
+            batch_size=100000,
             loss_creator=lambda config: nn.MSELoss(),
             num_replicas=2)
 
@@ -193,13 +202,20 @@ def test_fail_with_recover(ray_start_2_cpus):
             trainer1.train(max_retries=1)
 
 
-def test_resize(ray_start_2_cpus):
+def test_resize(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
+
+    def single_loader(batch_size, config):
+        train_dataset = LinearDataset(2, 5, size=1000000)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size)
+        return train_loader
 
     def step_with_fail(self):
         worker_stats = [w.step.remote() for w in self.workers]
         if self._num_failures < 1:
+            time.sleep(1)  # Make the batch will fail correctly.
             self.workers[0].__ray_kill__()
         success = check_for_failure(worker_stats)
         return success, worker_stats
@@ -207,8 +223,9 @@ def test_resize(ray_start_2_cpus):
     with patch.object(PyTorchTrainer, "_train_step", step_with_fail):
         trainer1 = PyTorchTrainer(
             model_creator,
-            data_creator,
+            single_loader,
             optimizer_creator,
+            batch_size=100000,
             loss_creator=lambda config: nn.MSELoss(),
             num_replicas=2)
 
@@ -222,13 +239,20 @@ def test_resize(ray_start_2_cpus):
         assert len(trainer1.workers) == 1
 
 
-def test_fail_thrice(ray_start_2_cpus):
+def test_fail_twice(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
+
+    def single_loader(batch_size, config):
+        train_dataset = LinearDataset(2, 5, size=1000000)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size)
+        return train_loader
 
     def step_with_fail(self):
         worker_stats = [w.step.remote() for w in self.workers]
         if self._num_failures < 2:
+            time.sleep(1)
             self.workers[0].__ray_kill__()
         success = check_for_failure(worker_stats)
         return success, worker_stats
@@ -236,8 +260,9 @@ def test_fail_thrice(ray_start_2_cpus):
     with patch.object(PyTorchTrainer, "_train_step", step_with_fail):
         trainer1 = PyTorchTrainer(
             model_creator,
-            data_creator,
+            single_loader,
             optimizer_creator,
+            batch_size=100000,
             loss_creator=lambda config: nn.MSELoss(),
             num_replicas=2)
 
