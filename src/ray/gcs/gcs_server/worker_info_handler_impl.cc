@@ -7,13 +7,12 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
     const ReportWorkerFailureRequest &request, ReportWorkerFailureReply *reply,
     SendReplyCallback send_reply_callback) {
   Address worker_address = request.worker_failure().worker_address();
-  RAY_LOG(DEBUG) << "Reporting worker failure, worker address = "
-                 << worker_address.DebugString();
+  RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
   auto worker_failure_data = std::make_shared<WorkerFailureData>();
   worker_failure_data->CopyFrom(request.worker_failure());
   auto on_done = [worker_address, request, send_reply_callback](Status status) {
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to report worker failure, worker address = "
+      RAY_LOG(ERROR) << "Failed to report worker failure, "
                      << worker_address.DebugString();
     }
     send_reply_callback(status, nullptr, nullptr);
@@ -24,8 +23,7 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
   if (!status.ok()) {
     on_done(status);
   }
-  RAY_LOG(DEBUG) << "Finished reporting worker failure, worker address = "
-                 << worker_address.DebugString();
+  RAY_LOG(DEBUG) << "Finished reporting worker failure, " << worker_address.DebugString();
 }
 
 }  // namespace rpc
