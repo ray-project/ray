@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.msgpack.core.MessageBufferPacker;
 import org.msgpack.core.MessagePack;
 import org.msgpack.core.MessageUnpacker;
@@ -13,6 +14,8 @@ import org.msgpack.value.FloatValue;
 import org.msgpack.value.IntegerValue;
 import org.msgpack.value.MapValue;
 import org.msgpack.value.Value;
+
+import com.google.common.io.BaseEncoding;
 
 public class MsgPackSerializer {
 
@@ -60,11 +63,12 @@ public class MsgPackSerializer {
   }
 
   public Object deserialize(byte[] bytes) {
-    MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(bytes);
     try {
+      MessageUnpacker unpacker = MessagePack.newDefaultUnpacker(bytes);
       return convert(unpacker.unpackValue());
     } catch (Exception e) {
-      throw new RuntimeException(e);
+      String hex = BaseEncoding.base16().lowerCase().encode(bytes);
+      throw new RuntimeException("Deserialize error: " + hex, e);
     }
   }
 
