@@ -21,6 +21,7 @@ from ray import PythonFunctionDescriptor
 from ray.utils import (
     is_function_or_method,
     is_class_method,
+    is_static_method,
     check_oversized_pickle,
     decode,
     ensure_str,
@@ -533,7 +534,9 @@ class FunctionActorManager:
 
             # Execute the assigned method and save a checkpoint if necessary.
             try:
-                if is_class_method(method):
+                is_bound = (is_class_method(method)
+                            or is_static_method(type(actor), method_name))
+                if is_bound:
                     method_returns = method(*args, **kwargs)
                 else:
                     method_returns = method(actor, *args, **kwargs)

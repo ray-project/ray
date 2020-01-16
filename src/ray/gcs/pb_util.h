@@ -30,6 +30,18 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
   return job_info_ptr;
 }
 
+/// Helper function to produce error table data.
+inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
+    const std::string &error_type, const std::string &error_msg, double timestamp,
+    const JobID &job_id = JobID::Nil()) {
+  auto error_info_ptr = std::make_shared<ray::rpc::ErrorTableData>();
+  error_info_ptr->set_type(error_type);
+  error_info_ptr->set_error_message(error_msg);
+  error_info_ptr->set_timestamp(timestamp);
+  error_info_ptr->set_job_id(job_id.Binary());
+  return error_info_ptr;
+}
+
 /// Helper function to produce actor table data.
 inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
     const TaskSpecification &task_spec, const ray::rpc::Address &address,
@@ -54,6 +66,19 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
       task_spec.GetMessage().caller_address());
   actor_info_ptr->set_state(state);
   return actor_info_ptr;
+}
+
+/// Helper function to produce worker failure data.
+inline std::shared_ptr<ray::rpc::WorkerFailureData> CreateWorkerFailureData(
+    const ClientID &raylet_id, const WorkerID &worker_id, const std::string &address,
+    int32_t port, int64_t timestamp = std::time(nullptr)) {
+  auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerFailureData>();
+  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_ip_address(address);
+  worker_failure_info_ptr->mutable_worker_address()->set_port(port);
+  worker_failure_info_ptr->set_timestamp(timestamp);
+  return worker_failure_info_ptr;
 }
 
 }  // namespace gcs

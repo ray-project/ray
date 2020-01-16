@@ -30,8 +30,8 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
   @Test
   public void testWordCount() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    Map<String, Object> config = new HashMap<>();
-    config.put(Config.STREAMING_BATCH_MAX_COUNT, 1);
+    Map<String, String> config = new HashMap<>();
+    config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
     config.put(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
@@ -50,7 +50,7 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
         .sink((SinkFunction<WordAndCount>)
             result -> wordCount.put(result.word, result.count));
 
-    streamingContext.execute();
+    streamingContext.execute("testWordCount");
 
     // Sleep until the count for every word is computed.
     while (wordCount.size() < 3) {

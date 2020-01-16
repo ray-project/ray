@@ -130,6 +130,7 @@ public final class Ray extends RayCall {
 
   /**
    * Set the async context for the current thread.
+   *
    * @param asyncContext The async context to set.
    */
   public static void setAsyncContext(Object asyncContext) {
@@ -178,6 +179,16 @@ public final class Ray extends RayCall {
    */
   public static void setResource(String resourceName, double capacity) {
     runtime.setResource(resourceName, capacity, UniqueId.NIL);
+  }
+
+  /**
+   * Kill the actor immediately. This will cause any outstanding tasks submitted to the actor to
+   * fail and the actor to exit in the same way as if it crashed.
+   *
+   * @param actor The actor to be killed.
+   */
+  public static void killActor(RayActor<?> actor) {
+    runtime.killActor(actor);
   }
 
   /**

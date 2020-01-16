@@ -146,7 +146,8 @@ public class RunManager {
       e.printStackTrace();
     }
     if (!p.isAlive()) {
-      String message = String.format("Failed to start %s.", name);
+      String message = String.format("Failed to start %s. Exit code: %d.",
+        name, p.exitValue());
       if (rayConfig.redirectOutput) {
         message += String.format(" Logs are redirected to %s and %s.", stdout, stderr);
       }
