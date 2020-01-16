@@ -41,15 +41,15 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Must be single-threaded io_service (get more information from RedisAsioClient).
   ///
   /// \return Status
-  Status Connect(boost::asio::io_service &io_service);
+  Status Connect(boost::asio::io_service &io_service) override;
 
   /// Disconnect with GCS Service. Non-thread safe.
-  void Disconnect();
+  void Disconnect() override;
 
   /// Returns debug string for class.
   ///
   /// \return string.
-  std::string DebugString() const;
+  std::string DebugString() const override;
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
