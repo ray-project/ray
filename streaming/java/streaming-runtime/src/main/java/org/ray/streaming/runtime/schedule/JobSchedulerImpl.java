@@ -45,7 +45,7 @@ public class JobSchedulerImpl implements JobScheduler {
 
     ExecutionGraph executionGraph = this.taskAssigner.assign(this.jobGraph);
     RemoteCall.ExecutionGraph executionGraphPb =
-        GraphPbBuilder.buildExecutionGraphPb(executionGraph);
+        new GraphPbBuilder().buildExecutionGraphPb(executionGraph);
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
     List<RayObject<Object>> waits = new ArrayList<>();
     for (ExecutionNode executionNode : executionNodes) {

@@ -1,7 +1,7 @@
 package org.ray.streaming.runtime.python;
 
-import com.google.protobuf.ByteString;
 import java.util.Arrays;
+
 import org.ray.api.RayActor;
 import org.ray.api.RayPyActor;
 import org.ray.streaming.api.function.Function;
@@ -16,13 +16,17 @@ import org.ray.streaming.runtime.generated.RemoteCall;
 import org.ray.streaming.runtime.generated.Streaming;
 import org.ray.streaming.runtime.worker.JobWorker;
 
+import com.google.protobuf.ByteString;
+
 public class GraphPbBuilder {
+
+  private MsgPackSerializer serializer = new MsgPackSerializer();
 
   /**
    * For simple scenario, a single ExecutionNode is enough. Buf some cases may need
    * sub-graph information, so we serialize entire graph.
    */
-  public static RemoteCall.ExecutionGraph buildExecutionGraphPb(ExecutionGraph graph) {
+  public RemoteCall.ExecutionGraph buildExecutionGraphPb(ExecutionGraph graph) {
     RemoteCall.ExecutionGraph.Builder builder = RemoteCall.ExecutionGraph.newBuilder();
     builder.setBuildTime(graph.getBuildTime());
     for (ExecutionNode node : graph.getExecutionNodeList()) {
@@ -61,7 +65,7 @@ public class GraphPbBuilder {
     return builder.build();
   }
 
-  private static RemoteCall.ExecutionGraph.ExecutionEdge buildEdge(ExecutionEdge edge) {
+  private RemoteCall.ExecutionGraph.ExecutionEdge buildEdge(ExecutionEdge edge) {
     RemoteCall.ExecutionGraph.ExecutionEdge.Builder edgeBuilder =
         RemoteCall.ExecutionGraph.ExecutionEdge.newBuilder();
     edgeBuilder.setSrcNodeId(edge.getSrcNodeId());
@@ -70,11 +74,11 @@ public class GraphPbBuilder {
     return edgeBuilder.build();
   }
 
-  private static byte[] serializeFunction(Function function) {
+  private byte[] serializeFunction(Function function) {
     if (function instanceof PythonFunction) {
       PythonFunction pyFunc = (PythonFunction) function;
       // function_bytes, module_name, class_name, function_name, function_interface
-      return new MsgPackSerializer().serialize(Arrays.asList(
+      return serializer.serialize(Arrays.asList(
           pyFunc.getFunction(), pyFunc.getModuleName(),
           pyFunc.getClassName(), pyFunc.getFunctionName(),
           pyFunc.getFunctionInterface()
@@ -84,11 +88,11 @@ public class GraphPbBuilder {
     }
   }
 
-  private static byte[] serializePartition(Partition partition) {
+  private byte[] serializePartition(Partition partition) {
     if (partition instanceof PythonPartition) {
       PythonPartition pythonPartition = (PythonPartition) partition;
       // partition_bytes, module_name, class_name, function_name
-      return new MsgPackSerializer().serialize(Arrays.asList(
+      return serializer.serialize(Arrays.asList(
           pythonPartition.getPartition(), pythonPartition.getModuleName(),
           pythonPartition.getClassName(), pythonPartition.getFunctionName()
       ));
@@ -97,14 +101,14 @@ public class GraphPbBuilder {
     }
   }
 
-  private static byte[] serializeWorkerActor(RayActor actor) {
+  private byte[] serializeWorkerActor(RayActor actor) {
     if (actor instanceof RayPyActor) {
       RayPyActor pyActor = (RayPyActor) actor;
-      return new MsgPackSerializer().serialize(Arrays.asList(
+      return serializer.serialize(Arrays.asList(
           pyActor.getModuleName(), pyActor.getClassName(), pyActor.getId().getBytes()
       ));
     } else {
-      return new MsgPackSerializer().serialize(Arrays.asList(
+      return serializer.serialize(Arrays.asList(
           JobWorker.class.getName(), actor.getId().getBytes()
       ));
     }
