@@ -42,7 +42,7 @@ class Monitor {
 
  private:
   /// A client to the GCS, through which heartbeats are received.
-  std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::unique_ptr<gcs::GcsClient> gcs_client_;
   /// The number of heartbeats that can be missed before a client is removed.
   int64_t num_heartbeats_timeout_;
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
