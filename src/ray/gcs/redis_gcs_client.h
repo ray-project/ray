@@ -27,6 +27,7 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   friend class RedisObjectInfoAccessor;
   friend class RedisErrorInfoAccessor;
   friend class RedisStatsInfoAccessor;
+  friend class RedisWorkerInfoAccessor;
   friend class SubscriptionExecutorTest;
   friend class LogSubscribeTestHelper;
   friend class LogLookupTestHelper;
@@ -64,8 +65,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   /// Disconnect with GCS Service. Non-thread safe.
   void Disconnect();
-
-  WorkerFailureTable &worker_failure_table();
 
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
@@ -110,6 +109,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ErrorTable &error_table();
   /// This method will be deprecated, use method Stats() instead.
   ProfileTable &profile_table();
+  /// This method will be deprecated, use method Workers() instead.
+  WorkerFailureTable &worker_failure_table();
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.
