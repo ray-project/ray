@@ -62,6 +62,9 @@ class GcsServer {
   /// The stats handler
   virtual std::unique_ptr<rpc::StatsHandler> InitStatsHandler();
 
+  /// The error info handler
+  virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
+
  private:
   /// Gcs server configuration
   GcsServerConfig config_;
@@ -87,6 +90,9 @@ class GcsServer {
   /// Stats handler and service
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
+  /// Error info handler and service
+  std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
+  std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
 };

@@ -12,11 +12,10 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
+Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
                std::shared_ptr<LocalClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
-      pid_(pid),
       language_(language),
       port_(port),
       connection_(connection),
@@ -42,7 +41,12 @@ bool Worker::IsBlocked() const { return blocked_; }
 
 WorkerID Worker::WorkerId() const { return worker_id_; }
 
-pid_t Worker::Pid() const { return pid_; }
+ProcessHandle Worker::Process() const { return proc_; }
+
+void Worker::SetProcess(const ProcessHandle &proc) {
+  RAY_CHECK(!proc_);  // this procedure should not be called multiple times
+  proc_ = proc;
+}
 
 Language Worker::GetLanguage() const { return language_; }
 
