@@ -9,6 +9,7 @@ import torch.distributed as dist
 
 import ray
 from ray import tune
+from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 from ray.experimental.sgd.pytorch.utils import train
 from ray.experimental.sgd.utils import check_for_failure
@@ -19,7 +20,7 @@ from ray.experimental.sgd.examples.train_example import (
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
-def test_train(ray_start_2_cpus, num_replicas):
+def test_train(ray_start_2_cpus, num_replicas):  # noqa: F401
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
@@ -41,7 +42,7 @@ def test_train(ray_start_2_cpus, num_replicas):
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
-def test_multi_model(ray_start_2_cpus, num_replicas):
+def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F401
     def custom_train(models, dataloader, criterion, optimizers, config):
         result = {}
         for i, (model, optimizer) in enumerate(zip(models, optimizers)):
@@ -99,7 +100,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
-def test_tune_train(ray_start_2_cpus, num_replicas):
+def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F401
 
     config = {
         "model_creator": model_creator,
@@ -132,7 +133,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):
 
 @pytest.mark.parametrize(  # noqa: F811
     "num_replicas", [1, 2] if dist.is_available() else [1])
-def test_save_and_restore(ray_start_2_cpus, num_replicas):
+def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F401
     trainer1 = PyTorchTrainer(
         model_creator,
         data_creator,
@@ -169,7 +170,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):
         assert torch.equal(model1_state_dict[k], model2_state_dict[k])
 
 
-def test_fail_with_recover(ray_start_2_cpus):
+def test_fail_with_recover(ray_start_2_cpus):  # noqa: F401
     if not dist.is_available():
         return
 
@@ -192,7 +193,7 @@ def test_fail_with_recover(ray_start_2_cpus):
             trainer1.train(max_retries=1)
 
 
-def test_resize(ray_start_2_cpus):
+def test_resize(ray_start_2_cpus):  # noqa: F401
     if not dist.is_available():
         return
 
@@ -221,7 +222,7 @@ def test_resize(ray_start_2_cpus):
         assert len(trainer1.workers) == 1
 
 
-def test_fail_thrice(ray_start_2_cpus):
+def test_fail_thrice(ray_start_2_cpus):  # noqa: F401
     if not dist.is_available():
         return
 
