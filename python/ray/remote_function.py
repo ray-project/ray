@@ -3,7 +3,7 @@ from functools import wraps
 
 from ray import cloudpickle as pickle
 from ray import ray_constants
-from ray.function_manager import FunctionDescriptor
+from ray import PythonFunctionDescriptor
 import ray.signature
 
 # Default parameters for remote functions.
@@ -23,6 +23,7 @@ class RemoteFunction:
     This is a decorated function. It can be used to spawn tasks.
 
     Attributes:
+        _language: The target language.
         _function: The original function.
         _function_descriptor: The function descriptor. This is not defined
             until the remote function is first invoked because that is when the
@@ -57,12 +58,31 @@ class RemoteFunction:
             different workers.
     """
 
-    def __init__(self, function, num_cpus, num_gpus, memory,
-                 object_store_memory, resources, num_return_vals, max_calls,
-                 max_retries):
-        self._function = function
-        self._function_name = (
-            self._function.__module__ + "." + self._function.__name__)
+    def __init__(self, language, function_or_function_descriptor, num_cpus,
+                 num_gpus, memory, object_store_memory, resources,
+                 num_return_vals, max_calls, max_retries):
+        # We do not set self._is_cross_language if self._language !=
+        # Language.PYTHON in order to test cross language feature by
+        # cross calling PYTHON from PYTHON.
+        self._language = language
+
+        if callable(function_or_function_descriptor):
+            self._function = function_or_function_descriptor
+            self._function_name = (
+                self._function.__module__ + "." + self._function.__name__)
+            self._function_signature = ray.signature.extract_signature(
+                self._function)
+            self._function_descriptor = None
+            self._is_cross_language = False
+        else:
+            if not function_or_function_descriptor:
+                raise Exception("Function descriptor list is empty.")
+            self._function = lambda *args, **kwargs: None
+            self._function_name = repr(function_or_function_descriptor)
+            self._function_signature = None
+            self._function_descriptor = function_or_function_descriptor
+            self._is_cross_language = True
+
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus
@@ -78,15 +98,13 @@ class RemoteFunction:
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
                              if max_retries is None else max_retries)
-        self._decorator = getattr(function, "__ray_invocation_decorator__",
-                                  None)
-
-        self._function_signature = ray.signature.extract_signature(
-            self._function)
+        self._decorator = getattr(self._function,
+                                  "__ray_invocation_decorator__", None)
 
         self._last_export_session_and_job = None
+
         # Override task.remote's signature and docstring
-        @wraps(function)
+        @wraps(self._function)
         def _remote_proxy(*args, **kwargs):
             return self._remote(args=args, kwargs=kwargs)
 
@@ -152,7 +170,9 @@ class RemoteFunction:
 
         # If this function was not exported in this session and job, we need to
         # export this function again, because the current GCS doesn't have it.
-        if self._last_export_session_and_job != worker.current_session_and_job:
+        if not self._is_cross_language and \
+                self._last_export_session_and_job != \
+                worker.current_session_and_job:
             # There is an interesting question here. If the remote function is
             # used by a subsequent driver (in the same script), should the
             # second driver pickle the function again? If yes, then the remote
@@ -164,10 +184,8 @@ class RemoteFunction:
             # which we do here.
             self._pickled_function = pickle.dumps(self._function)
 
-            self._function_descriptor = FunctionDescriptor.from_function(
+            self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._pickled_function)
-            self._function_descriptor_list = (
-                self._function_descriptor.get_function_descriptor_list())
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
@@ -188,20 +206,32 @@ class RemoteFunction:
             memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
-            if not args and not kwargs and not self._function_signature:
+            if self._is_cross_language:
+                if kwargs:
+                    raise Exception("Cross language remote functions "
+                                    "not support kwargs.")
+                if not worker.load_code_from_local:
+                    raise Exception("Cross language feature needs "
+                                    "--load-code-from-local to be set.")
+                list_args = args
+            elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
                 list_args = ray.signature.flatten_args(
                     self._function_signature, args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
+                if self._is_cross_language:
+                    raise Exception("Cross language remote functions "
+                                    "cannot be executed locally.")
                 object_ids = worker.local_mode_manager.execute(
                     self._function, self._function_descriptor, args, kwargs,
                     num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_task(
-                    self._function_descriptor_list, list_args, num_return_vals,
-                    is_direct_call, resources, max_retries)
+                    self._language, self._function_descriptor, list_args,
+                    num_return_vals, is_direct_call, self._is_cross_language,
+                    resources, max_retries)
 
             if len(object_ids) == 1:
                 return object_ids[0]

@@ -34,6 +34,7 @@ from ray import (
     ActorID,
     JobID,
     ObjectID,
+    Language,
 )
 from ray import import_thread
 from ray import profiling
@@ -543,6 +544,7 @@ def init(address=None,
          redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
+         include_java=False,
          include_webui=None,
          webui_host="localhost",
          job_id=None,
@@ -622,6 +624,7 @@ def init(address=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        include_java: Boolean flag indicating whether to enable java worker.
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster. If this argument
             is None, then the UI will be started if the relevant dependencies
@@ -720,6 +723,7 @@ def init(address=None,
             redis_password=redis_password,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
+            include_java=include_java,
             include_webui=include_webui,
             webui_host=webui_host,
             memory=memory,
@@ -1672,7 +1676,7 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                function_or_class, num_cpus, num_gpus, memory,
+                Language.PYTHON, function_or_class, num_cpus, num_gpus, memory,
                 object_store_memory, resources, num_return_vals, max_calls,
                 max_retries)
 

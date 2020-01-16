@@ -25,16 +25,14 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetCommonTaskSpec(
       const TaskID &task_id, const Language &language,
-      const std::vector<std::string> &function_descriptor, const JobID &job_id,
+      const ray::FunctionDescriptor &function_descriptor, const JobID &job_id,
       const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
       const rpc::Address &caller_address, uint64_t num_returns, bool is_direct_call,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_language(language);
-    for (const auto &fd : function_descriptor) {
-      message_->add_function_descriptor(fd);
-    }
+    *message_->mutable_function_descriptor() = function_descriptor->GetMessage();
     message_->set_job_id(job_id.Binary());
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());

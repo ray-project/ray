@@ -20,6 +20,9 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CActorID
 )
+from ray.includes.function_descriptor cimport (
+    CFunctionDescriptor,
+)
 
 cdef class Buffer:
     cdef:
@@ -66,4 +69,6 @@ cdef class CoreWorker:
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
 
-cdef c_vector[c_string] string_vector_from_list(list string_list)
+cdef class FunctionDescriptor:
+    cdef:
+        CFunctionDescriptor descriptor

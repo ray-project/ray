@@ -109,12 +109,20 @@ public class FunctionManagerTest {
     JobFunctionTable functionTable = new JobFunctionTable(getClass().getClassLoader());
     Map<Pair<String, String>, RayFunction> res = functionTable
         .loadFunctionsForClass(Bar.class.getName());
-    // The result should 2 entries, one for the constructor, the other for bar.
-    Assert.assertEquals(res.size(), 2);
+    // The result should 4 entries
+    //   1, the constructor with signature
+    //   2, the constructor without signature
+    //   3, bar with signature
+    //   4, bar without signature
+    Assert.assertEquals(res.size(), 4);
     Assert.assertTrue(res.containsKey(
         ImmutablePair.of(barDescriptor.name, barDescriptor.typeDescriptor)));
     Assert.assertTrue(res.containsKey(
         ImmutablePair.of(barConstructorDescriptor.name, barConstructorDescriptor.typeDescriptor)));
+    Assert.assertTrue(res.containsKey(
+            ImmutablePair.of(barDescriptor.name, "")));
+    Assert.assertTrue(res.containsKey(
+            ImmutablePair.of(barConstructorDescriptor.name, "")));
   }
 
   @Test

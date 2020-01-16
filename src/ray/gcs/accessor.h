@@ -507,12 +507,48 @@ class StatsInfoAccessor {
  public:
   virtual ~StatsInfoAccessor() = default;
 
+  /// Add profile data to GCS asynchronously.
+  ///
+  /// \param data_ptr The profile data that will be added to GCS.
+  /// \param callback Callback that will be called when add is complete.
+  /// \return Status
   virtual Status AsyncAddProfileData(
       const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
       const StatusCallback &callback) = 0;
 
  protected:
   StatsInfoAccessor() = default;
+};
+
+/// \class WorkerInfoAccessor
+/// `WorkerInfoAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// worker information in the GCS.
+class WorkerInfoAccessor {
+ public:
+  virtual ~WorkerInfoAccessor() = default;
+
+  /// Subscribe to all unexpected failure of workers from GCS asynchronously.
+  /// Note that this does not include workers that failed due to node failure.
+  ///
+  /// \param subscribe Callback that will be called each time when a worker failed.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  virtual Status AsyncSubscribeToWorkerFailures(
+      const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+      const StatusCallback &done) = 0;
+
+  /// Report a worker failure to GCS asynchronously.
+  ///
+  /// \param data_ptr The worker failure information that will be reported to GCS.
+  /// \param callback Callback that will be called when report is complate.
+  /// \param Status
+  virtual Status AsyncReportWorkerFailure(
+      const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+      const StatusCallback &callback) = 0;
+
+ protected:
+  WorkerInfoAccessor() = default;
 };
 
 }  // namespace gcs

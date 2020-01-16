@@ -9,14 +9,22 @@ import ray
 @ray.remote
 def py_func(value):
     assert isinstance(value, bytes)
-    return b"Response from Python: " + value
+    f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
+                          "BytesEcho")
+    r = f.remote(value)
+    return b"Response from Python: " + ray.get(r)
 
 
 @ray.remote
 class Counter(object):
     def __init__(self, value):
         self.value = int(value)
+        c = ray.java_actor_class(
+            "org.ray.api.test.CrossLanguageInvocationTest$TestActor")
+        self.java_actor = c.remote(b"Counter")
 
     def increase(self, delta):
         self.value += int(delta)
-        return str(self.value).encode("utf-8") if six.PY3 else str(self.value)
+        s = str(self.value).encode("utf-8") if six.PY3 else str(self.value)
+        r = self.java_actor.concat.remote(s)
+        return ray.get(r)
