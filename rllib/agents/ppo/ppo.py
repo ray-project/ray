@@ -138,7 +138,8 @@ def warn_about_bad_reward_scales(trainer, result):
             "This means that it will take more than "
             "{} iterations for your value ".format(rew_scale) +
             "function to converge. If this is not intended, consider "
-            "increasing `vf_clip_param`.")
+            "increasing `vf_clip_param`."
+        )
 
 
 def validate_config(config):
