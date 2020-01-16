@@ -6,7 +6,6 @@ namespace rpc {
 void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
     const ReportWorkerFailureRequest &request, ReportWorkerFailureReply *reply,
     SendReplyCallback send_reply_callback) {
-  (void)gcs_client_;
   Address worker_address = request.worker_failure().worker_address();
   RAY_LOG(DEBUG) << "Reporting worker failure, worker address = "
                  << worker_address.DebugString();
@@ -20,10 +19,11 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
     send_reply_callback(status, nullptr, nullptr);
   };
 
-  //  Status status = gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data,
-  //  on_done); if (!status.ok()) {
-  //    on_done(status);
-  //  }
+  Status status =
+      gcs_client_.Workers().AsyncReportWorkerFailure(worker_failure_data, on_done);
+  if (!status.ok()) {
+    on_done(status);
+  }
   RAY_LOG(DEBUG) << "Finished reporting worker failure, worker address = "
                  << worker_address.DebugString();
 }
