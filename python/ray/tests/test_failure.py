@@ -996,9 +996,6 @@ def test_serialized_id(ray_start_cluster):
     "ray_start_cluster", [{
         "num_nodes": 2,
         "num_gpus": 1,
-    }, {
-        "num_nodes": 1,
-        "num_gpus": 2,
     }],
     indirect=True)
 def test_fate_sharing(ray_start_cluster):
@@ -1021,11 +1018,6 @@ def test_fate_sharing(ray_start_cluster):
             else:
                 ray.get(sleep.remote())
 
-    @ray.remote(num_gpus=1)
-    def probe():
-        return os.getpid()
-
-    pid = ray.get(probe.remote())
     for _ in range(3):
         a = Actor.remote()
         pid = ray.get(a.getpid.remote())
