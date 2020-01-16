@@ -3,7 +3,8 @@ from functools import wraps
 
 from ray import cloudpickle as pickle
 from ray import ray_constants
-from ray import PythonFunctionDescriptor
+from ray import FunctionDescriptor, PythonFunctionDescriptor
+from ray import Language
 import ray.signature
 
 # Default parameters for remote functions.
@@ -66,7 +67,13 @@ class RemoteFunction:
         # cross calling PYTHON from PYTHON.
         self._language = language
 
-        if callable(function_or_function_descriptor):
+        if isinstance(function_or_function_descriptor, FunctionDescriptor):
+            self._function = lambda *args, **kwargs: None
+            self._function_name = repr(function_or_function_descriptor)
+            self._function_signature = ray.signature.ANY_FUNCTION_SIGNATURE
+            self._function_descriptor = function_or_function_descriptor
+            self._is_cross_language = True
+        else:
             self._function = function_or_function_descriptor
             self._function_name = (
                 self._function.__module__ + "." + self._function.__name__)
@@ -74,14 +81,6 @@ class RemoteFunction:
                 self._function)
             self._function_descriptor = None
             self._is_cross_language = False
-        else:
-            if not function_or_function_descriptor:
-                raise Exception("Function descriptor list is empty.")
-            self._function = lambda *args, **kwargs: None
-            self._function_name = repr(function_or_function_descriptor)
-            self._function_signature = None
-            self._function_descriptor = function_or_function_descriptor
-            self._is_cross_language = True
 
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
@@ -207,13 +206,18 @@ class RemoteFunction:
 
         def invocation(args, kwargs):
             if self._is_cross_language:
-                if kwargs:
-                    raise Exception("Cross language remote functions "
-                                    "not support kwargs.")
                 if not worker.load_code_from_local:
                     raise Exception("Cross language feature needs "
                                     "--load-code-from-local to be set.")
-                list_args = args
+                if self._language == Language.PYTHON:
+                    # To compatible with ray.signature.recover_args
+                    list_args = ray.signature.flatten_args(
+                        self._function_signature, args, kwargs)
+                else:
+                    if kwargs:
+                        raise Exception("Cross language remote functions "
+                                        "not support kwargs.")
+                    list_args = args
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:

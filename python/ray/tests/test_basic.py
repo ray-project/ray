@@ -351,6 +351,25 @@ def test_complex_serialization_with_pickle(shutdown_only):
     complex_serialization(use_pickle=True)
 
 
+def test_function_descriptor():
+    import pickle
+
+    python_descriptor = ray.PythonFunctionDescriptor(
+        "module_name", "function_name", "class_name", "function_hash")
+    python_descriptor2 = pickle.loads(pickle.dumps(python_descriptor))
+    assert python_descriptor == python_descriptor2
+    assert hash(python_descriptor) == hash(python_descriptor2)
+    assert python_descriptor.function_id == python_descriptor2.function_id
+    java_descriptor = ray.JavaFunctionDescriptor("class_name", "function_name",
+                                                 "signature")
+    java_descriptor2 = pickle.loads(pickle.dumps(java_descriptor))
+    assert java_descriptor == java_descriptor2
+    assert python_descriptor != java_descriptor
+    assert python_descriptor != object()
+    d = {python_descriptor: 123}
+    assert d.get(python_descriptor2) == 123
+
+
 def test_nested_functions(ray_start_regular):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.

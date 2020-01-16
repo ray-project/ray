@@ -8,6 +8,7 @@ from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 
 from ray import (
+    FunctionDescriptor,
     PythonFunctionDescriptor,
     JavaFunctionDescriptor,
 )
@@ -182,16 +183,19 @@ class ActorClassMetadata:
         # Language.PYTHON in order to test cross language feature by
         # cross calling PYTHON from PYTHON.
         self.language = language
-        if inspect.isclass(modified_class_or_function_descriptor):
-            self.modified_class = modified_class_or_function_descriptor
-            self.function_descriptor = None
-            self.class_name = modified_class_or_function_descriptor.__name__
-            self.is_cross_language = False
-        else:
+
+        if isinstance(modified_class_or_function_descriptor,
+                      FunctionDescriptor):
             self.modified_class = None
             self.function_descriptor = modified_class_or_function_descriptor
             self.class_name = repr(modified_class_or_function_descriptor)
             self.is_cross_language = True
+        else:
+            self.modified_class = modified_class_or_function_descriptor
+            self.function_descriptor = None
+            self.class_name = modified_class_or_function_descriptor.__name__
+            self.is_cross_language = False
+
         self.class_id = class_id
         self.max_reconstructions = max_reconstructions
         self.num_cpus = num_cpus
@@ -536,13 +540,19 @@ class ActorClass:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
             if meta.is_cross_language:
-                if kwargs:
-                    raise Exception("Cross language remote actor creation "
-                                    "not support kwargs.")
                 if not worker.load_code_from_local:
                     raise Exception("Cross language feature needs "
                                     "--load-code-from-local to be set.")
-                creation_args = args
+                if meta.language == Language.PYTHON:
+                    # To compatible with ray.signature.recover_args
+                    function_signature = signature.ANY_FUNCTION_SIGNATURE
+                    creation_args = signature.flatten_args(
+                        function_signature, args, kwargs)
+                else:
+                    if kwargs:
+                        raise Exception("Cross language remote actor creation "
+                                        "not support kwargs.")
+                    creation_args = args
             else:
                 function_signature = meta.method_signatures[function_name]
                 creation_args = signature.flatten_args(function_signature,
@@ -672,13 +682,19 @@ class ActorHandle:
         args = args or []
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
-            if kwargs:
-                raise Exception("Cross language remote actor method "
-                                "not support kwargs.")
             if not worker.load_code_from_local:
                 raise Exception("Cross language feature needs "
                                 "--load-code-from-local to be set.")
-            list_args = args
+            if self._ray_actor_language == Language.PYTHON:
+                # To compatible with ray.signature.recover_args
+                function_signature = signature.ANY_FUNCTION_SIGNATURE
+                list_args = signature.flatten_args(function_signature, args,
+                                                   kwargs)
+            else:
+                if kwargs:
+                    raise Exception("Cross language remote actor method "
+                                    "not support kwargs.")
+                list_args = args
             if self._ray_actor_language == Language.PYTHON:
                 function_descriptor = PythonFunctionDescriptor(
                     self._ray_actor_creation_function_descriptor.module_name,
