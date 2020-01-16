@@ -27,6 +27,7 @@ class Stream(ABC):
         self.parallelism = parallelism
         self._gateway_client(). \
             call_method(self._j_stream, "setParallelism", parallelism)
+        return self
 
     def get_input_stream(self):
         return self.input_stream
