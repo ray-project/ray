@@ -149,6 +149,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   task_accessor_.reset(new RedisTaskInfoAccessor(this));
   error_accessor_.reset(new RedisErrorInfoAccessor(this));
   stats_accessor_.reset(new RedisStatsInfoAccessor(this));
+  worker_accessor_.reset(new RedisWorkerInfoAccessor(this));
 
   is_connected_ = true;
 
