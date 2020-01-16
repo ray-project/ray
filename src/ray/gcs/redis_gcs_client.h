@@ -18,26 +18,6 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClient {
-  // TODO(micafan) Will remove those friend classes after we replace RedisGcsClient
-  // with interface class GcsClient in raylet.
-  friend class RedisActorInfoAccessor;
-  friend class RedisJobInfoAccessor;
-  friend class RedisTaskInfoAccessor;
-  friend class RedisNodeInfoAccessor;
-  friend class RedisObjectInfoAccessor;
-  friend class RedisErrorInfoAccessor;
-  friend class RedisStatsInfoAccessor;
-  friend class RedisWorkerInfoAccessor;
-  friend class SubscriptionExecutorTest;
-  friend class LogSubscribeTestHelper;
-  friend class LogLookupTestHelper;
-  friend class LogDeleteTestHelper;
-  friend class TaskTableTestHelper;
-  friend class ClientTableTestHelper;
-  friend class SetTestHelper;
-  friend class HashTableTestHelper;
-  friend class ActorCheckpointIdTable;
-
  public:
   /// Constructor of RedisGcsClient.
   /// Connect() must be called(and return ok) before you call any other methods.
@@ -66,6 +46,11 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// Disconnect with GCS Service. Non-thread safe.
   void Disconnect();
 
+  /// Returns debug string for class.
+  ///
+  /// \return string.
+  std::string DebugString() const;
+  
   // We also need something to export generic code to run on workers from the
   // driver (to set the PYTHONPATH)
 
@@ -76,16 +61,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
 
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
   std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
-
-  /// Returns debug string for class.
-  ///
-  /// \return string.
-  std::string DebugString() const;
-
- private:
-  /// Attach this client to an asio event loop. Note that only
-  /// one event loop should be attached at a time.
-  void Attach(boost::asio::io_service &io_service);
 
   /// The following three methods will be deprecated, use method Actors() instead.
   ActorTable &actor_table();
@@ -111,6 +86,11 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   ProfileTable &profile_table();
   /// This method will be deprecated, use method Workers() instead.
   WorkerFailureTable &worker_failure_table();
+
+ private:
+  /// Attach this client to an asio event loop. Note that only
+  /// one event loop should be attached at a time.
+  void Attach(boost::asio::io_service &io_service);
 
   // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
   // might be used, if available.
