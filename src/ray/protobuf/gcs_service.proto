@@ -282,3 +282,16 @@ service StatsGcsService {
   // Add profile data to GCS Service.
   rpc AddProfileData(AddProfileDataRequest) returns (AddProfileDataReply);
 }
+
+message ReportJobErrorRequest {
+  ErrorTableData error_data = 1;
+}
+
+message ReportJobErrorReply {
+}
+
+// Service for error info access.
+service ErrorInfoGcsService {
+  // Report a job error to GCS Service.
+  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
+}
