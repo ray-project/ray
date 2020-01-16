@@ -385,7 +385,7 @@ class Monitor:
                 )
                 clean = True
                 logger.info("Monitor: Workers taken down.")
-            except:
+            except Exception:
                 logger.error("Monitor: Cleanup exception. Trying again...")
                 time.sleep(2)
 
