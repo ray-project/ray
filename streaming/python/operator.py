@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 import enum
-import ray.streaming as streaming
-import ray.streaming.function as function
-import ray.streaming.message as message
+from ray import streaming
+from ray.streaming import function
+from ray.streaming import message
 
 
 class OperatorType(enum.Enum):

@@ -3,8 +3,8 @@ import pickle
 import typing
 from abc import ABC, abstractmethod
 
-import ray.streaming.message as message
-import ray.streaming.partition as partition
+from ray.streaming import message
+from ray.streaming import partition
 from ray.streaming.runtime.transfer import ChannelID, DataWriter
 
 logger = logging.getLogger(__name__)

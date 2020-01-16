@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
-import ray.streaming.function as function
 from ray.streaming.datastream import StreamSource
+from ray.streaming.function import ListSourceFunction, LocalFileSourceFunction
 from ray.streaming.runtime.gateway_client import GatewayClient
 
 
@@ -26,8 +26,7 @@ class StreamingContext:
             return ctx
 
     def __init__(self):
-        self._python_gateway_actor = self.__create_python_gateway_actor()
-        self.__gateway_client = GatewayClient(self._python_gateway_actor)
+        self.__gateway_client = GatewayClient()
         self._j_ctx = self._gateway_client.create_streaming_context()
 
     def source(self, source_func):
@@ -37,13 +36,13 @@ class StreamingContext:
         return self.from_collection(values)
 
     def from_collection(self, values):
-        func = function.ListSourceFunction(values)
+        func = ListSourceFunction(values)
         return self.source(func)
 
     def reset_text_file(self, filename):
         """Reads the given file line-by-line and creates a data stream that
          contains a string with the contents of each such line."""
-        func = function.LocalFileSourceFunction(filename)
+        func = LocalFileSourceFunction(filename)
         return self.source(func)
 
     def submit(self, job_name):
@@ -59,9 +58,6 @@ class StreamingContext:
         pass
 
     def _do_init(self):
-        pass
-
-    def __create_python_gateway_actor(self):
         pass
 
     @property

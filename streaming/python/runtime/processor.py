@@ -2,7 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 
 import ray.streaming.context as context
-import ray.streaming.message as message
+from ray.streaming import message
 from ray.streaming.operator import OperatorType
 
 logger = logging.getLogger(__name__)

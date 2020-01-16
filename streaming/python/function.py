@@ -4,7 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 
 import cloudpickle
-import ray.streaming.runtime.gateway_client as gateway_client
+from ray.streaming.runtime import gateway_client
 
 
 class Function(ABC):

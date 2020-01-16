@@ -1,6 +1,7 @@
 from abc import ABC
-import ray.streaming.function as function
-import ray.streaming.partition as partition
+
+from ray.streaming import function
+from ray.streaming import partition
 
 
 class Stream(ABC):
