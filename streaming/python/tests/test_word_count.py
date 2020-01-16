@@ -4,7 +4,7 @@ from ray.streaming.config import Config
 
 
 def test_word_count():
-    ray.init()
+    ray.init(load_code_from_local=True, include_java=True)
     ctx = StreamingContext.Builder() \
         .option(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL) \
         .build()
