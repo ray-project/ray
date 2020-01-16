@@ -10,7 +10,7 @@ void DefaultWorkerInfoHandler::HandleReportWorkerFailure(
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
   auto worker_failure_data = std::make_shared<WorkerFailureData>();
   worker_failure_data->CopyFrom(request.worker_failure());
-  auto on_done = [worker_address, request, send_reply_callback](Status status) {
+  auto on_done = [worker_address, send_reply_callback](Status status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to report worker failure, "
                      << worker_address.DebugString();
