@@ -43,12 +43,13 @@ public class PythonGateway {
     return serializer.serialize(getRefId(streamingContext));
   }
 
-  public void withConfig(byte[] confBytes) {
+  public byte[] withConfig(byte[] confBytes) {
     Preconditions.checkNotNull(streamingContext);
     try {
       Map<String, String> config = (Map<String, String>) serializer.deserialize(confBytes);
       LOGGER.info("Set config {}", config);
       streamingContext.withConfig(config);
+      return new byte[0];
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -66,9 +67,10 @@ public class PythonGateway {
     }
   }
 
-  public void execute(byte[] jobNameBytes) {
+  public byte[] execute(byte[] jobNameBytes) {
     LOGGER.info("Starting executing");
     streamingContext.execute((String) serializer.deserialize(jobNameBytes));
+    return new byte[0];
   }
 
   public byte[] createPyFunc(byte[] pyFunc) {
