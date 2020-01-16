@@ -172,6 +172,7 @@ public class RunManager {
         startRedisServer();
       }
       startObjectStore();
+      startGcsServer();
       startRaylet();
       LOGGER.info("All processes started @ {}.", rayConfig.nodeIp);
     } catch (Exception e) {
@@ -277,13 +278,34 @@ public class RunManager {
           String.format("--maximum_startup_concurrency=%d", maximumStartupConcurrency),
           String.format("--static_resource_list=%s",
               ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),
-          String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
+          String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters) + ",gcs_service_enabled,1"),
           String.format("--python_worker_command=%s", buildPythonWorkerCommand()),
           String.format("--java_worker_command=%s", buildWorkerCommandRaylet()),
           String.format("--redis_password=%s", redisPasswordOption)
       );
-
+      LOGGER.info("command: {}", command);
       startProcess(command, null, "raylet");
+    }
+  }
+
+  private void startGcsServer() {
+    String redisPasswordOption = "";
+    if (!Strings.isNullOrEmpty(rayConfig.headRedisPassword)) {
+      redisPasswordOption = rayConfig.headRedisPassword;
+    }
+
+    // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
+    try (FileUtil.TempFile gcsServerFile = FileUtil.getTempFileFromResource("gcs_server")) {
+      gcsServerFile.getFile().setExecutable(true);
+      List<String> command = ImmutableList.of(
+          gcsServerFile.getFile().getAbsolutePath(),
+          String.format("--redis_address=%s", rayConfig.getRedisIp()),
+          String.format("--redis_port=%d", rayConfig.getRedisPort()),
+          String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
+          String.format("--redis_password=%s", redisPasswordOption)
+      );
+
+      startProcess(command, null, "gcs_server");
     }
   }
 

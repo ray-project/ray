@@ -156,6 +156,7 @@ filegroup(
         ":cp_plasma_store_server",
         "//:core_worker_library_java",
         "//:libray_redis_module.so",
+        "//:gcs_server",
         "//:raylet",
         "//:redis-server",
     ],
