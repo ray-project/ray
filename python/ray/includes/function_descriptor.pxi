@@ -10,6 +10,7 @@ from ray.includes.function_descriptor cimport (
 
 import hashlib
 import cython
+import inspect
 
 
 ctypedef object (*FunctionDescriptor_from_cpp)(const CFunctionDescriptor &)
@@ -41,7 +42,14 @@ cdef class FunctionDescriptor:
                 (<FunctionDescriptor>other).descriptor.get().ToString())
 
     def __repr__(self):
-        return self.descriptor.get().ToString().decode('ascii')
+        return <str>self.descriptor.get().ToString()
+
+    def to_dict(self):
+        d = {"type": type(self).__name__}
+        for k, v in vars(type(self)).items():
+            if inspect.isgetsetdescriptor(v):
+                d[k] = v.__get__(self)
+        return d
 
 
 FunctionDescriptor_constructor_map[<int>DriverFunctionDescriptorType] = \

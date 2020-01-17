@@ -408,11 +408,7 @@ class GlobalState:
             "Args": task.arguments(),
             "ReturnObjectIDs": task.returns(),
             "RequiredResources": task.required_resources(),
-            "FunctionID": function_descriptor.function_id.hex(),
-            "FunctionHash": function_descriptor.function_hash,
-            "ModuleName": function_descriptor.module_name,
-            "ClassName": function_descriptor.class_name,
-            "FunctionName": function_descriptor.function_name,
+            "FunctionDescriptor": function_descriptor.to_dict(),
         }
 
         execution_spec = ray._raylet.TaskExecutionSpec.from_string(

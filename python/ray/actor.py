@@ -188,7 +188,7 @@ class ActorClassMetadata:
                       FunctionDescriptor):
             self.modified_class = None
             self.function_descriptor = modified_class_or_function_descriptor
-            self.class_name = repr(modified_class_or_function_descriptor)
+            self.class_name = str(modified_class_or_function_descriptor)
             self.is_cross_language = True
         else:
             self.modified_class = modified_class_or_function_descriptor

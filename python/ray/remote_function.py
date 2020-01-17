@@ -69,7 +69,7 @@ class RemoteFunction:
 
         if isinstance(function_or_function_descriptor, FunctionDescriptor):
             self._function = lambda *args, **kwargs: None
-            self._function_name = repr(function_or_function_descriptor)
+            self._function_name = str(function_or_function_descriptor)
             self._function_signature = ray.signature.ANY_FUNCTION_SIGNATURE
             self._function_descriptor = function_or_function_descriptor
             self._is_cross_language = True
