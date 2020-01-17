@@ -144,7 +144,7 @@ class Policy(metaclass=ABCMeta):
             info_batch=info_batch,
             episodes=episodes)
         if clip_actions:
-            action = self.clip_action(action, self.action_space)
+            action = clip_action(action, self.action_space)
 
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
@@ -290,29 +290,29 @@ class Policy(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @staticmethod
-    def clip_action(action, space):
-        """
-        Called to clip actions to the specified range of this policy.
 
-        Arguments:
-            action: Single action.
-            space: Action space the actions should be present in.
+def clip_action(action, space):
+    """
+    Called to clip actions to the specified range of this policy.
 
-        Returns:
-            Clipped batch of actions.
-        """
+    Arguments:
+        action: Single action.
+        space: Action space the actions should be present in.
 
-        if isinstance(space, gym.spaces.Box):
-            return np.clip(action, space.low, space.high)
-        elif isinstance(space, gym.spaces.Tuple):
-            if type(action) not in (tuple, list):
-                raise ValueError(
-                    "Expected tuple space for actions {}: {}".
-                    format(action, space))
-            out = []
-            for a, s in zip(action, space.spaces):
-                out.append(Policy.clip_action(a, s))
-            return out
-        else:
-            return action
+    Returns:
+        Clipped batch of actions.
+    """
+
+    if isinstance(space, gym.spaces.Box):
+        return np.clip(action, space.low, space.high)
+    elif isinstance(space, gym.spaces.Tuple):
+        if type(action) not in (tuple, list):
+            raise ValueError(
+                "Expected tuple space for actions {}: {}".
+                format(action, space))
+        out = []
+        for a, s in zip(action, space.spaces):
+            out.append(clip_action(a, s))
+        return out
+    else:
+        return action
