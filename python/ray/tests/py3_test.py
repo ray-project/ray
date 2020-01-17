@@ -259,5 +259,5 @@ def test_asyncio_actor_async_get(ray_start_regular_shared):
         async def get(self):
             return await remote_task.remote()
 
-    getter = AsyncGetter.options(is_direct_call=True, is_asyncio=True).remote()
+    getter = AsyncGetter.options(is_asyncio=True).remote()
     assert ray.get(getter.get.remote()) == 1
