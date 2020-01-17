@@ -3,7 +3,7 @@ RaySGD Pytorch
 
 .. warning:: This is still an experimental API and is subject to change in the near future.
 
-.. tip:: Help take a 1 minute `User Survey for the Ray Distributed Training library <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. tip:: Help us make RaySGD better; take this 1 minute `User Survey <https://forms.gle/26EMwdahdgm7Lscy9>`_!
 
 Ray's ``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python.
 
