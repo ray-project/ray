@@ -4,7 +4,7 @@ import ray
 import ray.streaming._streaming as _streaming
 import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 import ray.streaming.runtime.processor as processor
-from ray.function_manager import FunctionDescriptor
+from ray.function_manager import PythonFunctionDescriptor
 from ray.streaming.config import Config
 from ray.streaming.runtime.graph import ExecutionGraph
 from ray.streaming.runtime.task import SourceStreamTask, OneInputStreamTask
@@ -47,18 +47,18 @@ class JobWorker(object):
 
         if self.config.get(Config.CHANNEL_TYPE, Config.NATIVE_CHANNEL):
             core_worker = ray.worker.global_worker.core_worker
-            reader_async_func = FunctionDescriptor(
+            reader_async_func = PythonFunctionDescriptor(
                 __name__, self.on_reader_message.__name__,
                 self.__class__.__name__)
-            reader_sync_func = FunctionDescriptor(
+            reader_sync_func = PythonFunctionDescriptor(
                 __name__, self.on_reader_message_sync.__name__,
                 self.__class__.__name__)
             self.reader_client = _streaming.ReaderClient(
                 core_worker, reader_async_func, reader_sync_func)
-            writer_async_func = FunctionDescriptor(
+            writer_async_func = PythonFunctionDescriptor(
                 __name__, self.on_writer_message.__name__,
                 self.__class__.__name__)
-            writer_sync_func = FunctionDescriptor(
+            writer_sync_func = PythonFunctionDescriptor(
                 __name__, self.on_writer_message_sync.__name__,
                 self.__class__.__name__)
             self.writer_client = _streaming.WriterClient(
