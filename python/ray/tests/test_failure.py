@@ -1028,9 +1028,13 @@ def test_fate_sharing_process_death(ray_start_cluster):
 
 
 def test_fate_sharing(ray_start_cluster):
+    config = json.dumps({
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_timeout_milliseconds": 100,
+    })
     cluster = Cluster()
     # Head node with no resources.
-    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=0, _internal_config=config)
     # Node to place the parent actor.
     node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})
     # Node to place the child actor.
@@ -1093,14 +1097,10 @@ def test_fate_sharing(ray_start_cluster):
         assert wait_for_condition(child_resource_available, timeout_ms=10000)
         return node_to_kill
 
-    for _ in range(3):
-        test_process_failure(use_actors=True)
-    for _ in range(3):
-        test_process_failure(use_actors=False)
-    for _ in range(3):
-        node_to_kill = test_node_failure(node_to_kill, use_actors=True)
-    for _ in range(3):
-        node_to_kill = test_node_failure(node_to_kill, use_actors=False)
+    test_process_failure(use_actors=True)
+    test_process_failure(use_actors=False)
+    node_to_kill = test_node_failure(node_to_kill, use_actors=True)
+    node_to_kill = test_node_failure(node_to_kill, use_actors=False)
 
 
 if __name__ == "__main__":
