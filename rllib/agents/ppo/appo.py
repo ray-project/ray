@@ -50,9 +50,20 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "vf_loss_coeff": 0.5,
     "entropy_coeff": 0.01,
     "entropy_coeff_schedule": None,
+
+    # Use PyTorch as framework?
+    "use_pytorch": False
 })
 # __sphinx_doc_end__
 # yapf: enable
+
+
+def get_policy_class(config):
+    if config["use_pytorch"]:
+        from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+        return AsyncPPOTorchPolicy
+    else:
+        return AsyncPPOTFPolicy
 
 
 def update_target_and_kl(trainer, fetches):
@@ -82,6 +93,6 @@ APPOTrainer = impala.ImpalaTrainer.with_updates(
     name="APPO",
     default_config=DEFAULT_CONFIG,
     default_policy=AsyncPPOTFPolicy,
-    get_policy_class=lambda _: AsyncPPOTFPolicy,
+    get_policy_class=get_policy_class,
     after_init=initialize_target,
     after_optimizer_step=update_target_and_kl)

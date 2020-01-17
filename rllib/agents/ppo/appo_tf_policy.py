@@ -217,7 +217,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         logit_dim,
         config["model"],
         name=POLICY_SCOPE,
-        framework="tf")
+        framework="torch" if config["use_pytorch"] else "tf")
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -225,7 +225,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         logit_dim,
         config["model"],
         name=TARGET_POLICY_SCOPE,
-        framework="tf")
+        framework="torch" if config["use_pytorch"] else "tf")
 
     return policy.model
 

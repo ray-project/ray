@@ -1,6 +1,7 @@
 """
-Adapted from VTraceTFPolicy to use the PPO surrogate loss.
-Keep in sync with changes to VTraceTFPolicy.
+Adapted from VTraceTorchPolicy (TODO)
+to use the PPO surrogate loss.
+Keep in sync with changes to VTraceTorchPolicy (TODO).
 """
 
 import numpy as np
@@ -10,14 +11,14 @@ import gym
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
         BEHAVIOR_LOGITS, clip_gradients, validate_config, choose_optimizer
+from ray.rllib.agents.ppo.appo_tf_policy import build_appo_model, \
+    setup_mixins, setup_late_mixins, postprocess_trajectory
+from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.evaluation.postprocessing import compute_advantages
-from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
-from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
-from ray.rllib.models import ModelCatalog
+from ray.rllib.policy.torch_policy import TorchPolicy, LearningRateSchedule
+from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.framework import try_import_torch
@@ -160,24 +161,24 @@ class VTraceSurrogateLoss:
             return torch.mean(t * valid_mask)
 
         # Compute vtrace on the CPU for better perf.
-        with tf.device("/cpu:0"):
-            self.vtrace_returns = vtrace.multi_from_logits(
-                behavior_policy_logits=behavior_logits,
-                target_policy_logits=old_policy_behavior_logits,
-                actions=tf.unstack(actions, axis=2),
-                discounts=tf.to_float(~dones) * discount,
-                rewards=rewards,
-                values=values,
-                bootstrap_value=bootstrap_value,
-                dist_class=dist_class,
-                model=model,
-                clip_rho_threshold=torch.astype(
-                    clip_rho_threshold, torch.float32
-                ),
-                clip_pg_rho_threshold=torch.astype(
-                    clip_pg_rho_threshold, torch.float32
-                )
+        torch.cuda.device("cpu")
+        self.vtrace_returns = vtrace.multi_from_logits(
+            behavior_policy_logits=behavior_logits,
+            target_policy_logits=old_policy_behavior_logits,
+            actions=torch.unstack(actions, axis=2),
+            discounts=torch.to_float(~dones) * discount,
+            rewards=rewards,
+            values=values,
+            bootstrap_value=bootstrap_value,
+            dist_class=dist_class,
+            model=model,
+            clip_rho_threshold=torch.astype(
+                clip_rho_threshold, torch.float32
+            ),
+            clip_pg_rho_threshold=torch.astype(
+                clip_pg_rho_threshold, torch.float32
             )
+        )
 
         self.is_ratio = torch.clamp(
             torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
@@ -211,28 +212,6 @@ class VTraceSurrogateLoss:
             self.total_loss += cur_kl_coeff * self.mean_kl
 
 
-def build_appo_model(policy, obs_space, action_space, config):
-    _, logit_dim = ModelCatalog.get_action_dist(action_space, config["model"])
-
-    policy.model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        logit_dim,
-        config["model"],
-        name=POLICY_SCOPE,
-        framework="torch")
-
-    policy.target_model = ModelCatalog.get_model_v2(
-        obs_space,
-        action_space,
-        logit_dim,
-        config["model"],
-        name=TARGET_POLICY_SCOPE,
-        framework="torch")
-
-    return policy.model
-
-
 def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
@@ -258,13 +237,13 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     behavior_logits = train_batch[BEHAVIOR_LOGITS]
 
     target_model_out, _ = policy.target_model.from_batch(train_batch)
-    old_policy_behavior_logits = tf.stop_gradient(target_model_out)
+    old_policy_behavior_logits = target_model_out.detach()
 
-    unpacked_behavior_logits = tf.split(
+    unpacked_behavior_logits = torch.split(
         behavior_logits, output_hidden_shape, axis=1)
-    unpacked_old_policy_behavior_logits = tf.split(
+    unpacked_old_policy_behavior_logits = torch.split(
         old_policy_behavior_logits, output_hidden_shape, axis=1)
-    unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
+    unpacked_outputs = torch.split(model_out, output_hidden_shape, axis=1)
     old_policy_action_dist = dist_class(old_policy_behavior_logits, model)
     prev_action_dist = dist_class(behavior_logits, policy.model)
     values = policy.model.value_function()
@@ -273,17 +252,17 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     policy.target_model_vars = policy.target_model.variables()
 
     if policy.is_recurrent():
-        max_seq_len = tf.reduce_max(train_batch["seq_lens"]) - 1
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
-        mask = tf.reshape(mask, [-1])
+        max_seq_len = torch.max(train_batch["seq_lens"]) - 1
+        mask = torch.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = mask.view([-1])
     else:
-        mask = tf.ones_like(rewards)
+        mask = torch.ones_like(rewards)
 
     if policy.config["vtrace"]:
         logger.debug("Using V-Trace surrogate loss (vtrace=True)")
 
         # Prepare actions for loss
-        loss_actions = actions if is_multidiscrete else tf.expand_dims(
+        loss_actions = actions if is_multidiscrete else torch.expand_dims(
             actions, axis=1)
 
         # Prepare KL for Loss
@@ -298,7 +277,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
                 action_dist.logp(actions), drop_last=True),
             old_policy_actions_logp=make_time_major(
                 old_policy_action_dist.logp(actions), drop_last=True),
-            action_kl=tf.reduce_mean(mean_kl, axis=0)
+            action_kl=torch.mean(mean_kl, axis=0)
             if is_multidiscrete else mean_kl,
             actions_entropy=make_time_major(
                 action_dist.multi_entropy(), drop_last=True),
@@ -332,7 +311,7 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
         policy.loss = PPOSurrogateLoss(
             prev_actions_logp=make_time_major(prev_action_dist.logp(actions)),
             actions_logp=make_time_major(action_dist.logp(actions)),
-            action_kl=tf.reduce_mean(mean_kl, axis=0)
+            action_kl=torch.mean(mean_kl, axis=0)
             if is_multidiscrete else mean_kl,
             actions_entropy=make_time_major(action_dist.multi_entropy()),
             values=make_time_major(values),
@@ -357,18 +336,19 @@ def stats(policy, train_batch):
         drop_last=policy.config["vtrace"])
 
     stats_dict = {
-        "cur_lr": tf.cast(policy.cur_lr, tf.float64),
+        "cur_lr": torch.cast(policy.cur_lr, torch.float64),
         "policy_loss": policy.loss.pi_loss,
         "entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm(policy.model.trainable_variables()),
+        "var_gnorm": torch.global_norm(policy.model.trainable_variables()),
         "vf_loss": policy.loss.vf_loss,
         "vf_explained_var": explained_variance(
-            tf.reshape(policy.loss.value_targets, [-1]),
-            tf.reshape(values_batched, [-1])),
+            policy.loss.value_targets.view([-1]),
+            values_batched.view([-1])),
     }
 
     if policy.config["vtrace"]:
-        is_stat_mean, is_stat_var = tf.nn.moments(policy.loss.is_ratio, [0, 1])
+        is_stat_mean = torch.mean(policy.loss.is_ratio, dim=[0, 1])
+        is_stat_var = torch.var(policy.loss.is_ratio, dim=[0, 1])
         stats_dict.update({"mean_IS": is_stat_mean})
         stats_dict.update({"var_IS": is_stat_var})
 
@@ -377,34 +357,6 @@ def stats(policy, train_batch):
         stats_dict.update({"KL_Coeff": policy.kl_coeff})
 
     return stats_dict
-
-
-def postprocess_trajectory(policy,
-                           sample_batch,
-                           other_agent_batches=None,
-                           episode=None):
-    if not policy.config["vtrace"]:
-        completed = sample_batch["dones"][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            next_state = []
-            for i in range(policy.num_state_tensors()):
-                next_state.append([sample_batch["state_out_{}".format(i)][-1]])
-            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1],
-                                   sample_batch[SampleBatch.ACTIONS][-1],
-                                   sample_batch[SampleBatch.REWARDS][-1],
-                                   *next_state)
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            policy.config["gamma"],
-            policy.config["lambda"],
-            use_gae=policy.config["use_gae"])
-    else:
-        batch = sample_batch
-    del batch.data["new_obs"]  # not used, so save some bandwidth
-    return batch
 
 
 def add_values_and_logits(policy):
@@ -433,30 +385,20 @@ class TargetNetworkMixin:
 
         self.update_target = do_update
 
-    @override(TFPolicy)
+    @override(TorchPolicy)
     def variables(self):
         return self.model_vars + self.target_model_vars
 
 
-def setup_mixins(policy, obs_space, action_space, config):
-    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    KLCoeffMixin.__init__(policy, config)
-    ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
-
-
-def setup_late_mixins(policy, obs_space, action_space, config):
-    TargetNetworkMixin.__init__(policy, obs_space, action_space, config)
-
-
-AsyncPPOTFPolicy = build_tf_policy(
-    name="AsyncPPOTFPolicy",
-    make_model=build_appo_model,
+AsyncPPOTorchPolicy = build_torch_policy(
+    name="AsyncPPOTorchPolicy",
     loss_fn=build_appo_surrogate_loss,
+    make_model_and_action_dist=build_appo_model,
     stats_fn=stats,
     postprocess_fn=postprocess_trajectory,
+    extra_action_out_fn=add_values_and_logits,
+    extra_grad_process_fn=clip_gradients,
     optimizer_fn=choose_optimizer,
-    gradients_fn=clip_gradients,
-    extra_action_fetches_fn=add_values_and_logits,
     before_init=validate_config,
     before_loss_init=setup_mixins,
     after_init=setup_late_mixins,

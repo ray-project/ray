@@ -66,7 +66,7 @@ DEFAULT_CONFIG = with_common_config({
     # the default optimizer.
     "simple_optimizer": False,
     # Use PyTorch as framework?
-    "use_pytorch": False,
+    "use_pytorch": False
 })
 # __sphinx_doc_end__
 # yapf: enable

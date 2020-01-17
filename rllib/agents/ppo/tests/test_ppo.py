@@ -61,7 +61,9 @@ class TestPPO(unittest.TestCase):
             SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-            BEHAVIOR_LOGITS: np.array([[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
+            BEHAVIOR_LOGITS: np.array(
+                [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32
+            ),
             ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32)
         }
 
@@ -75,9 +77,12 @@ class TestPPO(unittest.TestCase):
         # [0.50005, -0.505, 0.5]
         train_batch = postprocess_ppo_gae_tf(policy, train_batch)
         # Check Advantage values.
-        check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
+        check(
+            train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5]
+        )
 
-        # Calculate actual PPO loss (results are stored in policy.loss_obj) for tf.
+        # Calculate actual PPO loss (results are stored in policy.loss_obj) for
+        # tf.
         ppo_surrogate_loss_tf(policy, policy.model, Categorical, train_batch)
 
         vars = policy.model.trainable_variables()
@@ -113,10 +118,15 @@ class TestPPO(unittest.TestCase):
         train_batch = policy._lazy_tensor_dict(train_batch)
 
         # Check Advantage values.
-        check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
+        check(
+            train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5]
+        )
 
-        # Calculate actual PPO loss (results are stored in policy.loss_obj) for tf.
-        ppo_surrogate_loss_torch(policy, policy.model, TorchCategorical, train_batch)
+        # Calculate actual PPO loss (results are stored in policy.loss_obj)
+        # for tf.
+        ppo_surrogate_loss_torch(
+            policy, policy.model, TorchCategorical, train_batch
+        )
 
         kl, entropy, pg_loss, vf_loss, overall_loss = \
             self._ppo_loss_helper(
@@ -126,11 +136,19 @@ class TestPPO(unittest.TestCase):
             )
         check(kl, policy.loss_obj.mean_kl.detach().numpy())
         check(entropy, policy.loss_obj.mean_entropy.detach().numpy())
-        check(np.mean(-pg_loss), policy.loss_obj.mean_policy_loss.detach().numpy())
-        check(np.mean(vf_loss), policy.loss_obj.mean_vf_loss.detach().numpy(), decimals=4)
+        check(
+            np.mean(-pg_loss),
+            policy.loss_obj.mean_policy_loss.detach().numpy()
+        )
+        check(
+            np.mean(vf_loss), policy.loss_obj.mean_vf_loss.detach().numpy(),
+            decimals=4
+        )
         check(policy.loss_obj.loss.detach().numpy(), overall_loss, decimals=4)
 
-    def _ppo_loss_helper(self, policy, model, dist_class, train_batch, logits, vf_outs):
+    def _ppo_loss_helper(
+        self, policy, model, dist_class, train_batch, logits, vf_outs
+        ):
         """
         Calculates the expected PPO loss (components) given Policy,
         Model, distribution, some batch, logits & vf outputs, using numpy.
@@ -140,7 +158,8 @@ class TestPPO(unittest.TestCase):
         dist_prev = dist_class(train_batch[BEHAVIOR_LOGITS], policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
-            expected_rho = np.exp(expected_logp.detach().numpy() - train_batch.get(ACTION_LOGP))
+            expected_rho = np.exp(expected_logp.detach().numpy() - \
+                train_batch.get(ACTION_LOGP))
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().numpy())
             # Entropy-loss component.
