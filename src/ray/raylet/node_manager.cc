@@ -2688,21 +2688,70 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   }
 }
 
+bool NodeManager::IsDirectActorCreationTask(const TaskID &task_id) {
+  auto actor_id = task_id.ActorId();
+  if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
+    // This task ID corresponds to an actor creation task.
+    auto iter = actor_registry_.find(actor_id);
+    if (iter != actor_registry_.end() &&
+        iter->second.GetTableData().is_direct_call()) {
+      // This actor is direct call actor.
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
   const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
-  RAY_LOG(DEBUG) << "Object missing " << object_id << ", "
-                 << " on " << self_node_id_ << waiting_task_ids.size()
-                 << " tasks waiting";
+  std::stringstream result;
+  result << "Object missing " << object_id << ", "
+         << " on " << self_node_id_ << ", " << waiting_task_ids.size()
+         << " tasks waiting";
+  if (waiting_task_ids.size() > 0) {
+    result << ", tasks: ";
+    for (const auto &task_id : waiting_task_ids) {
+      result << task_id << "  ";
+    }
+  }
+  RAY_LOG(DEBUG) << result.str();
+
   // Transition any tasks that were in the runnable state and are dependent on
   // this object to the waiting state.
   if (!waiting_task_ids.empty()) {
     std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
                                                    waiting_task_ids.end());
+    
+    // NOTE(zhijunfu): For actor creation task, we mark it as completed and remove it
+    // from local_queues_ when we're notified by worker via TaskDone message. This is
+    // required for actor reconstruction, as when we resbumit the actor creation task
+    // for reconstruction, it will be treated as duplicate and ignored if the same
+    // task ID is contained in local_queues_.
+    // Currently some applications like RLlib creates async threads in actor
+    // constructors, after the actor is created successfully, when these threads are
+    // blocked on ray.get, raylet will still receive `FetchOrReconstruct` messages
+    // with actor creation task id, and thus it's added to required_tasks_. Later
+    // when these objects get evicted, raylet will try to move the task that depends
+    // on these objects to WAITING queue, but the actor creation task has been removed
+    // when the actor is created, thus it would crash in MoveTask below.
+    // So we ignore actor creation task here to allow it to work.
+    auto iter = waiting_task_id_set.begin();
+    while (iter != waiting_task_id_set.end()) {
+      if (IsDirectActorCreationTask(*iter)) {
+        RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
+                       << " when handling object missing for " << object_id;
+        iter = waiting_task_id_set.erase(iter);
+      } else {
+        ++iter;
+      }
+    }
+
     // First filter out any tasks that can't be transitioned to READY. These
     // are running workers or drivers, now blocked in a get.
     local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
-    local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
+    local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);    
     // Transition the tasks back to the waiting state. They will be made
     // runnable once the deleted object becomes available again.
     local_queues_.MoveTasks(waiting_task_id_set, TaskState::READY, TaskState::WAITING);
