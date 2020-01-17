@@ -149,10 +149,11 @@ def wait_for_condition(condition_predictor,
         Whether the condition is met within the timeout.
     """
     time_elapsed = 0
+    start = time.time()
     while time_elapsed <= timeout_ms:
         if condition_predictor():
             return True
-        time_elapsed += retry_interval_ms
+        time_elapsed = (time.time() - start) * 1000
         time.sleep(retry_interval_ms / 1000.0)
     return False
 
