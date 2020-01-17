@@ -77,7 +77,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param object_manager A reference to the local object manager.
   NodeManager(boost::asio::io_service &io_service, const ClientID &self_node_id,
               const NodeManagerConfig &config, ObjectManager &object_manager,
-              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+              std::shared_ptr<gcs::GcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
   /// Process a new client connection.
@@ -587,7 +587,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// actor died) and to pin objects that are in scope in the cluster.
   plasma::PlasmaClient store_client_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The object table. This is shared with the object manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
   /// The timer used to send heartbeats.

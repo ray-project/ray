@@ -73,7 +73,7 @@ namespace raylet {
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const ClientID &self_node_id, const NodeManagerConfig &config,
                          ObjectManager &object_manager,
-                         std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                         std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : self_node_id_(self_node_id),
       io_service_(io_service),
