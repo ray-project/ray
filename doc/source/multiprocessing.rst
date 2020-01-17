@@ -7,9 +7,6 @@ multiprocessing.Pool API (Experimental)
   so it may be changed at any time without warning. If you encounter any
   bugs/shortcomings/incompatibilities, please file an `issue on GitHub`_.
   Contributions are always welcome!
-  
-.. warning::
-  The ``context`` argument to the ``Pool`` constructor is not supported using ray.
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
@@ -42,6 +39,9 @@ instructions to run on a multi-node Ray cluster instead.
 
 The full ``multiprocessing.Pool`` API is currently supported. Please see the
 `multiprocessing documentation`_ for details.
+
+.. warning::
+  The ``context`` argument in the ``Pool`` constructor is ignored when using Ray.
 
 .. _`multiprocessing documentation`: https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 
