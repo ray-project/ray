@@ -2723,20 +2723,17 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   if (!waiting_task_ids.empty()) {
     std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
                                                    waiting_task_ids.end());
-    
-    // NOTE(zhijunfu): For actor creation task, we mark it as completed and remove it
-    // from local_queues_ when we're notified by worker via TaskDone message. This is
-    // required for actor reconstruction, as when we resbumit the actor creation task
-    // for reconstruction, it will be treated as duplicate and ignored if the same
-    // task ID is contained in local_queues_.
-    // Currently some applications like RLlib creates async threads in actor
-    // constructors, after the actor is created successfully, when these threads are
-    // blocked on ray.get, raylet will still receive `FetchOrReconstruct` messages
-    // with actor creation task id, and thus it's added to required_tasks_. Later
-    // when these objects get evicted, raylet will try to move the task that depends
-    // on these objects to WAITING queue, but the actor creation task has been removed
-    // when the actor is created, thus it would crash in MoveTask below.
-    // So we ignore actor creation task here to allow it to work.
+
+    // NOTE(zhijunfu): For direct actors, the worker is initially assigned actor
+    // creation task ID, which will not be reset after the task finishes. And later tasks
+    // of this actor will reuse this task ID to require objects from plasma with
+    // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
+    // To support actor reconstruction for direct actors, raylet marks actor creation task
+    // as completed and removes it from `local_queues_` when it receives `TaskDone` message
+    // from worker. This is necessary because the actor creation task will be re-submitted
+    // during reconstruction, if the task is not removed previously, the new submitted task
+    // will be marked as duplicate and thus ignored.
+    // So here we check for direct actor creation task explicitly to allow this case.   
     auto iter = waiting_task_id_set.begin();
     while (iter != waiting_task_id_set.end()) {
       if (IsDirectActorCreationTask(*iter)) {
