@@ -527,14 +527,13 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   HandleUnexpectedWorkerFailure(address);
 }
 
-
 void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
   const WorkerID worker_id = WorkerID::FromBinary(address.worker_id());
   const ClientID node_id = ClientID::FromBinary(address.raylet_id());
   if (!worker_id.IsNil()) {
     RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
     failed_workers_cache_.insert(worker_id);
-  } else{
+  } else {
     RAY_CHECK(!node_id.IsNil());
     failed_nodes_caches_.insert(node_id);
   }
@@ -545,8 +544,10 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
   // dispatch.
   for (const auto &pair : leased_workers_) {
     auto &worker = pair.second;
-    const auto owner_worker_id = WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-    const auto owner_node_id = WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    const auto owner_worker_id =
+        WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
+    const auto owner_node_id =
+        WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil());
     if (!worker->IsDetachedActor()) {
@@ -2348,7 +2349,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
     const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
     const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
     RAY_CHECK(!owner_worker_id.IsNil());
-    RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << " to worker " << worker->WorkerId() << ", owner ID " << owner_worker_id;
+    RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << " to worker "
+                   << worker->WorkerId() << ", owner ID " << owner_worker_id;
 
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
                       worker->WorkerId(),
@@ -2357,7 +2359,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
 
     // If the owner has died since this task was queued, cancel the task by
     // killing the worker.
-    if (failed_workers_cache_.count(owner_worker_id) > 0 || failed_nodes_caches_.count(owner_node_id) > 0) {
+    if (failed_workers_cache_.count(owner_worker_id) > 0 ||
+        failed_nodes_caches_.count(owner_node_id) > 0) {
       // TODO(swang): Skip assigning this task to this worker instead of
       // killing the worker?
       KillWorker(worker);

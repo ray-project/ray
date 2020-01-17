@@ -391,7 +391,7 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
                                                                                \
    private:                                                                    \
     explicit type(const std::string &binary) {                                 \
-      RAY_CHECK(binary.size() == Size() || binary.size() == 0)                                       \
+      RAY_CHECK(binary.size() == Size() || binary.size() == 0)                 \
           << "expected size is " << Size() << ", but got " << binary.size();   \
       std::memcpy(&id_, binary.data(), binary.size());                         \
     }                                                                          \

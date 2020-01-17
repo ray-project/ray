@@ -996,8 +996,7 @@ def test_serialized_id(ray_start_cluster):
     "ray_start_cluster", [{
         "num_nodes": 2,
         "num_gpus": 1,
-    }],
-    indirect=True)
+    }], indirect=True)
 def test_fate_sharing_process_death(ray_start_cluster):
     @ray.remote(num_gpus=1)
     def sleep():
@@ -1007,10 +1006,13 @@ def test_fate_sharing_process_death(ray_start_cluster):
     class Actor(object):
         def __init__(self):
             pass
+
         def getpid(self):
             return os.getpid()
+
         def sleep(self):
             time.sleep(1000)
+
         def start_child(self, use_actors):
             if use_actors:
                 child = Actor.remote()
@@ -1022,7 +1024,8 @@ def test_fate_sharing_process_death(ray_start_cluster):
         pid = parent.getpid.remote()
         ready, _ = ray.wait([pid], num_returns=1, timeout=10)
         if not ready:
-            raise RayTestTimeoutException("Timed out while waiting for resources to free")
+            raise RayTestTimeoutException(
+                "Timed out while waiting for resources to free")
         pid = ray.get(pid)
         return pid
 
@@ -1080,7 +1083,8 @@ def test_fate_sharing(ray_start_cluster):
         pid = ray.get(a.get_pid.remote())
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(lambda: not child_resource_available(), timeout_ms=10000)
+        assert wait_for_condition(
+            lambda: not child_resource_available(), timeout_ms=10000)
         # Kill the parent process.
         os.kill(pid, 9)
         assert wait_for_condition(child_resource_available, timeout_ms=10000)
@@ -1090,7 +1094,8 @@ def test_fate_sharing(ray_start_cluster):
         a = Actor.options(resources={"parent": 1}).remote()
         a.start_child.remote(use_actors=use_actors)
         # Wait for the child to be scheduled.
-        assert wait_for_condition(lambda: not child_resource_available(), timeout_ms=10000)
+        assert wait_for_condition(
+            lambda: not child_resource_available(), timeout_ms=10000)
         # Kill the parent process.
         cluster.remove_node(node_to_kill, allow_graceful=False)
         node_to_kill = cluster.add_node(num_cpus=1, resources={"parent": 1})
