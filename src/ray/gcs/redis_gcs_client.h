@@ -62,31 +62,30 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   std::vector<std::shared_ptr<RedisContext>> shard_contexts() { return shard_contexts_; }
   std::shared_ptr<RedisContext> primary_context() { return primary_context_; }
 
-  /// The following xxx_table methods is no longer used as interface,
-  /// just used as implementation.
-  /// Use new interface method Actors() instead of the following three methods.
+  /// The following xxx_table methods implement the Accessor interfaces.
+  /// Implements the Actors() interface.
   ActorTable &actor_table();
   ActorCheckpointTable &actor_checkpoint_table();
   ActorCheckpointIdTable &actor_checkpoint_id_table();
-  /// Use new interface method Jobs() instead of this method.
+  /// Implements the Jobs() interface.
   JobTable &job_table();
-  /// Use new interface method Objects() instead of this method.
+  /// Implements the Objects() interface.
   ObjectTable &object_table();
-  /// Use new interface method Nodes() instead of the following four methods.
+  /// Implements the Nodes() interface.
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   DynamicResourceTable &resource_table();
-  /// Use new interface method Tasks() instead of the following three methods.
+  /// Implements the Tasks() interface.
   raylet::TaskTable &raylet_task_table();
   TaskLeaseTable &task_lease_table();
   TaskReconstructionLog &task_reconstruction_log();
-  /// Use new interface method Errors() instead of this method.
+  /// Implements the Errors() interface.
   // TODO: Some API for getting the error on the driver
   ErrorTable &error_table();
-  /// Use new interface method Stats() instead of this method.
+  /// Implements the Stats() interface.
   ProfileTable &profile_table();
-  /// Use new interface method Workers() instead of this method.
+  /// Implements the Workers() interface.
   WorkerFailureTable &worker_failure_table();
 
  private:
