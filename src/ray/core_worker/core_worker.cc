@@ -84,6 +84,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
       task_queue_length_(0),
+      num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
@@ -896,6 +897,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects) {
   task_queue_length_ -= 1;
+  num_executed_tasks_ += 1;
 
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
@@ -1167,6 +1169,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   auto stats = reply->mutable_core_worker_stats();
   stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
   stats->set_task_queue_length(task_queue_length_);
+  stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
   if (!current_task_.TaskId().IsNil()) {
     stats->set_current_task_desc(current_task_.DebugString());

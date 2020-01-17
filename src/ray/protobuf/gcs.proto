@@ -117,6 +117,8 @@ message ActorTableData {
   bool is_direct_call = 11;
   // Whether the actor is persistent.
   bool is_detached = 12;
+  // Timestamp that the actor is created or reconstructed.
+  double timestamp = 13;
 }
 
 message ErrorTableData {
