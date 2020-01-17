@@ -119,12 +119,6 @@ class Dashboard(object):
         self.app = aiohttp.web.Application()
         self.setup_routes()
 
-    def _get_profile(self, node_id, pid, duration):
-        webui_url = "{}:{}".format(self.host, self.port)
-        profile_url = "http://{}/api/profiling_info?node_id={}&pid={}&duration={}".format(webui_url, node_id, pid, duration)
-        encoded_profile_url = urllib.parse.quote(profile_url)
-        return "http://{}/speedscope/index.html#profileURL={}".format(webui_url, encoded_profile_url)
-
     def setup_routes(self):
         def forbidden() -> aiohttp.web.Response:
             return aiohttp.web.Response(status=403, text="403 Forbidden")
@@ -198,8 +192,6 @@ class Dashboard(object):
             D = self.raylet_stats.get_raylet_stats()
             for data in D.values():
                 node_id = data["nodeId"]
-                for worker_stats in data.get("workersStats", []):
-                    worker_stats["profile"] = self._get_profile(node_id, worker_stats["pid"], 600)
             workers_info = sum(
                 (data.get("workersStats", []) for data in D.values()), [])
             infeasible_tasks = sum(
@@ -435,7 +427,6 @@ class NodeStats(threading.Thread):
                             core_worker_stats.pop("numPendingTasks")
                         format_reply(core_worker_stats)
                         actor_info.update(core_worker_stats)
-                        actor_info["profile"] = worker_info["profile"]
                         actor_info[
                             "averageTaskExecutionSpeed"] = round(actor_info["numExecutedTasks"] / (
                                 now - actor_info["timestamp"] / 1000), 2)

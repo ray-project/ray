@@ -66,11 +66,6 @@ proto_library(
     deps = [":common_proto"],
 )
 
-cc_proto_library(
-    name = "reporter_cc_proto",
-    deps = [":reporter_proto"],
-)
-
 python_grpc_compile(
     name = "reporter_py_proto",
     deps = [":reporter_proto"],
