@@ -2727,13 +2727,11 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // creation task ID, which will not be reset after the task finishes. And later tasks
     // of this actor will reuse this task ID to require objects from plasma with
     // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
-    // To support actor reconstruction for direct actors, raylet marks actor creation task
+    // To support actor reconstruction for direct actor, raylet marks actor creation task
     // as completed and removes it from `local_queues_` when it receives `TaskDone`
-    // message
-    // from worker. This is necessary because the actor creation task will be re-submitted
-    // during reconstruction, if the task is not removed previously, the new submitted
-    // task
-    // will be marked as duplicate and thus ignored.
+    // message from worker. This is necessary because the actor creation task will be
+    // re-submitted during reconstruction, if the task is not removed previously, the new
+    // submitted task will be marked as duplicate and thus ignored.
     // So here we check for direct actor creation task explicitly to allow this case.
     auto iter = waiting_task_id_set.begin();
     while (iter != waiting_task_id_set.end()) {
