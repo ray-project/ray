@@ -2693,8 +2693,7 @@ bool NodeManager::IsDirectActorCreationTask(const TaskID &task_id) {
   if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
     // This task ID corresponds to an actor creation task.
     auto iter = actor_registry_.find(actor_id);
-    if (iter != actor_registry_.end() &&
-        iter->second.GetTableData().is_direct_call()) {
+    if (iter != actor_registry_.end() && iter->second.GetTableData().is_direct_call()) {
       // This actor is direct call actor.
       return true;
     }
@@ -2729,11 +2728,13 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // of this actor will reuse this task ID to require objects from plasma with
     // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
     // To support actor reconstruction for direct actors, raylet marks actor creation task
-    // as completed and removes it from `local_queues_` when it receives `TaskDone` message
+    // as completed and removes it from `local_queues_` when it receives `TaskDone`
+    // message
     // from worker. This is necessary because the actor creation task will be re-submitted
-    // during reconstruction, if the task is not removed previously, the new submitted task
+    // during reconstruction, if the task is not removed previously, the new submitted
+    // task
     // will be marked as duplicate and thus ignored.
-    // So here we check for direct actor creation task explicitly to allow this case.   
+    // So here we check for direct actor creation task explicitly to allow this case.
     auto iter = waiting_task_id_set.begin();
     while (iter != waiting_task_id_set.end()) {
       if (IsDirectActorCreationTask(*iter)) {
@@ -2748,7 +2749,7 @@ void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
     // First filter out any tasks that can't be transitioned to READY. These
     // are running workers or drivers, now blocked in a get.
     local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
-    local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);    
+    local_queues_.FilterState(waiting_task_id_set, TaskState::DRIVER);
     // Transition the tasks back to the waiting state. They will be made
     // runnable once the deleted object becomes available again.
     local_queues_.MoveTasks(waiting_task_id_set, TaskState::READY, TaskState::WAITING);
