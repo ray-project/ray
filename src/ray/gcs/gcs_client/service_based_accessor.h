@@ -289,6 +289,30 @@ class ServiceBasedErrorInfoAccessor : public ErrorInfoAccessor {
   ServiceBasedGcsClient *client_impl_{nullptr};
 };
 
+/// \class ServiceBasedWorkerInfoAccessor
+/// ServiceBasedWorkerInfoAccessor is an implementation of `WorkerInfoAccessor`
+/// that uses GCS Service as the backend.
+class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
+ public:
+  explicit ServiceBasedWorkerInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedWorkerInfoAccessor() = default;
+
+  Status AsyncSubscribeToWorkerFailures(
+      const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncReportWorkerFailure(const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+                                  const StatusCallback &callback) override;
+
+ private:
+  ServiceBasedGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
+      WorkerFailureSubscriptionExecutor;
+  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
+};
+
 }  // namespace gcs
 }  // namespace ray
 

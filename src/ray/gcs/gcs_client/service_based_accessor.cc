@@ -773,9 +773,45 @@ Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished reporting job error, job id = " << job_id
-                       << ", type = " << type;
+        RAY_LOG(DEBUG) << "Finished reporting job error, status = " << status
+                       << ", job id = " << job_id << ", type = " << type;
         ;
+      });
+  return Status::OK();
+}
+
+ServiceBasedWorkerInfoAccessor::ServiceBasedWorkerInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl),
+      worker_failure_sub_executor_(
+          client_impl->GetRedisGcsClient().worker_failure_table()) {}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
+    const SubscribeCallback<WorkerID, rpc::WorkerFailureData> &subscribe,
+    const StatusCallback &done) {
+  RAY_LOG(DEBUG) << "Subscribing worker failures.";
+  RAY_CHECK(subscribe != nullptr);
+  auto status =
+      worker_failure_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+  RAY_LOG(DEBUG) << "Finished subscribing worker failures.";
+  return status;
+}
+
+Status ServiceBasedWorkerInfoAccessor::AsyncReportWorkerFailure(
+    const std::shared_ptr<rpc::WorkerFailureData> &data_ptr,
+    const StatusCallback &callback) {
+  rpc::Address worker_address = data_ptr->worker_address();
+  RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
+  rpc::ReportWorkerFailureRequest request;
+  request.mutable_worker_failure()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportWorkerFailure(
+      request, [worker_address, callback](const Status &status,
+                                          const rpc::ReportWorkerFailureReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished reporting worker failure, "
+                       << worker_address.DebugString() << ", status = " << status;
       });
   return Status::OK();
 }
