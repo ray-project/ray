@@ -1,6 +1,8 @@
-package org.ray.streaming.plan;
+package org.ray.streaming.jobgraph;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.Stream;
@@ -9,24 +11,33 @@ import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.python.stream.PythonDataStream;
 
-public class PlanBuilder {
+public class JobGraphBuilder {
 
-  private Plan plan;
+  private JobGraph jobGraph;
 
   private AtomicInteger edgeIdGenerator;
   private List<StreamSink> streamSinkList;
 
-  public PlanBuilder(List<StreamSink> streamSinkList) {
-    this.plan = new Plan();
+  public JobGraphBuilder(List<StreamSink> streamSinkList) {
+    this(streamSinkList, "job-" + System.currentTimeMillis());
+  }
+
+  public JobGraphBuilder(List<StreamSink> streamSinkList, String jobName) {
+    this(streamSinkList, jobName, new HashMap<>());
+  }
+
+  public JobGraphBuilder(List<StreamSink> streamSinkList, String jobName,
+      Map<String, String> jobConfig) {
+    this.jobGraph = new JobGraph(jobName, jobConfig);
     this.streamSinkList = streamSinkList;
     this.edgeIdGenerator = new AtomicInteger(0);
   }
 
-  public Plan buildPlan() {
+  public JobGraph build() {
     for (StreamSink streamSink : streamSinkList) {
       processStream(streamSink);
     }
-    return this.plan;
+    return this.jobGraph;
   }
 
   private void processStream(Stream stream) {
@@ -34,26 +45,26 @@ public class PlanBuilder {
     int parallelism = stream.getParallelism();
 
     StreamOperator streamOperator = stream.getOperator();
-    PlanVertex planVertex = null;
+    JobVertex jobVertex = null;
 
     if (stream instanceof StreamSink) {
-      planVertex = new PlanVertex(vertexId, parallelism, VertexType.SINK, streamOperator);
+      jobVertex = new JobVertex(vertexId, parallelism, VertexType.SINK, streamOperator);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();
-      PlanEdge planEdge = new PlanEdge(inputVertexId, vertexId, parentStream.getPartition());
-      this.plan.addEdge(planEdge);
+      JobEdge jobEdge = new JobEdge(inputVertexId, vertexId, parentStream.getPartition());
+      this.jobGraph.addEdge(jobEdge);
       processStream(parentStream);
     } else if (stream instanceof StreamSource) {
-      planVertex = new PlanVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator);
+      jobVertex = new JobVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator);
     } else if (stream instanceof DataStream || stream instanceof PythonDataStream) {
-      planVertex = new PlanVertex(vertexId, parallelism, VertexType.PROCESS, streamOperator);
+      jobVertex = new JobVertex(vertexId, parallelism, VertexType.PROCESS, streamOperator);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();
-      PlanEdge planEdge = new PlanEdge(inputVertexId, vertexId, parentStream.getPartition());
-      this.plan.addEdge(planEdge);
+      JobEdge jobEdge = new JobEdge(inputVertexId, vertexId, parentStream.getPartition());
+      this.jobGraph.addEdge(jobEdge);
       processStream(parentStream);
     }
-    this.plan.addVertex(planVertex);
+    this.jobGraph.addVertex(jobVertex);
   }
 
   private int getEdgeId() {

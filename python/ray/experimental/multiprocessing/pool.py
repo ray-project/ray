@@ -168,6 +168,8 @@ class IMapIterator:
     """Base class for OrderedIMapIterator and UnorderedIMapIterator."""
 
     def __init__(self, pool, func, iterable, chunksize=None):
+        self._pool = pool
+        self._func = func
         self._next_chunk_index = 0
         # List of bools indicating if the given chunk is ready or not for all
         # submitted chunks. Ordering mirrors that in the in the ResultThread.
@@ -182,7 +184,7 @@ class IMapIterator:
             [], total_object_ids=self._total_chunks)
         self._result_thread.start()
 
-        for _ in range(len(pool._actor_pool)):
+        for _ in range(len(self._pool._actor_pool)):
             self._submit_next_chunk()
 
     def _submit_next_chunk(self):
