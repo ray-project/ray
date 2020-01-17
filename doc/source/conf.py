@@ -58,6 +58,10 @@ for mod_name in MOCK_MODULES:
 # ray.rllib.models.lstm.py will use tf.VERSION
 sys.modules["tensorflow"].VERSION = "9.9.9"
 
+# Walkaround isinstance(o, FunctionDescriptor) raises 
+# TypeError: isinstance() arg 2 must be a type or tuple of types
+sys.modules["ray._raylet"].FunctionDescriptor = type
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
