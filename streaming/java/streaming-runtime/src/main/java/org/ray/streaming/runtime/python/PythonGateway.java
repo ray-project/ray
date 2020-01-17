@@ -92,6 +92,7 @@ public class PythonGateway {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
       params = processReferenceParameters(params);
+      LOGGER.info("callFunction params {}", params);
       String className = (String) params.get(0);
       String funcName = (String) params.get(1);
       Class<?> clz = Class.forName(className, true, this.getClass().getClassLoader());
@@ -108,6 +109,7 @@ public class PythonGateway {
     try {
       List<Object> params = (List<Object>) serializer.deserialize(paramsBytes);
       params = processReferenceParameters(params);
+      LOGGER.info("callMethod params {}", params);
       Object obj = params.get(0);
       String methodName = (String) params.get(1);
       Method method = ReflectionUtils.findMethod(obj.getClass(), methodName);

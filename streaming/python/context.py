@@ -46,12 +46,12 @@ class StreamingContext:
         return self.source(func)
 
     def submit(self, job_name):
-        self._gateway_client.execute()
+        self._gateway_client.execute(job_name)
 
     def execute(self, job_name):
         """Construct job DAG, and execute the job.
         """
-        self._gateway_client.execute()
+        self._gateway_client.execute(job_name)
         self.wait_finish()
 
     def wait_finish(self):

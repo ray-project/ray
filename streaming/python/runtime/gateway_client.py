@@ -22,8 +22,8 @@ class GatewayClient:
         call = self._python_gateway_actor.withConfig.remote(serialize(conf))
         ray.get(call)
 
-    def execute(self):
-        call = self._python_gateway_actor.execute.remote()
+    def execute(self, job_name):
+        call = self._python_gateway_actor.execute.remote(serialize(job_name))
         ray.get(call)
 
     def create_py_stream_source(self, serialized_func):

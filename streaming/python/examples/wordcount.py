@@ -82,6 +82,6 @@ if __name__ == "__main__":
                 (old_value[0], old_value[1] + new_value[1])) \
         .sink(print)
     start = time.time()
-    ctx.execute()
+    ctx.execute("wordcount")
     end = time.time()
     logger.info("Elapsed time: {} secs".format(end - start))

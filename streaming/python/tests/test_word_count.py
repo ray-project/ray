@@ -17,7 +17,9 @@ def test_word_count():
                 (old_value[0], old_value[1] + new_value[1])) \
         .filter(lambda x: "ray" not in x) \
         .sink(lambda x: print("result", x))
-    ctx.execute()
+    ctx.execute("word_count")
+    import time
+    time.sleep(100)
     ray.shutdown()
 
 
