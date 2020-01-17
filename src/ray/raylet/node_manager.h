@@ -578,6 +578,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Repeat the process as long as we can schedule a task.
   void NewSchedulerSchedulePendingTasks();
 
+  /// Whether a task is an direct actor creation task.
+  bool IsDirectActorCreationTask(const TaskID &task_id);
+
   /// ID of this node.
   ClientID self_node_id_;
   boost::asio::io_service &io_service_;
