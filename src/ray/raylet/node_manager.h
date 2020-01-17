@@ -689,9 +689,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// XXX
   void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 
-  // Cache for the WorkerFailureTable in the GCS.
-  // TODO(swang): Evict entries from the cache.
+  // TODO(swang): Evict entries from these caches.
+  /// Cache for the WorkerFailureTable in the GCS.
   std::unordered_set<WorkerID> failed_workers_cache_;
+  /// Cache for the ClientTable in the GCS.
+  std::unordered_set<ClientID> failed_nodes_caches_;
 };
 
 }  // namespace raylet
