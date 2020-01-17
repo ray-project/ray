@@ -1173,6 +1173,10 @@ cdef class CoreWorker:
         if self.async_event_loop is None:
             self.async_event_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
+            # Initialize the async plasma connection in worker
+            # Delayed import due to everything depends on raylet
+            from ray.experimental.async_api import _async_init
+            self.async_event_loop.run_until_complete(_async_init())
         if self.async_thread is None:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()
