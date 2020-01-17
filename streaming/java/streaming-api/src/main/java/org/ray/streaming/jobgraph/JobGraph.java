@@ -4,6 +4,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,17 +31,14 @@ public class JobGraph implements Serializable {
   /**
    * Generate direct-graph(made up of a set of vertices and connected by edges)
    * by current job graph for simple log printing.
-   * @return Digraph in string type.
    *
-   * Notice:
-   * This is temporarily implemented in hard code.
-   * May use 'guru.nidi:graphviz-java' as 3rd dependency in the future if needed.
+   * @return Digraph in string type.
    */
   public String generateDigraph() {
     StringBuilder digraph = new StringBuilder();
     digraph.append("digraph ").append(jobName + " ").append(" {");
 
-    for (JobEdge jobEdge: jobEdgeList) {
+    for (JobEdge jobEdge : jobEdgeList) {
       String srcNode = null;
       String targetNode = null;
       for (JobVertex jobVertex : jobVertexList) {

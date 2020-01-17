@@ -138,6 +138,12 @@ class Dashboard(object):
                     os.path.dirname(os.path.abspath(__file__)),
                     "client/build/index.html"))
 
+        async def get_favicon(req) -> aiohttp.web.Response:
+            return aiohttp.web.FileResponse(
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "client/build/favicon.ico"))
+
         async def json_response(result=None, error=None,
                                 ts=None) -> aiohttp.web.Response:
             if ts is None:
@@ -247,8 +253,8 @@ class Dashboard(object):
                         to_print.append(line +
                                         (max_line_length - len(line)) * " ")
                     data["extraInfo"] += "\n" + "\n".join(to_print)
-            D["actorInfo"] = actor_tree
-            return await json_response(result=D)
+            result = {"nodes": D, "actors": actor_tree}
+            return await json_response(result=result)
 
         async def launch_profiling(req) -> aiohttp.web.Response:
             node_id = req.query.get("node_id")
@@ -279,6 +285,7 @@ class Dashboard(object):
             return await json_response(result=result)
 
         self.app.router.add_get("/", get_index)
+        self.app.router.add_get("/favicon.ico", get_favicon)
 
         static_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "client/build/static")

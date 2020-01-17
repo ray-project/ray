@@ -48,7 +48,7 @@ namespace raylet {
 /// each language.
 WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
                        int maximum_startup_concurrency,
-                       std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                       std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
     : io_service_(&io_service),
       maximum_startup_concurrency_(maximum_startup_concurrency),
