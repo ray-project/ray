@@ -30,11 +30,11 @@ public class JobGraph implements Serializable {
   /**
    * Generate direct-graph(made up of a set of vertices and connected by edges)
    * by current job graph for simple log printing.
-   * @return Digraph in string type.
-   *
    * Notice:
    * This is temporarily implemented in hard code.
    * May use 'guru.nidi:graphviz-java' as 3rd dependency in the future if needed.
+   *
+   * @return Digraph in string type.
    */
   public String generateDigraph() {
     StringBuilder digraph = new StringBuilder();
