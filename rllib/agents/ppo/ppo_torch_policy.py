@@ -83,8 +83,10 @@ class PPOLoss:
 
         surrogate_loss = torch.min(
             advantages * logp_ratio,
-            advantages * torch.clamp(logp_ratio, 1 - clip_param,
-                                          1 + clip_param))
+            advantages * torch.clamp(
+                logp_ratio, 1 - clip_param, 1 + clip_param
+            )
+        )
         self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         if use_gae:

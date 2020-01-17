@@ -61,12 +61,12 @@ def update_target_and_kl(trainer, fetches):
     learner_steps = trainer.optimizer.learner.num_steps
     if learner_steps >= trainer.target_update_frequency:
 
-        # Update Target Network
+        # Update Target Network.
         trainer.optimizer.learner.num_steps = 0
         trainer.workers.local_worker().foreach_trainable_policy(
             lambda p, _: p.update_target())
 
-        # Also update KL Coeff
+        # Also update KL Coeff.
         if trainer.config["use_kl_loss"]:
             update_kl(trainer, trainer.optimizer.learner.stats)
 

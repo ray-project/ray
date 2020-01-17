@@ -10,20 +10,20 @@ import gym
 from ray.rllib.agents.impala import vtrace
 from ray.rllib.agents.impala.vtrace_policy import _make_time_major, \
         BEHAVIOR_LOGITS, clip_gradients, validate_config, choose_optimizer
-from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
-from ray.rllib.evaluation.postprocessing import Postprocessing, \
-    compute_advantages
-from ray.rllib.models import ModelCatalog
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.agents.ppo.ppo_tf_policy import KLCoeffMixin, ValueNetworkMixin
+from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.tf_ops import make_tf_callable
 
-tf = try_import_tf()
+torch, _ = try_import_torch()
 
 POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
@@ -49,6 +49,7 @@ class PPOSurrogateLoss:
         cur_kl_coeff (float): Coefficient for KL loss.
         use_kl_loss (bool): If true, use KL loss.
     """
+
     def __init__(self,
                  prev_actions_logp,
                  actions_logp,
@@ -64,22 +65,17 @@ class PPOSurrogateLoss:
                  cur_kl_coeff=None,
                  use_kl_loss=False):
 
-        if valid_mask is not None:
+        def reduce_mean_valid(t):
+            return torch.mean(t * valid_mask)
 
-            def reduce_mean_valid(t):
-                return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+        logp_ratio = torch.exp(actions_logp - prev_actions_logp)
 
-        else:
-
-            def reduce_mean_valid(t):
-                return tf.reduce_mean(t)
-
-        logp_ratio = tf.exp(actions_logp - prev_actions_logp)
-
-        surrogate_loss = tf.minimum(
+        surrogate_loss = torch.min(
             advantages * logp_ratio,
-            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                          1 + clip_param))
+            advantages * torch.clamp(
+                logp_ratio, 1 - clip_param, 1 + clip_param
+            )
+        )
 
         self.mean_kl = reduce_mean_valid(action_kl)
         self.pi_loss = -reduce_mean_valid(surrogate_loss)
@@ -87,7 +83,7 @@ class PPOSurrogateLoss:
         # The baseline loss
         delta = values - value_targets
         self.value_targets = value_targets
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
+        self.vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
         # The entropy loss
         self.entropy = reduce_mean_valid(actions_entropy)
@@ -127,7 +123,8 @@ class VTraceSurrogateLoss:
                  clip_param=0.3,
                  cur_kl_coeff=None,
                  use_kl_loss=False):
-        """APPO Loss, with IS modifications and V-trace for Advantage Estimation
+        """
+        APPO Loss, with IS modifications and V-trace for Advantage Estimation.
 
         VTraceLoss takes tensors of shape [T, B, ...], where `B` is the
         batch_size. The reason we need to know `B` is for V-trace to properly
@@ -160,7 +157,7 @@ class VTraceSurrogateLoss:
         """
 
         def reduce_mean_valid(t):
-            return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+            return torch.mean(t * valid_mask)
 
         # Compute vtrace on the CPU for better perf.
         with tf.device("/cpu:0"):
@@ -174,19 +171,25 @@ class VTraceSurrogateLoss:
                 bootstrap_value=bootstrap_value,
                 dist_class=dist_class,
                 model=model,
-                clip_rho_threshold=tf.cast(clip_rho_threshold, tf.float32),
-                clip_pg_rho_threshold=tf.cast(clip_pg_rho_threshold,
-                                              tf.float32))
+                clip_rho_threshold=torch.astype(
+                    clip_rho_threshold, torch.float32
+                ),
+                clip_pg_rho_threshold=torch.astype(
+                    clip_pg_rho_threshold, torch.float32
+                )
+            )
 
-        self.is_ratio = tf.clip_by_value(
-            tf.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
-        logp_ratio = self.is_ratio * tf.exp(actions_logp - prev_actions_logp)
+        self.is_ratio = torch.clamp(
+            torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
+        logp_ratio = self.is_ratio * torch.exp(actions_logp - prev_actions_logp)
 
         advantages = self.vtrace_returns.pg_advantages
-        surrogate_loss = tf.minimum(
+        surrogate_loss = torch.min(
             advantages * logp_ratio,
-            advantages * tf.clip_by_value(logp_ratio, 1 - clip_param,
-                                          1 + clip_param))
+            advantages * torch.clamp(
+                logp_ratio, 1 - clip_param, 1 + clip_param
+            )
+        )
 
         self.mean_kl = reduce_mean_valid(action_kl)
         self.pi_loss = -reduce_mean_valid(surrogate_loss)
@@ -194,14 +197,14 @@ class VTraceSurrogateLoss:
         # The baseline loss
         delta = values - self.vtrace_returns.vs
         self.value_targets = self.vtrace_returns.vs
-        self.vf_loss = 0.5 * reduce_mean_valid(tf.square(delta))
+        self.vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
         # The entropy loss
         self.entropy = reduce_mean_valid(actions_entropy)
 
         # The summed weighted loss
-        self.total_loss = (self.pi_loss + self.vf_loss * vf_loss_coeff -
-                           self.entropy * entropy_coeff)
+        self.total_loss = self.pi_loss + self.vf_loss * vf_loss_coeff - \
+                          self.entropy * entropy_coeff
 
         # Optional additional KL Loss
         if use_kl_loss:
@@ -217,7 +220,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         logit_dim,
         config["model"],
         name=POLICY_SCOPE,
-        framework="tf")
+        framework="torch")
 
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space,
@@ -225,7 +228,7 @@ def build_appo_model(policy, obs_space, action_space, config):
         logit_dim,
         config["model"],
         name=TARGET_POLICY_SCOPE,
-        framework="tf")
+        framework="torch")
 
     return policy.model
 
