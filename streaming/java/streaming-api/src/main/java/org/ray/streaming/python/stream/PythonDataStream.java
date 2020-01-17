@@ -44,6 +44,18 @@ public class PythonDataStream extends Stream implements PythonStream {
   }
 
   /**
+   * Apply a filter function to this stream.
+   *
+   * @param func The python FilterFunction.
+   * @return A new PythonDataStream that contains only the elements satisfying
+   *     the given filter predicate.
+   */
+  public PythonDataStream filter(PythonFunction func) {
+    func.setFunctionInterface(FunctionInterface.FILTER_FUNCTION);
+    return new PythonDataStream(this, new PythonOperator(func));
+  }
+
+  /**
    * Apply a sink function and get a StreamSink.
    *
    * @param func The python SinkFunction.
