@@ -239,8 +239,8 @@ class Dashboard(object):
                         to_print.append(line +
                                         (max_line_length - len(line)) * " ")
                     data["extraInfo"] += "\n" + "\n".join(to_print)
-            D["actorInfo"] = actor_tree
-            return await json_response(result=D)
+            result = {"nodes": D, "actors": actor_tree}
+            return await json_response(result=result)
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
