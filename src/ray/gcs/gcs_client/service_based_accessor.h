@@ -266,9 +266,24 @@ class ServiceBasedStatsInfoAccessor : public StatsInfoAccessor {
 
   virtual ~ServiceBasedStatsInfoAccessor() = default;
 
-  Status AsyncAddProfileData(
-      const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
-      const StatusCallback &callback) override;
+  Status AsyncAddProfileData(const std::shared_ptr<rpc::ProfileTableData> &data_ptr,
+                             const StatusCallback &callback) override;
+
+ private:
+  ServiceBasedGcsClient *client_impl_{nullptr};
+};
+
+/// \class ServiceBasedErrorInfoAccessor
+/// ServiceBasedErrorInfoAccessor is an implementation of `ErrorInfoAccessor`
+/// that uses GCS Service as the backend.
+class ServiceBasedErrorInfoAccessor : public ErrorInfoAccessor {
+ public:
+  explicit ServiceBasedErrorInfoAccessor(ServiceBasedGcsClient *client_impl);
+
+  virtual ~ServiceBasedErrorInfoAccessor() = default;
+
+  Status AsyncReportJobError(const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
+                             const StatusCallback &callback) override;
 
  private:
   ServiceBasedGcsClient *client_impl_{nullptr};

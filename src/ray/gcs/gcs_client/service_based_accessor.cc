@@ -755,5 +755,30 @@ Status ServiceBasedStatsInfoAccessor::AsyncAddProfileData(
   return Status::OK();
 }
 
+ServiceBasedErrorInfoAccessor::ServiceBasedErrorInfoAccessor(
+    ServiceBasedGcsClient *client_impl)
+    : client_impl_(client_impl) {}
+
+Status ServiceBasedErrorInfoAccessor::AsyncReportJobError(
+    const std::shared_ptr<rpc::ErrorTableData> &data_ptr,
+    const StatusCallback &callback) {
+  JobID job_id = JobID::FromBinary(data_ptr->job_id());
+  std::string type = data_ptr->type();
+  RAY_LOG(DEBUG) << "Reporting job error, job id = " << job_id << ", type = " << type;
+  rpc::ReportJobErrorRequest request;
+  request.mutable_error_data()->CopyFrom(*data_ptr);
+  client_impl_->GetGcsRpcClient().ReportJobError(
+      request, [job_id, type, callback](const Status &status,
+                                        const rpc::ReportJobErrorReply &reply) {
+        if (callback) {
+          callback(status);
+        }
+        RAY_LOG(DEBUG) << "Finished reporting job error, job id = " << job_id
+                       << ", type = " << type;
+        ;
+      });
+  return Status::OK();
+}
+
 }  // namespace gcs
 }  // namespace ray
