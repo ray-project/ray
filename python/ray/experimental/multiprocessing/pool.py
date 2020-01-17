@@ -329,7 +329,9 @@ class Pool:
         self._actor_deletion_ids = []
 
         if context:
-            logger.warning("The 'context' argument is not supported using ray. Please refer to the documentation for how to control ray initialization.")
+            logger.warning("The 'context' argument is not supported using "
+                           "ray. Please refer to the documentation for how "
+                           "to control ray initialization.")
 
         processes = self._init_ray(processes, ray_address)
         self._start_actor_pool(processes)
@@ -344,12 +346,12 @@ class Pool:
 
             # Cluster mode.
             if ray_address is not None:
-                print("Connecting to ray cluster at address='{}'".format(
+                logger.info("Connecting to ray cluster at address='{}'".format(
                     ray_address))
                 ray.init(address=ray_address)
             # Local mode.
             else:
-                print("Starting local ray cluster")
+                logger.info("Starting local ray cluster")
                 ray.init(num_cpus=processes)
 
         ray_cpus = int(ray.state.cluster_resources()["CPU"])
