@@ -11,9 +11,9 @@ public class WorkerContext implements Serializable {
 
   private int taskId;
   private ExecutionGraph executionGraph;
-  private Map<String, Object> config;
+  private Map<String, String> config;
 
-  public WorkerContext(int taskId, ExecutionGraph executionGraph, Map<String, Object> jobConfig) {
+  public WorkerContext(int taskId, ExecutionGraph executionGraph, Map<String, String> jobConfig) {
     this.taskId = taskId;
     this.executionGraph = executionGraph;
     this.config = jobConfig;
@@ -35,7 +35,7 @@ public class WorkerContext implements Serializable {
     this.executionGraph = executionGraph;
   }
 
-  public Map<String, Object> getConfig() {
+  public Map<String, String> getConfig() {
     return config;
   }
 }

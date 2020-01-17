@@ -44,7 +44,7 @@ ActorHandle::ActorHandle(const std::string &serialized)
 void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
                                    const TaskTransportType transport_type,
                                    const ObjectID new_cursor) {
-  std::unique_lock<std::mutex> guard(mutex_);
+  absl::MutexLock guard(&mutex_);
   // Build actor task spec.
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
   const ObjectID actor_creation_dummy_object_id =
@@ -59,7 +59,7 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
 
 void ActorHandle::Reset() {
-  std::unique_lock<std::mutex> guard(mutex_);
+  absl::MutexLock guard(&mutex_);
   task_counter_ = 0;
   actor_cursor_ = ObjectID::FromBinary(inner_.actor_cursor());
 }

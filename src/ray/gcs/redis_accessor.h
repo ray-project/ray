@@ -2,7 +2,6 @@
 #define RAY_GCS_REDIS_ACCESSOR_H
 
 #include "ray/common/id.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/gcs/accessor.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
@@ -13,10 +12,6 @@ namespace ray {
 namespace gcs {
 
 class RedisGcsClient;
-
-std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
-    const TaskSpecification &task_spec, const rpc::Address &address,
-    gcs::ActorTableData::ActorState state, uint64_t remaining_reconstructions);
 
 /// \class RedisActorInfoAccessor
 /// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
@@ -150,6 +145,10 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
   Status AsyncUnsubscribeTaskLease(const TaskID &task_id,
                                    const StatusCallback &done) override;
 
+  Status AttemptTaskReconstruction(
+      const std::shared_ptr<TaskReconstructionData> &data_ptr,
+      const StatusCallback &callback) override;
+
  private:
   RedisGcsClient *client_impl_{nullptr};
   // Use a random ClientID for task subscription. Because:
@@ -228,7 +227,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
 
   const GcsNodeInfo &GetSelfInfo() const override;
 
-  Status Register(const GcsNodeInfo &node_info) override;
+  Status AsyncRegister(const GcsNodeInfo &node_info,
+                       const StatusCallback &callback) override;
 
   Status AsyncUnregister(const ClientID &node_id,
                          const StatusCallback &callback) override;
@@ -288,6 +288,62 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   typedef SubscriptionExecutor<ClientID, HeartbeatBatchTableData, HeartbeatBatchTable>
       HeartbeatBatchSubscriptionExecutor;
   HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
+};
+
+/// \class RedisErrorInfoAccessor
+/// RedisErrorInfoAccessor is an implementation of `ErrorInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisErrorInfoAccessor : public ErrorInfoAccessor {
+ public:
+  explicit RedisErrorInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisErrorInfoAccessor() = default;
+
+  Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
+                             const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+};
+
+/// \class RedisStatsInfoAccessor
+/// RedisStatsInfoAccessor is an implementation of `StatsInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisStatsInfoAccessor : public StatsInfoAccessor {
+ public:
+  explicit RedisStatsInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisStatsInfoAccessor() = default;
+
+  Status AsyncAddProfileData(const std::shared_ptr<ProfileTableData> &data_ptr,
+                             const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+};
+
+/// \class RedisWorkerInfoAccessor
+/// RedisWorkerInfoAccessor is an implementation of `WorkerInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
+ public:
+  explicit RedisWorkerInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisWorkerInfoAccessor() = default;
+
+  Status AsyncSubscribeToWorkerFailures(
+      const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
+                                  const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
+      WorkerFailureSubscriptionExecutor;
+  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };
 
 }  // namespace gcs

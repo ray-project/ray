@@ -5,7 +5,7 @@ import collections
 from ray.tune.result import (DEFAULT_RESULT_KEYS, CONFIG_PREFIX,
                              EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
                              TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL)
-from ray.tune.util import flatten_dict
+from ray.tune.utils import flatten_dict
 
 try:
     from tabulate import tabulate

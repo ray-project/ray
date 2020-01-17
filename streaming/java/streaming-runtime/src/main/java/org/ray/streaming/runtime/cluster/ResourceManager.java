@@ -2,7 +2,6 @@ package org.ray.streaming.runtime.cluster;
 
 import java.util.ArrayList;
 import java.util.List;
-
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.streaming.runtime.worker.JobWorker;

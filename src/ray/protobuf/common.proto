@@ -195,7 +195,7 @@ message CoreWorkerStats {
   // Number of object ids in local scope.
   int32 num_object_ids_in_scope = 3;
   // Function descriptor of the currently executing task.
-  repeated string current_task_func_desc = 4;
+  repeated bytes current_task_func_desc = 4;
   // IP address of the core worker.
   string ip_address = 6;
   // Port of the core worker.

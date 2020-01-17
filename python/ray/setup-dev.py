@@ -1,10 +1,6 @@
 #!/usr/bin/env python
 """This script allows you to develop RLlib without needing to compile Ray."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import click
 import os
