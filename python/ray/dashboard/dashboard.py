@@ -21,6 +21,7 @@ import time
 import traceback
 import yaml
 import urllib.parse
+import uuid
 
 from base64 import b64decode
 from collections import defaultdict
@@ -32,6 +33,8 @@ from google.protobuf.json_format import MessageToDict
 import ray
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 import ray.ray_constants as ray_constants
 
 # Logger for this module. It should be configured at the entry point
@@ -251,24 +254,16 @@ class Dashboard(object):
             D["actorInfo"] = actor_tree
             return await json_response(result=D)
 
-        def get_profiling_stats_callback(reply_future) -> aiohttp.web.Response:
-            t = time.time()
-            print("calling get_profiling_stats_callback", t)
-            reply = reply_future.result()
-            print("getting result", time.time() - t)
-            print(reply.profiling_stats_stdout)
-            result = aiohttp.web.json_response(json.loads(reply.profiling_stats))
-            print(result)
-
-        async def profiling_info(req) -> aiohttp.web.Response:
+        async def launch_profiling(req) -> aiohttp.web.Response:
             node_id = req.query.get("node_id")
             pid = int(req.query.get("pid"))
             duration = int(req.query.get("duration"))
-            t = time.time()
-            reply_future = self.raylet_stats.get_profiling_stats(node_id=node_id, pid=pid, duration=duration)
-            print("time to get future", time.time() - t)
-            reply_future.add_done_callback(get_profiling_stats_callback)
-            return aiohttp.web.json_response("start profiling on node_id = {}, pid = {} with duration {}".format(node_id, pid, duration))
+            profiling_id = self.raylet_stats.launch_profiling(node_id=node_id, pid=pid, duration=duration)
+            return aiohttp.web.json_response(str(profiling_id))
+
+        async def get_profiling_info(req) -> aiohttp.web.Response:
+            profiling_id = req.query.get("profiling_id")
+            return aiohttp.web.json_response(self.raylet_stats.try_get_profiling_stats(profiling_id))
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -301,8 +296,8 @@ class Dashboard(object):
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
-        self.app.router.add_get("/api/profiling_info", profiling_info)
-        # self.app.router.add_get("/api/profiling_info_result", get_profiling_stats_callback)
+        self.app.router.add_get("/api/launch_profiling", launch_profiling)
+        self.app.router.add_get("/api/get_profiling_info", get_profiling_info)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
 
@@ -561,9 +556,13 @@ class RayletStats(threading.Thread):
         self.nodes_lock = threading.Lock()
         self.nodes = []
         self.stubs = {}
+        self.reporter_stubs = {}
+        self.redis_client = ray.services.create_redis_client(
+            redis_address, password=redis_password)
 
         self._raylet_stats_lock = threading.Lock()
         self._raylet_stats = {}
+        self._profiling_stats = {}
 
         self.update_nodes()
 
@@ -579,28 +578,60 @@ class RayletStats(threading.Thread):
                 if node_id not in node_ids:
                     stub = self.stubs.pop(node_id)
                     stub.close()
+                    reporter_stub = self.reporter_stubs.pop(node_id)
+                    reporter_stub.close()
 
             # Now add node connections of new nodes.
             for node in self.nodes:
                 node_id = node["NodeID"]
                 if node_id not in self.stubs:
+                    node_ip = node["NodeManagerAddress"]
                     channel = grpc.insecure_channel("{}:{}".format(
-                        node["NodeManagerAddress"], node["NodeManagerPort"]))
+                        node_ip, node["NodeManagerPort"]))
                     stub = node_manager_pb2_grpc.NodeManagerServiceStub(
                         channel)
                     self.stubs[node_id] = stub
+                    # Block wait until the reporter for the node starts. 
+                    while True:
+                        reporter_port = self.redis_client.get(node_ip)
+                        if reporter_port:
+                            break
+                    reporter_channel = grpc.insecure_channel("{}:{}".format(
+                        node_ip, int(reporter_port)
+                    ))
+                    reporter_stub = reporter_pb2_grpc.ReporterServiceStub(reporter_channel)
+                    self.reporter_stubs[node_id] = reporter_stub
+
+            assert len(self.stubs) == len(self.reporter_stubs), (self.stubs.keys(), self.reporter_stubs.keys())
 
     def get_raylet_stats(self) -> Dict:
         with self._raylet_stats_lock:
             return copy.deepcopy(self._raylet_stats)
 
-    def get_profiling_stats(self, node_id, pid, duration) -> Dict:
-        stub = self.stubs[node_id]
-        t = time.time()
-        reply_future = stub.GetProfilingStats.future(
-            node_manager_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
-        print("time to get future in node stats", time.time() - t)
-        return reply_future
+    def launch_profiling(self, node_id, pid, duration):
+        profiling_id = str(uuid.uuid4())
+        def _callback(reply_future):
+            reply = reply_future.result()
+            with self._raylet_stats_lock:
+                self._profiling_stats[profiling_id] = reply
+
+        reporter_stub = self.reporter_stubs[node_id]
+        reply_future = reporter_stub.GetProfilingStats.future(
+            reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
+        reply_future.add_done_callback(_callback)
+        return profiling_id
+
+    def try_get_profiling_stats(self, profiling_id):
+        print(self._profiling_stats)
+        with self._raylet_stats_lock:
+            profiling_stats = self._profiling_stats.get(profiling_id)
+        if profiling_stats:
+            print(profiling_stats.stdout)
+            print(profiling_stats.stderr)
+            print(json.loads(profiling_stats.profiling_stats))
+            return json.loads(profiling_stats.profiling_stats)
+        else:
+            return {}
         
     def run(self):
         counter = 0

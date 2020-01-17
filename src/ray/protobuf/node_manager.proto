@@ -64,18 +64,6 @@ message GetNodeStatsReply {
   repeated TaskSpec infeasible_tasks = 4;
 }
 
-  // PID of the worker process.
-  uint32 pid = 1;
-  // Duration of the profiling in seconds. 
-  int32 duration = 2;
-}
-
-message GetProfilingStatsReply {
-  // Profiling stats.
-  string profiling_stats = 1;
-  string profiling_stats_stdout = 2;
-}
-
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Request a worker from the raylet.

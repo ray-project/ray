@@ -9,6 +9,9 @@ import os
 import traceback
 import time
 import datetime
+import grpc
+import subprocess
+from concurrent import futures
 
 try:
     import psutil
@@ -20,11 +23,34 @@ except ImportError:
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+
+class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
+    """Service that a Ray cluster can connect to in order to push all its metrics."""
+
+    def __init__(self):
+        pass
+
+    def GetProfilingStats(self, request, context):
+        pid = str(request.pid)
+        duration = str(request.duration)
+        profiling_file_path = os.path.join("/tmp/ray/", "{}_profiling.txt".format(pid))
+        process = subprocess.Popen(["sudo", "py-spy", "record", "-o", profiling_file_path, "-p", pid, "-d", duration, "-f", "speedscope"],
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE
+        )
+        stdout, stderr = process.communicate()
+        with open(profiling_file_path, 'r') as f:
+            profiling_stats = f.read()
+        return reporter_pb2.GetProfilingStatsReply(
+            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
 
 def recursive_asdict(o):
@@ -161,6 +187,15 @@ class Reporter:
         )
 
     def run(self):
+        """Publish the port."""
+        thread_pool = futures.ThreadPoolExecutor(max_workers=10)
+        server = grpc.server(thread_pool, options=(('grpc.so_reuseport', 0),))
+        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
+            ReporterServer(), server
+        )
+        port = server.add_insecure_port('[::]:0')
+        server.start()
+        self.redis_client.set(self.ip, port)
         """Run the reporter."""
         while True:
             try:
