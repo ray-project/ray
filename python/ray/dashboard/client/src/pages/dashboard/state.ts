@@ -8,6 +8,7 @@ import {
 const name = "dashboard";
 
 interface State {
+  tab: number;
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
   rayletInfo: RayletInfoResponse | null;
@@ -16,6 +17,7 @@ interface State {
 }
 
 const initialState: State = {
+  tab: 0,
   rayConfig: null,
   nodeInfo: null,
   rayletInfo: null,
@@ -27,10 +29,13 @@ const slice = createSlice({
   name,
   initialState,
   reducers: {
+    setTab: (state, action: PayloadAction<number>) => {
+      state.tab = action.payload;
+    },
     setRayConfig: (state, action: PayloadAction<RayConfigResponse>) => {
       state.rayConfig = action.payload;
     },
-    setNodeInfoAndRayletInfo: (
+    setNodeAndRayletInfo: (
       state,
       action: PayloadAction<{
         nodeInfo: NodeInfoResponse;
