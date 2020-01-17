@@ -2445,6 +2445,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   actor_info_ptr->mutable_address()->set_raylet_id(self_node_id_.Binary());
   actor_info_ptr->mutable_address()->set_worker_id(worker_id.Binary());
   actor_info_ptr->set_state(ActorTableData::ALIVE);
+  actor_info_ptr->set_timestamp(current_time_ms());
   return actor_info_ptr;
 }
 

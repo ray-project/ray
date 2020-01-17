@@ -79,6 +79,10 @@ def measures_to_dict(measures):
     return measures_dict
 
 
+def b64_decode(reply):
+    return b64decode(reply).decode("utf-8")
+
+
 class Dashboard(object):
     """A dashboard process for monitoring Ray nodes.
 
@@ -215,7 +219,7 @@ class Dashboard(object):
                         format_resource(resource_name,
                                         total_resource - available_resource),
                         format_resource(resource_name, total_resource)))
-                data["extraInfo"] = ",".join(extra_info_strings) + "\n"
+                data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
                     # process object store info
                     extra_info_strings = []
@@ -307,6 +311,7 @@ class NodeStats(threading.Thread):
             "ipAddress": "",
             "isDirectCall": False,
             "jobId": "",
+            "numExecutedTasks": 0,
             "numLocalObjects": 0,
             "numObjectIdsInScope": 0,
             "port": 0,
@@ -371,6 +376,7 @@ class NodeStats(threading.Thread):
             }
 
     def get_actor_tree(self, workers_info, infeasible_tasks) -> Dict:
+        now = time.time()
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
@@ -389,13 +395,17 @@ class NodeStats(threading.Thread):
                     addr = (core_worker_stats["ipAddress"],
                             str(core_worker_stats["port"]))
                     if addr in self._addr_to_actor_id:
-                        actor_id = self._addr_to_actor_id[addr]
-                        if "currentTaskDesc" in core_worker_stats:
-                            core_worker_stats.pop("currentTaskDesc")
-                        if "numPendingTasks" in core_worker_stats:
-                            core_worker_stats.pop("numPendingTasks")
+                        actor_info = flattened_tree[self._addr_to_actor_id[
+                            addr]]
+                        if "currentTaskFuncDesc" in core_worker_stats:
+                            core_worker_stats["currentTaskFuncDesc"] = list(
+                                map(b64_decode,
+                                    core_worker_stats["currentTaskFuncDesc"]))
                         format_reply(core_worker_stats)
-                        flattened_tree[actor_id].update(core_worker_stats)
+                        actor_info.update(core_worker_stats)
+                        actor_info["averageTaskExecutionSpeed"] = round(
+                            actor_info["numExecutedTasks"] /
+                            (now - actor_info["timestamp"] / 1000), 2)
 
             for infeasible_task in infeasible_tasks:
                 actor_id = ray.utils.binary_to_hex(
@@ -407,8 +417,7 @@ class NodeStats(threading.Thread):
                 child_to_parent[actor_id] = caller_id
                 infeasible_task["state"] = -1
                 infeasible_task["functionDescriptor"] = list(
-                    map(lambda desc: b64decode(desc).decode("utf-8"),
-                        infeasible_task["functionDescriptor"]))
+                    map(b64_decode, infeasible_task["functionDescriptor"]))
                 format_reply(infeasible_tasks)
                 flattened_tree[actor_id] = infeasible_task
 
@@ -463,6 +472,7 @@ class NodeStats(threading.Thread):
                     "jobId": actor_data["JobID"],
                     "state": actor_data["State"],
                     "isDirectCall": actor_data["IsDirectCall"],
+                    "timestamp": actor_data["Timestamp"]
                 }
 
         for x in p.listen():
@@ -506,6 +516,7 @@ class NodeStats(threading.Thread):
                                 actor_data.job_id),
                             "state": actor_data.state,
                             "isDirectCall": actor_data.is_direct_call,
+                            "timestamp": actor_data.timestamp
                         }
                     else:
                         data = json.loads(ray.utils.decode(data))
