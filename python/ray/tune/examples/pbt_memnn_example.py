@@ -279,7 +279,7 @@ if __name__ == "__main__":
         MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
-        stop={"training_iteration": 20 if args.smoke_test else 100},
+        stop={"training_iteration": 10 if args.smoke_test else 100},
         num_samples=4,
         config={
             "batch_size": 32,

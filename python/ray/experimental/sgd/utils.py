@@ -1,7 +1,13 @@
 from contextlib import closing
+import logging
 import numpy as np
 import socket
 import time
+
+import ray
+from ray.exceptions import RayActorError
+
+logger = logging.getLogger(__name__)
 
 
 class TimerStat:
@@ -121,3 +127,25 @@ class AverageMeter:
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+def check_for_failure(remote_values):
+    """Checks remote values for any that returned and failed.
+
+    Args:
+        remote_values (list): List of object IDs representing functions
+            that may fail in the middle of execution. For example, running
+            a SGD training loop in multiple parallel actor calls.
+
+    Returns:
+        Bool for success in executing given remote tasks.
+    """
+    unfinished = remote_values
+    try:
+        while len(unfinished) > 0:
+            finished, unfinished = ray.wait(unfinished)
+            finished = ray.get(finished)
+        return True
+    except RayActorError as exc:
+        logger.exception(str(exc))
+    return False
