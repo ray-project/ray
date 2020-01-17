@@ -39,7 +39,7 @@ def wait_for_pid_to_exit(pid, timeout=20):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
-        "Timed out while waiting for process to exit.")
+        "Timed out while waiting for process {} to exit.".format(pid))
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
@@ -51,8 +51,8 @@ def wait_for_children_of_pid(pid, num_children=1, timeout=20):
             return
         time.sleep(0.1)
     raise RayTestTimeoutException(
-        "Timed out while waiting for process children to start "
-        "({}/{} started).".format(num_alive, num_children))
+        "Timed out while waiting for process {} children to start "
+        "({}/{} started).".format(pid, num_alive, num_children))
 
 
 def wait_for_children_of_pid_to_exit(pid, timeout=20):

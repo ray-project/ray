@@ -5,6 +5,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#include <boost/asio/io_service.hpp>
+
 #include "gtest/gtest.h"
 
 #include "ray/common/client_connection.h"
@@ -40,7 +43,8 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(int num_workers, int maximum_startup_concurrency,
+  WorkerPool(boost::asio::io_service &io_service, int num_workers,
+             int maximum_startup_concurrency,
              std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
@@ -52,7 +56,7 @@ class WorkerPool {
   ///
   /// \param The Worker to be registered.
   /// \return If the registration is successful.
-  Status RegisterWorker(const std::shared_ptr<Worker> &worker);
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t pid);
 
   /// Register a new driver.
   ///
@@ -157,14 +161,16 @@ class WorkerPool {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  int StartWorkerProcess(const Language &language,
-                         const std::vector<std::string> &dynamic_options = {});
+  ProcessHandle StartWorkerProcess(const Language &language,
+                                   const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
+  /// The lifetime of the process is tied to that of the returned object,
+  /// unless the caller manually detaches the process after the call.
   ///
   /// \param worker_command_args The command arguments of new worker process.
-  /// \return The process ID of started worker process.
-  virtual pid_t StartProcess(const std::vector<std::string> &worker_command_args);
+  /// \return An object representing the started worker process.
+  virtual ProcessHandle StartProcess(const std::vector<std::string> &worker_command_args);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -189,12 +195,12 @@ class WorkerPool {
     std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
-    std::unordered_map<pid_t, int> starting_worker_processes;
+    std::unordered_map<ProcessHandle, int> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<pid_t, TaskID> dedicated_workers_to_tasks;
+    std::unordered_map<ProcessHandle, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, pid_t> tasks_to_dedicated_workers;
+    std::unordered_map<TaskID, ProcessHandle> tasks_to_dedicated_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -217,6 +223,8 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
+  /// Required by Boost.Process for managing subprocesses (e.g. reaping zombies).
+  boost::asio::io_service *io_service_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// A client connection to the GCS.
