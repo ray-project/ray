@@ -44,8 +44,7 @@ class WorkerPool {
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
   WorkerPool(boost::asio::io_service &io_service, int num_workers,
-             int maximum_startup_concurrency,
-             std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+             int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -228,7 +227,7 @@ class WorkerPool {
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
 };
