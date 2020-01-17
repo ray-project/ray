@@ -329,7 +329,7 @@ class Pool:
         self._actor_deletion_ids = []
 
         if context:
-            logger.warning("context argument is ignored")
+            logger.warning("The 'context' argument is not supported using ray. Please refer to the documentation for how to control ray initialization.")
 
         processes = self._init_ray(processes, ray_address)
         self._start_actor_pool(processes)
