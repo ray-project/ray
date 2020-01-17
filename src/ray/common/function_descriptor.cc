@@ -4,8 +4,7 @@ namespace ray {
 FunctionDescriptor FunctionDescriptorBuilder::BuildDriver() {
   rpc::FunctionDescriptor descriptor;
   descriptor.mutable_driver_function_descriptor();
-  return std::shared_ptr<FunctionDescriptorInterface>(
-      new DriverFunctionDescriptor(std::move(descriptor)));
+  return ray::FunctionDescriptor(new DriverFunctionDescriptor(std::move(descriptor)));
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::BuildJava(const std::string &class_name,
@@ -16,8 +15,7 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildJava(const std::string &class
   typed_descriptor->set_class_name(class_name);
   typed_descriptor->set_function_name(function_name);
   typed_descriptor->set_signature(signature);
-  return std::shared_ptr<FunctionDescriptorInterface>(
-      new JavaFunctionDescriptor(std::move(descriptor)));
+  return ray::FunctionDescriptor(new JavaFunctionDescriptor(std::move(descriptor)));
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
@@ -29,8 +27,7 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
   typed_descriptor->set_class_name(class_name);
   typed_descriptor->set_function_name(function_name);
   typed_descriptor->set_function_hash(function_hash);
-  return std::shared_ptr<FunctionDescriptorInterface>(
-      new PythonFunctionDescriptor(std::move(descriptor)));
+  return ray::FunctionDescriptor(new PythonFunctionDescriptor(std::move(descriptor)));
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor message) {
@@ -44,9 +41,12 @@ FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor 
   default:
     break;
   }
-  RAY_LOG(FATAL) << "Unknown function descriptor case: "
+  RAY_LOG(DEBUG) << "Unknown function descriptor case: "
                  << message.function_descriptor_case();
-  return ray::FunctionDescriptor();
+  // When TaskSpecification() constructed without function_descriptor set,
+  // we should return a valid ray::FunctionDescriptor instance.
+  // Shall we introduce a new type e.g. DummyFunctionDescriptor?
+  return FunctionDescriptorBuilder::BuildDriver();
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::Deserialize(
