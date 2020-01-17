@@ -7,6 +7,8 @@ RaySGD: Distributed Deep Learning
 
 RaySGD is a lightweight library for distributed deep learning, providing thin wrappers around framework-native modules for data parallel training.
 
+.. tip:: Help us make RaySGD better; take this 1 minute `User Survey <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+
 The main features are:
 
   - Ease of use: Scale Pytorch's native ``DistributedDataParallel`` and TensorFlow's ``tf.distribute.MirroredStrategy`` without needing to monitor individual nodes.
