@@ -261,9 +261,14 @@ class Dashboard(object):
             profiling_id = self.raylet_stats.launch_profiling(node_id=node_id, pid=pid, duration=duration)
             return aiohttp.web.json_response(str(profiling_id))
 
+        async def check_profiling_info_ready(req) -> aiohttp.web.Response:
+            profiling_id = req.query.get("profiling_id")
+            # return aiohttp.web.json_response(self.raylet_stats.check_profiling_info_ready(profiling_id))
+            return aiohttp.web.json_response(self.raylet_stats.check_profiling_info_ready(profiling_id))
+
         async def get_profiling_info(req) -> aiohttp.web.Response:
             profiling_id = req.query.get("profiling_id")
-            return aiohttp.web.json_response(self.raylet_stats.try_get_profiling_stats(profiling_id))
+            return aiohttp.web.json_response(self.raylet_stats.get_profiling_info(profiling_id))
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -297,6 +302,7 @@ class Dashboard(object):
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
         self.app.router.add_get("/api/launch_profiling", launch_profiling)
+        self.app.router.add_get("/api/check_profiling_info_ready", check_profiling_info_ready)
         self.app.router.add_get("/api/get_profiling_info", get_profiling_info)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
@@ -621,17 +627,18 @@ class RayletStats(threading.Thread):
         reply_future.add_done_callback(_callback)
         return profiling_id
 
-    def try_get_profiling_stats(self, profiling_id):
-        print(self._profiling_stats)
+    def check_profiling_info_ready(self, profiling_id):
+        with self._raylet_stats_lock:
+            is_ready = profiling_id in self._profiling_stats
+        return is_ready
+
+    def get_profiling_info(self, profiling_id):
         with self._raylet_stats_lock:
             profiling_stats = self._profiling_stats.get(profiling_id)
-        if profiling_stats:
-            print(profiling_stats.stdout)
-            print(profiling_stats.stderr)
-            print(json.loads(profiling_stats.profiling_stats))
-            return json.loads(profiling_stats.profiling_stats)
-        else:
-            return {}
+        assert profiling_stats, "profiling stats not ready"
+        print(profiling_stats.stdout)
+        print(profiling_stats.stderr)
+        return json.loads(profiling_stats.profiling_stats)
         
     def run(self):
         counter = 0
