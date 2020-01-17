@@ -9,7 +9,7 @@ multiprocessing.Pool API (Experimental)
   Contributions are always welcome!
   
 .. warning::
-  The 'context' argument passed to pool \_\_init\_\_ function is not supported using ray.
+  The ``context`` argument to the ``Pool`` constructor is not supported using ray.
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
