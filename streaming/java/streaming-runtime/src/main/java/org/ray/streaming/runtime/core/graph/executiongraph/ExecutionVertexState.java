@@ -10,11 +10,10 @@ public enum ExecutionVertexState implements Serializable {
   /**
    * execution vertex state enum
    */
-  TO_ADD(0, "TO_ADD"),
-  TO_DEL(1, "TO_DEL"),
-  TO_UPDATE(2, "TO_UPDATE"),
+  TO_ADD(1, "TO_ADD"),
+  TO_DEL(2, "TO_DEL"),
   RUNNING(3, "RUNNING"),
-  UNKNOWN(4, "UNKNOWN");
+  UNKNOWN(-1, "UNKNOWN");
 
   public final int code;
   public final String msg;

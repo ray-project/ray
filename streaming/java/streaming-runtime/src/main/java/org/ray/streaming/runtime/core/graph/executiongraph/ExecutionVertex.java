@@ -23,7 +23,6 @@ public class ExecutionVertex implements Serializable {
 
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
   private RayActor<JobWorker> workerActor;
-  // private Slot slot;
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
   private List<ExecutionEdge> outputEdges = new ArrayList<>();
 
@@ -66,10 +65,6 @@ public class ExecutionVertex implements Serializable {
     return state == ExecutionVertexState.RUNNING;
   }
 
-  public boolean is2Update() {
-    return state == ExecutionVertexState.TO_UPDATE;
-  }
-
   public boolean is2Delete() {
     return state == ExecutionVertexState.TO_DEL;
   }
@@ -85,22 +80,6 @@ public class ExecutionVertex implements Serializable {
   public void setWorkerActor(RayActor<JobWorker> workerActor) {
     this.workerActor = workerActor;
   }
-
-  /*
-  public Slot getSlot() {
-    return slot;
-  }
-
-  public void setSlot(Slot slot) {
-    this.slot = slot;
-  }
-
-  public void setSlotIfNotExist(Slot slot) {
-    if (null == this.slot) {
-      this.slot = slot;
-    }
-  }
-  */
 
   public List<ExecutionEdge> getInputEdges() {
     return inputEdges;

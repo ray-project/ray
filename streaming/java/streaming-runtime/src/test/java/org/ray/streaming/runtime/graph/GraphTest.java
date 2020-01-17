@@ -1,19 +1,20 @@
 package org.ray.streaming.runtime.graph;
 
 import com.google.common.collect.Lists;
-import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.stream.DataStream;
+import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.api.stream.StreamSink;
 import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobGraphBuilder;
+import org.ray.streaming.runtime.BaseUnitTest;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.ray.streaming.runtime.master.graphmanager.GraphManager;
 import org.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import org.slf4j.Logger;
@@ -21,37 +22,13 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class GraphTest {
+public class GraphTest extends BaseUnitTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(GraphTest.class);
 
-  private JobMaster jobMaster;
-
-  @org.testng.annotations.BeforeClass
-  public void setUp() {
-    TestHelper.setUTPattern();
-    Map<String, String> jobConfig = new HashMap<>();
-    jobMaster = new JobMaster(jobConfig);
-  }
-
-  @org.testng.annotations.AfterClass
-  public void tearDown() {
-    TestHelper.clearUTPattern();
-  }
-
-  @org.testng.annotations.BeforeMethod
-  public void testBegin(Method method) {
-    LOG.warn(">>>>>>>>>>>>>>>>>>>> Test case: " + method.getName() + " begin >>>>>>>>>>>>>>>>>>");
-  }
-
-  @org.testng.annotations.AfterMethod
-  public void testEnd(Method method) {
-    LOG.warn(">>>>>>>>>>>>>>>>>>>> Test case: " + method.getName() + " end >>>>>>>>>>>>>>>>>>");
-  }
-
   @Test
   public void testBuildExecutionGraph() {
-    GraphManager graphManager = new GraphManagerImpl(jobMaster);
+    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(null));
     JobGraph jobGraph = buildJobGraph();
     ExecutionGraph executionGraph = buildExecutionGraph(graphManager, jobGraph);
     List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexList();
@@ -86,12 +63,12 @@ public class GraphTest {
 
   public static JobGraph buildJobGraph() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    DataStream<String> dataStream = StreamSource.buildSource(streamingContext,
+    DataStream<String> dataStream = DataStreamSource.buildSource(streamingContext,
         Lists.newArrayList("a", "b", "c"));
     StreamSink streamSink = dataStream.sink(x -> LOG.info(x));
     JobGraphBuilder jobGraphBuilder = new JobGraphBuilder(Lists.newArrayList(streamSink));
 
-    JobGraph jobGraph = jobGraphBuilder.buildJobGraph();
+    JobGraph jobGraph = jobGraphBuilder.build();
     return jobGraph;
   }
 }

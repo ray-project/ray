@@ -11,12 +11,12 @@ import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
  * Runtime context for job master.
  * Including: graph, resource, checkpoint info, etc.
  */
-public class JobMasterRuntimeContext implements Serializable {
+public class JobRuntimeContext implements Serializable {
 
   private StreamingConfig conf;
   private volatile Graphs graphs;
 
-  public JobMasterRuntimeContext(StreamingConfig conf) {
+  public JobRuntimeContext(StreamingConfig conf) {
     this.conf = conf;
   }
 
