@@ -419,14 +419,14 @@ Building Policies in TensorFlow Eager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
-can be run in eager mode by setting the
-``"eager": True`` / ``"eager_tracing": True`` config options or using
-``rllib train --eager [--trace]``.
+can be run in eager mode by setting
+the ``"eager": True`` / ``"eager_tracing": True`` config options or
+using ``rllib train --eager [--trace]``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.
 
 Eager mode makes debugging much easier, since you can now use line-by-line
-debugging with breakpoints or Python ``print()``s to inspect
+debugging with breakpoints or Python ``print()`` to inspect
 intermediate tensor values.
 However, eager can be slower than graph mode unless tracing is enabled.
 
