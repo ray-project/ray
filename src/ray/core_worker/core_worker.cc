@@ -150,7 +150,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       node_ip_address, node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-      std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
+      io_service_, std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
   connected_ = true;
