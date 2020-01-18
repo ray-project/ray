@@ -1,4 +1,4 @@
-cartpole-ppo:
+cartpole-ppo-torch:
     env: CartPole-v0
     run: PPO
     stop:
@@ -9,4 +9,3 @@ cartpole-ppo:
         batch_mode: complete_episodes
         observation_filter: MeanStdFilter
         use_pytorch: true
-        simple_optimizer: true
