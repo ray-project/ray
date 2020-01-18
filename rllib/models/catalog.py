@@ -365,6 +365,12 @@ class ModelCatalog:
         if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
             logger.info("Using custom preprocessor {}".format(preprocessor))
+            logger.warning(
+                "DeprecationWarning: Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead of preprocessors.")
             prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 observation_space, options)
         else:
