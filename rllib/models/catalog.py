@@ -74,14 +74,15 @@ MODEL_DEFAULTS = {
     "zero_mean": True,
 
     # === Options for custom models ===
-    # Name of a custom preprocessor to use
-    "custom_preprocessor": None,
     # Name of a custom model to use
     "custom_model": None,
     # Name of a custom action distribution to use
     "custom_action_dist": None,
     # Extra options to pass to the custom classes
     "custom_options": {},
+    # Custom preprocessors are deprecated. Please use a wrapper class around
+    # your environment instead to preprocess observations.
+    "custom_preprocessor": None,
 }
 # __sphinx_doc_end__
 # yapf: enable
