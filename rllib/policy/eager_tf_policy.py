@@ -10,7 +10,7 @@ from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.tf_policy import ACTION_PROB, ACTION_LOGP
+from ray.rllib.policy.policy import ACTION_PROB, ACTION_LOGP
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import log_once
@@ -365,6 +365,7 @@ def build_eager_tf_policy(name,
         def is_recurrent(self):
             return len(self._state_in) > 0
 
+        @override(Policy)
         def num_state_tensors(self):
             return len(self._state_in)
 
@@ -379,6 +380,14 @@ def build_eager_tf_policy(name,
 
         def loss_initialized(self):
             return self._loss_initialized
+
+        @override(Policy)
+        def export_model(self, export_dir):
+            pass
+
+        @override(Policy)
+        def export_checkpoint(self, export_dir):
+            pass
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)
