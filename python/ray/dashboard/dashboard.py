@@ -194,7 +194,8 @@ class Dashboard(object):
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
             workers_info_by_node = {
-                data["nodeId"]: data.get("workersStats") for data in D.values()
+                data["nodeId"]: data.get("workersStats")
+                for data in D.values()
             }
             infeasible_tasks = sum(
                 (data.get("infeasibleTasks", []) for data in D.values()), [])
@@ -258,10 +259,10 @@ class Dashboard(object):
                 node_id=node_id, pid=pid, duration=duration)
             return aiohttp.web.json_response(str(profiling_id))
 
-        async def check_profiling_info_ready(req) -> aiohttp.web.Response:
+        async def check_profiling_status(req) -> aiohttp.web.Response:
             profiling_id = req.query.get("profiling_id")
             return aiohttp.web.json_response(
-                self.raylet_stats.check_profiling_info_ready(profiling_id))
+                self.raylet_stats.check_profiling_status(profiling_id))
 
         async def get_profiling_info(req) -> aiohttp.web.Response:
             profiling_id = req.query.get("profiling_id")
@@ -303,8 +304,8 @@ class Dashboard(object):
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
         self.app.router.add_get("/api/launch_profiling", launch_profiling)
-        self.app.router.add_get("/api/check_profiling_info_ready",
-                                check_profiling_info_ready)
+        self.app.router.add_get("/api/check_profiling_status",
+                                check_profiling_status)
         self.app.router.add_get("/api/get_profiling_info", get_profiling_info)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
@@ -430,9 +431,11 @@ class NodeStats(threading.Thread):
                             actor_info = flattened_tree[self._addr_to_actor_id[
                                 addr]]
                             if "currentTaskFuncDesc" in core_worker_stats:
-                                core_worker_stats["currentTaskFuncDesc"] = list(
-                                    map(b64_decode,
-                                        core_worker_stats["currentTaskFuncDesc"]))
+                                core_worker_stats[
+                                    "currentTaskFuncDesc"] = list(
+                                        map(
+                                            b64_decode, core_worker_stats[
+                                                "currentTaskFuncDesc"]))
                             format_reply_id(core_worker_stats)
                             actor_info.update(core_worker_stats)
                             actor_info["averageTaskExecutionSpeed"] = round(
@@ -602,7 +605,8 @@ class RayletStats(threading.Thread):
                     self.stubs[node_id] = stub
                     # Block wait until the reporter for the node starts.
                     while True:
-                        reporter_port = self.redis_client.get("REPORTER_PORT:".format(node_ip))
+                        reporter_port = self.redis_client.get(
+                            "REPORTER_PORT:".format(node_ip))
                         if reporter_port:
                             break
                     reporter_channel = grpc.insecure_channel("{}:{}".format(
@@ -633,17 +637,22 @@ class RayletStats(threading.Thread):
         reply_future.add_done_callback(_callback)
         return profiling_id
 
-    def check_profiling_info_ready(self, profiling_id):
+    def check_profiling_status(self, profiling_id):
         with self._raylet_stats_lock:
-            is_ready = profiling_id in self._profiling_stats
-        return is_ready
+            is_present = profiling_id in self._profiling_stats
+        if is_present:
+            reply = self._profiling_stats[profiling_id]
+            if reply.stderr:
+                return {"status": "error", "error": reply.stderr}
+            else:
+                return {"status": "finished"}
+        else:
+            return {"status": "pending"}
 
     def get_profiling_info(self, profiling_id):
         with self._raylet_stats_lock:
             profiling_stats = self._profiling_stats.get(profiling_id)
-        assert profiling_stats, "profiling stats not ready"
-        print(profiling_stats.stdout)
-        print(profiling_stats.stderr)
+        assert profiling_stats, "profiling not finished"
         return json.loads(profiling_stats.profiling_stats)
 
     def run(self):
