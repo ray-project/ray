@@ -74,8 +74,7 @@ class PPOLoss:
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
         logp_ratio = torch.exp(
-            curr_action_dist.logp(actions) - prev_actions_logp
-        )
+            curr_action_dist.logp(actions) - prev_actions_logp)
         action_kl = prev_dist.kl(curr_action_dist)
         self.mean_kl = reduce_mean_valid(action_kl)
 
@@ -84,16 +83,14 @@ class PPOLoss:
 
         surrogate_loss = torch.min(
             advantages * logp_ratio,
-            advantages * torch.clamp(
-                logp_ratio, 1 - clip_param, 1 + clip_param
-            )
-        )
+            advantages * torch.clamp(logp_ratio, 1 - clip_param,
+                                     1 + clip_param))
         self.mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
         if use_gae:
             vf_loss1 = torch.pow(value_fn - value_targets, 2.0)
-            vf_clipped = vf_preds + torch.clamp(
-                value_fn - vf_preds, -vf_clip_param, vf_clip_param)
+            vf_clipped = vf_preds + torch.clamp(value_fn - vf_preds,
+                                                -vf_clip_param, vf_clip_param)
             vf_loss2 = torch.pow(vf_clipped - value_targets, 2.0)
             vf_loss = torch.max(vf_loss1, vf_loss2)
             self.mean_vf_loss = reduce_mean_valid(vf_loss)
@@ -152,8 +149,8 @@ def kl_and_loss_stats(policy, train_batch):
         "vf_loss": policy.loss_obj.mean_vf_loss.detach().numpy(),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy.model.value_function(), framework="torch"
-        ).detach().numpy(),
+            policy.model.value_function(),
+            framework="torch").detach().numpy(),
         "kl": policy.loss_obj.mean_kl.detach().numpy(),
         "entropy": policy.loss_obj.mean_entropy.detach().numpy(),
         "entropy_coeff": policy.entropy_coeff,
@@ -223,6 +220,4 @@ PPOTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     after_init=setup_mixins,
-    mixins=[
-        KLCoeffMixin, ValueNetworkMixin
-    ])
+    mixins=[KLCoeffMixin, ValueNetworkMixin])

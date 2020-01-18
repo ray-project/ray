@@ -52,18 +52,16 @@ class TestPPO(unittest.TestCase):
 
         # Fake CartPole episode of n time steps.
         train_batch = {
-            SampleBatch.CUR_OBS: np.array([
-                [0.1, 0.2, 0.3, 0.4],
-                [0.5, 0.6, 0.7, 0.8],
-                [0.9, 1.0, 1.1, 1.2]
-            ], dtype=np.float32),
+            SampleBatch.CUR_OBS: np.array(
+                [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
+                 [0.9, 1.0, 1.1, 1.2]],
+                dtype=np.float32),
             SampleBatch.ACTIONS: np.array([0, 1, 1]),
             SampleBatch.REWARDS: np.array([1.0, -1.0, .5], dtype=np.float32),
             SampleBatch.DONES: np.array([False, False, True]),
             SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
             BEHAVIOR_LOGITS: np.array(
-                [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32
-            ),
+                [[-2., 0.5], [-3., -0.3], [-0.1, 2.5]], dtype=np.float32),
             ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32)
         }
 
@@ -77,9 +75,8 @@ class TestPPO(unittest.TestCase):
         # [0.50005, -0.505, 0.5]
         train_batch = postprocess_ppo_gae_tf(policy, train_batch)
         # Check Advantage values.
-        check(
-            train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5]
-        )
+        check(train_batch[Postprocessing.VALUE_TARGETS],
+              [0.50005, -0.505, 0.5])
 
         # Calculate actual PPO loss (results are stored in policy.loss_obj) for
         # tf.
@@ -87,17 +84,11 @@ class TestPPO(unittest.TestCase):
 
         vars = policy.model.trainable_variables()
         expected_logits = fc(
-            fc(
-                train_batch[SampleBatch.CUR_OBS],
-                vars[0].numpy(), vars[1].numpy()
-            ), vars[4].numpy(), vars[5].numpy()
-        )
+            fc(train_batch[SampleBatch.CUR_OBS], vars[0].numpy(),
+               vars[1].numpy()), vars[4].numpy(), vars[5].numpy())
         expected_value_outs = fc(
-            fc(
-                train_batch[SampleBatch.CUR_OBS],
-                vars[2].numpy(), vars[3].numpy()
-            ), vars[6].numpy(), vars[7].numpy()
-        )
+            fc(train_batch[SampleBatch.CUR_OBS], vars[2].numpy(),
+               vars[3].numpy()), vars[6].numpy(), vars[7].numpy())
 
         kl, entropy, pg_loss, vf_loss, overall_loss = \
             self._ppo_loss_helper(
@@ -118,15 +109,13 @@ class TestPPO(unittest.TestCase):
         train_batch = policy._lazy_tensor_dict(train_batch)
 
         # Check Advantage values.
-        check(
-            train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5]
-        )
+        check(train_batch[Postprocessing.VALUE_TARGETS],
+              [0.50005, -0.505, 0.5])
 
         # Calculate actual PPO loss (results are stored in policy.loss_obj)
         # for tf.
-        ppo_surrogate_loss_torch(
-            policy, policy.model, TorchCategorical, train_batch
-        )
+        ppo_surrogate_loss_torch(policy, policy.model, TorchCategorical,
+                                 train_batch)
 
         kl, entropy, pg_loss, vf_loss, overall_loss = \
             self._ppo_loss_helper(
@@ -138,17 +127,15 @@ class TestPPO(unittest.TestCase):
         check(entropy, policy.loss_obj.mean_entropy.detach().numpy())
         check(
             np.mean(-pg_loss),
-            policy.loss_obj.mean_policy_loss.detach().numpy()
-        )
+            policy.loss_obj.mean_policy_loss.detach().numpy())
         check(
-            np.mean(vf_loss), policy.loss_obj.mean_vf_loss.detach().numpy(),
-            decimals=4
-        )
+            np.mean(vf_loss),
+            policy.loss_obj.mean_vf_loss.detach().numpy(),
+            decimals=4)
         check(policy.loss_obj.loss.detach().numpy(), overall_loss, decimals=4)
 
-    def _ppo_loss_helper(
-        self, policy, model, dist_class, train_batch, logits, vf_outs
-        ):
+    def _ppo_loss_helper(self, policy, model, dist_class, train_batch, logits,
+                         vf_outs):
         """
         Calculates the expected PPO loss (components) given Policy,
         Model, distribution, some batch, logits & vf outputs, using numpy.
@@ -158,8 +145,8 @@ class TestPPO(unittest.TestCase):
         dist_prev = dist_class(train_batch[BEHAVIOR_LOGITS], policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
-            expected_rho = np.exp(expected_logp.detach().numpy() - \
-                train_batch.get(ACTION_LOGP))
+            expected_rho = np.exp(expected_logp.detach().numpy() -
+                                  train_batch.get(ACTION_LOGP))
             # KL(prev vs current action dist)-loss component.
             kl = np.mean(dist_prev.kl(dist).detach().numpy())
             # Entropy-loss component.
@@ -175,31 +162,21 @@ class TestPPO(unittest.TestCase):
         pg_loss = np.minimum(
             train_batch.get(Postprocessing.ADVANTAGES) * expected_rho,
             train_batch.get(Postprocessing.ADVANTAGES) * np.clip(
-                expected_rho,
-                1 - policy.config["clip_param"],
-                1 + policy.config["clip_param"]
-            )
-        )
+                expected_rho, 1 - policy.config["clip_param"],
+                1 + policy.config["clip_param"]))
 
         # Value function loss component.
         vf_loss1 = np.power(
-            vf_outs - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0
-        )
+            vf_outs - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0)
         vf_clipped = train_batch.get(SampleBatch.VF_PREDS) + np.clip(
             vf_outs - train_batch.get(SampleBatch.VF_PREDS),
-            -policy.config["vf_clip_param"],
-            policy.config["vf_clip_param"]
-        )
+            -policy.config["vf_clip_param"], policy.config["vf_clip_param"])
         vf_loss2 = np.power(
-            vf_clipped - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0
-        )
+            vf_clipped - train_batch.get(Postprocessing.VALUE_TARGETS), 2.0)
         vf_loss = np.maximum(vf_loss1, vf_loss2)
 
         # Overall loss.
-        overall_loss = np.mean(
-            -pg_loss +
-            policy.kl_coeff * kl +
-            policy.config["vf_loss_coeff"] * vf_loss -
-            policy.entropy_coeff * entropy
-        )
+        overall_loss = np.mean(-pg_loss + policy.kl_coeff * kl +
+                               policy.config["vf_loss_coeff"] * vf_loss -
+                               policy.entropy_coeff * entropy)
         return kl, entropy, pg_loss, vf_loss, overall_loss

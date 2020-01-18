@@ -67,11 +67,14 @@ class PPOLoss:
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
         if valid_mask is not None:
-            reduce_mean_valid = lambda t: tf.reduce_mean(
-                tf.boolean_mask(t, valid_mask)
-            )
+
+            def reduce_mean_valid(t):
+                return tf.reduce_mean(tf.boolean_mask(t, valid_mask))
+
         else:
-            reduce_mean_valid = lambda t: tf.reduce_mean(t)
+
+            def reduce_mean_valid(t):
+                return tf.reduce_mean(t)
 
         prev_dist = dist_class(prev_logits, model)
         # Make loss functions.
@@ -100,10 +103,9 @@ class PPOLoss:
                 vf_loss_coeff * vf_loss - entropy_coeff * curr_entropy)
         else:
             self.mean_vf_loss = tf.constant(0.0)
-            loss = reduce_mean_valid(
-                -surrogate_loss +
-                cur_kl_coeff * action_kl - entropy_coeff * curr_entropy
-            )
+            loss = reduce_mean_valid(-surrogate_loss +
+                                     cur_kl_coeff * action_kl -
+                                     entropy_coeff * curr_entropy)
         self.loss = loss
 
 

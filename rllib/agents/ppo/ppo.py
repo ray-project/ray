@@ -6,7 +6,6 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils import try_import_tf
 
-
 tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
@@ -142,8 +141,7 @@ def warn_about_bad_reward_scales(trainer, result):
             "This means that it will take more than "
             "{} iterations for your value ".format(rew_scale) +
             "function to converge. If this is not intended, consider "
-            "increasing `vf_clip_param`."
-        )
+            "increasing `vf_clip_param`.")
 
 
 def validate_config(config):
@@ -153,9 +151,8 @@ def validate_config(config):
         config["entropy_coeff"] = float(config["entropy_coeff"])
     if config["sgd_minibatch_size"] > config["train_batch_size"]:
         raise ValueError(
-            "Minibatch size {} must be <= train batch size {}.".
-            format(config["sgd_minibatch_size"], config["train_batch_size"])
-        )
+            "Minibatch size {} must be <= train batch size {}.".format(
+                config["sgd_minibatch_size"], config["train_batch_size"]))
     if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
         raise ValueError(
             "Episode truncation is not supported without a value "
