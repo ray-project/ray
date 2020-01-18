@@ -33,8 +33,8 @@ class JobWorker(object):
         worker_context.ParseFromString(worker_context_bytes)
         self.worker_context = worker_context
         self.task_id = worker_context.task_id
-        self.config = worker_context.config
-        execution_graph = ExecutionGraph(worker_context.execution_graph)
+        self.config = worker_context.conf
+        execution_graph = ExecutionGraph(worker_context.graph)
         self.execution_graph = execution_graph
         self.execution_task = self.execution_graph. \
             get_execution_task_by_task_id(self.task_id)

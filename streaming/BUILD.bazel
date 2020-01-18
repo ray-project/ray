@@ -259,6 +259,7 @@ genrule(
         for f in $(locations //streaming:all_py_proto); do
             cp -f $$f $$GENERATED_DIR
         done
+        sed -i -E 's/from streaming.src.protobuf/from ./' "$$GENERATED_DIR/remote_call_pb2.py"
         echo $$(date) > $@
     """,
     local = 1,
