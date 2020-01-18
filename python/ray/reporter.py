@@ -39,7 +39,7 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
                                            "{}_profiling.txt".format(pid))
         process = subprocess.Popen(
             [
-                "sudo", "py-spy", "record", "-o", profiling_file_path, "-p",
+                "sudo", "-n", "py-spy", "record", "-o", profiling_file_path, "-p",
                 pid, "-d", duration, "-f", "speedscope"
             ],
             stdout=subprocess.PIPE,
