@@ -1,12 +1,14 @@
 import logging
 
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
 from ray.rllib.utils import try_import_tf
 
+
 tf = try_import_tf()
+
 logger = logging.getLogger(__name__)
 
 # yapf: disable
@@ -63,6 +65,8 @@ DEFAULT_CONFIG = with_common_config({
     # usually slower, but you might want to try it if you run into issues with
     # the default optimizer.
     "simple_optimizer": False,
+    # Use PyTorch as framework?
+    "use_pytorch": False
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -172,10 +176,19 @@ def validate_config(config):
         config["simple_optimizer"] = True  # multi-gpu not supported
 
 
+def get_policy_class(config):
+    if config.get("use_pytorch") is True:
+        from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+        return PPOTorchPolicy
+    else:
+        return PPOTFPolicy
+
+
 PPOTrainer = build_trainer(
     name="PPO",
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
+    get_policy_class=get_policy_class,
     make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
     after_optimizer_step=update_kl,
