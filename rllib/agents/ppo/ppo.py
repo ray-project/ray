@@ -147,9 +147,6 @@ def warn_about_bad_reward_scales(trainer, result):
 
 
 def validate_config(config):
-    # PyTorch check.
-    if config["use_pytorch"]:
-        raise ValueError("PPO does not support PyTorch yet! Use tf instead.")
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
     if isinstance(config["entropy_coeff"], int):
