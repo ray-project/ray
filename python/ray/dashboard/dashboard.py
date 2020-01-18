@@ -57,18 +57,18 @@ def format_resource(resource_name, quantity):
     return "{}".format(round_resource_value(quantity))
 
 
-def format_reply(reply):
+def format_reply_id(reply):
     if isinstance(reply, dict):
         for k, v in reply.items():
             if isinstance(v, dict) or isinstance(v, list):
-                format_reply(v)
+                format_reply_id(v)
             else:
                 if k.endswith("Id"):
                     v = b64decode(v)
                     reply[k] = ray.utils.binary_to_hex(v)
     elif isinstance(reply, list):
         for item in reply:
-            format_reply(item)
+            format_reply_id(item)
 
 
 def measures_to_dict(measures):
@@ -193,12 +193,13 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            workers_info = sum(
-                (data.get("workersStats", []) for data in D.values()), [])
+            workers_info_by_node = {
+                data["nodeId"]: data.get("workersStats") for data in D.values()
+            }
             infeasible_tasks = sum(
                 (data.get("infeasibleTasks", []) for data in D.values()), [])
             actor_tree = self.node_stats.get_actor_tree(
-                workers_info, infeasible_tasks)
+                workers_info_by_node, infeasible_tasks)
             for address, data in D.items():
                 # process view data
                 measures_dicts = {}
@@ -403,7 +404,7 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
-    def get_actor_tree(self, workers_info, infeasible_tasks) -> Dict:
+    def get_actor_tree(self, workers_info_by_node, infeasible_tasks) -> Dict:
         now = time.time()
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
@@ -417,23 +418,26 @@ class NodeStats(threading.Thread):
                     self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
 
-            for worker_info in workers_info:
-                if "coreWorkerStats" in worker_info:
-                    core_worker_stats = worker_info["coreWorkerStats"]
-                    addr = (core_worker_stats["ipAddress"],
-                            str(core_worker_stats["port"]))
-                    if addr in self._addr_to_actor_id:
-                        actor_info = flattened_tree[self._addr_to_actor_id[
-                            addr]]
-                        if "currentTaskFuncDesc" in core_worker_stats:
-                            core_worker_stats["currentTaskFuncDesc"] = list(
-                                map(b64_decode,
-                                    core_worker_stats["currentTaskFuncDesc"]))
-                        format_reply(core_worker_stats)
-                        actor_info.update(core_worker_stats)
-                        actor_info["averageTaskExecutionSpeed"] = round(
-                            actor_info["numExecutedTasks"] /
-                            (now - actor_info["timestamp"] / 1000), 2)
+            for node_id, workers_info in workers_info_by_node.items():
+                for worker_info in workers_info:
+                    if "coreWorkerStats" in worker_info:
+                        core_worker_stats = worker_info["coreWorkerStats"]
+                        addr = (core_worker_stats["ipAddress"],
+                                str(core_worker_stats["port"]))
+                        if addr in self._addr_to_actor_id:
+                            actor_info = flattened_tree[self._addr_to_actor_id[
+                                addr]]
+                            if "currentTaskFuncDesc" in core_worker_stats:
+                                core_worker_stats["currentTaskFuncDesc"] = list(
+                                    map(b64_decode,
+                                        core_worker_stats["currentTaskFuncDesc"]))
+                            format_reply_id(core_worker_stats)
+                            actor_info.update(core_worker_stats)
+                            actor_info["averageTaskExecutionSpeed"] = round(
+                                actor_info["numExecutedTasks"] /
+                                (now - actor_info["timestamp"] / 1000), 2)
+                            actor_info["nodeId"] = node_id
+                            actor_info["pid"] = worker_info["pid"]
 
             for infeasible_task in infeasible_tasks:
                 actor_id = ray.utils.binary_to_hex(
@@ -446,7 +450,7 @@ class NodeStats(threading.Thread):
                 infeasible_task["state"] = -1
                 infeasible_task["functionDescriptor"] = list(
                     map(b64_decode, infeasible_task["functionDescriptor"]))
-                format_reply(infeasible_tasks)
+                format_reply_id(infeasible_tasks)
                 flattened_tree[actor_id] = infeasible_task
 
         # construct actor tree
@@ -596,7 +600,7 @@ class RayletStats(threading.Thread):
                     self.stubs[node_id] = stub
                     # Block wait until the reporter for the node starts.
                     while True:
-                        reporter_port = self.redis_client.get(node_ip)
+                        reporter_port = self.redis_client.get("REPORTER_PORT:".format(node_ip))
                         if reporter_port:
                             break
                     reporter_channel = grpc.insecure_channel("{}:{}".format(

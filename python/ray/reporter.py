@@ -192,7 +192,7 @@ class Reporter:
             ReporterServer(), server)
         port = server.add_insecure_port("[::]:0")
         server.start()
-        self.redis_client.set(self.ip, port)
+        self.redis_client.set("REPORTER_PORT:".format(self.ip), port)
         """Run the reporter."""
         while True:
             try:
