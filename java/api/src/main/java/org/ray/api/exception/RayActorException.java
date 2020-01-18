@@ -8,9 +8,8 @@ package org.ray.api.exception;
  */
 public class RayActorException extends RayException {
 
-  public static final RayActorException INSTANCE = new RayActorException();
-
-  private RayActorException() {
+  public RayActorException() {
     super("The actor died unexpectedly before finishing this task.");
   }
+
 }

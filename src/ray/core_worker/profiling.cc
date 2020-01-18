@@ -15,7 +15,7 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> &profiler,
 
 Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
                    boost::asio::io_service &io_service,
-                   const std::shared_ptr<gcs::RedisGcsClient> &gcs_client)
+                   const std::shared_ptr<gcs::GcsClient> &gcs_client)
     : io_service_(io_service),
       timer_(io_service_, boost::asio::chrono::seconds(1)),
       rpc_profile_data_(new rpc::ProfileTableData()),

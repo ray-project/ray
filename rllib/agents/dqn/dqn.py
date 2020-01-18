@@ -142,6 +142,10 @@ def check_config_and_setup_param_noise(config):
     adds the necessary callbacks to support parameter space noise exploration.
     """
 
+    # PyTorch check.
+    if config["use_pytorch"]:
+        raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
+
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["sample_batch_size"],
                               config.get("n_step", 1))

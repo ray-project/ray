@@ -146,7 +146,8 @@ public class RunManager {
       e.printStackTrace();
     }
     if (!p.isAlive()) {
-      throw new RuntimeException("Failed to start " + name);
+      throw new RuntimeException(
+          String.format("Failed to start %s. Exit code: %d.", name, p.exitValue()));
     }
     processes.add(Pair.of(name, p));
     if (LOGGER.isInfoEnabled()) {

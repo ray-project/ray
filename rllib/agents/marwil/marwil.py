@@ -44,8 +44,16 @@ def make_optimizer(workers, config):
     )
 
 
+def validate_config(config):
+    # PyTorch check.
+    if config["use_pytorch"]:
+        raise ValueError("DDPG does not support PyTorch yet! Use tf instead.")
+
+
 MARWILTrainer = build_trainer(
     name="MARWIL",
     default_config=DEFAULT_CONFIG,
     default_policy=MARWILPolicy,
-    make_policy_optimizer=make_optimizer)
+    validate_config=validate_config,
+    make_policy_optimizer=make_optimizer
+)

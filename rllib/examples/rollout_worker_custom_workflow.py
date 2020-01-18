@@ -34,7 +34,7 @@ class CustomPolicy(Policy):
 
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,

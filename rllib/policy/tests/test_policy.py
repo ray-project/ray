@@ -19,24 +19,3 @@ class TestPolicy(Policy):
                         time_step=None,
                         **kwargs):
         return [random.choice([0, 1])] * len(obs_batch), [], {}
-
-    def compute_gradients(self, postprocessed_batch):
-        pass
-
-    def apply_gradients(self, gradients):
-        pass
-
-    def get_weights(self):
-        pass
-
-    def set_weights(self, weights):
-        pass
-
-    def export_checkpoint(self, export_dir):
-        pass
-
-    def export_model(self, export_dir):
-        pass
-
-    def num_state_tensors(self):
-        return 0
