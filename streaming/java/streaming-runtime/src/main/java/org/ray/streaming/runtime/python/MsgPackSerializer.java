@@ -39,6 +39,10 @@ public class MsgPackSerializer {
           packer.packLong((Long) obj);
         } else if (clz == Double.class) {
           packer.packDouble((Double) obj);
+        } else if (clz == byte[].class) {
+          byte[] bytes = (byte[]) obj;
+          packer.packBinaryHeader(bytes.length);
+          packer.writePayload(bytes);
         } else if (clz == String.class) {
           packer.packString((String) obj);
         } else if (obj instanceof Collection) {
@@ -55,6 +59,8 @@ public class MsgPackSerializer {
             serialize(e.getKey(), packer);
             serialize(e.getValue(), packer);
           }
+        } else {
+          throw new UnsupportedOperationException("Unsupported type " + clz);
         }
       }
     } catch (Exception e) {
