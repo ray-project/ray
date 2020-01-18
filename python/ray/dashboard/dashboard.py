@@ -261,16 +261,21 @@ class Dashboard(object):
         self.app.router.add_get("/", get_index)
         self.app.router.add_get("/favicon.ico", get_favicon)
 
-        static_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "client/build/static")
-        if not os.path.isdir(static_dir):
+        build_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "client/build")
+        if not os.path.isdir(build_dir):
             raise ValueError(
-                "Dashboard static asset directory not found at '{}'. If "
-                "installing from source, please follow the additional steps "
-                "required to build the dashboard: "
-                "cd python/ray/dashboard/client && npm ci && "
-                "npm run build".format(static_dir))
+                "Dashboard build directory not found at '{}'. If installing "
+                "from source, please follow the additional steps required to "
+                "build the dashboard: "
+                "cd python/ray/dashboard/client && npm ci && npm run build"
+                .format(build_dir))
+
+        static_dir = os.path.join(build_dir, "static")
         self.app.router.add_static("/static", static_dir)
+
+        speedscope_dir = os.path.join(build_dir, "speedscope-1.5.3")
+        self.app.router.add_static("/speedscope", speedscope_dir)
 
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
