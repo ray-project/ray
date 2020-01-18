@@ -29,21 +29,23 @@ logger = logging.getLogger(__name__)
 
 
 class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
-    """Service that a Ray cluster can connect to in order to push all its metrics."""
-
     def __init__(self):
         pass
 
     def GetProfilingStats(self, request, context):
         pid = str(request.pid)
         duration = str(request.duration)
-        profiling_file_path = os.path.join("/tmp/ray/", "{}_profiling.txt".format(pid))
-        process = subprocess.Popen(["sudo", "py-spy", "record", "-o", profiling_file_path, "-p", pid, "-d", duration, "-f", "speedscope"],
-            stdout=subprocess.PIPE, 
-            stderr=subprocess.PIPE
-        )
+        profiling_file_path = os.path.join("/tmp/ray/",
+                                           "{}_profiling.txt".format(pid))
+        process = subprocess.Popen(
+            [
+                "sudo", "py-spy", "record", "-o", profiling_file_path, "-p",
+                pid, "-d", duration, "-f", "speedscope"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
-        with open(profiling_file_path, 'r') as f:
+        with open(profiling_file_path, "r") as f:
             profiling_stats = f.read()
         return reporter_pb2.GetProfilingStatsReply(
             profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
@@ -185,11 +187,10 @@ class Reporter:
     def run(self):
         """Publish the port."""
         thread_pool = futures.ThreadPoolExecutor(max_workers=10)
-        server = grpc.server(thread_pool, options=(('grpc.so_reuseport', 0),))
+        server = grpc.server(thread_pool, options=(("grpc.so_reuseport", 0), ))
         reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
-            ReporterServer(), server
-        )
-        port = server.add_insecure_port('[::]:0')
+            ReporterServer(), server)
+        port = server.add_insecure_port("[::]:0")
         server.start()
         self.redis_client.set(self.ip, port)
         """Run the reporter."""

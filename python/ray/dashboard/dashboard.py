@@ -16,7 +16,6 @@ import threading
 import time
 import traceback
 import yaml
-import urllib.parse
 import uuid
 
 from base64 import b64decode
@@ -81,6 +80,10 @@ def measures_to_dict(measures):
         elif "doubleValue" in measure:
             measures_dict[tags] = measure["doubleValue"]
     return measures_dict
+
+
+def b64_decode(reply):
+    return b64decode(reply).decode("utf-8")
 
 
 class Dashboard(object):
@@ -190,8 +193,6 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            for data in D.values():
-                node_id = data["nodeId"]
             workers_info = sum(
                 (data.get("workersStats", []) for data in D.values()), [])
             infeasible_tasks = sum(
@@ -252,17 +253,19 @@ class Dashboard(object):
             node_id = req.query.get("node_id")
             pid = int(req.query.get("pid"))
             duration = int(req.query.get("duration"))
-            profiling_id = self.raylet_stats.launch_profiling(node_id=node_id, pid=pid, duration=duration)
+            profiling_id = self.raylet_stats.launch_profiling(
+                node_id=node_id, pid=pid, duration=duration)
             return aiohttp.web.json_response(str(profiling_id))
 
         async def check_profiling_info_ready(req) -> aiohttp.web.Response:
             profiling_id = req.query.get("profiling_id")
-            # return aiohttp.web.json_response(self.raylet_stats.check_profiling_info_ready(profiling_id))
-            return aiohttp.web.json_response(self.raylet_stats.check_profiling_info_ready(profiling_id))
+            return aiohttp.web.json_response(
+                self.raylet_stats.check_profiling_info_ready(profiling_id))
 
         async def get_profiling_info(req) -> aiohttp.web.Response:
             profiling_id = req.query.get("profiling_id")
-            return aiohttp.web.json_response(self.raylet_stats.get_profiling_info(profiling_id))
+            return aiohttp.web.json_response(
+                self.raylet_stats.get_profiling_info(profiling_id))
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -297,7 +300,8 @@ class Dashboard(object):
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
         self.app.router.add_get("/api/launch_profiling", launch_profiling)
-        self.app.router.add_get("/api/check_profiling_info_ready", check_profiling_info_ready)
+        self.app.router.add_get("/api/check_profiling_info_ready",
+                                check_profiling_info_ready)
         self.app.router.add_get("/api/get_profiling_info", get_profiling_info)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
@@ -421,15 +425,15 @@ class NodeStats(threading.Thread):
                     if addr in self._addr_to_actor_id:
                         actor_info = flattened_tree[self._addr_to_actor_id[
                             addr]]
-                        if "currentTaskDesc" in core_worker_stats:
-                            core_worker_stats.pop("currentTaskDesc")
-                        if "numPendingTasks" in core_worker_stats:
-                            core_worker_stats.pop("numPendingTasks")
+                        if "currentTaskFuncDesc" in core_worker_stats:
+                            core_worker_stats["currentTaskFuncDesc"] = list(
+                                map(b64_decode,
+                                    core_worker_stats["currentTaskFuncDesc"]))
                         format_reply(core_worker_stats)
                         actor_info.update(core_worker_stats)
-                        actor_info[
-                            "averageTaskExecutionSpeed"] = round(actor_info["numExecutedTasks"] / (
-                                now - actor_info["timestamp"] / 1000), 2)
+                        actor_info["averageTaskExecutionSpeed"] = round(
+                            actor_info["numExecutedTasks"] /
+                            (now - actor_info["timestamp"] / 1000), 2)
 
             for infeasible_task in infeasible_tasks:
                 actor_id = ray.utils.binary_to_hex(
@@ -441,8 +445,7 @@ class NodeStats(threading.Thread):
                 child_to_parent[actor_id] = caller_id
                 infeasible_task["state"] = -1
                 infeasible_task["functionDescriptor"] = list(
-                    map(lambda desc: b64decode(desc).decode("utf-8"),
-                        infeasible_task["functionDescriptor"]))
+                    map(b64_decode, infeasible_task["functionDescriptor"]))
                 format_reply(infeasible_tasks)
                 flattened_tree[actor_id] = infeasible_task
 
@@ -591,18 +594,20 @@ class RayletStats(threading.Thread):
                     stub = node_manager_pb2_grpc.NodeManagerServiceStub(
                         channel)
                     self.stubs[node_id] = stub
-                    # Block wait until the reporter for the node starts. 
+                    # Block wait until the reporter for the node starts.
                     while True:
                         reporter_port = self.redis_client.get(node_ip)
                         if reporter_port:
                             break
                     reporter_channel = grpc.insecure_channel("{}:{}".format(
-                        node_ip, int(reporter_port)
-                    ))
-                    reporter_stub = reporter_pb2_grpc.ReporterServiceStub(reporter_channel)
+                        node_ip, int(reporter_port)))
+                    reporter_stub = reporter_pb2_grpc.ReporterServiceStub(
+                        reporter_channel)
                     self.reporter_stubs[node_id] = reporter_stub
 
-            assert len(self.stubs) == len(self.reporter_stubs), (self.stubs.keys(), self.reporter_stubs.keys())
+            assert len(self.stubs) == len(
+                self.reporter_stubs), (self.stubs.keys(),
+                                       self.reporter_stubs.keys())
 
     def get_raylet_stats(self) -> Dict:
         with self._raylet_stats_lock:
@@ -610,6 +615,7 @@ class RayletStats(threading.Thread):
 
     def launch_profiling(self, node_id, pid, duration):
         profiling_id = str(uuid.uuid4())
+
         def _callback(reply_future):
             reply = reply_future.result()
             with self._raylet_stats_lock:
@@ -633,7 +639,7 @@ class RayletStats(threading.Thread):
         print(profiling_stats.stdout)
         print(profiling_stats.stderr)
         return json.loads(profiling_stats.profiling_stats)
-        
+
     def run(self):
         counter = 0
         while True:

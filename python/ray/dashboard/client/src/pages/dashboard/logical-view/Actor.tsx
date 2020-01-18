@@ -67,8 +67,9 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       actor.state !== -1
         ? [
             {
-              label: "ID",
-              value: actor.actorId
+              label: "Title",
+              value:
+                actor.actorTitle
             },
             {
               label: "Resources",
@@ -89,6 +90,26 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               label: "Task",
               value:
                 actor.currentTaskFuncDesc && actor.currentTaskFuncDesc.join(".")
+            },
+            {
+              label: "Executed",
+              value:
+                actor.numExecutedTasks && actor.numExecutedTasks.toLocaleString()
+            },
+            {
+              label: "NumObjectIdsInScope",
+              value:
+                actor.numObjectIdsInScope && actor.numObjectIdsInScope.toLocaleString()
+            },
+            {
+              label: "NumLocalObjects",
+              value:
+                actor.numLocalObjects && actor.numLocalObjects.toLocaleString()
+            },
+            {
+              label: "UsedObjectMemory",
+              value:
+                actor.usedObjectStoreMemory && actor.usedObjectStoreMemory.toLocaleString()
             }
           ]
         : [

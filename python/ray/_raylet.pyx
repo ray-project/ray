@@ -633,6 +633,13 @@ cdef execute_task(
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
 
+            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                actor = worker.actors[core_worker.get_actor_id()]
+                class_name = actor.__class__.__name__
+                title = "{}({}, {})".format(
+                    class_name, repr(args), repr(kwargs))
+                core_worker.set_actor_title(title.encode("utf-8"))
+
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
@@ -809,6 +816,9 @@ cdef class CoreWorker:
 
     def set_webui_display(self, message):
         self.core_worker.get().SetWebuiDisplay(message)
+
+    def set_actor_title(self, title):
+        self.core_worker.get().SetActorTitle(title)
 
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
@@ -1173,6 +1183,10 @@ cdef class CoreWorker:
         if self.async_event_loop is None:
             self.async_event_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
+            # Initialize the async plasma connection.
+            # Delayed import due to async_api depends on _raylet.
+            from ray.experimental.async_api import _async_init
+            self.async_event_loop.run_until_complete(_async_init())
         if self.async_thread is None:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()

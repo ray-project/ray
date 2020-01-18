@@ -100,6 +100,7 @@ export interface RayletInfoResponse {
     [actorId: string]:
       | {
           actorId: string;
+          actorTitle: string;
           children: RayletInfoResponse["actors"];
           ipAddress: string;
           isDirectCall: boolean;
@@ -113,6 +114,7 @@ export interface RayletInfoResponse {
           usedResources: { [key: string]: number };
           currentTaskDesc?: string;
           currentTaskFuncDesc?: string[];
+          numExecutedTasks?: number;
           numPendingTasks?: number;
           webuiDisplay?: string;
         }

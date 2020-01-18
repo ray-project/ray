@@ -172,6 +172,7 @@ def test_raylet_info_endpoint(shutdown_only):
                     "Timed out while waiting for dashboard to start.")
 
     assert parent_actor_info["usedResources"]["CPU"] == 2
+    assert parent_actor_info["numExecutedTasks"] == 3
     for _, child_actor_info in children.items():
         if child_actor_info["state"] == -1:
             assert child_actor_info["requiredResources"]["CustomResource"] == 1
@@ -180,7 +181,13 @@ def test_raylet_info_endpoint(shutdown_only):
             assert len(child_actor_info["children"]) == 0
             assert child_actor_info["usedResources"]["CPU"] == 1
 
-    raylet_info = requests.get(webui_url + "/api/profiling_info", params={"node_id": ray.nodes()[0]["NodeID"], "pid": actor_pid, "duration": 5}).json()
+    raylet_info = requests.get(
+        webui_url + "/api/profiling_info",
+        params={
+            "node_id": ray.nodes()[0]["NodeID"],
+            "pid": actor_pid,
+            "duration": 5
+        }).json()
 
 
 def test_profiling_info_endpoint(shutdown_only):
@@ -218,7 +225,8 @@ def test_profiling_info_endpoint(shutdown_only):
             try:
                 time.sleep(2)
                 reply = stub.GetProfilingStats(
-                    node_manager_pb2.GetProfilingStatsRequest(pid=actor_pid, duration=2))
+                    node_manager_pb2.GetProfilingStatsRequest(
+                        pid=actor_pid, duration=2))
                 break
             except grpc.RpcError:
                 continue
@@ -226,7 +234,7 @@ def test_profiling_info_endpoint(shutdown_only):
         return reply
 
     a.f.remote()
-    reply = try_get_profiling_stats()
+    _ = try_get_profiling_stats()
 
 
 if __name__ == "__main__":
