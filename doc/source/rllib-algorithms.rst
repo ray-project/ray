@@ -213,7 +213,7 @@ Policy Gradients
 
     Policy gradients architecture (same as A2C)
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/cartpole-pg.yaml>`__
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/cartpole-pg-tf.yaml>`__
 
 **PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
