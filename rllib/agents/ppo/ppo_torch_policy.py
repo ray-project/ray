@@ -1,9 +1,10 @@
 import logging
 
 import ray
-from ray.rllib.agents.impala.vtrace_policy import BEHAVIOR_LOGITS
+from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
-from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, setup_config
+from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
+    setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.policy import ACTION_LOGP
@@ -125,7 +126,7 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         train_batch[Postprocessing.VALUE_TARGETS],
         train_batch[Postprocessing.ADVANTAGES],
         train_batch[SampleBatch.ACTIONS],
-        train_batch[BEHAVIOR_LOGITS],
+        train_batch[BEHAVIOUR_LOGITS],
         train_batch[ACTION_LOGP],
         train_batch[SampleBatch.VF_PREDS],
         action_dist,
@@ -164,7 +165,7 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
     """Adds value function and logits outputs to experience train_batches."""
     return {
         SampleBatch.VF_PREDS: policy.model.value_function(),
-        BEHAVIOR_LOGITS: policy.model.last_output().numpy(),
+        BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
         ACTION_LOGP: action_dist.logp(input_dict[SampleBatch.ACTIONS])
     }
 

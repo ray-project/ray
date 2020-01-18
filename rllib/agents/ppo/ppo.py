@@ -169,7 +169,7 @@ def validate_config(config):
         logger.warning(
             "Using the simple minibatch optimizer. This will significantly "
             "reduce performance, consider simple_optimizer=False.")
-    elif tf and tf.executing_eagerly():
+    elif config["use_pytorch"] or (tf and tf.executing_eagerly()):
         config["simple_optimizer"] = True  # multi-gpu not supported
 
 
