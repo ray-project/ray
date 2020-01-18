@@ -2,9 +2,6 @@
 
 References Keras and is based off of https://keras.io/examples/babi_memnn/.
 """
-
-from __future__ import print_function
-
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.layers import Embedding
 from tensorflow.keras.layers import (Input, Activation, Dense, Permute,

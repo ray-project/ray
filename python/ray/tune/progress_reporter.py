@@ -1,5 +1,3 @@
-from __future__ import print_function
-
 import collections
 
 from ray.tune.result import (DEFAULT_RESULT_KEYS, CONFIG_PREFIX,

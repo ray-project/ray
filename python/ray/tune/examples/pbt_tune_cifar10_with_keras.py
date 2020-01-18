@@ -9,9 +9,6 @@ Note that the script requires a machine with 4 GPUs. You
 can set {"gpu": 0} to use CPUs for training, although
 it is less efficient.
 """
-
-from __future__ import print_function
-
 import argparse
 
 import numpy as np
