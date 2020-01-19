@@ -11,6 +11,7 @@
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
+#include "ray/protobuf/core_worker.pb.h"
 
 extern "C" {
 #include "ray/thirdparty/sha256.h"
@@ -25,7 +26,7 @@ typedef int SchedulingClass;
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
-class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
+class TaskSpecification {
  public:
   /// Construct an empty task specification. This should not be used directly.
   TaskSpecification() {}
@@ -34,7 +35,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
+  explicit TaskSpecification(rpc::TaskSpec message)
+      : task_spec_(std::make_shared<rpc::TaskSpec>(std::move(message))),
+        message_(task_spec_.get()) {
     ComputeResources();
   }
 
@@ -42,7 +45,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \param message The protobuf message.
   explicit TaskSpecification(std::shared_ptr<rpc::TaskSpec> message)
-      : MessageWrapper(message) {
+      : task_spec_(message),
+        message_(task_spec_.get()) {
     ComputeResources();
   }
 
@@ -50,9 +54,29 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \param serialized_binary Protobuf-serialized binary.
   explicit TaskSpecification(const std::string &serialized_binary)
-      : MessageWrapper(serialized_binary) {
+      : task_spec_(std::make_shared<rpc::TaskSpec>()) {
+    task_spec_->ParseFromString(serialized_binary);
+    message_ = task_spec_.get();
     ComputeResources();
   }
+  
+  /// Construct from a protobuf message shared_ptr of PushTaskRequest.
+  ///
+  /// \param message The protobuf message.
+  explicit TaskSpecification(std::shared_ptr<rpc::PushTaskRequest> message)
+      : request_(message),
+        message_(request_->mutable_task_spec()) {
+    ComputeResources();
+  }
+
+  /// Get const reference of the protobuf message.
+  const rpc::TaskSpec &GetMessage() const { return *message_; }
+
+  /// Get reference of the protobuf message.
+  rpc::TaskSpec &GetMutableMessage() { return *message_; }
+
+  /// Serialize the message to a string.
+  const std::string Serialize() const { return message_->SerializeAsString(); }
 
   // TODO(swang): Finalize and document these methods.
   TaskID TaskId() const;
@@ -171,6 +195,12 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
  private:
   void ComputeResources();
+
+  std::shared_ptr<rpc::TaskSpec> task_spec_;
+  std::shared_ptr<rpc::PushTaskRequest> request_;
+
+  /// Points to where the task spec is actually stored. 
+  rpc::TaskSpec *message_ = nullptr;
 
   /// Field storing required resources. Initalized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies

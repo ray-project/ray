@@ -5,21 +5,34 @@
 
 namespace ray {
 
-Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec,
+                                                 const TaskID &caller_id, int max_retries) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
-  resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
-    RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
+
+  auto request = std::make_shared<rpc::PushTaskRequest>();
+  request->mutable_caller_address()->CopyFrom(rpc_address_);
+  // Note that task_spec is not usable after the Swap here.
+  request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+
+  // Record the pending task.
+  if (!caller_id.IsNil()) {
+    task_finisher_->AddPendingTask(caller_id, rpc_address_, request, max_retries);
+  }
+
+  resolver_.ResolveDependencies(request, [this, request]() {
+    TaskSpecification new_task_spec(request);
+    RAY_LOG(DEBUG) << "Task dependencies resolved " << new_task_spec.TaskId();
     absl::MutexLock lock(&mu_);
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
     const SchedulingKey scheduling_key(
-        task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
-        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
+        new_task_spec.GetSchedulingClass(), new_task_spec.GetDependencies(),
+        new_task_spec.IsActorCreationTask() ? new_task_spec.ActorCreationId() : ActorID::Nil());
     auto it = task_queues_.find(scheduling_key);
     if (it == task_queues_.end()) {
-      it = task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
+      it = task_queues_.emplace(scheduling_key, std::deque<std::shared_ptr<rpc::PushTaskRequest>>()).first;
     }
-    it->second.push_back(task_spec);
+    it->second.push_back(request);
     RequestNewWorkerIfNeeded(scheduling_key);
   });
   return Status::OK();
@@ -104,7 +117,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   }
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
-  TaskSpecification &resource_spec = it->second.front();
+  TaskSpecification resource_spec(it->second.front());
   TaskID task_id = resource_spec.TaskId();
   auto status = lease_client->RequestWorkerLease(
       resource_spec,
@@ -159,19 +172,14 @@ void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const rpc::WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
-    const SchedulingKey &scheduling_key, const TaskSpecification &task_spec,
+    const SchedulingKey &scheduling_key, std::shared_ptr<rpc::PushTaskRequest> request,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
+  TaskSpecification task_spec(request);
   auto task_id = task_spec.TaskId();
-  auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   bool is_actor = task_spec.IsActorTask();
   bool is_actor_creation = task_spec.IsActorCreationTask();
 
   RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
-  // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
-  // fails, then the task data will be gone when the TaskManager attempts to
-  // access the task.
-  request->mutable_caller_address()->CopyFrom(rpc_address_);
-  request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
   auto status = client.PushNormalTask(

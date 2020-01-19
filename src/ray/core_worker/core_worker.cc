@@ -336,7 +336,7 @@ void CoreWorker::ReportActiveObjectIDs() {
 void CoreWorker::InternalHeartbeat() {
   absl::MutexLock lock(&mutex_);
   while (!to_resubmit_.empty() && current_time_ms() > to_resubmit_.front().first) {
-    RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
+    RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second, TaskID::Nil()));
     to_resubmit_.pop_front();
   }
   internal_timer_.expires_at(internal_timer_.expiry() +
@@ -666,8 +666,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
-    return direct_task_submitter_->SubmitTask(task_spec);
+    return direct_task_submitter_->SubmitTask(task_spec, GetCallerId(), max_retries);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
   }
@@ -707,11 +706,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   if (actor_creation_options.is_direct_call) {
-    task_manager_->AddPendingTask(
-        GetCallerId(), rpc_address_, task_spec,
+    return direct_task_submitter_->SubmitTask(task_spec, GetCallerId(),
         std::max(RayConfig::instance().actor_creation_min_retries(),
                  actor_creation_options.max_reconstructions));
-    return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     return local_raylet_client_->SubmitTask(task_spec);
   }
@@ -752,13 +749,19 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
-    task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec);
     if (actor_handle->IsDead()) {
+      auto task_id = task_spec.TaskId();
+      auto request = std::shared_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+      request->mutable_caller_address()->CopyFrom(rpc_address_);
+      // Note that task_spec is not usable after the Swap here.
+      request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+
       auto status = Status::IOError("sent task to dead actor");
-      task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED,
+      task_manager_->AddPendingTask(GetCallerId(), rpc_address_, request);
+      task_manager_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED,
                                        &status);
     } else {
-      status = direct_actor_submitter_->SubmitTask(task_spec);
+      status = direct_actor_submitter_->SubmitTask(task_spec, GetCallerId());
     }
   } else {
     RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));

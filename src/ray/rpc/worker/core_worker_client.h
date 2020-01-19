@@ -91,14 +91,14 @@ class CoreWorkerClientInterface {
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
+  virtual ray::Status PushActorTask(std::shared_ptr<PushTaskRequest> request,
                                     const ClientCallback<PushTaskReply> &callback) {
     return Status::NotImplemented("");
   }
 
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
-  virtual ray::Status PushNormalTask(std::unique_ptr<PushTaskRequest> request,
+  virtual ray::Status PushNormalTask(std::shared_ptr<PushTaskRequest> request,
                                      const ClientCallback<PushTaskReply> &callback) {
     return Status::NotImplemented("");
   }
@@ -172,7 +172,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
 
-  ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
+  ray::Status PushActorTask(std::shared_ptr<PushTaskRequest> request,
                             const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
     {
@@ -188,7 +188,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     return ray::Status::OK();
   }
 
-  ray::Status PushNormalTask(std::unique_ptr<PushTaskRequest> request,
+  ray::Status PushNormalTask(std::shared_ptr<PushTaskRequest> request,
                              const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
@@ -248,7 +248,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ClientCallManager &client_call_manager_;
 
   /// Queue of requests to send.
-  std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
+  std::deque<std::pair<std::shared_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
       send_queue_ GUARDED_BY(mutex_);
 
   /// The number of bytes currently in flight.

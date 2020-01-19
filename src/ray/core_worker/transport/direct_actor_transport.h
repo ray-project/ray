@@ -49,7 +49,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(TaskSpecification task_spec);
+  Status SubmitTask(TaskSpecification task_spec, const TaskID &caller_id, int max_retries = 0);
 
   /// Tell this actor to exit immediately.
   ///
@@ -80,7 +80,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
   void PushActorTask(rpc::CoreWorkerClientInterface &client,
-                     std::unique_ptr<rpc::PushTaskRequest> request,
+                     std::shared_ptr<rpc::PushTaskRequest> request,
                      const ActorID &actor_id, const TaskID &task_id, int num_returns)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -124,7 +124,7 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
-  absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
+  absl::flat_hash_map<ActorID, std::map<int64_t, std::shared_ptr<rpc::PushTaskRequest>>>
       pending_requests_ GUARDED_BY(mu_);
 
   /// Map from actor id to the send position of the next task to queue for send

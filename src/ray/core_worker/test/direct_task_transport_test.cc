@@ -18,7 +18,7 @@ int64_t kLongTimeout = 1024 * 1024 * 1024;
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   ray::Status PushNormalTask(
-      std::unique_ptr<rpc::PushTaskRequest> request,
+      std::shared_ptr<rpc::PushTaskRequest> request,
       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     callbacks.push_back(callback);
     return Status::OK();
@@ -264,7 +264,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   std::vector<std::string> empty_descriptor;
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -294,7 +294,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   std::vector<std::string> empty_descriptor;
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task, TaskID::Nil()).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
   ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
@@ -320,9 +320,9 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task1, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed; worker 2 is requested.
@@ -365,9 +365,9 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task1, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -412,8 +412,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task1, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -449,7 +449,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
   std::vector<std::string> empty_descriptor;
   TaskSpecification task1 = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task1, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -487,7 +487,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   std::vector<std::string> empty_descriptor;
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -537,7 +537,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   std::vector<std::string> empty_descriptor;
   TaskSpecification task = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -581,9 +581,9 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, factory, nullptr, store,
                                           task_finisher, ClientID::Nil(), kLongTimeout);
 
-  ASSERT_TRUE(submitter.SubmitTask(same1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(same2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(different).ok());
+  ASSERT_TRUE(submitter.SubmitTask(same1, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(same2, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(different, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // same1 is pushed.
@@ -687,9 +687,9 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   TaskSpecification task2 = BuildTaskSpec(empty_resources, empty_descriptor);
   TaskSpecification task3 = BuildTaskSpec(empty_resources, empty_descriptor);
 
-  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task1, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3, TaskID::Nil()).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.

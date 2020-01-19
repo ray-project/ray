@@ -3,11 +3,11 @@
 namespace ray {
 
 struct TaskState {
-  TaskState(TaskSpecification t,
+  TaskState(std::shared_ptr<rpc::PushTaskRequest> t,
             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> deps)
       : task(t), local_dependencies(deps), dependencies_remaining(deps.size()) {}
   /// The task to be run.
-  TaskSpecification task;
+  std::shared_ptr<rpc::PushTaskRequest> task;
   /// The local dependencies to resolve for this task. Objects are nullptr if not yet
   /// resolved.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
@@ -18,7 +18,8 @@ struct TaskState {
 
 void InlineDependencies(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> dependencies,
-    TaskSpecification &task, std::vector<ObjectID> *inlined) {
+    std::shared_ptr<rpc::PushTaskRequest> request, std::vector<ObjectID> *inlined) {
+  TaskSpecification task(request);
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -55,9 +56,10 @@ void InlineDependencies(
   RAY_CHECK(found >= dependencies.size());
 }
 
-void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
+void LocalDependencyResolver::ResolveDependencies(std::shared_ptr<rpc::PushTaskRequest> request,
                                                   std::function<void()> on_complete) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
+  TaskSpecification task(request);
   for (size_t i = 0; i < task.NumArgs(); i++) {
     auto count = task.ArgIdCount(i);
     if (count > 0) {
@@ -75,7 +77,7 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
 
   // This is deleted when the last dependency fetch callback finishes.
   std::shared_ptr<TaskState> state =
-      std::make_shared<TaskState>(task, std::move(local_dependencies));
+      std::make_shared<TaskState>(request, std::move(local_dependencies));
   num_pending_ += 1;
 
   for (const auto &it : state->local_dependencies) {

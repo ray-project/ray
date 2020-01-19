@@ -247,6 +247,7 @@ cc_library(
     deps = [
         ":common_cc_proto",
         ":gcs_cc_proto",
+        ":worker_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",

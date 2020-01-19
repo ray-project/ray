@@ -54,7 +54,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Schedule a task for direct submission to a worker.
   ///
   /// \param[in] task_spec The task to schedule.
-  Status SubmitTask(TaskSpecification task_spec);
+  Status SubmitTask(TaskSpecification task_spec, const TaskID &caller_id, int max_retries = 0);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
@@ -99,7 +99,7 @@ class CoreWorkerDirectTaskSubmitter {
   void PushNormalTask(const rpc::WorkerAddress &addr,
                       rpc::CoreWorkerClientInterface &client,
                       const SchedulingKey &task_queue_key,
-                      const TaskSpecification &task_spec,
+                      std::shared_ptr<rpc::PushTaskRequest> request,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
 
@@ -152,7 +152,7 @@ class CoreWorkerDirectTaskSubmitter {
   // Tasks that are queued for execution. We keep individual queues per
   // scheduling class to ensure fairness.
   // Invariant: if a queue is in this map, it has at least one task.
-  absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
+  absl::flat_hash_map<SchedulingKey, std::deque<std::shared_ptr<rpc::PushTaskRequest>>> task_queues_
       GUARDED_BY(mu_);
 };
 

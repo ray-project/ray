@@ -14,7 +14,7 @@ using ::testing::_;
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   ray::Status PushActorTask(
-      std::unique_ptr<rpc::PushTaskRequest> request,
+      std::shared_ptr<rpc::PushTaskRequest> request,
       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     RAY_CHECK(counter == request->task_spec().actor_task_spec().actor_counter());
     counter++;
@@ -79,14 +79,14 @@ TEST_F(DirectActorTransportTest, TestSubmitTask) {
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
 
   auto task = CreateActorTaskHelper(actor_id, 0);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task, TaskID::Nil()).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   submitter_.ConnectActor(actor_id, addr);
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   task = CreateActorTaskHelper(actor_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task, TaskID::Nil()).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _, _))
@@ -113,8 +113,8 @@ TEST_F(DirectActorTransportTest, TestDependencies) {
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task1, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task2, TaskID::Nil()).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Put the dependencies in the store in the same order as task submission.
@@ -141,8 +141,8 @@ TEST_F(DirectActorTransportTest, TestOutOfOrderDependencies) {
 
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task1, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task2, TaskID::Nil()).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Put the dependencies in the store in the opposite order of task
@@ -164,8 +164,8 @@ TEST_F(DirectActorTransportTest, TestActorFailure) {
   // Create two tasks for the actor.
   auto task1 = CreateActorTaskHelper(actor_id, 0);
   auto task2 = CreateActorTaskHelper(actor_id, 1);
-  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task1, TaskID::Nil()).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task2, TaskID::Nil()).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
   // Simulate the actor dying. All submitted tasks should get failed.

@@ -602,7 +602,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto task_spec = builder.Build();
 
     ASSERT_TRUE(task_spec.IsActorTask());
-    auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    auto request = std::shared_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
     request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   }
   RAY_LOG(INFO) << "Finish creating " << num_tasks << " PushTaskRequests"

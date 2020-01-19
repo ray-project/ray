@@ -15,6 +15,9 @@ namespace ray {
 
 class TaskFinisherInterface {
  public:
+  virtual void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
+                              std::shared_ptr<rpc::PushTaskRequest> request,
+                              int max_retries = 0) = 0;
   virtual void CompletePendingTask(const TaskID &task_id, const rpc::PushTaskReply &reply,
                                    const rpc::Address *actor_addr) = 0;
 
@@ -48,7 +51,7 @@ class TaskManager : public TaskFinisherInterface {
   /// on failure.
   /// \return Void.
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      const TaskSpecification &spec, int max_retries = 0);
+                      std::shared_ptr<rpc::PushTaskRequest> request, int max_retries = 0) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///

@@ -26,28 +26,32 @@ Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id) {
   return Status::OK();
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec,
+                                                      const TaskID &caller_id,
+                                                      int max_retries) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   RAY_CHECK(task_spec.IsActorTask());
+  auto actor_id = task_spec.ActorId();
+
+  auto request = std::make_shared<rpc::PushTaskRequest>();
+  request->mutable_caller_address()->CopyFrom(rpc_address_);
+  // Note that task_spec is not usable after the Swap here.
+  request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+
+  // Record the pending task.
+  if (!caller_id.IsNil()) {
+    task_finisher_->AddPendingTask(caller_id, rpc_address_, request, max_retries);
+  }
 
   // We must fix the send order prior to resolving dependencies, which may complete
   // out of order. This ensures we preserve the client-side send order.
   int64_t send_pos = -1;
   {
     absl::MutexLock lock(&mu_);
-    send_pos = next_send_position_to_assign_[task_spec.ActorId()]++;
+    send_pos = next_send_position_to_assign_[actor_id]++;
   }
 
-  resolver_.ResolveDependencies(task_spec, [this, send_pos, task_spec]() mutable {
-    const auto &actor_id = task_spec.ActorId();
-
-    auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-    request->mutable_caller_address()->CopyFrom(rpc_address_);
-    // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
-    // fails, then the task data will be gone when the TaskManager attempts to
-    // access the task.
-    request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-
+  resolver_.ResolveDependencies(request, [this, send_pos, request, actor_id]() mutable {
     absl::MutexLock lock(&mu_);
 
     auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
@@ -145,7 +149,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
 }
 
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
-    rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
+    rpc::CoreWorkerClientInterface &client, std::shared_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   next_send_position_[actor_id]++;
