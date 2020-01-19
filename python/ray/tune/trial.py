@@ -23,7 +23,7 @@ from ray.tune.utils import flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
-MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
+MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 150))
 logger = logging.getLogger(__name__)
 
 
@@ -253,8 +253,9 @@ class Trial:
     def create_logdir(cls, identifier, local_dir):
         local_dir = os.path.expanduser(local_dir)
         os.makedirs(local_dir, exist_ok=True)
+        max_ident_len = MAX_LEN_IDENTIFIER - len(local_dir)
         return tempfile.mkdtemp(
-            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
+            prefix="{}_{}".format(identifier[:max_ident_len], date_str()),
             dir=local_dir)
 
     def init_logger(self):
