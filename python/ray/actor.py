@@ -544,7 +544,7 @@ class ActorClass:
                     raise Exception("Cross language feature needs "
                                     "--load-code-from-local to be set.")
                 if meta.language == Language.PYTHON:
-                    # To compatible with ray.signature.recover_args
+                    # To be compatible with ray.signature.recover_args
                     function_signature = signature.ANY_FUNCTION_SIGNATURE
                     creation_args = signature.flatten_args(
                         function_signature, args, kwargs)
