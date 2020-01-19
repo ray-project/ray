@@ -5,6 +5,7 @@ import ray.streaming.generated.remote_call_pb2 as remote_call_pb
 import ray.streaming.operator as operator
 import ray.streaming.partition as partition
 import ray.streaming.runtime.gateway_client as gateway_client
+import ray.streaming.generated.streaming_pb2 as streaming_pb
 from ray.streaming.generated.streaming_pb2 import Language
 
 
@@ -17,7 +18,7 @@ class NodeType(enum.Enum):
 class ExecutionNode:
     def __init__(self, node_pb):
         self.node_id = node_pb.node_id
-        self.node_type = NodeType(node_pb.node_type)
+        self.node_type = NodeType[streaming_pb.NodeType.Name(node_pb.node_type)]
         if node_pb.language == Language.PYTHON:
             func_bytes = node_pb.function  # python function descriptor
             func = function.load_function(func_bytes)
