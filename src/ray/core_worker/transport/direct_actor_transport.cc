@@ -215,10 +215,11 @@ void CoreWorkerDirectTaskReceiver::SetActorAsAsync(int max_concurrency) {
 };
 
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
-    const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+    std::shared_ptr<rpc::PushTaskRequest> request,
+    std::shared_ptr<rpc::PushTaskReply> reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
-  const TaskSpecification task_spec(request.task_spec());
+  const TaskSpecification task_spec(request);
   RAY_LOG(DEBUG) << "Received task " << task_spec.DebugString();
   if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
@@ -247,7 +248,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   std::shared_ptr<ResourceMappingType> resource_ids;
   if (!task_spec.IsActorTask()) {
     resource_ids.reset(new ResourceMappingType());
-    for (const auto &mapping : request.resource_mapping()) {
+    for (const auto &mapping : request->resource_mapping()) {
       std::vector<std::pair<int64_t, double>> rids;
       for (const auto &ids : mapping.resource_ids()) {
         rids.push_back(std::make_pair(ids.index(), ids.quantity()));
@@ -256,7 +257,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   }
 
-  const rpc::Address &caller_address = request.caller_address();
+  const rpc::Address &caller_address = request->caller_address();
   auto accept_callback = [this, caller_address, reply, send_reply_callback, task_spec,
                           resource_ids]() {
     // We have posted an exit task onto the main event loop,
@@ -356,7 +357,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
             task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
     it = result.first;
   }
-  it->second->Add(request.sequence_number(), request.client_processed_up_to(),
+  it->second->Add(request->sequence_number(), request->client_processed_up_to(),
                   accept_callback, reject_callback, dependencies);
 }
 

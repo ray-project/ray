@@ -92,7 +92,8 @@ class ServerCallFactory {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
-using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
+using HandleRequestFunction = void (ServiceHandler::*)(std::shared_ptr<Request>,
+                                                       std::shared_ptr<Reply>,
                                                        SendReplyCallback);
 
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
@@ -119,7 +120,9 @@ class ServerCallImpl : public ServerCall {
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
-        io_service_(io_service) {}
+        io_service_(io_service),
+        request_(std::make_shared<Request>()),
+        reply_(std::make_shared<Reply>()) {}
 
   ServerCallState GetState() const override { return state_; }
 
@@ -142,7 +145,7 @@ class ServerCallImpl : public ServerCall {
     // a different thread, and will cause `this` to be deleted.
     const auto &factory = factory_;
     (service_handler_.*handle_request_function_)(
-        request_, &reply_,
+        request_, reply_,
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
@@ -178,7 +181,7 @@ class ServerCallImpl : public ServerCall {
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
+    response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
 
   /// State of this call.
@@ -204,10 +207,10 @@ class ServerCallImpl : public ServerCall {
   boost::asio::io_service &io_service_;
 
   /// The request message.
-  Request request_;
+  std::shared_ptr<Request> request_;
 
   /// The reply message.
-  Reply reply_;
+  std::shared_ptr<Reply> reply_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
@@ -270,7 +273,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         *this, service_handler_, handle_request_function_, io_service_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
-    (service_.*request_call_function_)(&call->context_, &call->request_,
+    (service_.*request_call_function_)(&call->context_, call->request_.get(),
                                        &call->response_writer_, cq_.get(), cq_.get(),
                                        call);
   }

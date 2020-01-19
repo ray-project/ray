@@ -15,26 +15,26 @@ namespace rpc {
   RPC_SERVICE_HANDLER(ObjectManagerService, Pull, 5) \
   RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, 2)
 
+#define RAY_OBJECT_MANAGER_DECLARE_RPC_HANDLERS                              \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Push)                     \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Pull) \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(FreeObjects)                
+
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
 class ObjectManagerServiceHandler {
  public:
-  /// Handle a `Push` request.
-  /// The implementation can handle this request asynchronously. When handling is done,
-  /// the `send_reply_callback` should be called.
+  /// Handlers. For all of the following handlers, the implementations can
+  /// handle the request asynchronously. When handling is done, the
+  /// `send_reply_callback` should be called. See
+  /// src/ray/rpc/object_manager/object_manager_client.h and
+  /// src/ray/protobuf/object_manager.proto for a description of the
+  /// functionality of each handler.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  virtual void HandlePush(const PushRequest &request, PushReply *reply,
-                          SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `Pull` request
-  virtual void HandlePull(const PullRequest &request, PullReply *reply,
-                          SendReplyCallback send_reply_callback) = 0;
-  /// Handle a `FreeObjects` request
-  virtual void HandleFreeObjects(const FreeObjectsRequest &request,
-                                 FreeObjectsReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
+  RAY_OBJECT_MANAGER_DECLARE_RPC_HANDLERS
 };
 
 /// The `GrpcService` for `ObjectManagerGrpcService`.

@@ -463,7 +463,8 @@ class CoreWorkerDirectTaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+  void HandlePushTask(std::shared_ptr<rpc::PushTaskRequest> request,
+                      std::shared_ptr<rpc::PushTaskReply> reply,
                       rpc::SendReplyCallback send_reply_callback);
 
   /// Handle a `DirectActorCallArgWaitComplete` request.

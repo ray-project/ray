@@ -399,7 +399,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                         rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+  void HandlePushTask(std::shared_ptr<rpc::PushTaskRequest> request,
+                      std::shared_ptr<rpc::PushTaskReply> reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
