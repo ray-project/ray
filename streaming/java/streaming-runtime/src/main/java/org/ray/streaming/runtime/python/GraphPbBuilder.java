@@ -53,7 +53,7 @@ public class GraphPbBuilder {
 
       // build edges
       for (ExecutionEdge edge : node.getInputsEdges()) {
-        nodeBuilder.addInputsEdges(buildEdge(edge));
+        nodeBuilder.addInputEdges(buildEdge(edge));
       }
       for (ExecutionEdge edge : node.getInputsEdges()) {
         nodeBuilder.addOutputEdges(buildEdge(edge));

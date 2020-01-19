@@ -14,7 +14,7 @@ message ExecutionGraph {
         Language language = 4;
         bytes function = 5;
         repeated ExecutionTask execution_tasks = 6;
-        repeated ExecutionEdge inputs_edges = 7;
+        repeated ExecutionEdge input_edges = 7;
         repeated ExecutionEdge output_edges = 8;
     }
 

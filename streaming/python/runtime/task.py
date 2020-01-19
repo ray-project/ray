@@ -41,7 +41,7 @@ class StreamTask(ABC):
         writers = {}
         self.writers = writers
         collectors = []
-        for edge in execution_node.output_edges():
+        for edge in execution_node.output_edges:
             output_actor_ids = {}
             task_id2_worker = execution_graph.get_task_id2_worker_by_node_id(
                 edge.target_node_id)

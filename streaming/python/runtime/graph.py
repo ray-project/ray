@@ -27,9 +27,9 @@ class ExecutionNode:
             ExecutionTask(task, node_pb.language)
             for task in node_pb.execution_tasks
         ]
-        self.inputs_edges = [
+        self.input_edges = [
             ExecutionEdge(edge, node_pb.language)
-            for edge in node_pb.inputs_edges
+            for edge in node_pb.input_edges
         ]
         self.output_edges = [
             ExecutionEdge(edge, node_pb.language)
