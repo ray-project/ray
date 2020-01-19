@@ -4,7 +4,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobVertex;
-import org.ray.streaming.runtime.core.graph.Graphs;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobEdge;
@@ -31,8 +30,8 @@ public class GraphManagerImpl implements GraphManager {
   public ExecutionGraph buildExecutionGraph(JobGraph jobGraph) {
     LOG.info("Begin build execution graph with job graph {}.", jobGraph);
 
-    // setup execution vertex
-    ExecutionGraph executionGraph = setupExecutionVertex(jobGraph);
+    // setup structure
+    ExecutionGraph executionGraph = setupStructure(jobGraph);
 
     // set max parallelism
     int maxParallelism = jobGraph.getJobVertexList().stream()
@@ -47,11 +46,10 @@ public class GraphManagerImpl implements GraphManager {
     return executionGraph;
   }
 
-  @Override
-  public ExecutionGraph setupExecutionVertex(JobGraph jobGraph) {
+  private ExecutionGraph setupStructure(JobGraph jobGraph) {
     ExecutionGraph executionGraph = new ExecutionGraph(jobGraph.getJobName());
 
-    // create execution job vertex and execution vertex
+    // create vertex
     Map<Integer, ExecutionJobVertex> exeJobVertexMap = new LinkedHashMap<>();
     long buildTime = executionGraph.getBuildTime();
     for (JobVertex jobVertex : jobGraph.getJobVertexList()) {
@@ -87,17 +85,13 @@ public class GraphManagerImpl implements GraphManager {
   }
 
   @Override
-  public Graphs getGraphs() {
-    return runtimeContext.getGraphs();
-  }
-
-  @Override
   public JobGraph getJobGraph() {
-    return getGraphs().getJobGraph();
+    return runtimeContext.getJobGraph();
   }
 
   @Override
   public ExecutionGraph getExecutionGraph() {
-    return getGraphs().getExecutionGraph();
+    return runtimeContext.getExecutionGraph();
   }
+
 }

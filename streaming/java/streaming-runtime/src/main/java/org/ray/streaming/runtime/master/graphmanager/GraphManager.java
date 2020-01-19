@@ -2,7 +2,6 @@ package org.ray.streaming.runtime.master.graphmanager;
 
 import java.io.Serializable;
 import org.ray.streaming.jobgraph.JobGraph;
-import org.ray.streaming.runtime.core.graph.Graphs;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 
 /**
@@ -12,36 +11,23 @@ public interface GraphManager extends Serializable {
 
   /**
    * Build execution graph from job graph.
-   * @param jobGraph logical plan of streaming job
-   * @return physical plan of streaming job
+   * @param jobGraph logical plan of streaming job.
+   * @return physical plan of streaming job.
    */
   ExecutionGraph buildExecutionGraph(JobGraph jobGraph);
 
   /**
-   * Set up execution vertex.
-   * @param jobGraph logical plan of streaming job
-   * @return physical plan of streaming job
-   */
-  ExecutionGraph setupExecutionVertex(JobGraph jobGraph);
-
-  /**
-   * Get graphs
+   * Get job graph.
    *
-   * @return all graphs
-   */
-  Graphs getGraphs();
-
-  /**
-   * Get job graph
-   *
-   * @return job graph
+   * @return the job graph.
    */
   JobGraph getJobGraph();
 
   /**
-   * Get current execution graph
+   * Get execution graph.
    *
-   * @return current execution graph
+   * @return the execution graph.
    */
   ExecutionGraph getExecutionGraph();
+
 }

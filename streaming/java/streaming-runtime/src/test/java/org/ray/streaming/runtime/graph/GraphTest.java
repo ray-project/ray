@@ -1,13 +1,11 @@
 package org.ray.streaming.runtime.graph;
 
 import com.google.common.collect.Lists;
-import java.util.HashMap;
 import java.util.List;
 import org.ray.streaming.api.context.StreamingContext;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.api.stream.StreamSource;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.jobgraph.JobGraphBuilder;
 import org.ray.streaming.runtime.BaseUnitTest;
@@ -42,13 +40,13 @@ public class GraphTest extends BaseUnitTest {
     int startIndex = 0;
     ExecutionJobVertex upStream = executionJobVertices.get(startIndex);
     ExecutionJobVertex downStream = executionJobVertices.get(startIndex + 1);
-    Assert.assertEquals(upStream.getOutputEdges().get(0).getConsumer(), downStream);
+    Assert.assertEquals(upStream.getOutputEdges().get(0).getTargetVertex(), downStream);
 
     List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertexList();
     List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertexList();
     upStreamVertices.stream().forEach(vertex -> {
       vertex.getOutputEdges().stream().forEach(upStreamOutPutEdge -> {
-        Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getConsumer()));
+        Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetVertex()));
       });
     });
   }
@@ -71,4 +69,5 @@ public class GraphTest extends BaseUnitTest {
     JobGraph jobGraph = jobGraphBuilder.build();
     return jobGraph;
   }
+
 }

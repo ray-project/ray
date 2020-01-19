@@ -9,29 +9,29 @@ import org.ray.streaming.jobgraph.JobEdge;
  */
 public class ExecutionJobEdge {
 
-  private final ExecutionJobVertex producer;
-  private final ExecutionJobVertex consumer;
+  private final ExecutionJobVertex srcVertex;
+  private final ExecutionJobVertex targetVertex;
   private final JobEdge jobEdge;
   private final String executionJobEdgeIndex;
 
-  public ExecutionJobEdge(ExecutionJobVertex producer, ExecutionJobVertex consumer,
+  public ExecutionJobEdge(ExecutionJobVertex srcVertex, ExecutionJobVertex targetVertex,
       JobEdge jobEdge) {
-    this.producer = producer;
-    this.consumer = consumer;
+    this.srcVertex = srcVertex;
+    this.targetVertex = targetVertex;
     this.jobEdge = jobEdge;
     this.executionJobEdgeIndex = generateExecutionJobEdgeIndex();
   }
 
   private String generateExecutionJobEdgeIndex() {
-    return producer.getJobVertexId() + "—" + consumer.getJobVertexId();
+    return srcVertex.getJobVertexId() + "—" + targetVertex.getJobVertexId();
   }
 
-  public ExecutionJobVertex getProducer() {
-    return producer;
+  public ExecutionJobVertex getSrcVertex() {
+    return srcVertex;
   }
 
-  public ExecutionJobVertex getConsumer() {
-    return consumer;
+  public ExecutionJobVertex getTargetVertex() {
+    return targetVertex;
   }
 
   public Partition getPartition() {
@@ -41,9 +41,10 @@ public class ExecutionJobEdge {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("producer", producer)
-        .add("consumer", consumer)
+        .add("srcVertex", srcVertex)
+        .add("targetVertex", targetVertex)
         .add("jobEdge", jobEdge)
         .toString();
   }
+
 }

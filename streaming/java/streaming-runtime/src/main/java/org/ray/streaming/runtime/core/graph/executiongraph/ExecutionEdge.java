@@ -9,37 +9,37 @@ import org.ray.streaming.api.partition.Partition;
  */
 public class ExecutionEdge implements Serializable {
 
-  private final ExecutionVertex producer;
-  private final ExecutionVertex consumer;
+  private final ExecutionVertex srcVertex;
+  private final ExecutionVertex targetVertex;
   private final ExecutionJobEdge executionJobEdge;
   private final String executionEdgeIndex;
 
-  public ExecutionEdge(ExecutionVertex producer, ExecutionVertex consumer,
+  public ExecutionEdge(ExecutionVertex srcVertex, ExecutionVertex targetVertex,
       ExecutionJobEdge executionJobEdge) {
-    this.producer = producer;
-    this.consumer = consumer;
+    this.srcVertex = srcVertex;
+    this.targetVertex = targetVertex;
     this.executionJobEdge = executionJobEdge;
     this.executionEdgeIndex = generateExecutionEdgeIndex();
   }
 
   private String generateExecutionEdgeIndex() {
-    return producer.getVertexId() + "—" + consumer.getVertexId();
+    return srcVertex.getVertexId() + "—" + targetVertex.getVertexId();
   }
 
-  public ExecutionVertex getProducer() {
-    return producer;
+  public ExecutionVertex getSrcVertex() {
+    return srcVertex;
   }
 
-  public ExecutionVertex getConsumer() {
-    return consumer;
+  public ExecutionVertex getTargetVertex() {
+    return targetVertex;
   }
 
   public int getProducerId() {
-    return producer.getVertexId();
+    return srcVertex.getVertexId();
   }
 
   public int getConsumerId() {
-    return consumer.getVertexId();
+    return targetVertex.getVertexId();
   }
 
   public String getExecutionEdgeIndex() {
@@ -57,10 +57,11 @@ public class ExecutionEdge implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("producer", producer)
-        .add("consumer", consumer)
+        .add("srcVertex", srcVertex)
+        .add("targetVertex", targetVertex)
         .add("executionJobEdge", executionJobEdge)
         .add("executionEdgeIndex", executionEdgeIndex)
         .toString();
   }
+
 }
