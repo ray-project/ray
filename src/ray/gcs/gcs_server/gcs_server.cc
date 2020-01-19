@@ -119,7 +119,6 @@ void GcsServer::SetGcsServerAddress() {
   boost::asio::ip::tcp::resolver::iterator end;  // End marker.
   while (iter != end) {
     boost::asio::ip::tcp::endpoint ep = *iter;
-    RAY_LOG(INFO) << "Address = " << ep.address().to_string();
     if (ep.address().is_v4() && !ep.address().is_loopback() &&
         !ep.address().is_multicast()) {
       primary_endpoint.address(ep.address());
@@ -128,9 +127,15 @@ void GcsServer::SetGcsServerAddress() {
     }
     iter++;
   }
-  RAY_CHECK(iter != end);
-  std::string address =
-      primary_endpoint.address().to_string() + ":" + std::to_string(GetPort());
+
+  std::string address;
+  if (iter == end) {
+    address = "127.0.0.1:" + std::to_string(GetPort());
+  } else {
+    address = primary_endpoint.address().to_string() + ":" + std::to_string(GetPort());
+  }
+  RAY_LOG(INFO) << "Gcs server address = " << address;
+
   RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
       {"SET", "GcsServerAddress", address}));
   RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
