@@ -6,7 +6,8 @@
 namespace ray {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec,
-                                                 const TaskID &caller_id, int max_retries) {
+                                                 const TaskID &caller_id,
+                                                 int max_retries) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
 
   auto request = std::make_shared<rpc::PushTaskRequest>();
@@ -27,10 +28,14 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec,
     // plasma dependencies after ResolveDependencies finishes.
     const SchedulingKey scheduling_key(
         new_task_spec.GetSchedulingClass(), new_task_spec.GetDependencies(),
-        new_task_spec.IsActorCreationTask() ? new_task_spec.ActorCreationId() : ActorID::Nil());
+        new_task_spec.IsActorCreationTask() ? new_task_spec.ActorCreationId()
+                                            : ActorID::Nil());
     auto it = task_queues_.find(scheduling_key);
     if (it == task_queues_.end()) {
-      it = task_queues_.emplace(scheduling_key, std::deque<std::shared_ptr<rpc::PushTaskRequest>>()).first;
+      it = task_queues_
+               .emplace(scheduling_key,
+                        std::deque<std::shared_ptr<rpc::PushTaskRequest>>())
+               .first;
     }
     it->second.push_back(request);
     RequestNewWorkerIfNeeded(scheduling_key);

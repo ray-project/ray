@@ -45,8 +45,7 @@ class TaskSpecification {
   ///
   /// \param message The protobuf message.
   explicit TaskSpecification(std::shared_ptr<rpc::TaskSpec> message)
-      : task_spec_(message),
-        message_(task_spec_.get()) {
+      : task_spec_(message), message_(task_spec_.get()) {
     ComputeResources();
   }
 
@@ -59,13 +58,12 @@ class TaskSpecification {
     message_ = task_spec_.get();
     ComputeResources();
   }
-  
+
   /// Construct from a protobuf message shared_ptr of PushTaskRequest.
   ///
   /// \param message The protobuf message.
   explicit TaskSpecification(std::shared_ptr<rpc::PushTaskRequest> message)
-      : request_(message),
-        message_(request_->mutable_task_spec()) {
+      : request_(message), message_(request_->mutable_task_spec()) {
     ComputeResources();
   }
 
@@ -199,7 +197,7 @@ class TaskSpecification {
   std::shared_ptr<rpc::TaskSpec> task_spec_;
   std::shared_ptr<rpc::PushTaskRequest> request_;
 
-  /// Points to where the task spec is actually stored. 
+  /// Points to where the task spec is actually stored.
   rpc::TaskSpec *message_ = nullptr;
 
   /// Field storing required resources. Initalized in constructor.

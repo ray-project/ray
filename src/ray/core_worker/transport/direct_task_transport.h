@@ -54,7 +54,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// Schedule a task for direct submission to a worker.
   ///
   /// \param[in] task_spec The task to schedule.
-  Status SubmitTask(TaskSpecification task_spec, const TaskID &caller_id, int max_retries = 0);
+  Status SubmitTask(TaskSpecification task_spec, const TaskID &caller_id,
+                    int max_retries = 0);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
@@ -152,8 +153,8 @@ class CoreWorkerDirectTaskSubmitter {
   // Tasks that are queued for execution. We keep individual queues per
   // scheduling class to ensure fairness.
   // Invariant: if a queue is in this map, it has at least one task.
-  absl::flat_hash_map<SchedulingKey, std::deque<std::shared_ptr<rpc::PushTaskRequest>>> task_queues_
-      GUARDED_BY(mu_);
+  absl::flat_hash_map<SchedulingKey, std::deque<std::shared_ptr<rpc::PushTaskRequest>>>
+      task_queues_ GUARDED_BY(mu_);
 };
 
 };  // namespace ray

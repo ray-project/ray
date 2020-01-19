@@ -49,7 +49,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(TaskSpecification task_spec, const TaskID &caller_id, int max_retries = 0);
+  Status SubmitTask(TaskSpecification task_spec, const TaskID &caller_id,
+                    int max_retries = 0);
 
   /// Tell this actor to exit immediately.
   ///

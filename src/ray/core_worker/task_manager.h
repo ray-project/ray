@@ -51,7 +51,8 @@ class TaskManager : public TaskFinisherInterface {
   /// on failure.
   /// \return Void.
   void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
-                      std::shared_ptr<rpc::PushTaskRequest> request, int max_retries = 0) override;
+                      std::shared_ptr<rpc::PushTaskRequest> request,
+                      int max_retries = 0) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///

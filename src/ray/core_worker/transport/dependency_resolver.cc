@@ -56,8 +56,8 @@ void InlineDependencies(
   RAY_CHECK(found >= dependencies.size());
 }
 
-void LocalDependencyResolver::ResolveDependencies(std::shared_ptr<rpc::PushTaskRequest> request,
-                                                  std::function<void()> on_complete) {
+void LocalDependencyResolver::ResolveDependencies(
+    std::shared_ptr<rpc::PushTaskRequest> request, std::function<void()> on_complete) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
   TaskSpecification task(request);
   for (size_t i = 0; i < task.NumArgs(); i++) {

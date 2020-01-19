@@ -25,7 +25,8 @@ class LocalDependencyResolver {
   ///
   /// Postcondition: all direct call id arguments that haven't been spilled to plasma
   /// are converted to values and all remaining arguments are arguments in the task spec.
-  void ResolveDependencies(std::shared_ptr<rpc::PushTaskRequest> request, std::function<void()> on_complete);
+  void ResolveDependencies(std::shared_ptr<rpc::PushTaskRequest> request,
+                           std::function<void()> on_complete);
 
   /// Return the number of tasks pending dependency resolution.
   /// TODO(ekl) this should be exposed in worker stats.
