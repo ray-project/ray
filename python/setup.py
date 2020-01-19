@@ -83,7 +83,7 @@ extras = {
     "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
     "tune": ["tabulate"],
-    "streaming": ["msgpack"],
+    "streaming": ["msgpack >= 0.6.2"],
 }
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
