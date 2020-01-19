@@ -79,8 +79,11 @@ extras = {
 }
 
 extras["rllib"] = extras["tune"] + [
-    "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
-    "tabulate"
+    "pyyaml",
+    "gym[atari]",
+    "opencv-python-headless",
+    "lz4",
+    "scipy",
 ]
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
