@@ -65,6 +65,9 @@ def bootstrap_aws(config):
     # the group, and also SSH access from outside.
     config = _configure_security_group(config)
 
+    # Provide a helpful message for missing AMI.
+    _check_ami(config)
+
     return config
 
 
@@ -272,6 +275,7 @@ def _check_ami(config):
     region = config["provider"]["region"]
     default_ami = DEFAULT_AMI.get(region)
     if not default_ami:
+        # If we do not provide a default AMI for the given region, noop.
         return
 
     if "ImageId" not in config["head_node"]:
