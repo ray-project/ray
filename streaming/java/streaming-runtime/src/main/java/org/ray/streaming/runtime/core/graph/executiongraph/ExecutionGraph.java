@@ -1,6 +1,7 @@
 package org.ray.streaming.runtime.core.graph.executiongraph;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +13,6 @@ import java.util.stream.Collectors;
 public class ExecutionGraph implements Serializable {
 
   private final String jobName;
-  private List<ExecutionJobVertex> executionJobVertexList;
   private Map<Integer, ExecutionJobVertex> executionJobVertexMap;
   private Map<String, String> jobConfig;
   private int maxParallelism;
@@ -28,20 +28,14 @@ public class ExecutionGraph implements Serializable {
   }
 
   public List<ExecutionJobVertex> getExecutionJobVertexList() {
-    return executionJobVertexList;
-  }
-
-  public void setExecutionJobVertexList(
-      List<ExecutionJobVertex> executionJobVertexList) {
-    this.executionJobVertexList = executionJobVertexList;
+    return new ArrayList<ExecutionJobVertex>(executionJobVertexMap.values());
   }
 
   public Map<Integer, ExecutionJobVertex> getExecutionJobVertexMap() {
     return executionJobVertexMap;
   }
 
-  public void setExecutionJobVertexMap(
-      Map<Integer, ExecutionJobVertex> executionJobVertexMap) {
+  public void setExecutionJobVertexMap(Map<Integer, ExecutionJobVertex> executionJobVertexMap) {
     this.executionJobVertexMap = executionJobVertexMap;
   }
 
@@ -66,14 +60,14 @@ public class ExecutionGraph implements Serializable {
   }
 
   public List<ExecutionVertex> getAllExecutionVertices() {
-    return executionJobVertexList.stream()
+    return executionJobVertexMap.values().stream()
         .map(ExecutionJobVertex::getExecutionVertexList)
         .flatMap(Collection::stream)
         .collect(Collectors.toList());
   }
 
   public List<ExecutionVertex> getAllAddedExecutionVertices() {
-    return executionJobVertexList.stream()
+    return executionJobVertexMap.values().stream()
         .map(ExecutionJobVertex::getExecutionVertexList)
         .flatMap(Collection::stream)
         .filter(vertex -> vertex.is2Add())
@@ -81,7 +75,7 @@ public class ExecutionGraph implements Serializable {
   }
 
   public ExecutionVertex getExecutionJobVertexByJobVertexId(int vertexId) {
-    for (ExecutionJobVertex executionJobVertex : executionJobVertexList) {
+    for (ExecutionJobVertex executionJobVertex : executionJobVertexMap.values()) {
       for (ExecutionVertex executionVertex : executionJobVertex.getExecutionVertexList()) {
         if (executionVertex.getVertexId() == vertexId) {
           return executionVertex;
@@ -90,5 +84,4 @@ public class ExecutionGraph implements Serializable {
     }
     throw new RuntimeException("Vertex " + vertexId + " does not exist!");
   }
-
 }

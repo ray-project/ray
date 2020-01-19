@@ -84,9 +84,6 @@ public class GraphManagerImpl implements GraphManager {
 
     // set execution job vertex into execution graph
     executionGraph.setExecutionJobVertexMap(exeJobVertexMap);
-    List<ExecutionJobVertex> executionJobVertexList = new ArrayList(
-        executionGraph.getExecutionJobVertexMap().values());
-    executionGraph.setExecutionJobVertexList(executionJobVertexList);
 
     return executionGraph;
   }
