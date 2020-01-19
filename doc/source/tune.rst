@@ -81,6 +81,7 @@ Below are some blog posts and talks about Tune:
  - [blog] `Simple hyperparameter and architecture search in tensorflow with Ray Tune <http://louiskirsch.com/ai/ray-tune>`_
  - [slides] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
  - [video] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
+ - [video] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://www.youtube.com/watch?v=10uz5U3Gy6E>`_
  - [slides] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://speakerdeck.com/richardliaw/a-modern-guide-to-hyperparameter-optimization>`_
 
 Open Source Projects using Tune
