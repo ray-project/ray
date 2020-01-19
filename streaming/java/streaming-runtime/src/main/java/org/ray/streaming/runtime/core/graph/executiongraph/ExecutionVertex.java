@@ -3,12 +3,8 @@ package org.ray.streaming.runtime.core.graph.executiongraph;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.ray.api.RayActor;
 import org.ray.api.id.ActorId;
-import org.ray.streaming.jobgraph.LanguageType;
-import org.ray.streaming.jobgraph.VertexType;
-import org.ray.streaming.runtime.core.processor.StreamProcessor;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
@@ -31,8 +27,6 @@ public class ExecutionVertex implements Serializable {
    */
   private final String vertexName;
 
-  private final ExecutionJobVertex executionJobVertex;
-
   private ExecutionVertexState state = ExecutionVertexState.TO_ADD;
   private RayActor<JobWorker> workerActor;
   private List<ExecutionEdge> inputEdges = new ArrayList<>();
@@ -42,7 +36,6 @@ public class ExecutionVertex implements Serializable {
     this.vertexId = generateExecutionVertexId(jobVertexId, index);
     this.vertexIndex = index;
     this.vertexName = executionJobVertex.getJobVertexName() + "-" + vertexIndex;
-    this.executionJobVertex = executionJobVertex;
   }
 
   private int generateExecutionVertexId(int jobVertexId, int index) {
@@ -55,10 +48,6 @@ public class ExecutionVertex implements Serializable {
 
   public int getVertexIndex() {
     return vertexIndex;
-  }
-
-  public ExecutionJobVertex getExecutionJobVertex() {
-    return executionJobVertex;
   }
 
   public ExecutionVertexState getState() {
@@ -109,42 +98,6 @@ public class ExecutionVertex implements Serializable {
   public void setOutputEdges(
       List<ExecutionEdge> outputEdges) {
     this.outputEdges = outputEdges;
-  }
-
-  public VertexType getVertextType() {
-    return executionJobVertex.getVertexType();
-  }
-
-  public Map<String, String> getJobConfig() {
-    return executionJobVertex.getJobConfig();
-  }
-
-  public LanguageType getLanguageType() {
-    return executionJobVertex.getLanguageType();
-  }
-
-  public long getBuildTime() {
-    return executionJobVertex.getBuildTime();
-  }
-
-  public int getParallelism() {
-    return executionJobVertex.getParallelism();
-  }
-
-  public StreamProcessor getStreamProcessor() {
-    return executionJobVertex.getStreamProcessor();
-  }
-
-  public boolean isSourceVertex() {
-    return executionJobVertex.isSourceVertex();
-  }
-
-  public boolean isTransformationVertex() {
-    return executionJobVertex.isTransformationVertex();
-  }
-
-  public boolean isSinkVertex() {
-    return executionJobVertex.isSinkVertex();
   }
 
   public String getVertexName() {

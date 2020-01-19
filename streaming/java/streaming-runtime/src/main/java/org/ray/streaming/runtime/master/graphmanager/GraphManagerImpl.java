@@ -54,8 +54,7 @@ public class GraphManagerImpl implements GraphManager {
     long buildTime = executionGraph.getBuildTime();
     for (JobVertex jobVertex : jobGraph.getJobVertexList()) {
       int jobVertexId = jobVertex.getVertexId();
-      exeJobVertexMap.put(jobVertexId, new ExecutionJobVertex(jobGraph.getJobName(), jobVertex,
-          jobGraph.getJobConfig(), buildTime));
+      exeJobVertexMap.put(jobVertexId, new ExecutionJobVertex(jobVertex));
     }
 
     // attach vertex
