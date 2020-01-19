@@ -413,9 +413,9 @@ cc_library(
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
-        ":service_based_gcs_client_lib",
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
@@ -1245,6 +1245,7 @@ genrule(
         "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_monitor",
+        "//:gcs_server",
         "@plasma//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ] + select({
@@ -1264,6 +1265,7 @@ genrule(
         cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
+        cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&
         for f in $(locations //:all_py_proto); do
             cp -f "$$f" "$$WORK_DIR/python/ray/core/generated/";

@@ -513,6 +513,22 @@ class Node:
             process_info
         ]
 
+    def start_gcs_server(self):
+        """Start the gcs server.
+        """
+        stdout_file, stderr_file = self.new_log_files("gcs_server")
+        process_info = ray.services.start_raylet_monitor(
+            self._redis_address,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file,
+            redis_password=self._ray_params.redis_password,
+            config=self._config)
+        assert (ray_constants.PROCESS_TYPE_GCS_SERVER not in
+                self.all_processes)
+        self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
+            process_info
+        ]
+
     def start_raylet(self, use_valgrind=False, use_profiler=False):
         """Start the raylet.
 
@@ -594,6 +610,7 @@ class Node:
         self.start_redis()
         self.start_monitor()
         self.start_raylet_monitor()
+        self.start_gcs_server()
         if self._ray_params.include_webui:
             self.start_dashboard(require_webui=True)
         elif self._ray_params.include_webui is None:
@@ -719,6 +736,16 @@ class Node:
         """
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_PLASMA_STORE, check_alive=check_alive)
+
+    def kill_gcs_server(self, check_alive=True):
+        """Kill the gcs server.
+
+        Args:
+            check_alive (bool): Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_GCS_SERVER, check_alive=check_alive)
 
     def kill_raylet(self, check_alive=True):
         """Kill the raylet.

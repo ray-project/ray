@@ -119,6 +119,7 @@ void GcsServer::SetGcsServerAddress() {
   boost::asio::ip::tcp::resolver::iterator end;  // End marker.
   while (iter != end) {
     boost::asio::ip::tcp::endpoint ep = *iter;
+    RAY_LOG(INFO) << "Address = " << ep.address().to_string();
     if (ep.address().is_v4() && !ep.address().is_loopback() &&
         !ep.address().is_multicast()) {
       primary_endpoint.address(ep.address());
