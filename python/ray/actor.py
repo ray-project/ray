@@ -551,7 +551,7 @@ class ActorClass:
                 else:
                     if kwargs:
                         raise Exception("Cross language remote actor creation "
-                                        "not support kwargs.")
+                                        "does not support kwargs.")
                     creation_args = args
             else:
                 function_signature = meta.method_signatures[function_name]
