@@ -315,7 +315,8 @@ class CSVLogger(Logger):
 class TBXLogger(Logger):
     """TensorBoardX Logger.
 
-    Automatically flattens nested dicts to show on TensorBoard:
+    Note that hparams will be written only after a trial has terminated.
+    This logger automatically flattens nested dicts to show on TensorBoard:
 
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
@@ -369,11 +370,11 @@ class TBXLogger(Logger):
             self._file_writer.close()
 
 
-DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
 
 class UnifiedLogger(Logger):
-    """Unified result logger for TensorBoard, rllab/viskit, plain json.
+    """Unified result logger for TensorBoardX, rllab/viskit, plain json.
 
     Arguments:
         config: Configuration passed to all logger creators.
