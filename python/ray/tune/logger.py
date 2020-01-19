@@ -374,7 +374,7 @@ DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
 
 class UnifiedLogger(Logger):
-    """Unified result logger for TensorBoardX, rllab/viskit, plain json.
+    """Unified result logger for TensorBoard, rllab/viskit, plain json.
 
     Arguments:
         config: Configuration passed to all logger creators.
