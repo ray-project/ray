@@ -74,14 +74,15 @@ MODEL_DEFAULTS = {
     "zero_mean": True,
 
     # === Options for custom models ===
-    # Name of a custom preprocessor to use
-    "custom_preprocessor": None,
     # Name of a custom model to use
     "custom_model": None,
     # Name of a custom action distribution to use
     "custom_action_dist": None,
     # Extra options to pass to the custom classes
     "custom_options": {},
+    # Custom preprocessors are deprecated. Please use a wrapper class around
+    # your environment instead to preprocess observations.
+    "custom_preprocessor": None,
 }
 # __sphinx_doc_end__
 # yapf: enable
@@ -364,6 +365,12 @@ class ModelCatalog:
         if options.get("custom_preprocessor"):
             preprocessor = options["custom_preprocessor"]
             logger.info("Using custom preprocessor {}".format(preprocessor))
+            logger.warning(
+                "DeprecationWarning: Custom preprocessors are deprecated, "
+                "since they sometimes conflict with the built-in "
+                "preprocessors for handling complex observation spaces. "
+                "Please use wrapper classes around your environment "
+                "instead of preprocessors.")
             prep = _global_registry.get(RLLIB_PREPROCESSOR, preprocessor)(
                 observation_space, options)
         else:
