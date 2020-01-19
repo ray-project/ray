@@ -72,15 +72,19 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ]
 
 extras = {
-    "rllib": [
-        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
-        "tabulate"
-    ],
     "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate"],
+    "tune": ["tabulate", "tensorboardX"],
 }
+
+extras["rllib"] = extras["tune"] + [
+    "pyyaml",
+    "gym[atari]",
+    "opencv-python-headless",
+    "lz4",
+    "scipy",
+]
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
