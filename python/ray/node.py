@@ -517,7 +517,7 @@ class Node:
         """Start the gcs server.
         """
         stdout_file, stderr_file = self.new_log_files("gcs_server")
-        process_info = ray.services.start_raylet_monitor(
+        process_info = ray.services.start_gcs_server(
             self._redis_address,
             stdout_file=stdout_file,
             stderr_file=stderr_file,

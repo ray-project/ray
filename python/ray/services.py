@@ -1098,10 +1098,10 @@ def start_dashboard(require_webui,
         return None, None
 
 def start_gcs_server(redis_address,
-                         stdout_file=None,
-                         stderr_file=None,
-                         redis_password=None,
-                         config=None):
+                     stdout_file=None,
+                     stderr_file=None,
+                     redis_password=None,
+                     config=None):
     """Start a gcs server.
 
     Args:
@@ -1122,7 +1122,7 @@ def start_gcs_server(redis_address,
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
     command = [
-        RAYLET_MONITOR_EXECUTABLE,
+        GCS_SERVER_EXECUTABLE,
         "--redis_address={}".format(gcs_ip_address),
         "--redis_port={}".format(gcs_port),
         "--config_list={}".format(config_str),
