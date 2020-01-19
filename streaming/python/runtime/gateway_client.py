@@ -27,17 +27,20 @@ class GatewayClient:
         ray.get(call)
 
     def create_py_stream_source(self, serialized_func):
+        assert isinstance(serialized_func, bytes)
         call = self._python_gateway_actor.createPythonStreamSource\
-            .remote(serialize(serialized_func))
+            .remote(serialized_func)
         return deserialize(ray.get(call))
 
     def create_py_func(self, serialized_func):
-        call = self._python_gateway_actor.createPyFunc.remote(serialize(serialized_func))
+        assert isinstance(serialized_func, bytes)
+        call = self._python_gateway_actor.createPyFunc.remote(serialized_func)
         return deserialize(ray.get(call))
 
     def create_py_partition(self, serialized_partition):
+        assert isinstance(serialized_partition, bytes)
         call = self._python_gateway_actor.createPyPartition\
-            .remote(serialize(serialized_partition))
+            .remote(serialized_partition)
         return deserialize(ray.get(call))
 
     def call_function(self, java_class, java_function, *args):
@@ -52,8 +55,8 @@ class GatewayClient:
 
 
 def serialize(obj):
-    return msgpack.packb(obj)
+    return msgpack.packb(obj, use_bin_type=True)
 
 
 def deserialize(data):
-    return msgpack.unpackb(data)
+    return msgpack.unpackb(data, raw=False)
