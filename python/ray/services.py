@@ -1097,6 +1097,7 @@ def start_dashboard(require_webui,
     else:
         return None, None
 
+
 def start_gcs_server(redis_address,
                      stdout_file=None,
                      stderr_file=None,
@@ -1135,6 +1136,7 @@ def start_gcs_server(redis_address,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
     return process_info
+
 
 def start_raylet(redis_address,
                  node_ip_address,
