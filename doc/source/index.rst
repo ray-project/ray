@@ -11,7 +11,6 @@ Ray
 
 **Ray is a fast and simple framework for building and running distributed applications.**
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -24,6 +23,9 @@ Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <ht
 
 .. _`on GitHub`: https://github.com/ray-project/ray
 .. _`RaySGD`: raysgd/raysgd.html
+
+.. attention:: If you're in the Bay Area, `RSVP here and come to our Ray meetup <https://www.meetup.com/Bay-Area-Ray-Meetup/events/267883815/>`_  in downtown SF on the evening of January 30!
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 
 Quick Start

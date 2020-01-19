@@ -535,11 +535,11 @@ The following fields will automatically show up on the console output, if provid
 TensorBoard
 -----------
 
-To visualize learning in tensorboard, install TensorFlow:
+To visualize learning in tensorboard, install TensorFlow or tensorboardX:
 
 .. code-block:: bash
 
-    $ pip install tensorflow
+    $ pip install tensorboardX # or pip install tensorflow
 
 Then, after you run a experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results. Note that if you running Ray on a remote cluster, you can forward the tensorboard port to your local machine through SSH using ``ssh -L 6006:localhost:6006 <address>``:
 
@@ -603,12 +603,10 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
-.. warning:: If you run into issues for TensorBoard logging, consider using the TensorBoardX Logger (``from ray.tune.logger import TBXLogger``)
-
 TBXLogger (TensorboardX)
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune provides a logger using `TensorBoardX <https://github.com/lanpa/tensorboardX>`_. You can install tensorboardX via ``pip install tensorboardX``. This logger automatically outputs loggers similar to the default TensorFlow logging format but is nice if you are undergoing a TF1 to TF2 transition. By default, it will log any scalar value provided via the result dictionary along with HParams information.
+Tune provides a logger using `TensorBoardX <https://github.com/lanpa/tensorboardX>`_. You can install tensorboardX via ``pip install tensorboardX`` or ``pip install 'ray[tune]'``. This logger automatically outputs loggers similar to using a default TensorFlow logging format. By default, it will log any scalar value provided via the result dictionary along with HParams information.
 
 .. code-block:: python
 
