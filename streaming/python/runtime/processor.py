@@ -91,8 +91,8 @@ class TwoInputProcessor(StreamingProcessor):
 
 def build_processor(operator_instance):
     operator_type = operator_instance.operator_type()
-    logger.info("Building StreamProcessor, operator type = {}, operator = {}.",
-                operator_type, operator_instance)
+    logger.info("Building StreamProcessor, operator type = {}, operator = {}.".format(
+                operator_type, operator_instance))
     if operator_type == OperatorType.SOURCE:
         return SourceProcessor(operator_instance)
     elif operator_type == OperatorType.ONE_INPUT:
