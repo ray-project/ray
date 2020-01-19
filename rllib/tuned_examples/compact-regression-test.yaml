@@ -3,31 +3,8 @@
 # inherently high variance, so you'll have to check to see if the
 # rewards reached seem reasonably in line with previous results.
 #
-# The reference results for 0.7.6 are as follows:
-# +----------------------------------------+------------+-----------+--------+------------------+-------------+----------+
-# | Trial name                             | status     | loc       |   iter |   total time (s) |   timesteps |   reward |
-# |----------------------------------------+------------+-----------+--------+------------------+-------------+----------|
-# | IMPALA_BreakoutNoFrameskip-v4_1acd2414 | TERMINATED | pid=32600 |    296 |          3606.77 |     7152000 |   296.42 |
-# | IMPALA_BreakoutNoFrameskip-v4_1acdd4ea | TERMINATED | pid=32604 |    296 |          3606.33 |     7096500 |   337.74 |
-# | IMPALA_BreakoutNoFrameskip-v4_1ace550a | TERMINATED | pid=32628 |    296 |          3605.84 |     7140000 |   353.77 |
-# | IMPALA_BreakoutNoFrameskip-v4_1acec238 | TERMINATED | pid=32592 |    296 |          3606.5  |     7111000 |   376.08 |
-# | PPO_BreakoutNoFrameskip-v4_1acf6b7a    | TERMINATED | pid=32581 |    606 |          3602.28 |     3030000 |    19.2  |
-# | PPO_BreakoutNoFrameskip-v4_1acff068    | TERMINATED | pid=32580 |    595 |          3602.06 |     2975000 |    26.39 |
-# | PPO_BreakoutNoFrameskip-v4_1ad08af0    | TERMINATED | pid=53836 |    594 |          3604.43 |     2970000 |    67.88 |
-# | PPO_BreakoutNoFrameskip-v4_1ad10ad4    | TERMINATED | pid=53869 |    594 |          3601.85 |     2970000 |    28.07 |
-# | APEX_BreakoutNoFrameskip-v4_1ad190f8   | TERMINATED | pid=32605 |    114 |          3622.9  |     4689280 |    30.86 |
-# | APEX_BreakoutNoFrameskip-v4_1ad24f34   | TERMINATED | pid=53855 |    114 |          3621.4  |     4519840 |    28.53 |
-# | APEX_BreakoutNoFrameskip-v4_1ad2d530   | TERMINATED | pid=53891 |    114 |          3618.97 |     4512000 |    31.59 |
-# | APEX_BreakoutNoFrameskip-v4_1ad34dc6   | TERMINATED | pid=53894 |    114 |          3626.85 |     4547360 |    26.49 |
-# | A2C_BreakoutNoFrameskip-v4_1ad40824    | TERMINATED | pid=59452 |    351 |          3607.43 |     3625500 |    29.32 |
-# | A2C_BreakoutNoFrameskip-v4_1ad47fac    | TERMINATED | pid=59422 |    351 |          3607.31 |     3625500 |    29.05 |
-# | A2C_BreakoutNoFrameskip-v4_1ad4e5c8    | TERMINATED | pid=59414 |    351 |          3607.11 |     3630000 |    32.25 |
-# | A2C_BreakoutNoFrameskip-v4_1ad5984c    | TERMINATED | pid=59199 |    351 |          3610.29 |     3631500 |    26.82 |
-# | DQN_BreakoutNoFrameskip-v4_1ad621cc    | TERMINATED | pid=53851 |     24 |          3693.75 |      240000 |    12.89 |
-# | DQN_BreakoutNoFrameskip-v4_1ad69cb0    | TERMINATED | pid=53860 |     24 |          3681.93 |      240000 |    14.72 |
-# | DQN_BreakoutNoFrameskip-v4_1ad75c5e    | TERMINATED | pid=53864 |     24 |          3662.21 |      240000 |    13.84 |
-# | DQN_BreakoutNoFrameskip-v4_1ad7d42c    | TERMINATED | pid=53885 |     24 |          3697.62 |      240000 |    11.22 |
-# +----------------------------------------+------------+-----------+--------+------------------+-------------+----------+
+# You can find the reference results here:
+# https://github.com/ray-project/ray/tree/master/doc/dev/release_logs
 atari-impala:
     env: BreakoutNoFrameskip-v4
     run: IMPALA

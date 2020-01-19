@@ -1,4 +1,3 @@
-import glob
 from itertools import chain
 import os
 import re
@@ -56,12 +55,10 @@ ray_project_files = [
 ]
 
 ray_dashboard_files = [
-    "ray/dashboard/client/build/favicon.ico",
-    "ray/dashboard/client/build/index.html",
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
+    for filename in filenames
 ]
-for dirname in ["css", "js", "media"]:
-    ray_dashboard_files += glob.glob(
-        "ray/dashboard/client/build/static/{}/*".format(dirname))
 
 optional_ray_files += ray_autoscaler_files
 optional_ray_files += ray_project_files

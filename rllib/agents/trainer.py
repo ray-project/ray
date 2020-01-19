@@ -146,6 +146,13 @@ COMMON_CONFIG = {
     # Log system resource metrics to results. This requires `psutil` to be
     # installed for sys stats, and `gputil` for GPU metrics.
     "log_sys_usage": True,
+
+    # === Framework Settings ===
+    # Use PyTorch (instead of tf). If using `rllib train`, this can also be
+    # enabled with the `--torch` flag.
+    # NOTE: Some agents may not support `torch` yet and throw an error.
+    "use_pytorch": False,
+
     # Enable TF eager execution (TF policies only). If using `rllib train`,
     # this can also be enabled with the `--eager` flag.
     "eager": False,

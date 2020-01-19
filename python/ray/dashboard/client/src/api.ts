@@ -87,12 +87,40 @@ export interface NodeInfoResponse {
 export const getNodeInfo = () => get<NodeInfoResponse>("/api/node_info", {});
 
 export interface RayletInfoResponse {
-  [ip: string]: {
-    extraInfo?: string;
-    workersStats: {
-      isDriver?: boolean;
-      pid: number;
-    }[];
+  nodes: {
+    [ip: string]: {
+      extraInfo?: string;
+      workersStats: {
+        pid: number;
+        isDriver?: boolean;
+      }[];
+    };
+  };
+  actors: {
+    [actorId: string]:
+      | {
+          actorId: string;
+          children: RayletInfoResponse["actors"];
+          ipAddress: string;
+          isDirectCall: boolean;
+          jobId: string;
+          numLocalObjects: number;
+          numObjectIdsInScope: number;
+          port: number;
+          state: 0 | 1 | 2;
+          taskQueueLength: number;
+          usedObjectStoreMemory: number;
+          usedResources: { [key: string]: number };
+          currentTaskDesc?: string;
+          currentTaskFuncDesc?: string[];
+          numPendingTasks?: number;
+          webuiDisplay?: string;
+        }
+      | {
+          actorId: string;
+          requiredResources: { [key: string]: number };
+          state: -1;
+        };
   };
 }
 

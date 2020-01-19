@@ -40,7 +40,7 @@ public class JobGraph implements Serializable {
     StringBuilder digraph = new StringBuilder();
     digraph.append("digraph ").append(jobName + " ").append(" {");
 
-    for (JobEdge jobEdge: jobEdgeList) {
+    for (JobEdge jobEdge : jobEdgeList) {
       String srcNode = null;
       String targetNode = null;
       for (JobVertex jobVertex : jobVertexList) {

@@ -620,6 +620,30 @@ Status RedisStatsInfoAccessor::AsyncAddProfileData(
   return profile_table.Append(JobID::Nil(), UniqueID::FromRandom(), data_ptr, on_done);
 }
 
+RedisWorkerInfoAccessor::RedisWorkerInfoAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl),
+      worker_failure_sub_executor_(client_impl->worker_failure_table()) {}
+
+Status RedisWorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
+    const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  return worker_failure_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
+}
+
+Status RedisWorkerInfoAccessor::AsyncReportWorkerFailure(
+    const std::shared_ptr<WorkerFailureData> &data_ptr, const StatusCallback &callback) {
+  WorkerFailureTable::WriteCallback on_done = nullptr;
+  if (callback != nullptr) {
+    on_done = [callback](RedisGcsClient *client, const WorkerID &id,
+                         const WorkerFailureData &data) { callback(Status::OK()); };
+  }
+
+  WorkerID worker_id = WorkerID::FromBinary(data_ptr->worker_address().worker_id());
+  WorkerFailureTable &worker_failure_table = client_impl_->worker_failure_table();
+  return worker_failure_table.Add(JobID::Nil(), worker_id, data_ptr, on_done);
+}
+
 }  // namespace gcs
 
 }  // namespace ray

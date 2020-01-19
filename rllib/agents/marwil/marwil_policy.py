@@ -134,6 +134,7 @@ class MARWILPolicy(MARWILPostprocessing, TFPolicy):
             self,
             observation_space,
             action_space,
+            self.config,
             self.sess,
             obs_input=self.obs_t,
             action_sampler=self.output_actions,

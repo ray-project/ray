@@ -322,6 +322,30 @@ class RedisStatsInfoAccessor : public StatsInfoAccessor {
   RedisGcsClient *client_impl_{nullptr};
 };
 
+/// \class RedisWorkerInfoAccessor
+/// RedisWorkerInfoAccessor is an implementation of `WorkerInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
+ public:
+  explicit RedisWorkerInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisWorkerInfoAccessor() = default;
+
+  Status AsyncSubscribeToWorkerFailures(
+      const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
+                                  const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
+      WorkerFailureSubscriptionExecutor;
+  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
+};
+
 }  // namespace gcs
 
 }  // namespace ray
