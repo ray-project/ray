@@ -139,7 +139,7 @@ class TaskManager : public TaskFinisherInterface {
   /// the worker fails. We could avoid this by either not caching the full
   /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
   /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
-  absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
+  absl::flat_hash_map<TaskID, std::pair<std::shared_ptr<rpc::PushTaskRequest>, int>> pending_tasks_
       GUARDED_BY(mu_);
 
   /// Optional shutdown hook to call when pending tasks all finish.

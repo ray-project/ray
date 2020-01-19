@@ -69,7 +69,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.first;
+    spec = TaskSpecification(it->second.first);
     pending_tasks_.erase(it);
   }
 
@@ -119,7 +119,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    spec = it->second.first;
+    spec = TaskSpecification(it->second.first);
     num_retries_left = it->second.second;
     if (num_retries_left == 0) {
       pending_tasks_.erase(it);
@@ -134,7 +134,11 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   if (num_retries_left > 0) {
     RAY_LOG(ERROR) << num_retries_left << " retries left for task " << spec.TaskId()
                    << ", attempting to resubmit.";
-    retry_task_callback_(spec);
+    // Copy the task spec because before retrying the task, because when it's
+    // submitted rpc::TaskSpec will be moved into PushTaskRequest, so we cannot
+    // pass the spec stored in pending_tasks_ otherwise it will become invalid.
+    TaskSpecification new_spec(spec.GetMessage());
+    retry_task_callback_(new_spec);
   } else {
     // Throttled logging of task failure errors.
     {
@@ -217,7 +221,7 @@ TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
   auto it = pending_tasks_.find(task_id);
   RAY_CHECK(it != pending_tasks_.end());
-  return it->second.first;
+  return TaskSpecification(it->second.first);
 }
 
 }  // namespace ray
