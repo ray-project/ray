@@ -325,7 +325,7 @@ class TBXLogger(Logger):
         try:
             from tensorboardX import SummaryWriter
         except ImportError:
-            logger.error("pip install tensorboardX to see TensorBoard files.")
+            logger.error("pip install 'ray[tune]' to see TensorBoard files.")
             raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None

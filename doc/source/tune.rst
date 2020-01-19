@@ -38,7 +38,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune] torch torchvision filelock
+    $ pip install 'ray[tune]' torch torchvision
 
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.
