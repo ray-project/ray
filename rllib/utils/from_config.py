@@ -126,7 +126,7 @@ def from_config(cls, config=None, **kwargs):
             constructor = type_
         # A string: Filename or a python module+class or a json/yaml str.
         elif isinstance(type_, str):
-            if re.search(r'\.(yaml|yml|json)$', type_):
+            if re.search("\.(yaml|yml|json)$", type_):
                 return from_file(cls, type_, *ctor_args, **ctor_kwargs)
             # Try un-json/un-yaml'ing the string into a dict.
             obj = yaml.load(type_)
@@ -139,7 +139,7 @@ def from_config(cls, config=None, **kwargs):
             else:
                 return obj
 
-            if type_.find('.') != -1:
+            if type_.find(".") != -1:
                 module_name, function_name = type_.rsplit(".", 1)
                 try:
                     module = importlib.import_module(module_name)
@@ -161,7 +161,7 @@ def from_config(cls, config=None, **kwargs):
         object_ = constructor(*ctor_args, **ctor_kwargs)
     # Catch attempts to construct from an abstract class and return None.
     except TypeError as e:
-        if re.match(r'Can\'t instantiate abstract class', e.args[0]):
+        if re.match("Can't instantiate abstract class", e.args[0]):
             return None
         raise e  # Re-raise
     # No sanity check for fake (lambda)-"constructors".
@@ -187,8 +187,8 @@ def from_file(cls, filename, *args, **kwargs):
     if not os.path.isfile(path):
         raise FileNotFoundError("File '{}' not found!".format(filename))
 
-    with open(path, 'rt') as fp:
-        if path.endswith('.yaml') or path.endswith('.yml'):
+    with open(path, "rt") as fp:
+        if path.endswith(".yaml") or path.endswith(".yml"):
             config = yaml.load(fp)
         else:
             config = json.load(fp)
@@ -203,13 +203,13 @@ def lookup_type(cls, type_):
             (
                 type_ in cls.__type_registry__ or (
                     isinstance(type_, str) and
-                    re.sub(r'[\W_]', '', type_.lower())
+                    re.sub("[\W_]", "", type_.lower())
                     in cls.__type_registry__
                 )
             ):
         available_class_for_type = cls.__type_registry__.get(type_)
         if available_class_for_type is None:
             available_class_for_type = \
-                cls.__type_registry__[re.sub(r'[\W_]', '', type_.lower())]
+                cls.__type_registry__[re.sub("[\W_]", "", type_.lower())]
         return available_class_for_type
     return None
