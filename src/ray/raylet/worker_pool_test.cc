@@ -241,7 +241,10 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
 TEST_F(WorkerPoolTest, IgnoreMaximumStartupConcurrencyDuringStartup) {
   int num_initial_workers = MAXIMUM_STARTUP_CONCURRENCY * 2;
   worker_pool_.Start({{ray::Language::PYTHON, num_initial_workers}});
-  ASSERT_EQ(worker_pool_.NumWorkersStarting(), num_initial_workers);
+  ASSERT_EQ(
+      worker_pool_.NumWorkersStarting(),
+      std::ceil(static_cast<double>(num_initial_workers) / NUM_WORKERS_PER_PROCESS) *
+          NUM_WORKERS_PER_PROCESS);
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
