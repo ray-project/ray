@@ -64,8 +64,8 @@ class DynamicTFPolicy(TFPolicy):
                 TF fetches given the policy and batch input tensors
             grad_stats_fn (func): optional function that returns a dict of
                 TF fetches given the policy and loss gradient tensors
-            before_loss_init (func): optional function to run prior to loss
-                init that takes the same arguments as __init__
+            before_loss_init (Optional[callable]): Optional function to run
+                prior to loss init that takes the same arguments as __init__.
             make_model (func): optional function that returns a ModelV2 object
                 given (policy, obs_space, action_space, config).
                 All policy variables should be created in this function. If not
@@ -74,7 +74,7 @@ class DynamicTFPolicy(TFPolicy):
                 tuple of action and action logp tensors given
                 (policy, model, input_dict, obs_space, action_space, config).
                 If not specified, a default action distribution will be used.
-            existing_inputs (OrderedDict): when copying a policy, this
+            existing_inputs (OrderedDict): When copying a policy, this
                 specifies an existing dict of placeholders to use instead of
                 defining new ones
             existing_model (ModelV2): when copying a policy, this specifies
@@ -176,6 +176,7 @@ class DynamicTFPolicy(TFPolicy):
             self,
             obs_space,
             action_space,
+            config,
             sess,
             obs_input=obs,
             action_sampler=action_sampler,
@@ -191,8 +192,10 @@ class DynamicTFPolicy(TFPolicy):
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req)
 
-        # Phase 2 init
-        before_loss_init(self, obs_space, action_space, config)
+        # Phase 2 init.
+        if before_loss_init is not None:
+            before_loss_init(self, obs_space, action_space, config)
+
         if not existing_inputs:
             self._initialize_loss()
 
@@ -247,12 +250,6 @@ class DynamicTFPolicy(TFPolicy):
             return self.model.get_initial_state()
         else:
             return []
-
-    def is_recurrent(self):
-        return len(self._state_in) > 0
-
-    def num_state_tensors(self):
-        return len(self._state_in)
 
     def _initialize_loss(self):
         def fake_array(tensor):

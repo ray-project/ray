@@ -2,6 +2,7 @@ package org.ray.streaming.api.stream;
 
 
 import org.ray.streaming.api.context.StreamingContext;
+import org.ray.streaming.api.function.impl.FilterFunction;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
 import org.ray.streaming.api.function.impl.KeyFunction;
 import org.ray.streaming.api.function.impl.MapFunction;
@@ -9,6 +10,7 @@ import org.ray.streaming.api.function.impl.SinkFunction;
 import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.api.partition.impl.BroadcastPartition;
 import org.ray.streaming.operator.StreamOperator;
+import org.ray.streaming.operator.impl.FilterOperator;
 import org.ray.streaming.operator.impl.FlatMapOperator;
 import org.ray.streaming.operator.impl.KeyByOperator;
 import org.ray.streaming.operator.impl.MapOperator;
@@ -51,6 +53,10 @@ public class DataStream<T> extends Stream<T> {
    */
   public <R> DataStream<R> flatMap(FlatMapFunction<T, R> flatMapFunction) {
     return new DataStream(this, new FlatMapOperator(flatMapFunction));
+  }
+
+  public DataStream<T> filter(FilterFunction<T> filterFunction) {
+    return new DataStream<T>(this, new FilterOperator(filterFunction));
   }
 
   /**

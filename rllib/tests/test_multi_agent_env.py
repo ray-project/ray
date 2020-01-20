@@ -438,13 +438,13 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"]["t"].tolist()[:10],
                          [4, 9, 14, 19, 24, 5, 10, 15, 20, 25])
 
-    def testCustomRNNStateValues(self):
+    def test_custom_rnn_state_values(self):
         h = {"some": {"arbitrary": "structure", "here": [1, 2, 3]}}
 
         class StatefulPolicy(Policy):
             def compute_actions(self,
                                 obs_batch,
-                                state_batches,
+                                state_batches=None,
                                 prev_action_batch=None,
                                 prev_reward_batch=None,
                                 episodes=None,
@@ -465,7 +465,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch["state_in_0"][1], h)
         self.assertEqual(batch["state_out_0"][1], h)
 
-    def testReturningModelBasedRolloutsData(self):
+    def test_returning_model_based_rollouts_data(self):
         class ModelBasedPolicy(PGTFPolicy):
             def compute_actions(self,
                                 obs_batch,
@@ -512,7 +512,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         self.assertEqual(batch.policy_batches["p0"].count, 10)
         self.assertEqual(batch.policy_batches["p1"].count, 25)
 
-    def testTrainMultiCartpoleSinglePolicy(self):
+    def test_train_multi_cartpole_single_policy(self):
         n = 10
         register_env("multi_cartpole", lambda _: MultiCartpole(n))
         pg = PGTrainer(env="multi_cartpole", config={"num_workers": 0})
@@ -524,7 +524,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return
         raise Exception("failed to improve reward")
 
-    def testTrainMultiCartpoleMultiPolicy(self):
+    def test_train_multi_cartpole_multi_policy(self):
         n = 10
         register_env("multi_cartpole", lambda _: MultiCartpole(n))
         single_env = gym.make("CartPole-v0")
@@ -625,16 +625,16 @@ class TestMultiAgentEnv(unittest.TestCase):
         print(result)
         raise Exception("failed to improve reward")
 
-    def testMultiAgentSyncOptimizer(self):
+    def test_multi_agent_sync_optimizer(self):
         self._testWithOptimizer(SyncSamplesOptimizer)
 
-    def testMultiAgentAsyncGradientsOptimizer(self):
+    def test_multi_agent_async_gradients_optimizer(self):
         self._testWithOptimizer(AsyncGradientsOptimizer)
 
-    def testMultiAgentReplayOptimizer(self):
+    def test_multi_agent_replay_optimizer(self):
         self._testWithOptimizer(SyncReplayOptimizer)
 
-    def testTrainMultiCartpoleManyPolicies(self):
+    def test_train_multi_cartpole_many_policies(self):
         n = 20
         env = gym.make("CartPole-v0")
         act_space = env.action_space

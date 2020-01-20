@@ -79,6 +79,10 @@ def measures_to_dict(measures):
     return measures_dict
 
 
+def b64_decode(reply):
+    return b64decode(reply).decode("utf-8")
+
+
 class Dashboard(object):
     """A dashboard process for monitoring Ray nodes.
 
@@ -127,6 +131,12 @@ class Dashboard(object):
                 os.path.join(
                     os.path.dirname(os.path.abspath(__file__)),
                     "client/build/index.html"))
+
+        async def get_favicon(req) -> aiohttp.web.Response:
+            return aiohttp.web.FileResponse(
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "client/build/favicon.ico"))
 
         async def json_response(result=None, error=None,
                                 ts=None) -> aiohttp.web.Response:
@@ -209,7 +219,7 @@ class Dashboard(object):
                         format_resource(resource_name,
                                         total_resource - available_resource),
                         format_resource(resource_name, total_resource)))
-                data["extraInfo"] = ",".join(extra_info_strings) + "\n"
+                data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
                 if os.environ.get("RAY_DASHBOARD_DEBUG"):
                     # process object store info
                     extra_info_strings = []
@@ -233,8 +243,8 @@ class Dashboard(object):
                         to_print.append(line +
                                         (max_line_length - len(line)) * " ")
                     data["extraInfo"] += "\n" + "\n".join(to_print)
-            D["actorInfo"] = actor_tree
-            return await json_response(result=D)
+            result = {"nodes": D, "actors": actor_tree}
+            return await json_response(result=result)
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -249,17 +259,23 @@ class Dashboard(object):
             return await json_response(result=result)
 
         self.app.router.add_get("/", get_index)
+        self.app.router.add_get("/favicon.ico", get_favicon)
 
-        static_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "client/build/static")
-        if not os.path.isdir(static_dir):
+        build_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "client/build")
+        if not os.path.isdir(build_dir):
             raise ValueError(
-                "Dashboard static asset directory not found at '{}'. If "
-                "installing from source, please follow the additional steps "
-                "required to build the dashboard: "
-                "cd python/ray/dashboard/client && npm ci && "
-                "npm run build".format(static_dir))
+                "Dashboard build directory not found at '{}'. If installing "
+                "from source, please follow the additional steps required to "
+                "build the dashboard: "
+                "cd python/ray/dashboard/client && npm ci && npm run build"
+                .format(build_dir))
+
+        static_dir = os.path.join(build_dir, "static")
         self.app.router.add_static("/static", static_dir)
+
+        speedscope_dir = os.path.join(build_dir, "speedscope-1.5.3")
+        self.app.router.add_static("/speedscope", speedscope_dir)
 
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
@@ -300,6 +316,7 @@ class NodeStats(threading.Thread):
             "ipAddress": "",
             "isDirectCall": False,
             "jobId": "",
+            "numExecutedTasks": 0,
             "numLocalObjects": 0,
             "numObjectIdsInScope": 0,
             "port": 0,
@@ -364,6 +381,7 @@ class NodeStats(threading.Thread):
             }
 
     def get_actor_tree(self, workers_info, infeasible_tasks) -> Dict:
+        now = time.time()
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
         child_to_parent = {}
@@ -382,13 +400,17 @@ class NodeStats(threading.Thread):
                     addr = (core_worker_stats["ipAddress"],
                             str(core_worker_stats["port"]))
                     if addr in self._addr_to_actor_id:
-                        actor_id = self._addr_to_actor_id[addr]
-                        if "currentTaskDesc" in core_worker_stats:
-                            core_worker_stats.pop("currentTaskDesc")
-                        if "numPendingTasks" in core_worker_stats:
-                            core_worker_stats.pop("numPendingTasks")
+                        actor_info = flattened_tree[self._addr_to_actor_id[
+                            addr]]
+                        if "currentTaskFuncDesc" in core_worker_stats:
+                            core_worker_stats["currentTaskFuncDesc"] = list(
+                                map(b64_decode,
+                                    core_worker_stats["currentTaskFuncDesc"]))
                         format_reply(core_worker_stats)
-                        flattened_tree[actor_id].update(core_worker_stats)
+                        actor_info.update(core_worker_stats)
+                        actor_info["averageTaskExecutionSpeed"] = round(
+                            actor_info["numExecutedTasks"] /
+                            (now - actor_info["timestamp"] / 1000), 2)
 
             for infeasible_task in infeasible_tasks:
                 actor_id = ray.utils.binary_to_hex(
@@ -400,8 +422,7 @@ class NodeStats(threading.Thread):
                 child_to_parent[actor_id] = caller_id
                 infeasible_task["state"] = -1
                 infeasible_task["functionDescriptor"] = list(
-                    map(lambda desc: b64decode(desc).decode("utf-8"),
-                        infeasible_task["functionDescriptor"]))
+                    map(b64_decode, infeasible_task["functionDescriptor"]))
                 format_reply(infeasible_tasks)
                 flattened_tree[actor_id] = infeasible_task
 
@@ -456,6 +477,7 @@ class NodeStats(threading.Thread):
                     "jobId": actor_data["JobID"],
                     "state": actor_data["State"],
                     "isDirectCall": actor_data["IsDirectCall"],
+                    "timestamp": actor_data["Timestamp"]
                 }
 
         for x in p.listen():
@@ -499,6 +521,7 @@ class NodeStats(threading.Thread):
                                 actor_data.job_id),
                             "state": actor_data.state,
                             "isDirectCall": actor_data.is_direct_call,
+                            "timestamp": actor_data.timestamp
                         }
                     else:
                         data = json.loads(ray.utils.decode(data))

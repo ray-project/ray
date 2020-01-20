@@ -618,9 +618,26 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
 Eager Mode
 ~~~~~~~~~~
 
-Policies built with ``build_tf_policy`` (most of the reference algorithms are) can be run in eager mode by setting the ``"eager": True`` / ``"eager_tracing": True`` config options or using ``rllib train --eager [--trace]``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+Policies built with ``build_tf_policy`` (most of the reference algorithms are)
+can be run in eager mode by setting the
+``"eager": True`` / ``"eager_tracing": True`` config options or using
+``rllib train --eager [--trace]``.
+This will tell RLlib to execute the model forward pass, action distribution,
+loss, and stats functions in eager mode.
 
-Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it can be slower than graph mode unless tracing is enabled.
+Eager mode makes debugging much easier, since you can now use line-by-line
+debugging with breakpoints or Python ``print()`` to inspect
+intermediate tensor values.
+However, eager can be slower than graph mode unless tracing is enabled.
+
+Using PyTorch
+~~~~~~~~~~~~~
+
+Trainers that have an implemented TorchPolicy, will allow you to run
+`rllib train` using the the command line ``--torch`` flag.
+Algorithms that do not have a torch version yet will complain with an error in
+this case.
+
 
 Episode Traces
 ~~~~~~~~~~~~~~

@@ -590,7 +590,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool connected_ = false;
 
   // Client to the GCS shared by core worker interfaces.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
@@ -660,6 +660,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
+
+  /// Number of executed tasks.
+  std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
