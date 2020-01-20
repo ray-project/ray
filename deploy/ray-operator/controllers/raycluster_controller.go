@@ -18,7 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -29,45 +28,14 @@ import (
 
 var log = logf.Log.WithName("RayCluster-Controller")
 
-// Add creates a new RayCluster Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
-// and start it when the Manager Started.
-func Add(mgr manager.Manager) error {
-	return add(mgr, newReconciler(mgr))
-}
-
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	return &RayClusterReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme()}
 }
 
-// add creates a new Controller to mgr with r as the reconcile.Reconciler
-func add(mgr manager.Manager, r reconcile.Reconciler) error {
-	// Create a new controller
-	c, err := controller.New("ray-operator-RayCluster-controller", mgr, controller.Options{Reconciler: r})
-	if err != nil {
-		return err
-	}
-
-	// Watch for changes to RayCluster
-	err = c.Watch(&source.Kind{Type: &rayiov1alpha1.RayCluster{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
-	}
-
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
-		IsController: true,
-		OwnerType:    &rayiov1alpha1.RayCluster{},
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 var _ reconcile.Reconciler = &RayClusterReconciler{}
 
-// ReconcileRayCluster reconciles a RayCluster object
+// RayClusterReconciler reconciles a RayCluster object
 type RayClusterReconciler struct {
 	client.Client
 	Log    logr.Logger
@@ -237,9 +205,14 @@ func (r *RayClusterReconciler) buildPods(instance *rayiov1alpha1.RayCluster) []c
 	return pods
 }
 
+// SetupWithManager builds the reconciler.
 func (r *RayClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&rayiov1alpha1.RayCluster{}).
+		Watches(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+			IsController: true,
+			OwnerType:    &rayiov1alpha1.RayCluster{},
+		}).
 		Complete(r)
 }
 
