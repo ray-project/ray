@@ -1,50 +1,90 @@
 Fault Tolerance
 ===============
 
-This document describes the handling of failures in Ray.
+This document describes how Ray handles machine and process failures.
 
-Machine and Process Failures
-----------------------------
+Tasks
+-----
 
-Each **raylet** (the scheduler process) sends heartbeats to a **monitor**
-process. If the monitor does not receive any heartbeats from a given raylet for
-some period of time (about ten seconds), then it will mark that process as dead.
+When a worker is executing a task, if the worker dies unexpectedly, either
+because the process crashed or because the machine failed, Ray will rerun
+the task (after a delay of several seconds) until either the task succeeds
+or the maximum number of retries is exceeded. The default number of retries
+is 4.
 
-Lost Objects
-------------
+You can experiment with this behavior by running the following code.
 
-If an object is needed but is lost or was never created, then the task that
-created the object will be re-executed to create the object. If necessary, tasks
-needed to create the input arguments to the task being re-executed will also be
-re-executed. This is the standard *lineage-based fault tolerance* strategy used
-by other systems like Spark.
+.. code-block:: python
+
+    import numpy as np
+    import os
+    import ray
+    import time
+
+    ray.init(ignore_reinit_error=True)
+
+    @ray.remote(max_retries=1)
+    def potentially_fail(failure_probability):
+        time.sleep(0.2)
+        if np.random.random() < failure_probability:
+            os._exit(0)
+        return 0
+
+    for _ in range(3):
+        try:
+            # If this task crashes, Ray will retry it up to one additional
+            # time. If either of the attempts succeeds, the call to ray.get
+            # below will return normally. Otherwise, it will raise an
+            # exception.
+            ray.get(potentially_fail.remote(0.5))
+            print('SUCCESS')
+        except ray.exceptions.RayWorkerError:
+            print('FAILURE')
+
 
 Actors
 ------
 
-When an actor dies (either because the actor process crashed or because the node
-that the actor was on died), by default any attempt to get an object from that
-actor that cannot be created will raise an exception. Subsequent releases will
-include an option for automatically restarting actors.
+If an actor process crashes unexpectedly, Ray will attempt to reconstruct the
+actor process up to a maximum number of times. This value can be specified with
+the ``max_reconstructions`` keyword, which by default is ``0``. If the maximum
+number of reconstructions has been used up, then subsequent actor methods will
+raise exceptions.
 
-Current Limitations
--------------------
+When an actor is reconstructed, its state will be recreated by rerunning its
+constructor.
 
-At the moment, Ray does not handle all failure scenarios. We are working on
-addressing these known problems.
+You can experiment with this behavior by running the following code.
 
-Process Failures
-~~~~~~~~~~~~~~~~
+.. code-block:: python
 
-1. Ray does not recover from the failure of any of the following processes:
-   any of the Redis servers and the monitor process.
-2. If a driver fails, that driver will not be restarted and the job will not
-   complete.
+    import os
+    import ray
+    import time
 
-Lost Objects
-~~~~~~~~~~~~
+    ray.init(ignore_reinit_error=True)
 
-1. If an object is constructed by a call to ``ray.put`` on the driver, is then
-   evicted, and is later needed, Ray will not reconstruct this object.
-2. If an object is constructed by an actor method, is then evicted, and is later
-   needed, Ray will not reconstruct this object.
+    @ray.remote(max_reconstructions=5)
+    class Actor:
+        def __init__(self):
+            self.counter = 0
+
+        def increment_and_possibly_fail(self):
+            self.counter += 1
+            time.sleep(0.2)
+            if self.counter == 10:
+                os._exit(0)
+            return self.counter
+
+    actor = Actor.remote()
+
+    # The actor will be reconstructed up to 5 times. After that, methods will
+    # raise exceptions. The actor is reconstructed by rerunning its
+    # constructor. Methods that were executing when the actor died will also
+    # raise exceptions.
+    for _ in range(100):
+        try:
+            counter = ray.get(actor.increment_and_possibly_fail.remote())
+            print(counter)
+        except ray.exceptions.RayActorError:
+            print('FAILURE')

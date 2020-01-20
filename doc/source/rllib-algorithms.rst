@@ -213,7 +213,7 @@ Policy Gradients
 
     Policy gradients architecture (same as A2C)
 
-Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/cartpole-pg.yaml>`__
+Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/cartpole-pg-tf.yaml>`__
 
 **PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -274,9 +274,17 @@ Soft Actor Critic (SAC)
 
     SAC architecture (same as DQN)
 
-RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, and currently has no support for non-continuous action distributions. It is also currently *experimental*.
+RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs. Note that SAC has two fields to configure for custom models: ``policy_model`` and ``Q_model``, and currently has no support for non-continuous action distributions.
 
-Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/pendulum-sac.yaml>`__
+Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/pendulum-sac.yaml>`__, `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/halfcheetah-sac.yaml>`__
+
+**MuJoCo results @3M steps:** `more details <https://github.com/ray-project/rl-experiments>`__
+
+=============  ==========  ===================
+MuJoCo env     RLlib SAC   Haarnoja et al SAC
+=============  ==========  ===================
+HalfCheetah    13000       ~15000
+=============  ==========  ===================
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -340,7 +348,7 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 
 Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 ---------------------------------------------------------------
-`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a specialized multi-agent algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `wsjeon/maddpg-rllib <https://github.com/wsjeon/maddpg-rllib>`__ for examples and more information.
+`[paper] <https://arxiv.org/abs/1706.02275>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/contrib/maddpg/maddpg.py>`__ MADDPG is a specialized multi-agent algorithm. Code here is adapted from https://github.com/openai/maddpg to integrate with RLlib multi-agent APIs. Please check `justinkterry/maddpg-rllib <https://github.com/justinkterry/maddpg-rllib>`__ for examples and more information.
 
 **MADDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 

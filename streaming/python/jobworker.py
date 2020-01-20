@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import pickle
 import threading
@@ -16,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 @ray.remote
-class JobWorker(object):
+class JobWorker:
     """A streaming job worker.
 
     Attributes:

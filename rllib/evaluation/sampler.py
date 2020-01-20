@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict, namedtuple
 import logging
 import numpy as np
@@ -31,7 +27,7 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
 ])
 
 
-class PerfStats(object):
+class PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
     def __init__(self):

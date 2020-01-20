@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 from ray.rllib.agents.trainer import with_common_config
@@ -146,6 +142,10 @@ def check_config_and_setup_param_noise(config):
     adds the necessary callbacks to support parameter space noise exploration.
     """
 
+    # PyTorch check.
+    if config["use_pytorch"]:
+        raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
+
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["sample_batch_size"],
                               config.get("n_step", 1))
@@ -275,7 +275,7 @@ def collect_metrics(trainer):
 
 
 def disable_exploration(trainer):
-    trainer.evaluation_workers.local_worker().foreach_policy(
+    trainer.evaluation_workers.local_worker().foreach_trainable_policy(
         lambda p, _: p.set_epsilon(0))
 
 

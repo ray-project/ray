@@ -408,8 +408,8 @@ Status raylet::RayletClient::ReportActiveObjectIDs(
 
 Status raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
-    const rpc::ClientCallback<rpc::WorkerLeaseReply> &callback) {
-  rpc::WorkerLeaseRequest request;
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
+  rpc::RequestWorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
   return grpc_client_->RequestWorkerLease(request, callback);
 }
@@ -426,6 +426,16 @@ Status raylet::RayletClient::ReturnWorker(int worker_port, const WorkerID &worke
           RAY_LOG(INFO) << "Error returning worker: " << status;
         }
       });
+}
+
+Status raylet::RayletClient::PinObjectIDs(const rpc::Address &caller_address,
+                                          const std::vector<ObjectID> &object_ids) {
+  rpc::PinObjectIDsRequest request;
+  request.mutable_owner_address()->CopyFrom(caller_address);
+  for (const ObjectID &object_id : object_ids) {
+    request.add_object_ids(object_id.Binary());
+  }
+  return grpc_client_->PinObjectIDs(request, nullptr);
 }
 
 }  // namespace ray

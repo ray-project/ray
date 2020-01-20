@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 import ray
@@ -23,7 +19,7 @@ logger = logging.getLogger(__name__)
 BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
-class PPOLoss(object):
+class PPOLoss:
     def __init__(self,
                  action_space,
                  dist_class,
@@ -211,7 +207,7 @@ def clip_gradients(policy, optimizer, loss):
         return optimizer.compute_gradients(loss, variables)
 
 
-class KLCoeffMixin(object):
+class KLCoeffMixin:
     def __init__(self, config):
         # KL Coefficient
         self.kl_coeff_val = config["kl_coeff"]
@@ -232,7 +228,7 @@ class KLCoeffMixin(object):
         return self.kl_coeff_val
 
 
-class ValueNetworkMixin(object):
+class ValueNetworkMixin:
     def __init__(self, obs_space, action_space, config):
         if config["use_gae"]:
 

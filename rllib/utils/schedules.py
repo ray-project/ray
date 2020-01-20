@@ -7,18 +7,15 @@ time throughout the execution of the algorithm, such as:
 Each schedule has a function `value(t)` which returns the current value
 of the parameter given the timestep t of the optimization procedure.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 
-class Schedule(object):
+class Schedule:
     def value(self, t):
         """Value of the schedule at time t"""
         raise NotImplementedError()
 
 
-class ConstantSchedule(object):
+class ConstantSchedule:
     def __init__(self, value):
         """Value remains constant over time.
 
@@ -38,7 +35,7 @@ def linear_interpolation(l, r, alpha):
     return l + alpha * (r - l)
 
 
-class PiecewiseSchedule(object):
+class PiecewiseSchedule:
     def __init__(self,
                  endpoints,
                  interpolation=linear_interpolation,
@@ -82,7 +79,7 @@ class PiecewiseSchedule(object):
         return self._outside_value
 
 
-class LinearSchedule(object):
+class LinearSchedule:
     def __init__(self, schedule_timesteps, final_p, initial_p=1.0):
         """Linear interpolation between initial_p and final_p over
         schedule_timesteps. After this many timesteps pass final_p is

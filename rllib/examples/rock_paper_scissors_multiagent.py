@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """A simple multi-agent env with two agents playing rock paper scissors.
 
 This demonstrates running the following policies in competition:
@@ -15,7 +12,7 @@ from gym.spaces import Discrete
 
 from ray import tune
 from ray.rllib.agents.pg.pg import PGTrainer
-from ray.rllib.agents.pg.pg_policy import PGTFPolicy
+from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import try_import_tf
@@ -81,15 +78,12 @@ class RockPaperScissorsEnv(MultiAgentEnv):
 class AlwaysSameHeuristic(Policy):
     """Pick a random move and stick with it for the entire episode."""
 
-    def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
-
     def get_initial_state(self):
         return [random.choice([ROCK, PAPER, SCISSORS])]
 
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
@@ -109,13 +103,9 @@ class AlwaysSameHeuristic(Policy):
 
 class BeatLastHeuristic(Policy):
     """Play the move that would beat the last move of the opponent."""
-
-    def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
-
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,

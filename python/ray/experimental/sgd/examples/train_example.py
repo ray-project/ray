@@ -8,10 +8,6 @@ in the documentation.
 
 # yapf: disable
 # __torch_train_example__
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import numpy as np
 import torch
@@ -26,7 +22,6 @@ class LinearDataset(torch.utils.data.Dataset):
     """y = a * x + b"""
 
     def __init__(self, a, b, size=1000):
-        x = np.random.random(size).astype(np.float32) * 10
         x = np.arange(0, 10, 10 / size, dtype=np.float32)
         self.x = torch.from_numpy(x)
         self.y = torch.from_numpy(a * x + b)
@@ -44,7 +39,7 @@ def model_creator(config):
 
 def optimizer_creator(model, config):
     """Returns optimizer."""
-    return torch.optim.SGD(model.parameters(), lr=1e-4)
+    return torch.optim.SGD(model.parameters(), lr=1e-2)
 
 
 def data_creator(batch_size, config):
@@ -81,9 +76,16 @@ def train_example(num_replicas=1, use_gpu=False):
         loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        batch_size=512,
+        batch_size=num_replicas * 4,
         backend="gloo")
-    trainer1.train()
+    for i in range(5):
+        stats = trainer1.train()
+        print(stats)
+
+    print(trainer1.validate())
+    m = trainer1.get_model()
+    print("trained weight: % .2f, bias: % .2f" % (
+        m.weight.item(), m.bias.item()))
     trainer1.shutdown()
     print("success!")
 
@@ -91,10 +93,10 @@ def train_example(num_replicas=1, use_gpu=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--redis-address",
+        "--address",
         required=False,
         type=str,
-        help="the address to use for Redis")
+        help="the address to use for Ray")
     parser.add_argument(
         "--num-replicas",
         "-n",
@@ -113,5 +115,5 @@ if __name__ == "__main__":
 
     import ray
 
-    ray.init(redis_address=args.redis_address)
+    ray.init(address=args.address)
     train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)

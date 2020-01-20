@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import scipy.signal
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -12,7 +8,7 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
-class Postprocessing(object):
+class Postprocessing:
     """Constant definitions for postprocessing."""
 
     ADVANTAGES = "advantages"

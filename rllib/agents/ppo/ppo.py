@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 from ray.rllib.agents import with_common_config
@@ -142,18 +138,23 @@ def warn_about_bad_reward_scales(trainer, result):
             "This means that it will take more than "
             "{} iterations for your value ".format(rew_scale) +
             "function to converge. If this is not intended, consider "
-            "increasing `vf_clip_param`.")
+            "increasing `vf_clip_param`."
+        )
 
 
 def validate_config(config):
+    # PyTorch check.
+    if config["use_pytorch"]:
+        raise ValueError("PPO does not support PyTorch yet! Use tf instead.")
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
     if isinstance(config["entropy_coeff"], int):
         config["entropy_coeff"] = float(config["entropy_coeff"])
     if config["sgd_minibatch_size"] > config["train_batch_size"]:
         raise ValueError(
-            "Minibatch size {} must be <= train batch size {}.".format(
-                config["sgd_minibatch_size"], config["train_batch_size"]))
+            "Minibatch size {} must be <= train batch size {}.".
+            format(config["sgd_minibatch_size"], config["train_batch_size"])
+        )
     if config["batch_mode"] == "truncate_episodes" and not config["use_gae"]:
         raise ValueError(
             "Episode truncation is not supported without a value "

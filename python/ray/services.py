@@ -1,21 +1,18 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import json
 import logging
 import multiprocessing
 import os
 import random
+import re
 import resource
 import socket
 import subprocess
 import sys
-import textwrap
 import time
 import redis
 
+import colorama
 import pyarrow
 # Ray modules
 import ray
@@ -446,9 +443,7 @@ def start_ray_process(command,
     # in interactive sessions. This is only supported in Python 3.3 and above.
     def block_sigint():
         import signal
-        import sys
-        if sys.version_info >= (3, 3):
-            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
 
     process = subprocess.Popen(
         command,
@@ -1018,7 +1013,8 @@ def start_reporter(redis_address,
     return process_info
 
 
-def start_dashboard(host,
+def start_dashboard(require_webui,
+                    host,
                     redis_address,
                     temp_dir,
                     stdout_file=None,
@@ -1027,6 +1023,9 @@ def start_dashboard(host,
     """Start a dashboard process.
 
     Args:
+        require_webui (bool): If true, this will raise an exception if we fail
+            to start the webui. Otherwise it will print a warning if we fail
+            to start the webui.
         host (str): The host to bind the dashboard web server to.
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
@@ -1064,39 +1063,37 @@ def start_dashboard(host,
     if redis_password:
         command += ["--redis-password", redis_password]
 
-    if sys.version_info <= (3, 0):
-        return None, None
+    webui_dependencies_present = True
     try:
         import aiohttp  # noqa: F401
         import psutil  # noqa: F401
         import setproctitle  # noqa: F401
         import grpc  # noqa: F401
     except ImportError:
-        raise ImportError(
+        webui_dependencies_present = False
+        warning_message = (
             "Failed to start the dashboard. The dashboard requires Python 3 "
             "as well as 'pip install aiohttp psutil setproctitle grpcio'.")
+        if require_webui:
+            raise ImportError(warning_message)
+        else:
+            logger.warning(warning_message)
 
-    process_info = start_ray_process(
-        command,
-        ray_constants.PROCESS_TYPE_DASHBOARD,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file)
-    dashboard_url = "http://{}:{}".format(
-        host if host == "127.0.0.1" else get_node_ip_address(), port)
-    print("\n" + "=" * 70)
-    print("View the dashboard at {}.".format(dashboard_url))
-    if host == "127.0.0.1":
-        note = (
-            "Note: If Ray is running on a remote node, you will need to set "
-            "up an SSH tunnel with local port forwarding in order to access "
-            "the dashboard in your browser, e.g. by running "
-            "'ssh -L {}:{}:{} <username>@<host>'. Alternatively, you can set "
-            "webui_host=\"0.0.0.0\" in the call to ray.init() to allow direct "
-            "access from external machines.")
-        note = note.format(port, host, port)
-        print("\n".join(textwrap.wrap(note, width=70)))
-    print("=" * 70 + "\n")
-    return dashboard_url, process_info
+    if webui_dependencies_present:
+        process_info = start_ray_process(
+            command,
+            ray_constants.PROCESS_TYPE_DASHBOARD,
+            stdout_file=stdout_file,
+            stderr_file=stderr_file)
+
+        dashboard_url = "{}:{}".format(
+            host if host != "0.0.0.0" else get_node_ip_address(), port)
+        logger.info("View the Ray dashboard at {}{}{}{}{}".format(
+            colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+            colorama.Fore.RESET, colorama.Style.NORMAL))
+        return dashboard_url, process_info
+    else:
+        return None, None
 
 
 def start_raylet(redis_address,
@@ -1252,6 +1249,18 @@ def start_raylet(redis_address,
     return process_info
 
 
+def get_ray_jars_dir():
+    """Return a directory where all ray-related jars and
+      their dependencies locate."""
+    current_dir = os.path.abspath(os.path.dirname(__file__))
+    jars_dir = os.path.abspath(os.path.join(current_dir, "jars"))
+    if not os.path.exists(jars_dir):
+        raise Exception("Ray jars is not packaged into ray. "
+                        "Please build ray with java enabled "
+                        "(set env var RAY_INSTALL_JAVA=1)")
+    return os.path.abspath(os.path.join(current_dir, "jars"))
+
+
 def build_java_worker_command(
         java_worker_options,
         redis_address,
@@ -1274,8 +1283,6 @@ def build_java_worker_command(
     Returns:
         The command string for starting Java worker.
     """
-    assert java_worker_options is not None
-
     command = "java "
 
     if redis_address is not None:
@@ -1298,10 +1305,29 @@ def build_java_worker_command(
     command += ("-Dray.raylet.config.num_workers_per_process_java=" +
                 "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
 
-    if java_worker_options:
-        # Put `java_worker_options` in the last, so it can overwrite the
-        # above options.
-        command += java_worker_options + " "
+    # Add ray jars path to java classpath
+    ray_jars = os.path.join(get_ray_jars_dir(), "*")
+    cp_sep = ":"
+    import platform
+    if platform.system() == "Windows":
+        cp_sep = ";"
+    if java_worker_options is None:
+        java_worker_options = ""
+    options = re.split("\\s+", java_worker_options)
+    cp_index = -1
+    for i in range(len(options)):
+        option = options[i]
+        if option == "-cp" or option == "-classpath":
+            cp_index = i + 1
+            break
+    if cp_index != -1:
+        options[cp_index] = options[cp_index] + cp_sep + ray_jars
+    else:
+        options = ["-cp", ray_jars] + options
+    java_worker_options = " ".join(options)
+    # Put `java_worker_options` in the last, so it can overwrite the
+    # above options.
+    command += java_worker_options + " "
 
     command += "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0 "
     command += "org.ray.runtime.runner.worker.DefaultWorker"

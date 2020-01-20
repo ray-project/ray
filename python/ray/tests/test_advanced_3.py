@@ -1,13 +1,10 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import glob
 import logging
 import os
 import setproctitle
 import shutil
+import json
 import sys
 import socket
 import subprocess
@@ -89,6 +86,15 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
+def wait_for_num_actors(num_actors, timeout=10):
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if len(ray.actors()) >= num_actors:
+            return
+        time.sleep(0.1)
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
+
+
 def wait_for_num_tasks(num_tasks, timeout=10):
     start_time = time.time()
     while time.time() - start_time < timeout:
@@ -107,11 +113,6 @@ def wait_for_num_objects(num_objects, timeout=10):
     raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_USE_NEW_GCS") == "on",
-    reason="New GCS API doesn't have a Python API yet.")
-@pytest.mark.skipif(
-    ray_constants.direct_call_enabled(), reason="state API not supported")
 def test_global_state_api(shutdown_only):
 
     error_message = ("The ray global state API cannot be used "
@@ -119,6 +120,9 @@ def test_global_state_api(shutdown_only):
 
     with pytest.raises(Exception, match=error_message):
         ray.objects()
+
+    with pytest.raises(Exception, match=error_message):
+        ray.actors()
 
     with pytest.raises(Exception, match=error_message):
         ray.tasks()
@@ -162,6 +166,43 @@ def test_global_state_api(shutdown_only):
 
     assert len(client_table) == 1
     assert client_table[0]["NodeManagerAddress"] == node_ip_address
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+    _ = Actor.remote()
+    # Wait for actor to be created
+    wait_for_num_actors(1)
+
+    actor_table = ray.actors()
+    assert len(actor_table) == 1
+
+    actor_info, = actor_table.values()
+    assert actor_info["JobID"] == job_id.hex()
+    assert "IPAddress" in actor_info["Address"]
+    assert "IPAddress" in actor_info["OwnerAddress"]
+    assert actor_info["Address"]["Port"] != actor_info["OwnerAddress"]["Port"]
+
+    job_table = ray.jobs()
+
+    assert len(job_table) == 1
+    assert job_table[0]["JobID"] == job_id.hex()
+    assert job_table[0]["NodeManagerAddress"] == node_ip_address
+
+
+@pytest.mark.skipif(
+    ray_constants.direct_call_enabled(),
+    reason="object and task API not supported")
+def test_global_state_task_object_api(shutdown_only):
+    ray.init()
+
+    job_id = ray.utils.compute_job_id_from_driver(
+        ray.WorkerID(ray.worker.global_worker.worker_id))
+    driver_task_id = ray.worker.global_worker.current_task_id.hex()
+
+    nil_actor_id_hex = ray.ActorID.nil().hex()
 
     @ray.remote
     def f(*xs):
@@ -213,16 +254,10 @@ def test_global_state_api(shutdown_only):
     object_table_entry = ray.objects(result_id)
     assert object_table[result_id] == object_table_entry
 
-    job_table = ray.jobs()
-
-    assert len(job_table) == 1
-    assert job_table[0]["JobID"] == job_id.hex()
-    assert job_table[0]["NodeManagerAddress"] == node_ip_address
-
 
 # TODO(rkn): Pytest actually has tools for capturing stdout and stderr, so we
 # should use those, but they seem to conflict with Ray's use of faulthandler.
-class CaptureOutputAndError(object):
+class CaptureOutputAndError:
     """Capture stdout and stderr of some span.
 
     This can be used as follows.
@@ -234,14 +269,9 @@ class CaptureOutputAndError(object):
     """
 
     def __init__(self, captured_output_and_error):
-        if sys.version_info >= (3, 0):
-            import io
-            self.output_buffer = io.StringIO()
-            self.error_buffer = io.StringIO()
-        else:
-            import cStringIO
-            self.output_buffer = cStringIO.StringIO()
-            self.error_buffer = cStringIO.StringIO()
+        import io
+        self.output_buffer = io.StringIO()
+        self.error_buffer = io.StringIO()
         self.captured_output_and_error = captured_output_and_error
 
     def __enter__(self):
@@ -385,7 +415,12 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
 
 
 def test_wait_reconstruction(shutdown_only):
-    ray.init(num_cpus=1, object_store_memory=int(10**8))
+    ray.init(
+        num_cpus=1,
+        object_store_memory=int(10**8),
+        _internal_config=json.dumps({
+            "object_pinning_enabled": 0
+        }))
 
     @ray.remote
     def f():
@@ -401,7 +436,7 @@ def test_wait_reconstruction(shutdown_only):
 
 def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
-    class UniqueName(object):
+    class UniqueName:
         def __init__(self):
             assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
 
@@ -544,21 +579,21 @@ def test_shutdown_disconnect_global_state():
     "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_put_pins_object(ray_start_object_store_memory):
     x_id = ray.put("HI")
-    x_copy = ray.ObjectID(x_id.binary())
-    assert ray.get(x_copy) == "HI"
+    x_binary = x_id.binary()
+    assert ray.get(ray.ObjectID(x_binary)) == "HI"
 
     # x cannot be evicted since x_id pins it
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     assert ray.get(x_id) == "HI"
-    assert ray.get(x_copy) == "HI"
+    assert ray.get(ray.ObjectID(x_binary)) == "HI"
 
-    # now it can be evicted since x_id pins it but x_copy does not
+    # now it can be evicted since x_id pins it but x_binary does not
     del x_id
     for _ in range(10):
         ray.put(np.zeros(10 * 1024 * 1024))
     with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(x_copy)
+        ray.get(ray.ObjectID(x_binary))
 
     # weakref put
     y_id = ray.put("HI", weakref=True)
@@ -566,14 +601,6 @@ def test_put_pins_object(ray_start_object_store_memory):
         ray.put(np.zeros(10 * 1024 * 1024))
     with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(y_id)
-
-    @ray.remote
-    def check_no_buffer_ref(x):
-        assert x[0].get_buffer_ref() is None
-
-    z_id = ray.put("HI")
-    assert z_id.get_buffer_ref() is not None
-    ray.get(check_no_buffer_ref.remote([z_id]))
 
 
 @pytest.mark.parametrize(
@@ -634,7 +661,7 @@ def test_export_after_shutdown(ray_start_regular):
         pass
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def method(self):
             pass
 
@@ -698,7 +725,7 @@ def test_move_log_files_to_old(shutdown_only):
     logs_dir = os.path.join(info["session_dir"], "logs")
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def f(self):
             print("function f finished")
 

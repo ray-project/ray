@@ -38,7 +38,7 @@ const styles = (theme: Theme) =>
     },
     extraInfo: {
       fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      whiteSpace: "pre-wrap"
+      whiteSpace: "pre"
     }
   });
 
@@ -47,7 +47,7 @@ type Node = ArrayType<NodeInfoResponse["clients"]>;
 
 interface Props {
   node: Node;
-  raylet: RayletInfoResponse[keyof RayletInfoResponse] | null;
+  raylet: RayletInfoResponse["nodes"][keyof RayletInfoResponse["nodes"]] | null;
   logCounts: {
     perWorker: { [pid: string]: number };
     total: number;

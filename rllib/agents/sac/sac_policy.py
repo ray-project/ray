@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from gym.spaces import Box
 import numpy as np
 import logging
@@ -320,7 +316,7 @@ def stats(policy, train_batch):
     }
 
 
-class ExplorationStateMixin(object):
+class ExplorationStateMixin:
     def __init__(self, obs_space, action_space, config):
         self.stochastic = tf.get_variable(
             initializer=tf.constant_initializer(config["exploration_enabled"]),
@@ -333,7 +329,7 @@ class ExplorationStateMixin(object):
         pass
 
 
-class ActorCriticOptimizerMixin(object):
+class ActorCriticOptimizerMixin:
     def __init__(self, config):
         # create global step for counting the number of update operations
         self.global_step = tf.train.get_or_create_global_step()
@@ -353,7 +349,7 @@ class ActorCriticOptimizerMixin(object):
             learning_rate=config["optimization"]["entropy_learning_rate"])
 
 
-class ComputeTDErrorMixin(object):
+class ComputeTDErrorMixin:
     def __init__(self):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
@@ -374,7 +370,7 @@ class ComputeTDErrorMixin(object):
         self.compute_td_error = compute_td_error
 
 
-class TargetNetworkMixin(object):
+class TargetNetworkMixin:
     def __init__(self, config):
         @make_tf_callable(self.get_session())
         def update_target_fn(tau):

@@ -6,8 +6,8 @@ import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanVertex;
+import org.ray.streaming.jobgraph.JobGraph;
+import org.ray.streaming.jobgraph.JobVertex;
 import org.ray.streaming.runtime.cluster.ResourceManager;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -21,28 +21,28 @@ import org.ray.streaming.schedule.JobScheduler;
  * from ResourceManager.
  */
 public class JobSchedulerImpl implements JobScheduler {
-  private Plan plan;
-  private Map<String, Object> jobConfig;
+  private JobGraph jobGraph;
+  private Map<String, String> jobConfig;
   private ResourceManager resourceManager;
-  private ITaskAssign taskAssign;
+  private TaskAssigner taskAssigner;
 
   public JobSchedulerImpl() {
     this.resourceManager = new ResourceManager();
-    this.taskAssign = new TaskAssignImpl();
+    this.taskAssigner = new TaskAssignerImpl();
   }
 
   /**
    * Schedule physical plan to execution graph, and call streaming worker to init and run.
    */
   @Override
-  public void schedule(Plan plan, Map<String, Object> jobConfig) {
+  public void schedule(JobGraph jobGraph, Map<String, String> jobConfig) {
     this.jobConfig = jobConfig;
-    this.plan = plan;
+    this.jobGraph = jobGraph;
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
     Ray.init();
 
     List<RayActor<JobWorker>> workers = this.resourceManager.createWorkers(getPlanWorker());
-    ExecutionGraph executionGraph = this.taskAssign.assign(this.plan, workers);
+    ExecutionGraph executionGraph = this.taskAssigner.assign(this.jobGraph, workers);
 
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
     List<RayObject<Boolean>> waits = new ArrayList<>();
@@ -59,7 +59,7 @@ public class JobSchedulerImpl implements JobScheduler {
   }
 
   private int getPlanWorker() {
-    List<PlanVertex> planVertexList = plan.getPlanVertexList();
-    return planVertexList.stream().map(PlanVertex::getParallelism).reduce(0, Integer::sum);
+    List<JobVertex> jobVertexList = jobGraph.getJobVertexList();
+    return jobVertexList.stream().map(JobVertex::getParallelism).reduce(0, Integer::sum);
   }
 }

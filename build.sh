@@ -119,7 +119,7 @@ export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build //java:all --verbose_failures
+  "$BAZEL_EXECUTABLE" build //java:ray_java_pkg --verbose_failures
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then

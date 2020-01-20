@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 import logging
 
@@ -16,7 +12,7 @@ TOWER_SCOPE_NAME = "tower"
 logger = logging.getLogger(__name__)
 
 
-class LocalSyncParallelOptimizer(object):
+class LocalSyncParallelOptimizer:
     """Optimizer that runs in parallel across multiple local devices.
 
     LocalSyncParallelOptimizer automatically splits up and loads training data

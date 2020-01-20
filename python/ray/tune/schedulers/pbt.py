@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import itertools
 import logging
@@ -21,7 +17,7 @@ from ray.tune.trial import Trial, Checkpoint
 logger = logging.getLogger(__name__)
 
 
-class PBTTrialState(object):
+class PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
     def __init__(self, trial):
@@ -183,6 +179,11 @@ class PopulationBasedTraining(FIFOScheduler):
                  resample_probability=0.25,
                  custom_explore_fn=None,
                  log_config=True):
+        for value in hyperparam_mutations.values():
+            if not (isinstance(value, list) or callable(value)):
+                raise TypeError("`hyperparam_mutation` values must be either "
+                                "a List or callable.")
+
         if not hyperparam_mutations and not custom_explore_fn:
             raise TuneError(
                 "You must specify at least one of `hyperparam_mutations` or "

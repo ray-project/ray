@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Basic example of a DQN policy without any optimizations."""
 
 from gym.spaces import Discrete
@@ -25,7 +22,7 @@ Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
 
-class ExplorationStateMixin(object):
+class ExplorationStateMixin:
     def __init__(self, obs_space, action_space, config):
         # Python value, should always be same as the TF variable
         self.cur_epsilon_value = 1.0
@@ -55,7 +52,7 @@ class ExplorationStateMixin(object):
         self.set_epsilon(state[1])
 
 
-class TargetNetworkMixin(object):
+class TargetNetworkMixin:
     def __init__(self, obs_space, action_space, config):
         @make_tf_callable(self.get_session())
         def do_update():

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import logging
 import os
@@ -23,7 +19,7 @@ from ray.utils import (binary_to_hex, binary_to_object_id, binary_to_task_id,
 logger = logging.getLogger(__name__)
 
 
-class Monitor(object):
+class Monitor:
     """A monitor for Ray processes.
 
     The monitor is in charge of cleaning up the tables in the global state

@@ -1,13 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import glob
 import os
 import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import ray
 from ray.rllib import _register_all
@@ -15,11 +12,6 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune import TuneError
 from ray.tune.syncer import CommandBasedClient
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import patch
-else:
-    from mock import patch
 
 
 class TestSyncFunctionality(unittest.TestCase):
@@ -214,5 +206,4 @@ class TestSyncFunctionality(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

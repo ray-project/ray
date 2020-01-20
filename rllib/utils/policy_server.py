@@ -1,21 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import pickle
-import sys
 import traceback
+
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+from socketserver import ThreadingMixIn
 
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.policy_client import PolicyClient
-
-if sys.version_info[0] == 2:
-    from SimpleHTTPServer import SimpleHTTPRequestHandler
-    from SocketServer import TCPServer as HTTPServer
-    from SocketServer import ThreadingMixIn
-elif sys.version_info[0] == 3:
-    from http.server import SimpleHTTPRequestHandler, HTTPServer
-    from socketserver import ThreadingMixIn
 
 
 @PublicAPI

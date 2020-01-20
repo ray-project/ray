@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import logging
 import time
@@ -17,7 +13,7 @@ parser.add_argument("--input-file", required=True, help="the input text file")
 
 
 # A class used to check attribute-based key selection
-class Record(object):
+class Record:
     def __init__(self, record):
         k, _ = record
         self.word = k

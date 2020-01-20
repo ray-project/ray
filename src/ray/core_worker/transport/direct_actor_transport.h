@@ -11,6 +11,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -35,10 +36,12 @@ const int kMaxReorderWaitSeconds = 30;
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
+  CoreWorkerDirectActorTaskSubmitter(rpc::Address rpc_address,
+                                     rpc::ClientFactoryFn client_factory,
                                      std::shared_ptr<CoreWorkerMemoryStore> store,
                                      std::shared_ptr<TaskFinisherInterface> task_finisher)
-      : client_factory_(client_factory),
+      : rpc_address_(rpc_address),
+        client_factory_(client_factory),
         resolver_(store, task_finisher),
         task_finisher_(task_finisher) {}
 
@@ -47,6 +50,12 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task The task spec to submit.
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
+
+  /// Tell this actor to exit immediately.
+  ///
+  /// \param[in] actor_id The actor_id of the actor to kill.
+  /// \return Status::Invalid if the actor could not be killed.
+  Status KillActor(const ActorID &actor_id);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -95,6 +104,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Mutex to proect the various maps below.
   mutable absl::Mutex mu_;
 
+  /// Address of our RPC server.
+  rpc::Address rpc_address_;
+
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
   /// We use shared_ptr to enable shared_from_this for pending client callbacks.
   ///
@@ -106,6 +118,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Map from actor ids to worker ids. TODO(ekl) consider unifying this with the
   /// rpc_clients_ map.
   absl::flat_hash_map<ActorID, std::string> worker_ids_ GUARDED_BY(mu_);
+
+  /// Set of actor ids that should be force killed once a client is available.
+  absl::flat_hash_set<ActorID> pending_force_kills_ GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
@@ -161,14 +176,14 @@ class DependencyWaiter {
 
 class DependencyWaiterImpl : public DependencyWaiter {
  public:
-  DependencyWaiterImpl(raylet::RayletClient &raylet_client)
-      : raylet_client_(raylet_client) {}
+  DependencyWaiterImpl(raylet::RayletClient &local_raylet_client)
+      : local_raylet_client_(local_raylet_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {
     auto tag = next_request_id_++;
     requests_[tag] = on_dependencies_available;
-    raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
+    local_raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
   }
 
   /// Fulfills the callback stored by Wait().
@@ -182,7 +197,7 @@ class DependencyWaiterImpl : public DependencyWaiter {
  private:
   int64_t next_request_id_ = 0;
   std::unordered_map<int64_t, std::function<void()>> requests_;
-  raylet::RayletClient &raylet_client_;
+  raylet::RayletClient &local_raylet_client_;
 };
 
 /// Wraps a thread-pool to block posts until the pool has free slots. This is used
@@ -275,7 +290,7 @@ class FiberRateLimiter {
  private:
   boost::fibers::condition_variable cond_;
   boost::fibers::mutex mutex_;
-  int num_;
+  int num_ = 1;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -421,10 +436,12 @@ class CoreWorkerDirectTaskReceiver {
                            std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
+                               std::shared_ptr<raylet::RayletClient> &local_raylet_client,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
                                const std::function<void(bool)> &exit_handler)
       : worker_context_(worker_context),
+        local_raylet_client_(local_raylet_client),
         task_handler_(task_handler),
         exit_handler_(exit_handler),
         task_main_io_service_(main_io_service) {}
@@ -438,8 +455,7 @@ class CoreWorkerDirectTaskReceiver {
   }
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(raylet::RayletClient &client, rpc::ClientFactoryFn client_factory,
-            rpc::Address rpc_address);
+  void Init(rpc::ClientFactoryFn client_factory, rpc::Address rpc_address);
 
   /// Handle a `PushTask` request.
   ///
@@ -462,7 +478,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
 
-  void SetActorAsAsync();
+  /// Set the max concurrency and start async actor context.
+  void SetActorAsAsync(int max_concurrency);
 
  private:
   // Worker context.
@@ -477,6 +494,9 @@ class CoreWorkerDirectTaskReceiver {
   rpc::ClientFactoryFn client_factory_;
   /// Address of our RPC server.
   rpc::Address rpc_address_;
+  /// Reference to the core worker's raylet client. This is a pointer ref so that it
+  /// can be initialized by core worker after this class is constructed.
+  std::shared_ptr<raylet::RayletClient> &local_raylet_client_;
   /// Shared waiter for dependencies required by incoming tasks.
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.

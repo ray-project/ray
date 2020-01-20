@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
@@ -81,7 +77,6 @@ class SACModel(TFModelV2):
             shape=(num_outputs, ), name="model_out")
         self.actions = tf.keras.layers.Input(
             shape=(self.action_dim, ), name="actions")
-
         shift_and_log_scale_diag = tf.keras.Sequential([
             tf.keras.layers.Dense(
                 units=hidden,
@@ -90,10 +85,7 @@ class SACModel(TFModelV2):
             for i, hidden in enumerate(actor_hiddens)
         ] + [
             tf.keras.layers.Dense(
-                units=tfp.layers.MultivariateNormalTriL.params_size(
-                    self.action_dim),
-                activation=None,
-                name="action_out")
+                units=2 * self.action_dim, activation=None, name="action_out")
         ])(self.model_out)
 
         shift, log_scale_diag = tf.keras.layers.Lambda(

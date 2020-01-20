@@ -64,7 +64,11 @@ class RayConfig extends React.Component<
     const { classes, rayConfig } = this.props;
 
     if (rayConfig === null) {
-      return null;
+      return (
+        <Typography color="textSecondary">
+          No Ray configuration detected.
+        </Typography>
+      );
     }
 
     const formattedRayConfig = [

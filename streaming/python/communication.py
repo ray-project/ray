@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import hashlib
 import logging
 import pickle
@@ -31,7 +27,7 @@ def _hash(value):
         return int(hashlib.sha1(value).hexdigest(), 16)
 
 
-class DataChannel(object):
+class DataChannel:
     """A data channel for actor-to-actor communication.
 
     Attributes:
@@ -62,7 +58,7 @@ _CLOSE_FLAG = b" "
 
 
 # Pulls and merges data from multiple input channels
-class DataInput(object):
+class DataInput:
     """An input gate of an operator instance.
 
     The input gate pulls records from all input channels in a round-robin
@@ -124,7 +120,7 @@ class DataInput(object):
 
 
 # Selects output channel(s) and pushes data
-class DataOutput(object):
+class DataOutput:
     """An output gate of an operator instance.
 
     The output gate pushes records to output channels according to the

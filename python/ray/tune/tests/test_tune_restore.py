@@ -1,27 +1,23 @@
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from hyperopt import hp
 import os
 import shutil
 import tempfile
 import unittest
 import skopt
 import numpy as np
+from hyperopt import hp
+from nevergrad.optimization import optimizerlib
 
 import ray
 from ray import tune
 from ray.test_utils import recursive_fnmatch
-from ray.tune.util import validate_save_restore
 from ray.rllib import _register_all
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.suggest.bayesopt import BayesOptSearch
 from ray.tune.suggest.skopt import SkOptSearch
 from ray.tune.suggest.nevergrad import NevergradSearch
-from nevergrad.optimization import optimizerlib
 from ray.tune.suggest.sigopt import SigOptSearch
+from ray.tune.utils import validate_save_restore
 
 
 class TuneRestoreTest(unittest.TestCase):
@@ -116,7 +112,7 @@ class AutoInitTest(unittest.TestCase):
         _register_all()
 
 
-class AbstractWarmStartTest(object):
+class AbstractWarmStartTest:
     def setUp(self):
         ray.init(local_mode=True)
         self.tmpdir = tempfile.mkdtemp()

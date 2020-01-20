@@ -1,11 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 
-class WindowStat(object):
+class WindowStat:
     def __init__(self, name, n):
         self.name = name
         self.items = [None] * n

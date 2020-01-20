@@ -4,10 +4,6 @@
 It gets to 75% validation accuracy in 25 epochs, and 79% after 50 epochs.
 (it"s still underfitting at that point, though).
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 
 from tensorflow.keras.datasets import cifar10
@@ -151,10 +147,10 @@ def data_augmentation_creator(config):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--redis-address",
+        "--address",
         required=False,
         type=str,
-        help="the address to use for Redis")
+        help="the address to use for Ray")
     parser.add_argument(
         "--num-replicas",
         "-n",
@@ -180,7 +176,7 @@ if __name__ == "__main__":
         help="Finish quickly for testing. Assume False for users.")
 
     args, _ = parser.parse_known_args()
-    ray.init(redis_address=args.redis_address)
+    ray.init(address=args.address)
     data_size = 60000
     test_size = 10000
     batch_size = args.batch_size

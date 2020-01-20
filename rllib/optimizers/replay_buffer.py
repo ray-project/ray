@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import random
 import sys
@@ -13,7 +9,7 @@ from ray.rllib.utils.window_stat import WindowStat
 
 
 @DeveloperAPI
-class ReplayBuffer(object):
+class ReplayBuffer:
     @DeveloperAPI
     def __init__(self, size):
         """Create Prioritized Replay buffer.

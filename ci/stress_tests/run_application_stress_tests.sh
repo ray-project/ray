@@ -7,8 +7,7 @@
 # should be the latest commit on the branch "releases/<ray-version>".
 
 # This script runs all of the application tests.
-# Currently includes an IMPALA stress test and a SGD stress test.
-# on both Python 2.7 and 3.6.
+# Currently includes an IMPALA stress test and a SGD stress test on Python 3.6.
 # All tests use a separate cluster, and each cluster
 # will be destroyed upon test completion (or failure).
 
@@ -134,7 +133,7 @@ test_sgd(){
             ray rsync_up "$CLUSTER" "$SGD_DIR/mnist_example.py" mnist_example.py &&
             sleep 1 &&
             ray --logging-level=DEBUG exec "$CLUSTER" "
-                python mnist_example.py --redis-address=localhost:6379 --num-iters=2000 --num-workers=8 --devices-per-worker=2 --gpu" &&
+                python mnist_example.py --address=localhost:6379 --num-iters=2000 --num-workers=8 --devices-per-worker=2 --gpu" &&
             echo "PASS: SGD Test for" "$PYTHON_VERSION" >> "$RESULT_FILE"
         } || echo "FAIL: SGD Test for" "$PYTHON_VERSION" >> "$RESULT_FILE"
 

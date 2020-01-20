@@ -1,15 +1,13 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.trial import ExportFormat
 
 import argparse
 import os
+from filelock import FileLock
 import random
 import torch
 import torch.nn as nn
@@ -247,7 +245,8 @@ class PytorchTrainable(tune.Trainable):
             self.netG.parameters(),
             lr=config.get("lr", 0.01),
             betas=(beta1, 0.999))
-        self.dataloader = get_data_loader()
+        with FileLock(os.path.expanduser("~/.data.lock")):
+            self.dataloader = get_data_loader()
 
     def _train(self):
         lossG, lossD, is_score = train(
@@ -275,18 +274,26 @@ class PytorchTrainable(tune.Trainable):
         self.optimizerG.load_state_dict(checkpoint["optimG"])
 
     def reset_config(self, new_config):
-        del self.optimizerD
-        del self.optimizerG
-        self.optimizerD = optim.Adam(
-            self.netD.parameters(),
-            lr=new_config.get("netD_lr"),
-            betas=(beta1, 0.999))
-        self.optimizerG = optim.Adam(
-            self.netG.parameters(),
-            lr=new_config.get("netG_lr"),
-            betas=(beta1, 0.999))
+        if "netD_lr" in new_config:
+            for param_group in self.optimizerD.param_groups:
+                param_group["lr"] = new_config["netD_lr"]
+        if "netG_lr" in new_config:
+            for param_group in self.optimizerG.param_groups:
+                param_group["lr"] = new_config["netG_lr"]
+
         self.config = new_config
         return True
+
+    def _export_model(self, export_formats, export_dir):
+        if export_formats == [ExportFormat.MODEL]:
+            path = os.path.join(export_dir, "exported_models")
+            torch.save({
+                "netDmodel": self.netD.state_dict(),
+                "netGmodel": self.netG.state_dict()
+            }, path)
+            return {ExportFormat.MODEL: path}
+        else:
+            raise ValueError("unexpected formats: " + str(export_formats))
 
 
 # __Trainable_end__
@@ -346,6 +353,7 @@ if __name__ == "__main__":
             "training_iteration": tune_iter,
         },
         num_samples=8,
+        export_formats=[ExportFormat.MODEL],
         config={
             "netG_lr": tune.sample_from(
                 lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
@@ -360,7 +368,7 @@ if __name__ == "__main__":
         img_list = []
         fixed_noise = torch.randn(64, nz, 1, 1)
         for d in logdirs:
-            netG_path = d + "/checkpoint_" + str(tune_iter) + "/checkpoint"
+            netG_path = os.path.join(d, "exported_models")
             loadedG = Generator()
             loadedG.load_state_dict(torch.load(netG_path)["netGmodel"])
             with torch.no_grad():
