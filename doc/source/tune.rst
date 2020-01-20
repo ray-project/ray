@@ -1,8 +1,6 @@
 Tune: A Scalable Hyperparameter Tuning Library
 ==============================================
 
-.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
-
 .. image:: images/tune.png
     :scale: 30%
     :align: center
@@ -40,7 +38,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune] torch torchvision filelock
+    $ pip install 'ray[tune]' torch torchvision
 
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.
@@ -83,7 +81,7 @@ Below are some blog posts and talks about Tune:
  - [blog] `Simple hyperparameter and architecture search in tensorflow with Ray Tune <http://louiskirsch.com/ai/ray-tune>`_
  - [slides] `Talk given at RISECamp 2019 <https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing>`_
  - [video] `Talk given at RISECamp 2018 <https://www.youtube.com/watch?v=38Yd_dXW51Q>`_
- - [slides] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://speakerdeck.com/richardliaw/a-modern-guide-to-hyperparameter-optimization>`_
+ - [video] `A Guide to Modern Hyperparameter Optimization (PyData LA 2019) <https://www.youtube.com/watch?v=10uz5U3Gy6E>`_ (`slides <https://speakerdeck.com/richardliaw/a-modern-guide-to-hyperparameter-optimization>`_)
 
 Open Source Projects using Tune
 -------------------------------

@@ -4,7 +4,7 @@ import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { connect } from "react-redux";
-import { StoreState } from "../../../store";
+import { StoreState } from "../../store";
 
 const styles = (theme: Theme) =>
   createStyles({

@@ -3,13 +3,14 @@ package org.ray.streaming.runtime.core.graph;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
-import org.ray.streaming.plan.VertexType;
 
 /**
  * A node in the physical execution graph.
  */
 public class ExecutionNode implements Serializable {
+
   private int nodeId;
   private int parallelism;
   private NodeType nodeType;

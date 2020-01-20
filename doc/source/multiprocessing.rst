@@ -40,6 +40,9 @@ instructions to run on a multi-node Ray cluster instead.
 The full ``multiprocessing.Pool`` API is currently supported. Please see the
 `multiprocessing documentation`_ for details.
 
+.. warning::
+  The ``context`` argument in the ``Pool`` constructor is ignored when using Ray.
+
 .. _`multiprocessing documentation`: https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 
 Run on a Cluster

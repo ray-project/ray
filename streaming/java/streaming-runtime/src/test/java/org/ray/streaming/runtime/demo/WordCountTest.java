@@ -30,8 +30,8 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
   @Test
   public void testWordCount() {
     StreamingContext streamingContext = StreamingContext.buildContext();
-    Map<String, Object> config = new HashMap<>();
-    config.put(Config.STREAMING_BATCH_MAX_COUNT, 1);
+    Map<String, String> config = new HashMap<>();
+    config.put(Config.STREAMING_BATCH_MAX_COUNT, "1");
     config.put(Config.CHANNEL_TYPE, Config.MEMORY_CHANNEL);
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
@@ -44,23 +44,24 @@ public class WordCountTest extends BaseUnitTest implements Serializable {
             collector.collect(new WordAndCount(record, 1));
           }
         })
+        .filter(pair -> !pair.word.contains("world"))
         .keyBy(pair -> pair.word)
         .reduce((ReduceFunction<WordAndCount>) (oldValue, newValue) ->
             new WordAndCount(oldValue.word, oldValue.count + newValue.count))
         .sink((SinkFunction<WordAndCount>)
             result -> wordCount.put(result.word, result.count));
 
-    streamingContext.execute();
+    streamingContext.execute("testWordCount");
 
     // Sleep until the count for every word is computed.
-    while (wordCount.size() < 3) {
+    while (wordCount.size() < 2) {
       try {
         Thread.sleep(100);
       } catch (InterruptedException e) {
         LOGGER.warn("Got an exception while sleeping.", e);
       }
     }
-    Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1, "world", 1));
+    Assert.assertEquals(wordCount, ImmutableMap.of("eagle", 3, "hello", 1));
   }
 
   private static class WordAndCount implements Serializable {

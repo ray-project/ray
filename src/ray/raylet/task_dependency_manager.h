@@ -34,7 +34,7 @@ class TaskDependencyManager {
                         ReconstructionPolicyInterface &reconstruction_policy,
                         boost::asio::io_service &io_service, const ClientID &client_id,
                         int64_t initial_lease_period_ms,
-                        std::shared_ptr<gcs::RedisGcsClient> gcs_client);
+                        std::shared_ptr<gcs::GcsClient> gcs_client);
 
   /// Check whether an object is locally available.
   ///
@@ -228,7 +228,7 @@ class TaskDependencyManager {
   /// lease is renewed.
   const int64_t initial_lease_period_ms_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// A mapping from task ID of each subscribed task to its list of object
   /// dependencies, either task arguments or objects passed into `ray.get`.
   std::unordered_map<ray::TaskID, TaskDependencies> task_dependencies_;

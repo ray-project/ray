@@ -1,19 +1,20 @@
-package org.ray.streaming.plan;
+package org.ray.streaming.jobgraph;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 import org.ray.streaming.operator.StreamOperator;
 
 /**
- * PlanVertex is a cell node where logic is executed.
+ * Job vertex is a cell node where logic is executed.
  */
-public class PlanVertex implements Serializable {
+public class JobVertex implements Serializable {
 
   private int vertexId;
   private int parallelism;
   private VertexType vertexType;
   private StreamOperator streamOperator;
 
-  public PlanVertex(int vertexId, int parallelism, VertexType vertexType,
+  public JobVertex(int vertexId, int parallelism, VertexType vertexType,
       StreamOperator streamOperator) {
     this.vertexId = vertexId;
     this.parallelism = parallelism;
@@ -39,11 +40,11 @@ public class PlanVertex implements Serializable {
 
   @Override
   public String toString() {
-    return "PlanVertex{" +
-        "vertexId=" + vertexId +
-        ", parallelism=" + parallelism +
-        ", vertexType=" + vertexType +
-        ", streamOperator=" + streamOperator +
-        '}';
+    return MoreObjects.toStringHelper(this)
+        .add("vertexId", vertexId)
+        .add("parallelism", parallelism)
+        .add("vertexType", vertexType)
+        .add("streamOperator", streamOperator)
+        .toString();
   }
 }

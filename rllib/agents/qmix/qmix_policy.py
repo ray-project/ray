@@ -143,6 +143,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
+# TODO(sven): Make this a TorchPolicy child.
 class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
@@ -154,13 +155,10 @@ class QMixTorchPolicy(Policy):
     dict space with an action_mask key, e.g. {"obs": ob, "action_mask": mask}.
     The mask space must be `Box(0, 1, (n_actions,))`.
     """
-
     def __init__(self, obs_space, action_space, config):
         _validate(obs_space, action_space)
         config = dict(ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG, **config)
-        self.config = config
-        self.observation_space = obs_space
-        self.action_space = action_space
+        super().__init__(obs_space, action_space, config)
         self.n_agents = len(obs_space.original_space.spaces)
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
