@@ -144,15 +144,15 @@ def kl_and_loss_stats(policy, train_batch):
     return {
         "cur_kl_coeff": policy.kl_coeff,
         "cur_lr": policy.cur_lr,
-        "total_loss": policy.loss_obj.loss.detach().numpy(),
-        "policy_loss": policy.loss_obj.mean_policy_loss.detach().numpy(),
-        "vf_loss": policy.loss_obj.mean_vf_loss.detach().numpy(),
+        "total_loss": policy.loss_obj.loss.cpu().numpy(),
+        "policy_loss": policy.loss_obj.mean_policy_loss.cpu().numpy(),
+        "vf_loss": policy.loss_obj.mean_vf_loss.cpu().numpy(),
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
             policy.model.value_function(),
-            framework="torch").detach().numpy(),
-        "kl": policy.loss_obj.mean_kl.detach().numpy(),
-        "entropy": policy.loss_obj.mean_entropy.detach().numpy(),
+            framework="torch").cpu().numpy(),
+        "kl": policy.loss_obj.mean_kl.cpu().numpy(),
+        "entropy": policy.loss_obj.mean_entropy.cpu().numpy(),
         "entropy_coeff": policy.entropy_coeff,
     }
 
