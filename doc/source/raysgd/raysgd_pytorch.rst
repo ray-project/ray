@@ -7,94 +7,60 @@ RaySGD Pytorch
 
 Ray's ``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python.
 
-----------
-
-**With Ray**:
-
-Wrap your training with this:
-
-.. code-block:: python
-
-    ray.init(args.address)
-
-    trainer1 = PyTorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
-        loss_creator,
-        num_replicas=<NUM_GPUS_YOU_HAVE> * <NUM_NODES>,
-        use_gpu=True,
-        batch_size=512,
-        backend="nccl")
-
-    stats = trainer1.train()
-    print(stats)
-    trainer1.shutdown()
-    print("success!")
+Setting up a model for training
+-------------------------------
 
 
 
-Then, start a Ray cluster `via autoscaler <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
+Distributed Multi-node Training
+-------------------------------
+
+You can start a Ray cluster `via autoscaler <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
 
 .. code-block:: bash
 
     ray up CLUSTER.yaml
-    python train.py --address="localhost:<PORT>"
+    python train.py --address="auto"
 
 
-----------
+Fault Tolerance
+---------------
 
-**Before, with Pytorch**:
-
-In your training program, insert the following:
-
-.. code-block:: python
-
-    torch.distributed.init_process_group(backend='YOUR BACKEND',
-                                         init_method='env://')
-
-    model = torch.nn.parallel.DistributedDataParallel(model,
-                                                      device_ids=[arg.local_rank],
-                                                      output_device=arg.local_rank)
-
-Then, separately, on each machine:
+For distributed deep learning, jobs are often run on infrastructure where nodes can be pre-empted frequently (i.e., spot instances in the cloud). To overcome this, RaySGD provides **fault tolerance** features that enable training to continue regardless of node failures.
 
 .. code-block:: bash
 
-    # Node 1: *(IP: 192.168.1.1, and has a free port: 1234)*
-    $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
-               --nnodes=4 --node_rank=0 --master_addr="192.168.1.1"
-               --master_port=1234 YOUR_TRAINING_SCRIPT.py (--arg1 --arg2 --arg3
-               and all other arguments of your training script)
-    # Node 2:
-    $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
-               --nnodes=4 --node_rank=1 --master_addr="192.168.1.1"
-               --master_port=1234 YOUR_TRAINING_SCRIPT.py (--arg1 --arg2 --arg3
-               and all other arguments of your training script)
-    # Node 3:
-    $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
-               --nnodes=4 --node_rank=2 --master_addr="192.168.1.1"
-               --master_port=1234 YOUR_TRAINING_SCRIPT.py (--arg1 --arg2 --arg3
-               and all other arguments of your training script)
-    # Node 4:
-    $ python -m torch.distributed.launch --nproc_per_node=NUM_GPUS_YOU_HAVE
-               --nnodes=4 --node_rank=3 --master_addr="192.168.1.1"
-               --master_port=1234 YOUR_TRAINING_SCRIPT.py (--arg1 --arg2 --arg3
-               and all other arguments of your training script)
+    trainer.train(max_retries=N)
 
 
-PyTorchTrainer Example
-----------------------
+During each ``train`` method, each parallel worker iterates through the dataset, synchronizing gradients and parameters at each batch. These synchronization primitives can hang when one or more of the parallel workers becomes unresponsive (i.e., when a node is lost). To address this, we've implemented the following protocol.
 
-Below is an example of using Ray's PyTorchTrainer. Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a worker.
+  1. If any worker node is lost, Ray will mark the training task as complete (``ray.wait`` will return).
+  2. Ray will throw ``RayActorException`` when fetching the result for any worker, so the Trainer class will call ``ray.get`` on the "finished" training task.
+  3. Upon catching this exception, the Trainer class will kill all of its workers.
+  4. The Trainer will then detect the quantity of available resources (either CPUs or GPUs). It will then restart as many workers as it can, each resuming from the last checkpoint. Note that this may result in fewer workers than initially specified.
+  5. If there are no available resources, the Trainer will apply an exponential backoff before retrying to create workers.
+  6. If there are available resources and the Trainer has fewer workers than initially specified, then it will scale up its worker pool until it reaches the initially specified ``num_workers``.
 
-.. literalinclude:: ../../../python/ray/experimental/sgd/examples/train_example.py
-   :language: python
-   :start-after: __torch_train_example__
+Note that we assume the Trainer itself is not on a pre-emptible node. It is currently not possible to recover from a Trainer node failure.
+
+Users can set ``checkpoint="auto"`` to always checkpoint the current model before executing a pass over the training dataset.
+
+.. code-block:: bash
+
+    trainer.train(max_retries=N, checkpoint="auto")
 
 
-Hyperparameter Optimization on Distributed Pytorch
---------------------------------------------------
+Mixed-Precision Training
+------------------------
+
+Mixed-precision training can significantly boost your training process. This will be implemented in the near future.
+
+
+
+
+Advanced: Hyperparameter Tuning
+-------------------------------
 
 ``PyTorchTrainer`` naturally integrates with Tune via the ``PyTorchTrainable`` interface. The same arguments to ``PyTorchTrainer`` should be passed into the ``tune.run(config=...)`` as shown below.
 
@@ -102,15 +68,3 @@ Hyperparameter Optimization on Distributed Pytorch
    :language: python
    :start-after: __torch_tune_example__
 
-
-Package Reference
------------------
-
-.. autoclass:: ray.experimental.sgd.pytorch.PyTorchTrainer
-    :members:
-
-    .. automethod:: __init__
-
-
-.. autoclass:: ray.experimental.sgd.pytorch.PyTorchTrainable
-    :members:
