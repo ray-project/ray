@@ -135,7 +135,7 @@ ProcessHandle WorkerPool::StartWorkerProcess(
     const std::vector<std::string> &dynamic_options) {
   if (GetAllProcesses().size() >= RayConfig::instance().maximum_worker_processes()) {
     RAY_LOG(INFO) << "The number of worker processes has reached the maximum value.";
-    return -1;
+    return ProcessHandle();
   }
 
   auto &state = GetStateForLanguage(language);
