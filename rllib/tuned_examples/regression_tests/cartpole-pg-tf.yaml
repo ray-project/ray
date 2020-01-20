@@ -1,4 +1,4 @@
-cartpole-pg:
+cartpole-pg-tf:
     env: CartPole-v0
     run: PG
     stop:

@@ -211,12 +211,19 @@ class ActorClassMetadata:
         self.method_signatures = {}
         self.actor_method_num_return_vals = {}
         for method_name, method in self.actor_methods:
+            # Whether or not this method requires binding of its first
+            # argument. For class and static methods, we do not want to bind
+            # the first argument, but we do for instance methods
+            is_bound = (ray.utils.is_class_method(method)
+                        or ray.utils.is_static_method(self.modified_class,
+                                                      method_name))
+
             # Print a warning message if the method signature is not
             # supported. We don't raise an exception because if the actor
             # inherits from a class that has a method whose signature we
             # don't support, there may not be much the user can do about it.
             self.method_signatures[method_name] = signature.extract_signature(
-                method, ignore_first=not ray.utils.is_class_method(method))
+                method, ignore_first=not is_bound)
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
                 self.actor_method_num_return_vals[method_name] = (

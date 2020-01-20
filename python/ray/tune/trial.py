@@ -18,6 +18,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
+from ray.tune.trainable import TrainableUtil
 from ray.tune.utils import flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
 
@@ -88,7 +89,13 @@ def checkpoint_deleter(trial_id, runner):
             checkpoint_path = checkpoint.value
             # Delete local copy, if any exists.
             if os.path.exists(checkpoint_path):
-                shutil.rmtree(checkpoint_path)
+                try:
+                    checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                        checkpoint_path)
+                    shutil.rmtree(checkpoint_dir)
+                except FileNotFoundError:
+                    logger.warning("Checkpoint dir not found during deletion.")
+
             # TODO(ujvl): Batch remote deletes.
             runner.delete_checkpoint.remote(checkpoint.value)
 

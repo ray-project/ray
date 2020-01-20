@@ -290,6 +290,22 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   HeartbeatBatchSubscriptionExecutor heartbeat_batch_sub_executor_;
 };
 
+/// \class RedisErrorInfoAccessor
+/// RedisErrorInfoAccessor is an implementation of `ErrorInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisErrorInfoAccessor : public ErrorInfoAccessor {
+ public:
+  explicit RedisErrorInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisErrorInfoAccessor() = default;
+
+  Status AsyncReportJobError(const std::shared_ptr<ErrorTableData> &data_ptr,
+                             const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+};
+
 /// \class RedisStatsInfoAccessor
 /// RedisStatsInfoAccessor is an implementation of `StatsInfoAccessor`
 /// that uses Redis as the backend storage.
@@ -304,6 +320,30 @@ class RedisStatsInfoAccessor : public StatsInfoAccessor {
 
  private:
   RedisGcsClient *client_impl_{nullptr};
+};
+
+/// \class RedisWorkerInfoAccessor
+/// RedisWorkerInfoAccessor is an implementation of `WorkerInfoAccessor`
+/// that uses Redis as the backend storage.
+class RedisWorkerInfoAccessor : public WorkerInfoAccessor {
+ public:
+  explicit RedisWorkerInfoAccessor(RedisGcsClient *client_impl);
+
+  virtual ~RedisWorkerInfoAccessor() = default;
+
+  Status AsyncSubscribeToWorkerFailures(
+      const SubscribeCallback<WorkerID, WorkerFailureData> &subscribe,
+      const StatusCallback &done) override;
+
+  Status AsyncReportWorkerFailure(const std::shared_ptr<WorkerFailureData> &data_ptr,
+                                  const StatusCallback &callback) override;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+
+  typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
+      WorkerFailureSubscriptionExecutor;
+  WorkerFailureSubscriptionExecutor worker_failure_sub_executor_;
 };
 
 }  // namespace gcs

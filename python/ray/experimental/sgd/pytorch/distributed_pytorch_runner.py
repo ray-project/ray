@@ -88,11 +88,18 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
     def get_state(self):
         """Returns the state of the runner."""
+        # This is so that we create a duplicate of weights into CPU rather than
+        # move the model weights entirely out of the GPU, so that we can
+        # resume training while saving intermediate checkpoints.
+        cpu_state_dicts = []
+        for model in self.models:
+            state_dict = model.module.state_dict()
+            for k, v in state_dict.items():
+                state_dict[k] = v.cpu()
+            cpu_state_dicts += [state_dict]
         return {
             "epoch": self.epoch,
-            "models": [
-                model.module.cpu().state_dict() for model in self.models
-            ],
+            "models": cpu_state_dicts,
             "optimizers": [opt.state_dict() for opt in self.optimizers],
             "stats": self.stats()
         }

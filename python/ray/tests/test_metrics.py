@@ -149,7 +149,7 @@ def test_raylet_info_endpoint(shutdown_only):
             webui_url = addresses["webui_url"]
             webui_url = webui_url.replace("localhost", "http://127.0.0.1")
             raylet_info = requests.get(webui_url + "/api/raylet_info").json()
-            actor_info = raylet_info["result"]["actorInfo"]
+            actor_info = raylet_info["result"]["actors"]
             try:
                 assert len(actor_info) == 1
                 _, parent_actor_info = actor_info.popitem()
@@ -168,6 +168,7 @@ def test_raylet_info_endpoint(shutdown_only):
                     "Timed out while waiting for dashboard to start.")
 
     assert parent_actor_info["usedResources"]["CPU"] == 2
+    assert parent_actor_info["numExecutedTasks"] == 3
     for _, child_actor_info in children.items():
         if child_actor_info["state"] == -1:
             assert child_actor_info["requiredResources"]["CustomResource"] == 1

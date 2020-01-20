@@ -210,9 +210,16 @@ def add_pure_exploration_phase(trainer):
     update_worker_explorations(trainer)
 
 
+def validate_config(config):
+    # PyTorch check.
+    if config["use_pytorch"]:
+        raise ValueError("DDPG does not support PyTorch yet! Use tf instead.")
+
+
 DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="DDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=DDPGTFPolicy,
+    validate_config=validate_config,
     before_init=setup_ddpg_exploration,
     before_train_step=add_pure_exploration_phase)
