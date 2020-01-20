@@ -202,7 +202,6 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 /// The maximum number of the worker processes on this node.
 RAY_CONFIG(uint32_t, maximum_worker_processes, 1024)
 
-
 /// The number initial workers of java language to start when starting raylet.
 /// If this value is negative, `num_cpus` will be used.
 RAY_CONFIG(int32_t, num_initial_java_workers, -1)

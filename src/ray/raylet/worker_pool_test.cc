@@ -27,7 +27,8 @@ class WorkerPoolMock : public WorkerPool {
 
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, {{ray::Language::JAVA, 0}, {ray::Language::PYTHON, 0}}, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
+      : WorkerPool(io_service, {{ray::Language::JAVA, 0}, {ray::Language::PYTHON, 0}},
+                   MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
         last_worker_process_() {
     for (auto &entry : states_by_lang_) {
       entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;

@@ -43,7 +43,8 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(boost::asio::io_service &io_service, EnumUnorderedMap<Language, int> num_initial_workers,
+  WorkerPool(boost::asio::io_service &io_service,
+             EnumUnorderedMap<Language, int> num_initial_workers,
              int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
