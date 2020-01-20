@@ -126,7 +126,7 @@ def _generate_variants(spec):
     grid_vars = []
     lambda_vars = []
     for path, value in unresolved.items():
-        if isinstance(value, types.FunctionType):
+        if callable(value):
             lambda_vars.append((path, value))
         else:
             grid_vars.append((path, value))
