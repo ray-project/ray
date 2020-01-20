@@ -45,6 +45,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
  public:
   MockTaskFinisher() {}
 
+  void AddPendingTask(const TaskID &caller_id, const rpc::Address &caller_address,
+                      std::shared_ptr<rpc::PushTaskRequest> request,
+                      int max_retries) override {}
+
   void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &,
                            const rpc::Address *actor_addr) override {
     num_tasks_complete++;
@@ -143,9 +147,9 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto store = std::make_shared<CoreWorkerMemoryStore>();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
-  TaskSpecification task;
+  auto request = std::make_shared<rpc::PushTaskRequest>();
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(request, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_EQ(task_finisher->num_inlined, 0);
 }
@@ -155,10 +159,10 @@ TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   LocalDependencyResolver resolver(store, task_finisher);
   ObjectID obj1 = ObjectID::FromRandom();
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  auto request = std::make_shared<rpc::PushTaskRequest>();
+  request->mutable_task_spec()->add_args()->add_object_ids(obj1.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(request, [&ok]() { ok = true; });
   // We ignore and don't block on plasma dependencies.
   ASSERT_TRUE(ok);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
@@ -175,11 +179,12 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
   auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
   auto data = RayObject(nullptr, meta_buffer);
   ASSERT_TRUE(store->Put(data, obj1).ok());
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
+  auto request = std::make_shared<rpc::PushTaskRequest>();
+  request->mutable_task_spec()->add_args()->add_object_ids(obj1.Binary());
+  TaskSpecification task(request);
   ASSERT_TRUE(task.ArgId(0, 0).IsDirectCallType());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(request, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
   ASSERT_TRUE(task.ArgByRef(0));
   // Checks that the object id is still a direct call id.
@@ -198,12 +203,13 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   // Ensure the data is already present in the local store.
   ASSERT_TRUE(store->Put(*data, obj1).ok());
   ASSERT_TRUE(store->Put(*data, obj2).ok());
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  auto request = std::make_shared<rpc::PushTaskRequest>();
+  request->mutable_task_spec()->add_args()->add_object_ids(obj1.Binary());
+  request->mutable_task_spec()->add_args()->add_object_ids(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(request, [&ok]() { ok = true; });
   // Tests that the task proto was rewritten to have inline argument values.
+  TaskSpecification task(request);
   ASSERT_TRUE(ok);
   ASSERT_FALSE(task.ArgByRef(0));
   ASSERT_FALSE(task.ArgByRef(1));
@@ -220,17 +226,18 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
-  TaskSpecification task;
-  task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
-  task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
+  auto request = std::make_shared<rpc::PushTaskRequest>();
+  request->mutable_task_spec()->add_args()->add_object_ids(obj1.Binary());
+  request->mutable_task_spec()->add_args()->add_object_ids(obj2.Binary());
   bool ok = false;
-  resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  resolver.ResolveDependencies(request, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
   ASSERT_TRUE(store->Put(*data, obj1).ok());
   ASSERT_TRUE(store->Put(*data, obj2).ok());
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
+  TaskSpecification task(request);
   ASSERT_TRUE(ok);
   ASSERT_FALSE(task.ArgByRef(0));
   ASSERT_FALSE(task.ArgByRef(1));

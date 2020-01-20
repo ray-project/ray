@@ -31,12 +31,8 @@ class JobInfoGcsServiceHandler {
  public:
   virtual ~JobInfoGcsServiceHandler() = default;
 
-  virtual void HandleAddJob(const AddJobRequest &request, AddJobReply *reply,
-                            SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleMarkJobFinished(const MarkJobFinishedRequest &request,
-                                     MarkJobFinishedReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddJob)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(MarkJobFinished)
 };
 
 /// The `GrpcService` for `JobInfoGcsService`.
@@ -71,29 +67,12 @@ class ActorInfoGcsServiceHandler {
  public:
   virtual ~ActorInfoGcsServiceHandler() = default;
 
-  virtual void HandleGetActorInfo(const GetActorInfoRequest &request,
-                                  GetActorInfoReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRegisterActorInfo(const RegisterActorInfoRequest &request,
-                                       RegisterActorInfoReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateActorInfo(const UpdateActorInfoRequest &request,
-                                     UpdateActorInfoReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAddActorCheckpoint(const AddActorCheckpointRequest &request,
-                                        AddActorCheckpointReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetActorCheckpoint(const GetActorCheckpointRequest &request,
-                                        GetActorCheckpointReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetActorCheckpointID(const GetActorCheckpointIDRequest &request,
-                                          GetActorCheckpointIDReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetActorInfo)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RegisterActorInfo)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(UpdateActorInfo)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddActorCheckpoint)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetActorCheckpoint)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetActorCheckpointID)
 };
 
 /// The `GrpcService` for `ActorInfoGcsService`.
@@ -132,37 +111,14 @@ class NodeInfoGcsServiceHandler {
  public:
   virtual ~NodeInfoGcsServiceHandler() = default;
 
-  virtual void HandleRegisterNode(const RegisterNodeRequest &request,
-                                  RegisterNodeReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUnregisterNode(const UnregisterNodeRequest &request,
-                                    UnregisterNodeReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetAllNodeInfo(const GetAllNodeInfoRequest &request,
-                                    GetAllNodeInfoReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleReportHeartbeat(const ReportHeartbeatRequest &request,
-                                     ReportHeartbeatReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleReportBatchHeartbeat(const ReportBatchHeartbeatRequest &request,
-                                          ReportBatchHeartbeatReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetResources(const GetResourcesRequest &request,
-                                  GetResourcesReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateResources(const UpdateResourcesRequest &request,
-                                     UpdateResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDeleteResources(const DeleteResourcesRequest &request,
-                                     DeleteResourcesReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RegisterNode)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(UnregisterNode)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetAllNodeInfo)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ReportHeartbeat)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ReportBatchHeartbeat)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetResources)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(UpdateResources)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteResources)
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -203,17 +159,9 @@ class ObjectInfoGcsServiceHandler {
  public:
   virtual ~ObjectInfoGcsServiceHandler() = default;
 
-  virtual void HandleGetObjectLocations(const GetObjectLocationsRequest &request,
-                                        GetObjectLocationsReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAddObjectLocation(const AddObjectLocationRequest &request,
-                                       AddObjectLocationReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleRemoveObjectLocation(const RemoveObjectLocationRequest &request,
-                                          RemoveObjectLocationReply *reply,
-                                          SendReplyCallback send_reply_callback) = 0;
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectLocations)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddObjectLocation)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoveObjectLocation)
 };
 
 /// The `GrpcService` for `ObjectInfoGcsServiceHandler`.
@@ -249,23 +197,11 @@ class TaskInfoGcsServiceHandler {
  public:
   virtual ~TaskInfoGcsServiceHandler() = default;
 
-  virtual void HandleAddTask(const AddTaskRequest &request, AddTaskReply *reply,
-                             SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetTask(const GetTaskRequest &request, GetTaskReply *reply,
-                             SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleDeleteTasks(const DeleteTasksRequest &request,
-                                 DeleteTasksReply *reply,
-                                 SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAddTaskLease(const AddTaskLeaseRequest &request,
-                                  AddTaskLeaseReply *reply,
-                                  SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleAttemptTaskReconstruction(
-      const AttemptTaskReconstructionRequest &request,
-      AttemptTaskReconstructionReply *reply, SendReplyCallback send_reply_callback) = 0;
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddTask)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetTask)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteTasks)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddTaskLease)
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AttemptTaskReconstruction)
 };
 
 /// The `GrpcService` for `TaskInfoGcsService`.
@@ -303,9 +239,7 @@ class StatsGcsServiceHandler {
  public:
   virtual ~StatsGcsServiceHandler() = default;
 
-  virtual void HandleAddProfileData(const AddProfileDataRequest &request,
-                                    AddProfileDataReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AddProfileData)
 };
 
 /// The `GrpcService` for `StatsGcsService`.
