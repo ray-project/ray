@@ -36,6 +36,7 @@ class PyTorchTrainer:
                  validation_function=None,
                  initialization_hook=None,
                  config=None,
+                 dataloader_config=None,
                  num_replicas=1,
                  use_gpu=False,
                  batch_size=16,
@@ -45,13 +46,16 @@ class PyTorchTrainer:
         Args:
             model_creator (dict -> torch.nn.Module): creates the model
                 using the config.
-            data_creator (int, dict -> DataLoader, DataLoader): Function that
-                takes in (batch_size, config) and returns two Torch DataLoader
+            data_creator (int, dict -> Dataset, Dataset): Function that
+                takes in (batch_size, config) and returns two Torch Dataset
                 objects.
             optimizer_creator (torch.nn.Module, dict -> optimizer):
                 creates the loss and optimizer using the model and the config.
-            loss_creator (dict -> loss): Creates the loss function/criterion
-                using the config.
+            loss_creator (dict -> loss or torch.nn.*Loss): A creator function
+                for the loss function. This can be either a function that
+                takes in the provided config for customization or a subclass
+                of ``torch.nn.modules.loss._Loss``, which is most Pytorch
+                loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
             train_function: Trains a model for a epoch. This takes in (
                 model, train_dataloader, criterion, optimizer, config), and
                 returns a dict of training stats.
@@ -84,6 +88,7 @@ class PyTorchTrainer:
         self.validation_function = validation_function
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
+        self.dataloader_config = dataloader_config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
         if backend == "auto":
@@ -115,6 +120,7 @@ class PyTorchTrainer:
                     train_function=self.train_function,
                     validation_function=self.validation_function,
                     config=self.config,
+                    dataloader_config=self.dataloader_config,
                     batch_size=self.batch_size)
             ]
             if self.initialization_hook:
@@ -148,6 +154,7 @@ class PyTorchTrainer:
                     train_function=self.train_function,
                     validation_function=self.validation_function,
                     config=self.config,
+                    dataloader_config=self.dataloader_config,
                     batch_size=batch_size_per_replica)
                 for i in range(num_replicas)
             ]
