@@ -537,7 +537,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
     failed_workers_cache_.insert(worker_id);
   } else {
     RAY_CHECK(!node_id.IsNil());
-    failed_nodes_caches_.insert(node_id);
+    failed_nodes_cache_.insert(node_id);
   }
 
   // TODO(swang): Also clean up any lease requests owned by the failed worker
@@ -553,8 +553,18 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
     RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
-      if (owner_worker_id == worker_id || owner_node_id == node_id) {
-        RAY_LOG(INFO) << "Owner died, killing leased worker " << worker->WorkerId();
+      if (!worker_id.IsNil()) {
+        // If the failed worker was a leased worker's owner, then kill the leased worker.
+        if (owner_worker_id == worker_id) {
+          RAY_LOG(INFO) << "Owner process " << owner_worker_id
+                        << " died, killing leased worker " << worker->WorkerId();
+          KillWorker(worker);
+        }
+      } else if (owner_node_id == node_id) {
+        // If the leased worker's owner was on the failed node, then kill the leased
+        // worker.
+        RAY_LOG(INFO) << "Owner node " << owner_node_id << " died, killing leased worker "
+                      << worker->WorkerId();
         KillWorker(worker);
       }
     }
@@ -2366,7 +2376,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
     // If the owner has died since this task was queued, cancel the task by
     // killing the worker.
     if (failed_workers_cache_.count(owner_worker_id) > 0 ||
-        failed_nodes_caches_.count(owner_node_id) > 0) {
+        failed_nodes_cache_.count(owner_node_id) > 0) {
       // TODO(swang): Skip assigning this task to this worker instead of
       // killing the worker?
       KillWorker(worker);

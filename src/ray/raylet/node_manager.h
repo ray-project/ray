@@ -659,7 +659,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Map from owner worker ID to a list of worker IDs that the owner has a
   /// lease on.
-  std::unordered_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
+  absl::flat_hash_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
 
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
@@ -689,14 +689,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
-  /// XXX
+  /// Wait for a task's arguments to become ready.
   void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
 
   // TODO(swang): Evict entries from these caches.
   /// Cache for the WorkerFailureTable in the GCS.
-  std::unordered_set<WorkerID> failed_workers_cache_;
+  absl::flat_hash_set<WorkerID> failed_workers_cache_;
   /// Cache for the ClientTable in the GCS.
-  std::unordered_set<ClientID> failed_nodes_caches_;
+  absl::flat_hash_set<ClientID> failed_nodes_cache_;
 };
 
 }  // namespace raylet
