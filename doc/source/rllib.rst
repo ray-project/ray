@@ -10,7 +10,7 @@ To get started, take a look over the `custom env example <https://github.com/ray
 RLlib in 60 seconds
 -------------------
 
-The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__.
+The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__. Look out for the |tensorflow| and |pytorch| icons to see which algorithms are available for each framework.
 
 Running RLlib
 ~~~~~~~~~~~~~
@@ -102,3 +102,9 @@ RLlib provides ways to customize almost all aspects of training, including the `
 .. image:: rllib-components.svg
 
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
+
+.. |tensorflow| image:: tensorflow.png
+    :width: 24
+
+.. |pytorch| image:: pytorch.png
+    :width: 24
