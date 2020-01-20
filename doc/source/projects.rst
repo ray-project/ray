@@ -104,7 +104,30 @@ You can interrupt the command with ``<Control>-c`` and attach to the running ses
     ray session attach --tmux
 
 
-The session can be terminated with
+Inside the session you can for example edit the streaming applications with
+
+.. code-block:: bash
+
+    cd ray-example-streaming
+    emacs streaming.py
+
+
+Try for example to add the following lines after the ``for count in counts:`` loop:
+
+.. code-block:: python
+
+    if "million" in wordcounts:
+      print("Found the word!")
+
+
+and re-run the application from outside the session with
+
+.. code-block:: bash
+
+    ray session execute run
+
+
+The session can be terminated from outside the session with
 
 .. code-block:: bash
 

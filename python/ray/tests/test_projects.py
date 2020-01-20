@@ -9,8 +9,8 @@ from unittest.mock import patch, DEFAULT
 
 from contextlib import contextmanager
 
-from ray.projects.scripts import (
-    session_start, session_commands, session_execute)
+from ray.projects.scripts import (session_start, session_commands,
+                                  session_execute)
 import ray
 
 TEST_DIR = os.path.join(
