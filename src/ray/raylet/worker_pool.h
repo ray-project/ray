@@ -161,7 +161,8 @@ class WorkerPool {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  ProcessHandle StartWorkerProcess(const Language &language, bool is_initial_worker = false,
+  ProcessHandle StartWorkerProcess(const Language &language,
+                                   bool is_initial_worker = false,
                                    const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.

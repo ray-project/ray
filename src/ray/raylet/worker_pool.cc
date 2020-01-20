@@ -124,7 +124,8 @@ uint32_t WorkerPool::Size(const Language &language) const {
 }
 
 ProcessHandle WorkerPool::StartWorkerProcess(
-    const Language &language, bool is_initial_worker, const std::vector<std::string> &dynamic_options) {
+    const Language &language, bool is_initial_worker,
+    const std::vector<std::string> &dynamic_options) {
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
@@ -315,8 +316,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      proc =
-          StartWorkerProcess(task_spec.GetLanguage(), /*is_initial_worker=*/false, task_spec.DynamicWorkerOptions());
+      proc = StartWorkerProcess(task_spec.GetLanguage(), /*is_initial_worker=*/false,
+                                task_spec.DynamicWorkerOptions());
       if (proc) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
