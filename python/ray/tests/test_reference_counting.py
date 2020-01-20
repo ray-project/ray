@@ -231,10 +231,14 @@ def test_feature_flag(shutdown_only):
             self.large_object = ray.put(
                 np.zeros(25 * 1024 * 1024, dtype=np.uint8))
 
+        def wait_for_actor_to_start(self):
+            pass
+
         def get_large_object(self):
             return ray.get(self.large_object)
 
     actor = Actor.remote()
+    ray.get(actor.wait_for_actor_to_start.remote())
 
     for batch in range(10):
         intermediate_result = f.remote(

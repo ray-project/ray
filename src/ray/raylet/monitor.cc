@@ -2,6 +2,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -15,12 +16,12 @@ namespace raylet {
 /// within heartbeat_timeout_milliseconds * num_heartbeats_timeout (defined in
 /// the Ray configuration), then the monitor will mark that Raylet as dead in
 /// the client table, which broadcasts the event to all other Raylets.
-Monitor::Monitor(boost::asio::io_service &io_service, const std::string &redis_address,
-                 int redis_port, const std::string &redis_password)
-    : gcs_client_(gcs::GcsClientOptions(redis_address, redis_port, redis_password)),
+Monitor::Monitor(boost::asio::io_service &io_service,
+                 const gcs::GcsClientOptions &gcs_client_options)
+    : gcs_client_(new gcs::RedisGcsClient(gcs_client_options)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
       heartbeat_timer_(io_service) {
-  RAY_CHECK_OK(gcs_client_.Connect(io_service));
+  RAY_CHECK_OK(gcs_client_->Connect(io_service));
 }
 
 void Monitor::HandleHeartbeat(const ClientID &node_id,
@@ -34,7 +35,7 @@ void Monitor::Start() {
                                          const HeartbeatTableData &heartbeat_data) {
     HandleHeartbeat(id, heartbeat_data);
   };
-  RAY_CHECK_OK(gcs_client_.Nodes().AsyncSubscribeHeartbeat(heartbeat_callback, nullptr));
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeHeartbeat(heartbeat_callback, nullptr));
   Tick();
 }
 
@@ -58,7 +59,7 @@ void Monitor::Tick() {
           }
           if (!marked) {
             RAY_CHECK_OK(
-                gcs_client_.Nodes().AsyncUnregister(node_id, /* callback */ nullptr));
+                gcs_client_->Nodes().AsyncUnregister(node_id, /* callback */ nullptr));
             // Broadcast a warning to all of the drivers indicating that the node
             // has been marked as dead.
             // TODO(rkn): Define this constant somewhere else.
@@ -67,12 +68,13 @@ void Monitor::Tick() {
             error_message << "The node with client ID " << node_id
                           << " has been marked dead because the monitor"
                           << " has missed too many heartbeats from it.";
-            // We use the nil JobID to broadcast the message to all drivers.
-            RAY_CHECK_OK(gcs_client_.error_table().PushErrorToDriver(
-                JobID::Nil(), type, error_message.str(), current_time_ms()));
+            auto error_data_ptr =
+                gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+            RAY_CHECK_OK(
+                gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
           }
         };
-        RAY_CHECK_OK(gcs_client_.Nodes().AsyncGetAll(lookup_callback));
+        RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(lookup_callback));
         dead_nodes_.insert(node_id);
       }
       it = heartbeats_.erase(it);
@@ -87,7 +89,7 @@ void Monitor::Tick() {
     for (const auto &heartbeat : heartbeat_buffer_) {
       batch->add_batch()->CopyFrom(heartbeat.second);
     }
-    RAY_CHECK_OK(gcs_client_.Nodes().AsyncReportBatchHeartbeat(batch, nullptr));
+    RAY_CHECK_OK(gcs_client_->Nodes().AsyncReportBatchHeartbeat(batch, nullptr));
     heartbeat_buffer_.clear();
   }
 

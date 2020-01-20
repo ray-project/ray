@@ -78,7 +78,7 @@ def build_torch_policy(name,
                     framework="torch")
 
             TorchPolicy.__init__(
-                self, obs_space, action_space, config, self.config,
+                self, obs_space, action_space, config,
                 self.model, loss_fn, self.dist_class)
 
             if after_init:

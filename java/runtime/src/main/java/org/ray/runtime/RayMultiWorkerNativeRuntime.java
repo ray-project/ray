@@ -141,6 +141,11 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
   }
 
   @Override
+  public void killActor(RayActor<?> actor) {
+    getCurrentRuntime().killActor(actor);
+  }
+
+  @Override
   public RayObject call(RayFunc func, Object[] args, CallOptions options) {
     return getCurrentRuntime().call(func, args, options);
   }

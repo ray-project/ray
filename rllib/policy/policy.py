@@ -323,7 +323,8 @@ class Policy(metaclass=ABCMeta):
     @staticmethod
     def clip_action(action, space):
         """
-        Called to clip actions to the specified range of this policy.
+
+    Called to clip actions to the specified range of this policy.
 
         Arguments:
             action: Single action.

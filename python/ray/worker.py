@@ -4,6 +4,7 @@ import atexit
 import faulthandler
 import hashlib
 import inspect
+import io
 import json
 import logging
 import os
@@ -1104,8 +1105,11 @@ def connect(node,
     assert worker.cached_functions_to_run is not None, error_message
 
     # Enable nice stack traces on SIGSEGV etc.
-    if not faulthandler.is_enabled():
-        faulthandler.enable(all_threads=False)
+    try:
+        if not faulthandler.is_enabled():
+            faulthandler.enable(all_threads=False)
+    except io.UnsupportedOperation:
+        pass  # ignore
 
     ray._raylet.set_internal_config(internal_config)
 

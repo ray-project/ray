@@ -1,7 +1,6 @@
 package org.ray.streaming.runtime.core.graph;
 
 import java.io.Serializable;
-
 import org.ray.api.RayActor;
 import org.ray.streaming.runtime.worker.JobWorker;
 

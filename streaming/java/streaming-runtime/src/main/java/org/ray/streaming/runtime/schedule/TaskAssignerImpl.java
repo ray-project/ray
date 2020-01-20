@@ -6,9 +6,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.ray.api.RayActor;
-import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanEdge;
-import org.ray.streaming.plan.PlanVertex;
+import org.ray.streaming.jobgraph.JobEdge;
+import org.ray.streaming.jobgraph.JobGraph;
+import org.ray.streaming.jobgraph.JobVertex;
 import org.ray.streaming.runtime.core.graph.ExecutionEdge;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
@@ -20,37 +20,37 @@ public class TaskAssignerImpl implements TaskAssigner {
   /**
    * Assign an optimized logical plan to execution graph.
    *
-   * @param plan    The logical plan.
+   * @param jobGraph    The logical plan.
    * @param workers The worker actors.
    * @return The physical execution graph.
    */
   @Override
-  public ExecutionGraph assign(Plan plan, List<RayActor<JobWorker>> workers) {
-    List<PlanVertex> planVertices = plan.getPlanVertexList();
-    List<PlanEdge> planEdges = plan.getPlanEdgeList();
+  public ExecutionGraph assign(JobGraph jobGraph, List<RayActor<JobWorker>> workers) {
+    List<JobVertex> jobVertices = jobGraph.getJobVertexList();
+    List<JobEdge> jobEdges = jobGraph.getJobEdgeList();
 
     int taskId = 0;
     Map<Integer, ExecutionNode> idToExecutionNode = new HashMap<>();
-    for (PlanVertex planVertex : planVertices) {
-      ExecutionNode executionNode = new ExecutionNode(planVertex.getVertexId(),
-          planVertex.getParallelism());
-      executionNode.setNodeType(planVertex.getVertexType());
+    for (JobVertex jobVertex : jobVertices) {
+      ExecutionNode executionNode = new ExecutionNode(jobVertex.getVertexId(),
+          jobVertex.getParallelism());
+      executionNode.setNodeType(jobVertex.getVertexType());
       List<ExecutionTask> vertexTasks = new ArrayList<>();
-      for (int taskIndex = 0; taskIndex < planVertex.getParallelism(); taskIndex++) {
+      for (int taskIndex = 0; taskIndex < jobVertex.getParallelism(); taskIndex++) {
         vertexTasks.add(new ExecutionTask(taskId, taskIndex, workers.get(taskId)));
         taskId++;
       }
       executionNode.setExecutionTasks(vertexTasks);
-      executionNode.setStreamOperator(planVertex.getStreamOperator());
+      executionNode.setStreamOperator(jobVertex.getStreamOperator());
       idToExecutionNode.put(executionNode.getNodeId(), executionNode);
     }
 
-    for (PlanEdge planEdge : planEdges) {
-      int srcNodeId = planEdge.getSrcVertexId();
-      int targetNodeId = planEdge.getTargetVertexId();
+    for (JobEdge jobEdge : jobEdges) {
+      int srcNodeId = jobEdge.getSrcVertexId();
+      int targetNodeId = jobEdge.getTargetVertexId();
 
       ExecutionEdge executionEdge = new ExecutionEdge(srcNodeId, targetNodeId,
-          planEdge.getPartition());
+          jobEdge.getPartition());
       idToExecutionNode.get(srcNodeId).addExecutionEdge(executionEdge);
       idToExecutionNode.get(targetNodeId).addInputEdge(executionEdge);
     }

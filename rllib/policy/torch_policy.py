@@ -41,7 +41,7 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
-        super(TorchPolicy, self).__init__(
+        super().__init__(
             observation_space, action_space, config
         )
         self.device = (torch.device("cuda")
