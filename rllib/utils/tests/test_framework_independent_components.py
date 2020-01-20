@@ -16,21 +16,22 @@ class TestFrameWorkIndependentComponents(unittest.TestCase):
     Tests the Component base class to implement framework-agnostic functional
     units.
     """
+
     def test_dummy_components(self):
         # Switch on eager for testing purposes.
         tf.enable_eager_execution()
 
         # Try to create from an abstract class w/o default constructor.
         # Expect None.
-        test = from_config(
-            {"type": AbstractDummyComponent, "framework": "torch"})
+        test = from_config({
+            "type": AbstractDummyComponent,
+            "framework": "torch"
+        })
         check(test, None)
 
         # Create a Component via python API (config dict).
-        component = from_config(dict(
-            type=DummyComponent,
-            prop_a=1.0, prop_d="non_default"
-        ))
+        component = from_config(
+            dict(type=DummyComponent, prop_a=1.0, prop_d="non_default"))
         check(component.prop_d, "non_default")
 
         # Create a tf Component from json file.
@@ -49,8 +50,7 @@ class TestFrameWorkIndependentComponents(unittest.TestCase):
         component = from_config(
             '{"type": "ray.rllib.utils.tests.'
             'test_framework_independent_components.DummyComponent", '
-            '"prop_a": "A", "prop_b": -1.0, "prop_c": "non-default"}'
-        )
+            '"prop_a": "A", "prop_b": -1.0, "prop_c": "non-default"}')
         check(component.prop_a, "A")
         check(component.prop_d, 4)  # default
         check(component.add(-1.1).numpy(), -2.1)  # prop_b == -1.0
@@ -59,8 +59,7 @@ class TestFrameWorkIndependentComponents(unittest.TestCase):
         component = from_config(
             "type: ray.rllib.utils.tests."
             "test_framework_independent_components.DummyComponent\n"
-            "prop_a: B\nprop_b: -1.5\nprop_c: non-default\nframework: torch"
-        )
+            "prop_a: B\nprop_b: -1.5\nprop_c: non-default\nframework: torch")
         check(component.prop_a, "B")
         check(component.prop_d, 4)  # default
         check(component.add(-5.1), torch.Tensor([-6.6]))  # prop_b == -1.5
@@ -72,9 +71,13 @@ class DummyComponent:
     logic. Implements a simple `add()` method for adding a value to
     `self.prop_b`.
     """
-    def __init__(
-            self, prop_a, prop_b=0.5, prop_c=None, framework="tf", **kwargs
-    ):
+
+    def __init__(self,
+                 prop_a,
+                 prop_b=0.5,
+                 prop_c=None,
+                 framework="tf",
+                 **kwargs):
         self.framework = framework
         self.prop_a = prop_a
         self.prop_b = prop_b
@@ -95,6 +98,7 @@ class AbstractDummyComponent(DummyComponent, metaclass=ABCMeta):
     """
     Used for testing `from_config()`.
     """
+
     @abstractmethod
     def some_abstract_method(self):
         raise NotImplementedError

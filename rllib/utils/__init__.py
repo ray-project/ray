@@ -54,7 +54,6 @@ def force_list(elements=None, to_tuple=False):
 
 force_tuple = partial(force_list, to_tuple=True)
 
-
 __all__ = [
     "add_mixins",
     "check",

@@ -149,13 +149,11 @@ def from_config(cls, config=None, **kwargs):
                 raise ValueError(
                     "String specifier ({}) in `from_config` must be a "
                     "filename, a module+class, or a key into "
-                    "{}.__type_registry__!".format(type_, cls.__name__)
-                )
+                    "{}.__type_registry__!".format(type_, cls.__name__))
 
     if not constructor:
         raise TypeError(
-            "Invalid type '{}'. Cannot create `from_config`.".format(type_)
-        )
+            "Invalid type '{}'. Cannot create `from_config`.".format(type_))
 
     # Create object with inferred constructor.
     try:
@@ -168,9 +166,8 @@ def from_config(cls, config=None, **kwargs):
     # No sanity check for fake (lambda)-"constructors".
     if type(constructor).__name__ != "function":
         assert isinstance(
-            object_, constructor.func if isinstance(constructor, partial)
-            else constructor
-        )
+            object_, constructor.func
+            if isinstance(constructor, partial) else constructor)
 
     return object_
 
