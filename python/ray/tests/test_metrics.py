@@ -172,7 +172,7 @@ def test_raylet_info_endpoint(shutdown_only):
                     "Timed out while waiting for dashboard to start.")
 
     assert parent_actor_info["usedResources"]["CPU"] == 2
-    assert parent_actor_info["numExecutedTasks"] == 3
+    assert parent_actor_info["numExecutedTasks"] == 4
     for _, child_actor_info in children.items():
         if child_actor_info["state"] == -1:
             assert child_actor_info["requiredResources"]["CustomResource"] == 1
@@ -181,13 +181,27 @@ def test_raylet_info_endpoint(shutdown_only):
             assert len(child_actor_info["children"]) == 0
             assert child_actor_info["usedResources"]["CPU"] == 1
 
-    raylet_info = requests.get(
-        webui_url + "/api/profiling_info",
+    profiling_id = requests.get(
+        webui_url + "/api/launch_profiling",
         params={
             "node_id": ray.nodes()[0]["NodeID"],
             "pid": actor_pid,
             "duration": 5
         }).json()
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            profiling_info = requests.get(
+                webui_url + "/api/check_profiling_status",
+                params={
+                    "profiling_id": profiling_id,
+                }).json()
+            assert profiling_info['status'] in ("finished", "error")
+            break
+        except AssertionError:
+            if time.time() - start_time + 10:
+                raise Exception("Timed out while collecting profiling stats.")
 
 
 if __name__ == "__main__":
