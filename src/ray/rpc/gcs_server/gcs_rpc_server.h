@@ -279,9 +279,7 @@ class ErrorInfoGcsServiceHandler {
  public:
   virtual ~ErrorInfoGcsServiceHandler() = default;
 
-  virtual void HandleReportJobError(const ReportJobErrorRequest &request,
-                                    ReportJobErrorReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ReportJobError)
 };
 
 /// The `GrpcService` for `ErrorInfoGcsService`.
@@ -315,9 +313,7 @@ class WorkerInfoGcsServiceHandler {
  public:
   virtual ~WorkerInfoGcsServiceHandler() = default;
 
-  virtual void HandleReportWorkerFailure(const ReportWorkerFailureRequest &request,
-                                         ReportWorkerFailureReply *reply,
-                                         SendReplyCallback send_reply_callback) = 0;
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ReportWorkerFailure)
 };
 
 /// The `GrpcService` for `WorkerInfoGcsService`.
