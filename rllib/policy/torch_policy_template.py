@@ -74,7 +74,7 @@ def build_torch_policy(name,
                     "return a TorchModelV2 object!"
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
-                    action_space, self.config["model"], torch=True)
+                    action_space, self.config["model"], framework="torch")
                 self.model = ModelCatalog.get_model_v2(
                     obs_space,
                     action_space,

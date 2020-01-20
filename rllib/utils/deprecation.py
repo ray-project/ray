@@ -13,8 +13,8 @@ def deprecation_warning(old, new=None):
         new (Optional[str]): A description of the new "thing" that replaces it.
     """
     logger.warning(
-        "DeprecationWarning: `{}` has been deprecated.".format(old) +
-        (" Use `{}` instead." if new else "") +
+        "DeprecationWarning: `{}` has been deprecated.{}".
+        format(old, (" Use `{}` instead.".format(new) if new else "")) +
         " This will raise an error in the future!"
     )
 
