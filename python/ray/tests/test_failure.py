@@ -992,44 +992,6 @@ def test_serialized_id(ray_start_cluster):
     ray.get(get.remote([obj], True))
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster", [{
-        "num_nodes": 2,
-        "num_gpus": 1,
-    }], indirect=True)
-def test_fate_sharing_process_death(ray_start_cluster):
-    @ray.remote(num_gpus=1)
-    def sleep():
-        time.sleep(1000)
-
-    @ray.remote(num_gpus=1)
-    class Actor(object):
-        def __init__(self):
-            pass
-
-        def getpid(self):
-            return os.getpid()
-
-        def sleep(self):
-            time.sleep(1000)
-
-        def start_child(self, use_actors):
-            if use_actors:
-                child = Actor.remote()
-                child.sleep.remote()
-            else:
-                sleep.remote()
-
-    def get_pid(parent):
-        pid = parent.getpid.remote()
-        ready, _ = ray.wait([pid], num_returns=1, timeout=10)
-        if not ready:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for resources to free")
-        pid = ray.get(pid)
-        return pid
-
-
 def test_fate_sharing(ray_start_cluster):
     config = json.dumps({
         "num_heartbeats_timeout": 10,
