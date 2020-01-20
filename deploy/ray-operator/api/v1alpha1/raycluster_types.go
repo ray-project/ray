@@ -10,8 +10,6 @@ import (
 
 // RayClusterSpec defines the desired state of RayCluster
 type RayClusterSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 	// ClusterName is unique identifier for RayCluster in one namespace.
 	ClusterName string `json:"clusterName"`
 	// Docker image.
@@ -78,7 +76,7 @@ type RayClusterImage struct {
 type Extension struct {
 	// Number of desired pods in this pod group. This is a pointer to distinguish between explicit
 	// zero and not specified. Defaults to 1.
-	Replicas *int32 `json:"replicas"`
+	Replicas *int32 `json:"replicas,omitempty"`
 
 	// The pod type in this group worker/head.
 	Type ReplicaType `json:"type,omitempty"`

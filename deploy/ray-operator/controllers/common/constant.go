@@ -4,11 +4,10 @@ const (
 	// Head used as pod type to decide create service or not, for now only create service for head.
 	Head = "head"
 
-	// Belows used as label key
-	//rayclusterComponent is the pod name for this pod for selecting pod by pod name.
-	rayclusterComponent = "raycluster.component"
-	// rayIoComponent is the identifier for created by ray-operator for selecting pod by operator name.
-	rayIoComponent = "rayclusters.ray.io/component-name"
+	// RayclusterComponent is the pod name for this pod for selecting pod by pod name.
+	RayclusterComponent = "raycluster.component"
+	// RayIoComponent is the identifier for created by ray-operator for selecting pod by operator name.
+	RayIoComponent = "rayclusters.ray.io/component-name"
 	// RayClusterOwnerKey is the ray cluster instance name for selecting pod by instance name.
 	RayClusterOwnerKey = "raycluster.instance.name"
 	// ClusterPodType is the pod type label key for selecting pod by type.

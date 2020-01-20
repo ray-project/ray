@@ -187,7 +187,13 @@ func (r *RayClusterReconciler) buildPods(instance *rayiov1alpha1.RayCluster) []c
 	var pods []corev1.Pod
 	if instance.Spec.Extensions != nil && len(instance.Spec.Extensions) > 0 {
 		for _, extension := range instance.Spec.Extensions {
-			var i int32 = 0
+			var i int32
+			// Set the default replicas to 1.
+			// TODO(gaocegege): Use the validation and mutation webhook to do it.
+			if extension.Replicas == nil {
+				var defaultReplicas int32 = 1
+				extension.Replicas = &defaultReplicas
+			}
 			for i = 0; i < *extension.Replicas; i++ {
 				podType := fmt.Sprintf("%v", extension.Type)
 				podName := instance.Name + common.DashSymbol + extension.GroupName + common.DashSymbol + podType + common.DashSymbol + utils.FormatInt32(i)

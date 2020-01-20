@@ -4,7 +4,7 @@ import (
 	"flag"
 	"os"
 
-	rayv1 "ray-operator/api/v1alpha1"
+	rayv1alpha1 "ray-operator/api/v1alpha1"
 	"ray-operator/controllers"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,7 +23,7 @@ var (
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
-	_ = rayv1.AddToScheme(scheme)
+	_ = rayv1alpha1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 

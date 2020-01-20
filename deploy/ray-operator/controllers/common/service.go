@@ -41,7 +41,7 @@ func ServiceForPod(conf *ServiceConfig) *corev1.Service {
 			ClusterIP: corev1.ClusterIPNone,
 			// This selector must match the label of the head node.
 			Selector: map[string]string{
-				rayclusterComponent: conf.PodName,
+				RayclusterComponent: conf.PodName,
 			},
 		},
 	}

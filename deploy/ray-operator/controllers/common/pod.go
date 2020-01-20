@@ -28,7 +28,8 @@ func DefaultPodConfig(instance *rayiov1alpha1.RayCluster, podTypeName string, po
 }
 
 func BuildPod(conf *PodConfig) *corev1.Pod {
-	rayLabels := labelsForCluster(*conf.RayCluster, conf.PodName, conf.PodTypeName, conf.Extension.Labels)
+	// build label for cluster
+	rayLabels := LabelsForCluster(*conf.RayCluster, conf.PodName, conf.PodTypeName, conf.Extension.Labels)
 
 	// Build the containers for the pod (there is currently only one).
 	containers := []corev1.Container{buildContainer(conf)}
