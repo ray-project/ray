@@ -17,11 +17,11 @@ namespace rpc {
   RPC_SERVICE_HANDLER(NodeManagerService, PinObjectIDs, 100)       \
   RPC_SERVICE_HANDLER(NodeManagerService, GetNodeStats, 1)
 
-#define RAY_NODE_MANAGER_DECLARE_RPC_HANDLERS                              \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RequestWorkerLease)                     \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ReturnWorker) \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ForwardTask)                \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PinObjectIDs)          \
+#define RAY_NODE_MANAGER_DECLARE_RPC_HANDLERS                 \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RequestWorkerLease) \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ReturnWorker)       \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ForwardTask)        \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PinObjectIDs)       \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetNodeStats)
 
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.

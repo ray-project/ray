@@ -40,10 +40,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
  public:
   MockTaskFinisher() {}
 
-  MOCK_METHOD4(AddPendingTask, void (const TaskID &caller_id,
-                                     const rpc::Address &caller_address,
-                                     std::shared_ptr<rpc::PushTaskRequest> request,
-                                     int max_retries));
+  MOCK_METHOD4(AddPendingTask,
+               void(const TaskID &caller_id, const rpc::Address &caller_address,
+                    std::shared_ptr<rpc::PushTaskRequest> request, int max_retries));
 
   MOCK_METHOD3(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &,
                                          const rpc::Address *addr));

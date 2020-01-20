@@ -15,10 +15,10 @@ namespace rpc {
   RPC_SERVICE_HANDLER(ObjectManagerService, Pull, 5) \
   RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, 2)
 
-#define RAY_OBJECT_MANAGER_DECLARE_RPC_HANDLERS                              \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Push)                     \
+#define RAY_OBJECT_MANAGER_DECLARE_RPC_HANDLERS \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Push) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Pull) \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(FreeObjects)                
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(FreeObjects)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.

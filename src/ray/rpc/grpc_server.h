@@ -18,12 +18,11 @@ namespace rpc {
       new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,    \
                                 HANDLER##Reply>(                                \
           service_, &SERVICE::AsyncService::Request##HANDLER, service_handler_, \
-          &SERVICE##Handler::WrapperHandle##HANDLER, cq, main_service_));              \
+          &SERVICE##Handler::WrapperHandle##HANDLER, cq, main_service_));       \
   server_call_factories_and_concurrencies->emplace_back(                        \
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
-
-#define RPC_SERVICE_HANDLER_NEW(SERVICE, HANDLER, CONCURRENCY)                      \
+#define RPC_SERVICE_HANDLER_NEW(SERVICE, HANDLER, CONCURRENCY)                  \
   std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                    \
       new ServerCallFactoryImpl<SERVICE, SERVICE##Handler, HANDLER##Request,    \
                                 HANDLER##Reply>(                                \
@@ -33,21 +32,21 @@ namespace rpc {
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
 // Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)                         \
-  virtual void Handle##METHOD(const rpc::METHOD##Request &request,              \
-                              rpc::METHOD##Reply *reply,                        \
-                              rpc::SendReplyCallback send_reply_callback) = 0;  \
-                                                                                \
+#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(METHOD)                        \
+  virtual void Handle##METHOD(const rpc::METHOD##Request &request,             \
+                              rpc::METHOD##Reply *reply,                       \
+                              rpc::SendReplyCallback send_reply_callback) = 0; \
+                                                                               \
   void WrapperHandle##METHOD(std::shared_ptr<rpc::METHOD##Request> request,    \
-                              std::shared_ptr<rpc::METHOD##Reply> reply,        \
-                              rpc::SendReplyCallback send_reply_callback) {     \
-    Handle##METHOD(*request, reply.get(), send_reply_callback);                 \
-  }                           
+                             std::shared_ptr<rpc::METHOD##Reply> reply,        \
+                             rpc::SendReplyCallback send_reply_callback) {     \
+    Handle##METHOD(*request, reply.get(), send_reply_callback);                \
+  }
 
 // Define a void RPC client method.
-#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD_NEW(METHOD)            \
-  virtual void Handle##METHOD(std::shared_ptr<rpc::METHOD##Request> request,  \
-                              std::shared_ptr<rpc::METHOD##Reply> reply,      \
+#define DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD_NEW(METHOD)                  \
+  virtual void Handle##METHOD(std::shared_ptr<rpc::METHOD##Request> request, \
+                              std::shared_ptr<rpc::METHOD##Reply> reply,     \
                               rpc::SendReplyCallback send_reply_callback) = 0;
 
 class GrpcService;

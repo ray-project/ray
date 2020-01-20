@@ -145,9 +145,8 @@ class ServerCallImpl : public ServerCall {
     // a different thread, and will cause `this` to be deleted.
     const auto &factory = factory_;
     (service_handler_.*handle_request_function_)(
-        request_, reply_,
-        [this](Status status, std::function<void()> success,
-               std::function<void()> failure) {
+        request_, reply_, [this](Status status, std::function<void()> success,
+                                 std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
           // is async and this `ServerCall` might be deleted right after `SendReply`.
           send_reply_success_callback_ = std::move(success);
