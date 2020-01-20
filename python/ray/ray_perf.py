@@ -85,17 +85,17 @@ def main():
     def get_small():
         ray.get(value)
 
-    # timeit("single client get calls", get_small)
+    timeit("single client get calls", get_small)
 
     def put_small():
         ray.put(0)
 
-    # timeit("single client put calls", put_small)
+    timeit("single client put calls", put_small)
 
     def put_large():
         ray.put(arr)
 
-    # timeit("single client put gigabytes", put_large, 8 * 0.1)
+    timeit("single client put gigabytes", put_large, 8 * 0.1)
 
     @ray.remote
     def do_put_small():
@@ -105,7 +105,7 @@ def main():
     def put_multi_small():
         ray.get([do_put_small.remote() for _ in range(10)])
 
-    # timeit("multi client put calls", put_multi_small, 1000)
+    timeit("multi client put calls", put_multi_small, 1000)
 
     @ray.remote
     def do_put():
@@ -115,7 +115,7 @@ def main():
     def put_multi():
         ray.get([do_put.remote() for _ in range(10)])
 
-    # timeit("multi client put gigabytes", put_multi, 10 * 8 * 0.1)
+    timeit("multi client put gigabytes", put_multi, 10 * 8 * 0.1)
 
     def small_task():
         ray.get(small_value.remote())

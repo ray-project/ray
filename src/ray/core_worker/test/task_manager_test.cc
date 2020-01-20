@@ -9,15 +9,15 @@
 
 namespace ray {
 
-TaskSpecification CreateTaskHelper(uint64_t num_returns,
-                                   std::vector<ObjectID> dependencies) {
-  TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
-  task.GetMutableMessage().set_num_returns(num_returns);
+std::shared_ptr<rpc::PushTaskRequest> CreateTaskHelper(uint64_t num_returns,
+                                                       std::vector<ObjectID> dependencies) {
+  auto request = std::make_shared<rpc::PushTaskRequest>();
+  request->mutable_task_spec()->set_task_id(TaskID::ForFakeTask().Binary());
+  request->mutable_task_spec()->set_num_returns(num_returns);
   for (const ObjectID &dep : dependencies) {
-    task.GetMutableMessage().add_args()->add_object_ids(dep.Binary());
+    request->mutable_task_spec()->add_args()->add_object_ids(dep.Binary());
   }
-  return task;
+  return request;
 }
 
 class MockActorManager : public ActorManagerInterface {
@@ -52,9 +52,10 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   rpc::Address caller_address;
   ObjectID dep1 = ObjectID::FromRandom();
   ObjectID dep2 = ObjectID::FromRandom();
-  auto spec = CreateTaskHelper(1, {dep1, dep2});
+  auto request = CreateTaskHelper(1, {dep1, dep2});
+  TaskSpecification spec(request);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
-  manager_.AddPendingTask(caller_id, caller_address, spec);
+  manager_.AddPendingTask(caller_id, caller_address, request);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
@@ -92,9 +93,10 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ObjectID dep1 = ObjectID::FromRandom();
   ObjectID dep2 = ObjectID::FromRandom();
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
-  auto spec = CreateTaskHelper(1, {dep1, dep2});
+  auto request = CreateTaskHelper(1, {dep1, dep2});
+  TaskSpecification spec(request);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
-  manager_.AddPendingTask(caller_id, caller_address, spec);
+  manager_.AddPendingTask(caller_id, caller_address, request);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
@@ -127,10 +129,11 @@ TEST_F(TaskManagerTest, TestTaskRetry) {
   ObjectID dep1 = ObjectID::FromRandom();
   ObjectID dep2 = ObjectID::FromRandom();
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
-  auto spec = CreateTaskHelper(1, {dep1, dep2});
+  auto request = CreateTaskHelper(1, {dep1, dep2});
+  TaskSpecification spec(request);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   int num_retries = 3;
-  manager_.AddPendingTask(caller_id, caller_address, spec, num_retries);
+  manager_.AddPendingTask(caller_id, caller_address, request, num_retries);
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
