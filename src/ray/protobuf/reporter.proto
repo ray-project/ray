@@ -7,7 +7,7 @@ import "src/ray/protobuf/common.proto";
 message GetProfilingStatsRequest {
   // PID of the worker process.
   uint32 pid = 1;
-  // Duration of the profiling in seconds. 
+  // Duration of the profiling in seconds.
   int32 duration = 2;
 }
 
