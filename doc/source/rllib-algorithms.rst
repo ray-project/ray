@@ -99,7 +99,7 @@ SpaceInvaders  843                              ~300
 
 Asynchronous Proximal Policy Optimization (APPO)
 ------------------------------------------------
-|tensorflow| |pytorch|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1707.06347>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo.py>`__
 We include an asynchronous variant of Proximal Policy Optimization (PPO) based on the IMPALA architecture. This is similar to IMPALA but using a surrogate policy loss with clipping. Compared to synchronous PPO, APPO is more efficient in wall-clock time due to its use of asynchronous sampling. Using a clipped loss also allows for multiple SGD passes, and therefore the potential for better sample efficiency compared to IMPALA. V-trace can also be enabled to correct for off-policy samples.
@@ -124,7 +124,7 @@ Gradient-based
 
 Advantage Actor-Critic (A2C, A3C)
 ---------------------------------
-|tensorflow| |pytorch|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__
 RLlib implements A2C and A3C using SyncSamplesOptimizer and AsyncGradientsOptimizer respectively for policy optimization. These algorithms scale to up to 16-32 worker processes depending on the environment.
 
@@ -211,7 +211,7 @@ SpaceInvaders  650                       1001                           1025    
 
 Policy Gradients
 ----------------
-|tensorflow| |pytorch|
+|pytorch| |tensorflow|
 `[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__ We include a vanilla policy gradients implementation as an example algorithm.
 
 .. figure:: a2c-arch.svg
@@ -229,7 +229,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 Proximal Policy Optimization (PPO)
 ----------------------------------
-|tensorflow| |pytorch|
+|pytorch| |tensorflow|
 `[paper] <https://arxiv.org/abs/1707.06347>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__
 PPO's clipped objective supports multiple SGD passes over the same batch of experiences. RLlib's multi-GPU optimizer pins that data in GPU memory to avoid unnecessary transfers from host memory, substantially improving performance over a naive implementation. RLlib's PPO scales out using multiple workers for experience collection, and also with multiple GPUs for SGD.
 
