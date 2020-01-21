@@ -72,9 +72,10 @@ class TorchPolicy(Policy):
             logits, state = model_out
             action_dist = self.dist_class(logits, self.model)
             actions = action_dist.sample()
+            input_dict[SampleBatch.ACTIONS] = actions
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
                     self.extra_action_out(input_dict, state_batches,
-                                          self.model))
+                                          self.model, action_dist))
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):

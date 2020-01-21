@@ -12,4 +12,10 @@ def explained_variance(y, pred, framework="tf"):
     else:
         y_var = torch.var(y, dim=[0])
         diff_var = torch.var(y - pred, dim=[0])
-        return max(-1.0, 1 - (diff_var / y_var))
+        min_ = torch.Tensor([-1.0])
+        return torch.max(
+            min_.to(
+                device=torch.device("cuda")
+            ) if torch.cuda.is_available() else min_,
+            1 - (diff_var / y_var)
+        )

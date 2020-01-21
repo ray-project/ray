@@ -537,7 +537,7 @@ You can use the ``with_updates`` method on Trainers and Policy objects built wit
 .. code-block:: python
 
     from ray.rllib.agents.ppo import PPOTrainer
-    from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+    from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 
     CustomPolicy = PPOTFPolicy.with_updates(
         name="MyCustomPPOTFPolicy",
