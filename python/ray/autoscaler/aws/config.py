@@ -278,7 +278,7 @@ def _check_ami(config):
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    if config["head_node"].get("ImageId") == "DEFAULT":
+    if config["head_node"].get("ImageId", "").lower() == "DEFAULT":
         config["head_node"]["ImageId"] = default_ami
         logger.info("_check_ami: head node ImageId specified as 'DEFAULT'. "
                     "Using '{ami_id}', which is the default {ami_name} "
@@ -287,7 +287,7 @@ def _check_ami(config):
                         ami_name=DEFAULT_AMI_NAME,
                         region=region))
 
-    if config["worker_nodes"].get("ImageId") == "DEFAULT":
+    if config["worker_nodes"].get("ImageId", "").lower() == "DEFAULT":
         config["worker_nodes"]["ImageId"] = default_ami
         logger.info("_check_ami: worker nodes ImageId specified as 'DEFAULT'. "
                     "Using '{ami_id}', which is the default {ami_name} "
