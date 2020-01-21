@@ -37,15 +37,15 @@ define_java_module(
         "//java:org_ray_ray_api",
         ":org_ray_ray_streaming-api",
         "@ray_streaming_maven//:com_google_guava_guava",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_testng_testng",
     ],
     visibility = ["//visibility:public"],
     deps = [
         "@ray_streaming_maven//:com_google_guava_guava",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@ray_streaming_maven//:org_slf4j_slf4j_api",
     ],
 )
 
@@ -103,8 +103,8 @@ define_java_module(
         "@ray_streaming_maven//:com_google_guava_guava",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_testng_testng",
     ],
     visibility = ["//visibility:public"],
@@ -117,8 +117,8 @@ define_java_module(
         "@ray_streaming_maven//:com_google_protobuf_protobuf_java",
         "@ray_streaming_maven//:de_ruedigermoeller_fst",
         "@ray_streaming_maven//:org_aeonbits_owner_owner",
-        "@ray_streaming_maven//:org_slf4j_slf4j_api",
         "@ray_streaming_maven//:org_apache_logging_log4j_log4j_slf4j_impl",
+        "@ray_streaming_maven//:org_slf4j_slf4j_api",
     ],
 )
 
