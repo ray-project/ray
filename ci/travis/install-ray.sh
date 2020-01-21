@@ -22,12 +22,12 @@ export PATH="$HOME/miniconda/bin:$PATH"
 
 echo "npm version = "
 npm version
+npm install -g npm@latest
 
 pushd "$ROOT_DIR/../../python"
   pushd ray/dashboard/client
     source $HOME/.nvm/nvm.sh
     nvm use node
-    npm install -g npm@latest
     npm ci
     npm run build
   popd
