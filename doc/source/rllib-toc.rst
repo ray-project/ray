@@ -76,7 +76,7 @@ Algorithms
 
    -  |tensorflow| `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 
-   -  |pytorch| |tensorflow| `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
+   -  |tensorflow| `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
 
    -  |pytorch| `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
 
