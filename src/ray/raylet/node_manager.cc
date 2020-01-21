@@ -198,7 +198,7 @@ ray::Status NodeManager::RegisterGcs() {
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
       [this](const WorkerID &id, const gcs::WorkerFailureData &worker_failure_data) {
-        HandleUnexpectedWorkerFailure(id, worker_failure_data);
+        HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       worker_failure_handler, /*done_callback=*/nullptr));
@@ -220,12 +220,6 @@ ray::Status NodeManager::RegisterGcs() {
   GetObjectManagerProfileInfo();
 
   return ray::Status::OK();
-}
-
-void NodeManager::HandleUnexpectedWorkerFailure(
-    const WorkerID &worker_id, const gcs::WorkerFailureData &worker_failed_data) {
-  RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
-  // TODO: Clean up after the failure: If the failed worker is our owner, then exit.
 }
 
 void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
@@ -527,6 +521,54 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // guarantee that all tasks get flushed eventually, in case one of the tasks
   // in our local cache was supposed to be flushed by the node that died.
   lineage_cache_.FlushAllUncommittedTasks();
+
+  // Clean up workers that were owned by processes that were on the failed
+  // node.
+  rpc::Address address;
+  address.set_raylet_id(node_info.node_id());
+  HandleUnexpectedWorkerFailure(address);
+}
+
+void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
+  const WorkerID worker_id = WorkerID::FromBinary(address.worker_id());
+  const ClientID node_id = ClientID::FromBinary(address.raylet_id());
+  if (!worker_id.IsNil()) {
+    RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
+    failed_workers_cache_.insert(worker_id);
+  } else {
+    RAY_CHECK(!node_id.IsNil());
+    failed_nodes_cache_.insert(node_id);
+  }
+
+  // TODO(swang): Also clean up any lease requests owned by the failed worker
+  // from the task queues. This is only necessary for lease requests that are
+  // infeasible, since requests that are fulfilled will get canceled during
+  // dispatch.
+  for (const auto &pair : leased_workers_) {
+    auto &worker = pair.second;
+    const auto owner_worker_id =
+        WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
+    const auto owner_node_id =
+        WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
+    RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
+    if (!worker->IsDetachedActor()) {
+      if (!worker_id.IsNil()) {
+        // If the failed worker was a leased worker's owner, then kill the leased worker.
+        if (owner_worker_id == worker_id) {
+          RAY_LOG(INFO) << "Owner process " << owner_worker_id
+                        << " died, killing leased worker " << worker->WorkerId();
+          KillWorker(worker);
+        }
+      } else if (owner_node_id == node_id) {
+        // If the leased worker's owner was on the failed node, then kill the leased
+        // worker.
+        RAY_LOG(INFO) << "Owner node " << owner_node_id << " died, killing leased worker "
+                      << worker->WorkerId();
+        KillWorker(worker);
+      }
+    }
+  }
 }
 
 void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
@@ -1578,11 +1620,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   // task directly on the worker.
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
+  rpc::Address owner_address = task.GetTaskSpecification().CallerAddress();
   task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback](
+      [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
-        RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -1603,12 +1645,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
 
-        // TODO(swang): Kill worker if other end hangs up.
-        // TODO(swang): Implement a lease term by which the owner needs to return the
-        // worker.
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
-        leased_workers_[worker_id] = std::static_pointer_cast<Worker>(granted);
+
+        auto worker = std::static_pointer_cast<Worker>(granted);
+        leased_workers_[worker_id] = worker;
       });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
@@ -1627,6 +1668,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
+  RAY_LOG(DEBUG) << "Return worker " << worker_id;
   std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   if (new_scheduler_enabled_) {
@@ -2319,10 +2361,27 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
     if (task.GetTaskSpecification().IsDetachedActor()) {
       worker->MarkDetachedActor();
     }
+
+    const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
+    const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
+    RAY_CHECK(!owner_worker_id.IsNil());
+    RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << " to worker "
+                   << worker->WorkerId() << ", owner ID " << owner_worker_id;
+
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
                       worker->WorkerId(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
                                                  : worker->GetTaskResourceIds());
+
+    // If the owner has died since this task was queued, cancel the task by
+    // killing the worker.
+    if (failed_workers_cache_.count(owner_worker_id) > 0 ||
+        failed_nodes_cache_.count(owner_node_id) > 0) {
+      // TODO(swang): Skip assigning this task to this worker instead of
+      // killing the worker?
+      KillWorker(worker);
+    }
+
     post_assign_callbacks->push_back([this, worker, task_id]() {
       RAY_LOG(DEBUG) << "Finished assigning task " << task_id << " to worker "
                      << worker->WorkerId();
@@ -2386,6 +2445,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     // direct actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
     worker.AssignTaskId(TaskID::Nil());
+    worker.SetOwnerAddress(rpc::Address());
   }
   // Direct actors will be assigned tasks via the core worker and therefore are
   // not idle.
@@ -2965,6 +3025,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     auto spec = assigned_task.GetTaskSpecification();
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
+    worker->SetOwnerAddress(spec.CallerAddress());
     worker->AssignJobId(spec.JobId());
     // TODO(swang): For actors with multiple actor handles, to
     // guarantee that tasks are replayed in the same order after a
