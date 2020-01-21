@@ -109,7 +109,7 @@ public class FunctionManagerTest {
     JobFunctionTable functionTable = new JobFunctionTable(getClass().getClassLoader());
     Map<Pair<String, String>, RayFunction> res = functionTable
         .loadFunctionsForClass(Bar.class.getName());
-    // The result should 4 entries
+    // The result should be 4 entries:
     //   1, the constructor with signature
     //   2, the constructor without signature
     //   3, bar with signature
