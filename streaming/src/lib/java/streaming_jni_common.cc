@@ -137,6 +137,7 @@ ray::RayFunction FunctionDescriptorToRayFunction(JNIEnv *env,
     while (function_descriptor_list.size() < 4) {
       function_descriptor_list.push_back("");
     }
+    RAY_CHECK(function_descriptor_list.size() == 4);
     function_descriptor = ray::FunctionDescriptorBuilder::BuildPython(
         function_descriptor_list[0],  // module name
         function_descriptor_list[1],  // class name
