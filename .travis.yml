@@ -53,6 +53,7 @@ matrix:
         - sudo apt-get update -qq
       install: []
       script:
+        - python -V
         - ./ci/travis/check-git-clang-format-output.sh
         # Try generating Sphinx documentation. To do this, we need to install
         # Ray first.
