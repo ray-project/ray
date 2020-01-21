@@ -90,13 +90,12 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         .append(" --node_ip_address=" + node_ip_address)
         .append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
-        .append(" --num_initial_workers=1")
         .append(" --maximum_startup_concurrency=10")
         .append(" --static_resource_list=" + resource)
         .append(" --python_worker_command=\"" + actor_executable_ + " " +
                 store_socket_name + " " + raylet_socket_name + " " +
                 std::to_string(port) + "\"")
-        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
+        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000,num_initial_py_workers,1")
         .append(" & echo $! > " + raylet_socket_name + ".pid");
 
     RAY_LOG(DEBUG) << "Ray Start command: " << ray_start_cmd;

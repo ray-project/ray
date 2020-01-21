@@ -273,7 +273,6 @@ public class RunManager {
           String.format("--node_ip_address=%s", rayConfig.nodeIp),
           String.format("--redis_address=%s", rayConfig.getRedisIp()),
           String.format("--redis_port=%d", rayConfig.getRedisPort()),
-          String.format("--num_initial_workers=%d", 0),  // number of initial workers
           String.format("--maximum_startup_concurrency=%d", maximumStartupConcurrency),
           String.format("--static_resource_list=%s",
               ResourceUtil.getResourcesStringFromMap(rayConfig.resources)),

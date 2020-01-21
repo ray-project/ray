@@ -15,9 +15,6 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
-// This parameter is deprecated and replaced by the `RayConfig#num_initial_workers`.
-// TODO(qwang): We should delete num_initial_workers in `service.py` as well.
-DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
 DEFINE_string(config_list, "", "The raylet config list of this node.");
