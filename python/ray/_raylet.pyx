@@ -636,9 +636,9 @@ cdef execute_task(
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
                 class_name = actor.__class__.__name__
-                title = "{}({}, {})".format(
+                actor_title = "{}({}, {})".format(
                     class_name, repr(args), repr(kwargs))
-                core_worker.set_actor_title(title.encode("utf-8"))
+                core_worker.set_actor_title(actor_title.encode("utf-8"))
 
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):

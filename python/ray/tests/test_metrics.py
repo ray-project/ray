@@ -1,4 +1,5 @@
 import os
+import json
 import grpc
 import psutil
 import requests
@@ -7,6 +8,8 @@ import time
 import ray
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 from ray.test_utils import RayTestTimeoutException
 
 
@@ -197,11 +200,42 @@ def test_raylet_info_endpoint(shutdown_only):
                 params={
                     "profiling_id": profiling_id,
                 }).json()
-            assert profiling_info['status'] in ("finished", "error")
+            assert profiling_info["status"] in ("finished", "error")
             break
         except AssertionError:
             if time.time() - start_time + 10:
                 raise Exception("Timed out while collecting profiling stats.")
+
+
+def test_profiling_info_endpoint(shutdown_only):
+    redis_client = ray.worker.global_worker.redis_client
+
+    node_ip = ray.nodes()[0]["NodeManagerAddress"]
+
+    while True:
+        reporter_port = redis_client.get("REPORTER_PORT:".format(node_ip))
+        if reporter_port:
+            break
+
+    reporter_channel = grpc.insecure_channel("{}:{}".format(
+        node_ip, int(reporter_port)))
+    reporter_stub = reporter_pb2_grpc.ReporterServiceStub(reporter_channel)
+
+    @ray.remote(num_cpus=1)
+    class ActorA:
+        def __init__(self):
+            pass
+
+        def getpid(self):
+            return os.getpid()
+
+    a = ActorA.remote()
+    actor_pid = ray.get(a.getpid.remote())
+
+    reply = reporter_stub.GetProfilingStats(
+        reporter_pb2.GetProfilingStatsRequest(pid=actor_pid, duration=10))
+    profiling_stats = json.loads(reply.profiling_stats)
+    assert profiling_stats is not None
 
 
 if __name__ == "__main__":

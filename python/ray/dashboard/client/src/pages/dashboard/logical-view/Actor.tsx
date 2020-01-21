@@ -67,9 +67,14 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       actor.state !== -1
         ? [
             {
-              label: "Title",
+              label: "ActorTitle",
               value:
                 actor.actorTitle
+            },
+            {
+              label: "State",
+              value:
+                actor.state.toLocaleString()
             },
             {
               label: "Resources",
@@ -82,34 +87,32 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {
               label: "Pending",
               value:
-                actor.taskQueueLength !== undefined &&
-                actor.taskQueueLength > 0 &&
                 actor.taskQueueLength.toLocaleString()
-            },
-            {
-              label: "Task",
-              value:
-                actor.currentTaskFuncDesc && actor.currentTaskFuncDesc.join(".")
             },
             {
               label: "Executed",
               value:
-                actor.numExecutedTasks && actor.numExecutedTasks.toLocaleString()
+                actor.numExecutedTasks.toLocaleString()
             },
             {
               label: "NumObjectIdsInScope",
               value:
-                actor.numObjectIdsInScope && actor.numObjectIdsInScope.toLocaleString()
+                actor.numObjectIdsInScope.toLocaleString()
             },
             {
               label: "NumLocalObjects",
               value:
-                actor.numLocalObjects && actor.numLocalObjects.toLocaleString()
+                actor.numLocalObjects.toLocaleString()
             },
             {
-              label: "UsedObjectMemory",
+              label: "UsedLocalObjectMemory",
               value:
-                actor.usedObjectStoreMemory && actor.usedObjectStoreMemory.toLocaleString()
+                actor.usedObjectStoreMemory.toLocaleString()
+            },
+            {
+              label: "Task",
+              value:
+                actor.currentTaskFuncDesc.join(".")
             }
           ]
         : [
