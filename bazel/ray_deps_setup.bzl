@@ -113,25 +113,20 @@ def ray_deps_setup():
         # declaring it here allows us to avoid patching the latter.
         name = "boost",
         build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
-        sha256 = "da3411ea45622579d419bfda66f45cd0f8c32a181d84adfa936f5688388995cf",
-        strip_prefix = "boost_1_68_0",
-        url = "https://dl.bintray.com/boostorg/release/1.68.0/source/boost_1_68_0.tar.gz",
+        sha256 = "96b34f7468f26a141f6020efb813f1a2f3dfb9797ecf76a7d7cbd843cc95f5bd",
+        strip_prefix = "boost_1_71_0",
+        url = "https://dl.bintray.com/boostorg/release/1.71.0/source/boost_1_71_0.tar.gz",
         patches = [
             "//thirdparty/patches:boost-exception-no_warn_typeid_evaluated.patch",
-            # Prefer compiler intrinsics; they're faster & avoid linker issues
-            "//thirdparty/patches:boost-interlocked-prefer-intrinsics.patch",
-            # Backport Clang-Cl patch on Boost 1.69 to Boost <= 1.68:
-            #   https://lists.boost.org/Archives/boost/2018/09/243420.php
-            "//thirdparty/patches:boost-type_traits-trivial_move.patch",
         ],
     )
 
     github_repository(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        commit = "df908358c605a7d5b8bbacde07afbaede5ac12cf",
+        commit = "9eff8676ce431232ae625ee93c4123f7c03477eb",
         remote = "https://github.com/nelhage/rules_boost",
-        sha256 = "3775c5ab217e0c9cc380f56e243a4d75fe6fee8eaee1447899eaa04c5d582cf1",
+        sha256 = "f68166c117398e1c624af8dd14115dbbc3761137599e806007271abbb8cd002b",
         patches = [
             "//thirdparty/patches:rules_boost-undefine-boost_fallthrough.patch",
             "//thirdparty/patches:rules_boost-windows-linkopts.patch",
