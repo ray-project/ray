@@ -150,8 +150,7 @@ public class RayConfig {
     if (config.hasPath("ray.redis.head-port")) {
       headRedisPort = config.getInt("ray.redis.head-port");
     } else {
-      // head port is not set, generate one randomly with the range [10000, 65536).
-      headRedisPort = new Random().nextInt(65536 - 10000) + 10000;
+      headRedisPort = NetworkUtil.getUnusedPort();
     }
     numberRedisShards = config.getInt("ray.redis.shard-number");
     headRedisPassword = config.getString("ray.redis.head-password");
