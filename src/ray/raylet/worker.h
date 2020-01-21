@@ -51,6 +51,8 @@ class Worker {
   void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<LocalClientConnection> Connection() const;
+  void SetOwnerAddress(const rpc::Address &address);
+  const rpc::Address &GetOwnerAddress() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;
   void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
@@ -117,6 +119,9 @@ class Worker {
   /// Whether the worker is detached. This is applies when the worker is actor.
   /// Detached actor means the actor's creator can exit without killing this actor.
   bool is_detached_actor_;
+  /// The address of this worker's owner. The owner is the worker that
+  /// currently holds the lease on this worker, if any.
+  rpc::Address owner_address_;
 };
 
 }  // namespace raylet
