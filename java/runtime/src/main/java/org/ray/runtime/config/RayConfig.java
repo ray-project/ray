@@ -11,6 +11,8 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+
 import org.ray.api.id.JobId;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.util.NetworkUtil;
@@ -144,7 +146,13 @@ public class RayConfig {
     } else {
       this.redisAddress = null;
     }
-    headRedisPort = config.getInt("ray.redis.head-port");
+
+    if (config.hasPath("ray.redis.head-port")) {
+      headRedisPort = config.getInt("ray.redis.head-port");
+    } else {
+      // head port is not set, generate one randomly with the range [10000, 65536).
+      headRedisPort = new Random().nextInt(65536 - 10000) + 10000;
+    }
     numberRedisShards = config.getInt("ray.redis.shard-number");
     headRedisPassword = config.getString("ray.redis.head-password");
     redisPassword = config.getString("ray.redis.password");
