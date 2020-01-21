@@ -1,4 +1,4 @@
-language: generic
+language: python
 # Use Ubuntu 16.04
 dist: xenial
 
