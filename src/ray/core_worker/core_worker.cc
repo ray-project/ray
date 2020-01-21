@@ -1189,7 +1189,6 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     (*used_resources_map)[it.first] = quantity;
   }
   stats->set_webui_display(webui_display_);
-  RAY_LOG(WARNING) << actor_title_;
   stats->set_actor_title(actor_title_);
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
