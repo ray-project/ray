@@ -223,10 +223,9 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = self.generate_trials({
             "run": "PPO",
             "config": {
-                "x": grid_search([
-                    tune.sample_from(Normal()),
-                    tune.sample_from(Normal())
-                ]),
+                "x": grid_search(
+                    [tune.sample_from(Normal()),
+                     tune.sample_from(Normal())]),
                 "y": tune.sample_from(Single()),
             },
         }, "dependent_grid_search")

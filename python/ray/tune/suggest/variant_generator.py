@@ -2,7 +2,6 @@ import copy
 import logging
 import numpy
 import random
-import types
 
 from ray.tune import TuneError
 from ray.tune.sample import sample_from
