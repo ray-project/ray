@@ -1,4 +1,6 @@
 # Script used for checking changes for incremental testing cases
+from __future__ import print_function
+
 import os
 import subprocess
 import sys
