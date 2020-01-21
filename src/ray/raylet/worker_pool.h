@@ -43,10 +43,11 @@ class WorkerPool {
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
+  /// \param resource_config The node's resource configuration.
   WorkerPool(boost::asio::io_service &io_service,
              EnumUnorderedMap<Language, int> num_initial_workers,
              int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
-             const WorkerCommandMap &worker_commands);
+             const WorkerCommandMap &worker_commands, const ResourceSet &resource_config);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool();
@@ -158,12 +159,12 @@ class WorkerPool {
   /// any workers.
   ///
   /// \param language Which language this worker process should be.
-  /// \param is_initial_worker Whether the process to start is an initial worker process.
-  /// \param dynamic_options The dynamic options that we should add for worker command.
-  /// \return The id of the process that we started if it's positive,
-  /// otherwise it means we didn't start a process.
+  /// \param limit_concurrently_starting_workers Whether to limit the concurrent starting
+  /// workers. \param dynamic_options The dynamic options that we should add for worker
+  /// command. \return The id of the process that we started if it's positive, otherwise
+  /// it means we didn't start a process.
   ProcessHandle StartWorkerProcess(const Language &language,
-                                   bool is_initial_worker = false,
+                                   bool limit_concurrently_starting_workers = true,
                                    const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
@@ -218,6 +219,7 @@ class WorkerPool {
   /// Force-start at least num_workers workers.
   ///
   /// \param num_initial_workers The map of number initial workers.
+  /// \param resource_config The node's resource configuration.
   void Start(EnumUnorderedMap<Language, int> num_initial_workers);
 
   /// A helper function that returns the reference of the pool state
@@ -228,6 +230,8 @@ class WorkerPool {
   boost::asio::io_service *io_service_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
+  /// The CPU resource on this node.
+  int num_cpus_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 

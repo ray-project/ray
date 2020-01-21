@@ -50,9 +50,12 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service,
                        EnumUnorderedMap<Language, int> num_initial_workers,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
-                       const WorkerCommandMap &worker_commands)
+                       const WorkerCommandMap &worker_commands,
+                       const ResourceSet &resource_config)
     : io_service_(&io_service),
       maximum_startup_concurrency_(maximum_startup_concurrency),
+      num_cpus_(static_cast<int>(static_cast<std::unordered_map<std::string, double>>(
+          resource_config.GetResourceMap())["CPU"])),
       gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(maximum_startup_concurrency > 0);
   for (const auto &entry : worker_commands) {
@@ -87,11 +90,17 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service,
 void WorkerPool::Start(EnumUnorderedMap<Language, int> num_initial_workers) {
   for (auto &entry : states_by_lang_) {
     auto &state = entry.second;
+    int desired_num_initial_workers = num_initial_workers[entry.first];
+    bool limit_concurrently_starting_workers = false;
+    if (desired_num_initial_workers < 0) {
+      desired_num_initial_workers = num_cpus_;
+      limit_concurrently_starting_workers = true;
+    }
     int num_worker_processes =
-        static_cast<int>(std::ceil(static_cast<double>(num_initial_workers[entry.first]) /
+        static_cast<int>(std::ceil(static_cast<double>(desired_num_initial_workers) /
                                    state.num_workers_per_process));
     for (int i = 0; i < num_worker_processes; i++) {
-      StartWorkerProcess(entry.first, /*is_initial_worker=*/true);
+      StartWorkerProcess(entry.first, limit_concurrently_starting_workers);
     }
   }
 }
@@ -126,7 +135,7 @@ uint32_t WorkerPool::Size(const Language &language) const {
 }
 
 ProcessHandle WorkerPool::StartWorkerProcess(
-    const Language &language, bool is_initial_worker,
+    const Language &language, bool limit_concurrently_starting_workers,
     const std::vector<std::string> &dynamic_options) {
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
@@ -135,7 +144,8 @@ ProcessHandle WorkerPool::StartWorkerProcess(
   for (auto &entry : state.starting_worker_processes) {
     starting_workers += entry.second;
   }
-  if (!is_initial_worker && starting_workers >= maximum_startup_concurrency_) {
+  if (limit_concurrently_starting_workers &&
+      starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
@@ -318,7 +328,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      proc = StartWorkerProcess(task_spec.GetLanguage(), /*is_initial_worker=*/false,
+      proc = StartWorkerProcess(task_spec.GetLanguage(),
+                                /*limit_concurrently_starting_workers=*/true,
                                 task_spec.DynamicWorkerOptions());
       if (proc) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
