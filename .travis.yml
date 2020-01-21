@@ -2,6 +2,9 @@ language: generic
 # Use Ubuntu 16.04
 dist: xenial
 
+python:
+  - "3.6"
+
 matrix:
   include:
     - os: linux
