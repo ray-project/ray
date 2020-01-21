@@ -5,26 +5,28 @@ set -e
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
-echo "PYTHON is $PYTHON"
+echo "PYTHON env var is set to $PYTHON, actual version is: "
+# Print out actual version.
+python -V
 
 cython_examples="$ROOT_DIR/../../doc/examples/cython"
 
-if [[ "$PYTHON" == "3.5" ]]; then
-   export PATH="$HOME/miniconda/bin:$PATH"
+#if [[ "$PYTHON" == "3.5" ]]; then
+export PATH="$HOME/miniconda/bin:$PATH"
 
-   pushd $cython_examples
-   pip install --progress-bar=off scipy
-   python setup.py install --user
-   popd
+pushd $cython_examples
+pip install --progress-bar=off scipy
+python setup.py install --user
+popd
 
-elif [[ "$LINT" == "1" ]]; then
-   export PATH="$HOME/miniconda/bin:$PATH"
+#elif [[ "$LINT" == "1" ]]; then
+#   export PATH="$HOME/miniconda/bin:$PATH"
 
-   pushd $cython_examples
-   python setup.py install --user
-   popd
+#   pushd $cython_examples
+#   python setup.py install --user
+#   popd
 
-else
-   echo "Unrecognized Python version."
-   exit 1
-fi
+#else
+#   echo "Unrecognized Python version."
+#   exit 1
+#fi
