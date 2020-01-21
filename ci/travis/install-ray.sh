@@ -20,6 +20,9 @@ fi
 
 export PATH="$HOME/miniconda/bin:$PATH"
 
+echo "npm version = "
+npm version
+
 pushd "$ROOT_DIR/../../python"
   pushd ray/dashboard/client
     source $HOME/.nvm/nvm.sh
