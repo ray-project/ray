@@ -26,7 +26,8 @@ matrix:
         - ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
+        #- ./ci/suppress_output ./ci/travis/install-ray.sh
+        - ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
         - ./java/test.sh
@@ -44,7 +45,8 @@ matrix:
         - ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
+        #- ./ci/suppress_output ./ci/travis/install-ray.sh
+        - ./ci/travis/install-ray.sh
       script:
         # Streaming cpp test.
         - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then ./ci/suppress_output bazel test //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
@@ -95,8 +97,8 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
-
+        #- ./ci/suppress_output ./ci/travis/install-ray.sh
+        - ./ci/travis/install-ray.sh
       script:
         # Run core worker tests with thread sanitizer
         - RAY_BAZEL_CONFIG="--config=tsan" TSAN_OPTIONS="report_atomic_races=0" ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
@@ -149,7 +151,8 @@ install:
   - ./ci/travis/install-bazel.sh
   - ./ci/suppress_output ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
-  - ./ci/suppress_output ./ci/travis/install-ray.sh
+  #- ./ci/suppress_output ./ci/travis/install-ray.sh
+  - ./ci/travis/install-ray.sh
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
   - eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
