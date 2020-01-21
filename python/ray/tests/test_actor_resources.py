@@ -296,22 +296,23 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     # numbers of GPUs.
     cluster = ray_start_cluster
     cluster.add_node(
-            num_cpus=10,
-            num_gpus=0,
-            _internal_config=json.dumps({
-                "num_initial_py_workers": 0
-            }))
+        num_cpus=10,
+        num_gpus=0,
+        _internal_config=json.dumps({
+            "num_initial_py_workers": 0
+        }))
     cluster.add_node(
-            num_cpus=10,
-            num_gpus=5,
-            _internal_config=json.dumps({
-                "num_initial_py_workers": 0
-            }))
-    cluster.add_node(num_cpus=10,
-            num_gpus=10,
-            _internal_config=json.dumps({
-                "num_initial_py_workers": 0
-            }))
+        num_cpus=10,
+        num_gpus=5,
+        _internal_config=json.dumps({
+            "num_initial_py_workers": 0
+        }))
+    cluster.add_node(
+        num_cpus=10,
+        num_gpus=10,
+        _internal_config=json.dumps({
+            "num_initial_py_workers": 0
+        }))
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
