@@ -19,7 +19,6 @@ else
   exit 1
 fi
 
-#if [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
 if [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb
@@ -31,7 +30,6 @@ if [[ "$platform" == "linux" ]]; then
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
     blist
-#elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
 elif [[ "$platform" == "macosx" ]]; then
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
@@ -60,7 +58,6 @@ else
   exit 1
 fi
 
-#if [[ "$PYTHON" == "3.5" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
 if [[ "$MAC_WHEELS" == "1" ]]; then
   # Install the latest version of Node.js in order to build the dashboard.
   source $HOME/.nvm/nvm.sh

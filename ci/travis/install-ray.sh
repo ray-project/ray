@@ -18,7 +18,6 @@ if [[ "$TRAVIS" == "true" ]]; then
   echo "build --jobs=50" >> $HOME/.bazelrc
 fi
 
-#if [[ "$PYTHON" == "3.5" ]]; then
 export PATH="$HOME/miniconda/bin:$PATH"
 
 pushd "$ROOT_DIR/../../python"
@@ -30,15 +29,3 @@ pushd "$ROOT_DIR/../../python"
   popd
   python setup.py install --user
 popd
-
-#elif [[ "$LINT" == "1" ]]; then
-#  export PATH="$HOME/miniconda/bin:$PATH"
-
-#  pushd "$ROOT_DIR/../../python"
-#    python setup.py install --user
-#  popd
-#else
-#  echo "Unrecognized Python version."
-#  exit 1
-#fi
-
