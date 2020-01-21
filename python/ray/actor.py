@@ -10,13 +10,13 @@ from collections import namedtuple
 from ray import (
     FunctionDescriptor,
     PythonFunctionDescriptor,
-    JavaFunctionDescriptor,
 )
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray import ActorID, ActorClassID, Language
+from ray import cross_language
 
 logger = logging.getLogger(__name__)
 
@@ -540,19 +540,9 @@ class ActorClass:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
             if meta.is_cross_language:
-                if not worker.load_code_from_local:
-                    raise Exception("Cross language feature needs "
-                                    "--load-code-from-local to be set.")
-                if meta.language == Language.PYTHON:
-                    # To be compatible with ray.signature.recover_args
-                    function_signature = signature.ANY_FUNCTION_SIGNATURE
-                    creation_args = signature.flatten_args(
-                        function_signature, args, kwargs)
-                else:
-                    if kwargs:
-                        raise Exception("Cross language remote actor creation "
-                                        "does not support kwargs.")
-                    creation_args = args
+                creation_args = cross_language.format_args(
+                    worker, meta.language, signature.ANY_FUNCTION_SIGNATURE,
+                    args, kwargs)
             else:
                 function_signature = meta.method_signatures[function_name]
                 creation_args = signature.flatten_args(function_signature,
@@ -682,34 +672,13 @@ class ActorHandle:
         args = args or []
         kwargs = kwargs or {}
         if self._ray_is_cross_language:
-            if not worker.load_code_from_local:
-                raise Exception("Cross language feature needs "
-                                "--load-code-from-local to be set.")
-            if self._ray_actor_language == Language.PYTHON:
-                # To compatible with ray.signature.recover_args
-                function_signature = signature.ANY_FUNCTION_SIGNATURE
-                list_args = signature.flatten_args(function_signature, args,
-                                                   kwargs)
-            else:
-                if kwargs:
-                    raise Exception("Cross language remote actor method "
-                                    "not support kwargs.")
-                list_args = args
-            if self._ray_actor_language == Language.PYTHON:
-                function_descriptor = PythonFunctionDescriptor(
-                    self._ray_actor_creation_function_descriptor.module_name,
-                    method_name,
-                    self._ray_actor_creation_function_descriptor.class_name)
-            elif self._ray_actor_language == Language.JAVA:
-                function_descriptor = JavaFunctionDescriptor(
-                    self._ray_actor_creation_function_descriptor.class_name,
-                    method_name,
-                    # Currently not support call actor method with signature.
-                    "")
-            else:
-                raise NotImplementedError("Cross language remote actor method "
-                                          "not support language {}".format(
-                                              self._ray_actor_language))
+            list_args = cross_language.format_args(
+                worker, self._ray_actor_language,
+                signature.ANY_FUNCTION_SIGNATURE, args, kwargs)
+            function_descriptor = \
+                cross_language.get_function_descriptor_for_actor_method(
+                    self._ray_actor_language,
+                    self._ray_actor_creation_function_descriptor, method_name)
         else:
             function_signature = self._ray_method_signatures[method_name]
 

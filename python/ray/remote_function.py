@@ -4,7 +4,7 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray import ray_constants
 from ray import FunctionDescriptor, PythonFunctionDescriptor
-from ray import Language
+from ray import cross_language
 import ray.signature
 
 # Default parameters for remote functions.
@@ -206,18 +206,9 @@ class RemoteFunction:
 
         def invocation(args, kwargs):
             if self._is_cross_language:
-                if not worker.load_code_from_local:
-                    raise Exception("Cross language feature needs "
-                                    "--load-code-from-local to be set.")
-                if self._language == Language.PYTHON:
-                    # To compatible with ray.signature.recover_args
-                    list_args = ray.signature.flatten_args(
-                        self._function_signature, args, kwargs)
-                else:
-                    if kwargs:
-                        raise Exception("Cross language remote functions "
-                                        "not support kwargs.")
-                    list_args = args
+                list_args = cross_language.format_args(
+                    worker, self._language, self._function_signature, args,
+                    kwargs)
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
