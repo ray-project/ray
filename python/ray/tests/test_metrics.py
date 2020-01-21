@@ -215,7 +215,7 @@ def test_profiling_info_endpoint(shutdown_only):
     node_ip = ray.nodes()[0]["NodeManagerAddress"]
 
     while True:
-        reporter_port = redis_client.get("REPORTER_PORT:".format(node_ip))
+        reporter_port = redis_client.get("REPORTER_PORT:{}".format(node_ip))
         if reporter_port:
             break
 
