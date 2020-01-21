@@ -96,24 +96,19 @@ void WorkerPool::Start(EnumUnorderedMap<Language, int> num_initial_workers) {
   }
 }
 
-std::unordered_set<ProcessHandle> WorkerPool::GetAllProcesses() const {
-  std::unordered_set<ProcessHandle> all_processes;
+WorkerPool::~WorkerPool() {
+  std::unordered_set<ProcessHandle> procs_to_kill;
   for (const auto &entry : states_by_lang_) {
-    // NOTE(swang): This assumes that the registered workers were started by the pool.
+    // Kill all registered workers. NOTE(swang): This assumes that the registered
+    // workers were started by the pool.
     for (const auto &worker : entry.second.registered_workers) {
-      all_processes.insert(worker->Process());
+      procs_to_kill.insert(worker->Process());
     }
-    // The workers that have been started but not registered.
+    // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
-      all_processes.insert(starting_worker.first);
+      procs_to_kill.insert(starting_worker.first);
     }
   }
-
-  return all_processes;
-}
-
-WorkerPool::~WorkerPool() {
-  auto procs_to_kill = GetAllProcesses();
   for (const auto &proc : procs_to_kill) {
     proc.get()->terminate();
     proc.get()->wait();
@@ -133,11 +128,6 @@ uint32_t WorkerPool::Size(const Language &language) const {
 ProcessHandle WorkerPool::StartWorkerProcess(
     const Language &language, bool is_initial_worker,
     const std::vector<std::string> &dynamic_options) {
-  if (GetAllProcesses().size() >= RayConfig::instance().maximum_worker_processes()) {
-    RAY_LOG(INFO) << "The number of worker processes has reached the maximum value.";
-    return ProcessHandle();
-  }
-
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
