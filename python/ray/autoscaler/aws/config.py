@@ -278,19 +278,23 @@ def _check_ami(config):
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    if "ImageId" not in config["head_node"]:
-        logger.info(
-            "_check_ami: head node ImageId not specified, please consider "
-            "using '{ami_id}', which is the default {ami_name} "
-            "for your region ({region}).".format(
-                ami_id=default_ami, ami_name=DEFAULT_AMI_NAME, region=region))
+    if config["head_node"].get("ImageId") == "DEFAULT":
+        config["head_node"]["ImageId"] = default_ami
+        logger.info("_check_ami: head node ImageId specified as 'DEFAULT'. "
+                    "Using '{ami_id}', which is the default {ami_name} "
+                    "for your region ({region}).".format(
+                        ami_id=default_ami,
+                        ami_name=DEFAULT_AMI_NAME,
+                        region=region))
 
-    if "ImageId" not in config["worker_nodes"]:
-        logger.info(
-            "_check_ami: worker nodes ImageId not specified, please consider "
-            "using '{ami_id}', which is the default {ami_name} "
-            "for your region ({region}).".format(
-                ami_id=default_ami, ami_name=DEFAULT_AMI_NAME, region=region))
+    if config["worker_nodes"].get("ImageId") == "DEFAULT":
+        config["worker_nodes"]["ImageId"] = default_ami
+        logger.info("_check_ami: worker nodes ImageId specified as 'DEFAULT'. "
+                    "Using '{ami_id}', which is the default {ami_name} "
+                    "for your region ({region}).".format(
+                        ami_id=default_ami,
+                        ami_name=DEFAULT_AMI_NAME,
+                        region=region))
 
 
 def _get_vpc_id_or_die(config, subnet_id):
