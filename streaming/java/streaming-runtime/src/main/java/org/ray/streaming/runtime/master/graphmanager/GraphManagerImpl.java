@@ -18,10 +18,6 @@ public class GraphManagerImpl implements GraphManager {
 
   protected final JobRuntimeContext runtimeContext;
 
-  public GraphManagerImpl() {
-    this.runtimeContext = null;
-  }
-
   public GraphManagerImpl(JobRuntimeContext runtimeContext) {
     this.runtimeContext = runtimeContext;
   }
@@ -68,8 +64,8 @@ public class GraphManagerImpl implements GraphManager {
       producer.getOutputEdges().add(executionJobEdge);
       consumer.getInputEdges().add(executionJobEdge);
 
-      producer.getExecutionVertexList().stream().forEach(vertex -> {
-        consumer.getExecutionVertexList().stream().forEach(outputVertex -> {
+      producer.getExecutionVertices().stream().forEach(vertex -> {
+        consumer.getExecutionVertices().stream().forEach(outputVertex -> {
           ExecutionEdge executionEdge = new ExecutionEdge(vertex, outputVertex, executionJobEdge);
           vertex.getOutputEdges().add(executionEdge);
           outputVertex.getInputEdges().add(executionEdge);

@@ -27,7 +27,7 @@ public class ExecutionGraph implements Serializable {
     return jobName;
   }
 
-  public List<ExecutionJobVertex> getExecutionJobVertexList() {
+  public List<ExecutionJobVertex> getExecutionJobVertexLices() {
     return new ArrayList<ExecutionJobVertex>(executionJobVertexMap.values());
   }
 
@@ -61,14 +61,14 @@ public class ExecutionGraph implements Serializable {
 
   public List<ExecutionVertex> getAllExecutionVertices() {
     return executionJobVertexMap.values().stream()
-        .map(ExecutionJobVertex::getExecutionVertexList)
+        .map(ExecutionJobVertex::getExecutionVertices)
         .flatMap(Collection::stream)
         .collect(Collectors.toList());
   }
 
   public List<ExecutionVertex> getAllAddedExecutionVertices() {
     return executionJobVertexMap.values().stream()
-        .map(ExecutionJobVertex::getExecutionVertexList)
+        .map(ExecutionJobVertex::getExecutionVertices)
         .flatMap(Collection::stream)
         .filter(vertex -> vertex.is2Add())
         .collect(Collectors.toList());
@@ -76,7 +76,7 @@ public class ExecutionGraph implements Serializable {
 
   public ExecutionVertex getExecutionJobVertexByJobVertexId(int vertexId) {
     for (ExecutionJobVertex executionJobVertex : executionJobVertexMap.values()) {
-      for (ExecutionVertex executionVertex : executionJobVertex.getExecutionVertexList()) {
+      for (ExecutionVertex executionVertex : executionJobVertex.getExecutionVertices()) {
         if (executionVertex.getVertexId() == vertexId) {
           return executionVertex;
         }

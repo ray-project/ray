@@ -29,7 +29,7 @@ public class GraphTest extends BaseUnitTest {
     GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(null));
     JobGraph jobGraph = buildJobGraph();
     ExecutionGraph executionGraph = buildExecutionGraph(graphManager, jobGraph);
-    List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexList();
+    List<ExecutionJobVertex> executionJobVertices = executionGraph.getExecutionJobVertexLices();
 
     Assert.assertEquals(executionJobVertices.size(), jobGraph.getJobVertexList().size());
 
@@ -42,8 +42,8 @@ public class GraphTest extends BaseUnitTest {
     ExecutionJobVertex downStream = executionJobVertices.get(startIndex + 1);
     Assert.assertEquals(upStream.getOutputEdges().get(0).getTargetVertex(), downStream);
 
-    List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertexList();
-    List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertexList();
+    List<ExecutionVertex> upStreamVertices = upStream.getExecutionVertices();
+    List<ExecutionVertex> downStreamVertices = downStream.getExecutionVertices();
     upStreamVertices.stream().forEach(vertex -> {
       vertex.getOutputEdges().stream().forEach(upStreamOutPutEdge -> {
         Assert.assertTrue(downStreamVertices.contains(upStreamOutPutEdge.getTargetVertex()));
