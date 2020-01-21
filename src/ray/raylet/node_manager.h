@@ -121,10 +121,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handle an unexpected failure notification from GCS pubsub.
   ///
-  /// \param worker_id The ID of the failed worker.
-  /// \param worker_data Data associated with the worker failure.
-  void HandleUnexpectedWorkerFailure(const WorkerID &worker_id,
-                                     const gcs::WorkerFailureData &worker_failed_data);
+  /// \param worker_address The address of the worker that died.
+  void HandleUnexpectedWorkerFailure(const rpc::Address &worker_address);
 
   /// Handler for the addition of a new node.
   ///
@@ -659,6 +657,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Map of workers leased out to direct call clients.
   std::unordered_map<WorkerID, std::shared_ptr<Worker>> leased_workers_;
 
+  /// Map from owner worker ID to a list of worker IDs that the owner has a
+  /// lease on.
+  absl::flat_hash_map<WorkerID, std::vector<WorkerID>> leased_workers_by_owner_;
+
   /// Whether new schedule is enabled.
   const bool new_scheduler_enabled_;
 
@@ -687,8 +689,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> pinned_objects_;
 
-  /// XXX
+  /// Wait for a task's arguments to become ready.
   void WaitForTaskArgsRequests(std::pair<ScheduleFn, Task> &work);
+
+  // TODO(swang): Evict entries from these caches.
+  /// Cache for the WorkerFailureTable in the GCS.
+  absl::flat_hash_set<WorkerID> failed_workers_cache_;
+  /// Cache for the ClientTable in the GCS.
+  absl::flat_hash_set<ClientID> failed_nodes_cache_;
 };
 
 }  // namespace raylet
