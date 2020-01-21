@@ -208,6 +208,8 @@ def test_raylet_info_endpoint(shutdown_only):
 
 
 def test_profiling_info_endpoint(shutdown_only):
+    ray.init(num_cpus=1)
+
     redis_client = ray.worker.global_worker.redis_client
 
     node_ip = ray.nodes()[0]["NodeManagerAddress"]
