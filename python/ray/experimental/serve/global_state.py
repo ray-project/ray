@@ -37,9 +37,18 @@ class ActorNursery:
 
         self.bootstrap_state = dict()
 
-    def start_actor(self, actor_cls, tag, init_args=(), init_kwargs={}):
+    def start_actor(self,
+                    actor_cls,
+                    tag,
+                    init_args=(),
+                    init_kwargs={},
+                    is_asyncio=False):
         """Start an actor and add it to the nursery"""
-        handle = actor_cls.remote(*init_args, **init_kwargs)
+        max_concurrency = 1000000 if is_asyncio else None
+        handle = (actor_cls.options(
+            is_direct_call=True,
+            is_asyncio=is_asyncio,
+            max_concurrency=max_concurrency).remote(*init_args, **init_kwargs))
         self.actor_handles[handle] = tag
         return [handle]
 
@@ -137,8 +146,9 @@ class GlobalState:
                 self.actor_nursery_handle.start_actor.remote(
                     self.queueing_policy.value,
                     init_kwargs=policy_kwargs,
-                    tag=queue_actor_tag))
-            handle.register_self_handle.remote(handle)
+                    tag=queue_actor_tag,
+                    is_asyncio=True))
+            # handle.register_self_handle.remote(handle)
             self.refresh_actor_handle_cache()
 
         return self.actor_handle_cache[queue_actor_tag]

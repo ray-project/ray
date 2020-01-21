@@ -23,7 +23,8 @@ def parse_request_item(request_item):
         args = (FakeFlaskRequest(), )
         kwargs = request_item.request_kwargs
 
-    result_object_id = request_item.result_object_id
+    # result_object_id = request_item.result_object_id
+    result_object_id = None
     return args, kwargs, is_web_context, result_object_id
 
 

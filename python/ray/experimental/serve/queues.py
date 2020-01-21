@@ -7,6 +7,7 @@ from ray.experimental.serve.utils import logger
 import itertools
 from blist import sortedlist
 import time
+import asyncio
 
 
 class Query:
@@ -20,10 +21,9 @@ class Query:
         self.request_kwargs = request_kwargs
         self.request_context = request_context
 
-        if result_object_id is None:
-            self.result_object_id = ray.ObjectID.from_random()
-        else:
-            self.result_object_id = result_object_id
+        self.result_object_id = None
+
+        self.async_future = asyncio.get_event_loop().create_future()
 
         # Service level objective in milliseconds. This is expected to be the
         # absolute time since unix epoch.
@@ -87,7 +87,7 @@ class CentralizedQueues:
         self.backend_info = dict()
 
         # backend_name -> worker request queue
-        self.workers = defaultdict(deque)
+        self.workers = defaultdict(asyncio.Queue)
 
         # backend_name -> worker payload queue
         # using blist sortedlist for deadline awareness
@@ -98,6 +98,8 @@ class CentralizedQueues:
         #    maintaining the sorted list.
         # 3. The blist implementation is fast and uses C extensions.
         self.buffer_queues = defaultdict(sortedlist)
+
+        self.future_cache = set()
 
     def is_ready(self):
         return True
@@ -113,12 +115,12 @@ class CentralizedQueues:
 
     # request_slo_ms is time specified in milliseconds till which the
     # answer of the query should be calculated
-    def enqueue_request(self,
-                        service,
-                        request_args,
-                        request_kwargs,
-                        request_context,
-                        request_slo_ms=None):
+    async def enqueue_request(self,
+                              service,
+                              request_args,
+                              request_kwargs,
+                              request_context,
+                              request_slo_ms=None):
         if request_slo_ms is None:
             # if request_slo_ms is not specified then set it to a high level
             request_slo_ms = 1e9
@@ -129,17 +131,17 @@ class CentralizedQueues:
         query = Query(request_args, request_kwargs, request_context,
                       request_slo_ms)
         self.queues[service].append(query)
-        self.flush()
-        return query.result_object_id.binary()
+        await self.flush()
+        return await query.async_future
 
-    def dequeue_request(self, backend, replica_handle):
+    async def dequeue_request(self, backend, replica_handle):
         intention = WorkIntent(replica_handle)
-        self.workers[backend].append(intention)
-        self.flush()
+        await self.workers[backend].put(intention)
+        await self.flush()
 
     def remove_and_destory_replica(self, backend, replica_handle):
         # NOTE: this function scale by O(#replicas for the backend)
-        new_queue = deque()
+        new_queue = asyncio.Queue()
         target_id = replica_handle._actor_id
 
         for work_intent in self.workers[backend]:
@@ -147,43 +149,44 @@ class CentralizedQueues:
                 new_queue.append(work_intent)
 
         self.workers[backend] = new_queue
-
         replica_handle.__ray_terminate__.remote()
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
         self.set_traffic(service, {backend: 1.0})
 
-    def set_traffic(self, service, traffic_dict):
+    async def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,
                      traffic_dict)
         self.traffic[service] = traffic_dict
-        self.flush()
+        # await self.flush()
 
-    def set_backend_config(self, backend, config_dict):
+    async def set_backend_config(self, backend, config_dict):
         logger.debug("Setting backend config for "
                      "backend {} to {}".format(backend, config_dict))
         self.backend_info[backend] = config_dict
+        # await self.flush()
 
-    def flush(self):
+    async def flush(self):
         """In the default case, flush calls ._flush.
 
         When this class is a Ray actor, .flush can be scheduled as a remote
         method invocation.
         """
-        self._flush()
+        self._flush_service_queue()
+        await self._flush_buffer()
 
     def _get_available_backends(self, service):
         backends_in_policy = set(self.traffic[service].keys())
         available_workers = {
             backend
-            for backend, queues in self.workers.items() if len(queues) > 0
+            for backend, queues in self.workers.items() if queues.qsize() > 0
         }
         return list(backends_in_policy.intersection(available_workers))
 
     # flushes the buffer queue and assigns work to workers
-    def _flush_buffer(self):
-        for service in self.queues.keys():
+    async def _flush_buffer(self):
+        for service in self.traffic.keys():
             ready_backends = self._get_available_backends(service)
             for backend in ready_backends:
                 # no work available
@@ -197,19 +200,39 @@ class CentralizedQueues:
                     max_batch_size = self.backend_info[backend][
                         "max_batch_size"]
 
-                while len(buffer_queue) and len(work_queue):
+                while len(buffer_queue) and work_queue.qsize():
                     # get the work from work intent queue
-                    work = work_queue.popleft()
+                    work = await work_queue.get()
                     # see if backend accepts batched queries
                     if max_batch_size is not None:
                         pop_size = min(len(buffer_queue), max_batch_size)
                         request = [
                             buffer_queue.pop(0) for _ in range(pop_size)
                         ]
+                        future_caches = [r.async_future for r in request]
+                        for r in request:
+                            r.async_future = None
+                        fut = work.replica_handle._ray_serve_call.remote(
+                            request)
+                        for r, f in zip(request, future_caches):
+                            r.async_future = f
                     else:
                         request = buffer_queue.pop(0)
 
-                    work.replica_handle._ray_serve_call.remote(request)
+                        old_future = request.async_future
+                        request.async_future = None
+                        fut = work.replica_handle._ray_serve_call.remote(
+                            request)
+                        request.async_future = old_future
+
+                    result = await fut
+                    print("result", result)
+                    if isinstance(request, list):
+                        for res, req in zip(result, request):
+                            req.async_future.set_result(res)
+                    else:
+                        request.async_future.set_result(result)
+                        # future_cache.pop(fut)
 
     # selects the backend and puts the service queue query to the buffer
     # different policies will implement different backend selection policies
@@ -228,9 +251,9 @@ class CentralizedQueues:
         pass
 
     # _flush function has to flush the service and buffer queues.
-    def _flush(self):
-        self._flush_service_queue()
-        self._flush_buffer()
+    # async def _flush(self):
+    #     # self._flush_service_queue()
+    #     await self._flush_buffer()
 
 
 class CentralizedQueuesActor(CentralizedQueues):
@@ -238,16 +261,7 @@ class CentralizedQueuesActor(CentralizedQueues):
     A wrapper class for converting wrapper policy classes to ray
     actors. This is needed to make `flush` call asynchronous.
     """
-    self_handle = None
-
-    def register_self_handle(self, handle_to_this_actor):
-        self.self_handle = handle_to_this_actor
-
-    def flush(self):
-        if self.self_handle:
-            self.self_handle._flush.remote()
-        else:
-            self._flush()
+    pass
 
 
 class RandomPolicyQueue(CentralizedQueues):

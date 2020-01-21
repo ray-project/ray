@@ -7,6 +7,7 @@ from ray.experimental.serve.context import FakeFlaskRequest
 from collections import defaultdict
 from ray.experimental.serve.utils import parse_request_item
 from ray.experimental.serve.exceptions import RayServeException
+from event_metrics import MetricConnection
 
 
 class TaskRunner:
@@ -18,6 +19,7 @@ class TaskRunner:
 
     def __init__(self, func_to_run):
         self.func = func_to_run
+        self.metric_conn = MetricConnection("/tmp/profile.db")
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
@@ -101,13 +103,11 @@ class RayServeMixin:
         start_timestamp = time.time()
         try:
             result = self.__call__(*args, **kwargs)
-            ray.worker.global_worker.put_object(result, result_object_id)
         except Exception as e:
-            wrapped_exception = wrap_to_ray_error(e)
+            result = wrap_to_ray_error(e)
             self._serve_metric_error_counter += 1
-            ray.worker.global_worker.put_object(wrapped_exception,
-                                                result_object_id)
         self._serve_metric_latency_list.append(time.time() - start_timestamp)
+        return result
 
     def invoke_batch(self, request_item_list):
         # TODO(alind) : create no-http services. The enqueues
@@ -170,9 +170,10 @@ class RayServeMixin:
                                         "Please return a list of result "
                                         "with length equals to the batch "
                                         "size.")
-            for result, result_object_id in zip(result_list,
-                                                result_object_ids):
-                ray.worker.global_worker.put_object(result, result_object_id)
+            return result_list
+            # for result, result_object_id in zip(result_list,
+            #                                     result_object_ids):
+            #     ray.worker.global_worker.put_object(result, result_object_id)
             self._serve_metric_latency_list.append(time.time() -
                                                    start_timestamp)
         except Exception as e:
@@ -187,14 +188,18 @@ class RayServeMixin:
         # check if work_item is a list or not
         # if it is list: then batching supported
         if not isinstance(work_item, list):
-            self.invoke_single(work_item)
+            # self.metric_conn.observe("_4_worker_received")
+            result = self.invoke_single(work_item)
+            # self.metric_conn.observe("_5_worker_done")
         else:
-            self.invoke_batch(work_item)
+            result = self.invoke_batch(work_item)
 
         # re-assign to default values
         serve_context.web = False
         serve_context.batch_size = None
         self._ray_serve_fetch()
+        # self.metric_conn.observe("_6_worker_did_fetch")
+        return result
 
 
 class TaskRunnerBackend(TaskRunner, RayServeMixin):

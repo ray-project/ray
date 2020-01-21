@@ -9,6 +9,7 @@ from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.utils import BytesEncoder
 from urllib.parse import parse_qs
+from event_metrics import MetricConnection
 
 
 class JSONResponse:
@@ -65,6 +66,8 @@ class HTTPProxy:
         self.route_table_cache = dict()
 
         self.route_checker_should_shutdown = False
+
+        self.metric_conn = MetricConnection("/tmp/profile.db")
 
     async def route_checker(self, interval):
         while True:
@@ -126,6 +129,7 @@ class HTTPProxy:
                 }, status_code=404)(scope, receive, send)
             return
 
+        # self.metric_conn.observe("_1_http_received")
         endpoint_name = self.route_table_cache[current_path]
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
@@ -148,16 +152,15 @@ class HTTPProxy:
                 await JSONResponse({"error": str(e)})(scope, receive, send)
                 return
 
-        result_object_id_bytes = await (
-            self.serve_global_state.init_or_get_router()
-            .enqueue_request.remote(
-                service=endpoint_name,
-                request_args=(scope, http_body_bytes),
-                request_kwargs=dict(),
-                request_context=TaskContext.Web,
-                request_slo_ms=request_slo_ms))
-
-        result = await ray.ObjectID(result_object_id_bytes)
+        actual_result = await (self.serve_global_state.init_or_get_router()
+                               .enqueue_request.remote(
+                                   service=endpoint_name,
+                                   request_args=(scope, http_body_bytes),
+                                   request_kwargs=dict(),
+                                   request_context=TaskContext.Web,
+                                   request_slo_ms=request_slo_ms))
+        # self.metric_conn.observe("_8_http_responsed")
+        result = actual_result
 
         if isinstance(result, ray.exceptions.RayTaskError):
             await JSONResponse({
