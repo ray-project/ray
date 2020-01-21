@@ -3,6 +3,8 @@
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 echo "PYTHON is $PYTHON"
+# Print out actual version.
+python -V
 
 platform="unknown"
 unamestr="$(uname)"
