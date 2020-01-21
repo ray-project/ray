@@ -190,10 +190,11 @@ void CoreWorkerDirectTaskReceiver::SetActorAsAsync(int max_concurrency) {
   if (!is_asyncio_) {
     RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
 
-    // The main thread will be used the creating new fibers.
-    // The fiber_runner_thread_ will run all fibers.
-    // boost::fibers::algo::shared_work allows two threads to transparently
-    // share all the fibers.
+    // The main thread will be used the creating new fibers. The fiber_runner_thread_ will
+    // run all fibers. boost::fibers::algo::shared_work allows two threads to
+    // transparently share all the fibers. The suspend argument is added according to
+    // https://github.com/boostorg/fiber/issues/203 to avoid high cpu load when the thread
+    // is idle.
     boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>(
         /*suspend*/ true);
 
