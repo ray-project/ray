@@ -180,7 +180,11 @@ def test_actor_gpus(ray_start_cluster):
     num_gpus_per_raylet = 4
     for i in range(num_nodes):
         cluster.add_node(
-            num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
+            num_cpus=10 * num_gpus_per_raylet,
+            num_gpus=num_gpus_per_raylet,
+            _internal_config=json.dumps({
+                "num_initial_py_workers": 0
+            }))
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
@@ -219,7 +223,11 @@ def test_actor_multiple_gpus(ray_start_cluster):
     num_gpus_per_raylet = 5
     for i in range(num_nodes):
         cluster.add_node(
-            num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
+            num_cpus=10 * num_gpus_per_raylet,
+            num_gpus=num_gpus_per_raylet,
+            _internal_config=json.dumps({
+                "num_initial_py_workers": 0
+            }))
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=2)
@@ -287,9 +295,23 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     # Test that we can create actors on two nodes that have different
     # numbers of GPUs.
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=10, num_gpus=0)
-    cluster.add_node(num_cpus=10, num_gpus=5)
-    cluster.add_node(num_cpus=10, num_gpus=10)
+    cluster.add_node(
+            num_cpus=10,
+            num_gpus=0,
+            _internal_config=json.dumps({
+                "num_initial_py_workers": 0
+            }))
+    cluster.add_node(
+            num_cpus=10,
+            num_gpus=5,
+            _internal_config=json.dumps({
+                "num_initial_py_workers": 0
+            }))
+    cluster.add_node(num_cpus=10,
+            num_gpus=10,
+            _internal_config=json.dumps({
+                "num_initial_py_workers": 0
+            }))
     ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
@@ -332,7 +354,8 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             num_cpus=10 * num_gpus_per_raylet,
             num_gpus=num_gpus_per_raylet,
             _internal_config=json.dumps({
-                "num_heartbeats_timeout": 1000
+                "num_heartbeats_timeout": 1000,
+                "num_initial_py_workers": 0
             }))
     ray.init(address=cluster.address)
 
@@ -405,7 +428,11 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     num_gpus_per_raylet = 2
     for i in range(num_nodes):
         cluster.add_node(
-            num_cpus=num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
+            num_cpus=num_gpus_per_raylet,
+            num_gpus=num_gpus_per_raylet,
+            _internal_config=json.dumps({
+                "num_initial_py_workers": 0
+            }))
     ray.init(address=cluster.address)
 
     def check_intervals_non_overlapping(list_of_intervals):
