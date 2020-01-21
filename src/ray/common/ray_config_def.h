@@ -200,7 +200,9 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
 /// The number initial workers of java language to start when starting raylet.
-RAY_CONFIG(int32_t, num_initial_java_workers, 0)
+/// If this value is negative, `num_cpus` will be used.
+RAY_CONFIG(int32_t, num_initial_java_workers, -1)
 
 /// The number initial workers of python language to start when starting raylet.
-RAY_CONFIG(int32_t, num_initial_py_workers, 0)
+/// If this value is negative, `num_cpus` will be used.
+RAY_CONFIG(int32_t, num_initial_py_workers, -1)
