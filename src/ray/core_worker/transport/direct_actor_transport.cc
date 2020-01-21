@@ -194,10 +194,12 @@ void CoreWorkerDirectTaskReceiver::SetActorAsAsync(int max_concurrency) {
     // The fiber_runner_thread_ will run all fibers.
     // boost::fibers::algo::shared_work allows two threads to transparently
     // share all the fibers.
-    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
+    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>(
+        /*suspend*/ true);
 
     fiber_runner_thread_ = std::thread([&]() {
-      boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
+      boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>(
+          /*suspend*/ true);
 
       // The event here is used to make sure fiber_runner_thread_ never terminates.
       // Because fiber_shutdown_event_ is never notified, fiber_runner_thread_ will
