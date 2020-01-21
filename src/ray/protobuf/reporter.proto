@@ -14,11 +14,13 @@ message GetProfilingStatsRequest {
 message GetProfilingStatsReply {
   // Profiling stats.
   string profiling_stats = 1;
+  // Standard output of the profiler process.
   string stdout = 2;
+  // Standard error of the profiler process.
   string stderr = 3;
 }
 
-// Service for inter-node-manager communication.
+// Service for communicating with the reporter.py process on a remote node.
 service ReporterService {
   // Get the profiling stats.
   rpc GetProfilingStats(GetProfilingStatsRequest) returns (GetProfilingStatsReply);
