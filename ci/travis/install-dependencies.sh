@@ -19,7 +19,21 @@ else
   exit 1
 fi
 
-if [[ "$platform" == "linux" ]]; then
+if [[ "$LINT" == "1" ]]; then
+  sudo apt-get update
+  sudo apt-get install -y build-essential curl unzip
+  # Install miniconda.
+  wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
+  bash miniconda.sh -b -p $HOME/miniconda
+  export PATH="$HOME/miniconda/bin:$PATH"
+  # Install Python linting tools.
+  pip install -q flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
+elif [[ "$LINUX_WHEELS" == "1" ]]; then
+  sudo apt-get install docker
+  sudo usermod -a -G docker travis
+elif [[ "$MAC_WHEELS" == "1" ]]; then
+  :
+elif [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb
   # Install miniconda.
@@ -39,20 +53,6 @@ elif [[ "$platform" == "macosx" ]]; then
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
     blist
-elif [[ "$LINT" == "1" ]]; then
-  sudo apt-get update
-  sudo apt-get install -y build-essential curl unzip
-  # Install miniconda.
-  wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
-  bash miniconda.sh -b -p $HOME/miniconda
-  export PATH="$HOME/miniconda/bin:$PATH"
-  # Install Python linting tools.
-  pip install -q flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
-elif [[ "$LINUX_WHEELS" == "1" ]]; then
-  sudo apt-get install docker
-  sudo usermod -a -G docker travis
-elif [[ "$MAC_WHEELS" == "1" ]]; then
-  :
 else
   echo "Unrecognized environment."
   exit 1
