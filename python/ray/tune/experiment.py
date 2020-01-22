@@ -7,7 +7,7 @@ from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, get_trainable_cls
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import sample_from
-from ray.tune.stopper import FunctionStopper
+from ray.tune.stopper import FunctionStopper, Stopper
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +123,12 @@ class Experiment:
         elif callable(stop):
             if FunctionStopper.is_valid_function(stop):
                 self._stopper = FunctionStopper(stop)
-            else:
+            elif issubclass(type(stop), Stopper):
                 self._stopper = stop
+            else:
+                raise ValueError("Provided stop object must be either a dict, "
+                                 "a function, or a subclass of "
+                                 "`ray.tune.Stopper`.")
         else:
             raise ValueError("Invalid stop criteria: {}. Must be a "
                              "callable or dict".format(stop))
