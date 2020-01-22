@@ -28,7 +28,7 @@ class ServiceBasedJobInfoAccessor : public JobInfoAccessor {
       const StatusCallback &done) override;
 
  private:
-  ServiceBasedGcsClient *client_impl_{nullptr};
+  ServiceBasedGcsClient *client_impl_;
 
   typedef SubscriptionExecutor<JobID, JobTableData, JobTable> JobSubscriptionExecutor;
   JobSubscriptionExecutor job_sub_executor_;
@@ -75,9 +75,9 @@ class ServiceBasedActorInfoAccessor : public ActorInfoAccessor {
       const OptionalItemCallback<rpc::ActorCheckpointIdData> &callback) override;
 
  private:
-  ServiceBasedGcsClient *client_impl_{nullptr};
+  ServiceBasedGcsClient *client_impl_;
 
-  ClientID subscribe_id_{ClientID::FromRandom()};
+  ClientID subscribe_id_;
 
   typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
       ActorSubscriptionExecutor;
@@ -149,7 +149,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const StatusCallback &done) override;
 
  private:
-  ServiceBasedGcsClient *client_impl_{nullptr};
+  ServiceBasedGcsClient *client_impl_;
 
   typedef SubscriptionExecutor<ClientID, ResourceChangeNotification, DynamicResourceTable>
       DynamicResourceSubscriptionExecutor;
@@ -207,9 +207,9 @@ class ServiceBasedTaskInfoAccessor : public TaskInfoAccessor {
       const StatusCallback &callback) override;
 
  private:
-  ServiceBasedGcsClient *client_impl_{nullptr};
+  ServiceBasedGcsClient *client_impl_;
 
-  ClientID subscribe_id_{ClientID::FromRandom()};
+  ClientID subscribe_id_;
 
   typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
       TaskSubscriptionExecutor;
@@ -248,9 +248,9 @@ class ServiceBasedObjectInfoAccessor : public ObjectInfoAccessor {
                                      const StatusCallback &done) override;
 
  private:
-  ServiceBasedGcsClient *client_impl_{nullptr};
+  ServiceBasedGcsClient *client_impl_;
 
-  ClientID subscribe_id_{ClientID::FromRandom()};
+  ClientID subscribe_id_;
 
   typedef SubscriptionExecutor<ObjectID, ObjectChangeNotification, ObjectTable>
       ObjectSubscriptionExecutor;
@@ -270,7 +270,7 @@ class ServiceBasedStatsInfoAccessor : public StatsInfoAccessor {
                              const StatusCallback &callback) override;
 
  private:
-  ServiceBasedGcsClient *client_impl_{nullptr};
+  ServiceBasedGcsClient *client_impl_;
 };
 
 /// \class ServiceBasedErrorInfoAccessor
@@ -286,7 +286,7 @@ class ServiceBasedErrorInfoAccessor : public ErrorInfoAccessor {
                              const StatusCallback &callback) override;
 
  private:
-  ServiceBasedGcsClient *client_impl_{nullptr};
+  ServiceBasedGcsClient *client_impl_;
 };
 
 /// \class ServiceBasedWorkerInfoAccessor
@@ -306,7 +306,7 @@ class ServiceBasedWorkerInfoAccessor : public WorkerInfoAccessor {
                                   const StatusCallback &callback) override;
 
  private:
-  ServiceBasedGcsClient *client_impl_{nullptr};
+  ServiceBasedGcsClient *client_impl_;
 
   typedef SubscriptionExecutor<WorkerID, WorkerFailureData, WorkerFailureTable>
       WorkerFailureSubscriptionExecutor;

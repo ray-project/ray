@@ -64,6 +64,7 @@ Status ServiceBasedJobInfoAccessor::AsyncSubscribeToFinishedJobs(
 ServiceBasedActorInfoAccessor::ServiceBasedActorInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
+      subscribe_id_(ClientID::FromRandom()),
       actor_sub_executor_(client_impl->GetRedisGcsClient().actor_table()) {}
 
 Status ServiceBasedActorInfoAccessor::AsyncGet(
@@ -140,7 +141,7 @@ Status ServiceBasedActorInfoAccessor::AsyncSubscribe(
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id;
-  RAY_CHECK(subscribe != nullptr);
+  RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
   auto status =
       actor_sub_executor_.AsyncSubscribe(subscribe_id_, actor_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing update operations of actor, actor id = "
@@ -504,6 +505,7 @@ Status ServiceBasedNodeInfoAccessor::AsyncSubscribeBatchHeartbeat(
 ServiceBasedTaskInfoAccessor::ServiceBasedTaskInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
+      subscribe_id_(ClientID::FromRandom()),
       task_sub_executor_(client_impl->GetRedisGcsClient().raylet_task_table()),
       task_lease_sub_executor_(client_impl->GetRedisGcsClient().task_lease_table()) {}
 
@@ -569,7 +571,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribe(
     const TaskID &task_id, const SubscribeCallback<TaskID, rpc::TaskTableData> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task, task id = " << task_id;
-  RAY_CHECK(subscribe != nullptr);
+  RAY_CHECK(subscribe != nullptr) << "Failed to subscribe task, task id = " << task_id;
   auto status =
       task_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task, task id = " << task_id;
@@ -609,7 +611,8 @@ Status ServiceBasedTaskInfoAccessor::AsyncSubscribeTaskLease(
     const SubscribeCallback<TaskID, boost::optional<rpc::TaskLeaseData>> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing task lease, task id = " << task_id;
-  RAY_CHECK(subscribe != nullptr);
+  RAY_CHECK(subscribe != nullptr)
+      << "Failed to subscribe task lease, task id = " << task_id;
   auto status =
       task_lease_sub_executor_.AsyncSubscribe(subscribe_id_, task_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing task lease, task id = " << task_id;
@@ -649,6 +652,7 @@ Status ServiceBasedTaskInfoAccessor::AttemptTaskReconstruction(
 ServiceBasedObjectInfoAccessor::ServiceBasedObjectInfoAccessor(
     ServiceBasedGcsClient *client_impl)
     : client_impl_(client_impl),
+      subscribe_id_(ClientID::FromRandom()),
       object_sub_executor_(client_impl->GetRedisGcsClient().object_table()) {}
 
 Status ServiceBasedObjectInfoAccessor::AsyncGetLocations(
@@ -715,7 +719,8 @@ Status ServiceBasedObjectInfoAccessor::AsyncSubscribeToLocations(
     const SubscribeCallback<ObjectID, ObjectChangeNotification> &subscribe,
     const StatusCallback &done) {
   RAY_LOG(DEBUG) << "Subscribing object location, object id = " << object_id;
-  RAY_CHECK(subscribe != nullptr);
+  RAY_CHECK(subscribe != nullptr)
+      << "Failed to subscribe object location, object id = " << object_id;
   auto status =
       object_sub_executor_.AsyncSubscribe(subscribe_id_, object_id, subscribe, done);
   RAY_LOG(DEBUG) << "Finished subscribing object location, object id = " << object_id;

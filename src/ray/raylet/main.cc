@@ -163,8 +163,14 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<std::thread> thread_io_service;
   boost::asio::io_service io_service;
 
-  RAY_LOG(INFO) << "Gcs service enable = " << RayConfig::instance().gcs_service_enabled();
-  if (RayConfig::instance().gcs_service_enabled()) {
+  const char *var_value = getenv("GCS_SERVICE_ENABLED");
+  std::string data;
+  if (var_value != nullptr) {
+    data = var_value;
+    std::transform(data.begin(), data.end(), data.begin(), ::tolower);
+  }
+
+  if (data == "true") {
     gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
   } else {
     gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);

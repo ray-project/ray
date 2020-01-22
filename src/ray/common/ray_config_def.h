@@ -192,9 +192,7 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
-/// Allow up to 5 seconds for connecting to GCS Service.
+/// Allow up to 5 seconds for connecting to gcs service.
+/// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
 RAY_CONFIG(int64_t, gcs_service_connect_wait_milliseconds, 100)
-
-/// Whether to enable the gcs service.
-RAY_CONFIG(bool, gcs_service_enabled, false)

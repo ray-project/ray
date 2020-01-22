@@ -49,11 +49,11 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(ClientID::FromRandom()),
       gcs_client_(gcs_client),
-      object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client)),
+      object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
       object_manager_(main_service, self_node_id_, object_manager_config,
                       object_directory_),
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
-                    gcs_client, object_directory_),
+                    gcs_client_, object_directory_),
       socket_name_(socket_name),
       acceptor_(main_service,
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
