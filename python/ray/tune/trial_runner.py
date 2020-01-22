@@ -66,6 +66,36 @@ class _TuneFunctionDecoder(json.JSONDecoder):
         return cloudpickle.loads(hex_to_binary(obj["value"]))
 
 
+class StopperClass:
+    """Abstract class for implementing a Tune experiment stopper.
+
+    Allows users to implement experiment-level stopping via ``stop_all``.
+
+    .. code-block:: python
+
+        import time
+        from ray import tune
+        from ray.tune import StopperClass
+
+        class TimeStopper(StopperClass):
+                def __init__(self):
+                    self._start = time.time()
+                    self._deadline = 300
+
+                def stop_all(self):
+                    return time.time() - self._start > self.deadline
+
+        tune.run(Trainable, num_samples=200, stop=TimeStopper())
+
+    """
+
+    def __call__(self, trial_id, result):
+        return False
+
+    def stop_all(self):
+        return False
+
+
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
@@ -98,6 +128,7 @@ class TrialRunner:
                  local_checkpoint_dir=None,
                  remote_checkpoint_dir=None,
                  sync_to_cloud=None,
+                 stopper=None,
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
@@ -115,6 +146,8 @@ class TrialRunner:
             remote_checkpoint_dir (str): Remote path where
                 global checkpoints are stored and restored from. Used
                 if `resume` == REMOTE.
+            stopper: Custom class for stopping whole experiments. See
+                ``StopperClass``.
             resume (str|False): see `tune.py:run`.
             sync_to_cloud (func|str): See `tune.py:run`.
             server_port (int): Port number for launching TuneServer.
@@ -149,6 +182,7 @@ class TrialRunner:
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
                                         remote_checkpoint_dir, sync_to_cloud)
+        self._stopper = stopper if issubclass(stopper, StopperClass) else None
 
         self._resumed = False
 
@@ -331,6 +365,8 @@ class TrialRunner:
         else:
             self.trial_executor.on_no_available_trials(self)
 
+        self._stop_experiment_if_needed()
+
         try:
             with warn_if_slow("experiment_checkpoint"):
                 self.checkpoint()
@@ -384,6 +420,15 @@ class TrialRunner:
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
         return self.trial_executor.has_resources(resources)
+
+    def _stop_experiment_if_needed(self):
+        """Stops all trials if the user condition is satisfied."""
+        if not self._stopper:
+            return
+
+        if self._stopper.stop_all():
+            [self.trial_executor.stop_trial(t) for t in self._trials]
+        logger.info("trial_runner: All trials stopped.")
 
     def _get_next_trial(self):
         """Replenishes queue.

@@ -492,11 +492,21 @@ In the example below, each trial will be stopped either when it completes 10 ite
 
 For more flexibility, you can pass in a function instead. If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean (``True`` if trial should be stopped and ``False`` otherwise).
 
-You can use this to stop all trials after the criteria is fulfilled by any individual trial:
+.. code-block:: python
+
+
+    def stopper(trial_id, result):
+        return result["mean_accuracy"] / result["training_iteration"] > 5
+
+    tune.run(my_trainable, stop=stopper)
+
+Finally, you can implement the ``StopperClass`` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
 .. code-block:: python
 
-    class Stopper:
+    from ray.tune import StopperClass
+
+    class Stopper(StopperClass):
         def __init__(self):
             self.should_stop = False
 
@@ -505,8 +515,13 @@ You can use this to stop all trials after the criteria is fulfilled by any indiv
                 self.should_stop = True
             return self.should_stop
 
+        def stop_all(self):
+            """Returns whether to stop trials and prevent new ones from starting."""
+            return self.should_stop
+
     stopper = Stopper()
-    tune.run(my_trainable, stop=stopper.stop)
+    tune.run(my_trainable, stop=stopper)
+
 
 Note that in the above example all trials will not stop immediately, but will do so once their current iterations are complete.
 

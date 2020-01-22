@@ -97,11 +97,14 @@ def run(run_or_experiment,
             If Experiment, then Tune will execute training based on
             Experiment.spec.
         name (str): Name of experiment.
-        stop (dict|func): The stopping criteria. If dict, the keys may be
+        stop (dict|callable): The stopping criteria. If dict, the keys may be
             any field in the return result of 'train()', whichever is
             reached first. If function, it must take (trial_id, result) as
             arguments and return a boolean (True if trial should be stopped,
-            False otherwise).
+            False otherwise). This can also be a subclass of
+            ``ray.tune.StopperClass``, which allows users to implement
+            custom experiment-wide stopping (i.e., stopping an entire Tune
+            run based on some time constraint).
         config (dict): Algorithm-specific configuration for Tune variant
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.
@@ -262,6 +265,7 @@ def run(run_or_experiment,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
         sync_to_cloud=sync_to_cloud,
+        stopper=stop,
         checkpoint_period=global_checkpoint_period,
         resume=resume,
         launch_web_server=with_server,
