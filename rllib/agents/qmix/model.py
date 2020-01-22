@@ -4,7 +4,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils import try_import_torch
 
 torch, nn = try_import_torch()
-F = nn.functional
+F = nn.functional if nn is not None else None
 
 
 class RNNModel(TorchModelV2, nn.Module):

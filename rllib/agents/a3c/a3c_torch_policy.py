@@ -6,7 +6,7 @@ from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
-F = nn.functional
+F = nn.functional if nn is not None else None
 
 
 def actor_critic_loss(policy, model, dist_class, train_batch):
