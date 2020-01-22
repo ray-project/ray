@@ -9,25 +9,40 @@ import org.ray.streaming.jobgraph.JobEdge;
  */
 public class ExecutionJobEdge {
 
-  private final ExecutionJobVertex srcVertex;
+  /**
+   * The source(upstream) execution job vertex.
+   */
+  private final ExecutionJobVertex sourceVertex;
+
+  /**
+   * The target(downstream) execution job vertex.
+   */
   private final ExecutionJobVertex targetVertex;
-  private final JobEdge jobEdge;
+
+  /**
+   * The partition of the execution job edge.
+   */
+  private final Partition partition;
+
+  /**
+   * A unique id for execution job edge.
+   */
   private final String executionJobEdgeIndex;
 
-  public ExecutionJobEdge(ExecutionJobVertex srcVertex, ExecutionJobVertex targetVertex,
+  public ExecutionJobEdge(ExecutionJobVertex sourceVertex, ExecutionJobVertex targetVertex,
       JobEdge jobEdge) {
-    this.srcVertex = srcVertex;
+    this.sourceVertex = sourceVertex;
     this.targetVertex = targetVertex;
-    this.jobEdge = jobEdge;
+    this.partition = jobEdge.getPartition();
     this.executionJobEdgeIndex = generateExecutionJobEdgeIndex();
   }
 
   private String generateExecutionJobEdgeIndex() {
-    return srcVertex.getJobVertexId() + "—" + targetVertex.getJobVertexId();
+    return sourceVertex.getJobVertexId() + "—" + targetVertex.getJobVertexId();
   }
 
-  public ExecutionJobVertex getSrcVertex() {
-    return srcVertex;
+  public ExecutionJobVertex getSourceVertex() {
+    return sourceVertex;
   }
 
   public ExecutionJobVertex getTargetVertex() {
@@ -35,16 +50,16 @@ public class ExecutionJobEdge {
   }
 
   public Partition getPartition() {
-    return jobEdge.getPartition();
+    return partition;
   }
 
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("srcVertex", srcVertex)
+        .add("srcVertex", sourceVertex)
         .add("targetVertex", targetVertex)
-        .add("jobEdge", jobEdge)
+        .add("partition", partition)
+        .add("executionJobEdgeIndex", executionJobEdgeIndex)
         .toString();
   }
-
 }

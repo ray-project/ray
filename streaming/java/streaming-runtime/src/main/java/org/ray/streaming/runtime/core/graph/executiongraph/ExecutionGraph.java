@@ -12,10 +12,31 @@ import java.util.stream.Collectors;
  */
 public class ExecutionGraph implements Serializable {
 
+  /**
+   * Name of the job.
+   */
   private final String jobName;
-  private Map<Integer, ExecutionJobVertex> executionJobVertexMap;
+
+  /**
+   * Configuration of the job.
+   */
   private Map<String, String> jobConfig;
+
+  /**
+   * Data map for execution job vertex.
+   * key: job vertex id.
+   * value: execution job vertex.
+   */
+  private Map<Integer, ExecutionJobVertex> executionJobVertexMap;
+
+  /**
+   * The max parallelism of the whole graph.
+   */
   private int maxParallelism;
+
+  /**
+   * Build time.
+   */
   private long buildTime;
 
   public ExecutionGraph(String jobName) {
@@ -59,6 +80,11 @@ public class ExecutionGraph implements Serializable {
     return buildTime;
   }
 
+  /**
+   * Get all execution vertices from current execution graph.
+   *
+   * @return all execution vertices.
+   */
   public List<ExecutionVertex> getAllExecutionVertices() {
     return executionJobVertexMap.values().stream()
         .map(ExecutionJobVertex::getExecutionVertices)
@@ -66,6 +92,11 @@ public class ExecutionGraph implements Serializable {
         .collect(Collectors.toList());
   }
 
+  /**
+   * Get all execution vertices which status is 'TO_ADD' from current execution graph.
+   *
+   * @return all added execution vertices.
+   */
   public List<ExecutionVertex> getAllAddedExecutionVertices() {
     return executionJobVertexMap.values().stream()
         .map(ExecutionJobVertex::getExecutionVertices)
@@ -74,6 +105,12 @@ public class ExecutionGraph implements Serializable {
         .collect(Collectors.toList());
   }
 
+  /**
+   * Get specified execution vertex from current execution graph by execution vertex id.
+   *
+   * @param vertexId execution vertex id.
+   * @return the specified execution vertex.
+   */
   public ExecutionVertex getExecutionJobVertexByJobVertexId(int vertexId) {
     for (ExecutionJobVertex executionJobVertex : executionJobVertexMap.values()) {
       for (ExecutionVertex executionVertex : executionJobVertex.getExecutionVertices()) {

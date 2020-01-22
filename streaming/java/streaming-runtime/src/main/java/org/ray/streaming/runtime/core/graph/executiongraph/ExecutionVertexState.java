@@ -8,11 +8,23 @@ import java.io.Serializable;
 public enum ExecutionVertexState implements Serializable {
 
   /**
-   * execution vertex state enum
+   * Vertex(Worker) to be added.
    */
   TO_ADD(1, "TO_ADD"),
+
+  /**
+   * Vertex(Worker) to be deleted.
+   */
   TO_DEL(2, "TO_DEL"),
+
+  /**
+   * Vertex(Worker) is running.
+   */
   RUNNING(3, "RUNNING"),
+
+  /**
+   * Unknown status,
+   */
   UNKNOWN(-1, "UNKNOWN");
 
   public final int code;

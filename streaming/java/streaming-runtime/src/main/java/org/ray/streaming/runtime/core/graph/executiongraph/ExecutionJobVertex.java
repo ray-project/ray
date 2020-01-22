@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.core.graph.executiongraph;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -7,13 +8,12 @@ import java.util.List;
 import java.util.Map;
 import org.ray.api.RayActor;
 import org.ray.streaming.jobgraph.JobVertex;
-import org.ray.streaming.jobgraph.LanguageType;
 import org.ray.streaming.jobgraph.VertexType;
 import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
- * Physical job vertex which including parallelism execution vertex.
+ * Physical job vertex, including parallelism execution vertex.
  */
 public class ExecutionJobVertex {
 
@@ -28,7 +28,6 @@ public class ExecutionJobVertex {
   private final String jobVertexName;
   private final StreamOperator streamOperator;
   private final VertexType vertexType;
-  private final LanguageType languageType;
   private int parallelism;
   private List<ExecutionVertex> executionVertices;
 
@@ -40,7 +39,6 @@ public class ExecutionJobVertex {
     this.jobVertexName = generateVertexName(jobVertexId, jobVertex.getStreamOperator());
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
-    this.languageType = jobVertex.getLanguageType();
     this.parallelism = jobVertex.getParallelism();
     this.executionVertices = createExecutionVertics();
   }
@@ -132,7 +130,17 @@ public class ExecutionJobVertex {
     return getVertexType() == VertexType.SINK;
   }
 
-  public LanguageType getLanguageType() {
-    return languageType;
+  @Override
+  public String toString() {
+    return MoreObjects.toStringHelper(this)
+        .add("jobVertexId", jobVertexId)
+        .add("jobVertexName", jobVertexName)
+        .add("streamOperator", streamOperator)
+        .add("vertexType", vertexType)
+        .add("parallelism", parallelism)
+        .add("executionVertices", executionVertices)
+        .add("inputEdges", inputEdges)
+        .add("outputEdges", outputEdges)
+        .toString();
   }
 }

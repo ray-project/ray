@@ -1,5 +1,6 @@
 package org.ray.streaming.runtime.core.graph.executiongraph;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -104,4 +105,16 @@ public class ExecutionVertex implements Serializable {
     return vertexName;
   }
 
+  @Override
+  public String toString() {
+    return MoreObjects.toStringHelper(this)
+        .add("vertexId", vertexId)
+        .add("vertexIndex", vertexIndex)
+        .add("vertexName", vertexName)
+        .add("state", state)
+        .add("workerActor", workerActor)
+        .add("inputEdges", inputEdges)
+        .add("outputEdges", outputEdges)
+        .toString();
+  }
 }
