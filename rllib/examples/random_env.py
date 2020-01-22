@@ -65,6 +65,5 @@ if __name__ == "__main__":
         },
         env=RandomEnv,
     )
-    for _ in range(2):
-        results = trainer.train()
-        print(results)
+    results = trainer.train()
+    print(results)

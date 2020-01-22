@@ -123,16 +123,22 @@ def make_v1_wrapper(legacy_model_cls):
                     # Create a new separate model with no RNN state, etc.
                     branch_model_config = self.model_config.copy()
                     branch_model_config["free_log_std"] = False
+                    input_dict = self.cur_instance.input_dict
                     if branch_model_config["use_lstm"]:
-                        raise ValueError(
-                            "It is not allowed to use an LSTM model "
-                            "with vf_share_layers=False (consider setting "
-                            "it to True). If you want to not share "
-                            "layers, you can implement a custom LSTM "
+                        branch_model_config["use_lstm"] = False
+                        logger.warning(
+                            "It is not recommended to use an LSTM model "
+                            "with the `vf_share_layers=False` option. "
+                            "If you do not want to use a shared policy+vf "
+                            "network, you can implement a custom LSTM "
                             "model that overrides the value_function() "
-                            "method.")
+                            "method. "
+                            "`use_lstm` has been set to False for the "
+                            "vf-part of your network."
+                            )
+                        input_dict["obs"] = np.array([self.obs_space.sample()])
                     branch_instance = self.legacy_model_cls(
-                        self.cur_instance.input_dict,
+                        input_dict,
                         self.obs_space,
                         self.action_space,
                         1,
