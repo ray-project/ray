@@ -93,7 +93,7 @@ public class ExecutionGraph implements Serializable {
   }
 
   /**
-   * Get all execution vertices which status is 'TO_ADD' from current execution graph.
+   * Get all execution vertices whose status is 'TO_ADD' from current execution graph.
    *
    * @return all added execution vertices.
    */
