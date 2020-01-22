@@ -32,7 +32,8 @@ sys.path.insert(0, thirdparty_files)
 
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet
-so_path = os.path.join(dirname(__file__), "_raylet.so")
+pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
+so_path = os.path.join(dirname(__file__), "_raylet" + pyd_suffix)
 if os.path.exists(so_path):
     import ctypes
     from ctypes import CDLL

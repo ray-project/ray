@@ -1259,6 +1259,34 @@ py_library(
 )
 
 genrule(
+    name = "cp_raylet_lib",
+    srcs = ["python/ray/_raylet.so"],
+    outs = ["cp_raylet_lib.out"],
+    cmd = select({
+        "@bazel_tools//src/conditions:windows": """
+            set -x &&
+            WORK_DIR=$$(pwd) &&
+            RAYLET="$<"
+            RAYLET_TARGET_FILENAME="$${RAYLET##*/}"
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME%.*}"
+            RAYLET_TARGET_FILENAME="$${RAYLET_TARGET_FILENAME}.pyd"
+            if [ -f "$${RAYLET%.*}.pdb" ]; then
+                cp -f "$${RAYLET%.*}.pdb" "$$WORK_DIR/python/ray";
+            fi &&
+            cp -f "$${RAYLET}" "$$WORK_DIR/python/ray/$${RAYLET_TARGET_FILENAME}" &&
+            echo "$$WORK_DIR" > $@
+        """,
+        "//conditions:default": """
+            set -x &&
+            WORK_DIR=$$(pwd) &&
+            cp -f "$<" "$$WORK_DIR/python/ray" &&
+            echo "$$WORK_DIR" > $@
+        """,
+    }),
+    local = 1,
+)
+
+genrule(
     name = "cp_streaming_lib",
     srcs = ["python/ray/streaming/_streaming.so"],
     outs = ["cp_streaming_lib.out"],
@@ -1274,7 +1302,7 @@ genrule(
 genrule(
     name = "ray_pkg",
     srcs = [
-        "python/ray/_raylet.so",
+        "//:cp_raylet_lib",
         "//:python_sources",
         "//:all_py_proto",
         "//:redis-server",
@@ -1293,7 +1321,6 @@ genrule(
     cmd = """
         set -x &&
         WORK_DIR="$$(pwd)" &&
-        cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
