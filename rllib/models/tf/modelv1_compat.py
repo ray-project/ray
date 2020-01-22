@@ -130,8 +130,7 @@ def make_v1_wrapper(legacy_model_cls):
                             "it to True). If you want to not share "
                             "layers, you can implement a custom LSTM "
                             "model that overrides the value_function() "
-                            "method."
-                            )
+                            "method.")
                     branch_instance = self.legacy_model_cls(
                         self.cur_instance.input_dict,
                         self.obs_space,

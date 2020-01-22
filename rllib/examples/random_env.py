@@ -24,6 +24,7 @@ class RandomEnv(gym.Env):
     A randomly acting environment that can be instantiated with arbitrary
     action and observation spaces.
     """
+
     def __init__(self, config):
         # Action space.
         self.action_space = config["action_space"]
@@ -32,8 +33,7 @@ class RandomEnv(gym.Env):
         # Reward space from which to sample.
         self.reward_space = config.get(
             "reward_space",
-            gym.spaces.Box(low=-1.0, high=1.0, shape=(), dtype=np.float32)
-        )
+            gym.spaces.Box(low=-1.0, high=1.0, shape=(), dtype=np.float32))
         # Chance that an episode ends at any step.
         self.p_done = config.get("p_done", 0.1)
 
@@ -41,7 +41,8 @@ class RandomEnv(gym.Env):
         return self.observation_space.sample()
 
     def step(self, action):
-        return self.observation_space.sample(), float(self.reward_space.sample()), \
+        return self.observation_space.sample(), \
+            float(self.reward_space.sample()), \
             bool(np.random.choice(
                 [True, False], p=[self.p_done, 1.0 - self.p_done]
             )), {}
@@ -58,7 +59,8 @@ if __name__ == "__main__":
             "env_config": {
                 "action_space": Discrete(2),
                 # Test a simple Tuple observation space.
-                "observation_space": Tuple([Discrete(3), Discrete(2)])
+                "observation_space": Tuple([Discrete(3),
+                                            Discrete(2)])
             }
         },
         env=RandomEnv,
