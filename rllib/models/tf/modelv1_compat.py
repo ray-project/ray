@@ -134,8 +134,7 @@ def make_v1_wrapper(legacy_model_cls):
                             "model that overrides the value_function() "
                             "method. "
                             "`use_lstm` has been set to False for the "
-                            "vf-part of your network."
-                            )
+                            "vf-part of your network.")
                         input_dict["obs"] = np.array([self.obs_space.sample()])
                     branch_instance = self.legacy_model_cls(
                         input_dict,
