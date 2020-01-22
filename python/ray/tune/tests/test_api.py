@@ -478,7 +478,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         trials = tune.run(train, num_samples=5, stop=CustomStopper()).trials
         self.assertTrue(all(t.status == Trial.TERMINATED for t in trials))
-        self.assertTrue(any(t.last_result.get("training_iteration") is None for t in trials))
+        self.assertTrue(
+            any(
+                t.last_result.get("training_iteration") is None
+                for t in trials))
 
     def testBadStoppingFunction(self):
         def train(config, reporter):

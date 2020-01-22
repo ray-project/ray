@@ -2,7 +2,7 @@ from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments, run
 from ray.tune.experiment import Experiment
 from ray.tune.analysis import ExperimentAnalysis, Analysis
-from ray.tune.trial_runner import Stopper
+from ray.tune.stopper import Stopper
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.durable_trainable import DurableTrainable

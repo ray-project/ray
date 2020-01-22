@@ -96,6 +96,23 @@ class Stopper:
         return False
 
 
+class FunctionStopper(Stopper):
+    def __init__(self, function):
+        self._fn = function
+
+    def __call__(self, trial_id, result):
+        return self._fn(trial_id, result)
+
+    @classmethod
+    def is_valid_function(cls, fn):
+        is_valid = callable(fn) and not issubclass(type(fn), Stopper)
+        if hasattr(fn, "stop_all"):
+            raise ValueError(
+                "Stop object must be ray.tune.Stopper subclass to be detected "
+                "correctly.")
+        return is_valid
+
+
 class TrialRunner:
     """A TrialRunner implements the event loop for scheduling trials on Ray.
 
@@ -182,7 +199,7 @@ class TrialRunner:
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
                                         remote_checkpoint_dir, sync_to_cloud)
-        self._stopper = stopper if issubclass(type(stopper), Stopper) else None
+        self._stopper = stopper or None
         self._resumed = False
 
         if self._validate_resume(resume_type=resume):
@@ -479,7 +496,8 @@ class TrialRunner:
             self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
             flat_result = flatten_dict(result)
-            if trial.should_stop(flat_result):
+            if self._stopper(trial.trial_id,
+                             result) or trial.should_stop(flat_result):
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, flat_result)
                 self._search_alg.on_trial_complete(

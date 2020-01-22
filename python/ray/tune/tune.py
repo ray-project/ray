@@ -227,6 +227,7 @@ def run(run_or_experiment,
         logger.info(
             "Running multiple concurrent experiments is experimental and may "
             "not work with certain features.")
+
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
             run_identifier = Experiment.register_if_needed(exp)
@@ -265,7 +266,7 @@ def run(run_or_experiment,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
         sync_to_cloud=sync_to_cloud,
-        stopper=stop,
+        stopper=experiments[0].stopper,
         checkpoint_period=global_checkpoint_period,
         resume=resume,
         launch_web_server=with_server,
