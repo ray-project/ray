@@ -420,6 +420,11 @@ class RayTrialExecutor(TrialExecutor):
     def _update_avail_resources(self, num_retries=5):
         resources = None
         for i in range(num_retries):
+            if i > 0:
+                logger.warning(
+                    "Cluster resources not detected or are 0. Attempt #"
+                    "%s...", i + 1)
+                time.sleep(0.5)
             try:
                 resources = ray.cluster_resources()
             except Exception:
@@ -429,10 +434,6 @@ class RayTrialExecutor(TrialExecutor):
                 resources = ResourceSpec().resolve(True).to_resource_dict()
             if resources:
                 break
-            else:
-                logger.warning(
-                    "Cluster resources not detected or are 0. Retrying...")
-                time.sleep(0.5)
 
         if not resources:
             # NOTE: This hides the possibility that Ray may be waiting for
