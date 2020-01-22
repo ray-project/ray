@@ -28,16 +28,16 @@ py_test(
     name = "test_ppo",
     size = "small",
     srcs = ["agents/ppo/tests/test_ppo.py",
-            "agents/ppo/tests/test.py"]
+            "agents/ppo/tests/test.py"]  # TODO: Move down once PR 6889 merged
 )
 
 # ---------------------------------------
-# Components
+# Models and Distributions
 # ---------------------------------------
 
-# TODO:
-py_test(
-    name = "test_distributions",
-    size = "small",
-    srcs = ["models/"]
-)
+# TODO: Move here once PR 6889 merged
+#py_test(
+#    name = "test_distributions",
+#    size = "small",
+#    srcs = ["models/tests/test_distributions.py"]
+#)
