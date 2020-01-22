@@ -71,8 +71,14 @@ class FiberState {
   FiberState(int max_concurrency) : rate_limiter_(max_concurrency) {
     fiber_runner_thread_ = std::thread([&]() {
       while (!channel_.is_closed()) {
-        auto func = channel_.value_pop();
-        boost::fibers::fiber(boost::fibers::launch::dispatch, func).detach();
+        std::function<void()> func;
+        auto op_status = channel_.pop(func);
+        if (op_status == boost::fibers::channel_op_status::success) {
+          boost::fibers::fiber(boost::fibers::launch::dispatch, func).detach();
+        } else {  // Errored
+          RAY_LOG(ERROR) << "Fiber worker popped errrored. Exiting";
+          return;
+        }
       }
       // The event here is used to make sure fiber_runner_thread_ never terminates.
       // Because fiber_shutdown_event_ is never notified, fiber_runner_thread_ will
@@ -91,6 +97,7 @@ class FiberState {
   }
 
   ~FiberState() {
+    channel_.close();
     shutdown_worker_event_.Notify();
     if (fiber_runner_thread_.joinable()) {
       fiber_runner_thread_.join();
