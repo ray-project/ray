@@ -221,7 +221,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             weights (obj): Serializable copy or view of model weights
         """
-        pass
+        raise NotImplementedError
 
     @DeveloperAPI
     def set_weights(self, weights):
@@ -230,7 +230,7 @@ class Policy(metaclass=ABCMeta):
         Arguments:
             weights (obj): Serializable copy or view of model weights
         """
-        pass
+        raise NotImplementedError
 
     @DeveloperAPI
     def num_state_tensors(self):

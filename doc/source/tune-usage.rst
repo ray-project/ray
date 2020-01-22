@@ -119,7 +119,7 @@ Tune automatically runs N concurrent trials, where N is the number of CPUs (core
     # If you have 4 CPUs on your machine, this will run 1 trial at a time.
     tune.run(trainable, num_samples=10, resources_per_trial={"cpu": 4})
 
-To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See the section on`resource allocation <tune-usage#resource-allocation-using-gpus>`_, which provides more details about GPU usage and trials that are distributed:
+To leverage GPUs, you can set ``gpu`` in ``resources_per_trial``.  A trial will only be executed if there are resources available. See the section on `resource allocation <tune-usage.html#resource-allocation-using-gpus>`_, which provides more details about GPU usage and trials that are distributed:
 
 .. code-block:: python
 
