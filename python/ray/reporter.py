@@ -33,17 +33,16 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         pass
 
     def GetProfilingStats(self, request, context):
-        pid = str(request.pid)
-        duration = str(request.duration)
+        pid = request.pid
+        duration = request.duration
         profiling_file_path = os.path.join("/tmp/ray/",
                                            "{}_profiling.txt".format(pid))
         process = subprocess.Popen(
-            [
-                "sudo", "-n", "py-spy", "record", "-o", profiling_file_path,
-                "-p", pid, "-d", duration, "-f", "speedscope"
-            ],
+            "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
+            .format(profiling_file_path, pid, duration),
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+            stderr=subprocess.PIPE,
+            shell=True)
         stdout, stderr = process.communicate()
         if process.returncode != 0:
             profiling_stats = ""
