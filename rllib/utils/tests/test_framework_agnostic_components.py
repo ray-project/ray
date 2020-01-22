@@ -11,7 +11,7 @@ tf.enable_eager_execution()
 torch, _ = try_import_torch()
 
 
-class TestFrameWorkIndependentComponents(unittest.TestCase):
+class TestFrameWorkAgnosticComponents(unittest.TestCase):
     """
     Tests the Component base class to implement framework-agnostic functional
     units.
@@ -49,7 +49,7 @@ class TestFrameWorkIndependentComponents(unittest.TestCase):
         # Create tf Component from json-string (e.g. on command line).
         component = from_config(
             '{"type": "ray.rllib.utils.tests.'
-            'test_framework_independent_components.DummyComponent", '
+            'test_framework_agnostic_components.DummyComponent", '
             '"prop_a": "A", "prop_b": -1.0, "prop_c": "non-default"}')
         check(component.prop_a, "A")
         check(component.prop_d, 4)  # default
@@ -58,7 +58,7 @@ class TestFrameWorkIndependentComponents(unittest.TestCase):
         # Create torch Component from yaml-string.
         component = from_config(
             "type: ray.rllib.utils.tests."
-            "test_framework_independent_components.DummyComponent\n"
+            "test_framework_agnostic_components.DummyComponent\n"
             "prop_a: B\nprop_b: -1.5\nprop_c: non-default\nframework: torch")
         check(component.prop_a, "B")
         check(component.prop_d, 4)  # default
