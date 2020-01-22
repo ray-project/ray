@@ -9,9 +9,9 @@ import org.testng.ITestResult;
 
 public class TestProgressListener implements IInvokedMethodListener, ITestListener {
 
-  private String getFullTestName(ITestResult iTestResult) {
-    return iTestResult.getTestClass().getName() + "."
-        + iTestResult.getMethod().getMethodName();
+  private String getFullTestName(ITestResult testResult) {
+    return testResult.getTestClass().getName() + "."
+        + testResult.getMethod().getMethodName();
   }
 
   private void printInfo(String tag, String content) {

@@ -1,16 +1,16 @@
 package org.ray.api.test;
 
+import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.lang.ProcessBuilder.Redirect;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
-
-import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.ray.api.Ray;
 import org.ray.runtime.util.NetworkUtil;
 import org.slf4j.Logger;
@@ -71,9 +71,15 @@ public abstract class BaseMultiLanguageTest {
 
     String nodeManagerPort = String.valueOf(NetworkUtil.getUnusedPort());
 
-    // Start ray cluster.
+    // jars in the `ray` wheel doesn't contains test classes, so we add test classes explicitly.
+    // Since mvn test classes contains `test` in path and bazel test classes is located at a jar
+    // with `test` included in the name, we can check classpath `test` to filter out test classes.
+    String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
+        .filter(s -> !s.contains(" ") && s.contains("test"))
+        .collect(Collectors.joining(":"));
     String workerOptions =
-        " -classpath " + System.getProperty("java.class.path");
+        " -classpath " + classpath;
+    // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
         "start",

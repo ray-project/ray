@@ -515,26 +515,8 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   return Status::OK();
 }
 
-Status ErrorTable::PushErrorToDriver(const JobID &job_id, const std::string &type,
-                                     const std::string &error_message, double timestamp) {
-  auto data = std::make_shared<ErrorTableData>();
-  data->set_job_id(job_id.Binary());
-  data->set_type(type);
-  data->set_error_message(error_message);
-  data->set_timestamp(timestamp);
-  return Append(job_id, job_id, data, /*done_callback=*/nullptr);
-}
-
 std::string ErrorTable::DebugString() const {
   return Log<JobID, ErrorTableData>::DebugString();
-}
-
-Status ProfileTable::AddProfileEventBatch(const ProfileTableData &profile_events) {
-  // TODO(hchen): Change the parameter to shared_ptr to avoid copying data.
-  auto data = std::make_shared<ProfileTableData>();
-  data->CopyFrom(profile_events);
-  return Append(JobID::Nil(), UniqueID::FromRandom(), data,
-                /*done_callback=*/nullptr);
 }
 
 std::string ProfileTable::DebugString() const {
@@ -640,10 +622,11 @@ Status ClientTable::Disconnect() {
   return status;
 }
 
-ray::Status ClientTable::Register(const GcsNodeInfo &node_info) {
+ray::Status ClientTable::MarkConnected(const GcsNodeInfo &node_info,
+                                       const WriteCallback &done) {
   RAY_CHECK(node_info.state() == GcsNodeInfo::ALIVE);
   auto node_info_ptr = std::make_shared<GcsNodeInfo>(node_info);
-  return SyncAppend(JobID::Nil(), client_log_key_, node_info_ptr);
+  return Append(JobID::Nil(), client_log_key_, node_info_ptr, done);
 }
 
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id,
@@ -730,6 +713,25 @@ std::string ClientTable::DebugString() const {
   return result.str();
 }
 
+Status TaskLeaseTable::Subscribe(const JobID &job_id, const ClientID &client_id,
+                                 const Callback &subscribe,
+                                 const SubscriptionCallback &done) {
+  auto on_subscribe = [subscribe](RedisGcsClient *client, const TaskID &task_id,
+                                  const std::vector<TaskLeaseData> &data) {
+    std::vector<boost::optional<TaskLeaseData>> result;
+    for (const auto &item : data) {
+      boost::optional<TaskLeaseData> optional_item(item);
+      result.emplace_back(std::move(optional_item));
+    }
+    if (result.empty()) {
+      boost::optional<TaskLeaseData> optional_item;
+      result.emplace_back(std::move(optional_item));
+    }
+    subscribe(client, task_id, result);
+  };
+  return Table<TaskID, TaskLeaseData>::Subscribe(job_id, client_id, on_subscribe, done);
+}
+
 Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                                                const ActorID &actor_id,
                                                const ActorCheckpointID &checkpoint_id,
@@ -778,6 +780,7 @@ template class Log<JobID, JobTableData>;
 template class Log<UniqueID, ProfileTableData>;
 template class Table<ActorCheckpointID, ActorCheckpointData>;
 template class Table<ActorID, ActorCheckpointIdData>;
+template class Table<WorkerID, WorkerFailureData>;
 
 template class Log<ClientID, ResourceTableData>;
 template class Hash<ClientID, ResourceTableData>;

@@ -7,9 +7,6 @@ time throughout the execution of the algorithm, such as:
 Each schedule has a function `value(t)` which returns the current value
 of the parameter given the timestep t of the optimization procedure.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 
 class Schedule:

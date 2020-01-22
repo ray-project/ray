@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 import json
 import logging
@@ -340,6 +336,7 @@ class GlobalState:
             },
             "IsDirectCall": actor_table_data.is_direct_call,
             "State": actor_table_data.state,
+            "Timestamp": actor_table_data.timestamp,
         }
 
         return actor_info

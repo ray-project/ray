@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import jsonschema
 import os
 import pytest
@@ -13,7 +9,8 @@ from unittest.mock import patch, DEFAULT
 
 from contextlib import contextmanager
 
-from ray.projects.scripts import session_start, session_execute
+from ray.projects.scripts import (session_start, session_commands,
+                                  session_execute)
 import ray
 
 TEST_DIR = os.path.join(
@@ -233,6 +230,17 @@ def test_session_create_multiple():
         "session-tests/commands-test", session_start,
         ["first", "--a", "*", "--b", "*"])
     assert result.exit_code == 1
+
+
+def test_session_commands():
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/commands-test", session_commands, [])
+
+    assert "This is the first parameter" in result.output
+    assert "This is the second parameter" in result.output
+
+    assert 'Command "first"' in result.output
+    assert 'Command "second"' in result.output
 
 
 if __name__ == "__main__":

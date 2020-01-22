@@ -1,7 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import logging
 from multiprocessing import TimeoutError
 import os
 import time
@@ -12,6 +9,8 @@ import queue
 import copy
 
 import ray
+
+logger = logging.getLogger(__name__)
 
 RAY_ADDRESS_ENV = "RAY_ADDRESS"
 
@@ -172,6 +171,8 @@ class IMapIterator:
     """Base class for OrderedIMapIterator and UnorderedIMapIterator."""
 
     def __init__(self, pool, func, iterable, chunksize=None):
+        self._pool = pool
+        self._func = func
         self._next_chunk_index = 0
         # List of bools indicating if the given chunk is ready or not for all
         # submitted chunks. Ordering mirrors that in the in the ResultThread.
@@ -186,7 +187,7 @@ class IMapIterator:
             [], total_object_ids=self._total_chunks)
         self._result_thread.start()
 
-        for _ in range(len(pool._actor_pool)):
+        for _ in range(len(self._pool._actor_pool)):
             self._submit_next_chunk()
 
     def _submit_next_chunk(self):
@@ -272,7 +273,7 @@ class UnorderedIMapIterator(IMapIterator):
         return self._ready_objects.popleft()
 
 
-@ray.remote
+@ray.remote(num_cpus=1)
 class PoolActor:
     """Actor used to process tasks submitted to a Pool."""
 
@@ -321,12 +322,18 @@ class Pool:
                  initializer=None,
                  initargs=None,
                  maxtasksperchild=None,
+                 context=None,
                  ray_address=None):
         self._closed = False
         self._initializer = initializer
         self._initargs = initargs
         self._maxtasksperchild = maxtasksperchild or -1
         self._actor_deletion_ids = []
+
+        if context:
+            logger.warning("The 'context' argument is not supported using "
+                           "ray. Please refer to the documentation for how "
+                           "to control ray initialization.")
 
         processes = self._init_ray(processes, ray_address)
         self._start_actor_pool(processes)
@@ -341,12 +348,12 @@ class Pool:
 
             # Cluster mode.
             if ray_address is not None:
-                print("Connecting to ray cluster at address='{}'".format(
+                logger.info("Connecting to ray cluster at address='{}'".format(
                     ray_address))
                 ray.init(address=ray_address)
             # Local mode.
             else:
-                print("Starting local ray cluster")
+                logger.info("Starting local ray cluster")
                 ray.init(num_cpus=processes)
 
         ray_cpus = int(ray.state.cluster_resources()["CPU"])

@@ -35,13 +35,15 @@ using SchedulingKey = std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
-  CoreWorkerDirectTaskSubmitter(std::shared_ptr<WorkerLeaseInterface> lease_client,
+  CoreWorkerDirectTaskSubmitter(rpc::Address rpc_address,
+                                std::shared_ptr<WorkerLeaseInterface> lease_client,
                                 rpc::ClientFactoryFn client_factory,
                                 LeaseClientFactoryFn lease_client_factory,
                                 std::shared_ptr<CoreWorkerMemoryStore> store,
                                 std::shared_ptr<TaskFinisherInterface> task_finisher,
                                 ClientID local_raylet_id, int64_t lease_timeout_ms)
-      : local_lease_client_(lease_client),
+      : rpc_address_(rpc_address),
+        local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
         resolver_(store, task_finisher),
@@ -100,6 +102,9 @@ class CoreWorkerDirectTaskSubmitter {
                       const TaskSpecification &task_spec,
                       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
                           &assigned_resources);
+
+  /// Address of our RPC server.
+  rpc::Address rpc_address_;
 
   // Client that can be used to lease and return workers from the local raylet.
   std::shared_ptr<WorkerLeaseInterface> local_lease_client_;

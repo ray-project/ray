@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import collections
 import json
@@ -19,7 +15,7 @@ from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.tune.util import merge_dicts
+from ray.tune.utils import merge_dicts
 
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:

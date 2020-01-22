@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 from ray.rllib.agents import with_common_config
@@ -164,8 +160,10 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         def mcts_creator():
             return MCTS(model, config["mcts_config"])
 
-        super().__init__(obs_space, action_space, model, alpha_zero_loss,
-                         TorchCategorical, mcts_creator, _env_creator)
+        super().__init__(
+            obs_space, action_space, config, model, alpha_zero_loss,
+            TorchCategorical, mcts_creator, _env_creator
+        )
 
 
 AlphaZeroTrainer = build_trainer(

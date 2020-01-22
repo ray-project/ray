@@ -27,28 +27,25 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id, const TaskID &o
 
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  auto entry = object_id_refs_.find(object_id);
-  if (entry == object_id_refs_.end()) {
-    // TODO: Once ref counting is implemented, we should always know how the
-    // ObjectID was created, so there should always be an entry.
-    entry = object_id_refs_.emplace(object_id, Reference()).first;
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    // NOTE: ownership info for these objects must be added later via AddBorrowedObject.
+    it = object_id_refs_.emplace(object_id, Reference()).first;
   }
-  entry->second.local_ref_count++;
+  it->second.local_ref_count++;
 }
 
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
                                             std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  auto entry = object_id_refs_.find(object_id);
-  if (entry == object_id_refs_.end()) {
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
                      << object_id;
     return;
   }
-  if (--entry->second.local_ref_count == 0 &&
-      entry->second.submitted_task_ref_count == 0) {
-    object_id_refs_.erase(entry);
-    deleted->push_back(object_id);
+  if (--it->second.local_ref_count == 0 && it->second.submitted_task_ref_count == 0) {
+    DeleteReferenceInternal(it, deleted);
   }
 }
 
@@ -56,13 +53,13 @@ void ReferenceCounter::AddSubmittedTaskReferences(
     const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {
-    auto entry = object_id_refs_.find(object_id);
-    if (entry == object_id_refs_.end()) {
-      // TODO: Once ref counting is implemented, we should always know how the
-      // ObjectID was created, so there should always be an entry.
-      entry = object_id_refs_.emplace(object_id, Reference()).first;
+    auto it = object_id_refs_.find(object_id);
+    if (it == object_id_refs_.end()) {
+      // This happens if a large argument is transparently passed by reference
+      // because we don't hold a Python reference to its ObjectID.
+      it = object_id_refs_.emplace(object_id, Reference()).first;
     }
-    entry->second.submitted_task_ref_count++;
+    it->second.submitted_task_ref_count++;
   }
 }
 
@@ -70,16 +67,14 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     const std::vector<ObjectID> &object_ids, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
   for (const ObjectID &object_id : object_ids) {
-    auto entry = object_id_refs_.find(object_id);
-    if (entry == object_id_refs_.end()) {
+    auto it = object_id_refs_.find(object_id);
+    if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
                        << object_id;
       return;
     }
-    if (--entry->second.submitted_task_ref_count == 0 &&
-        entry->second.local_ref_count == 0) {
-      object_id_refs_.erase(entry);
-      deleted->push_back(object_id);
+    if (--it->second.submitted_task_ref_count == 0 && it->second.local_ref_count == 0) {
+      DeleteReferenceInternal(it, deleted);
     }
   }
 }
@@ -99,6 +94,41 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id, TaskID *owner_id,
   } else {
     return false;
   }
+}
+
+void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mutex_);
+  for (const ObjectID &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    if (it == object_id_refs_.end()) {
+      return;
+    }
+    DeleteReferenceInternal(it, nullptr);
+  }
+}
+
+void ReferenceCounter::DeleteReferenceInternal(
+    absl::flat_hash_map<ObjectID, Reference>::iterator it,
+    std::vector<ObjectID> *deleted) {
+  if (it->second.on_delete) {
+    it->second.on_delete(it->first);
+  }
+  if (deleted) {
+    deleted->push_back(it->first);
+  }
+  object_id_refs_.erase(it);
+}
+
+bool ReferenceCounter::SetDeleteCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  RAY_CHECK(!it->second.on_delete);
+  it->second.on_delete = callback;
+  return true;
 }
 
 bool ReferenceCounter::HasReference(const ObjectID &object_id) const {
@@ -132,23 +162,6 @@ ReferenceCounter::GetAllReferenceCounts() const {
                                                      it.second.submitted_task_ref_count));
   }
   return all_ref_counts;
-}
-
-void ReferenceCounter::LogDebugString() const {
-  absl::MutexLock lock(&mutex_);
-
-  RAY_LOG(DEBUG) << "ReferenceCounter state:";
-  if (object_id_refs_.empty()) {
-    RAY_LOG(DEBUG) << "\tEMPTY";
-    return;
-  }
-
-  for (const auto &entry : object_id_refs_) {
-    RAY_LOG(DEBUG) << "\t" << entry.first.Hex();
-    RAY_LOG(DEBUG) << "\t\tlocal refcount: " << entry.second.local_ref_count;
-    RAY_LOG(DEBUG) << "\t\tsubmitted task refcount: "
-                   << entry.second.submitted_task_ref_count;
-  }
 }
 
 }  // namespace ray

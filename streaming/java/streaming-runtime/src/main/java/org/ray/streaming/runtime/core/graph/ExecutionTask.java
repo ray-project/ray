@@ -1,7 +1,6 @@
 package org.ray.streaming.runtime.core.graph;
 
 import java.io.Serializable;
-
 import org.ray.api.RayActor;
 import org.ray.streaming.runtime.worker.JobWorker;
 
@@ -11,7 +10,6 @@ import org.ray.streaming.runtime.worker.JobWorker;
  * An ExecutionNode has n ExecutionTasks if parallelism is n.
  */
 public class ExecutionTask implements Serializable {
-
   private int taskId;
   private int taskIndex;
   private RayActor<JobWorker> worker;

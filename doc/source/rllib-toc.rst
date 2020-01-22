@@ -72,42 +72,42 @@ Algorithms
 
 *  High-throughput architectures
 
-   -  `Distributed Prioritized Experience Replay (Ape-X) <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
+   -  |tensorflow| `Distributed Prioritized Experience Replay (Ape-X) <rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x>`__
 
-   -  `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
+   -  |tensorflow| `Importance Weighted Actor-Learner Architecture (IMPALA) <rllib-algorithms.html#importance-weighted-actor-learner-architecture-impala>`__
 
-   -  `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
+   -  |pytorch| |tensorflow| `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
 
-   -  `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
+   -  |pytorch| `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
 
 *  Gradient-based
 
-   -  `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
+   -  |pytorch| |tensorflow| `Advantage Actor-Critic (A2C, A3C) <rllib-algorithms.html#advantage-actor-critic-a2c-a3c>`__
 
-   -  `Deep Deterministic Policy Gradients (DDPG, TD3) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg-td3>`__
+   -  |tensorflow| `Deep Deterministic Policy Gradients (DDPG, TD3) <rllib-algorithms.html#deep-deterministic-policy-gradients-ddpg-td3>`__
 
-   -  `Deep Q Networks (DQN, Rainbow, Parametric DQN) <rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn>`__
+   -  |tensorflow| `Deep Q Networks (DQN, Rainbow, Parametric DQN) <rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn>`__
 
-   -  `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
+   -  |pytorch| |tensorflow| `Policy Gradients <rllib-algorithms.html#policy-gradients>`__
 
-   -  `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
+   -  |pytorch| |tensorflow| `Proximal Policy Optimization (PPO) <rllib-algorithms.html#proximal-policy-optimization-ppo>`__
 
-   -  `Soft Actor Critic (SAC) <rllib-algorithms.html#soft-actor-critic-sac>`__
+   -  |tensorflow| `Soft Actor Critic (SAC) <rllib-algorithms.html#soft-actor-critic-sac>`__
 
 *  Derivative-free
 
-   -  `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
+   -  |tensorflow| `Augmented Random Search (ARS) <rllib-algorithms.html#augmented-random-search-ars>`__
 
-   -  `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
+   -  |tensorflow| `Evolution Strategies <rllib-algorithms.html#evolution-strategies>`__
 
 *  Multi-agent specific
 
-   -  `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
-   -  `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <rllib-algorithms.html#multi-agent-deep-deterministic-policy-gradient-contrib-maddpg>`__
+   -  |pytorch| `QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <rllib-algorithms.html#qmix-monotonic-value-factorisation-qmix-vdn-iqn>`__
+   -  |tensorflow| `Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG) <rllib-algorithms.html#multi-agent-deep-deterministic-policy-gradient-contrib-maddpg>`__
 
 *  Offline
 
-   -  `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
+   -  |tensorflow| `Advantage Re-Weighted Imitation Learning (MARWIL) <rllib-algorithms.html#advantage-re-weighted-imitation-learning-marwil>`__
 
 Offline Datasets
 ----------------
@@ -180,3 +180,9 @@ TensorFlow 2.0
 ~~~~~~~~~~~~~~
 
 RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.
+
+.. |tensorflow| image:: tensorflow.png
+    :width: 16
+
+.. |pytorch| image:: pytorch.png
+    :width: 16
