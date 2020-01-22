@@ -427,7 +427,9 @@ class RayTrialExecutor(TrialExecutor):
                 # https://github.com/ray-project/ray/issues/4147
                 logger.debug("Using resources for local machine.")
                 resources = ResourceSpec().resolve(True).to_resource_dict()
-            if not resources:
+            if resources:
+                break
+            else:
                 logger.warning(
                     "Cluster resources not detected or are 0. Retrying...")
                 time.sleep(0.5)
