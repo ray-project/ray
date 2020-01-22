@@ -500,13 +500,13 @@ For more flexibility, you can pass in a function instead. If a function is passe
 
     tune.run(my_trainable, stop=stopper)
 
-Finally, you can implement the ``StopperClass`` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
+Finally, you can implement the ``Stopper`` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
 .. code-block:: python
 
-    from ray.tune import StopperClass
+    from ray.tune import Stopper
 
-    class Stopper(StopperClass):
+    class CustomStopper(Stopper):
         def __init__(self):
             self.should_stop = False
 
@@ -519,7 +519,7 @@ Finally, you can implement the ``StopperClass`` abstract class for stopping enti
             """Returns whether to stop trials and prevent new ones from starting."""
             return self.should_stop
 
-    stopper = Stopper()
+    stopper = CustomStopper()
     tune.run(my_trainable, stop=stopper)
 
 

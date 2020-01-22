@@ -113,8 +113,9 @@ class Experiment:
                              "or dict".format(stop))
         if callable(stop):
             nargs = len(inspect.getargspec(stop).args)
-            is_method = isinstance(stop, types.MethodType)
-            if (is_method and nargs != 3) or (not is_method and nargs != 2):
+            is_bound = isinstance(
+                stop, types.MethodType) or hasattr(stop, "__call__")
+            if (is_bound and nargs != 3) or (not is_bound and nargs != 2):
                 raise ValueError(
                     "Invalid stop criteria: {}. Callable "
                     "criteria must take exactly 2 parameters.".format(stop))

@@ -66,7 +66,7 @@ class _TuneFunctionDecoder(json.JSONDecoder):
         return cloudpickle.loads(hex_to_binary(obj["value"]))
 
 
-class StopperClass:
+class Stopper:
     """Abstract class for implementing a Tune experiment stopper.
 
     Allows users to implement experiment-level stopping via ``stop_all``.
@@ -75,9 +75,9 @@ class StopperClass:
 
         import time
         from ray import tune
-        from ray.tune import StopperClass
+        from ray.tune import Stopper
 
-        class TimeStopper(StopperClass):
+        class TimeStopper(Stopper):
                 def __init__(self):
                     self._start = time.time()
                     self._deadline = 300
@@ -147,7 +147,7 @@ class TrialRunner:
                 global checkpoints are stored and restored from. Used
                 if `resume` == REMOTE.
             stopper: Custom class for stopping whole experiments. See
-                ``StopperClass``.
+                ``Stopper``.
             resume (str|False): see `tune.py:run`.
             sync_to_cloud (func|str): See `tune.py:run`.
             server_port (int): Port number for launching TuneServer.
@@ -182,8 +182,7 @@ class TrialRunner:
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
                                         remote_checkpoint_dir, sync_to_cloud)
-        self._stopper = stopper if issubclass(stopper, StopperClass) else None
-
+        self._stopper = stopper if issubclass(type(stopper), Stopper) else None
         self._resumed = False
 
         if self._validate_resume(resume_type=resume):
@@ -428,7 +427,7 @@ class TrialRunner:
 
         if self._stopper.stop_all():
             [self.trial_executor.stop_trial(t) for t in self._trials]
-        logger.info("trial_runner: All trials stopped.")
+            logger.info("trial_runner: All trials stopped.")
 
     def _get_next_trial(self):
         """Replenishes queue.

@@ -102,7 +102,7 @@ def run(run_or_experiment,
             reached first. If function, it must take (trial_id, result) as
             arguments and return a boolean (True if trial should be stopped,
             False otherwise). This can also be a subclass of
-            ``ray.tune.StopperClass``, which allows users to implement
+            ``ray.tune.Stopper``, which allows users to implement
             custom experiment-wide stopping (i.e., stopping an entire Tune
             run based on some time constraint).
         config (dict): Algorithm-specific configuration for Tune variant
