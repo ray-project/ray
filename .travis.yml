@@ -64,7 +64,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
-        - ./ci/suppress_output bazel test //:gcs_server_test --test_output=all
+        - ./ci/suppress_output bazel test //:gcs_server_test && bash src/ray/test/run_core_worker_tests.sh
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
