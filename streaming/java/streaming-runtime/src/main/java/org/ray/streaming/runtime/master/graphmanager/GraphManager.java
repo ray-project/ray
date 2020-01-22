@@ -5,7 +5,7 @@ import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 
 /**
- * Graph manager is one of the important role of JobMaster. It mainly focus on graph management.
+ * Graph manager is one of the important roles of JobMaster. It mainly focuses on graph management.
  * Such as: 1) build execution graph from job graph
  *          2) do modifications or operations on graph
  *          3) query vertex info from graph
