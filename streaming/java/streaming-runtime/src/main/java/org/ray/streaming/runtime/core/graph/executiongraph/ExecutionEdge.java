@@ -4,7 +4,7 @@ import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 
 /**
- * Edge to attach execution vertex.
+ * An edge that attaches two execution vertices.
  */
 public class ExecutionEdge implements Serializable {
 

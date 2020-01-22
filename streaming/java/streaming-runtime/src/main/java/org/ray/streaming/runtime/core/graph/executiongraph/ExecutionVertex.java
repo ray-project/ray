@@ -9,7 +9,7 @@ import org.ray.api.id.ActorId;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
- * Physical vertex for every parallelism.
+ * Physical vertex, correspond to {@link ExecutionJobVertex}.
  */
 public class ExecutionVertex implements Serializable {
 

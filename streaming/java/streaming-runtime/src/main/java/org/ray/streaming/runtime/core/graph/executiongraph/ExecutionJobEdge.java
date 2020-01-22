@@ -5,7 +5,7 @@ import org.ray.streaming.api.partition.Partition;
 import org.ray.streaming.jobgraph.JobEdge;
 
 /**
- * Edge to attach execution job vertex.
+ * An edge that attaches two execution job vertices.
  */
 public class ExecutionJobEdge {
 

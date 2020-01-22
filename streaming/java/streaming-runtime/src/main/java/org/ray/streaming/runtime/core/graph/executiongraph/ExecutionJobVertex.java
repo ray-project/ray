@@ -13,7 +13,9 @@ import org.ray.streaming.operator.StreamOperator;
 import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
- * Physical job vertex, including parallelism execution vertex.
+ * Physical job vertex.
+ * Execution job vertex is the physical form of {@link JobVertex} and every execution job vertex is
+ * corresponding to a group of {@link ExecutionVertex}.
  */
 public class ExecutionJobVertex {
 
