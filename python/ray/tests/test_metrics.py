@@ -200,7 +200,7 @@ def test_raylet_info_endpoint(shutdown_only):
                 params={
                     "profiling_id": profiling_id,
                 }).json()
-            assert profiling_info["status"] in ("finished", "error")
+            assert profiling_info["status"] in ("finished", "pending", "error")
             break
         except AssertionError:
             if time.time() - start_time + 10:
