@@ -214,4 +214,6 @@ message CoreWorkerStats {
   int32 task_queue_length = 13;
   // Number of executed tasks.
   int32 num_executed_tasks = 14;
+  // Actor constructor.
+  string actor_title = 15;
 }
