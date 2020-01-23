@@ -276,8 +276,7 @@ class Dashboard(object):
             ip_address = req.query.get("ip_address")
             port = req.query.get("port")
             return aiohttp.web.json_response(
-                self.raylet_stats.kill_actor(actor_id, ip_address, port)
-            )
+                self.raylet_stats.kill_actor(actor_id, ip_address, port))
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -668,12 +667,12 @@ class RayletStats(threading.Thread):
         return json.loads(profiling_stats.profiling_stats)
 
     def kill_actor(self, actor_id, ip_address, port):
-        channel = grpc.insecure_channel("{}:{}".format(
-            ip_address, int(port)))
-        stub = core_worker_pb2_grpc.CoreWorkerServiceStub(
-            channel)
+        channel = grpc.insecure_channel("{}:{}".format(ip_address, int(port)))
+        stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
+
         def _callback(reply_future):
-            reply = reply_future.result()
+            _ = reply_future.result()
+
         reply_future = stub.KillActor.future(
             core_worker_pb2.KillActorRequest(intended_actor_id=eval(actor_id)))
         reply_future.add_done_callback(_callback)
