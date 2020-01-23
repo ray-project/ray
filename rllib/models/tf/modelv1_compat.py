@@ -1,3 +1,4 @@
+import copy
 import logging
 import numpy as np
 
@@ -123,7 +124,8 @@ def make_v1_wrapper(legacy_model_cls):
                     # Create a new separate model with no RNN state, etc.
                     branch_model_config = self.model_config.copy()
                     branch_model_config["free_log_std"] = False
-                    input_dict = self.cur_instance.input_dict
+                    obs_space_vf = self.obs_space
+
                     if branch_model_config["use_lstm"]:
                         branch_model_config["use_lstm"] = False
                         logger.warning(
@@ -135,9 +137,16 @@ def make_v1_wrapper(legacy_model_cls):
                             "method. "
                             "NOTE: Your policy- and vf-NNs will use the same "
                             "shared LSTM!")
+                        # Remove original space from obs-space not to trigger
+                        # preprocessing (input to vf-NN is already vectorized
+                        # LSTM output).
+                        obs_space_vf = copy.copy(self.obs_space)
+                        if hasattr(obs_space_vf, "original_space"):
+                            delattr(obs_space_vf, "original_space")
+
                     branch_instance = self.legacy_model_cls(
-                        input_dict,
-                        self.obs_space,
+                        self.cur_instance.input_dict,
+                        obs_space_vf,
                         self.action_space,
                         1,
                         branch_model_config,
