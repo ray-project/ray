@@ -129,13 +129,12 @@ def make_v1_wrapper(legacy_model_cls):
                         logger.warning(
                             "It is not recommended to use an LSTM model "
                             "with the `vf_share_layers=False` option. "
-                            "If you do not want to use a shared policy+vf "
-                            "network, you can implement a custom LSTM "
-                            "model that overrides the value_function() "
+                            "If you want to use separate policy- and vf-"
+                            "networks with LSTMs, you can implement a custom "
+                            "LSTM model that overrides the value_function() "
                             "method. "
-                            "`use_lstm` has been set to False for the "
-                            "vf-part of your network.")
-                        input_dict["obs"] = np.array([self.obs_space.sample()])
+                            "NOTE: Your policy- and vf-NNs will use the same "
+                            "shared LSTM!")
                     branch_instance = self.legacy_model_cls(
                         input_dict,
                         self.obs_space,
