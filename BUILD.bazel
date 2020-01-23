@@ -61,6 +61,17 @@ python_grpc_compile(
 )
 
 proto_library(
+    name = "reporter_proto",
+    srcs = ["src/ray/protobuf/reporter.proto"],
+    deps = [":common_proto"],
+)
+
+python_grpc_compile(
+    name = "reporter_py_proto",
+    deps = [":reporter_proto"],
+)
+
+proto_library(
     name = "gcs_service_proto",
     srcs = ["src/ray/protobuf/gcs_service.proto"],
     deps = [":gcs_proto"],
@@ -1154,6 +1165,7 @@ filegroup(
         "common_py_proto",
         "gcs_py_proto",
         "node_manager_py_proto",
+        "reporter_py_proto",
     ],
 )
 
@@ -1221,6 +1233,8 @@ genrule(
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py" &&
         sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/reporter_pb2_grpc.py" &&
         echo "$$WORK_DIR" > $@
     """,
     local = 1,
