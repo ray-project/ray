@@ -261,7 +261,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         {actor.state !== -1 && (
           <React.Fragment>
-              <Typography className={classes.webuiDisplay}>Actor Custom Display</Typography>
+              {actorCustomDisplay && <Typography className={classes.webuiDisplay}>Actor Custom Display</Typography>}
               {actorCustomDisplay}
             <Collapse in={expanded}>
               <Actors actors={actor.children} />
