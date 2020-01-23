@@ -4,6 +4,7 @@ import grpc
 import psutil
 import requests
 import time
+from base64 import b64encode
 
 import ray
 from ray.core.generated import node_manager_pb2
@@ -14,7 +15,7 @@ from ray.test_utils import RayTestTimeoutException
 
 
 def test_worker_stats(shutdown_only):
-    ray.init(num_cpus=1, include_webui=False)
+    addresses = ray.init(num_cpus=1, include_webui=True)
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
@@ -111,6 +112,38 @@ def test_worker_stats(shutdown_only):
             assert ("python" in process or "ray" in process
                     or "travis" in process)
         break
+
+    # Test kill_actor.
+    def actor_killed(pid):        
+        """ Check For the existence of a unix pid. """
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return True
+        else:
+            return False
+    
+    webui_url = addresses["webui_url"]
+    webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+    from google.protobuf.json_format import MessageToDict
+    for worker in reply.workers_stats:
+        if worker.is_driver:
+            continue
+        requests.get(
+            webui_url + "/api/kill_actor", 
+            params={
+                "actor_id": "{}".format(worker.core_worker_stats.actor_id),
+                "ip_address": worker.core_worker_stats.ip_address,
+                "port": worker.core_worker_stats.port
+            })
+    timeout_seconds = 20
+    start_time = time.time()
+    while True:
+        if time.time() - start_time > timeout_seconds:
+            raise RayTestTimeoutException(
+                "Timed out while killing actors")
+        if all([actor_killed(worker.pid) for worker in reply.workers_stats if not worker.is_driver]):
+            break
 
 
 def test_raylet_info_endpoint(shutdown_only):
@@ -238,6 +271,11 @@ def test_profiling_info_endpoint(shutdown_only):
         reporter_pb2.GetProfilingStatsRequest(pid=actor_pid, duration=10))
     profiling_stats = json.loads(reply.profiling_stats)
     assert profiling_stats is not None
+    
+
+def test_kill_actor_endpoint(shutdown_only):
+    address = ray.init()
+
 
 
 if __name__ == "__main__":

@@ -672,8 +672,11 @@ class RayletStats(threading.Thread):
             ip_address, int(port)))
         stub = core_worker_pb2_grpc.CoreWorkerServiceStub(
             channel)
+        def _callback(reply_future):
+            reply = reply_future.result()
         reply_future = stub.KillActor.future(
             core_worker_pb2.KillActorRequest(intended_actor_id=eval(actor_id)))
+        reply_future.add_done_callback(_callback)
         return {}
 
     def run(self):
