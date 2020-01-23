@@ -1573,9 +1573,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     """
     worker = global_worker
 
-    if hasattr(
-            worker,
-            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+    if hasattr(worker,
+               "core_worker") and worker.core_worker.current_actor_is_asyncio(
+               ) and timeout != 0:
         raise RayError("Using blocking ray.wait inside async method. "
                        "This blocks the event loop. Please use `await` "
                        "on object id with asyncio.wait. ")
