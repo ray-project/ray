@@ -1,5 +1,8 @@
 package org.ray.api.test;
 
+import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.lang.ProcessBuilder.Redirect;
 import java.util.List;
@@ -8,11 +11,6 @@ import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-
 import org.ray.api.Ray;
 import org.ray.runtime.util.NetworkUtil;
 import org.slf4j.Logger;

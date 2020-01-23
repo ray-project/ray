@@ -6,7 +6,6 @@ from ray.rllib.policy.torch_policy_template import build_torch_policy
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
-F = nn.functional
 
 
 def actor_critic_loss(policy, model, dist_class, train_batch):
@@ -17,7 +16,7 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
     policy.entropy = dist.entropy().mean()
     policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
         log_probs.reshape(-1))
-    policy.value_err = F.mse_loss(
+    policy.value_err = nn.functional.mse_loss(
         values.reshape(-1), train_batch[Postprocessing.VALUE_TARGETS])
     overall_err = sum([
         policy.pi_err,

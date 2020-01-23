@@ -53,7 +53,7 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/transport/direct_actor_transport.h" nogil:
+cdef extern from "ray/core_worker/fiber.h" nogil:
     cdef cppclass CFiberEvent "ray::FiberEvent":
         CFiberEvent()
         void Wait()
@@ -114,6 +114,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCurrentTaskId()
         const CActorID &GetActorId()
         void SetWebuiDisplay(const c_string &message)
+        void SetActorTitle(const c_string &title)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)

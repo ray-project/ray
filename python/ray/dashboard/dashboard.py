@@ -16,6 +16,7 @@ import threading
 import time
 import traceback
 import yaml
+import uuid
 
 from base64 import b64decode
 from collections import defaultdict
@@ -27,6 +28,8 @@ from google.protobuf.json_format import MessageToDict
 import ray
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 import ray.ray_constants as ray_constants
 
 # Logger for this module. It should be configured at the entry point
@@ -54,18 +57,18 @@ def format_resource(resource_name, quantity):
     return "{}".format(round_resource_value(quantity))
 
 
-def format_reply(reply):
+def format_reply_id(reply):
     if isinstance(reply, dict):
         for k, v in reply.items():
             if isinstance(v, dict) or isinstance(v, list):
-                format_reply(v)
+                format_reply_id(v)
             else:
                 if k.endswith("Id"):
                     v = b64decode(v)
                     reply[k] = ray.utils.binary_to_hex(v)
     elif isinstance(reply, list):
         for item in reply:
-            format_reply(item)
+            format_reply_id(item)
 
 
 def measures_to_dict(measures):
@@ -190,12 +193,14 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
-            workers_info = sum(
-                (data.get("workersStats", []) for data in D.values()), [])
+            workers_info_by_node = {
+                data["nodeId"]: data.get("workersStats")
+                for data in D.values()
+            }
             infeasible_tasks = sum(
                 (data.get("infeasibleTasks", []) for data in D.values()), [])
             actor_tree = self.node_stats.get_actor_tree(
-                workers_info, infeasible_tasks)
+                workers_info_by_node, infeasible_tasks)
             for address, data in D.items():
                 # process view data
                 measures_dicts = {}
@@ -246,6 +251,24 @@ class Dashboard(object):
             result = {"nodes": D, "actors": actor_tree}
             return await json_response(result=result)
 
+        async def launch_profiling(req) -> aiohttp.web.Response:
+            node_id = req.query.get("node_id")
+            pid = int(req.query.get("pid"))
+            duration = int(req.query.get("duration"))
+            profiling_id = self.raylet_stats.launch_profiling(
+                node_id=node_id, pid=pid, duration=duration)
+            return aiohttp.web.json_response(str(profiling_id))
+
+        async def check_profiling_status(req) -> aiohttp.web.Response:
+            profiling_id = req.query.get("profiling_id")
+            return aiohttp.web.json_response(
+                self.raylet_stats.check_profiling_status(profiling_id))
+
+        async def get_profiling_info(req) -> aiohttp.web.Response:
+            profiling_id = req.query.get("profiling_id")
+            return aiohttp.web.json_response(
+                self.raylet_stats.get_profiling_info(profiling_id))
+
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
             pid = req.query.get("pid")
@@ -280,6 +303,10 @@ class Dashboard(object):
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
+        self.app.router.add_get("/api/launch_profiling", launch_profiling)
+        self.app.router.add_get("/api/check_profiling_status",
+                                check_profiling_status)
+        self.app.router.add_get("/api/get_profiling_info", get_profiling_info)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
 
@@ -313,6 +340,7 @@ class NodeStats(threading.Thread):
         self._default_info = {
             "actorId": "",
             "children": {},
+            "currentTaskFuncDesc": [],
             "ipAddress": "",
             "isDirectCall": False,
             "jobId": "",
@@ -380,7 +408,7 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
-    def get_actor_tree(self, workers_info, infeasible_tasks) -> Dict:
+    def get_actor_tree(self, workers_info_by_node, infeasible_tasks) -> Dict:
         now = time.time()
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
@@ -394,23 +422,28 @@ class NodeStats(threading.Thread):
                     self._addr_to_owner_addr[addr], "root")
                 child_to_parent[actor_id] = parent_id
 
-            for worker_info in workers_info:
-                if "coreWorkerStats" in worker_info:
-                    core_worker_stats = worker_info["coreWorkerStats"]
-                    addr = (core_worker_stats["ipAddress"],
-                            str(core_worker_stats["port"]))
-                    if addr in self._addr_to_actor_id:
-                        actor_info = flattened_tree[self._addr_to_actor_id[
-                            addr]]
-                        if "currentTaskFuncDesc" in core_worker_stats:
-                            core_worker_stats["currentTaskFuncDesc"] = list(
-                                map(b64_decode,
-                                    core_worker_stats["currentTaskFuncDesc"]))
-                        format_reply(core_worker_stats)
-                        actor_info.update(core_worker_stats)
-                        actor_info["averageTaskExecutionSpeed"] = round(
-                            actor_info["numExecutedTasks"] /
-                            (now - actor_info["timestamp"] / 1000), 2)
+            for node_id, workers_info in workers_info_by_node.items():
+                for worker_info in workers_info:
+                    if "coreWorkerStats" in worker_info:
+                        core_worker_stats = worker_info["coreWorkerStats"]
+                        addr = (core_worker_stats["ipAddress"],
+                                str(core_worker_stats["port"]))
+                        if addr in self._addr_to_actor_id:
+                            actor_info = flattened_tree[self._addr_to_actor_id[
+                                addr]]
+                            if "currentTaskFuncDesc" in core_worker_stats:
+                                core_worker_stats[
+                                    "currentTaskFuncDesc"] = list(
+                                        map(
+                                            b64_decode, core_worker_stats[
+                                                "currentTaskFuncDesc"]))
+                            format_reply_id(core_worker_stats)
+                            actor_info.update(core_worker_stats)
+                            actor_info["averageTaskExecutionSpeed"] = round(
+                                actor_info["numExecutedTasks"] /
+                                (now - actor_info["timestamp"] / 1000), 2)
+                            actor_info["nodeId"] = node_id
+                            actor_info["pid"] = worker_info["pid"]
 
             for infeasible_task in infeasible_tasks:
                 actor_id = ray.utils.binary_to_hex(
@@ -423,7 +456,7 @@ class NodeStats(threading.Thread):
                 infeasible_task["state"] = -1
                 infeasible_task["functionDescriptor"] = list(
                     map(b64_decode, infeasible_task["functionDescriptor"]))
-                format_reply(infeasible_tasks)
+                format_reply_id(infeasible_tasks)
                 flattened_tree[actor_id] = infeasible_task
 
         # construct actor tree
@@ -536,9 +569,13 @@ class RayletStats(threading.Thread):
         self.nodes_lock = threading.Lock()
         self.nodes = []
         self.stubs = {}
+        self.reporter_stubs = {}
+        self.redis_client = ray.services.create_redis_client(
+            redis_address, password=redis_password)
 
         self._raylet_stats_lock = threading.Lock()
         self._raylet_stats = {}
+        self._profiling_stats = {}
 
         self.update_nodes()
 
@@ -554,20 +591,70 @@ class RayletStats(threading.Thread):
                 if node_id not in node_ids:
                     stub = self.stubs.pop(node_id)
                     stub.close()
+                    reporter_stub = self.reporter_stubs.pop(node_id)
+                    reporter_stub.close()
 
             # Now add node connections of new nodes.
             for node in self.nodes:
                 node_id = node["NodeID"]
                 if node_id not in self.stubs:
+                    node_ip = node["NodeManagerAddress"]
                     channel = grpc.insecure_channel("{}:{}".format(
-                        node["NodeManagerAddress"], node["NodeManagerPort"]))
+                        node_ip, node["NodeManagerPort"]))
                     stub = node_manager_pb2_grpc.NodeManagerServiceStub(
                         channel)
                     self.stubs[node_id] = stub
+                    # Block wait until the reporter for the node starts.
+                    while True:
+                        reporter_port = self.redis_client.get(
+                            "REPORTER_PORT:{}".format(node_ip))
+                        if reporter_port:
+                            break
+                    reporter_channel = grpc.insecure_channel("{}:{}".format(
+                        node_ip, int(reporter_port)))
+                    reporter_stub = reporter_pb2_grpc.ReporterServiceStub(
+                        reporter_channel)
+                    self.reporter_stubs[node_id] = reporter_stub
+
+            assert len(self.stubs) == len(
+                self.reporter_stubs), (self.stubs.keys(),
+                                       self.reporter_stubs.keys())
 
     def get_raylet_stats(self) -> Dict:
         with self._raylet_stats_lock:
             return copy.deepcopy(self._raylet_stats)
+
+    def launch_profiling(self, node_id, pid, duration):
+        profiling_id = str(uuid.uuid4())
+
+        def _callback(reply_future):
+            reply = reply_future.result()
+            with self._raylet_stats_lock:
+                self._profiling_stats[profiling_id] = reply
+
+        reporter_stub = self.reporter_stubs[node_id]
+        reply_future = reporter_stub.GetProfilingStats.future(
+            reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
+        reply_future.add_done_callback(_callback)
+        return profiling_id
+
+    def check_profiling_status(self, profiling_id):
+        with self._raylet_stats_lock:
+            is_present = profiling_id in self._profiling_stats
+        if is_present:
+            reply = self._profiling_stats[profiling_id]
+            if reply.stderr:
+                return {"status": "error", "error": reply.stderr}
+            else:
+                return {"status": "finished"}
+        else:
+            return {"status": "pending"}
+
+    def get_profiling_info(self, profiling_id):
+        with self._raylet_stats_lock:
+            profiling_stats = self._profiling_stats.get(profiling_id)
+        assert profiling_stats, "profiling not finished"
+        return json.loads(profiling_stats.profiling_stats)
 
     def run(self):
         counter = 0
@@ -579,10 +666,12 @@ class RayletStats(threading.Thread):
                 stub = self.stubs[node_id]
                 reply = stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(), timeout=2)
-                replies[node["NodeManagerAddress"]] = reply
+                reply_dict = MessageToDict(reply)
+                reply_dict["nodeId"] = node_id
+                replies[node["NodeManagerAddress"]] = reply_dict
             with self._raylet_stats_lock:
-                for address, reply in replies.items():
-                    self._raylet_stats[address] = MessageToDict(reply)
+                for address, reply_dict in replies.items():
+                    self._raylet_stats[address] = reply_dict
             counter += 1
             # From time to time, check if new nodes have joined the cluster
             # and update self.nodes

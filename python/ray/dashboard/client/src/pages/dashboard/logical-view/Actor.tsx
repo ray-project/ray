@@ -67,8 +67,14 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       actor.state !== -1
         ? [
             {
-              label: "ID",
-              value: actor.actorId
+              label: "ActorTitle",
+              value:
+                actor.actorTitle
+            },
+            {
+              label: "State",
+              value:
+                actor.state.toLocaleString()
             },
             {
               label: "Resources",
@@ -81,14 +87,32 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             {
               label: "Pending",
               value:
-                actor.taskQueueLength !== undefined &&
-                actor.taskQueueLength > 0 &&
                 actor.taskQueueLength.toLocaleString()
+            },
+            {
+              label: "Executed",
+              value:
+                actor.numExecutedTasks.toLocaleString()
+            },
+            {
+              label: "NumObjectIdsInScope",
+              value:
+                actor.numObjectIdsInScope.toLocaleString()
+            },
+            {
+              label: "NumLocalObjects",
+              value:
+                actor.numLocalObjects.toLocaleString()
+            },
+            {
+              label: "UsedLocalObjectMemory",
+              value:
+                actor.usedObjectStoreMemory.toLocaleString()
             },
             {
               label: "Task",
               value:
-                actor.currentTaskFuncDesc && actor.currentTaskFuncDesc.join(".")
+                actor.currentTaskFuncDesc.join(".")
             }
           ]
         : [
