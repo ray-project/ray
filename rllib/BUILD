@@ -39,7 +39,7 @@ py_test(
 # A2C/A3C
 
 py_binary(
-    name = "test_a3c_cartpole_v0",
+    name = "test_a3c_tf_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
@@ -50,13 +50,37 @@ py_binary(
 )
 
 py_binary(
-    name = "test_a3c_cartpole_v1_lstm",
+    name = "test_a3c_torch_cartpole_v1",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--torch",
+        "--env", "CartPole-v1",
+        "--run", "A3C",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 2, \"sample_async\": false}'"
+        ]
+)
+
+py_binary(
+    name = "test_a3c_tf_cartpole_v1_lstm",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"num_workers\": 2, \"model\": {\"use_lstm\": true}}'"
+        ]
+)
+
+py_binary(
+    name = "test_a3c_torch_pendulum_v0",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--torch",
+        "--env", "Pendulum-v0",
+        "--run", "A3C",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 2, \"sample_async\": false}'"
         ]
 )
 
@@ -83,27 +107,17 @@ py_binary(
         ]
 )
 
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output /ray/rllib/train.py \
-    --env PongDeterministic-v4 \
-    --run A3C \
-    --stop '{"training_iteration": 1}' \
-    --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false, "model": {"use_lstm": false, "grayscale": true, "zero_mean": false, "dim": 84}, "preprocessor_pref": "rllib"}'
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output /ray/rllib/train.py \
-    --env CartPole-v1 \
-    --run A3C \
-    --stop '{"training_iteration": 1}' \
-    --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false}'
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output /ray/rllib/train.py \
-    --env Pendulum-v0 \
-    --run A3C \
-    --stop '{"training_iteration": 1}' \
-    --config '{"num_workers": 2, "use_pytorch": true, "sample_async": false}'
-
+py_binary(
+    name = "test_a3c_torch_pong_deterministic_v4",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--torch",
+        "--env", "PongDeterministic-v0",
+        "--run", "A3C",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_workers\": 2, \"use_pytorch\": true, \"sample_async\": false, \"model\": {\"use_lstm\": false, \"grayscale\": true, \"zero_mean\": false, \"dim\": 84}, \"preprocessor_pref\": \"rllib\"}'"
+        ]
+)
 
 py_binary(
     name = "test_a3c_pong_ram_v4",
@@ -130,7 +144,7 @@ py_binary(
 # PPO/APPO
 
 py_binary(
-    name = "test_ppo_frozenlake_v0",
+    name = "test_ppo_tf_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "FrozenLake-v0",
@@ -141,7 +155,19 @@ py_binary(
 )
 
 py_binary(
-    name = "test_ppo_cartpole_v1",
+    name = "test_ppo_torch_frozenlake_v0",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--torch",
+        "--env", "FrozenLake-v0",
+        "--run", "PPO",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"num_sgd_iter\": 10, \"sgd_minibatch_size\": 64, \"train_batch_size\": 1000, \"num_workers\": 1}'"
+        ]
+)
+
+py_binary(
+    name = "test_ppo_tf_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
@@ -152,7 +178,19 @@ py_binary(
 )
 
 py_binary(
-    name = "test_ppo_cartpole_v1_lstm",
+    name = "test_ppo_torch_cartpole_v1",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--torch",
+        "--env", "CartPole-v1",
+        "--run", "PPO",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"model\": {\"free_log_std\": true}}'"
+        ]
+)
+
+py_binary(
+    name = "test_ppo_tf_cartpole_v1_lstm",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
@@ -163,7 +201,7 @@ py_binary(
 )
 
 py_binary(
-    name = "test_ppo_cartpole_v1_lstm_simple_optimizer",
+    name = "test_ppo_tf_cartpole_v1_lstm_simple_optimizer",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
@@ -174,7 +212,19 @@ py_binary(
 )
 
 py_binary(
-    name = "test_ppo_cartpole_v1_complete_episode_batches",
+    name = "test_ppo_torch_cartpole_v1_lstm_simple_optimizer",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--torch",
+        "--env", "CartPole-v1",
+        "--run", "PPO",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'"
+        ]
+)
+
+py_binary(
+    name = "test_ppo_tf_cartpole_v1_complete_episode_batches",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
@@ -185,7 +235,7 @@ py_binary(
 )
 
 py_binary(
-    name = "test_ppo_cartpole_v1_remote_worker_envs",
+    name = "test_ppo_tf_cartpole_v1_remote_worker_envs",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
@@ -196,7 +246,7 @@ py_binary(
 )
 
 py_binary(
-    name = "test_ppo_cartpole_v1_remote_worker_envs_b",
+    name = "test_ppo_tf_cartpole_v1_remote_worker_envs_b",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
@@ -207,9 +257,21 @@ py_binary(
 )
 
 py_binary(
-    name = "test_ppo_montezuma_revenge_v0",
+    name = "test_ppo_tf_montezuma_revenge_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
+        "--env", "MontezumaRevenge-v0",
+        "--run", "PPO",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"kl_coeff\": 1.0, \"num_sgd_iter\": 10, \"lr\": 1e-4, \"sgd_minibatch_size\": 64, \"train_batch_size\": 2000, \"num_workers\": 1, \"model\": {\"dim\": 40, \"conv_filters\": [[16, [8, 8], 4], [32, [4, 4], 2], [512, [5, 5], 1]]}}'"
+        ]
+)
+
+py_binary(
+    name = "test_ppo_torch_montezuma_revenge_v0",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--torch",
         "--env", "MontezumaRevenge-v0",
         "--run", "PPO",
         "--stop", "'{\"training_iteration\": 1}'",
@@ -315,7 +377,7 @@ py_binary(
         "--env", "CartPole-v0",
         "--run", "APEX",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, "timesteps_per_iteration": 1000, \"num_gpus\": 0, \"min_iter_time_s\": 1}'"
+        "--config", "'{\"num_workers\": 2, \"timesteps_per_iteration\": 1000, \"num_gpus\": 0, \"min_iter_time_s\": 1}'"
         ]
 )
 
@@ -325,6 +387,18 @@ py_binary(
     name = "test_pg_tf_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
+        "--env", "FrozenLake-v0",
+        "--run", "PG",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"sample_batch_size\": 500, \"num_workers\": 1}'"
+        ]
+)
+
+py_binary(
+    name = "test_pg_torch_frozenlake_v0",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--torch",
         "--env", "FrozenLake-v0",
         "--run", "PG",
         "--stop", "'{\"training_iteration\": 1}'",
@@ -495,15 +569,26 @@ py_binary(
         ]
 )
 
-
 py_binary(
-    name = "test_impala_buffers_2_lstm",
+    name = "test_impala_cartpole_v0_buffers_2_lstm",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'"
+        ]
+)
+
+py_binary(
+    name = "test_impala_pong_deterministic_v4_40k_ts_huge_obj_store",
+    main = "train.py", srcs = ["train.py"],
+    args = [
+        "--env", "PongDeterministic-v4",
+        "--run", "IMPALA",
+        "--stop", "'{\"timesteps_total\": 40000}'",
+        "--ray-object-store-memory=1000000000",
+        "--config", "'{\"num_workers\": 1, \"num_gpus\": 0, \"num_envs_per_worker\": 32, \"sample_batch_size\": 50, \"train_batch_size\": 50, \"learner_queue_size\": 1}'"
         ]
 )
 
@@ -519,16 +604,6 @@ py_binary(
         "--config", "'{\"input\": \"/ray/rllib/tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
         ]
 )
-
-
-
-docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    /ray/ci/suppress_output /ray/rllib/train.py \
-    --env PongDeterministic-v4 \
-    --run IMPALA \
-    --stop='{"timesteps_total": 40000}' \
-    --ray-object-store-memory=1000000000 \
-    --config '{"num_workers": 1, "num_gpus": 0, "num_envs_per_worker": 32, "sample_batch_size": 50, "train_batch_size": 50, "learner_queue_size": 1}'
 
 
 # ---------------------------------------
