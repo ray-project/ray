@@ -200,7 +200,7 @@ def test_raylet_info_endpoint(shutdown_only):
                 params={
                     "profiling_id": profiling_id,
                 }).json()
-            assert profiling_info["status"] in ("finished", "error")
+            assert profiling_info["status"] in ("finished", "pending", "error")
             break
         except AssertionError:
             if time.time() - start_time + 10:
@@ -208,12 +208,14 @@ def test_raylet_info_endpoint(shutdown_only):
 
 
 def test_profiling_info_endpoint(shutdown_only):
+    ray.init(num_cpus=1)
+
     redis_client = ray.worker.global_worker.redis_client
 
     node_ip = ray.nodes()[0]["NodeManagerAddress"]
 
     while True:
-        reporter_port = redis_client.get("REPORTER_PORT:".format(node_ip))
+        reporter_port = redis_client.get("REPORTER_PORT:{}".format(node_ip))
         if reporter_port:
             break
 

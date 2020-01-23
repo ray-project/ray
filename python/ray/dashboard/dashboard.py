@@ -619,7 +619,7 @@ class RayletStats(threading.Thread):
                     # Block wait until the reporter for the node starts.
                     while True:
                         reporter_port = self.redis_client.get(
-                            "REPORTER_PORT:".format(node_ip))
+                            "REPORTER_PORT:{}".format(node_ip))
                         if reporter_port:
                             break
                     reporter_channel = grpc.insecure_channel("{}:{}".format(

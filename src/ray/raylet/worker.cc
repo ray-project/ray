@@ -91,6 +91,9 @@ const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;
 }
 
+void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
+const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
+
 const ResourceIdSet &Worker::GetLifetimeResourceIds() const {
   return lifetime_resource_ids_;
 }
