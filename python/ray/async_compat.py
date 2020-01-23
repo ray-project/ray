@@ -3,7 +3,7 @@ This file should only be imported from Python 3.
 It will raise SyntaxError when importing from Python 2.
 """
 import asyncio
-from collections import namedtuple
+from collections import namedtuple, Counter
 import time
 import threading
 
@@ -112,6 +112,12 @@ class AsyncMonitorState:
             start = time.time()
             await asyncio.sleep(self.sleep_time)
             self.real_sleep_time = time.time() - start
+
+            all_tasks = self.get_all_task_names()
+            ray.show_in_webui(str(len(all_tasks)), key="Number of concurrent task runing")
+            ray.show_in_webui(str(dict(Counter(all_tasks))), key="Concurrent tasks")
+            ray.show_in_webui("{:.2f}".format(self.get_loop_blocking_index()), key="Loop business (should be close to 1)")
+            
         
     def register_coroutine(self, coro, name):
         with self.names_lock:

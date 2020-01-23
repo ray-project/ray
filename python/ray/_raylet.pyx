@@ -818,8 +818,8 @@ cdef class CoreWorker:
     def get_actor_id(self):
         return ActorID(self.core_worker.get().GetActorId().Binary())
 
-    def set_webui_display(self, message):
-        self.core_worker.get().SetWebuiDisplay(message)
+    def set_webui_display(self, key, message):
+        self.core_worker.get().SetWebuiDisplay(key, message)
 
     def set_actor_title(self, title):
         self.core_worker.get().SetActorTitle(title)

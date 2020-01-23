@@ -1422,7 +1422,7 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
-def show_in_webui(message):
+def show_in_webui(message, key=""):
     """Display message in dashboard.
 
     Display message for the current task or actor in the dashboard.
@@ -1434,7 +1434,7 @@ def show_in_webui(message):
     """
     worker = global_worker
     worker.check_connected()
-    worker.core_worker.set_webui_display(message.encode())
+    worker.core_worker.set_webui_display(key.encode(), message.encode())
 
 
 def get(object_ids, timeout=None):

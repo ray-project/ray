@@ -1,4 +1,3 @@
-import Collapse from "@material-ui/core/Collapse";
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
@@ -12,6 +11,7 @@ import {
   RayletInfoResponse
 } from "../../../api";
 import Actors from "./Actors";
+import Collapse from "@material-ui/core/Collapse";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -171,6 +171,17 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             }
           ];
 
+    let actorCustomDisplay: JSX.Element[] = []
+    if (actor.state !== -1 && actor.webuiDisplay) {
+      Object.keys(actor.webuiDisplay).sort().forEach(key =>{
+        actorCustomDisplay.push(<Typography className={classes.webuiDisplay}>
+          &nbsp; &nbsp; {key}: {actor.webuiDisplay![key]}
+          </Typography>)
+        actorCustomDisplay.push(<Divider></Divider>)
+      })
+    }
+   
+
     return (
       <div className={classes.root}>
         <Typography className={classes.title}>
@@ -249,11 +260,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         {actor.state !== -1 && (
           <React.Fragment>
-            {actor.webuiDisplay && (
-              <Typography className={classes.webuiDisplay}>
-                {actor.webuiDisplay}
-              </Typography>
-            )}
+              <Typography className={classes.webuiDisplay}>Actor Custom Display</Typography>
+              {actorCustomDisplay}
             <Collapse in={expanded}>
               <Actors actors={actor.children} />
             </Collapse>
