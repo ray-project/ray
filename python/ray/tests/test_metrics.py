@@ -193,7 +193,8 @@ def test_raylet_info_endpoint(shutdown_only):
         }).json()["result"]
     start_time = time.time()
     while True:
-        if time.time() - start_time > 10:
+        # Sometimes some startup time is required
+        if time.time() - start_time > 30:
             raise RayTestTimeoutException(
                 "Timed out while collecting profiling stats.")
         profiling_info = requests.get(
