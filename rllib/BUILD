@@ -41,3 +41,13 @@ py_test(
 #    size = "small",
 #    srcs = ["models/tests/test_distributions.py"]
 #)
+
+# ----------------------------------------
+# rllib/tests/ directory
+# ----------------------------------------
+
+py_binary(
+    name = "test_env_with_subprocess",
+    srcs = "tests/test_env_with_subprocess.py"
+
+)
