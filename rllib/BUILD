@@ -609,12 +609,11 @@ py_binary(
 # Models and Distributions
 # ---------------------------------------
 
-# TODO: Move here once PR 6889 merged
-#py_test(
-#    name = "test_distributions",
-#    size = "small",
-#    srcs = ["models/tests/test_distributions.py"]
-#)
+py_test(
+    name = "test_distributions",
+    size = "small",
+    srcs = ["models/tests/test_distributions.py"]
+)
 
 # ---------------------------------------
 # Utils
@@ -634,5 +633,4 @@ py_binary(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
     srcs = ["tests/test_env_with_subprocess.py"]
-
 )
