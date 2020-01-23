@@ -120,7 +120,7 @@ py_binary(
 )
 
 py_binary(
-    name = "test_a3c_pong_ram_v4",
+    name = "test_a3c_tf_pong_ram_v4",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "Pong-ram-v4",
@@ -131,7 +131,7 @@ py_binary(
 )
 
 py_binary(
-    name = "test_a2c_pong_deterministic_v0",
+    name = "test_a2c_tf_pong_deterministic_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "PongDeterministic-v0",
@@ -280,7 +280,7 @@ py_binary(
 )
 
 py_binary(
-    name = "test_appo_pendulum_v0_no_gpus",
+    name = "test_appo_tf_pendulum_v0_no_gpus",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "Pendulum-v0",
