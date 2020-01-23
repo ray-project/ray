@@ -83,6 +83,9 @@ class CentralizedQueues:
         # service_name -> traffic_policy
         self.traffic = defaultdict(dict)
 
+        # backend_name -> backend_config
+        self.backend_info = dict()
+
         # backend_name -> worker request queue
         self.workers = defaultdict(deque)
 
@@ -157,6 +160,11 @@ class CentralizedQueues:
         self.traffic[service] = traffic_dict
         self.flush()
 
+    def set_backend_config(self, backend, config_dict):
+        logger.debug("Setting backend config for "
+                     "backend {} to {}".format(backend, config_dict))
+        self.backend_info[backend] = config_dict
+
     def flush(self):
         """In the default case, flush calls ._flush.
 
@@ -184,11 +192,23 @@ class CentralizedQueues:
 
                 buffer_queue = self.buffer_queues[backend]
                 work_queue = self.workers[backend]
+                max_batch_size = None
+                if backend in self.backend_info:
+                    max_batch_size = self.backend_info[backend][
+                        "max_batch_size"]
+
                 while len(buffer_queue) and len(work_queue):
-                    request, work = (
-                        buffer_queue.pop(0),
-                        work_queue.popleft(),
-                    )
+                    # get the work from work intent queue
+                    work = work_queue.popleft()
+                    # see if backend accepts batched queries
+                    if max_batch_size is not None:
+                        pop_size = min(len(buffer_queue), max_batch_size)
+                        request = [
+                            buffer_queue.pop(0) for _ in range(pop_size)
+                        ]
+                    else:
+                        request = buffer_queue.pop(0)
+
                     work.replica_handle._ray_serve_call.remote(request)
 
     # selects the backend and puts the service queue query to the buffer

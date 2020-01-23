@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import csv
 import json
 import logging
@@ -13,12 +9,12 @@ import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
-from ray.tune.util import flatten_dict
-from ray.tune.syncer import get_node_syncer
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
                              EXPR_RESULT_FILE)
+from ray.tune.syncer import get_node_syncer
+from ray.tune.utils import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +22,7 @@ tf = None
 VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
 
 
-class Logger(object):
+class Logger:
     """Logging interface for ray.tune.
 
     By default, the UnifiedLogger implementation is used which logs results in
@@ -319,7 +315,8 @@ class CSVLogger(Logger):
 class TBXLogger(Logger):
     """TensorBoardX Logger.
 
-    Automatically flattens nested dicts to show on TensorBoard:
+    Note that hparams will be written only after a trial has terminated.
+    This logger automatically flattens nested dicts to show on TensorBoard:
 
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
@@ -328,7 +325,7 @@ class TBXLogger(Logger):
         try:
             from tensorboardX import SummaryWriter
         except ImportError:
-            logger.error("pip install tensorboardX to see TensorBoard files.")
+            logger.error("pip install 'ray[tune]' to see TensorBoard files.")
             raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
@@ -363,17 +360,24 @@ class TBXLogger(Logger):
     def close(self):
         if self._file_writer is not None:
             if self.trial and self.trial.evaluated_params and self.last_result:
-                from tensorboardX.summary import hparams
-                experiment_tag, session_start_tag, session_end_tag = hparams(
-                    hparam_dict=self.trial.evaluated_params,
-                    metric_dict=self.last_result)
-                self._file_writer.file_writer.add_summary(experiment_tag)
-                self._file_writer.file_writer.add_summary(session_start_tag)
-                self._file_writer.file_writer.add_summary(session_end_tag)
+                self._try_log_hparams(self.last_result)
             self._file_writer.close()
 
+    def _try_log_hparams(self, result):
+        # TBX currently errors if the hparams value is None.
+        scrubbed_params = {
+            k: v
+            for k, v in self.trial.evaluated_params.items() if v is not None
+        }
+        from tensorboardX.summary import hparams
+        experiment_tag, session_start_tag, session_end_tag = hparams(
+            hparam_dict=scrubbed_params, metric_dict=result)
+        self._file_writer.file_writer.add_summary(experiment_tag)
+        self._file_writer.file_writer.add_summary(session_start_tag)
+        self._file_writer.file_writer.add_summary(session_end_tag)
 
-DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
+
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
 
 class UnifiedLogger(Logger):
@@ -430,11 +434,13 @@ class UnifiedLogger(Logger):
         for _logger in self._loggers:
             _logger.close()
 
-    def flush(self):
+    def flush(self, sync_down=True):
         for _logger in self._loggers:
             _logger.flush()
-        if not self._log_syncer.sync_down():
-            logger.warning("Trial %s: Post-flush sync skipped.", self.trial)
+        if sync_down:
+            if not self._log_syncer.sync_down():
+                logger.warning("Trial %s: Post-flush sync skipped.",
+                               self.trial)
 
     def sync_up(self):
         return self._log_syncer.sync_up()

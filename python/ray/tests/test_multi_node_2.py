@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import pytest
 import time
@@ -138,7 +134,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(work_handle)
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def work(self, timeout):
             time.sleep(timeout)
             return True

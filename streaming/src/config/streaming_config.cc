@@ -45,45 +45,5 @@ void StreamingConfig::SetRingBufferCapacity(uint32_t ring_buffer_capacity) {
   StreamingConfig::ring_buffer_capacity_ =
       std::min(ring_buffer_capacity, StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
 }
-
-uint32_t StreamingConfig::GetEmptyMessageTimeInterval() const {
-  return empty_message_time_interval_;
-}
-
-void StreamingConfig::SetEmptyMessageTimeInterval(uint32_t empty_message_time_interval) {
-  StreamingConfig::empty_message_time_interval_ = empty_message_time_interval;
-}
-
-streaming::proto::OperatorType StreamingConfig::GetOperatorType() const {
-  return operator_type_;
-}
-
-void StreamingConfig::SetOperatorType(streaming::proto::OperatorType type) {
-  StreamingConfig::operator_type_ = type;
-}
-
-const std::string &StreamingConfig::GetJobName() const { return job_name_; }
-
-void StreamingConfig::SetJobName(const std::string &job_name) {
-  StreamingConfig::job_name_ = job_name;
-}
-
-const std::string &StreamingConfig::GetOpName() const { return op_name_; }
-
-void StreamingConfig::SetOpName(const std::string &op_name) {
-  StreamingConfig::op_name_ = op_name;
-}
-
-const std::string &StreamingConfig::GetWorkerName() const { return worker_name_; }
-void StreamingConfig::SetWorkerName(const std::string &worker_name) {
-  StreamingConfig::worker_name_ = worker_name;
-}
-
-const std::string &StreamingConfig::GetTaskJobId() const { return task_job_id_; }
-
-void StreamingConfig::SetTaskJobId(const std::string &task_job_id) {
-  StreamingConfig::task_job_id_ = task_job_id;
-}
-
 }  // namespace streaming
 }  // namespace ray

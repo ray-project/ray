@@ -2,10 +2,6 @@
 
 Keep in sync with changes to A3CTFPolicy and VtraceSurrogatePolicy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import logging
 import gym
@@ -27,7 +23,7 @@ logger = logging.getLogger(__name__)
 BEHAVIOUR_LOGITS = "behaviour_logits"
 
 
-class VTraceLoss(object):
+class VTraceLoss:
     def __init__(self,
                  actions,
                  actions_logp,

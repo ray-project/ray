@@ -592,6 +592,10 @@ cdef execute_task(
                             c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
+            # function_executor is a generator to make sure python decrement
+            # stack counter on context switch for async mode. If it is not
+            # a generator, python will count the stacks of executor as part
+            # of the recursion limit, resulting in much lower concurrency.
             function = execution_info.function
 
             if PY3 and core_worker.current_actor_is_asyncio():
@@ -614,9 +618,9 @@ cdef execute_task(
                     (core_worker.core_worker.get()
                         .YieldCurrentFiber(fiber_event))
 
-                return future.result()
+                yield future.result()
 
-            return function(actor, *arguments, **kwarguments)
+            yield function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -629,11 +633,21 @@ cdef execute_task(
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
 
+            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                actor = worker.actors[core_worker.get_actor_id()]
+                class_name = actor.__class__.__name__
+                actor_title = "{}({}, {})".format(
+                    class_name, repr(args), repr(kwargs))
+                core_worker.set_actor_title(actor_title.encode("utf-8"))
+
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
                     outputs = function_executor(*args, **kwargs)
+                    # The function_executor is a generator in actor mode.
+                    if inspect.isgenerator(outputs):
+                        outputs = next(outputs)
                     task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
@@ -803,6 +817,9 @@ cdef class CoreWorker:
     def set_webui_display(self, message):
         self.core_worker.get().SetWebuiDisplay(message)
 
+    def set_actor_title(self, title):
+        self.core_worker.get().SetActorTitle(title)
+
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
         cdef:
@@ -837,7 +854,8 @@ cdef class CoreWorker:
                 if object_id is None:
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                    metadata, data_size, c_object_id, data))
+                                     metadata, data_size,
+                                     c_object_id, data))
                 else:
                     c_object_id[0] = object_id.native()
                     with nogil:
@@ -862,20 +880,29 @@ cdef class CoreWorker:
         return data.get() == NULL
 
     def put_serialized_object(self, serialized_object,
-                              ObjectID object_id=None):
+                              ObjectID object_id=None,
+                              c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+            # The object won't be pinned if an ObjectID is provided by the
+            # user (because we can't track its lifetime to unpin). Note that
+            # the API to do this isn't supported as a public API.
+            c_bool owns_object = object_id is None
+
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
-            metadata, total_bytes, object_id, &c_object_id, &data)
+            metadata, total_bytes, object_id,
+            &c_object_id, &data)
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
                 check_status(
-                    self.core_worker.get().Seal(c_object_id))
+                    self.core_worker.get().Seal(
+                        c_object_id, owns_object, pin_object))
+
         return ObjectID(c_object_id.Binary())
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
@@ -1156,6 +1183,10 @@ cdef class CoreWorker:
         if self.async_event_loop is None:
             self.async_event_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.async_event_loop)
+            # Initialize the async plasma connection.
+            # Delayed import due to async_api depends on _raylet.
+            from ray.experimental.async_api import _async_init
+            self.async_event_loop.run_until_complete(_async_init())
         if self.async_thread is None:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()

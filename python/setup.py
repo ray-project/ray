@@ -1,8 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import glob
 from itertools import chain
 import os
 import re
@@ -32,6 +27,10 @@ ray_files = [
     "ray/streaming/_streaming.so",
 ]
 
+build_java = os.getenv("RAY_INSTALL_JAVA") == "1"
+if build_java:
+    ray_files.append("ray/jars/ray_dist.jar")
+
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
 generated_python_directories = [
@@ -56,12 +55,10 @@ ray_project_files = [
 ]
 
 ray_dashboard_files = [
-    "ray/dashboard/client/build/favicon.ico",
-    "ray/dashboard/client/build/index.html",
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
+    for filename in filenames
 ]
-for dirname in ["css", "js", "media"]:
-    ray_dashboard_files += glob.glob(
-        "ray/dashboard/client/build/static/{}/*".format(dirname))
 
 optional_ray_files += ray_autoscaler_files
 optional_ray_files += ray_project_files
@@ -75,15 +72,19 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ]
 
 extras = {
-    "rllib": [
-        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
-        "tabulate"
-    ],
     "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate"],
+    "tune": ["tabulate", "tensorboardX"],
 }
+
+extras["rllib"] = extras["tune"] + [
+    "pyyaml",
+    "gym[atari]",
+    "opencv-python-headless",
+    "lz4",
+    "scipy",
+]
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 
@@ -95,7 +96,7 @@ class build_ext(_build_ext.build_ext):
         # that certain flags will not be passed along such as --user or sudo.
         # TODO(rkn): Fix this.
         command = ["../build.sh", "-p", sys.executable]
-        if os.getenv("RAY_INSTALL_JAVA") == "1":
+        if build_java:
             # Also build binaries for Java if the above env variable exists.
             command += ["-l", "python,java"]
         subprocess.check_call(command)
@@ -145,7 +146,7 @@ class build_ext(_build_ext.build_ext):
             os.makedirs(parent_directory)
         if not os.path.exists(destination):
             print("Copying {} to {}.".format(source, destination))
-            shutil.copy(source, destination)
+            shutil.copy(source, destination, follow_symlinks=True)
 
 
 class BinaryDistribution(Distribution):

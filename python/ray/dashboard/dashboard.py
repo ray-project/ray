@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 try:
     import aiohttp.web
 except ImportError:
@@ -20,7 +16,9 @@ import threading
 import time
 import traceback
 import yaml
+import uuid
 
+from base64 import b64decode
 from collections import defaultdict
 from operator import itemgetter
 from typing import Dict
@@ -30,8 +28,9 @@ from google.protobuf.json_format import MessageToDict
 import ray
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 import ray.ray_constants as ray_constants
-import ray.utils
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -56,6 +55,35 @@ def format_resource(resource_name, quantity):
         quantity = quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)
         return "{} GiB".format(round_resource_value(quantity))
     return "{}".format(round_resource_value(quantity))
+
+
+def format_reply_id(reply):
+    if isinstance(reply, dict):
+        for k, v in reply.items():
+            if isinstance(v, dict) or isinstance(v, list):
+                format_reply_id(v)
+            else:
+                if k.endswith("Id"):
+                    v = b64decode(v)
+                    reply[k] = ray.utils.binary_to_hex(v)
+    elif isinstance(reply, list):
+        for item in reply:
+            format_reply_id(item)
+
+
+def measures_to_dict(measures):
+    measures_dict = {}
+    for measure in measures:
+        tags = measure["tags"].split(",")[-1]
+        if "intValue" in measure:
+            measures_dict[tags] = measure["intValue"]
+        elif "doubleValue" in measure:
+            measures_dict[tags] = measure["doubleValue"]
+    return measures_dict
+
+
+def b64_decode(reply):
+    return b64decode(reply).decode("utf-8")
 
 
 class Dashboard(object):
@@ -106,6 +134,12 @@ class Dashboard(object):
                 os.path.join(
                     os.path.dirname(os.path.abspath(__file__)),
                     "client/build/index.html"))
+
+        async def get_favicon(req) -> aiohttp.web.Response:
+            return aiohttp.web.FileResponse(
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "client/build/favicon.ico"))
 
         async def json_response(result=None, error=None,
                                 ts=None) -> aiohttp.web.Response:
@@ -159,19 +193,81 @@ class Dashboard(object):
 
         async def raylet_info(req) -> aiohttp.web.Response:
             D = self.raylet_stats.get_raylet_stats()
+            workers_info_by_node = {
+                data["nodeId"]: data.get("workersStats")
+                for data in D.values()
+            }
+            infeasible_tasks = sum(
+                (data.get("infeasibleTasks", []) for data in D.values()), [])
+            actor_tree = self.node_stats.get_actor_tree(
+                workers_info_by_node, infeasible_tasks)
             for address, data in D.items():
-                available_resources = data["availableResources"]
-                total_resources = data["totalResources"]
-                extra_info = []
-                for resource_name in sorted(available_resources.keys()):
-                    total = total_resources[resource_name]
-                    occupied = total - available_resources[resource_name]
-                    total = format_resource(resource_name, total)
-                    occupied = format_resource(resource_name, occupied)
-                    extra_info.append("{}: {} / {}".format(
-                        resource_name, occupied, total))
-                data["extraInfo"] = ", ".join(extra_info)
-            return await json_response(result=D)
+                # process view data
+                measures_dicts = {}
+                for view_data in data["viewData"]:
+                    view_name = view_data["viewName"]
+                    if view_name in ("local_available_resource",
+                                     "local_total_resource",
+                                     "object_manager_stats"):
+                        measures_dicts[view_name] = measures_to_dict(
+                            view_data["measures"])
+                # process resources info
+                extra_info_strings = []
+                prefix = "ResourceName:"
+                for resource_name, total_resource in measures_dicts[
+                        "local_total_resource"].items():
+                    available_resource = measures_dicts[
+                        "local_available_resource"].get(resource_name, .0)
+                    resource_name = resource_name[len(prefix):]
+                    extra_info_strings.append("{}: {} / {}".format(
+                        resource_name,
+                        format_resource(resource_name,
+                                        total_resource - available_resource),
+                        format_resource(resource_name, total_resource)))
+                data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
+                if os.environ.get("RAY_DASHBOARD_DEBUG"):
+                    # process object store info
+                    extra_info_strings = []
+                    prefix = "ValueType:"
+                    for stats_name in [
+                            "used_object_store_memory", "num_local_objects"
+                    ]:
+                        stats_value = measures_dicts[
+                            "object_manager_stats"].get(
+                                prefix + stats_name, .0)
+                        extra_info_strings.append("{}: {}".format(
+                            stats_name, stats_value))
+                    data["extraInfo"] += ", ".join(extra_info_strings)
+                    # process actor info
+                    actor_tree_str = json.dumps(
+                        actor_tree, indent=2, sort_keys=True)
+                    lines = actor_tree_str.split("\n")
+                    max_line_length = max(map(len, lines))
+                    to_print = []
+                    for line in lines:
+                        to_print.append(line +
+                                        (max_line_length - len(line)) * " ")
+                    data["extraInfo"] += "\n" + "\n".join(to_print)
+            result = {"nodes": D, "actors": actor_tree}
+            return await json_response(result=result)
+
+        async def launch_profiling(req) -> aiohttp.web.Response:
+            node_id = req.query.get("node_id")
+            pid = int(req.query.get("pid"))
+            duration = int(req.query.get("duration"))
+            profiling_id = self.raylet_stats.launch_profiling(
+                node_id=node_id, pid=pid, duration=duration)
+            return aiohttp.web.json_response(str(profiling_id))
+
+        async def check_profiling_status(req) -> aiohttp.web.Response:
+            profiling_id = req.query.get("profiling_id")
+            return aiohttp.web.json_response(
+                self.raylet_stats.check_profiling_status(profiling_id))
+
+        async def get_profiling_info(req) -> aiohttp.web.Response:
+            profiling_id = req.query.get("profiling_id")
+            return aiohttp.web.json_response(
+                self.raylet_stats.get_profiling_info(profiling_id))
 
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
@@ -186,21 +282,31 @@ class Dashboard(object):
             return await json_response(result=result)
 
         self.app.router.add_get("/", get_index)
+        self.app.router.add_get("/favicon.ico", get_favicon)
 
-        static_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "client/build/static")
-        if not os.path.isdir(static_dir):
+        build_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "client/build")
+        if not os.path.isdir(build_dir):
             raise ValueError(
-                "Dashboard static asset directory not found at '{}'. If "
-                "installing from source, please follow the additional steps "
-                "required to build the dashboard: "
-                "cd python/ray/dashboard/client && npm ci && "
-                "npm run build".format(static_dir))
+                "Dashboard build directory not found at '{}'. If installing "
+                "from source, please follow the additional steps required to "
+                "build the dashboard: "
+                "cd python/ray/dashboard/client && npm ci && npm run build"
+                .format(build_dir))
+
+        static_dir = os.path.join(build_dir, "static")
         self.app.router.add_static("/static", static_dir)
+
+        speedscope_dir = os.path.join(build_dir, "speedscope-1.5.3")
+        self.app.router.add_static("/speedscope", speedscope_dir)
 
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
+        self.app.router.add_get("/api/launch_profiling", launch_profiling)
+        self.app.router.add_get("/api/check_profiling_status",
+                                check_profiling_status)
+        self.app.router.add_get("/api/get_profiling_info", get_profiling_info)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
 
@@ -226,7 +332,27 @@ class NodeStats(threading.Thread):
             redis_address, password=redis_password)
 
         self._node_stats = {}
+        self._addr_to_owner_addr = {}
+        self._addr_to_actor_id = {}
+        self._addr_to_extra_info_dict = {}
         self._node_stats_lock = threading.Lock()
+
+        self._default_info = {
+            "actorId": "",
+            "children": {},
+            "currentTaskFuncDesc": [],
+            "ipAddress": "",
+            "isDirectCall": False,
+            "jobId": "",
+            "numExecutedTasks": 0,
+            "numLocalObjects": 0,
+            "numObjectIdsInScope": 0,
+            "port": 0,
+            "state": 0,
+            "taskQueueLength": 0,
+            "usedObjectStoreMemory": 0,
+            "usedResources": {},
+        }
 
         # Mapping from IP address to PID to list of log lines
         self._logs = defaultdict(lambda: defaultdict(list))
@@ -234,7 +360,8 @@ class NodeStats(threading.Thread):
         # Mapping from IP address to PID to list of error messages
         self._errors = defaultdict(lambda: defaultdict(list))
 
-        ray.init(redis_address=redis_address, redis_password=redis_password)
+        ray.state.state._initialize_global_state(
+            redis_address=redis_address, redis_password=redis_password)
 
         super().__init__()
 
@@ -281,6 +408,63 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
+    def get_actor_tree(self, workers_info_by_node, infeasible_tasks) -> Dict:
+        now = time.time()
+        # construct flattened actor tree
+        flattened_tree = {"root": {"children": {}}}
+        child_to_parent = {}
+        with self._node_stats_lock:
+            for addr, actor_id in self._addr_to_actor_id.items():
+                flattened_tree[actor_id] = copy.deepcopy(self._default_info)
+                flattened_tree[actor_id].update(
+                    self._addr_to_extra_info_dict[addr])
+                parent_id = self._addr_to_actor_id.get(
+                    self._addr_to_owner_addr[addr], "root")
+                child_to_parent[actor_id] = parent_id
+
+            for node_id, workers_info in workers_info_by_node.items():
+                for worker_info in workers_info:
+                    if "coreWorkerStats" in worker_info:
+                        core_worker_stats = worker_info["coreWorkerStats"]
+                        addr = (core_worker_stats["ipAddress"],
+                                str(core_worker_stats["port"]))
+                        if addr in self._addr_to_actor_id:
+                            actor_info = flattened_tree[self._addr_to_actor_id[
+                                addr]]
+                            if "currentTaskFuncDesc" in core_worker_stats:
+                                core_worker_stats[
+                                    "currentTaskFuncDesc"] = list(
+                                        map(
+                                            b64_decode, core_worker_stats[
+                                                "currentTaskFuncDesc"]))
+                            format_reply_id(core_worker_stats)
+                            actor_info.update(core_worker_stats)
+                            actor_info["averageTaskExecutionSpeed"] = round(
+                                actor_info["numExecutedTasks"] /
+                                (now - actor_info["timestamp"] / 1000), 2)
+                            actor_info["nodeId"] = node_id
+                            actor_info["pid"] = worker_info["pid"]
+
+            for infeasible_task in infeasible_tasks:
+                actor_id = ray.utils.binary_to_hex(
+                    b64decode(
+                        infeasible_task["actorCreationTaskSpec"]["actorId"]))
+                caller_addr = (infeasible_task["callerAddress"]["ipAddress"],
+                               str(infeasible_task["callerAddress"]["port"]))
+                caller_id = self._addr_to_actor_id.get(caller_addr, "root")
+                child_to_parent[actor_id] = caller_id
+                infeasible_task["state"] = -1
+                infeasible_task["functionDescriptor"] = list(
+                    map(b64_decode, infeasible_task["functionDescriptor"]))
+                format_reply_id(infeasible_tasks)
+                flattened_tree[actor_id] = infeasible_task
+
+        # construct actor tree
+        actor_tree = flattened_tree
+        for actor_id, parent_id in child_to_parent.items():
+            actor_tree[parent_id]["children"][actor_id] = actor_tree[actor_id]
+        return actor_tree["root"]["children"]
+
     def get_logs(self, hostname, pid):
         ip = self._node_stats.get(hostname, {"ip": None})["ip"]
         logs = self._logs.get(ip, {})
@@ -309,6 +493,26 @@ class NodeStats(threading.Thread):
         p.subscribe(error_channel)
         logger.info("NodeStats: subscribed to {}".format(error_channel))
 
+        actor_channel = ray.gcs_utils.TablePubsub.Value("ACTOR_PUBSUB")
+        p.subscribe(actor_channel)
+        logger.info("NodeStats: subscribed to {}".format(actor_channel))
+
+        current_actor_table = ray.actors()
+        with self._node_stats_lock:
+            for actor_data in current_actor_table.values():
+                addr = (actor_data["Address"]["IPAddress"],
+                        str(actor_data["Address"]["Port"]))
+                owner_addr = (actor_data["OwnerAddress"]["IPAddress"],
+                              str(actor_data["OwnerAddress"]["Port"]))
+                self._addr_to_owner_addr[addr] = owner_addr
+                self._addr_to_actor_id[addr] = actor_data["ActorID"]
+                self._addr_to_extra_info_dict[addr] = {
+                    "jobId": actor_data["JobID"],
+                    "state": actor_data["State"],
+                    "isDirectCall": actor_data["IsDirectCall"],
+                    "timestamp": actor_data["Timestamp"]
+                }
+
         for x in p.listen():
             try:
                 with self._node_stats_lock:
@@ -334,6 +538,24 @@ class NodeStats(threading.Thread):
                                 "timestamp": error_data.timestamp,
                                 "type": error_data.type
                             })
+                    elif channel == str(actor_channel):
+                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
+                        actor_data = ray.gcs_utils.ActorTableData.FromString(
+                            gcs_entry.entries[0])
+                        addr = (actor_data.address.ip_address,
+                                str(actor_data.address.port))
+                        owner_addr = (actor_data.owner_address.ip_address,
+                                      str(actor_data.owner_address.port))
+                        self._addr_to_owner_addr[addr] = owner_addr
+                        self._addr_to_actor_id[addr] = ray.utils.binary_to_hex(
+                            actor_data.actor_id)
+                        self._addr_to_extra_info_dict[addr] = {
+                            "jobId": ray.utils.binary_to_hex(
+                                actor_data.job_id),
+                            "state": actor_data.state,
+                            "isDirectCall": actor_data.is_direct_call,
+                            "timestamp": actor_data.timestamp
+                        }
                     else:
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
@@ -347,9 +569,13 @@ class RayletStats(threading.Thread):
         self.nodes_lock = threading.Lock()
         self.nodes = []
         self.stubs = {}
+        self.reporter_stubs = {}
+        self.redis_client = ray.services.create_redis_client(
+            redis_address, password=redis_password)
 
         self._raylet_stats_lock = threading.Lock()
         self._raylet_stats = {}
+        self._profiling_stats = {}
 
         self.update_nodes()
 
@@ -365,20 +591,70 @@ class RayletStats(threading.Thread):
                 if node_id not in node_ids:
                     stub = self.stubs.pop(node_id)
                     stub.close()
+                    reporter_stub = self.reporter_stubs.pop(node_id)
+                    reporter_stub.close()
 
             # Now add node connections of new nodes.
             for node in self.nodes:
                 node_id = node["NodeID"]
                 if node_id not in self.stubs:
+                    node_ip = node["NodeManagerAddress"]
                     channel = grpc.insecure_channel("{}:{}".format(
-                        node["NodeManagerAddress"], node["NodeManagerPort"]))
+                        node_ip, node["NodeManagerPort"]))
                     stub = node_manager_pb2_grpc.NodeManagerServiceStub(
                         channel)
                     self.stubs[node_id] = stub
+                    # Block wait until the reporter for the node starts.
+                    while True:
+                        reporter_port = self.redis_client.get(
+                            "REPORTER_PORT:{}".format(node_ip))
+                        if reporter_port:
+                            break
+                    reporter_channel = grpc.insecure_channel("{}:{}".format(
+                        node_ip, int(reporter_port)))
+                    reporter_stub = reporter_pb2_grpc.ReporterServiceStub(
+                        reporter_channel)
+                    self.reporter_stubs[node_id] = reporter_stub
+
+            assert len(self.stubs) == len(
+                self.reporter_stubs), (self.stubs.keys(),
+                                       self.reporter_stubs.keys())
 
     def get_raylet_stats(self) -> Dict:
         with self._raylet_stats_lock:
             return copy.deepcopy(self._raylet_stats)
+
+    def launch_profiling(self, node_id, pid, duration):
+        profiling_id = str(uuid.uuid4())
+
+        def _callback(reply_future):
+            reply = reply_future.result()
+            with self._raylet_stats_lock:
+                self._profiling_stats[profiling_id] = reply
+
+        reporter_stub = self.reporter_stubs[node_id]
+        reply_future = reporter_stub.GetProfilingStats.future(
+            reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
+        reply_future.add_done_callback(_callback)
+        return profiling_id
+
+    def check_profiling_status(self, profiling_id):
+        with self._raylet_stats_lock:
+            is_present = profiling_id in self._profiling_stats
+        if is_present:
+            reply = self._profiling_stats[profiling_id]
+            if reply.stderr:
+                return {"status": "error", "error": reply.stderr}
+            else:
+                return {"status": "finished"}
+        else:
+            return {"status": "pending"}
+
+    def get_profiling_info(self, profiling_id):
+        with self._raylet_stats_lock:
+            profiling_stats = self._profiling_stats.get(profiling_id)
+        assert profiling_stats, "profiling not finished"
+        return json.loads(profiling_stats.profiling_stats)
 
     def run(self):
         counter = 0
@@ -389,11 +665,13 @@ class RayletStats(threading.Thread):
                 node_id = node["NodeID"]
                 stub = self.stubs[node_id]
                 reply = stub.GetNodeStats(
-                    node_manager_pb2.NodeStatsRequest(), timeout=2)
-                replies[node["NodeManagerAddress"]] = reply
+                    node_manager_pb2.GetNodeStatsRequest(), timeout=2)
+                reply_dict = MessageToDict(reply)
+                reply_dict["nodeId"] = node_id
+                replies[node["NodeManagerAddress"]] = reply_dict
             with self._raylet_stats_lock:
-                for address, reply in replies.items():
-                    self._raylet_stats[address] = MessageToDict(reply)
+                for address, reply_dict in replies.items():
+                    self._raylet_stats[address] = reply_dict
             counter += 1
             # From time to time, check if new nodes have joined the cluster
             # and update self.nodes
@@ -409,7 +687,6 @@ if __name__ == "__main__":
         "--host",
         required=True,
         type=str,
-        choices=["127.0.0.1", "0.0.0.0"],
         help="The host to use for the HTTP server.")
     parser.add_argument(
         "--port",

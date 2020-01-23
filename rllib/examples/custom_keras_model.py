@@ -1,9 +1,5 @@
 """Example of using a custom ModelV2 Keras-style model."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 
 import ray

@@ -53,7 +53,7 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/transport/direct_actor_transport.h" nogil:
+cdef extern from "ray/core_worker/fiber.h" nogil:
     cdef cppclass CFiberEvent "ray::FiberEvent":
         CFiberEvent()
         void Wait()
@@ -114,6 +114,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCurrentTaskId()
         const CActorID &GetActorId()
         void SetWebuiDisplay(const c_string &message)
+        void SetActorTitle(const c_string &title)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
@@ -133,12 +134,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)
         CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size, CObjectID *object_id,
-                          shared_ptr[CBuffer] *data)
+                          const size_t data_size,
+                          CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size, const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id)
+        CRayStatus Seal(const CObjectID &object_id, c_bool owns_object,
+                        c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)

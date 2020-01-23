@@ -26,22 +26,19 @@
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
 /// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
-/// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
-/// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
-#define RAY_CORE_WORKER_RPC_HANDLERS                               \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
-  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
-  RAY_CORE_WORKER_RPC_HANDLER(KillActor, 9999)                     \
-  RAY_CORE_WORKER_RPC_HANDLER(GetCoreWorkerStats, 100)
+/// 2) Add a new macro to RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
+///    in core_worker_server.h,
+//     e.g. "DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExampleCall)"
+/// 3) Add a new macro to RAY_CORE_WORKER_RPC_HANDLERS in core_worker_server.h, e.g.
+///    "RPC_SERVICE_HANDLER(CoreWorkerService, ExampleCall, 1)"
+/// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
 namespace ray {
 
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker {
+class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
@@ -80,7 +77,7 @@ class CoreWorker {
              std::function<Status()> check_signals = nullptr,
              bool ref_counting_enabled = false);
 
-  ~CoreWorker();
+  virtual ~CoreWorker();
 
   void Disconnect();
 
@@ -98,12 +95,11 @@ class CoreWorker {
 
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
 
-  void SetActorId(const ActorID &actor_id) {
-    RAY_CHECK(actor_id_.IsNil());
-    actor_id_ = actor_id;
-  }
+  void SetActorId(const ActorID &actor_id);
 
-  void SetWebuiDisplay(const std::string &message) { webui_display_ = message; }
+  void SetWebuiDisplay(const std::string &message);
+
+  void SetActorTitle(const std::string &title);
 
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
@@ -222,8 +218,14 @@ class CoreWorker {
   /// a corresponding `Create()` call and then writing into the returned buffer.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
+  /// \param[in] owns_object Whether or not this worker owns the object. If true,
+  ///            the object will be added as owned to the reference counter as an
+  ///            owned object and this worker will be responsible for managing its
+  ///            lifetime.
+  /// \param[in] pin_object Whether or not to pin the object at the local raylet. This
+  ///            only applies when owns_object is true.
   /// \return Status.
-  Status Seal(const ObjectID &object_id);
+  Status Seal(const ObjectID &object_id, bool owns_object, bool pin_object);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -396,31 +398,36 @@ class CoreWorker {
   /// Implements gRPC server handler.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback);
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback);
+                      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback);
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
                              rpc::GetObjectStatusReply *reply,
-                             rpc::SendReplyCallback send_reply_callback);
+                             rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
+  void HandleWaitForObjectEviction(const rpc::WaitForObjectEvictionRequest &request,
+                                   rpc::WaitForObjectEvictionReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
-                       rpc::SendReplyCallback send_reply_callback);
+                       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &request,
                                 rpc::GetCoreWorkerStatsReply *reply,
-                                rpc::SendReplyCallback send_reply_callback);
+                                rpc::SendReplyCallback send_reply_callback) override;
 
   ///
   /// Public methods related to async actor call. This should only be used when
@@ -584,7 +591,7 @@ class CoreWorker {
   bool connected_ = false;
 
   // Client to the GCS shared by core worker interfaces.
-  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   // Client to the raylet shared by core worker interfaces. This needs to be a
   // shared_ptr for direct calls because we can lease multiple workers through
@@ -617,6 +624,9 @@ class CoreWorker {
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
 
+  // Interface for publishing actor death event for actor creation failure.
+  std::shared_ptr<ActorManager> actor_manager_;
+
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
@@ -635,11 +645,28 @@ class CoreWorker {
   /// Fields related to task execution.
   ///
 
+  /// Protects around accesses to fields below. This should only ever be held
+  /// for short-running periods of time.
+  mutable absl::Mutex mutex_;
+
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
-  ActorID actor_id_;
+  ActorID actor_id_ GUARDED_BY(mutex_);
+
+  /// The currently executing task spec. We have to track this separately since
+  /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
+  TaskSpecification current_task_ GUARDED_BY(mutex_);
 
   /// String to be displayed on Web UI.
-  std::string webui_display_;
+  std::string webui_display_ GUARDED_BY(mutex_);
+
+  /// Actor title that consists of class name, args, kwargs for actor construction.
+  std::string actor_title_ GUARDED_BY(mutex_);
+
+  /// Number of tasks that have been pushed to the actor but not executed.
+  std::atomic<int64_t> task_queue_length_;
+
+  /// Number of executed tasks.
+  std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
@@ -668,7 +695,7 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 
   // Queue of tasks to resubmit when the specified time passes.
-  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_;
+  std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
   friend class CoreWorkerTest;
 };

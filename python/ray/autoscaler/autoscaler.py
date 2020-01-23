@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import hashlib
 import json
@@ -156,7 +152,7 @@ CLUSTER_CONFIG_SCHEMA = {
 }
 
 
-class LoadMetrics(object):
+class LoadMetrics:
     """Container for cluster load metrics.
 
     Metrics here are updated from raylet heartbeats. The autoscaler
@@ -355,7 +351,7 @@ class NodeLauncher(threading.Thread):
         logger.info(prefix + " {}".format(statement))
 
 
-class ConcurrentCounter(object):
+class ConcurrentCounter:
     def __init__(self):
         self._value = 0
         self._lock = threading.Lock()
@@ -377,7 +373,7 @@ class ConcurrentCounter(object):
             return self._value
 
 
-class StandardAutoscaler(object):
+class StandardAutoscaler:
     """The autoscaling control loop for a Ray cluster.
 
     There are two ways to start an autoscaling cluster: manually by running

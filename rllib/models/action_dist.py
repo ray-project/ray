@@ -1,12 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class ActionDistribution(object):
+class ActionDistribution:
     """The policy action distribution of an agent.
 
     Attributes:

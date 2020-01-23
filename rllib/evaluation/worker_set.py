@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 from types import FunctionType
 
@@ -19,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class WorkerSet(object):
+class WorkerSet:
     """Represents a set of RolloutWorkers.
 
     There must be one local worker copy, and zero or more remote workers.

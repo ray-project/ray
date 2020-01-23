@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import logging
 import numpy as np
@@ -11,7 +7,7 @@ from ray.tune import grid_search
 logger = logging.getLogger(__name__)
 
 
-class ParameterSpace(object):
+class ParameterSpace:
     """Base class of a single parameter's search space.
     """
 
@@ -116,7 +112,7 @@ class ContinuousSpace(ParameterSpace):
                                                  self.end)
 
 
-class SearchSpace(object):
+class SearchSpace:
     """Collection of ``ParameterSpace``, a.k.a <name, space> pair.
 
     It's supposed to be used with a fixed experiment config, which

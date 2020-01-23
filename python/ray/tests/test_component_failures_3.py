@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 import time
@@ -25,7 +21,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
     cluster = ray_start_cluster
 
     @ray.remote
-    class Child(object):
+    class Child:
         def __init__(self, death_probability):
             self.death_probability = death_probability
 

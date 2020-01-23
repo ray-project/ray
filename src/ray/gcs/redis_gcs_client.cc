@@ -120,7 +120,6 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   Attach(io_service);
 
   actor_table_.reset(new ActorTable({primary_context_}, this));
-  direct_actor_table_.reset(new DirectActorTable({primary_context_}, this));
 
   // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
   // We will use NodeID instead of ClientID.
@@ -141,12 +140,16 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
+  worker_failure_table_.reset(new WorkerFailureTable(shard_contexts_, this));
 
   actor_accessor_.reset(new RedisActorInfoAccessor(this));
   job_accessor_.reset(new RedisJobInfoAccessor(this));
   object_accessor_.reset(new RedisObjectInfoAccessor(this));
   node_accessor_.reset(new RedisNodeInfoAccessor(this));
   task_accessor_.reset(new RedisTaskInfoAccessor(this));
+  error_accessor_.reset(new RedisErrorInfoAccessor(this));
+  stats_accessor_.reset(new RedisStatsInfoAccessor(this));
+  worker_accessor_.reset(new RedisWorkerInfoAccessor(this));
 
   is_connected_ = true;
 
@@ -198,7 +201,9 @@ raylet::TaskTable &RedisGcsClient::raylet_task_table() { return *raylet_task_tab
 
 ActorTable &RedisGcsClient::actor_table() { return *actor_table_; }
 
-DirectActorTable &RedisGcsClient::direct_actor_table() { return *direct_actor_table_; }
+WorkerFailureTable &RedisGcsClient::worker_failure_table() {
+  return *worker_failure_table_;
+}
 
 TaskReconstructionLog &RedisGcsClient::task_reconstruction_log() {
   return *task_reconstruction_log_;

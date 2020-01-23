@@ -1,4 +1,5 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
+
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
@@ -108,7 +109,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto status = lease_client->RequestWorkerLease(
       resource_spec,
       [this, lease_client, task_id, scheduling_key](
-          const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
+          const Status &status, const rpc::RequestWorkerLeaseReply &reply) mutable {
         absl::MutexLock lock(&mu_);
         pending_lease_requests_.erase(scheduling_key);
         if (status.ok()) {
@@ -169,6 +170,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
+  request->mutable_caller_address()->CopyFrom(rpc_address_);
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());

@@ -1,16 +1,11 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import torch
-import torch.nn.functional as F
-from torch import nn
-
 import ray
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy_template import build_torch_policy
+from ray.rllib.utils.framework import try_import_torch
+
+torch, nn = try_import_torch()
 
 
 def actor_critic_loss(policy, model, dist_class, train_batch):
@@ -21,7 +16,7 @@ def actor_critic_loss(policy, model, dist_class, train_batch):
     policy.entropy = dist.entropy().mean()
     policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(
         log_probs.reshape(-1))
-    policy.value_err = F.mse_loss(
+    policy.value_err = nn.functional.mse_loss(
         values.reshape(-1), train_batch[Postprocessing.VALUE_TARGETS])
     overall_err = sum([
         policy.pi_err,
@@ -52,7 +47,8 @@ def add_advantages(policy,
                               policy.config["lambda"])
 
 
-def model_value_predictions(policy, input_dict, state_batches, model):
+def model_value_predictions(policy, input_dict, state_batches, model,
+                            action_dist):
     return {SampleBatch.VF_PREDS: model.value_function().cpu().numpy()}
 
 
@@ -69,7 +65,7 @@ def torch_optimizer(policy, config):
     return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
 
 
-class ValueNetworkMixin(object):
+class ValueNetworkMixin:
     def _value(self, obs):
         obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
         _ = self.model({"obs": obs}, [], [1])

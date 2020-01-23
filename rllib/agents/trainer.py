@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from datetime import datetime
 import copy
 import logging
@@ -150,6 +146,13 @@ COMMON_CONFIG = {
     # Log system resource metrics to results. This requires `psutil` to be
     # installed for sys stats, and `gputil` for GPU metrics.
     "log_sys_usage": True,
+
+    # === Framework Settings ===
+    # Use PyTorch (instead of tf). If using `rllib train`, this can also be
+    # enabled with the `--torch` flag.
+    # NOTE: Some agents may not support `torch` yet and throw an error.
+    "use_pytorch": False,
+
     # Enable TF eager execution (TF policies only). If using `rllib train`,
     # this can also be enabled with the `--eager` flag.
     "eager": False,
@@ -158,7 +161,7 @@ COMMON_CONFIG = {
     # after the initial eager pass.
     "eager_tracing": False,
     # Disable eager execution on workers (but allow it on the driver). This
-    # only has an effect is eager is enabled.
+    # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
 
     # === Evaluation Settings ===

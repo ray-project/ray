@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import json
 import numpy as np
@@ -96,7 +92,7 @@ def test_actor_eviction(ray_start_object_store_memory):
     object_store_memory = ray_start_object_store_memory
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
@@ -134,7 +130,7 @@ def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
 
     @ray.remote(max_reconstructions=1)
-    class ReconstructableActor(object):
+    class ReconstructableActor:
         """An actor that will be reconstructed at most once."""
 
         def __init__(self):
@@ -183,7 +179,7 @@ def test_actor_reconstruction_without_task(ray_start_regular):
     """Test a dead actor can be reconstructed without sending task to it."""
 
     @ray.remote(max_reconstructions=1)
-    class ReconstructableActor(object):
+    class ReconstructableActor:
         def __init__(self, obj_ids):
             for obj_id in obj_ids:
                 # Every time the actor gets constructed,
@@ -231,7 +227,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
         cluster.remove_node(node_to_remove)
 
     @ray.remote(max_reconstructions=max_reconstructions, resources={"a": 1})
-    class MyActor(object):
+    class MyActor:
         def __init__(self):
             self.value = 0
 
@@ -296,7 +292,7 @@ def test_multiple_actor_reconstruction(ray_start_cluster_head):
     ]
 
     @ray.remote(max_reconstructions=ray.ray_constants.INFINITE_RECONSTRUCTION)
-    class SlowCounter(object):
+    class SlowCounter:
         def __init__(self):
             self.x = 0
 
@@ -636,7 +632,7 @@ def test_decorated_method(ray_start_regular):
         return new_f_execution
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         @method_execution_decorator
         def decorated_method(self, x):
             return x + 1
@@ -663,7 +659,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     cluster = ray_start_cluster
 
     @ray.remote(num_cpus=1)
-    class Actor(object):
+    class Actor:
         def __init__(self):
             pass
 
@@ -707,7 +703,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     ray.experimental.set_resource(head_node_resource, 1)
 
     @ray.remote(num_cpus=0, resources={head_node_resource: 1})
-    class ParentActor(object):
+    class ParentActor:
         def __init__(self, ping_ids):
             self.unready = ping_ids
 

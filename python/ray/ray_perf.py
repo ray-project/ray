@@ -11,7 +11,7 @@ filter_pattern = os.environ.get("TESTS_TO_RUN", "")
 
 
 @ray.remote(num_cpus=0)
-class Actor(object):
+class Actor:
     def small_value(self):
         return b"ok"
 
@@ -23,7 +23,7 @@ class Actor(object):
 
 
 @ray.remote(num_cpus=0)
-class Client(object):
+class Client:
     def __init__(self, servers):
         if not isinstance(servers, list):
             servers = [servers]

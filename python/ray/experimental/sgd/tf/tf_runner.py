@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import json
 import os
@@ -20,7 +16,7 @@ def _try_import_strategy():
     return tf.distribute.experimental.MultiWorkerMirroredStrategy
 
 
-class TFRunner(object):
+class TFRunner:
     """Manages a TensorFlow model for training."""
 
     def __init__(self, model_creator, data_creator, config=None,

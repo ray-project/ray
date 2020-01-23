@@ -494,10 +494,6 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
                                           int64_t timeout_ms,
                                           uint64_t num_required_objects, bool wait_local,
                                           const WaitCallback &callback) {
-  if (wait_local) {
-    return ray::Status::NotImplemented("Wait for local objects is not yet implemented.");
-  }
-
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
   RAY_CHECK(num_required_objects <= object_ids.size())
@@ -512,6 +508,7 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
   wait_state.object_id_order = object_ids;
   wait_state.timeout_ms = timeout_ms;
   wait_state.num_required_objects = num_required_objects;
+  wait_state.wait_local = wait_local;
   for (const auto &object_id : object_ids) {
     if (local_objects_.count(object_id) > 0) {
       wait_state.found.insert(object_id);
@@ -541,7 +538,10 @@ ray::Status ObjectManager::LookupRemainingWaitObjects(const UniqueID &wait_id) {
           object_id, [this, wait_id](const ObjectID &lookup_object_id,
                                      const std::unordered_set<ClientID> &client_ids) {
             auto &wait_state = active_wait_requests_.find(wait_id)->second;
-            if (!client_ids.empty()) {
+            // Note that the object is guaranteed to be added to local_objects_ before
+            // the notification is triggered.
+            if (local_objects_.count(lookup_object_id) > 0 ||
+                (!wait_state.wait_local && !client_ids.empty())) {
               wait_state.remaining.erase(lookup_object_id);
               wait_state.found.insert(lookup_object_id);
             }
@@ -578,19 +578,22 @@ void ObjectManager::SubscribeRemainingWaitObjects(const UniqueID &wait_id) {
           wait_id, object_id,
           [this, wait_id](const ObjectID &subscribe_object_id,
                           const std::unordered_set<ClientID> &client_ids) {
-            if (!client_ids.empty()) {
+            auto object_id_wait_state = active_wait_requests_.find(wait_id);
+            if (object_id_wait_state == active_wait_requests_.end()) {
+              // Depending on the timing of calls to the object directory, we
+              // may get a subscription notification after the wait call has
+              // already completed. If so, then don't process the
+              // notification.
+              return;
+            }
+            auto &wait_state = object_id_wait_state->second;
+            // Note that the object is guaranteed to be added to local_objects_ before
+            // the notification is triggered.
+            if (local_objects_.count(subscribe_object_id) > 0 ||
+                (!wait_state.wait_local && !client_ids.empty())) {
               RAY_LOG(DEBUG) << "Wait request " << wait_id
                              << ": subscription notification received for object "
                              << subscribe_object_id;
-              auto object_id_wait_state = active_wait_requests_.find(wait_id);
-              if (object_id_wait_state == active_wait_requests_.end()) {
-                // Depending on the timing of calls to the object directory, we
-                // may get a subscription notification after the wait call has
-                // already completed. If so, then don't process the
-                // notification.
-                return;
-              }
-              auto &wait_state = object_id_wait_state->second;
               wait_state.remaining.erase(subscribe_object_id);
               wait_state.found.insert(subscribe_object_id);
               wait_state.requested_objects.erase(subscribe_object_id);
@@ -662,9 +665,8 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 }
 
 /// Implementation of ObjectManagerServiceHandler
-void ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
-                                      rpc::PushReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
+void ObjectManager::HandlePush(const rpc::PushRequest &request, rpc::PushReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
 
@@ -709,9 +711,8 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
   return status;
 }
 
-void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
-                                      rpc::PullReply *reply,
-                                      rpc::SendReplyCallback send_reply_callback) {
+void ObjectManager::HandlePull(const rpc::PullRequest &request, rpc::PullReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
   RAY_LOG(DEBUG) << "Received pull request from client " << client_id << " for object ["
@@ -732,9 +733,9 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void ObjectManager::HandleFreeObjectsRequest(const rpc::FreeObjectsRequest &request,
-                                             rpc::FreeObjectsReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
+void ObjectManager::HandleFreeObjects(const rpc::FreeObjectsRequest &request,
+                                      rpc::FreeObjectsReply *reply,
+                                      rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
   for (const auto &e : request.object_ids()) {
     object_ids.emplace_back(ObjectID::FromBinary(e));
@@ -803,15 +804,15 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
   return it->second;
 }
 
-rpc::ProfileTableData ObjectManager::GetAndResetProfilingInfo() {
-  rpc::ProfileTableData profile_info;
-  profile_info.set_component_type("object_manager");
-  profile_info.set_component_id(self_node_id_.Binary());
+std::shared_ptr<rpc::ProfileTableData> ObjectManager::GetAndResetProfilingInfo() {
+  auto profile_info = std::make_shared<rpc::ProfileTableData>();
+  profile_info->set_component_type("object_manager");
+  profile_info->set_component_id(self_node_id_.Binary());
 
   {
     std::lock_guard<std::mutex> lock(profile_mutex_);
     for (auto const &profile_event : profile_events_) {
-      profile_info.add_profile_events()->CopyFrom(profile_event);
+      profile_info->add_profile_events()->CopyFrom(profile_event);
     }
     profile_events_.clear();
   }
@@ -834,6 +835,13 @@ std::string ObjectManager::DebugString() const {
 }
 
 void ObjectManager::RecordMetrics() const {
+  int64_t used_memory = 0;
+  for (const auto &it : local_objects_) {
+    object_manager::protocol::ObjectInfoT object_info = it.second.object_info;
+    used_memory += object_info.data_size + object_info.metadata_size;
+  }
+  stats::ObjectManagerStats().Record(used_memory,
+                                     {{stats::ValueTypeKey, "used_object_store_memory"}});
   stats::ObjectManagerStats().Record(local_objects_.size(),
                                      {{stats::ValueTypeKey, "num_local_objects"}});
   stats::ObjectManagerStats().Record(active_wait_requests_.size(),

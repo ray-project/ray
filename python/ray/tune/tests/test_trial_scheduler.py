@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import json
 import random
@@ -10,8 +6,9 @@ import numpy as np
 import sys
 import tempfile
 import shutil
-import ray
+from unittest.mock import MagicMock
 
+import ray
 from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
@@ -24,11 +21,6 @@ from ray.tune.resources import Resources
 
 from ray.rllib import _register_all
 _register_all()
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
-else:
-    from mock import MagicMock
 
 
 def result(t, rew):
@@ -207,8 +199,8 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None):
         pass
 
-    def save(self, trial, type=Checkpoint.DISK, result=None):
-        return trial.trainable_name
+    def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
+        return Checkpoint(Checkpoint.PERSISTENT, trial.trainable_name, result)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -1195,5 +1187,4 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

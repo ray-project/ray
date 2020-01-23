@@ -1,13 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from contextlib import contextmanager
 import colorama
 import atexit
 import faulthandler
 import hashlib
 import inspect
+import io
 import json
 import logging
 import os
@@ -61,8 +58,6 @@ LOCAL_MODE = 2
 
 ERROR_KEY_PREFIX = b"Error:"
 
-PY3 = sys.version_info.major >= 3
-
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -74,7 +69,7 @@ except ImportError:
     setproctitle = None
 
 
-class ActorCheckpointInfo(object):
+class ActorCheckpointInfo:
     """Information used to maintain actor checkpoints."""
 
     __slots__ = [
@@ -93,7 +88,7 @@ class ActorCheckpointInfo(object):
         self.checkpoint_ids = checkpoint_ids
 
 
-class Worker(object):
+class Worker:
     """A class used to define the control flow of a worker process.
 
     Note:
@@ -244,7 +239,7 @@ class Worker(object):
         """
         self.mode = mode
 
-    def put_object(self, value, object_id=None):
+    def put_object(self, value, object_id=None, pin_object=True):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -258,6 +253,7 @@ class Worker(object):
             value: The value to put in the object store.
             object_id (object_id.ObjectID): The object ID of the value to be
                 put. If None, one will be generated.
+            pin_object: If set, the object will be pinned at the raylet.
 
         Returns:
             object_id.ObjectID: The object ID the object was put under.
@@ -278,7 +274,7 @@ class Worker(object):
 
         serialized_value = self.get_serialization_context().serialize(value)
         return self.core_worker.put_serialized_object(
-            serialized_value, object_id=object_id)
+            serialized_value, object_id=object_id, pin_object=pin_object)
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -547,8 +543,8 @@ def init(address=None,
          redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=False,
-         webui_host="127.0.0.1",
+         include_webui=None,
+         webui_host="localhost",
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -627,10 +623,12 @@ def init(address=None,
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
-            UI, which displays the status of the Ray cluster.
+            UI, which displays the status of the Ray cluster. If this argument
+            is None, then the UI will be started if the relevant dependencies
+            are present.
         webui_host: The host to bind the web UI server to. Can either be
-            127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to 127.0.0.1 to prevent access from
+            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to localhost to prevent access from
             external machines.
         job_id: The ID of this job.
         configure_logging: True if allow the logging cofiguration here.
@@ -658,6 +656,10 @@ def init(address=None,
             arguments is passed in.
     """
 
+    if redis_address is not None:
+        raise DeprecationWarning("The redis_address argument is deprecated. "
+                                 "Please use address instead.")
+
     if redis_address is not None or address is not None:
         redis_address, _, _ = services.validate_redis_address(
             address, redis_address)
@@ -669,6 +671,11 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
+
+    if "OMP_NUM_THREADS" in os.environ:
+        logger.warning("OMP_NUM_THREADS={} is set, this may impact "
+                       "object transfer performance.".format(
+                           os.environ["OMP_NUM_THREADS"]))
 
     if setproctitle is None:
         logger.warning(
@@ -1098,8 +1105,11 @@ def connect(node,
     assert worker.cached_functions_to_run is not None, error_message
 
     # Enable nice stack traces on SIGSEGV etc.
-    if not faulthandler.is_enabled():
-        faulthandler.enable(all_threads=False)
+    try:
+        if not faulthandler.is_enabled():
+            faulthandler.enable(all_threads=False)
+    except io.UnsupportedOperation:
+        pass  # ignore
 
     ray._raylet.set_internal_config(internal_config)
 
@@ -1454,7 +1464,7 @@ def get(object_ids, timeout=None):
     worker = global_worker
     worker.check_connected()
 
-    if PY3 and hasattr(
+    if hasattr(
             worker,
             "core_worker") and worker.core_worker.current_actor_is_asyncio():
         raise RayError("Using blocking ray.get inside async actor. "
@@ -1515,7 +1525,7 @@ def put(value, weakref=False):
             object_id = worker.local_mode_manager.put_object(value)
         else:
             try:
-                object_id = worker.put_object(value)
+                object_id = worker.put_object(value, pin_object=not weakref)
             except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
@@ -1524,16 +1534,6 @@ def put(value, weakref=False):
                     "ray.put(value, weakref=True) to allow object data to "
                     "be evicted early.")
                 raise
-        # Pin the object buffer with the returned id. This avoids put returns
-        # from getting evicted out from under the id.
-        # TODO(edoakes): we should be able to avoid this extra IPC by holding
-        # a reference to the buffer created when putting the object, but the
-        # buffer returned by the plasma store create method doesn't prevent
-        # the object from being evicted.
-        if not weakref and not worker.mode == LOCAL_MODE:
-            object_id.set_buffer_ref(
-                worker.core_worker.get_objects([object_id],
-                                               worker.current_task_id))
         return object_id
 
 
@@ -1573,9 +1573,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     """
     worker = global_worker
 
-    if PY3 and hasattr(
-            worker,
-            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+    if hasattr(worker,
+               "core_worker") and worker.core_worker.current_actor_is_asyncio(
+               ) and timeout != 0:
         raise RayError("Using blocking ray.wait inside async method. "
                        "This blocks the event loop. Please use `await` "
                        "on object id with asyncio.wait. ")
@@ -1707,7 +1707,7 @@ def remote(*args, **kwargs):
             return 1
 
         @ray.remote
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
 
@@ -1732,7 +1732,12 @@ def remote(*args, **kwargs):
       number of times that the actor should be reconstructed when it dies
       unexpectedly. The minimum valid value is 0 (default), which indicates
       that the actor doesn't need to be reconstructed. And the maximum valid
-      value is ray.ray_constants.INFINITE_RECONSTRUCTIONS.
+      value is ray.ray_constants.INFINITE_RECONSTRUCTION.
+    * **max_retries**: Only for *remote functions*. This specifies the maximum
+      number of times that the remote function should be rerun when the worker
+      process executing it crashes unexpectedly. The minimum valid value is 0,
+      the default is 4 (default), and the maximum valid value is
+      ray.ray_constants.INFINITE_RECONSTRUCTION.
 
     This can be done as follows:
 
@@ -1743,7 +1748,7 @@ def remote(*args, **kwargs):
             return 1, 2
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
 
@@ -1759,7 +1764,7 @@ def remote(*args, **kwargs):
         g = f.options(num_gpus=2, max_calls=None)
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo(object):
+        class Foo:
             def method(self):
                 return 1
         Bar = Foo.options(num_cpus=1, resources=None)

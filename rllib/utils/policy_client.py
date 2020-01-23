@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import pickle
 
@@ -19,7 +15,7 @@ except ImportError:
 
 
 @PublicAPI
-class PolicyClient(object):
+class PolicyClient:
     """REST client to interact with a RLlib policy server."""
 
     START_EPISODE = "START_EPISODE"

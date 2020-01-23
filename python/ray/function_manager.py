@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import dis
 import hashlib
 import importlib
@@ -25,6 +21,7 @@ from ray.utils import (
     binary_to_hex,
     is_function_or_method,
     is_class_method,
+    is_static_method,
     check_oversized_pickle,
     decode,
     ensure_str,
@@ -39,7 +36,7 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 logger = logging.getLogger(__name__)
 
 
-class FunctionDescriptor(object):
+class FunctionDescriptor:
     """A class used to describe a python function.
 
     Attributes:
@@ -259,7 +256,7 @@ class FunctionDescriptor(object):
         return len(self._class_name) > 0
 
 
-class FunctionActorManager(object):
+class FunctionActorManager:
     """A class used to export/load remote functions and actors.
 
     Attributes:
@@ -326,17 +323,14 @@ class FunctionActorManager(object):
                 unnecessarily or fail to give warnings, but the application's
                 behavior won't change.
         """
-        if sys.version_info[0] >= 3:
-            import io
-            string_file = io.StringIO()
-            if sys.version_info[1] >= 7:
-                dis.dis(function_or_class, file=string_file, depth=2)
-            else:
-                dis.dis(function_or_class, file=string_file)
-            collision_identifier = (
-                function_or_class.__name__ + ":" + string_file.getvalue())
+        import io
+        string_file = io.StringIO()
+        if sys.version_info[1] >= 7:
+            dis.dis(function_or_class, file=string_file, depth=2)
         else:
-            collision_identifier = function_or_class.__name__
+            dis.dis(function_or_class, file=string_file)
+        collision_identifier = (
+            function_or_class.__name__ + ":" + string_file.getvalue())
 
         # Return a hash of the identifier in case it is too large.
         return hashlib.sha1(collision_identifier.encode("ascii")).digest()
@@ -661,7 +655,7 @@ class FunctionActorManager(object):
                     class_name))
 
     def _create_fake_actor_class(self, actor_class_name, actor_method_names):
-        class TemporaryActor(object):
+        class TemporaryActor:
             pass
 
         def temporary_actor_method(*args, **kwargs):
@@ -760,7 +754,9 @@ class FunctionActorManager(object):
 
             # Execute the assigned method and save a checkpoint if necessary.
             try:
-                if is_class_method(method):
+                is_bound = (is_class_method(method)
+                            or is_static_method(type(actor), method_name))
+                if is_bound:
                     method_returns = method(*args, **kwargs)
                 else:
                     method_returns = method(actor, *args, **kwargs)

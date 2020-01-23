@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import scipy.signal
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -12,7 +8,7 @@ def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 
-class Postprocessing(object):
+class Postprocessing:
     """Constant definitions for postprocessing."""
 
     ADVANTAGES = "advantages"
@@ -21,7 +17,8 @@ class Postprocessing(object):
 
 @DeveloperAPI
 def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
-    """Given a rollout, compute its value targets and the advantage.
+    """
+    Given a rollout, compute its value targets and the advantage.
 
     Args:
         rollout (SampleBatch): SampleBatch of a single trajectory
@@ -47,7 +44,7 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
              np.array([last_r])])
         delta_t = (
             traj[SampleBatch.REWARDS] + gamma * vpred_t[1:] - vpred_t[:-1])
-        # This formula for the advantage comes
+        # This formula for the advantage comes from:
         # "Generalized Advantage Estimation": https://arxiv.org/abs/1506.02438
         traj[Postprocessing.ADVANTAGES] = discount(delta_t, gamma * lambda_)
         traj[Postprocessing.VALUE_TARGETS] = (

@@ -1,9 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
-import sys
 
 # Note: do not introduce unnecessary library dependencies here, e.g. gym.
 # This file is imported from the tune module in order to register RLlib agents.
@@ -30,11 +25,6 @@ def _setup_logger():
         ))
     logger.addHandler(handler)
     logger.propagate = False
-
-    if sys.version_info[0] < 3:
-        logger.warning(
-            "RLlib Python 2 support is deprecated, and will be removed "
-            "in a future release.")
 
 
 def _register_all():

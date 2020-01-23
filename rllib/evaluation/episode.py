@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 import random
 
@@ -12,7 +8,7 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-class MultiAgentEpisode(object):
+class MultiAgentEpisode:
     """Tracks the current state of a (possibly multi-agent) episode.
 
     Attributes:

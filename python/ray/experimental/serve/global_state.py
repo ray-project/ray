@@ -43,8 +43,14 @@ class ActorNursery:
         self.actor_handles[handle] = tag
         return [handle]
 
-    def start_actor_with_creator(self, creator, tag):
-        handle = creator()
+    def start_actor_with_creator(self, creator, kwargs, tag):
+        """
+        Args:
+            creator (Callable[Dict]): a closure that should return
+                a newly created actor handle when called with kwargs.
+                The kwargs input is passed to `ActorCls_remote` method.
+        """
+        handle = creator(kwargs)
         self.actor_handles[handle] = tag
         return [handle]
 

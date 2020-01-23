@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os
 import torch
@@ -49,6 +45,7 @@ def data_creator(batch_size, config):
         ]))
 
     # Create the dataloader
+    train_sampler = None
     if distributed.is_initialized():
         train_sampler = DistributedSampler(dataset)
     dataloader = torch.utils.data.DataLoader(
@@ -242,8 +239,8 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
         backend="nccl" if use_gpu else "gloo")
-    for i in range(5):
-        stats = trainer.train()
+    for i in range(10):
+        stats = trainer.train(max_retries=3)
         print(stats)
 
     return trainer

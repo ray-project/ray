@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import logging
 import numpy as np
@@ -21,7 +17,7 @@ def to_float_array(v):
 
 
 @PublicAPI
-class SampleBatchBuilder(object):
+class SampleBatchBuilder:
     """Util to build a SampleBatch incrementally.
 
     For efficiency, SampleBatches hold values in column form (as arrays).
@@ -66,7 +62,7 @@ class SampleBatchBuilder(object):
 
 
 @DeveloperAPI
-class MultiAgentSampleBatchBuilder(object):
+class MultiAgentSampleBatchBuilder:
     """Util to build SampleBatches for each policy in a multi-agent env.
 
     Input data is per-agent, while output data is per-policy. There is an M:N
