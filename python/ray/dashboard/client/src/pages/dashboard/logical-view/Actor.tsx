@@ -1,11 +1,16 @@
-import Typography from "@material-ui/core/Typography";
+import Collapse from "@material-ui/core/Collapse";
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import Typography from "@material-ui/core/Typography";
 import React from "react";
-import { RayletInfoResponse } from "../../../api";
+import {
+  checkProfilingStatus,
+  CheckProfilingStatusResponse,
+  launchProfiling,
+  RayletInfoResponse
+} from "../../../api";
 import Actors from "./Actors";
-import Collapse from "@material-ui/core/Collapse";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -34,7 +39,7 @@ const styles = (theme: Theme) =>
     webuiDisplay: {
       fontSize: "0.875rem"
     },
-    expandCollapseButton: {
+    action: {
       color: theme.palette.primary.main,
       "&:hover": {
         cursor: "pointer"
@@ -48,71 +53,92 @@ interface Props {
 
 interface State {
   expanded: boolean;
+  profiling: { [profilingId: string]: CheckProfilingStatusResponse | null };
 }
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
-    expanded: true
+    expanded: true,
+    profiling: {}
   };
 
   setExpanded = (expanded: boolean) => () => {
     this.setState({ expanded });
   };
 
+  handleProfilingClick = async () => {
+    const actor = this.props.actor;
+    if (actor.state !== -1) {
+      const duration = 10;
+      const profilingId = await launchProfiling(
+        actor.nodeId,
+        actor.pid,
+        duration
+      );
+      console.log("profilingId", profilingId);
+      this.setState(state => ({
+        profiling: { ...state.profiling, [profilingId]: null }
+      }));
+      const checkProfilingStatusLoop = async () => {
+        const response = await checkProfilingStatus(profilingId);
+        this.setState(state => ({
+          profiling: { ...state.profiling, [profilingId]: response }
+        }));
+        if (response.status === "pending") {
+          setTimeout(checkProfilingStatusLoop, 1000);
+        }
+      };
+      await checkProfilingStatusLoop();
+    }
+  };
+
   render() {
     const { classes, actor } = this.props;
-    const { expanded } = this.state;
+    const { expanded, profiling } = this.state;
 
     const information =
       actor.state !== -1
         ? [
             {
               label: "ActorTitle",
-              value:
-                actor.actorTitle
+              value: actor.actorTitle
             },
             {
               label: "State",
-              value:
-                actor.state.toLocaleString()
+              value: actor.state.toLocaleString()
             },
             {
               label: "Resources",
               value:
                 Object.entries(actor.usedResources).length > 0 &&
                 Object.entries(actor.usedResources)
+                  .sort((a, b) => a[0].localeCompare(b[0]))
                   .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                   .join(", ")
             },
             {
               label: "Pending",
-              value:
-                actor.taskQueueLength.toLocaleString()
+              value: actor.taskQueueLength.toLocaleString()
             },
             {
               label: "Executed",
-              value:
-                actor.numExecutedTasks.toLocaleString()
+              value: actor.numExecutedTasks.toLocaleString()
             },
             {
               label: "NumObjectIdsInScope",
-              value:
-                actor.numObjectIdsInScope.toLocaleString()
+              value: actor.numObjectIdsInScope.toLocaleString()
             },
             {
               label: "NumLocalObjects",
-              value:
-                actor.numLocalObjects.toLocaleString()
+              value: actor.numLocalObjects.toLocaleString()
             },
             {
               label: "UsedLocalObjectMemory",
-              value:
-                actor.usedObjectStoreMemory.toLocaleString()
+              value: actor.usedObjectStoreMemory.toLocaleString()
             },
             {
               label: "Task",
-              value:
-                actor.currentTaskFuncDesc.join(".")
+              value: actor.currentTaskFuncDesc.join(".")
             }
           ]
         : [
@@ -125,6 +151,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               value:
                 Object.entries(actor.requiredResources).length > 0 &&
                 Object.entries(actor.requiredResources)
+                  .sort((a, b) => a[0].localeCompare(b[0]))
                   .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                   .join(", ")
             }
@@ -140,13 +167,43 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 <React.Fragment>
                   (
                   <span
-                    className={classes.expandCollapseButton}
+                    className={classes.action}
                     onClick={this.setExpanded(!expanded)}
                   >
                     {expanded ? "Collapse" : "Expand"}
                   </span>
                   )
                 </React.Fragment>
+              )}{" "}
+              (
+              <span
+                className={classes.action}
+                onClick={this.handleProfilingClick}
+              >
+                Profile
+              </span>
+              )
+              {Object.entries(profiling).map(
+                ([profilingId, profilingStatus]) =>
+                  profilingStatus !== null && (
+                    <React.Fragment>
+                      ({profilingId}:{" "}
+                      {profilingStatus.status === "finished" ? (
+                        <a
+                          href={`${
+                            window.origin
+                          }/speedscope/index.html#profileURL=${encodeURIComponent(
+                            `${window.origin}/api/get_profiling_info?profiling_id=${profilingId}`
+                          )}`}
+                        >
+                          {profilingStatus.status}
+                        </a>
+                      ) : (
+                        profilingStatus.status
+                      )}
+                      ){" "}
+                    </React.Fragment>
+                  )
               )}
             </React.Fragment>
           ) : (
