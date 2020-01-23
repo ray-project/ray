@@ -190,7 +190,7 @@ def test_raylet_info_endpoint(shutdown_only):
             "node_id": ray.nodes()[0]["NodeID"],
             "pid": actor_pid,
             "duration": 5
-        }).json()
+        }).json()["result"]
     start_time = time.time()
     while True:
         time.sleep(1)
@@ -200,7 +200,8 @@ def test_raylet_info_endpoint(shutdown_only):
                 params={
                     "profiling_id": profiling_id,
                 }).json()
-            assert profiling_info["status"] in ("finished", "pending", "error")
+            status = profiling_info["result"]["status"]
+            assert status in ("finished", "pending", "error")
             break
         except AssertionError:
             if time.time() - start_time + 10:
