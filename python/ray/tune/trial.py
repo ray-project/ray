@@ -201,11 +201,11 @@ class Trial:
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.sync_on_checkpoint = sync_on_checkpoint
-        newest_checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
             checkpoint_deleter(str(self), self.runner))
-        self.checkpoint_manager.newest_checkpoint = newest_checkpoint
+        checkpoint = Checkpoint(Checkpoint.PERSISTENT, restore_path)
+        self.checkpoint_manager.newest_persistent_checkpoint = checkpoint
 
         # Restoration fields
         self.restoring_from = None
@@ -235,7 +235,16 @@ class Trial:
 
     @property
     def checkpoint(self):
-        return self.checkpoint_manager.newest_checkpoint
+        """Returns the most recent checkpoint.
+
+        If the trial is PAUSED, this is the most recent MEMORY checkpoint.
+        Otherwise, it is the most recent PERSISTENT checkpoint.
+        """
+        if self.status == Trial.PAUSED:
+            assert self.checkpoint_manager.newest_memory_checkpoint.value
+            return self.checkpoint_manager.newest_memory_checkpoint
+        else:
+            return self.checkpoint_manager.newest_persistent_checkpoint
 
     @classmethod
     def generate_id(cls):
@@ -358,7 +367,6 @@ class Trial:
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
-            # TODO(ujvl): Handle this separately to avoid restoration failure.
             self.checkpoint_manager.on_checkpoint(checkpoint)
             return
         if self.sync_on_checkpoint:
@@ -371,7 +379,7 @@ class Trial:
                 # checkpoint, so it should just be logged.
                 logger.error(
                     "Trial %s: An error occurred during the "
-                    "checkpoint pre-sync wait.", str(e))
+                    "checkpoint pre-sync wait - %s", self, str(e))
             # Force sync down and wait before tracking the new checkpoint.
             try:
                 if self.result_logger.sync_down():

@@ -5,6 +5,9 @@ import os
 import traceback
 import time
 import datetime
+import grpc
+import subprocess
+from concurrent import futures
 
 try:
     import psutil
@@ -16,11 +19,38 @@ except ImportError:
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
+from ray.core.generated import reporter_pb2
+from ray.core.generated import reporter_pb2_grpc
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+
+class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
+    def __init__(self):
+        pass
+
+    def GetProfilingStats(self, request, context):
+        pid = request.pid
+        duration = request.duration
+        profiling_file_path = os.path.join("/tmp/ray/",
+                                           "{}_profiling.txt".format(pid))
+        process = subprocess.Popen(
+            "sudo $(which py-spy) record -o {} -p {} -d {} -f speedscope"
+            .format(profiling_file_path, pid, duration),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=True)
+        stdout, stderr = process.communicate()
+        if process.returncode != 0:
+            profiling_stats = ""
+        else:
+            with open(profiling_file_path, "r") as f:
+                profiling_stats = f.read()
+        return reporter_pb2.GetProfilingStatsReply(
+            profiling_stats=profiling_stats, stdout=stdout, stderr=stderr)
 
 
 def recursive_asdict(o):
@@ -157,6 +187,14 @@ class Reporter:
         )
 
     def run(self):
+        """Publish the port."""
+        thread_pool = futures.ThreadPoolExecutor(max_workers=10)
+        server = grpc.server(thread_pool, options=(("grpc.so_reuseport", 0), ))
+        reporter_pb2_grpc.add_ReporterServiceServicer_to_server(
+            ReporterServer(), server)
+        port = server.add_insecure_port("[::]:0")
+        server.start()
+        self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
         """Run the reporter."""
         while True:
             try:
