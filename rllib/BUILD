@@ -48,6 +48,7 @@ py_test(
 
 py_binary(
     name = "test_env_with_subprocess",
-    srcs = "tests/test_env_with_subprocess.py"
+    main = "tests/test_env_with_subprocess.py",
+    srcs = ["tests/test_env_with_subprocess.py"]
 
 )
