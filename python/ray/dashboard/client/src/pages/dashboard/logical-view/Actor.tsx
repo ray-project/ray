@@ -25,6 +25,13 @@ const styles = (theme: Theme) =>
       color: theme.palette.text.secondary,
       fontSize: "0.75rem"
     },
+    action: {
+      color: theme.palette.primary.main,
+      textDecoration: "none",
+      "&:hover": {
+        cursor: "pointer"
+      }
+    },
     infeasible: {
       color: theme.palette.error.main
     },
@@ -38,12 +45,6 @@ const styles = (theme: Theme) =>
     },
     webuiDisplay: {
       fontSize: "0.875rem"
-    },
-    action: {
-      color: theme.palette.primary.main,
-      "&:hover": {
-        cursor: "pointer"
-      }
     }
   });
 
@@ -53,7 +54,12 @@ interface Props {
 
 interface State {
   expanded: boolean;
-  profiling: { [profilingId: string]: CheckProfilingStatusResponse | null };
+  profiling: {
+    [profilingId: string]: {
+      startTime: number;
+      latestResponse: CheckProfilingStatusResponse | null;
+    };
+  };
 }
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
@@ -66,22 +72,30 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     this.setState({ expanded });
   };
 
-  handleProfilingClick = async () => {
+  handleProfilingClick = (duration: number) => async () => {
     const actor = this.props.actor;
     if (actor.state !== -1) {
-      const duration = 10;
       const profilingId = await launchProfiling(
         actor.nodeId,
         actor.pid,
         duration
       );
       this.setState(state => ({
-        profiling: { ...state.profiling, [profilingId]: null }
+        profiling: {
+          ...state.profiling,
+          [profilingId]: { startTime: Date.now(), latestResponse: null }
+        }
       }));
       const checkProfilingStatusLoop = async () => {
         const response = await checkProfilingStatus(profilingId);
         this.setState(state => ({
-          profiling: { ...state.profiling, [profilingId]: response }
+          profiling: {
+            ...state.profiling,
+            [profilingId]: {
+              ...state.profiling[profilingId],
+              latestResponse: response
+            }
+          }
         }));
         if (response.status === "pending") {
           setTimeout(checkProfilingStatusLoop, 1000);
@@ -174,21 +188,31 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                   )
                 </React.Fragment>
               )}{" "}
-              (
-              <span
-                className={classes.action}
-                onClick={this.handleProfilingClick}
-              >
-                Profile
-              </span>
+              (Profile for
+              {[10, 30, 60].map(duration => (
+                <React.Fragment>
+                  {" "}
+                  <span
+                    className={classes.action}
+                    onClick={this.handleProfilingClick(duration)}
+                  >
+                    {duration}s
+                  </span>
+                </React.Fragment>
+              ))}
               ){" "}
               {Object.entries(profiling).map(
-                ([profilingId, profilingStatus]) =>
-                  profilingStatus !== null && (
+                ([profilingId, { startTime, latestResponse }]) =>
+                  latestResponse !== null && (
                     <React.Fragment>
-                      ({profilingId}:{" "}
-                      {profilingStatus.status === "finished" ? (
+                      (
+                      {latestResponse.status === "pending" ? (
+                        `Profiling for ${Math.round(
+                          (Date.now() - startTime) / 1000
+                        )}s...`
+                      ) : latestResponse.status === "finished" ? (
                         <a
+                          className={classes.action}
                           href={`${
                             window.origin
                           }/speedscope/index.html#profileURL=${encodeURIComponent(
@@ -197,12 +221,12 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                           rel="noopener noreferrer"
                           target="_blank"
                         >
-                          {profilingStatus.status}
+                          Profiling result
                         </a>
-                      ) : profilingStatus.status === "error" ? (
-                        profilingStatus.error.trim()
+                      ) : latestResponse.status === "error" ? (
+                        `Profiling error: ${latestResponse.error.trim()}`
                       ) : (
-                        profilingStatus.status
+                        undefined
                       )}
                       ){" "}
                     </React.Fragment>
