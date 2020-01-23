@@ -660,6 +660,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
 
+  /// Number of executed tasks.
+  std::atomic<int64_t> num_executed_tasks_;
+
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
 

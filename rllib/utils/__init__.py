@@ -1,3 +1,5 @@
+from functools import partial
+
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
     try_import_torch
@@ -28,11 +30,37 @@ def add_mixins(base, mixins):
     return base
 
 
+def force_list(elements=None, to_tuple=False):
+    """
+    Makes sure `elements` is returned as a list, whether `elements` is a single
+    item, already a list, or a tuple.
+
+    Args:
+        elements (Optional[any]): The inputs as single item, list, or tuple to
+            be converted into a list/tuple. If None, returns empty list/tuple.
+        to_tuple (bool): Whether to use tuple (instead of list).
+
+    Returns:
+        Union[list,tuple]: All given elements in a list/tuple depending on
+            `to_tuple`'s value. If elements is None,
+            returns an empty list/tuple.
+    """
+    ctor = list
+    if to_tuple is True:
+        ctor = tuple
+    return ctor() if elements is None else ctor(elements) \
+        if type(elements) in [list, tuple] else ctor([elements])
+
+
+force_tuple = partial(force_list, to_tuple=True)
+
 __all__ = [
     "add_mixins",
     "check",
     "deprecation_warning",
     "fc",
+    "force_list",
+    "force_tuple",
     "lstm",
     "one_hot",
     "relu",

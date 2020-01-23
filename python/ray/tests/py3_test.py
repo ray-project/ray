@@ -247,3 +247,23 @@ async def test_asyncio_get(ray_start_regular_shared, event_loop):
 
     with pytest.raises(ray.exceptions.RayTaskError):
         await ray.async_compat.get_async(direct.throw_error.remote())
+
+
+def test_asyncio_actor_async_get(ray_start_regular_shared):
+    @ray.remote
+    def remote_task():
+        return 1
+
+    plasma_object = ray.put(2)
+
+    @ray.remote
+    class AsyncGetter:
+        async def get(self):
+            return await remote_task.remote()
+
+        async def plasma_get(self):
+            return await plasma_object
+
+    getter = AsyncGetter.options(is_asyncio=True).remote()
+    assert ray.get(getter.get.remote()) == 1
+    assert ray.get(getter.plasma_get.remote()) == 2

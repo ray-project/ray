@@ -53,7 +53,7 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/transport/direct_actor_transport.h" nogil:
+cdef extern from "ray/core_worker/fiber.h" nogil:
     cdef cppclass CFiberEvent "ray::FiberEvent":
         CFiberEvent()
         void Wait()

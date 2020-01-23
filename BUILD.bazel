@@ -651,6 +651,17 @@ cc_test(
 )
 
 cc_test(
+    name = "url_test",
+    srcs = ["src/ray/util/url_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":raylet_lib",
+        "@boost//:asio",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
     copts = COPTS,
@@ -766,6 +777,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":sha256",
+        "@boost//:asio",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/time",
         "@plasma//:plasma_client",

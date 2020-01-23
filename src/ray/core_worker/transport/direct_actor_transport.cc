@@ -189,22 +189,7 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
 void CoreWorkerDirectTaskReceiver::SetActorAsAsync(int max_concurrency) {
   if (!is_asyncio_) {
     RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
-
-    // The main thread will be used the creating new fibers.
-    // The fiber_runner_thread_ will run all fibers.
-    // boost::fibers::algo::shared_work allows two threads to transparently
-    // share all the fibers.
-    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
-
-    fiber_runner_thread_ = std::thread([&]() {
-      boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
-
-      // The event here is used to make sure fiber_runner_thread_ never terminates.
-      // Because fiber_shutdown_event_ is never notified, fiber_runner_thread_ will
-      // immediately start working on any ready fibers.
-      fiber_shutdown_event_.Wait();
-    });
-    fiber_rate_limiter_.reset(new FiberRateLimiter(max_concurrency));
+    fiber_state_.reset(new FiberState(max_concurrency));
     max_concurrency_ = max_concurrency;
     is_asyncio_ = true;
   }
@@ -349,7 +334,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     auto result = scheduling_queue_.emplace(
         task_spec.CallerId(),
         std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
+            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_state_)));
     it = result.first;
   }
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),

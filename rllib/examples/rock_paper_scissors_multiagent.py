@@ -78,15 +78,12 @@ class RockPaperScissorsEnv(MultiAgentEnv):
 class AlwaysSameHeuristic(Policy):
     """Pick a random move and stick with it for the entire episode."""
 
-    def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
-
     def get_initial_state(self):
         return [random.choice([ROCK, PAPER, SCISSORS])]
 
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,
@@ -106,13 +103,9 @@ class AlwaysSameHeuristic(Policy):
 
 class BeatLastHeuristic(Policy):
     """Play the move that would beat the last move of the opponent."""
-
-    def __init__(self, observation_space, action_space, config):
-        Policy.__init__(self, observation_space, action_space, config)
-
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         info_batch=None,

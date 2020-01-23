@@ -168,6 +168,7 @@ def test_raylet_info_endpoint(shutdown_only):
                     "Timed out while waiting for dashboard to start.")
 
     assert parent_actor_info["usedResources"]["CPU"] == 2
+    assert parent_actor_info["numExecutedTasks"] == 3
     for _, child_actor_info in children.items():
         if child_actor_info["state"] == -1:
             assert child_actor_info["requiredResources"]["CustomResource"] == 1
