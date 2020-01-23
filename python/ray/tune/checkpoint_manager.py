@@ -45,6 +45,9 @@ class CheckpointManager:
     def __init__(self, keep_checkpoints_num, checkpoint_score_attr, delete_fn):
         """Initializes a new CheckpointManager.
 
+        `newest_persistent_checkpoint` and `newest_memory_checkpoint` are
+        initialized to Checkpoint objects with values of None.
+
         Args:
             keep_checkpoints_num (int): Keep at least this many checkpoints.
             checkpoint_score_attr (str): Attribute to use to determine which
@@ -60,28 +63,38 @@ class CheckpointManager:
             self._checkpoint_score_attr = checkpoint_score_attr[4:]
         else:
             self._checkpoint_score_attr = checkpoint_score_attr
+
         self.delete = delete_fn
-        self.newest_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
+        self.newest_persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT,
+                                                       None)
+        self.newest_memory_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
 
     def on_checkpoint(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
-        Sets newest checkpoint. Deletes previous checkpoint as long as it isn't
-        one of the best ones. Also deletes the worst checkpoint if at capacity.
+        Sets the newest checkpoint. For PERSISTENT checkpoints: Deletes
+        previous checkpoint as long as it isn't one of the best ones. Also
+        deletes the worst checkpoint if at capacity.
 
         Args:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
-        old_checkpoint = self.newest_checkpoint
-        self.newest_checkpoint = checkpoint
+        if checkpoint.storage == Checkpoint.MEMORY:
+            self.newest_memory_checkpoint = checkpoint
+            return
+
+        old_checkpoint = self.newest_persistent_checkpoint
+        self.newest_persistent_checkpoint = checkpoint
+
+        # Remove the old checkpoint if it isn't one of the best ones.
+        if old_checkpoint.value and old_checkpoint not in self._membership:
+            self.delete(old_checkpoint)
 
         try:
             queue_item = QueueItem(self._priority(checkpoint), checkpoint)
         except KeyError:
-            if old_checkpoint not in self._membership:
-                self.delete(old_checkpoint)
             logger.error("Result dict has no key: {}. "
                          "checkpoint_score_attr must be set to a key in the "
                          "result dict.".format(self._checkpoint_score_attr))
@@ -95,11 +108,10 @@ class CheckpointManager:
             self._membership.add(checkpoint)
             if worst in self._membership:
                 self._membership.remove(worst)
-            self.delete(worst)
-
-        # Remove the old checkpoint if it isn't one of the best ones.
-        if old_checkpoint.value and old_checkpoint not in self._membership:
-            self.delete(old_checkpoint)
+            # Don't delete the newest checkpoint. It will be deleted on the
+            # next on_checkpoint() call since it isn't in self._membership.
+            if worst != checkpoint:
+                self.delete(worst)
 
     def best_checkpoints(self):
         """Returns best checkpoints, sorted by score."""
