@@ -136,9 +136,12 @@ class Policy(metaclass=ABCMeta):
             info_batch = [info]
         if episode is not None:
             episodes = [episode]
+        state_batch = None
+        if state is not None:
+            state_batch = [[s] for s in state]
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state],
+            [obs], state_batch,
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
