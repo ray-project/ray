@@ -38,6 +38,7 @@ py_test(
 
 py_binary(
     name = "test_a3c_pong_deterministic_v0",
+    main = "train.py",
     srcs = ["train.py"],
     args = [
         "--env", "PongDeterministic-v0",
@@ -49,6 +50,7 @@ py_binary(
 
 py_binary(
     name = "test_a3c_pong_ram_v4",
+    main = "train.py",
     srcs = ["train.py"],
     args = [
         "--env", "Pong-ram-v4",
