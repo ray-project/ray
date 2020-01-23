@@ -250,6 +250,7 @@ class RolloutWorker(EvaluatorInterface):
             enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
+        self.process_group = None
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
         self.worker_index = worker_index
@@ -783,9 +784,19 @@ class RolloutWorker(EvaluatorInterface):
             logger.info("Built preprocessor map: {}".format(preprocessors))
         return policy_map, preprocessors
 
+    def setup_torch_data_parallel(self, url, world_rank, world_size):
+        torch.distributed.init_process_group(
+            backend="gloo",
+            init_method=url,
+            rank=world_rank,
+            world_size=world_size)
+        self.process_group = True
+
     def __del__(self):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
             self.sampler.shutdown = True
+        if self.process_group:
+            torch.distributed.destroy_process_group()
 
 
 def _validate_and_canonicalize(policy, env):
