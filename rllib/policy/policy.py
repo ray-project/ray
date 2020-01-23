@@ -128,6 +128,7 @@ class Policy(metaclass=ABCMeta):
         prev_reward_batch = None
         info_batch = None
         episodes = None
+        state_batch = None
         if prev_action is not None:
             prev_action_batch = [prev_action]
         if prev_reward is not None:
@@ -136,9 +137,11 @@ class Policy(metaclass=ABCMeta):
             info_batch = [info]
         if episode is not None:
             episodes = [episode]
+        if state is not None:
+            state_batch = [[s] for s in state]
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state],
+            [obs], state_batch,
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
