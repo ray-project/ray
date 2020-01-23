@@ -33,19 +33,6 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
         pass
 
     def GetProfilingStats(self, request, context):
-<<<<<<< HEAD
-        pid = str(request.pid)
-        duration = str(request.duration)
-        profiling_file_path = os.path.join("/tmp/ray/",
-                                           "{}_profiling.txt".format(pid))
-        process = subprocess.Popen(
-            [
-                "sudo", "-n", "py-spy", "record", "-o", profiling_file_path,
-                "-p", pid, "-d", duration, "-f", "speedscope"
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-=======
         pid = request.pid
         duration = request.duration
         profiling_file_path = os.path.join("/tmp/ray/",
@@ -56,7 +43,6 @@ class ReporterServer(reporter_pb2_grpc.ReporterServiceServicer):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             shell=True)
->>>>>>> master
         stdout, stderr = process.communicate()
         if process.returncode != 0:
             profiling_stats = ""
@@ -208,11 +194,7 @@ class Reporter:
             ReporterServer(), server)
         port = server.add_insecure_port("[::]:0")
         server.start()
-<<<<<<< HEAD
-        self.redis_client.set("REPORTER_PORT:".format(self.ip), port)
-=======
         self.redis_client.set("REPORTER_PORT:{}".format(self.ip), port)
->>>>>>> master
         """Run the reporter."""
         while True:
             try:

@@ -106,7 +106,6 @@ class Dashboard(object):
                  temp_dir,
                  redis_password=None):
         """Initialize the dashboard object."""
-        print(redis_address, redis_password)
         self.host = host
         self.port = port
         self.redis_client = ray.services.create_redis_client(
