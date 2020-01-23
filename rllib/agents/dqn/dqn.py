@@ -6,7 +6,9 @@ from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
+from ray.rllib.utils.schedules import ConstantSchedule, Schedule
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.explorations.epsilon_greedy import EpsilonGreedy
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +36,33 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Exploration ===
+    # === Exploration Settings ===
+    "exploration": {
+        "type": EpsilonGreedy,  # Exploration class.
+        "initial_epsilon": 1.0,  # Initial epsilon value.
+        "final_epsilon": 0.02,  # Final epsilon value.
+        "schedule_max_timesteps": 100000,  # Schedule max. time steps.
+        "exploration_fraction": 0.1,  # Fraction of entire training period for which to epsilon-explore.
+    },
+    # If True parameter space noise will be used for exploration
+    # See https://blog.openai.com/better-exploration-with-parameter-noise/
+    "parameter_noise": False,
+    #"deterministic_actions": True,
+    #"noise_exploration": False,
+    #"softmax_temp": 1.0,
+
     # Max num timesteps for annealing schedules. Exploration is annealed from
     # 1.0 to exploration_fraction over this number of timesteps scaled by
     # exploration_fraction
-    "schedule_max_timesteps": 100000,
+    "schedule_max_timesteps": 100000,  # TODO: Not used anymore for exploration! Change comments.
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
     # Fraction of entire training period over which the exploration rate is
     # annealed
-    "exploration_fraction": 0.1,
+    #"exploration_fraction": 0.1,
     # Final value of random action probability
-    "exploration_final_eps": 0.02,
+    #"exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
     # Use softmax for sampling actions. Required for off policy estimation.
@@ -54,14 +70,12 @@ DEFAULT_CONFIG = with_common_config({
     # Softmax temperature. Q values are divided by this value prior to softmax.
     # Softmax approaches argmax as the temperature drops to zero.
     "softmax_temp": 1.0,
-    # If True parameter space noise will be used for exploration
-    # See https://blog.openai.com/better-exploration-with-parameter-noise/
-    "parameter_noise": False,
+
     # Extra configuration that disables exploration.
-    "evaluation_config": {
-        "exploration_fraction": 0,
-        "exploration_final_eps": 0,
-    },
+    #"evaluation_config": {
+    #    "exploration_fraction": 0,
+    #    "exploration_final_eps": 0,
+    #},
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
@@ -121,6 +135,7 @@ DEFAULT_CONFIG = with_common_config({
 def make_optimizer(workers, config):
     return SyncReplayOptimizer(
         workers,
+        # TODO: Move all PR-beta decays into Schedule components.
         learning_starts=config["learning_starts"],
         buffer_size=config["buffer_size"],
         prioritized_replay=config["prioritized_replay"],
@@ -135,11 +150,10 @@ def make_optimizer(workers, config):
         **config["optimizer"])
 
 
-def check_config_and_setup_param_noise(config):
-    """Update the config based on settings.
-
-    Rewrites sample_batch_size to take into account n_step truncation, and also
-    adds the necessary callbacks to support parameter space noise exploration.
+def validate_config(config):
+    """
+    Checks and updates the config based on settings. Rewrites sample_batch_size to take into account
+    n_step truncation.
     """
 
     # PyTorch check.
@@ -147,22 +161,32 @@ def check_config_and_setup_param_noise(config):
         raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
 
     # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["sample_batch_size"],
-                              config.get("n_step", 1))
+    adjusted_batch_size = max(config["sample_batch_size"], config.get("n_step", 1))
     config["sample_batch_size"] = adjusted_batch_size
 
+    # Backward compatibility of epsilon-exploration config.
+    #if "exploration_final_eps" in config:
+    #    deprecation_warning("exploration_final_eps", "epsilon_exploration.final_value")
+    #    config["epsilon_exploration"]["final_value"] = config.pop("exploration_final_eps")
+    #if "exploration_fraction" in config:
+    #    deprecation_warning("exploration_fraction", "epsilon_exploration.end_t_pct")
+    #    config["epsilon_exploration"]["end_t_pct"] = config.pop("exploration_fraction")
+    ## Only allow one schedule timer (for epsilon AND other Schedules).
+    #if "schedule_max_timesteps" in config:
+    #    config["epsilon_exploration"]["max_t"] = config.get("schedule_max_timesteps")
+    #if "per_worker_exploration" in config:
+    #    deprecation_warning("per_worker_exploration", "per_worker_epsilon_exploration")
+    #    config["per_worker_epsilon_exploration"] = config.pop("per_worker_exploration")
+
+    # Setup parameter noise.
     if config.get("parameter_noise", False):
         if config["batch_mode"] != "complete_episodes":
-            raise ValueError("Exploration with parameter space noise requires "
-                             "batch_mode to be complete_episodes.")
+            raise ValueError("Exploration with parameter space noise requires batch_mode to be complete_episodes.")
         if config.get("noisy", False):
             raise ValueError(
-                "Exploration with parameter space noise and noisy network "
-                "cannot be used at the same time.")
-        if config["callbacks"]["on_episode_start"]:
-            start_callback = config["callbacks"]["on_episode_start"]
-        else:
-            start_callback = None
+                "Exploration with parameter space noise and noisy network cannot be used at the same time.")
+
+        start_callback = config["callbacks"].get("on_episode_start")
 
         def on_episode_start(info):
             # as a callback function to sample and pose parameter space
@@ -170,14 +194,12 @@ def check_config_and_setup_param_noise(config):
             policies = info["policy"]
             for pi in policies.values():
                 pi.add_parameter_noise()
-            if start_callback:
+            if start_callback is not None:
                 start_callback(info)
 
         config["callbacks"]["on_episode_start"] = on_episode_start
-        if config["callbacks"]["on_episode_end"]:
-            end_callback = config["callbacks"]["on_episode_end"]
-        else:
-            end_callback = None
+
+        end_callback = config["callbacks"].get("on_episode_end")
 
         def on_episode_end(info):
             # as a callback function to monitor the distance
@@ -187,7 +209,7 @@ def check_config_and_setup_param_noise(config):
             model = policies[DEFAULT_POLICY_ID].model
             if hasattr(model, "pi_distance"):
                 episode.custom_metrics["policy_distance"] = model.pi_distance
-            if end_callback:
+            if end_callback is not None:
                 end_callback(info)
 
         config["callbacks"]["on_episode_end"] = on_episode_end
@@ -200,46 +222,56 @@ def get_initial_state(config):
     }
 
 
-def make_exploration_schedule(config, worker_index):
-    # Use either a different `eps` per worker, or a linear schedule.
-    if config["per_worker_exploration"]:
-        assert config["num_workers"] > 1, \
-            "This requires multiple workers"
-        if worker_index >= 0:
-            # Exploration constants from the Ape-X paper
-            exponent = (
-                1 + worker_index / float(config["num_workers"] - 1) * 7)
-            return ConstantSchedule(0.4**exponent)
-        else:
-            # local ev should have zero exploration so that eval rollouts
-            # run properly
-            return ConstantSchedule(0.0)
-    return LinearSchedule(
-        schedule_timesteps=int(
-            config["exploration_fraction"] * config["schedule_max_timesteps"]),
-        initial_p=1.0,
-        final_p=config["exploration_final_eps"])
+#def make_exploration_schedule(config, worker_index):
+#    # Use either a different `eps` per worker, or some Schedule.
+#    if config["per_worker_epsilon_exploration"]:
+#        assert config["num_workers"] > 1, "This requires multiple workers".
+
+#        # Exploration constants from the Ape-X paper.
+#        if worker_index >= 0:
+#            exponent = (1 + worker_index / float(config["num_workers"] - 1) * 7)
+#            return ConstantSchedule(0.4**exponent)
+#        # Local env should have zero exploration so that eval rollouts run properly.
+#        else:
+#            return ConstantSchedule(0.0)
+
+#    return Schedule.from_config(config["epsilon_exploration"])
+#    #    max_t=int(config["epsilon_exploration"]["end_t_pct"] * config["epsilon_exploration"]["max_t"]),
+#    #    initial_value=config["epsilon_exploration"].get("initial_value", 1.0),
+#    #    final_value=config["epsilon_exploration"].get("final_value", 0.0)
+#    #)
 
 
-def setup_exploration(trainer):
-    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
-    trainer.explorations = [
-        make_exploration_schedule(trainer.config, i)
-        for i in range(trainer.config["num_workers"])
-    ]
+#def setup_exploration(trainer):
+#    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
+#    trainer.explorations = [
+#        make_exploration_schedule(trainer.config, i)
+#        for i in range(trainer.config["num_workers"])
+#    ]
 
 
-def update_worker_explorations(trainer):
+#def update_worker_explorations(trainer):
+def before_train_step(trainer):
+    """
+    #Used as `before_train_step` callback. Sets epsilon exploration values in all policies
+    #to updated values (according to current time-step).
+
+    Args:
+        trainer (Trainer): The Trainer object for the DQN.
+    """
+    #exp_vals = [trainer.exploration0.value(global_timestep)]
+    #trainer.workers.local_worker().foreach_trainable_policy(
+    #    lambda p, _: p.set_epsilon(exp_vals[0]))
+    #for i, e in enumerate(trainer.workers.remote_workers()):
+    #    exp_val = trainer.explorations[i].value(global_timestep)
+    #    e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
+    #    exp_vals.append(exp_val)
+
+    # Store some data for metrics after learning.
     global_timestep = trainer.optimizer.num_steps_sampled
-    exp_vals = [trainer.exploration0.value(global_timestep)]
-    trainer.workers.local_worker().foreach_trainable_policy(
-        lambda p, _: p.set_epsilon(exp_vals[0]))
-    for i, e in enumerate(trainer.workers.remote_workers()):
-        exp_val = trainer.explorations[i].value(global_timestep)
-        e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
-        exp_vals.append(exp_val)
     trainer.train_start_timestep = global_timestep
-    trainer.cur_exp_vals = exp_vals
+    # Get all current epsilons of all trainable policies for our metrics.
+    trainer.cur_exp_vals = trainer.workers.foreach_trainable_policy(lambda p, _: p.epsilon(global_timestep))
 
 
 def add_trainer_metrics(trainer, result):
@@ -255,10 +287,8 @@ def add_trainer_metrics(trainer, result):
 
 def update_target_if_needed(trainer, fetches):
     global_timestep = trainer.optimizer.num_steps_sampled
-    if global_timestep - trainer.state["last_target_update_ts"] > \
-            trainer.config["target_network_update_freq"]:
-        trainer.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.update_target())
+    if global_timestep - trainer.state["last_target_update_ts"] > trainer.config["target_network_update_freq"]:
+        trainer.workers.local_worker().foreach_trainable_policy(lambda p, _: p.update_target())
         trainer.state["last_target_update_ts"] = global_timestep
         trainer.state["num_target_updates"] += 1
 
@@ -274,24 +304,26 @@ def collect_metrics(trainer):
     return result
 
 
-def disable_exploration(trainer):
-    trainer.evaluation_workers.local_worker().foreach_trainable_policy(
-        lambda p, _: p.set_epsilon(0))
+# OBSOLETED: Policy handles epsilon-exploration natively now.
+#def disable_exploration(trainer):
+#    trainer.evaluation_workers.local_worker().foreach_trainable_policy(
+#        lambda p, _: p.set_epsilon(0))
 
 
 GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
     default_config=DEFAULT_CONFIG,
-    validate_config=check_config_and_setup_param_noise,
+    validate_config=validate_config,
     get_initial_state=get_initial_state,
     make_policy_optimizer=make_optimizer,
-    before_init=setup_exploration,
-    before_train_step=update_worker_explorations,
+    #before_init=setup_exploration,
+    before_train_step=before_train_step,
     after_optimizer_step=update_target_if_needed,
     after_train_result=add_trainer_metrics,
-    collect_metrics_fn=collect_metrics,
-    before_evaluate_fn=disable_exploration)
+    collect_metrics_fn=collect_metrics
+    #before_evaluate_fn=disable_exploration
+)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(
     name="DQN", default_policy=DQNTFPolicy, default_config=DEFAULT_CONFIG)

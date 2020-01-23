@@ -27,7 +27,8 @@ class WorkerSet:
                  trainer_config=None,
                  num_workers=0,
                  logdir=None,
-                 _setup=True):
+                 _setup=True,
+                 remote_config_updates=None):
         """Create a new WorkerSet and initialize its workers.
 
         Arguments:
@@ -38,6 +39,9 @@ class WorkerSet:
             num_workers (int): Number of remote rollout workers to create.
             logdir (str): Optional logging directory for workers.
             _setup (bool): Whether to setup workers. This is only for testing.
+            remote_config_updates (Optional[List[dict]]): A list of config
+                dicts to update `config` with for each Worker
+                (len must be same as `num_workers`).
         """
 
         if not trainer_config:
@@ -47,6 +51,7 @@ class WorkerSet:
         self._env_creator = env_creator
         self._policy = policy
         self._remote_config = trainer_config
+        self._remote_config_updates = remote_config_updates
         self._num_workers = num_workers
         self._logdir = logdir
 
@@ -61,7 +66,7 @@ class WorkerSet:
 
             # Create a number of remote workers
             self._remote_workers = []
-            self.add_workers(num_workers)
+            self.add_workers(self._num_workers, self._remote_config_updates)
 
     def local_worker(self):
         """Return the local rollout worker."""
@@ -71,8 +76,17 @@ class WorkerSet:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def add_workers(self, num_workers):
-        """Create and add a number of remote workers to this worker set."""
+    def add_workers(self, num_workers, remote_config_updates=None):
+        """
+        Creates and add a number of remote workers to this worker set.
+
+        Args:
+            num_workers (int): The number of remote Workers to add to this WorkerSet.
+            remote_config_updates (Optional[List[dict]]): A list of config dicts to update `config` with for each Worker
+                (len must be same as `num_workers`).
+        """
+        assert remote_config_updates is None or num_workers == len(remote_config_updates)
+
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
@@ -82,10 +96,10 @@ class WorkerSet:
             "resources": self._remote_config["custom_resources_per_worker"],
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
-        self._remote_workers.extend([
-            self._make_worker(cls, self._env_creator, self._policy, i + 1,
-                              self._remote_config) for i in range(num_workers)
-        ])
+        for i in range(num_workers):
+            config = self._remote_config if not remote_config_updates else \
+                self._remote_config.copy().update(remote_config_updates[i])
+            self._remote_workers.append(self._make_worker(cls, self._env_creator, self._policy, i + 1, config))
 
     def reset(self, new_remote_workers):
         """Called to change the set of remote workers."""

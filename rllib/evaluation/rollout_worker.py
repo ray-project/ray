@@ -667,12 +667,11 @@ class RolloutWorker(EvaluatorInterface):
         can be found in `self.policies_to_train`.
 
         Args:
-            func (callable): A function - taking a Policy and its ID - that is
-                called on all Policies within `self.policies_to_train`.
+            func (callable): A function - taking a Policy and its ID - that is called on all Policies
+                within `self.policies_to_train`.
 
         Returns:
-            List[any]: The list of n return values of all
-                `func([policy], [ID])`-calls.
+            List[any]: The list of n return values of all `func([policy], [ID])`-calls.
         """
         return [
             func(policy, pid) for pid, policy in self.policy_map.items()

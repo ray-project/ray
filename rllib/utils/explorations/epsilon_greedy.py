@@ -2,7 +2,7 @@ import gym
 import numpy as np
 import random
 
-from ray.rllib.components.explorations.exploration import Exploration
+from ray.rllib.utils.explorations.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.annotations import override
 

@@ -111,12 +111,14 @@ class ModelCatalog:
         framework="tf"
     ):
         """
-        Returns action distribution class and size for the given action space.
+
+        Returns an action distribution class and size for the given action
+        space.
 
         Args:
             action_space (Space): Action space of the target gym env.
             config (dict): Optional model config.
-            dist_type (str): Optional identifier of the action distribution.
+            dist_type (Optional[str]): Identifier of the action distribution.
             torch (bool): Obsoleted: Whether to return PyTorch Model and
                 distribution (use framework="torch" instead).
             framework (str): One of "tf" or "torch".

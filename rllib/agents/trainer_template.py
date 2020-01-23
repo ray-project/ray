@@ -102,8 +102,18 @@ def build_trainer(name,
             if make_workers:
                 self.workers = make_workers(self, env_creator, policy, config)
             else:
-                self.workers = self._make_workers(env_creator, policy, config,
-                                                  self.config["num_workers"])
+                # Setup per-worker constant epsilon values.
+                remote_config_updates = None
+                if config.get("per_worker_exploration"):
+                    remote_config_updates = []
+                    for i in range(self.config["num_workers"]):
+                        exponent = (1 + i / float(config["num_workers"] - 1) * 7)
+                        remote_config_updates.append(
+                            {"epsilon_exploration": {"type": "constant", "value": 0.4**exponent}}
+                        )
+                self.workers = self._make_workers(env_creator, policy, config, self.config["num_workers"],
+                                                  remote_config_updates=remote_config_updates)
+
             if make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
             else:

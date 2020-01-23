@@ -1,14 +1,17 @@
 from abc import ABCMeta, abstractmethod
 
-from ray.rllib.components.component import Component
+from ray.rllib.utils.framework import check_framework
 
 
-class Exploration(Component, metaclass=ABCMeta):
+class Exploration(metaclass=ABCMeta):
     """
     An Exploration takes the predicted actions or action values from the agent,
     and selects the action to actually apply to the environment using some
     predefined exploration schema.
     """
+    def __init__(self, framework="tf"):
+        self.framework = check_framework(framework)
+
     def get_action(self, model_output, model, action_dist, time_step):
         """
         Given the Model's output and action distribution, return an exploration

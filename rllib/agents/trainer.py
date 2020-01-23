@@ -165,6 +165,19 @@ COMMON_CONFIG = {
     # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
 
+    # === Exploration Settings ===
+
+    # Exploration settings:
+    # Provide a dict specifying the Exploration object's
+    # config.
+    # Set to False or None for no exploration behavior (e.g. for evaluation).
+    "exploration": False,
+
+    # If True parameter space noise will be used for exploration
+    # See https://blog.openai.com/better-exploration-with-parameter-noise/
+    # TODO(sven): Implement ParameterNoiseExploration component.
+    #"parameter_noise": False,
+
     # === Evaluation Settings ===
     # Evaluate with every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
@@ -284,7 +297,7 @@ COMMON_CONFIG = {
     "input_evaluation": ["is", "wis"],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
-    # policy, not the *behaviour* policy, which is typically undesirable for
+    # policy, not the *behavior* policy, which is typically undesirable for
     # on-policy algorithms.
     "postprocess_inputs": False,
     # If positive, input batches will be shuffled via a sliding window buffer
@@ -517,7 +530,8 @@ class Trainer(Trainable):
             self.env_creator = (
                 lambda env_config: NormalizeActionWrapper(inner(env_config)))
 
-        Trainer._validate_config(self.config)
+        self._validate_config(self.config)
+        #self._setup_parameter_noise_config(self.config)
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -541,7 +555,7 @@ class Trainer(Trainable):
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "batch_steps": 1,
+                    "batch_steps": 1
                 })
                 # Switch off all types of Explorations.
                 extra_config["exploration"] = False
@@ -574,18 +588,30 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator, policy, config, num_workers):
+    def _make_workers(self, env_creator, policy, config, num_workers, remote_config_updates=None):
+        """
+        Default factory method for a WorkerSet running under this Trainer.
+        Override this method by passing a custom `make_workers` into `build_trainer`.
+
+        Args:
+            env_creator (callable): A function that return and Env given an env config.
+            policy (class): The Policy class to use for creating the policies of the workers.
+            config (dict): The Trainer's config.
+            num_workers (int): Number of remote rollout workers to create. 0 for local only.
+            remote_config_updates (Optional[List[dict]]): A list of config dicts to update `config` with for each Worker
+                (len must be same as `num_workers`).
+
+        Returns:
+            WorkerSet: The created WorkerSet.
+        """
         return WorkerSet(
-            env_creator,
-            policy,
-            config,
-            num_workers=num_workers,
-            logdir=self.logdir)
+            env_creator, policy, config, num_workers=num_workers, logdir=self.logdir,
+            remote_config_updates=remote_config_updates
+        )
 
     @DeveloperAPI
     def _init(self, config, env_creator):
         """Subclasses should override this for custom initialization."""
-
         raise NotImplementedError
 
     @DeveloperAPI
@@ -777,28 +803,22 @@ class Trainer(Trainable):
             config (dict): The Trainer's config.
         """
         if "policy_graphs" in config["multiagent"]:
-            logger.warning(
-                "The `policy_graphs` config has been renamed to `policies`.")
-            # Backwards compatibility
-            config["multiagent"]["policies"] = config["multiagent"][
-                "policy_graphs"]
-            del config["multiagent"]["policy_graphs"]
+            deprecation_warning("policy_graphs", "policies")
+            # Backwards compatibility.
+            config["multiagent"]["policies"] = config["multiagent"].pop("policy_graphs")
         if "gpu" in config:
-            raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
-                "instead.")
+            deprecation_warning("gpu", "num_gpus=0|1", error=ValueError)
         if "gpu_fraction" in config:
-            raise ValueError(
-                "The `gpu_fraction` config is deprecated, please use "
-                "`num_gpus=<fraction>` instead.")
+            deprecation_warning(
+                "gpu_fraction", "num_gpus=<fraction>", error=ValueError)
         if "use_gpu_for_workers" in config:
-            raise ValueError(
-                "The `use_gpu_for_workers` config is deprecated, please use "
-                "`num_gpus_per_worker=1` instead.")
+            deprecation_warning(
+                "use_gpu_for_workers", "num_gpus_per_worker=1",
+                error=ValueError)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}".format(
-                    config["input_evaluation"]))
+                "`input_evaluation` must be a list of strings, got {}".format(config["input_evaluation"])
+            )
 
     def _try_recover(self):
         """Try to identify and blacklist any unhealthy workers.

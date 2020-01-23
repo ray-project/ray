@@ -4,7 +4,8 @@ import gym
 import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.components.explorations.exploration import Exploration
+from ray.rllib.utils.explorations.exploration import Exploration
+from ray.rllib.utils.from_config import from_config
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
@@ -61,7 +62,7 @@ class Policy(metaclass=ABCMeta):
         self.config = config
 
         # Create the Exploration object to use for this Policy.
-        self.exploration = Exploration.from_config(config.get("exploration"))
+        self.exploration = from_config(Exploration, config.get("exploration"))
         # The default sampling behavior for actions if not explicitly given
         # in calls to `compute_actions`.
         self.deterministic = config.get("deterministic", False)
