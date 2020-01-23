@@ -75,7 +75,6 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         actor.pid,
         duration
       );
-      console.log("profilingId", profilingId);
       this.setState(state => ({
         profiling: { ...state.profiling, [profilingId]: null }
       }));
@@ -198,6 +197,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                         >
                           {profilingStatus.status}
                         </a>
+                      ) : profilingStatus.status === "error" ? (
+                        profilingStatus.error
                       ) : (
                         profilingStatus.status
                       )}
