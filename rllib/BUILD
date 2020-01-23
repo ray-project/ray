@@ -5,7 +5,6 @@
 # as Travis tests seem to run more stable.
 # --------------------------------------------------------------------
 
-#load("//bazel:rllib_train.bzl", "train")
 
 # ---------------------------------------
 # Agents (short learning tasks)
@@ -625,4 +624,15 @@ py_test(
     name = "test_framework_agnostic_components",
     size = "small",
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
+)
+
+# ----------------------------------------
+# rllib/tests/ directory
+# ----------------------------------------
+
+py_binary(
+    name = "test_env_with_subprocess",
+    main = "tests/test_env_with_subprocess.py",
+    srcs = ["tests/test_env_with_subprocess.py"]
+
 )
