@@ -5,6 +5,7 @@ It will raise SyntaxError when importing from Python 2.
 import asyncio
 from collections import namedtuple
 import time
+import threading
 
 import ray
 
@@ -96,3 +97,36 @@ def get_async(object_id):
     user_future.object_id = object_id
 
     return user_future
+
+class AsyncMonitorState:
+    def __init__(self, loop):
+        self.names = dict()
+        self.names_lock = threading.Lock()
+
+        self.sleep_time = 0.1
+        self.real_sleep_time = 0.1
+        asyncio.ensure_future(self.monitor(), loop=loop)
+    
+    async def monitor(self):
+        while True:
+            start = time.time()
+            await asyncio.sleep(self.sleep_time)
+            self.real_sleep_time = time.time() - start
+        
+    def register_coroutine(self, coro, name):
+        with self.names_lock:
+            self.names[coro] = name
+    
+    def unregister_coroutine(self, coro):
+        with self.names_lock:
+            self.names.pop(coro)
+    
+    def get_all_task_names(self):
+        names = []
+        with self.names_lock:
+            names = list(self.names.values())
+        return names
+    
+    def get_loop_blocking_index(self):
+        return self.real_sleep_time / self.sleep_time
+
