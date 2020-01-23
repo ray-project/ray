@@ -1189,6 +1189,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     (*used_resources_map)[it.first] = quantity;
   }
   stats->set_webui_display(webui_display_);
+  stats->set_actor_title(actor_title_);
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
@@ -1223,6 +1224,11 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
 void CoreWorker::SetWebuiDisplay(const std::string &message) {
   absl::MutexLock lock(&mutex_);
   webui_display_ = message;
+}
+
+void CoreWorker::SetActorTitle(const std::string &title) {
+  absl::MutexLock lock(&mutex_);
+  actor_title_ = title;
 }
 
 }  // namespace ray

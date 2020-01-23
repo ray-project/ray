@@ -202,8 +202,8 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        path = runner.trial_executor.save(trials[0])
-        kwargs["restore_path"] = path
+        checkpoint = runner.trial_executor.save(trials[0])
+        kwargs["restore_path"] = checkpoint.value
 
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -216,7 +216,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.TERMINATED)
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[1].runner.get_info.remote()), 1)
-        self.addCleanup(os.remove, path)
+        self.addCleanup(os.remove, checkpoint.value)
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
@@ -230,9 +230,9 @@ class TrialRunnerTest2(unittest.TestCase):
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
-        path = runner.trial_executor.save(trials[0])
+        checkpoint = runner.trial_executor.save(trials[0])
         runner.trial_executor.stop_trial(trials[0])
-        kwargs["restore_path"] = path
+        kwargs["restore_path"] = checkpoint.value
 
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
@@ -249,7 +249,7 @@ class TrialRunnerTest2(unittest.TestCase):
         self.assertEqual(trials[1].last_result["timesteps_since_restore"], 20)
         self.assertEqual(trials[1].last_result["iterations_since_restore"], 2)
         self.assertGreater(trials[1].last_result["time_since_restore"], 0)
-        self.addCleanup(os.remove, path)
+        self.addCleanup(os.remove, checkpoint.value)
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)
