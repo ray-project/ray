@@ -65,10 +65,8 @@ Example Usage
 |                                        |                                                     |
 |                                        |   ray.init()                                        |
 |   loop = asyncio.get_event_loop()      |   loop = asyncio.get_event_loop()                   |
-|   tasks = [f() for i in range(4)]      |   tasks = [async_api.as_future(f.remote())          |
-|                                        |            for i in range(4)]                       |
 |   results = loop.run_until_complete(   |   results = loop.run_until_complete(                |
-|       asyncio.gather(tasks))           |       asyncio.gather(tasks))                        |
+|       asyncio.gather(f(), f())         |       asyncio.gather(f.remote(), f.remote())        |
 +----------------------------------------+-----------------------------------------------------+
 
 
