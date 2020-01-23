@@ -250,7 +250,6 @@ class RolloutWorker(EvaluatorInterface):
             enable_periodic_logging()
 
         env_context = EnvContext(env_config or {}, worker_index)
-        self.process_group = None
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
         self.worker_index = worker_index
@@ -785,18 +784,42 @@ class RolloutWorker(EvaluatorInterface):
         return policy_map, preprocessors
 
     def setup_torch_data_parallel(self, url, world_rank, world_size):
+        """Join a torch process group for distributed SGD."""
+
         torch.distributed.init_process_group(
             backend="gloo",
             init_method=url,
             rank=world_rank,
             world_size=world_size)
-        self.process_group = True
+
+        for pid, policy in self.policy_map.items():
+            if pid in self.policies_to_train:
+                orig_model = policy.model
+                dist_model = torch.nn.parallel.DistributedDataParallel(
+                    policy.model)
+                # XXX do not merge
+                dist_model.value_function = lambda: orig_model.value_function()
+                dist_model.last_output = lambda: orig_model.last_output()
+                dist_model.from_batch = lambda *a, **kw: orig_model.from_batch(*a, **kw)
+                dist_model.get_initial_state = orig_model.get_initial_state
+                policy.model = dist_model
+
+    def sample_and_learn(self):
+        print("Executing sample and learn")
+        return self.learn_on_batch(self.sample())
+
+    def get_node_ip(self):
+        """Returns the IP address of the current node."""
+        return ray.services.get_node_ip_address()
+
+    def find_free_port(self):
+        """Finds a free port on the current node."""
+        from ray.experimental.sgd import utils
+        return utils.find_free_port()
 
     def __del__(self):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):
             self.sampler.shutdown = True
-        if self.process_group:
-            torch.distributed.destroy_process_group()
 
 
 def _validate_and_canonicalize(policy, env):

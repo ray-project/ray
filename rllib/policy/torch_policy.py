@@ -47,6 +47,7 @@ class TorchPolicy(Policy):
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
+        self.unwrapped_model = model  # used to support DistributedDataParallel
         self._loss = loss
         self._optimizer = self.optimizer()
         self.dist_class = action_distribution_class
