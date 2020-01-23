@@ -198,7 +198,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                           {profilingStatus.status}
                         </a>
                       ) : profilingStatus.status === "error" ? (
-                        profilingStatus.error
+                        profilingStatus.error.trim()
                       ) : (
                         profilingStatus.status
                       )}
