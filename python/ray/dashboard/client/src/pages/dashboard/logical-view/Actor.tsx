@@ -194,6 +194,8 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                           }/speedscope/index.html#profileURL=${encodeURIComponent(
                             `${window.origin}/api/get_profiling_info?profiling_id=${profilingId}`
                           )}`}
+                          rel="noopener noreferrer"
+                          target="_blank"
                         >
                           {profilingStatus.status}
                         </a>
