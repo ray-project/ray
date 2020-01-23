@@ -173,3 +173,8 @@ export const checkProfilingStatus = (profilingId: string) =>
   get<CheckProfilingStatusResponse>("/api/check_profiling_status", {
     profiling_id: profilingId
   });
+
+export const getProfilingResultURL = (profilingId: string) =>
+  `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
+    `${base}/api/get_profiling_info?profiling_id=${profilingId}`
+  )}`;

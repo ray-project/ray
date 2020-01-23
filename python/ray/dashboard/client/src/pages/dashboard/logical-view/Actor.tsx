@@ -7,6 +7,7 @@ import React from "react";
 import {
   checkProfilingStatus,
   CheckProfilingStatusResponse,
+  getProfilingResultURL,
   launchProfiling,
   RayletInfoResponse
 } from "../../../api";
@@ -213,11 +214,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                       ) : latestResponse.status === "finished" ? (
                         <a
                           className={classes.action}
-                          href={`${
-                            window.origin
-                          }/speedscope/index.html#profileURL=${encodeURIComponent(
-                            `${window.origin}/api/get_profiling_info?profiling_id=${profilingId}`
-                          )}`}
+                          href={getProfilingResultURL(profilingId)}
                           rel="noopener noreferrer"
                           target="_blank"
                         >
