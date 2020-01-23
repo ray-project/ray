@@ -193,19 +193,19 @@ def test_raylet_info_endpoint(shutdown_only):
         }).json()["result"]
     start_time = time.time()
     while True:
-        time.sleep(1)
-        try:
-            profiling_info = requests.get(
-                webui_url + "/api/check_profiling_status",
-                params={
-                    "profiling_id": profiling_id,
-                }).json()
-            status = profiling_info["result"]["status"]
-            assert status in ("finished", "pending", "error")
+        if time.time() - start_time > 10:
+            raise RayTestTimeoutException(
+                "Timed out while collecting profiling stats.")
+        profiling_info = requests.get(
+            webui_url + "/api/check_profiling_status",
+            params={
+                "profiling_id": profiling_id,
+            }).json()
+        status = profiling_info["result"]["status"]
+        assert status in ("finished", "pending", "error")
+        if status in ("finished", "error"):
             break
-        except AssertionError:
-            if time.time() - start_time + 10:
-                raise Exception("Timed out while collecting profiling stats.")
+        time.sleep(1)
 
 
 def test_profiling_info_endpoint(shutdown_only):
