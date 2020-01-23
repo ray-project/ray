@@ -398,6 +398,14 @@ class ActorClass:
             kwargs = {}
         if is_direct_call is None:
             is_direct_call = ray_constants.direct_call_enabled()
+
+        meta = self.__ray_metadata__
+        actor_has_async_methods = len(
+            inspect.getmembers(
+                meta.modified_class,
+                predicate=inspect.iscoroutinefunction)) > 0
+        is_asyncio = is_asyncio or actor_has_async_methods
+
         if max_concurrency is None:
             if is_asyncio:
                 max_concurrency = 1000
@@ -418,8 +426,6 @@ class ActorClass:
         if worker.mode is None:
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
-
-        meta = self.__ray_metadata__
 
         if detached and name is None:
             raise Exception("Detached actors must be named. "

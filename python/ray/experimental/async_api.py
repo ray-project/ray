@@ -94,13 +94,15 @@ def init():
 
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        assert loop._thread_id != threading.get_ident(), (
-            "You are using async_api inside a running event loop. "
-            "Please call `await _async_init()` to initialize inside "
-            "asynchrounous context.")
-        # If the loop is runing outside current thread, we actually need
-        # to do this to make sure the context is initialized.
-        asyncio.run_coroutine_threadsafe(_async_init(), loop=loop)
+        if loop._thread_id != threading.get_ident():
+            # If the loop is runing outside current thread, we actually need
+            # to do this to make sure the context is initialized.
+            asyncio.run_coroutine_threadsafe(_async_init(), loop=loop)
+        else:
+            async_init_done = asyncio.get_event_loop().create_task(
+                _async_init())
+            # Block until the async init finishes.
+            async_init_done.done()
     else:
         asyncio.get_event_loop().run_until_complete(_async_init())
 

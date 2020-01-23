@@ -138,7 +138,8 @@ else:
     import cPickle as pickle
 
 if PY3:
-    from ray.async_compat import sync_to_async, AsyncGetResponse, AsyncMonitorState
+    from ray.async_compat import (sync_to_async,
+                                  AsyncGetResponse, AsyncMonitorState)
 
 
 def set_internal_config(dict options):
@@ -610,8 +611,10 @@ cdef execute_task(
                 coroutine = async_function(actor, *arguments, **kwarguments)
                 loop = core_worker.create_or_get_event_loop()
                 monitor_state = loop.monitor_state
-                monitor_state.register_coroutine(coroutine, str(function.method))
+                monitor_state.register_coroutine(coroutine,
+                                                 str(function.method))
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+
                 def callback(future):
                     fiber_event.Notify()
                     monitor_state.unregister_coroutine(coroutine)
@@ -1191,7 +1194,7 @@ cdef class CoreWorker:
             # Delayed import due to async_api depends on _raylet.
             from ray.experimental.async_api import _async_init
             self.async_event_loop.run_until_complete(_async_init())
-            
+
             # Create and attach the monitor object
             monitor_state = AsyncMonitorState(self.async_event_loop)
             self.async_event_loop.monitor_state = monitor_state

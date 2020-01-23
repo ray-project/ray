@@ -98,41 +98,34 @@ def get_async(object_id):
 
     return user_future
 
+
 class AsyncMonitorState:
     def __init__(self, loop):
         self.names = dict()
         self.names_lock = threading.Lock()
 
-        self.sleep_time = 0.1
-        self.real_sleep_time = 0.1
+        self.sleep_time = 1.0
         asyncio.ensure_future(self.monitor(), loop=loop)
-    
+
     async def monitor(self):
         while True:
-            start = time.time()
             await asyncio.sleep(self.sleep_time)
-            self.real_sleep_time = time.time() - start
-
             all_tasks = self.get_all_task_names()
-            ray.show_in_webui(str(len(all_tasks)), key="Number of concurrent task runing")
-            ray.show_in_webui(str(dict(Counter(all_tasks))), key="Concurrent tasks")
-            ray.show_in_webui("{:.2f}".format(self.get_loop_blocking_index()), key="Loop business (should be close to 1)")
-            
-        
+            ray.show_in_webui(
+                str(len(all_tasks)), key="Number of concurrent task runing")
+            ray.show_in_webui(
+                str(dict(Counter(all_tasks))), key="Concurrent tasks")
+
     def register_coroutine(self, coro, name):
         with self.names_lock:
             self.names[coro] = name
-    
+
     def unregister_coroutine(self, coro):
         with self.names_lock:
             self.names.pop(coro)
-    
+
     def get_all_task_names(self):
         names = []
         with self.names_lock:
             names = list(self.names.values())
         return names
-    
-    def get_loop_blocking_index(self):
-        return self.real_sleep_time / self.sleep_time
-

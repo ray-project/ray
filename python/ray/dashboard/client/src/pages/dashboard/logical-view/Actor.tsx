@@ -171,6 +171,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             }
           ];
 
+    // Construct the custom message from the actor.
     let actorCustomDisplay: JSX.Element[] = []
     if (actor.state !== -1 && actor.webuiDisplay) {
       Object.keys(actor.webuiDisplay).sort().forEach(key =>{
