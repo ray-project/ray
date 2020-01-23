@@ -182,7 +182,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               >
                 Profile
               </span>
-              )
+              ){" "}
               {Object.entries(profiling).map(
                 ([profilingId, profilingStatus]) =>
                   profilingStatus !== null && (
