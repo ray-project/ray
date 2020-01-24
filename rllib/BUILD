@@ -103,11 +103,11 @@ py_test(
     name = "test_a3c_torch_pong_deterministic_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
+        "--torch",
         "--env", "PongDeterministic-v0",
         "--run", "A3C",
-        "--torch",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2}'",
+        "--config", "'{\"num_workers\": 2, \"sample_async\": false}'",
         "--ray-num-cpus", "4"
         ]
 )
@@ -562,7 +562,7 @@ py_test(
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"num_aggregation_workers\": 2, \"min_iter_time_s\": 1}'",
-        "--ray-num-cpus", "4",
+        "--ray-num-cpus", "5",
         ]
 )
 
