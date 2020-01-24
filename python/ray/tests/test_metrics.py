@@ -4,6 +4,7 @@ import grpc
 import psutil
 import requests
 import time
+from base64 import b64decode
 
 import ray
 from ray.core.generated import node_manager_pb2
@@ -121,7 +122,6 @@ def test_worker_stats(shutdown_only):
             return True
         else:
             return False
-    from base64 import b64decode
     webui_url = addresses["webui_url"]
     webui_url = webui_url.replace("localhost", "http://127.0.0.1")
     for worker in reply.workers_stats:
