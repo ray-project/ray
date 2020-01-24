@@ -40,7 +40,7 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
         # Get setup tasks in order to throw errors on failure.
         ray.get([
             worker.setup_torch_data_parallel.remote(
-                address, i, len(workers.remote_workers()))
+                address, i, len(workers.remote_workers()), "gloo")
             for i, worker in enumerate(workers.remote_workers())
         ])
         logger.info("Torch process group init completed")

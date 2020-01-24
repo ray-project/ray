@@ -1,7 +1,6 @@
 import random
 import numpy as np
 import gym
-import datetime
 import logging
 import pickle
 
@@ -645,6 +644,8 @@ class RolloutWorker(EvaluatorInterface):
             count: number of samples learned on.
         """
         batch = self.sample(sample_batch_size=train_batch_size)
+        logger.info("Executing distributed minibatch SGD "
+                    "on batch of size {}".format(batch.count))
         info = do_minibatch_sgd(batch, self.policy_map, self, num_sgd_iter,
                                 sgd_minibatch_size, standardize_fields)
         return info, batch.count
@@ -813,15 +814,17 @@ class RolloutWorker(EvaluatorInterface):
             logger.info("Built preprocessor map: {}".format(preprocessors))
         return policy_map, preprocessors
 
-    def setup_torch_data_parallel(self, url, world_rank, world_size):
+    def setup_torch_data_parallel(self, url, world_rank, world_size, backend):
         """Join a torch process group for distributed SGD."""
 
+        logger.info("Joining process group, url={}, world_rank={}, "
+                    "world_size={}, backend={}".format(url, world_rank,
+                                                       world_size, backend))
         torch.distributed.init_process_group(
-            backend="gloo",
+            backend=backend,
             init_method=url,
             rank=world_rank,
-            world_size=world_size,
-            timeout=datetime.timedelta(0, 5))
+            world_size=world_size)
 
         for pid, policy in self.policy_map.items():
             if not isinstance(policy, TorchPolicy):
