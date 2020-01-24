@@ -323,7 +323,7 @@ py_test(
         "--env", "Pong-v0",
         "--run", "ES",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'"
+        "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'",
         "--ray-num-cpus", "4"
         ]
 )
@@ -535,7 +535,7 @@ py_test(
         "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\", \"parameter_noise\": false}'"
+        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\", \"parameter_noise\": false}'",
         "--ray-num-cpus", "4",
         ]
 )
