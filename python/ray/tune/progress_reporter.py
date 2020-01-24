@@ -50,7 +50,7 @@ class TuneReporterBase(ProgressReporter):
         """Initializes a new TableReporterBase.
 
         Args:
-            metric_columns (Dict[str,str]|List[str]): Names of metrics to
+            metric_columns (dict[str, str]|list[str]): Names of metrics to
                 include in progress table. If this is a dict, the keys should
                 be metric names and the values should be the displayed names.
                 If this is a list, the metric name is used directly.
@@ -103,7 +103,7 @@ class JupyterNotebookReporter(TuneReporterBase):
 
         Args:
             overwrite (bool): Flag for overwriting the last reported progress.
-            metric_columns (Dict[str,str]|List[str]): Names of metrics to
+            metric_columns (dict[str, str]|list[str]): Names of metrics to
                 include in progress table. If this is a dict, the keys should
                 be metric names and the values should be the displayed names.
                 If this is a list, the metric name is used directly.
@@ -135,7 +135,7 @@ class CLIReporter(TuneReporterBase):
         """Initializes a CLIReporter.
 
         Args:
-            metric_columns (Dict[str,str]|List[str]): Names of metrics to
+            metric_columns (dict[str, str]|list[str]): Names of metrics to
                 include in progress table. If this is a dict, the keys should
                 be metric names and the values should be the displayed names.
                 If this is a list, the metric name is used directly.
@@ -179,8 +179,8 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
     and the current values of its metrics.
 
     Args:
-        trials (List[Trial]): List of trials to get progress string for.
-        metric_columns (Dict[str,str]|List[str]): Names of metrics to include.
+        trials (list[Trial]): List of trials to get progress string for.
+        metric_columns (dict[str, str]|list[str]): Names of metrics to include.
             If this is a dict, the keys are metric names and the values are
             the names to use in the message. If this is a list, the metric
             name is used in the message directly.
@@ -245,7 +245,7 @@ def trial_errors_str(trials, fmt="psql", max_rows=None):
     """Returns a readable message regarding trial errors.
 
     Args:
-        trials (List[Trial]): List of trials to get progress string for.
+        trials (list[Trial]): List of trials to get progress string for.
         fmt (str): Output format (see tablefmt in tabulate API).
         max_rows (int): Maximum number of rows in the error table. Defaults to
             unlimited.
@@ -277,7 +277,7 @@ def _fair_filter_trials(trials_by_state, max_trials):
     The oldest trials are truncated if necessary.
 
     Args:
-        trials_by_state (Dict[str, List[Trial]]: Trials by state.
+        trials_by_state (dict[str, list[Trial]]: Trials by state.
         max_trials (int): Maximum number of trials to return.
     Returns:
         Dict mapping state to List of fairly represented trials.
@@ -315,8 +315,8 @@ def _get_trial_info(trial, parameters, metrics):
 
     Args:
         trial (Trial): Trial to get information for.
-        parameters (List[str]): Names of trial parameters to include.
-        metrics (List[str]): Names of metrics to include.
+        parameters (list[str]): Names of trial parameters to include.
+        metrics (list[str]): Names of metrics to include.
     """
     result = flatten_dict(trial.last_result)
     trial_info = [str(trial), trial.status, str(trial.location)]
