@@ -460,25 +460,19 @@ class RolloutWorker(EvaluatorInterface):
                 self.async_env, self.env, self.policy_map))
 
     @override(EvaluatorInterface)
-    def sample(self, sample_batch_size=None):
+    def sample(self):
         """Evaluate the current policies and return a batch of experiences.
-
-        Arguments:
-            sample_batch_size (int): Override the sample batch size config.
 
         Return:
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
 
-        if sample_batch_size is None:
-            sample_batch_size = self.sample_batch_size
-
         if self._fake_sampler and self.last_batch is not None:
             return self.last_batch
 
         if log_once("sample_start"):
-            logger.info(
-                "Generating sample batch of size {}".format(sample_batch_size))
+            logger.info("Generating sample batch of size {}".format(
+                self.sample_batch_size))
 
         batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
@@ -490,7 +484,8 @@ class RolloutWorker(EvaluatorInterface):
         else:
             max_batches = float("inf")
 
-        while steps_so_far < sample_batch_size and len(batches) < max_batches:
+        while steps_so_far < self.sample_batch_size and len(
+                batches) < max_batches:
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
@@ -643,7 +638,9 @@ class RolloutWorker(EvaluatorInterface):
             info: dictionary of extra metadata from learn_on_batch().
             count: number of samples learned on.
         """
-        batch = self.sample(sample_batch_size=train_batch_size)
+        batch = self.sample()
+        assert batch.count == train_batch_size, \
+            (batch.count, "Batch size possibly out of sync between workers")
         logger.info("Executing distributed minibatch SGD "
                     "on batch of size {}".format(batch.count))
         info = do_minibatch_sgd(batch, self.policy_map, self, num_sgd_iter,

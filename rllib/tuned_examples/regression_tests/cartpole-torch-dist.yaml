@@ -6,7 +6,9 @@ cartpole-torch-dist:
         timesteps_total: 100000
     config:
         num_workers: 2
-        batch_mode: complete_episodes
+        sample_batch_size: 4000
+        train_batch_size: 4000
+        batch_mode: truncate_episodes
         observation_filter: MeanStdFilter
         use_pytorch: true
         distributed_data_parallel_optimizer: true

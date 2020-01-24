@@ -79,6 +79,16 @@ def choose_policy_optimizer(workers, config):
         if not config["use_pytorch"]:
             raise ValueError(
                 "Distributed data parallel is only supported for PyTorch")
+        if config["batch_mode"] != "truncate_episodes":
+            raise ValueError(
+                "Distributed data parallel requires truncate_episodes "
+                "batch mode.")
+        if config["sample_batch_size"] != config["train_batch_size"]:
+            raise ValueError(
+                "Distributed data parallel requires sample_batch_size to be "
+                "equal to train_batch_size. The number of actual samples per "
+                "iteration will be (train_batch_size * num_workers).")
+
         return TorchDistributedDataParallelOptimizer(
             workers,
             num_sgd_iter=config["num_sgd_iter"],
