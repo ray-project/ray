@@ -674,7 +674,8 @@ class RayletStats(threading.Thread):
             _ = reply_future.result()
 
         reply_future = stub.KillActor.future(
-            core_worker_pb2.KillActorRequest(intended_actor_id=ray.utils.hex_to_binary(actor_id)))
+            core_worker_pb2.KillActorRequest(
+                intended_actor_id=ray.utils.hex_to_binary(actor_id)))
         reply_future.add_done_callback(_callback)
         return {}
 

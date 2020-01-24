@@ -4,7 +4,6 @@ import grpc
 import psutil
 import requests
 import time
-from base64 import b64decode
 
 import ray
 from ray.core.generated import node_manager_pb2
@@ -122,6 +121,7 @@ def test_worker_stats(shutdown_only):
             return True
         else:
             return False
+
     webui_url = addresses["webui_url"]
     webui_url = webui_url.replace("localhost", "http://127.0.0.1")
     for worker in reply.workers_stats:
@@ -130,7 +130,8 @@ def test_worker_stats(shutdown_only):
         requests.get(
             webui_url + "/api/kill_actor",
             params={
-                "actor_id": ray.utils.binary_to_hex(worker.core_worker_stats.actor_id),
+                "actor_id": ray.utils.binary_to_hex(
+                    worker.core_worker_stats.actor_id),
                 "ip_address": worker.core_worker_stats.ip_address,
                 "port": worker.core_worker_stats.port
             })
