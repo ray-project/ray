@@ -77,6 +77,7 @@ def run(run_or_experiment,
         with_server=False,
         server_port=TuneServer.DEFAULT_PORT,
         verbose=2,
+        progress_reporter=None,
         resume=False,
         queue_trials=False,
         reuse_actors=False,
@@ -169,6 +170,10 @@ def run(run_or_experiment,
         server_port (int): Port number for launching TuneServer.
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
+        progress_reporter (ProgressReporter): Progress reporter for reporting
+            intermediate experiment progress. Defaults to CLIReporter if
+            running in command-line, or JupyterNotebookReporter if running in
+            a Jupyter notebook.
         resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", or bool.
             LOCAL/True restores the checkpoint from the local_checkpoint_dir.
             REMOTE restores the checkpoint from remote_checkpoint_dir.
@@ -272,10 +277,11 @@ def run(run_or_experiment,
     for exp in experiments:
         runner.add_experiment(exp)
 
-    if IS_NOTEBOOK:
-        reporter = JupyterNotebookReporter(overwrite=verbose < 2)
-    else:
-        reporter = CLIReporter()
+    if progress_reporter is None:
+        if IS_NOTEBOOK:
+            progress_reporter = JupyterNotebookReporter(overwrite=verbose < 2)
+        else:
+            progress_reporter = CLIReporter()
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
@@ -299,8 +305,8 @@ def run(run_or_experiment,
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            if verbose:
-                reporter.report(runner)
+            if verbose and progress_reporter.should_report(runner):
+                progress_reporter.report(runner)
             last_debug = time.time()
 
     try:
@@ -308,8 +314,8 @@ def run(run_or_experiment,
     except Exception:
         logger.exception("Trial Runner checkpointing failed.")
 
-    if verbose:
-        reporter.report(runner)
+    if verbose and progress_reporter.should_report(runner):
+        progress_reporter.report(runner)
 
     wait_for_sync()
 
@@ -339,6 +345,7 @@ def run_experiments(experiments,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=2,
+                    progress_reporter=None,
                     resume=False,
                     queue_trials=False,
                     reuse_actors=False,
@@ -380,6 +387,7 @@ def run_experiments(experiments,
             with_server=with_server,
             server_port=server_port,
             verbose=verbose,
+            progress_reporter=progress_reporter,
             resume=resume,
             queue_trials=queue_trials,
             reuse_actors=reuse_actors,
@@ -396,6 +404,7 @@ def run_experiments(experiments,
                 with_server=with_server,
                 server_port=server_port,
                 verbose=verbose,
+                progress_reporter=progress_reporter,
                 resume=resume,
                 queue_trials=queue_trials,
                 reuse_actors=reuse_actors,

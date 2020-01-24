@@ -2,9 +2,9 @@ from __future__ import print_function
 
 import collections
 
-from ray.tune.result import (DEFAULT_RESULT_KEYS, CONFIG_PREFIX,
-                             EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
-                             TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL)
+from ray.tune.result import (CONFIG_PREFIX, EPISODE_REWARD_MEAN, MEAN_ACCURACY,
+                             MEAN_LOSS, TRAINING_ITERATION, TIME_TOTAL_S,
+                             TIMESTEPS_TOTAL)
 from ray.tune.utils import flatten_dict
 
 try:
@@ -14,20 +14,11 @@ except ImportError:
                       "Please re-run 'pip install ray[tune]' or "
                       "'pip install ray[rllib]'.")
 
-DEFAULT_PROGRESS_KEYS = DEFAULT_RESULT_KEYS + (EPISODE_REWARD_MEAN, )
-# Truncated representations of column names (to accommodate small screens).
-REPORTED_REPRESENTATIONS = {
-    EPISODE_REWARD_MEAN: "reward",
-    MEAN_ACCURACY: "acc",
-    MEAN_LOSS: "loss",
-    TIME_TOTAL_S: "total time (s)",
-    TIMESTEPS_TOTAL: "timesteps",
-    TRAINING_ITERATION: "iter",
-}
-
 
 class ProgressReporter:
-    # TODO(ujvl): Expose ProgressReporter in tune.run for custom reporting.
+    def should_report(self, trial_runner):
+        """Returns whether or not progress should be reported."""
+        raise NotImplementedError
 
     def report(self, trial_runner):
         """Reports progress across all trials of the trial runner.
@@ -38,43 +29,126 @@ class ProgressReporter:
         raise NotImplementedError
 
 
-class JupyterNotebookReporter(ProgressReporter):
-    def __init__(self, overwrite):
+class TuneReporterBase(ProgressReporter):
+    """Base class for the default Tune reporters."""
+
+    # Truncated representations of column names (to accommodate small screens).
+    DEFAULT_COLUMNS = {
+        EPISODE_REWARD_MEAN: "reward",
+        MEAN_ACCURACY: "acc",
+        MEAN_LOSS: "loss",
+        TIME_TOTAL_S: "total time (s)",
+        TIMESTEPS_TOTAL: "timesteps",
+        TRAINING_ITERATION: "iter",
+    }
+
+    def __init__(self,
+                 metric_columns=None,
+                 max_progress_rows=20,
+                 max_error_rows=20,
+                 fmt="psql"):
+        """Initializes a new TableReporterBase.
+
+        Args:
+            metric_columns (Dict[str,str]|List[str]): Names of metrics to
+                include in progress table. If this is a dict, the keys should
+                be metric names and the values should be the displayed names.
+                If this is a list, the metric name is used directly.
+            max_progress_rows (int): Maximum number of progress rows to print
+                in the progress table. Defaults to 20.
+            max_error_rows (int): Maximum number of error rows to print in the
+                error table. Defaults to 20.
+            fmt (str): Table format.
+        """
+        self.metric_columns = metric_columns or self.DEFAULT_COLUMNS
+        self.max_progress_rows = max_progress_rows
+        self.max_error_rows = max_error_rows
+        self.fmt = fmt
+
+    def should_report(self, trial_runner):
+        return True
+
+    def _messages(self, trial_runner):
+        messages = [
+            "== Status ==",
+            memory_debug_str(),
+            trial_runner.scheduler_alg.debug_string(),
+            trial_runner.trial_executor.debug_string(),
+        ]
+        if self.max_progress_rows > 0:
+            messages.append(
+                trial_progress_str(
+                    trial_runner.get_trials(),
+                    metric_columns=self.metric_columns,
+                    fmt=self.fmt,
+                    max_rows=self.max_progress_rows))
+        if self.max_error_rows > 0:
+            messages.append(
+                trial_errors_str(
+                    trial_runner.get_trials(),
+                    fmt=self.fmt,
+                    max_rows=self.max_error_rows))
+        return messages
+
+
+class JupyterNotebookReporter(TuneReporterBase):
+    """Jupyter notebook-friendly Reporter that can update display in-place."""
+
+    def __init__(self,
+                 overwrite,
+                 metric_columns=None,
+                 max_progress_rows=20,
+                 max_error_rows=20):
         """Initializes a new JupyterNotebookReporter.
 
         Args:
             overwrite (bool): Flag for overwriting the last reported progress.
+            metric_columns (Dict[str,str]|List[str]): Names of metrics to
+                include in progress table. If this is a dict, the keys should
+                be metric names and the values should be the displayed names.
+                If this is a list, the metric name is used directly.
+            max_progress_rows (int): Maximum number of progress rows to print
+                in the progress table. Defaults to 20.
+            max_error_rows (int): Maximum number of error rows to print in the
+                error table. Defaults to 20.
         """
+        super(JupyterNotebookReporter,
+              self).__init__(metric_columns, max_progress_rows, max_error_rows)
         self.overwrite = overwrite
 
     def report(self, trial_runner):
         delim = "<br>"
-        messages = [
-            "== Status ==",
-            memory_debug_str(),
-            trial_runner.scheduler_alg.debug_string(),
-            trial_runner.trial_executor.debug_string(),
-            trial_progress_str(trial_runner.get_trials(), fmt="html"),
-            trial_errors_str(trial_runner.get_trials(), fmt="html"),
-        ]
         from IPython.display import clear_output
         from IPython.core.display import display, HTML
         if self.overwrite:
             clear_output(wait=True)
-        display(HTML(delim.join(messages) + delim))
+        display(HTML(delim.join(self._messages(trial_runner)) + delim))
 
 
-class CLIReporter(ProgressReporter):
+class CLIReporter(TuneReporterBase):
+    """Command-line reporter"""
+
+    def __init__(self,
+                 metric_columns=None,
+                 max_progress_rows=20,
+                 max_error_rows=20):
+        """Initializes a CLIReporter.
+
+        Args:
+            metric_columns (Dict[str,str]|List[str]): Names of metrics to
+                include in progress table. If this is a dict, the keys should
+                be metric names and the values should be the displayed names.
+                If this is a list, the metric name is used directly.
+            max_progress_rows (int): Maximum number of progress rows to print
+                in the progress table. Defaults to 20.
+            max_error_rows (int): Maximum number of error rows to print in the
+                error table. Defaults to 20.
+        """
+        super(CLIReporter, self).__init__(metric_columns, max_progress_rows,
+                                          max_error_rows)
+
     def report(self, trial_runner):
-        messages = [
-            "== Status ==",
-            memory_debug_str(),
-            trial_runner.scheduler_alg.debug_string(),
-            trial_runner.trial_executor.debug_string(),
-            trial_progress_str(trial_runner.get_trials()),
-            trial_errors_str(trial_runner.get_trials()),
-        ]
-        print("\n".join(messages) + "\n")
+        print("\n".join(self._messages(trial_runner)) + "\n")
 
 
 def memory_debug_str():
@@ -98,7 +172,7 @@ def memory_debug_str():
                 "(or ray[debug]) to resolve)")
 
 
-def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=20):
+def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
     """Returns a human readable message for printing to the console.
 
     This contains a table where each row represents a trial, its parameters
@@ -106,10 +180,13 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=20):
 
     Args:
         trials (List[Trial]): List of trials to get progress string for.
-        metrics (List[str]): Names of metrics to include. Defaults to
-            metrics defined in DEFAULT_RESULT_KEYS.
+        metric_columns (Dict[str,str]|List[str]): Names of metrics to include.
+            If this is a dict, the keys are metric names and the values are
+            the names to use in the message. If this is a list, the metric
+            name is used in the message directly.
         fmt (str): Output format (see tablefmt in tabulate API).
-        max_rows (int): Maximum number of rows in the trial table.
+        max_rows (int): Maximum number of rows in the trial table. Defaults to
+            unlimited.
     """
     messages = []
     delim = "<br>" if fmt == "html" else "\n"
@@ -131,6 +208,7 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=20):
     messages.append("Number of trials: {} ({})".format(
         num_trials, ", ".join(num_trials_strs)))
 
+    max_rows = max_rows or float("inf")
     if num_trials > max_rows:
         # TODO(ujvl): suggestion for users to view more rows.
         trials_by_state_trunc = _fair_filter_trials(trials_by_state, max_rows)
@@ -148,33 +226,36 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=20):
                         "shown.".format(max_rows, overflow, overflow_str))
 
     # Pre-process trials to figure out what columns to show.
-    keys = list(metrics or DEFAULT_PROGRESS_KEYS)
+    if isinstance(metric_columns, collections.Mapping):
+        keys = list(metric_columns.keys())
+        formatted_columns = list(metric_columns.values())
+    else:
+        keys, formatted_columns = metric_columns, metric_columns
     keys = [k for k in keys if any(t.last_result.get(k) for t in trials)]
     # Build trial rows.
     params = list(set().union(*[t.evaluated_params for t in trials]))
     trial_table = [_get_trial_info(trial, params, keys) for trial in trials]
-    # Parse columns.
-    parsed_columns = [REPORTED_REPRESENTATIONS.get(k, k) for k in keys]
-    columns = ["Trial name", "status", "loc"]
-    columns += params + parsed_columns
+    columns = ["Trial name", "status", "loc"] + params + formatted_columns
     messages.append(
         tabulate(trial_table, headers=columns, tablefmt=fmt, showindex=False))
     return delim.join(messages)
 
 
-def trial_errors_str(trials, fmt="psql", max_rows=20):
+def trial_errors_str(trials, fmt="psql", max_rows=None):
     """Returns a readable message regarding trial errors.
 
     Args:
         trials (List[Trial]): List of trials to get progress string for.
         fmt (str): Output format (see tablefmt in tabulate API).
-        max_rows (int): Maximum number of rows in the error table.
+        max_rows (int): Maximum number of rows in the error table. Defaults to
+            unlimited.
     """
     messages = []
     failed = [t for t in trials if t.error_file]
     num_failed = len(failed)
     if num_failed > 0:
         messages.append("Number of errored trials: {}".format(num_failed))
+        max_rows = max_rows or float("inf")
         if num_failed > max_rows:
             messages.append("Table truncated to {} rows ({} overflow)".format(
                 max_rows, num_failed - max_rows))
