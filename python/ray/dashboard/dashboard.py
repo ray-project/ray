@@ -257,11 +257,11 @@ class Dashboard(object):
             duration = int(req.query.get("duration"))
             profiling_id = self.raylet_stats.launch_profiling(
                 node_id=node_id, pid=pid, duration=duration)
-            return aiohttp.web.json_response(str(profiling_id))
+            return await json_response(str(profiling_id))
 
         async def check_profiling_status(req) -> aiohttp.web.Response:
             profiling_id = req.query.get("profiling_id")
-            return aiohttp.web.json_response(
+            return await json_response(
                 self.raylet_stats.check_profiling_status(profiling_id))
 
         async def get_profiling_info(req) -> aiohttp.web.Response:
