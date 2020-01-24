@@ -27,7 +27,7 @@ class TestPDQN(unittest.TestCase):
             trainer.train()
 
         # Torch.
-        config["use_pytorch"] = True
-        trainer = pg.PGTrainer(config=config, env="CartPole-v0")
-        for i in range(num_iterations):
-            trainer.train()
+        #config["use_pytorch"] = True
+        #trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
+        #for i in range(num_iterations):
+        #    trainer.train()

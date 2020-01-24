@@ -9,7 +9,14 @@ class Exploration(metaclass=ABCMeta):
     and selects the action to actually apply to the environment using some
     predefined exploration schema.
     """
-    def __init__(self, framework="tf"):
+    def __init__(self, action_space=None, framework="tf"):
+        """
+        Args:
+            action_space (Optional[gym.spaces.Space]): The action space in
+                which to explore.
+            framework (str): One of "tf" or "torch".
+        """
+        self.action_space = action_space
         self.framework = check_framework(framework)
 
     def get_action(self, model_output, model, action_dist, time_step):
@@ -47,7 +54,7 @@ class Exploration(metaclass=ABCMeta):
         Returns:
             any: The extra loss term to add to the loss.
         """
-        pass  # TODO: implement for some example Exploration class.
+        pass  # TODO(sven): implement for some example Exploration class.
 
     @abstractmethod
     def get_state(self):

@@ -62,7 +62,9 @@ class Policy(metaclass=ABCMeta):
         self.config = config
 
         # Create the Exploration object to use for this Policy.
-        self.exploration = from_config(Exploration, config.get("exploration"))
+        self.exploration = from_config(
+            Exploration, config.get("exploration"),
+            action_space=self.action_space)
         # The default sampling behavior for actions if not explicitly given
         # in calls to `compute_actions`.
         self.deterministic = config.get("deterministic", False)

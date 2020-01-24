@@ -92,14 +92,16 @@ def from_config(cls, config=None, **kwargs):
     if type_ is None:
         # We have a default constructor that was defined directly by cls
         # (not by its children).
-        if cls is not None and cls.__default_constructor__ is not None and \
+        if cls is not None and hasattr(cls, "__default_constructor__") and \
+                cls.__default_constructor__ is not None and \
                 ctor_args == [] and \
                 (
-                    not hasattr(cls.__bases__[0], "__default_constructor__")
-                    or
-                    cls.__bases__[0].__default_constructor__ is None or
-                    cls.__bases__[0].__default_constructor__ is not
-                    cls.__default_constructor__
+                        not hasattr(cls.__bases__[0],
+                                    "__default_constructor__")
+                        or
+                        cls.__bases__[0].__default_constructor__ is None or
+                        cls.__bases__[0].__default_constructor__ is not
+                        cls.__default_constructor__
                 ):
             constructor = cls.__default_constructor__
             # Default constructor's keywords into ctor_kwargs.
@@ -199,13 +201,14 @@ def from_file(cls, filename, *args, **kwargs):
 
 
 def lookup_type(cls, type_):
-    if cls is not None and isinstance(cls.__type_registry__, dict) and \
+    if cls is not None and hasattr(cls, "__type_registry__") and \
+            isinstance(cls.__type_registry__, dict) and \
             (
-                type_ in cls.__type_registry__ or (
+                    type_ in cls.__type_registry__ or (
                     isinstance(type_, str) and
-                    re.sub("[\W_]", "", type_.lower())
+                    re.sub("[\\W_]", "", type_.lower())
                     in cls.__type_registry__
-                )
+            )
             ):
         available_class_for_type = cls.__type_registry__.get(type_)
         if available_class_for_type is None:

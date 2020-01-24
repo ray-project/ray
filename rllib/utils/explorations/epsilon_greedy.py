@@ -2,9 +2,11 @@ import gym
 import numpy as np
 import random
 
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explorations.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.schedules.schedule import Schedule
 
 tf = try_import_tf()
 
@@ -37,11 +39,12 @@ class EpsilonGreedy(Exploration):
         # For now, require Discrete action space (may loosen this restriction
         # in the future).
         assert isinstance(action_space, gym.spaces.Discrete)
-        super(EpsilonGreedy, self).__init__(framework=framework)
+        super().__init__(action_space=action_space, framework=framework)
 
         self.action_space = action_space
         # Create a framework-specific Schedule object.
-        self.epsilon_schedule = Schedule.from_config(
+        self.epsilon_schedule = from_config(
+            Schedule,
             initial_p=initial_epsilon, final_p=final_epsilon,
             max_timesteps=schedule_max_timesteps,
             end_t_pct=exploration_fraction, framework=framework
@@ -107,6 +110,7 @@ class EpsilonGreedy(Exploration):
     def reset_state(self):
         self.last_time_step.set(0)
 
+    @classmethod
     @override(Exploration)
-    def merge_states(self, exploration_states):
-        self.last_time_step.set(np.reduce_mean(exploration_states))
+    def merge_states(cls, exploration_states):
+        return np.mean(exploration_states)
