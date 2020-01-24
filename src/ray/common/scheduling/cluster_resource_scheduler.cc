@@ -791,7 +791,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
                                      local_resources_.predefined_resources[i].available,
                                      &task_allocation->predefined_resources[i])) {
         // Allocation failed. Restore node's local resources by freeing the resources
-        // of the failed allocation.                               
+        // of the failed allocation.
         FreeTaskResourceInstances(*task_allocation);
         return false;
       }
@@ -811,7 +811,7 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
         task_allocation->custom_resources.emplace(it->first, allocation);
         if (!success) {
           // Allocation failed. Restore node's local resources by freeing the resources
-          // of the failed allocation.                               
+          // of the failed allocation.
           FreeTaskResourceInstances(*task_allocation);
           return false;
         }
