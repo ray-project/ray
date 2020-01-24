@@ -17,7 +17,8 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
                  train_batch_size=1,
                  sgd_minibatch_size=0,
                  standardize_fields=frozenset([]),
-                 keep_local_weights_in_sync=True):
+                 keep_local_weights_in_sync=True,
+                 backend="gloo"):
         PolicyOptimizer.__init__(self, workers)
         self.learner_stats = {}
         self.num_sgd_iter = num_sgd_iter
@@ -40,7 +41,7 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
         # Get setup tasks in order to throw errors on failure.
         ray.get([
             worker.setup_torch_data_parallel.remote(
-                address, i, len(workers.remote_workers()), "gloo")
+                address, i, len(workers.remote_workers()), backend)
             for i, worker in enumerate(workers.remote_workers())
         ])
         logger.info("Torch process group init completed")
