@@ -150,11 +150,6 @@ std::string TaskRequest::DebugString() {
   return buffer.str();
 }
 
-void TaskResourceInstances::Clear() {
-  this->predefined_resources.clear();
-  this->predefined_resources.clear();
-}
-
 std::string TaskResourceInstances::DebugString() {
   std::stringstream buffer;
   buffer << std::endl << "  task allocation: P {";

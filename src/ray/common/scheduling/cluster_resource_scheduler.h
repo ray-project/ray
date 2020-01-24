@@ -67,8 +67,6 @@ struct TaskResourceInstances {
   /// The list of instances of each custom resource allocated to a task.
   absl::flat_hash_map<int64_t, std::vector<double>> custom_resources;
   bool operator==(const TaskResourceInstances &other);
-  /// Free all resources.
-  void Clear();
   /// Get CPU instances only.
   std::vector<double> GetCPUInstances() { return this->predefined_resources[CPU]; };
   /// Returns human-readable string for these resources.
