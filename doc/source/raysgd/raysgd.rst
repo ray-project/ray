@@ -18,18 +18,40 @@ The main features are:
 Getting Started
 ---------------
 
-You can start a PyTorch Trainer with the following:
+You can start a ``PyTorchTrainer`` with the following:
 
 .. code-block:: python
 
-    ray.init(args.address)
+    import numpy as np
+    import torch
+    import torch.nn as nn
+    from torch import distributed
+
+    from ray.experimental.sgd import PyTorchTrainer
+    from ray.experimental.sgd.examples.train_example import LinearDataset
+
+
+    def model_creator(config):
+        return nn.Linear(1, 1)
+
+
+    def optimizer_creator(model, config):
+        """Returns optimizer."""
+        return torch.optim.SGD(model.parameters(), lr=1e-2)
+
+
+    def data_creator(batch_size, config):
+        """Returns training dataloader, validation dataloader."""
+        return LinearDataset(2, 5),  LinearDataset(2, 5, size=400)
+
+    ray.init()
 
     trainer1 = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
         loss_creator,
-        num_replicas=<NUM_GPUS_YOU_HAVE> * <NUM_NODES>,
+        num_replicas=2,
         use_gpu=True,
         batch_size=512,
         backend="nccl")

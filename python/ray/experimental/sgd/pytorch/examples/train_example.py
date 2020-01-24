@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 from torch import distributed
 
-from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
+from ray.experimental.sgd import PyTorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):

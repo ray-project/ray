@@ -3,11 +3,17 @@ RaySGD Pytorch
 
 .. warning:: This is still an experimental API and is subject to change in the near future.
 
-.. tip:: Help us make RaySGD better; take this 1 minute `User Survey <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. tip:: Get in touch with us if you're using/considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+
+.. image:: raysgd-pytorch.svg
+    :align: center
 
 The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python.
 
 Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a Ray actor.
+
+.. image:: raysgd-actors.svg
+    :align: center
 
 Setting up training
 -------------------
