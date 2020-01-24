@@ -37,7 +37,7 @@ py_test(
 
 # A2C/A3C
 
-py_binary(
+py_test(
     name = "test_a3c_tf_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
