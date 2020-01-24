@@ -9,8 +9,8 @@ The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch.
 
 Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a Ray actor.
 
-Setting up a model for training
--------------------------------
+Setting up training
+-------------------
 
 The ``PyTorchTrainer`` can be constructed with functions that construct components of the training script. Specifically, it needs constructors for the Model, Data, Optimizer, and Loss. This is so that we can create replicated copies of the neural network/optimizer across different devices and machines.
 
@@ -49,6 +49,18 @@ For example:
       """Returns training dataset, validation dataset."""
       return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
+Before instantiating the trainer, you'll have to start or connect to a Ray cluster:
+
+.. code-block:: python
+
+    ray.init()
+    # or ray.init(address="auto") if a cluster has been started.
+
+Instantiate the trainer object:
+
+.. code-block:: python
+
+    from ray.experimental.sgd import PyTorchTrainer
 
     trainer = PyTorchTrainer(
         model_creator,
@@ -57,10 +69,9 @@ For example:
         loss_creator=nn.MSELoss,
         config={"lr": 0.001})
 
-You can then set the number of workers and whether the workers are using GPU:
+You can also set the number of workers and whether the workers are using GPU:
 
 .. code-block:: python
-
 
     trainer = PyTorchTrainer(
         model_creator,
@@ -74,11 +85,13 @@ You can then set the number of workers and whether the workers are using GPU:
 Shutting down training
 ~~~~~~~~~~~~~~~~~~~~~~
 
-After training, you may want to reappropriate the Ray cluster. To release Ray resources:
+After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the trainer:
 
 .. code-block:: python
 
     trainer.shutdown()
+
+.. note:: Be sure to call ``save`` or ``get_model`` before shutting down.
 
 Training APIs
 -------------
@@ -88,6 +101,8 @@ Now that the trainer is constructed, you'll naturally want to train the model.
 .. code-block:: python
 
     trainer.train()
+
+This takes one pass over the training data.
 
 To run the model on the validation data, call:
 
@@ -120,7 +135,6 @@ You may want to run some initializers on each worker when they are started. This
         num_replicas=100,
         use_gpu=True)
 
-
 Save and Load
 -------------
 
@@ -149,7 +163,6 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
     trainer_2.restore(checkpoint_path)
 
 
-
 Exporting a model for inference
 -------------------------------
 
@@ -161,17 +174,28 @@ The trained torch model can be extracted for use within the same Python program 
     model = trainer.get_model()
 
 
-
 Distributed Multi-node Training
 -------------------------------
 
+You can scale out your training onto multiple nodes without making any modifications to your training code. To train across a cluster, simply make sure that the Ray cluster is started.
 
-You can start a Ray cluster `via autoscaler <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
+You can start a Ray cluster `via the Ray cluster launcher <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.
 
 .. code-block:: bash
 
     ray up CLUSTER.yaml
     python train.py --address="auto"
+
+Then, you'll be able to scale up the number of workers seamlessly across multiple nodes:
+
+.. code-block:: python
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        num_replicas=100)
 
 
 Advanced: Fault Tolerance
@@ -202,7 +226,6 @@ Users can set ``checkpoint="auto"`` to always checkpoint the current model befor
     trainer.train(max_retries=N, checkpoint="auto")
 
 
-
 Advanced: Hyperparameter Tuning
 -------------------------------
 
@@ -212,3 +235,105 @@ Advanced: Hyperparameter Tuning
    :language: python
    :start-after: __torch_tune_example__
 
+
+Simultaneous Multi-model training
+---------------------------------
+
+In certain scenarios such as training GANs, you may want to use multiple models in the training loop. You can do this in the ``PyTorchTrainer`` by allowing the ``model_creator`` and the ``optimizer_creator`` to return multiple values. You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/dcgan.py>`_ for an end-to-end example.
+
+.. code-block:: python
+
+    def model_creator(config):
+        netD = Discriminator()
+        netD.apply(weights_init)
+
+        netG = Generator()
+        netG.apply(weights_init)
+        return netD, netG
+
+
+    def optimizer_creator(models, config):
+        net_d, net_g = models
+        discriminator_opt = optim.Adam(
+            net_d.parameters(), lr=config.get("lr", 0.01), betas=(0.5, 0.999))
+        generator_opt = optim.Adam(
+            net_g.parameters(), lr=config.get("lr", 0.01), betas=(0.5, 0.999))
+        return discriminator_opt, generator_opt
+
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        nn.BCELoss)
+
+
+Custom Training and Validation Functions
+----------------------------------------
+
+``PyTorchTrainer`` allows you to run a custom training and validation in parallel on each worker, providing a flexibility similar to using PyTorch natively. This is done via the ``train_function`` and ``validation_function`` parameters.
+
+.. code-block:: python
+
+    def train(models, dataloader, criterion, optimizers, config):
+        """A custom training function.
+
+        Args:
+            models: Output of the model_creator passed into PyTorchTrainer.
+            data_loader: A dataloader wrapping the training dataset created by the ``data_creator`` passed into PyTorchTrainer.
+            criterion: The instantiation of the ``loss_creator``.
+            optimizers: Output of the optimizer_creator passed into PyTorchTrainer.
+            config: The configuration dictionary passed into PyTorchTrainer.
+
+        Returns:
+            A dictionary of values/metrics.
+        """
+
+        netD, netG = models
+        optimD, optimG = optimizers
+        real_label = 1
+        fake_label = 0
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        for i, data in enumerate(dataloader, 0):
+            netD.zero_grad()
+            real_cpu = data[0].to(device)
+            b_size = real_cpu.size(0)
+            label = torch.full((b_size, ), real_label, device=device)
+            output = netD(real_cpu).view(-1)
+            errD_real = criterion(output, label)
+            errD_real.backward()
+
+            noise = torch.randn(b_size, latent_vector_size, 1, 1, device=device)
+            fake = netG(noise)
+            label.fill_(fake_label)
+            output = netD(fake.detach()).view(-1)
+            errD_fake = criterion(output, label)
+            errD_fake.backward()
+            errD = errD_real + errD_fake
+            optimD.step()
+
+            netG.zero_grad()
+            label.fill_(real_label)
+            output = netD(fake).view(-1)
+            errG = criterion(output, label)
+            errG.backward()
+            optimG.step()
+
+            is_score, is_std = inception_score(fake)
+
+        return {
+            "loss_g": errG.item(),
+            "loss_d": errD.item(),
+            "inception": is_score
+        }
+
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        nn.BCELoss,
+        train_function=train,
+        ...
+    )
