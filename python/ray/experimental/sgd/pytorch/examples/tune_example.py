@@ -11,8 +11,6 @@ in the documentation.
 import numpy as np
 import torch
 import torch.nn as nn
-from torch import distributed
-from torch.utils.data.distributed import DistributedSampler
 
 import ray
 from ray import tune

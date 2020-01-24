@@ -4,7 +4,6 @@ import argparse
 import os
 import torch
 import torch.nn as nn
-from torch import distributed
 import torch.optim as optim
 import torch.utils.data
 import torchvision.datasets as dset

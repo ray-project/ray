@@ -12,7 +12,6 @@ import argparse
 import numpy as np
 import torch
 import torch.nn as nn
-from torch import distributed
 
 from ray.experimental.sgd import PyTorchTrainer
 

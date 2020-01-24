@@ -4,8 +4,6 @@ import torch.nn as nn
 import argparse
 from ray import tune
 import torch.utils.data
-from torch import distributed
-from torch.utils.data.distributed import DistributedSampler
 import torchvision
 import torchvision.transforms as transforms
 
