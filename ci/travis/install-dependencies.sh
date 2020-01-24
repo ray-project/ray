@@ -24,7 +24,7 @@ if [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q scipy tensorflow cython==0.29.0 gym gym[atari] \
+  pip install -q scipy tensorflow cython==0.29.0 gym gym[atari] atari_py \
     opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml \
     openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil \
     aiohttp uvicorn dataclasses pygments werkzeug kubernetes flask grpcio \
@@ -34,7 +34,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 tensorflow gym gym[atari] \
+  pip install -q cython==0.29.0 tensorflow gym gym[atari] atari_py \
     opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml \
     openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil \
     aiohttp uvicorn dataclasses pygments werkzeug kubernetes flask grpcio \

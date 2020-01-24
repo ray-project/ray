@@ -614,14 +614,14 @@ py_test(
         ]
 )
 
-# MARVIL
+# MARWIL
 
 py_test(
-    name = "test_marvil_cartpole_v0",
+    name = "test_marwil_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
-        "--run", "MARVIL",
+        "--run", "MARWIL",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"input\": \"/ray/rllib/tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
         ]
