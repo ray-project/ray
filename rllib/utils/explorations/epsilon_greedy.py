@@ -5,8 +5,8 @@ import random
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explorations.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.schedules.schedule import Schedule
+#from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.schedules import LinearSchedule
 
 tf = try_import_tf()
 
@@ -22,8 +22,7 @@ class EpsilonGreedy(Exploration):
             action_space,
             initial_epsilon=1.0,
             final_epsilon=0.1,
-            schedule_max_timesteps=1e6,
-            exploration_fraction=0.1,
+            final_timestep=int(1e5),
             framework=None
     ):
         """
@@ -31,9 +30,8 @@ class EpsilonGreedy(Exploration):
             action_space (Space): The gym action space used by the environment.
             initial_epsilon (float): The initial epsilon value to use.
             final_epsilon (float): The final epsilon value to use.
-            schedule_max_timesteps (int): How many timesteps the Schedule
-                should decay over.
-            exploration_fraction (float): How many .
+            final_timestep (int): The time step after which epsilon should
+                always be `final_epsilon`.
             framework (Optional[str]): One of None, "tf", "torch".
         """
         # For now, require Discrete action space (may loosen this restriction
@@ -42,20 +40,18 @@ class EpsilonGreedy(Exploration):
         super().__init__(action_space=action_space, framework=framework)
 
         self.action_space = action_space
-        # Create a framework-specific Schedule object.
-        self.epsilon_schedule = from_config(
-            Schedule,
+        # Create a Schedule object.
+        self.epsilon_schedule = LinearSchedule(
             initial_p=initial_epsilon, final_p=final_epsilon,
-            max_timesteps=schedule_max_timesteps,
-            end_t_pct=exploration_fraction, framework=framework
-        )
+            schedule_timesteps=final_timestep)
         # The latest (current) time_step value received.
         self.last_time_step = 0
 
     @override(Exploration)
-    def get_action(self, model_output, model, action_dist, time_step):
+    def get_action(self, time_step, model_output, model=None, action_dist=None,
+                   action_sample=None):
         if self.framework == "tf":
-            return self._get_tf_action_op(model_output, time_step)
+            return self._get_tf_action_op(time_step, model_output)
 
         self.last_time_step = time_step
         # Get the current epsilon.
@@ -71,14 +67,14 @@ class EpsilonGreedy(Exploration):
             return np.argmax(model_output, axis=1), \
                    np.ones(model_output.shape[0])
 
-    def _get_tf_action_op(self, model_output, time_step):
+    def _get_tf_action_op(self, time_step, model_output):
         """
         Tf helper method to produce the tf op for an epsilon exploration
             action.
 
         Args:
-            model_output (any): The Model's output Tensor(s).
             time_step (int): The current (sampling) time step.
+            model_output (any): The Model's output Tensor(s).
 
         Returns:
             tf.Tensor: The tf exploration-action op.
@@ -104,11 +100,11 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def set_state(self, exploration_state):
-        self.last_time_step.set(exploration_state)
+        self.last_time_step = exploration_state
 
     @override(Exploration)
     def reset_state(self):
-        self.last_time_step.set(0)
+        self.last_time_step = 0
 
     @classmethod
     @override(Exploration)

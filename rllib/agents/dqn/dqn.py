@@ -41,9 +41,10 @@ DEFAULT_CONFIG = with_common_config({
         "type": EpsilonGreedy,  # Exploration class.
         "initial_epsilon": 1.0,  # Initial epsilon value.
         "final_epsilon": 0.02,  # Final epsilon value.
-        "schedule_max_timesteps": 100000,  # Schedule max. time steps.
-        "exploration_fraction": 0.1,  # Fraction of entire training period for which to epsilon-explore.
+        "final_timestep": 100000,  # ts after which to use only final_epsilon.
+        #"exploration_fraction": 0.1,  # Fraction of entire training period for which to epsilon-explore.
     },
+    # TODO(sven): Make Exploration class for parameter noise.
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
@@ -54,7 +55,7 @@ DEFAULT_CONFIG = with_common_config({
     # Max num timesteps for annealing schedules. Exploration is annealed from
     # 1.0 to exploration_fraction over this number of timesteps scaled by
     # exploration_fraction
-    "schedule_max_timesteps": 100000,  # TODO: Not used anymore for exploration! Change comments.
+    #"schedule_max_timesteps": 100000,  # TODO: Not used anymore for exploration! Change comments.
     # Minimum env steps to optimize for per train call. This value does
     # not affect learning, only the length of iterations.
     "timesteps_per_iteration": 1000,
@@ -65,6 +66,8 @@ DEFAULT_CONFIG = with_common_config({
     #"exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
+
+    # TODO(sven): Make Exploration class for softmax Q action selection.
     # Use softmax for sampling actions. Required for off policy estimation.
     "soft_q": False,
     # Softmax temperature. Q values are divided by this value prior to softmax.
@@ -87,9 +90,12 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
+
     # Fraction of entire training period over which the beta parameter is
     # annealed
-    "beta_annealing_fraction": 0.2,
+    #"beta_annealing_fraction": 0.2,
+    "prioritized_replay_beta_annealing_timesteps": 100000 * 0.2,
+
     # Final value of beta
     "final_prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
@@ -141,8 +147,10 @@ def make_optimizer(workers, config):
         prioritized_replay=config["prioritized_replay"],
         prioritized_replay_alpha=config["prioritized_replay_alpha"],
         prioritized_replay_beta=config["prioritized_replay_beta"],
-        schedule_max_timesteps=config["schedule_max_timesteps"],
-        beta_annealing_fraction=config["beta_annealing_fraction"],
+        # schedule_max_timesteps=config["schedule_max_timesteps"],
+        # beta_annealing_fraction=config["beta_annealing_fraction"],
+        prioritized_replay_beta_annealing_timesteps=
+        config["prioritized_replay_beta_annealing_timesteps"],
         final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
         prioritized_replay_eps=config["prioritized_replay_eps"],
         train_batch_size=config["train_batch_size"],
@@ -253,8 +261,8 @@ def get_initial_state(config):
 #def update_worker_explorations(trainer):
 def before_train_step(trainer):
     """
-    #Used as `before_train_step` callback. Sets epsilon exploration values in all policies
-    #to updated values (according to current time-step).
+    Sets epsilon exploration values in all policies
+    to updated values (according to current time-step).
 
     Args:
         trainer (Trainer): The Trainer object for the DQN.
@@ -270,8 +278,10 @@ def before_train_step(trainer):
     # Store some data for metrics after learning.
     global_timestep = trainer.optimizer.num_steps_sampled
     trainer.train_start_timestep = global_timestep
-    # Get all current epsilons of all trainable policies for our metrics.
-    trainer.cur_exp_vals = trainer.workers.foreach_trainable_policy(lambda p, _: p.epsilon(global_timestep))
+    # Get all current exploration-states of all trainable policies for
+    # our metrics.
+    trainer.cur_exp_vals = trainer.workers.foreach_trainable_policy(
+        lambda p, _: p.exploration.get_state())
 
 
 def add_trainer_metrics(trainer, result):

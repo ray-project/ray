@@ -476,10 +476,10 @@ class TFPolicy(Policy):
         # If `explore` is fixed to (boolean) False (or np.array(False)),
         # don't explore. But it could be a Tensor as well.
         if explore and self.exploration:
-            assert "behavior_logits" in extra_action_fetches
+            #assert "behavior_logits" in extra_action_fetches
             sampler_fetch = self.exploration.get_action(
-                extra_action_fetches["behavior_logits"], self.model, None,
-                explore, time_step
+                time_step, extra_action_fetches, self.model,
+                action_dist=self.dist_class, action_sample=sampler_fetch
             )
 
         fetches = builder.add_fetches([sampler_fetch] + self._state_outputs +

@@ -127,13 +127,55 @@ class WorkerSet:
 
         The index will be passed as the second arg to the given function.
         """
-
         local_result = [func(self.local_worker(), 0)]
         remote_results = ray_get_and_free([
             w.apply.remote(func, i + 1)
             for i, w in enumerate(self.remote_workers())
         ])
         return local_result + remote_results
+
+    @DeveloperAPI
+    def foreach_policy(self, func):
+        """
+        Apply the given function to each worker's (policy, policy_id) tuple.
+        
+        Args:
+            func (callable): A function - taking a Policy and its ID - that is
+                called on all workers' Policies.
+
+        Returns:
+            List[any]: The list of return values of func over all workers'
+                policies.
+        """
+        local_results = self.local_worker().foreach_policy(func)
+        remote_results = []
+        for worker in self.remote_workers():
+            res = ray_get_and_free([worker.apply.remote(
+                lambda w: w.foreach_policy(func))])
+            remote_results.extend(res)
+        return local_results + remote_results
+
+    @DeveloperAPI
+    def foreach_trainable_policy(self, func):
+        """
+        Applies the given function to each worker's (policy, policy_id) tuple,
+        if the policy can be found in `worker.policies_to_train`.
+
+        Args:
+            func (callable): A function - taking a Policy and its ID - that is
+                called on all workers' Policies in `worker.policies_to_train`.
+
+        Returns:
+            List[any]: The list of n return values of all
+                `func([trainable policy], [ID])`-calls.
+        """
+        local_results = self.local_worker().foreach_trainable_policy(func)
+        remote_results = []
+        for worker in self.remote_workers():
+            res = ray_get_and_free([worker.apply.remote(
+                lambda w: w.foreach_trainable_policy(func))])
+            remote_results.extend(res)
+        return local_results + remote_results
 
     @staticmethod
     def _from_existing(local_worker, remote_workers=None):
