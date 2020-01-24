@@ -44,29 +44,9 @@ def optimizer_creator(model, config):
     return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 
 
-def data_creator(batch_size, config):
+def data_creator(config):
     """Returns training dataloader, validation dataloader."""
-    train_dataset = LinearDataset(2, 5)
-    validation_dataset = LinearDataset(2, 5, size=400)
-
-    train_sampler = None
-    if distributed.is_initialized():
-        train_sampler = DistributedSampler(train_dataset)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=(train_sampler is None),
-        sampler=train_sampler)
-
-    validation_sampler = None
-    if distributed.is_initialized():
-        validation_sampler = DistributedSampler(validation_dataset)
-    validation_loader = torch.utils.data.DataLoader(
-        validation_dataset,
-        batch_size=batch_size,
-        shuffle=(validation_sampler is None),
-        sampler=validation_sampler)
-    return train_loader, validation_loader
+    return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
 
 def tune_example(num_replicas=1, use_gpu=False):

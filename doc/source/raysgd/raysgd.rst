@@ -44,4 +44,5 @@ You can start a PyTorch Trainer with the following:
 
    raysgd_pytorch.rst
    raysgd_tensorflow.rst
-   raysgd_ft.rst
+   raysgd_ref.rst
+   raysgd_example.rst
