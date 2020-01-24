@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -22,6 +23,7 @@ class TorchPolicy(Policy):
         model (TorchModel): Torch model instance
         dist_class (type): Torch action distribution class
     """
+
     def __init__(self, observation_space, action_space, config, model, loss,
                  action_distribution_class):
         """Build a policy from policy and loss torch modules.
@@ -41,9 +43,8 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
-        super(TorchPolicy, self).__init__(
-            observation_space, action_space, config
-        )
+        super(TorchPolicy, self).__init__(observation_space, action_space,
+                                          config)
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
@@ -51,6 +52,7 @@ class TorchPolicy(Policy):
         self._loss = loss
         self._optimizer = self.optimizer()
         self.dist_class = action_distribution_class
+        self.distributed = False
 
     @override(Policy)
     def compute_actions(self,
@@ -86,12 +88,22 @@ class TorchPolicy(Policy):
         self._optimizer.zero_grad()
         loss_out.backward()
 
-        grad_process_info = self.extra_grad_process()
-        self._optimizer.step()
+        info = {}
+        info.update(self.extra_grad_process())
 
-        grad_info = self.extra_grad_info(train_batch)
-        grad_info.update(grad_process_info)
-        return {LEARNER_STATS_KEY: grad_info}
+        if self.distributed:
+            grads = []
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    grads.append(p.grad)
+            start = time.time()
+            torch.distributed.all_reduce_coalesced(grads)
+            info["allreduce_latency"] = time.time() - start
+
+        self._optimizer.step()
+        info.update(self.extra_grad_info(train_batch))
+
+        return {LEARNER_STATS_KEY: info}
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
@@ -144,7 +156,10 @@ class TorchPolicy(Policy):
            return processing info."""
         return {}
 
-    def extra_action_out(self, input_dict, state_batches, model,
+    def extra_action_out(self,
+                         input_dict,
+                         state_batches,
+                         model,
                          action_dist=None):
         """Returns dict of extra info to include in experience batch.
 
@@ -206,8 +221,7 @@ class LearningRateSchedule(object):
             self.lr_schedule = ConstantSchedule(lr)
         else:
             self.lr_schedule = PiecewiseSchedule(
-                lr_schedule, outside_value=lr_schedule[-1][-1]
-            )
+                lr_schedule, outside_value=lr_schedule[-1][-1])
 
     @override(Policy)
     def on_global_var_update(self, global_vars):
@@ -247,5 +261,4 @@ class EntropyCoeffSchedule(object):
     def on_global_var_update(self, global_vars):
         super(EntropyCoeffSchedule, self).on_global_var_update(global_vars)
         self.entropy_coeff = self.entropy_coeff_schedule.value(
-            global_vars["timestep"]
-        )
+            global_vars["timestep"])

@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import gym
+import datetime
 import logging
 import pickle
 
@@ -17,6 +18,7 @@ from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
@@ -27,6 +29,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
     summarize, enable_periodic_logging
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils import try_import_tf, try_import_torch
 
@@ -458,19 +461,25 @@ class RolloutWorker(EvaluatorInterface):
                 self.async_env, self.env, self.policy_map))
 
     @override(EvaluatorInterface)
-    def sample(self):
+    def sample(self, sample_batch_size=None):
         """Evaluate the current policies and return a batch of experiences.
+
+        Arguments:
+            sample_batch_size (int): Override the sample batch size config.
 
         Return:
             SampleBatch|MultiAgentBatch from evaluating the current policies.
         """
 
+        if sample_batch_size is None:
+            sample_batch_size = self.sample_batch_size
+
         if self._fake_sampler and self.last_batch is not None:
             return self.last_batch
 
         if log_once("sample_start"):
-            logger.info("Generating sample batch of size {}".format(
-                self.sample_batch_size))
+            logger.info(
+                "Generating sample batch of size {}".format(sample_batch_size))
 
         batches = [self.input_reader.next()]
         steps_so_far = batches[0].count
@@ -482,8 +491,7 @@ class RolloutWorker(EvaluatorInterface):
         else:
             max_batches = float("inf")
 
-        while steps_so_far < self.sample_batch_size and len(
-                batches) < max_batches:
+        while steps_so_far < sample_batch_size and len(batches) < max_batches:
             batch = self.input_reader.next()
             steps_so_far += batch.count
             batches.append(batch)
@@ -618,6 +626,28 @@ class RolloutWorker(EvaluatorInterface):
         if log_once("learn_out"):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
+
+    @DeveloperAPI
+    def sample_and_learn(self, train_batch_size, num_sgd_iter,
+                         sgd_minibatch_size, standardize_fields):
+        """Sample and batch and learn on it.
+
+        This is typically used in combination with distributed allreduce.
+
+        Arguments:
+            train_batch_size (int): Number of samples to learn on.
+            num_sgd_iter (int): Number of SGD iterations.
+            sgd_minibatch_size (int): SGD minibatch size.
+            standardize_fields (list): List of sample fields to normalize.
+
+        Returns:
+            info: dictionary of extra metadata from learn_on_batch().
+            count: number of samples learned on.
+        """
+        batch = self.sample(sample_batch_size=train_batch_size)
+        info = do_minibatch_sgd(batch, self.policy_map, self, num_sgd_iter,
+                                sgd_minibatch_size, standardize_fields)
+        return info, batch.count
 
     @DeveloperAPI
     def get_metrics(self):
@@ -790,23 +820,14 @@ class RolloutWorker(EvaluatorInterface):
             backend="gloo",
             init_method=url,
             rank=world_rank,
-            world_size=world_size)
+            world_size=world_size,
+            timeout=datetime.timedelta(0, 5))
 
         for pid, policy in self.policy_map.items():
-            if pid in self.policies_to_train:
-                orig_model = policy.model
-                dist_model = torch.nn.parallel.DistributedDataParallel(
-                    policy.model)
-                # XXX do not merge
-                dist_model.value_function = lambda: orig_model.value_function()
-                dist_model.last_output = lambda: orig_model.last_output()
-                dist_model.from_batch = lambda *a, **kw: orig_model.from_batch(*a, **kw)
-                dist_model.get_initial_state = orig_model.get_initial_state
-                policy.model = dist_model
-
-    def sample_and_learn(self):
-        print("Executing sample and learn")
-        return self.learn_on_batch(self.sample())
+            if not isinstance(policy, TorchPolicy):
+                raise ValueError(
+                    "This policy does not support torch distributed", policy)
+            policy.distributed = True
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""

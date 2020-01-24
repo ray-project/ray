@@ -1,17 +1,9 @@
 import logging
-import random
-from collections import defaultdict
 
 import ray
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.optimizers.multi_gpu_optimizer import _averaged
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
-    MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +16,21 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
                  num_sgd_iter=1,
                  train_batch_size=1,
                  sgd_minibatch_size=0,
-                 standardize_fields=frozenset([])):
+                 standardize_fields=frozenset([]),
+                 keep_local_weights_in_sync=True):
         PolicyOptimizer.__init__(self, workers)
         self.learner_stats = {}
-        assert self.workers.remote_workers()
+        self.num_sgd_iter = num_sgd_iter
+        self.train_batch_size = train_batch_size
+        self.sgd_minibatch_size = sgd_minibatch_size
+        self.standardize_fields = standardize_fields
+        self.keep_local_weights_in_sync = keep_local_weights_in_sync
+        self.update_weights_timer = TimerStat()
+        self.learn_timer = TimerStat()
 
         # Setup the distributed processes.
+        if not self.workers.remote_workers():
+            raise ValueError("This optimizer requires >0 remote workers.")
         ip = ray.get(workers.remote_workers()[0].get_node_ip.remote())
         port = ray.get(workers.remote_workers()[0].find_free_port.remote())
         address = "tcp://{ip}:{port}".format(ip=ip, port=port)
@@ -46,15 +47,56 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
 
     @override(PolicyOptimizer)
     def step(self):
-        results = ray.get([
-            w.sample_and_learn.remote() for w in self.workers.remote_workers()
-        ])
-        self.learner_stats = results[0][LEARNER_STATS_KEY]
+        # Sync up the weights. In principle we don't need this, but it doesn't
+        # add too much overhead and handles the case where the user manually
+        # updates the local weights.
+        if self.keep_local_weights_in_sync:
+            with self.update_weights_timer:
+                weights = ray.put(self.workers.local_worker().get_weights())
+                for e in self.workers.remote_workers():
+                    e.set_weights.remote(weights)
+
+        with self.learn_timer:
+            results = ray.get([
+                w.sample_and_learn.remote(
+                    self.train_batch_size, self.num_sgd_iter,
+                    self.sgd_minibatch_size, self.standardize_fields)
+                for w in self.workers.remote_workers()
+            ])
+        for info, count in results:
+            self.num_steps_sampled += count
+            self.num_steps_trained += count
+        self.learner_stats = results[0][0]
+
+        # In debug mode, check the allreduce successfully synced the weights.
+        if logger.isEnabledFor(logging.DEBUG):
+            weights = ray.get([
+                w.get_weights.remote() for w in self.workers.remote_workers()
+            ])
+            sums = []
+            for w in weights:
+                acc = 0
+                for p in w.values():
+                    for k, v in p.items():
+                        acc += v.sum()
+                sums.append(float(acc))
+            logger.debug("The worker weight sums are {}".format(sums))
+            assert len(set(sums)) == 1, sums
+
+        # Sync down the weights. As with the sync up, this is not really
+        # needed unless the user is reading the local weights.
+        if self.keep_local_weights_in_sync:
+            self.workers.local_worker().set_weights(
+                ray.get(self.workers.remote_workers()[0].get_weights.remote()))
+
         return self.learner_stats
 
     @override(PolicyOptimizer)
     def stats(self):
         return dict(
             PolicyOptimizer.stats(self), **{
+                "update_weights_time_ms": round(
+                    1000 * self.update_weights_timer.mean, 3),
+                "learn_time_ms": round(1000 * self.learn_timer.mean, 3),
                 "learner": self.learner_stats,
             })
