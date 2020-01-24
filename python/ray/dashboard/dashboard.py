@@ -275,7 +275,7 @@ class Dashboard(object):
             actor_id = req.query.get("actor_id")
             ip_address = req.query.get("ip_address")
             port = req.query.get("port")
-            return aiohttp.web.json_response(
+            return await json_response(
                 self.raylet_stats.kill_actor(actor_id, ip_address, port))
 
         async def logs(req) -> aiohttp.web.Response:

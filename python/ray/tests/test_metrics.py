@@ -139,10 +139,9 @@ def test_worker_stats(shutdown_only):
     while True:
         if time.time() - start_time > timeout_seconds:
             raise RayTestTimeoutException("Timed out while killing actors")
-        if all([
+        if all(
                 actor_killed(worker.pid) for worker in reply.workers_stats
-                if not worker.is_driver
-        ]):
+                if not worker.is_driver):
             break
 
 
