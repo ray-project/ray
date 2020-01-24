@@ -45,8 +45,7 @@ class TuneReporterBase(ProgressReporter):
     def __init__(self,
                  metric_columns=None,
                  max_progress_rows=20,
-                 max_error_rows=20,
-                 fmt="psql"):
+                 max_error_rows=20):
         """Initializes a new TableReporterBase.
 
         Args:
@@ -58,37 +57,42 @@ class TuneReporterBase(ProgressReporter):
                 in the progress table. Defaults to 20.
             max_error_rows (int): Maximum number of error rows to print in the
                 error table. Defaults to 20.
-            fmt (str): Table format.
         """
-        self.metric_columns = metric_columns or self.DEFAULT_COLUMNS
-        self.max_progress_rows = max_progress_rows
-        self.max_error_rows = max_error_rows
-        self.fmt = fmt
+        self._metric_columns = metric_columns or self.DEFAULT_COLUMNS
+        self._max_progress_rows = max_progress_rows
+        self._max_error_rows = max_error_rows
 
     def should_report(self, trial_runner):
         return True
 
-    def _messages(self, trial_runner):
+    def _progress_str(self, trial_runner, fmt="psql", delim="\n"):
+        """Returns full progress string.
+
+        Args:
+            trial_runner (TrialRunner): Trial runner to report on.
+            fmt (str): Table format. See `tablefmt` in tabulate API.
+            delim (str): Delimiter between messages.
+        """
         messages = [
             "== Status ==",
             memory_debug_str(),
             trial_runner.scheduler_alg.debug_string(),
             trial_runner.trial_executor.debug_string(),
         ]
-        if self.max_progress_rows > 0:
+        if self._max_progress_rows > 0:
             messages.append(
                 trial_progress_str(
                     trial_runner.get_trials(),
-                    metric_columns=self.metric_columns,
-                    fmt=self.fmt,
-                    max_rows=self.max_progress_rows))
-        if self.max_error_rows > 0:
+                    metric_columns=self._metric_columns,
+                    fmt=fmt,
+                    max_rows=self._max_progress_rows))
+        if self._max_error_rows > 0:
             messages.append(
                 trial_errors_str(
                     trial_runner.get_trials(),
-                    fmt=self.fmt,
-                    max_rows=self.max_error_rows))
-        return messages
+                    fmt=fmt,
+                    max_rows=self._max_error_rows))
+        return delim.join(messages) + delim
 
 
 class JupyterNotebookReporter(TuneReporterBase):
@@ -112,17 +116,17 @@ class JupyterNotebookReporter(TuneReporterBase):
             max_error_rows (int): Maximum number of error rows to print in the
                 error table. Defaults to 20.
         """
-        super(JupyterNotebookReporter,
-              self).__init__(metric_columns, max_progress_rows, max_error_rows)
-        self.overwrite = overwrite
+        super(JupyterNotebookReporter, self).__init__(
+            metric_columns, max_progress_rows, max_error_rows)
+        self._overwrite = overwrite
 
     def report(self, trial_runner):
-        delim = "<br>"
         from IPython.display import clear_output
         from IPython.core.display import display, HTML
-        if self.overwrite:
+        if self._overwrite:
             clear_output(wait=True)
-        display(HTML(delim.join(self._messages(trial_runner)) + delim))
+        html = HTML(self._progress_str(trial_runner, fmt="html", delim="<br>"))
+        display(html)
 
 
 class CLIReporter(TuneReporterBase):
@@ -148,7 +152,7 @@ class CLIReporter(TuneReporterBase):
                                           max_error_rows)
 
     def report(self, trial_runner):
-        print("\n".join(self._messages(trial_runner)) + "\n")
+        print(self._progress_str(trial_runner))
 
 
 def memory_debug_str():
@@ -228,14 +232,19 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
     # Pre-process trials to figure out what columns to show.
     if isinstance(metric_columns, collections.Mapping):
         keys = list(metric_columns.keys())
-        formatted_columns = list(metric_columns.values())
     else:
-        keys, formatted_columns = metric_columns, metric_columns
+        keys = metric_columns
     keys = [k for k in keys if any(t.last_result.get(k) for t in trials)]
     # Build trial rows.
     params = list(set().union(*[t.evaluated_params for t in trials]))
     trial_table = [_get_trial_info(trial, params, keys) for trial in trials]
+    # Format column headings
+    if isinstance(metric_columns, collections.Mapping):
+        formatted_columns = [metric_columns[k] for k in keys]
+    else:
+        formatted_columns = keys
     columns = ["Trial name", "status", "loc"] + params + formatted_columns
+    # Tabulate.
     messages.append(
         tabulate(trial_table, headers=columns, tablefmt=fmt, showindex=False))
     return delim.join(messages)
