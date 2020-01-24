@@ -172,16 +172,18 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           ];
 
     // Construct the custom message from the actor.
-    let actorCustomDisplay: JSX.Element[] = []
+    let actorCustomDisplay: JSX.Element[] = [];
     if (actor.state !== -1 && actor.webuiDisplay) {
-      Object.keys(actor.webuiDisplay).sort().forEach(key =>{
-        actorCustomDisplay.push(<Typography className={classes.webuiDisplay}>
-          &nbsp; &nbsp; {key}: {actor.webuiDisplay![key]}
-          </Typography>)
-        actorCustomDisplay.push(<Divider></Divider>)
-      })
+      actorCustomDisplay = Object.keys(actor.webuiDisplay)
+        .sort()
+        .map((key, _, __) => {
+          return (
+            <Typography className={classes.webuiDisplay}>
+              &nbsp; &nbsp; {key}: {actor.webuiDisplay![key]}
+            </Typography>
+          );
+        });
     }
-   
 
     return (
       <div className={classes.root}>
@@ -261,8 +263,19 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         {actor.state !== -1 && (
           <React.Fragment>
-              {actorCustomDisplay && <Typography className={classes.webuiDisplay}>Actor Custom Display</Typography>}
-              {actorCustomDisplay}
+            {
+              actorCustomDisplay.length > 0 && (
+                <React.Fragment>
+                  <Typography>
+                    <Typography className={classes.webuiDisplay}>
+                      Actor Custom Display
+                    </Typography>
+                  </Typography>
+                  {actorCustomDisplay}
+                </React.Fragment>
+              )
+            }
+
             <Collapse in={expanded}>
               <Actors actors={actor.children} />
             </Collapse>

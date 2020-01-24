@@ -359,8 +359,7 @@ class ActorClass:
                 is_direct_call=None,
                 max_concurrency=None,
                 name=None,
-                detached=False,
-                is_asyncio=False):
+                detached=False):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -386,8 +385,6 @@ class ActorClass:
             name: The globally unique name for the actor.
             detached: Whether the actor should be kept alive after driver
                 exits.
-            is_asyncio: Turn on async actor calls. This only works with direct
-                actor calls.
 
         Returns:
             A handle to the newly created actor.
@@ -404,7 +401,7 @@ class ActorClass:
             inspect.getmembers(
                 meta.modified_class,
                 predicate=inspect.iscoroutinefunction)) > 0
-        is_asyncio = is_asyncio or actor_has_async_methods
+        is_asyncio = actor_has_async_methods
 
         if max_concurrency is None:
             if is_asyncio:
