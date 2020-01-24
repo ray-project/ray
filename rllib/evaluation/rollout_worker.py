@@ -827,7 +827,7 @@ class RolloutWorker(EvaluatorInterface):
             if not isinstance(policy, TorchPolicy):
                 raise ValueError(
                     "This policy does not support torch distributed", policy)
-            policy.distributed = True
+            policy.distributed_world_size = world_size
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""

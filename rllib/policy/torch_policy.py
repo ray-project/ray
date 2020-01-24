@@ -52,7 +52,9 @@ class TorchPolicy(Policy):
         self._loss = loss
         self._optimizer = self.optimizer()
         self.dist_class = action_distribution_class
-        self.distributed = False
+
+        # If set, means we are using distributed allreduce during learning.
+        self.distributed_world_size = None
 
     @override(Policy)
     def compute_actions(self,
@@ -91,13 +93,17 @@ class TorchPolicy(Policy):
         info = {}
         info.update(self.extra_grad_process())
 
-        if self.distributed:
+        if self.distributed_world_size:
             grads = []
             for p in self.model.parameters():
                 if p.grad is not None:
                     grads.append(p.grad)
             start = time.time()
-            torch.distributed.all_reduce_coalesced(grads)
+            torch.distributed.all_reduce_coalesced(
+                grads, op=torch.distributed.ReduceOp.SUM)
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    p.grad /= self.distributed_world_size
             info["allreduce_latency"] = time.time() - start
 
         self._optimizer.step()
