@@ -44,8 +44,6 @@ if [ "${TRAVIS-}" = true ]; then
   echo "build --disk_cache=${HOME}/ray-bazel-cache" >> "${HOME}/.bazelrc"
 fi
 if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
-  # Use ray google cloud cache
-  echo "build --remote_cache=https://storage.googleapis.com/ray-bazel-cache" >> "${HOME}/.bazelrc"
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
@@ -72,7 +70,9 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
       translated_path="$(cygpath -m -- "${translated_path}")"
     fi
     echo "build --google_credentials=\"${translated_path}\"" >> "${HOME}/.bazelrc"
+    echo "build --remote_cache=https://storage.googleapis.com/ray-bazel-cache" >> "${HOME}/.bazelrc"
   else
+    echo "build --remote_cache=http://34.94.119.228" >> "${HOME}/.bazelrc"
     echo "Using remote build cache in read-only mode." 1>&2
     echo "build --remote_upload_local_results=false" >> "${HOME}/.bazelrc"
   fi
