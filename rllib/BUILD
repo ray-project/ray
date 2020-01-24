@@ -44,11 +44,12 @@ py_test(
         "--env", "CartPole-v0",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2}'"
+        "--config", "'{\"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_a3c_torch_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -56,22 +57,24 @@ py_binary(
         "--env", "CartPole-v1",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"sample_async\": false}'"
+        "--config", "'{\"num_workers\": 2, \"sample_async\": false}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_a3c_tf_cartpole_v1_lstm",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"model\": {\"use_lstm\": true}}'"
+        "--config", "'{\"num_workers\": 2, \"model\": {\"use_lstm\": true}}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_a3c_torch_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -79,22 +82,24 @@ py_binary(
         "--env", "Pendulum-v0",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"sample_async\": false}'"
+        "--config", "'{\"num_workers\": 2, \"sample_async\": false}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_a3c_tf_pong_deterministic_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "PongDeterministic-v0",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2}'"
+        "--config", "'{\"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_a3c_torch_pong_deterministic_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -102,11 +107,12 @@ py_binary(
         "--run", "A3C",
         "--torch",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2}'"
+        "--config", "'{\"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_a3c_torch_pong_deterministic_v4",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -114,35 +120,38 @@ py_binary(
         "--env", "PongDeterministic-v0",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"use_pytorch\": true, \"sample_async\": false, \"model\": {\"use_lstm\": false, \"grayscale\": true, \"zero_mean\": false, \"dim\": 84}, \"preprocessor_pref\": \"rllib\"}'"
+        "--config", "'{\"num_workers\": 2, \"use_pytorch\": true, \"sample_async\": false, \"model\": {\"use_lstm\": false, \"grayscale\": true, \"zero_mean\": false, \"dim\": 84}, \"preprocessor_pref\": \"rllib\"}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_a3c_tf_pong_ram_v4",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "Pong-ram-v4",
         "--run", "A3C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2}'"
+        "--config", "'{\"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_a2c_tf_pong_deterministic_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "PongDeterministic-v0",
         "--run", "A2C",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2}'"
+        "--config", "'{\"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
 # PPO/APPO
 
-py_binary(
+py_test(
     name = "test_ppo_tf_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -153,7 +162,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_torch_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -165,7 +174,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_tf_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -176,7 +185,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_torch_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -188,29 +197,31 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_tf_cartpole_v1_lstm",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
         "--run", "PPO",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"simple_optimizer\": false, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'"
+        "--config", "'{\"simple_optimizer\": false, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_tf_cartpole_v1_lstm_simple_optimizer",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v1",
         "--run", "PPO",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'"
+        "--config", "'{\"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_torch_cartpole_v1_lstm_simple_optimizer",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -218,11 +229,12 @@ py_binary(
         "--env", "CartPole-v1",
         "--run", "PPO",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'"
+        "--config", "'{\"simple_optimizer\": true, \"num_sgd_iter\": 2, \"model\": {\"use_lstm\": true}}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_tf_cartpole_v1_complete_episode_batches",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -233,7 +245,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_tf_cartpole_v1_remote_worker_envs",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -244,7 +256,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_tf_cartpole_v1_remote_worker_envs_b",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -255,7 +267,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_tf_montezuma_revenge_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -266,7 +278,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ppo_torch_montezuma_revenge_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -278,31 +290,33 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_appo_tf_pendulum_v0_no_gpus",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "Pendulum-v0",
         "--run", "APPO",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"num_gpus\": 0}'"
+        "--config", "'{\"num_workers\": 2, \"num_gpus\": 0}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
 # ES
 
-py_binary(
+py_test(
     name = "test_es_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "Pendulum-v0",
         "--run", "ES",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'"
+        "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_es_pong_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -310,12 +324,13 @@ py_binary(
         "--run", "ES",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"stepsize\": 0.01, \"episodes_per_batch\": 20, \"train_batch_size\": 100, \"num_workers\": 2}'"
+        "--ray-num-cpus", "4"
         ]
 )
 
 # DQN/APEX
 
-py_binary(
+py_test(
     name = "test_dqn_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -325,7 +340,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_dqn_cartpole_v0_no_dueling",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -336,18 +351,19 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_dqn_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
         "--run", "DQN",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2}'"
+        "--config", "'{\"num_workers\": 2}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_dqn_cartpole_v0_softq",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -358,7 +374,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_dqn_pong_deterministic_v4",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -369,20 +385,21 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_apex_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
         "--run", "APEX",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"timesteps_per_iteration\": 1000, \"num_gpus\": 0, \"min_iter_time_s\": 1}'"
+        "--config", "'{\"num_workers\": 2, \"timesteps_per_iteration\": 1000, \"num_gpus\": 0, \"min_iter_time_s\": 1}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
 # PG
 
-py_binary(
+py_test(
     name = "test_pg_tf_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -393,7 +410,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_pg_torch_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -405,7 +422,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_pg_tf_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -416,7 +433,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_pg_torch_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -428,7 +445,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_pg_tf_cartpole_v0_lstm",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -439,7 +456,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_pg_tf_cartpole_v0_multi_envs_per_worker",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -451,7 +468,7 @@ py_binary(
 )
 
 
-py_binary(
+py_test(
     name = "test_pg_tf_pong_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -464,7 +481,7 @@ py_binary(
 
 # DDPG/APEX-DDPG
 
-py_binary(
+py_test(
     name = "test_ddpg_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -475,7 +492,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_ddpg_mountaincar_continuous_v0_num_workers_0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -487,7 +504,7 @@ py_binary(
 )
 
 
-py_binary(
+py_test(
     name = "test_ddpg_mountaincar_continuous_v0_num_workers_1",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -498,7 +515,7 @@ py_binary(
         ]
 )
 
-py_binary(
+py_test(
     name = "test_apex_ddpg_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -506,80 +523,86 @@ py_binary(
         "--run", "APEX_DDPG",
         "--ray-num-cpus", "8",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1}'"
+        "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1}'",
+        "--ray-num-cpus", "4"
         ]
 )
 
-py_binary(
+py_test(
     name = "test_apex_ddpg_pendulum_v0_complete_episode_batches",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
-        "--ray-num-cpus", "8",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\", \"parameter_noise\": false}'"
+        "--ray-num-cpus", "4",
         ]
 )
 
 # IMPALA
 
-py_binary(
+py_test(
     name = "test_impala_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1}'"
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1}'",
+        "--ray-num-cpus", "4",
         ]
 )
 
-py_binary(
+py_test(
     name = "test_impala_cartpole_v0_num_aggregation_workers_2",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"num_aggregation_workers\": 2, \"min_iter_time_s\": 1}'"
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"num_aggregation_workers\": 2, \"min_iter_time_s\": 1}'",
+        "--ray-num-cpus", "4",
         ]
 )
 
-py_binary(
+py_test(
     name = "test_impala_cartpole_v0_lstm",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"model\": {\"use_lstm\": true}}'"
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"model\": {\"use_lstm\": true}}'",
+        "--ray-num-cpus", "4",
         ]
 )
 
-py_binary(
+py_test(
     name = "test_impala_buffers_2",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'"
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0}'",
+        "--ray-num-cpus", "4",
         ]
 )
 
-py_binary(
+py_test(
     name = "test_impala_cartpole_v0_buffers_2_lstm",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
         "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'"
+        "--config", "'{\"num_gpus\": 0, \"num_workers\": 2, \"min_iter_time_s\": 1, \"num_data_loader_buffers\": 2, \"replay_buffer_num_slots\": 100, \"replay_proportion\": 1.0, \"model\": {\"use_lstm\": true}}'",
+        "--ray-num-cpus", "4",
         ]
 )
 
-py_binary(
+py_test(
     name = "test_impala_pong_deterministic_v4_40k_ts_huge_obj_store",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -593,7 +616,7 @@ py_binary(
 
 # MARVIL
 
-py_binary(
+py_test(
     name = "test_marvil_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -629,7 +652,7 @@ py_test(
 # rllib/tests/ directory
 # ----------------------------------------
 
-py_binary(
+py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
     srcs = ["tests/test_env_with_subprocess.py"]
