@@ -186,6 +186,7 @@ class RayTrialExecutor(TrialExecutor):
             self._running[previous_run[0]] = trial
         elif not trial.is_restoring:
             self._train(trial)
+            trial.num_consecutive_start_attempts = 0
 
     def _stop_trial(self, trial, error=False, error_msg=None,
                     stop_logger=True):
@@ -567,29 +568,17 @@ class RayTrialExecutor(TrialExecutor):
              Checkpoint object, or None if an Exception occurs.
         """
         result = result or trial.last_result
-
         with self._change_working_directory(trial):
             if storage == Checkpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
                 checkpoint = Checkpoint(storage, value, result)
-            else:
-                with warn_if_slow("save_checkpoint_to_storage"):
-                    # TODO(ujvl): Make this asynchronous.
-                    value = ray.get(trial.runner.save.remote())
-                    checkpoint = Checkpoint(storage, value, result)
-        with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
-            try:
                 trial.on_checkpoint(checkpoint)
-            except Exception:
-                logger.exception("Trial %s: Error handling checkpoint %s",
-                                 trial, checkpoint.value)
-                return None
-        if profile.too_slow and trial.sync_on_checkpoint:
-            logger.warning(
-                "Consider turning off forced head-worker trial checkpoint "
-                "syncs by setting sync_on_checkpoint=False. Note that this "
-                "might result in faulty trial restoration for some worker "
-                "failure modes.")
+            else:
+                # TODO(ujvl): Make this asynchronous.
+                value = trial.runner.save.remote()
+                checkpoint = Checkpoint(storage, value, result)
+                trial.saving_to = checkpoint
+                self._running[value] = trial
         return checkpoint
 
     def restore(self, trial, checkpoint=None):

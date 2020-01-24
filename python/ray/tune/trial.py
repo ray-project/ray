@@ -462,6 +462,10 @@ class Trial:
     def is_restoring(self):
         return self.restoring_from is not None
 
+    @property
+    def is_saving(self):
+        return self.saving_to is not None
+
     def __repr__(self):
         return str(self)
 
@@ -493,6 +497,8 @@ class Trial:
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
+        # Avoid capturing the runner used in delete.
+        state["checkpoint_manager"].delete = None
 
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
