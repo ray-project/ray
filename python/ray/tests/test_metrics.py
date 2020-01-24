@@ -113,15 +113,15 @@ def test_worker_stats(shutdown_only):
         break
 
     # Test kill_actor.
-    def actor_killed(pid):
-        """ Check For the existence of a unix pid. """
+    def actor_killed(PID):
+        """Check For the existence of a unix pid."""
         try:
-            os.kill(pid, 0)
+            os.kill(PID, 0)
         except OSError:
             return True
         else:
             return False
-
+    from base64 import b64decode
     webui_url = addresses["webui_url"]
     webui_url = webui_url.replace("localhost", "http://127.0.0.1")
     for worker in reply.workers_stats:
@@ -130,7 +130,7 @@ def test_worker_stats(shutdown_only):
         requests.get(
             webui_url + "/api/kill_actor",
             params={
-                "actor_id": "{}".format(worker.core_worker_stats.actor_id),
+                "actor_id": ray.utils.binary_to_hex(worker.core_worker_stats.actor_id),
                 "ip_address": worker.core_worker_stats.ip_address,
                 "port": worker.core_worker_stats.port
             })
