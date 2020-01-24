@@ -38,11 +38,3 @@ You can start a PyTorch Trainer with the following:
     print(stats)
     trainer1.shutdown()
     print("success!")
-
-
-.. toctree::
-
-   raysgd_pytorch.rst
-   raysgd_tensorflow.rst
-   raysgd_ref.rst
-   raysgd_example.rst

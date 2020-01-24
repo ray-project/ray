@@ -5,7 +5,7 @@ RaySGD Pytorch
 
 .. tip:: Help us make RaySGD better; take this 1 minute `User Survey <https://forms.gle/26EMwdahdgm7Lscy9>`_!
 
-The RaySGD``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python.
+The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python.
 
 Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a Ray actor.
 
@@ -16,7 +16,7 @@ The ``PyTorchTrainer`` can be constructed with functions that construct componen
 
 For example:
 
-.. code-block::python
+.. code-block:: python
 
     def model_creator(config):
         """Constructor function for the model(s) to be optimized.
@@ -50,21 +50,75 @@ For example:
       return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
 
-    trainer1 = PyTorchTrainer(
+    trainer = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
         loss_creator=nn.MSELoss,
         config={"lr": 0.001})
 
-Training APIs
--------------
-
-
+You can then set the number of workers and whether the workers are using GPU:
 
 .. code-block:: python
 
-    trainer1.train()
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=nn.MSELoss,
+        config={"lr": 0.001}
+        num_replicas=100,
+        use_gpu=True,)
+
+Shutting down training
+~~~~~~~~~~~~~~~~~~~~~~
+
+After training, you may want to reappropriate the Ray cluster. To release Ray resources:
+
+.. code-block:: python
+
+    trainer.shutdown()
+
+Training APIs
+-------------
+
+Now that the trainer is constructed, you'll naturally want to train the model.
+
+.. code-block:: python
+
+    trainer.train()
+
+To run the model on the validation data, call:
+
+.. code-block:: python
+
+    trainer.validate()
+
+Initialization Functions
+------------------------
+
+You may want to run some initializers on each worker when they are started. This may be something like setting an environment variable or downloading some data. You can do this via the ``initialization_hook`` parameter:
+
+.. code-block:: python
+
+
+    def initialization_hook(runner):
+        print("NCCL DEBUG SET")
+        # Need this for avoiding a connection restart issue
+        os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
+        os.environ["NCCL_LL_THRESHOLD"] = "0"
+        os.environ["NCCL_DEBUG"] = "INFO"
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=nn.MSELoss,
+        initialization_hook=initialization_hook,
+        config={"lr": 0.001}
+        num_replicas=100,
+        use_gpu=True)
 
 
 Save and Load
@@ -75,24 +129,24 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
 
 .. code-block::
 
-    trainer1 = PyTorchTrainer(
+    trainer_1 = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
         loss_creator=nn.MSELoss,
         num_replicas=num_replicas)
-    trainer1.train()
+    trainer_1.train()
 
     checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
-    trainer1.save(checkpoint_path)
+    trainer_1.save(checkpoint_path)
 
-    trainer2 = PyTorchTrainer(
+    trainer_2 = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
         num_replicas=num_replicas)
-    trainer2.restore(checkpoint_path)
+    trainer_2.restore(checkpoint_path)
 
 
 
@@ -105,14 +159,6 @@ The trained torch model can be extracted for use within the same Python program 
 
     trainer.train()
     model = trainer.get_model()
-
-Shutting down training
-----------------------
-
-After training, you may want to reappropriate the Ray cluster. Release Ray resources with ``trainer.shutdown()``.
-
-.. code-block::
-
 
 
 
