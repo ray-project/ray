@@ -194,6 +194,7 @@ class Trial:
         self.custom_trial_name = None
 
         # Checkpointing fields
+        self.saving_to = None
         if remote_checkpoint_dir:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
@@ -210,7 +211,6 @@ class Trial:
         # Restoration fields
         self.restoring_from = None
         self.num_failures = 0
-        self.num_consecutive_start_attempts = 0
 
         # AutoML fields
         self.results = None
@@ -497,8 +497,6 @@ class Trial:
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
-        # Avoid capturing the runner used in delete.
-        state["checkpoint_manager"].delete = None
 
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))

@@ -186,7 +186,6 @@ class RayTrialExecutor(TrialExecutor):
             self._running[previous_run[0]] = trial
         elif not trial.is_restoring:
             self._train(trial)
-            trial.num_consecutive_start_attempts = 0
 
     def _stop_trial(self, trial, error=False, error_msg=None,
                     stop_logger=True):
@@ -574,7 +573,6 @@ class RayTrialExecutor(TrialExecutor):
                 checkpoint = Checkpoint(storage, value, result)
                 trial.on_checkpoint(checkpoint)
             else:
-                # TODO(ujvl): Make this asynchronous.
                 value = trial.runner.save.remote()
                 checkpoint = Checkpoint(storage, value, result)
                 trial.saving_to = checkpoint

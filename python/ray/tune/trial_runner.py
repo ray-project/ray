@@ -419,8 +419,9 @@ class TrialRunner:
                     #  API has converged.
                     logger.warning(
                         "Consider turning off forced head-worker trial "
-                        "checkpoint syncs by setting sync_on_checkpoint=False."
-                    )
+                        "checkpoint syncs by setting sync_on_checkpoint=False"
+                        ". Note that this might result in faulty trial "
+                        "restoration for some worker failure modes.")
             else:
                 with warn_if_slow("process_trial"):
                     self._process_trial(trial)
@@ -477,7 +478,7 @@ class TrialRunner:
                 # Cache decision to execute on after save.
                 trial.post_save_decision = decision
             else:
-                self._execute_decision(trial, decision)
+                self._execute_action(trial, decision)
         except Exception:
             logger.exception("Trial %s: Error processing event.", trial)
             self._process_trial_failure(trial, traceback.format_exc())
@@ -495,7 +496,7 @@ class TrialRunner:
             trial.saving_to.value = checkpoint_value
             trial.on_checkpoint(trial.saving_to)
             trial.saving_to = None
-            self._execute_decision(trial, trial.post_save_decision)
+            self._execute_action(trial, trial.post_save_decision)
         except Exception:
             logger.exception("Trial %s: Error handling checkpoint %s", trial,
                              checkpoint_value)
@@ -535,8 +536,8 @@ class TrialRunner:
                 self.trial_executor.stop_trial(
                     trial, error=True, error_msg=error_msg)
 
-    def _execute_decision(self, trial, decision):
-        """Executes based on decision."""
+    def _execute_action(self, trial, decision):
+        """Executes action based on decision."""
         if decision == TrialScheduler.CONTINUE:
             self.trial_executor.continue_training(trial)
         elif decision == TrialScheduler.PAUSE:
@@ -545,8 +546,7 @@ class TrialRunner:
             self.trial_executor.export_trial_if_needed(trial)
             self.trial_executor.stop_trial(trial)
         else:
-            assert False, "Invalid scheduling decision: {}".format(
-                decision)
+            assert False, "Invalid scheduling decision: {}".format(decision)
 
     def _checkpoint_trial_if_needed(self, trial, force=False):
         """Checkpoints trial based off trial.last_result."""
