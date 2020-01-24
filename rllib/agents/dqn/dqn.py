@@ -154,7 +154,7 @@ def make_optimizer(workers, config):
         final_prioritized_replay_beta=config["final_prioritized_replay_beta"],
         prioritized_replay_eps=config["prioritized_replay_eps"],
         train_batch_size=config["train_batch_size"],
-        sample_batch_size=config["sample_batch_size"],
+        #sample_batch_size=config["sample_batch_size"],
         **config["optimizer"])
 
 

@@ -48,14 +48,14 @@ class EpsilonGreedy(Exploration):
         self.last_time_step = 0
 
     @override(Exploration)
-    def get_action(self, time_step, model_output, model=None, action_dist=None,
+    def get_action(self, model_output, model=None, action_dist=None,
                    action_sample=None):
         if self.framework == "tf":
-            return self._get_tf_action_op(time_step, model_output)
+            return self._get_tf_action_op(model_output)
 
-        self.last_time_step = time_step
+        self.last_time_step += 1
         # Get the current epsilon.
-        epsilon = self.epsilon_schedule.value(time_step)
+        epsilon = self.epsilon_schedule.value(self.last_time_step)
 
         # "Epsilon-case": Return a random action.
         if random.random() < epsilon:
@@ -67,20 +67,21 @@ class EpsilonGreedy(Exploration):
             return np.argmax(model_output, axis=1), \
                    np.ones(model_output.shape[0])
 
-    def _get_tf_action_op(self, time_step, model_output):
+    def _get_tf_action_op(self, model_output):
         """
         Tf helper method to produce the tf op for an epsilon exploration
             action.
 
         Args:
-            time_step (int): The current (sampling) time step.
+            #time_step (int): The current (sampling) time step.
             model_output (any): The Model's output Tensor(s).
 
         Returns:
             tf.Tensor: The tf exploration-action op.
         """
-        epsilon = self.epsilon_schedule.value(time_step)
-        cond =  tf.cond(
+        epsilon = self.epsilon_schedule.value(self.last_time_step)
+
+        cond = tf.cond(
             condition=tf.random_uniform() < epsilon,
             true_fn=lambda: tf.random_uniform(
                 shape=tf.shape(model_output), maxval=model_output.shape[1],
@@ -100,11 +101,15 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def set_state(self, exploration_state):
+        if self.framework == "tf":
+            update_op = tf.assign(self.last_time_step, exploration_state)
+            with tf.control_dependencies([update_op]):
+                return tf.no_op()
         self.last_time_step = exploration_state
 
     @override(Exploration)
     def reset_state(self):
-        self.last_time_step = 0
+        self.set_state(0)
 
     @classmethod
     @override(Exploration)

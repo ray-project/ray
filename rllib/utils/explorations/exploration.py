@@ -19,7 +19,8 @@ class Exploration(metaclass=ABCMeta):
         self.action_space = action_space
         self.framework = check_framework(framework)
 
-    def get_action(self, model_output, model, action_dist, time_step):
+    def get_action(self, model_output, model=None, action_dist=None,
+                   action_sample=None):
         """
         Given the Model's output and action distribution, return an exploration
         action.
@@ -29,7 +30,7 @@ class Exploration(metaclass=ABCMeta):
             model (ModelV2): The Model object.
             action_dist: The ActionDistribution object resulting from
                 `model_output`. TODO: Or the class?
-            time_step (int): The current (sampling) time step.
+            action_sample (any): An optional action sample.
 
         Returns:
             any: The chosen exploration action or a tf-op to fetch the
@@ -37,9 +38,8 @@ class Exploration(metaclass=ABCMeta):
         """
         pass
 
-    def get_loss_exploration_term(
-            self, model_output, model, action_dist, time_step
-    ):
+    def get_loss_exploration_term(self, model_output, model=None,
+                                  action_dist=None, action_sample=None):
         """
         Given the Model's output and action distribution, returns an extra loss
         term to be added to the loss.
@@ -49,7 +49,7 @@ class Exploration(metaclass=ABCMeta):
             model (ModelV2): The Model object.
             action_dist: The ActionDistribution object resulting from
                 `model_output`. TODO: Or the class?
-            time_step (int): The current (sampling) time step.
+            action_sample (any): An optional action sample.
 
         Returns:
             any: The extra loss term to add to the loss.
