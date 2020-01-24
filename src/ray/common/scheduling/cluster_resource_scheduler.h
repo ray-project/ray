@@ -16,6 +16,7 @@ enum PredefinedResources { CPU, MEM, GPU, TPU, PredefinedResources_MAX };
 // Specify resources that consists of unit-size instances.
 static std::unordered_set<int64_t> UnitInstanceResources{CPU, GPU, TPU};
 
+// Helper function to compare two vectors with double values.
 bool EqualVectors(const std::vector<double> &v1, const std::vector<double> &v2);
 
 struct ResourceCapacity {
@@ -59,6 +60,7 @@ struct TaskRequest {
   std::string DebugString();
 };
 
+// Task request specifying instances for each resource.
 struct TaskResourceInstances {
   /// The list of instances of each predifined resource allocated to a task.
   std::vector<std::vector<double>> predefined_resources;
@@ -73,6 +75,7 @@ struct TaskResourceInstances {
   std::string DebugString();
 };
 
+/// Total and available capacities of each resource of a node.
 struct NodeResources {
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
@@ -85,6 +88,8 @@ struct NodeResources {
   std::string DebugString();
 };
 
+/// Total and available capacities of each resource instance.
+/// This is used to describe the resources of the local node.
 struct NodeResourceInstances {
   /// Available and total capacities for each instance of a predefined resource.
   std::vector<ResourceInstanceCapacities> predefined_resources;
@@ -92,7 +97,7 @@ struct NodeResourceInstances {
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceInstanceCapacities> custom_resources;
   /// Extract available resource instances.
-  TaskResourceInstances ToTaskResourceInstances();
+  TaskResourceInstances GetAvailableResourceInstances();
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
@@ -106,7 +111,7 @@ class ClusterResourceScheduler {
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, NodeResources> nodes_;
-  /// ID of local node.
+  /// Identifier of local node.
   int64_t local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
@@ -127,9 +132,6 @@ class ClusterResourceScheduler {
   void SetCustomResources(
       const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
-
-  /// Returns human-readable string for this scheduler.
-  std::string DebugString();
 
  public:
   ClusterResourceScheduler(void){};
@@ -265,25 +267,39 @@ class ClusterResourceScheduler {
   void DeleteResource(const std::string &client_id_string,
                       const std::string &resource_name);
 
+  /// Return local resources.
+  NodeResourceInstances GetLocalResources() { return local_resources_; };
+
+  /// Create instances for each resource associated with the local node, given
+  /// the node's resources.
+  ///
+  /// \param local_resources: Total resources of the node.
+  void InitLocalResources(const NodeResources &local_resources);
+
+  /// Initialize the instances of a given resource given the resource's total capacity.
+  /// If unit_instances is true we split the resources in unit-size instances. For
+  /// example, if total = 10, then we create 10 instances, each with caoacity 1.
+  /// Otherwise, we create a single instance of capacity equal to the resource's capacity.
+  ///
+  /// \param total: Total resource capacity.
+  /// \param unit_instances: If true, we split the resource in unit-size instances.
+  /// If false, we create a single instance of capacity "total".
+  /// \param instance_list: The list of capacities this resource instances.
+  void InitResourceInstances(double total, bool unit_instances,
+                             ResourceInstanceCapacities *instance_list);
+
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
   ///
   /// \param demand: The resource amount to be allocated.
   /// \param soft: Specifies whether this demand has soft or hard constraints.
-  /// \param available: List of available capacities of the instances of a resource.
+  /// \param available: List of available capacities of the instances of the resource.
   /// \param allocation: List of instance capacities allocated to satisfy the demand.
   /// This is a return parameter.
   ///
   /// \return true, if allocation successful. In this case, the sum of the elements in
   /// "allocation" is equal to "demand".
-  bool AllocateResourceInstances(double demand, bool soft, 
-                                 std::vector<double> &available, 
+  bool AllocateResourceInstances(double demand, bool soft, std::vector<double> &available,
                                  std::vector<double> *allocation);
-
-  /// Free resources which were allocated with a task. The freed resources are
-  /// added back to the node's local available resources.
-  ///
-  /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(TaskResourceInstances &task_allocation);
 
   /// Allocate local resources to satisfy a given request (task_req).
   ///
@@ -296,21 +312,11 @@ class ClusterResourceScheduler {
   bool AllocateTaskResourceInstances(const TaskRequest &task_req,
                                      TaskResourceInstances *task_allocation);
 
-  /// Initialize the instances of all resources given the node's total resources.
+  /// Free resources which were allocated with a task. The freed resources are
+  /// added back to the node's local available resources.
   ///
-  /// \param local_node_resources: Total resources of the node.
-  void InitLocalResources(const NodeResources &local_node_resources);
-
-  /// Initialize the instances of a given resources given resource total capacity.
-  /// If unit_instances is true we split the resources in unit-size instances. For
-  /// example, if total = 10, then we create 10 instances, each with caoacity 1.
-  ///
-  /// \param total: Total resource capacity.
-  /// \param unit_instances: If true, we split the resource in unit-size instances.
-  /// If false, we create a single instance of capacity "total".
-  /// \param instance_list: The list of capacities this resource instances.
-  void InitResourceInstances(double total, bool unit_instances,
-                             ResourceInstanceCapacities *instance_list);
+  /// \param task_allocation: Task's resources to be freed.
+  void FreeTaskResourceInstances(TaskResourceInstances &task_allocation);
 
   /// Increase the available capacities of the instances of a given resource.
   ///
@@ -326,11 +332,8 @@ class ClusterResourceScheduler {
   void SubtractAvailableResourceInstances(std::vector<double> free,
                                           ResourceInstanceCapacities *resource_instances);
 
-  std::string PrintLocalResources() { return local_resources_.DebugString(); };
-
-  TaskResourceInstances GetLocalAvailableResources() { return local_resources_.ToTaskResourceInstances(); }; 
-
-  NodeResourceInstances GetLocalResources() { return local_resources_; };                                       
+  /// Returns human-readable string for this scheduler.
+  std::string DebugString();
 };
 
 #endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H

@@ -50,7 +50,6 @@ std::string NodeResources::DebugString() {
   return buffer.str();
 }
 
-
 std::string PrintVector(std::vector<double> &vector) {
   std::stringstream buffer;
 
@@ -67,10 +66,12 @@ std::string PrintVector(std::vector<double> &vector) {
 
 bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (!EqualVectors(this->predefined_resources[i].total, other.predefined_resources[i].total)) {
+    if (!EqualVectors(this->predefined_resources[i].total,
+                      other.predefined_resources[i].total)) {
       return false;
     }
-    if (!EqualVectors(this->predefined_resources[i].available, other.predefined_resources[i].available)) {
+    if (!EqualVectors(this->predefined_resources[i].available,
+                      other.predefined_resources[i].available)) {
       return false;
     }
   }
@@ -114,7 +115,7 @@ std::string NodeResourceInstances::DebugString() {
   return buffer.str();
 };
 
-TaskResourceInstances NodeResourceInstances::ToTaskResourceInstances() {
+TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
   TaskResourceInstances task_resources;
   task_resources.predefined_resources.resize(PredefinedResources_MAX);
 
@@ -122,7 +123,8 @@ TaskResourceInstances NodeResourceInstances::ToTaskResourceInstances() {
     task_resources.predefined_resources[i] = this->predefined_resources[i].available;
   }
 
-  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end(); ++it) {
+  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+       ++it) {
     task_resources.custom_resources.emplace(it->first, it->second.available);
   }
 
@@ -162,7 +164,8 @@ std::string TaskResourceInstances::DebugString() {
   buffer << "}";
 
   buffer << "  C {";
-  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end(); ++it) {
+  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+       ++it) {
     buffer << it->first << ":" << PrintVector(it->second) << ", ";
   }
 
@@ -170,12 +173,9 @@ std::string TaskResourceInstances::DebugString() {
   return buffer.str();
 }
 
-bool EqualVectors(const std::vector<double> &v1, const std::vector<double> &v2)
-{
-  return (v1.size() == v2.size() &&
-    std::equal(v1.begin(), v1.end(), v2.begin()));
+bool EqualVectors(const std::vector<double> &v1, const std::vector<double> &v2) {
+  return (v1.size() == v2.size() && std::equal(v1.begin(), v1.end(), v2.begin()));
 }
-
 
 bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
@@ -188,7 +188,8 @@ bool TaskResourceInstances::operator==(const TaskResourceInstances &other) {
     return false;
   }
 
-  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end(); ++it1) {
+  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
+       ++it1) {
     auto it2 = other.custom_resources.find(it1->first);
     if (it2 == other.custom_resources.end()) {
       return false;
@@ -204,7 +205,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : local_node_id_(local_node_id) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
-  InitLocalResources(local_node_resources);  // XXX
+  InitLocalResources(local_node_resources);
 }
 
 ClusterResourceScheduler::ClusterResourceScheduler(
@@ -404,7 +405,7 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
         std::max(0., resources.predefined_resources[i].available -
-                 task_req.predefined_resources[i].demand);
+                         task_req.predefined_resources[i].demand);
   }
 
   for (size_t i = 0; i < task_req.custom_resources.size(); i++) {
@@ -435,15 +436,16 @@ bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.predefined_resources[i].available =
-        std::min(resources.predefined_resources[i].available + task_req.predefined_resources[i].demand, 
+        std::min(resources.predefined_resources[i].available +
+                     task_req.predefined_resources[i].demand,
                  resources.predefined_resources[i].total);
   }
 
   for (size_t i = 0; i < task_req.custom_resources.size(); i++) {
     auto it = resources.custom_resources.find(task_req.custom_resources[i].id);
     if (it != resources.custom_resources.end()) {
-      it->second.available = 
-        std::min(it->second.available + task_req.custom_resources[i].demand, it->second.total);
+      it->second.available = std::min(
+          it->second.available + task_req.custom_resources[i].demand, it->second.total);
     }
   }
   return true;
@@ -671,10 +673,9 @@ void ClusterResourceScheduler::InitLocalResources(const NodeResources &node_reso
 void ClusterResourceScheduler::AddAvailableResourceInstances(
     std::vector<double> available,
     ResourceInstanceCapacities *resource_instances /* return */) {
-
   for (size_t i = 0; i < available.size(); i++) {
-    resource_instances->available[i] = 
-      std::min(resource_instances->available[i] + available[i], resource_instances->total[i]);
+    resource_instances->available[i] = std::min(
+        resource_instances->available[i] + available[i], resource_instances->total[i]);
   }
 }
 
@@ -689,10 +690,8 @@ void ClusterResourceScheduler::SubtractAvailableResourceInstances(
   }
 }
 
-
 bool ClusterResourceScheduler::AllocateResourceInstances(
-    double demand, bool soft,
-    std::vector<double> &available, 
+    double demand, bool soft, std::vector<double> &available,
     std::vector<double> *allocation /* return */) {
   allocation->resize(available.size());
 
@@ -716,7 +715,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   // If demand is greater than 1., allocate full unit-capacity instances until the
   // remaining demand is fractional.
   if (demand >= 1.) {
-    for (size_t i = 0; i < available.size(); i++) {      
+    for (size_t i = 0; i < available.size(); i++) {
       if (available[i] == 1.) {
         // Allocate a full unit-capacity instance.
         (*allocation)[i] = 1.;
@@ -773,14 +772,11 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
 }
 
 bool ClusterResourceScheduler::AllocateTaskResourceInstances(
-    const TaskRequest &task_req,
-    TaskResourceInstances *task_allocation /* return */) {
-
+    const TaskRequest &task_req, TaskResourceInstances *task_allocation /* return */) {
   auto it = nodes_.find(local_node_id_);
   if (it == nodes_.end()) {
     return false;
   }
-
 
   // Just double check this node can still schedule the task request.
   if (IsSchedulable(task_req, local_node_id_, it->second) == -1) {
@@ -794,6 +790,8 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
                                      task_req.predefined_resources[i].soft,
                                      local_resources_.predefined_resources[i].available,
                                      &task_allocation->predefined_resources[i])) {
+        // Allocation failed. Restore node's local resources by freeing the resources
+        // of the failed allocation.                               
         FreeTaskResourceInstances(*task_allocation);
         return false;
       }
@@ -805,13 +803,15 @@ bool ClusterResourceScheduler::AllocateTaskResourceInstances(
     if (it != local_resources_.custom_resources.end()) {
       if (task_req.custom_resources[i].demand > 0) {
         std::vector<double> allocation;
-        bool success = AllocateResourceInstances(task_req.custom_resources[i].demand, 
-                                                 task_req.custom_resources[i].soft, 
+        bool success = AllocateResourceInstances(task_req.custom_resources[i].demand,
+                                                 task_req.custom_resources[i].soft,
                                                  it->second.available, &allocation);
         // Even if allocation failed we need to remember partial allocations to correctly
         // free resources.
         task_allocation->custom_resources.emplace(it->first, allocation);
         if (!success) {
+          // Allocation failed. Restore node's local resources by freeing the resources
+          // of the failed allocation.                               
           FreeTaskResourceInstances(*task_allocation);
           return false;
         }
@@ -827,7 +827,7 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
     TaskResourceInstances &task_allocation) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     AddAvailableResourceInstances(task_allocation.predefined_resources[i],
-                         &local_resources_.predefined_resources[i]);
+                                  &local_resources_.predefined_resources[i]);
   }
 
   for (auto it = task_allocation.custom_resources.begin();
