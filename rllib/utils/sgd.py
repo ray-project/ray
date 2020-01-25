@@ -28,6 +28,18 @@ def averaged(kv):
     return out
 
 
+def standardized(array):
+    """Normalize the values in an array.
+
+    Arguments:
+        array (np.ndarray): Array of values to normalize.
+
+    Returns:
+        array with zero mean and unit standard deviation.
+    """
+    return (array - array.mean()) / max(1e-4, array.std())
+
+
 def minibatches(samples, sgd_minibatch_size):
     """Return a generator yielding minibatches from a sample batch.
 
@@ -88,9 +100,7 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
 
         batch = samples.policy_batches[policy_id]
         for field in standardize_fields:
-            value = batch[field]
-            standardized = (value - value.mean()) / max(1e-4, value.std())
-            batch[field] = standardized
+            batch[field] = standardized(batch[field])
 
         for i in range(num_sgd_iter):
             iter_extra_fetches = defaultdict(list)
