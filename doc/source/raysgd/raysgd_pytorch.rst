@@ -18,7 +18,7 @@ Under the hood, ``PytorchTrainer`` will create *replicas* of your model (control
 Setting up training
 -------------------
 
-The ``PyTorchTrainer`` can be constructed with functions that construct components of the training script. Specifically, it needs constructors for the Model, Data, Optimizer, and Loss. This is so that we can create replicated copies of the neural network/optimizer across different devices and machines.
+The ``PyTorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it needs constructors for the Model, Data, Optimizer, and Loss to create replicated copies across different devices and machines.
 
 For example:
 
@@ -86,7 +86,7 @@ You can also set the number of workers and whether the workers are using GPU:
         loss_creator=nn.MSELoss,
         config={"lr": 0.001}
         num_replicas=100,
-        use_gpu=True,)
+        use_gpu=True)
 
 Shutting down training
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -110,11 +110,13 @@ Now that the trainer is constructed, you'll naturally want to train the model.
 
 This takes one pass over the training data.
 
-To run the model on the validation data, call:
+To run the model on the validation data passed in by the ``data_creator``, you can simply call:
 
 .. code-block:: python
 
     trainer.validate()
+
+You can customize the exact function that is called by using a customized training function (see :ref:`raysgd-custom-training`).
 
 Initialization Functions
 ------------------------
@@ -273,6 +275,7 @@ In certain scenarios such as training GANs, you may want to use multiple models 
         optimizer_creator,
         nn.BCELoss)
 
+.. _raysgd-custom-training:
 
 Custom Training and Validation Functions
 ----------------------------------------
