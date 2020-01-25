@@ -48,7 +48,7 @@ class TuneReporterBase(ProgressReporter):
 
     # Truncated representations of column names (to accommodate small screens).
     DEFAULT_COLUMNS = {
-        EPISODE_REWARD_MEAN: "rew",
+        EPISODE_REWARD_MEAN: "reward",
         MEAN_ACCURACY: "acc",
         MEAN_LOSS: "loss",
         TIME_TOTAL_S: "total time (s)",
