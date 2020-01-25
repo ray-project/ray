@@ -25,6 +25,29 @@ class PyTorchTrainer:
 
     Launches a set of actors which connect via distributed PyTorch and
     coordinate gradient updates to train the provided model.
+
+        .. code-block:: python
+
+            def model_creator(config):
+                return nn.Linear(1, 1)
+
+
+            def optimizer_creator(model, config):
+                return torch.optim.SGD(
+                    model.parameters(), lr=config.get("lr", 1e-4))
+
+
+            def data_creator(config):
+                return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+
+            trainer = PyTorchTrainer(
+                model_creator,
+                data_creator,
+                optimizer_creator,
+                loss_creator=nn.MSELoss
+            )
+            trainer.train()
+
     """
 
     def __init__(self,
@@ -44,13 +67,26 @@ class PyTorchTrainer:
         """Sets up the PyTorch trainer.
 
         Args:
-            model_creator (dict -> torch.nn.Module): creates the model
-                using the config.
-            data_creator (int, dict -> Dataset, Dataset): Function that
-                takes in (batch_size, config) and returns two Torch Dataset
-                objects.
-            optimizer_creator (torch.nn.Module, dict -> optimizer):
-                creates the loss and optimizer using the model and the config.
+            model_creator (dict -> *): Constructor function that takes in
+                config and returns the model(s) to be optimized. These must be
+                torch.nn.Module objects. Note that if multiple models
+                are returned, the same number of optimizers must be returned
+                by the optimizer_creator. By default, the PyTorchTrainer will
+                run each model over the provided datasets one at a time.
+                You do not need to handle GPU/devices in this function;
+                RaySGD will do that under the hood.
+            data_creator (dict -> Dataset, Dataset): Constructor function
+                that takes in the passed config and returns one or
+                two torch.utils.data.Dataset objects.
+                Note that even though two Dataset objects can be returned,
+                only one dataset will be used for training. RaySGD
+                will automatically wrap the objects with an DataLoader.
+            optimizer_creator (models, dict -> optimizers): Constructor
+                function that takes in the return values from
+                ``model_creator`` and the passed config and returns One or
+                more Torch optimizer objects. You must return as many
+                optimizers as you have models. You do not need to handle
+                GPU/devices in this function; RaySGD will do that for you.
             loss_creator (dict -> loss or torch.nn.*Loss): A creator function
                 for the loss function. This can be either a function that
                 takes in the provided config for customization or a subclass
@@ -68,11 +104,12 @@ class PyTorchTrainer:
                 training.
             use_gpu (bool): Sets resource allocation for workers to 1 GPU
                 if true.
-            batch_size (int): batch size for an update.
-            backend (string): backend used by distributed PyTorch.
+            batch_size (int): Total batch size for each minibatch. This
+                value is divided among all workersr and
+            backend (string): backend used by distributed PyTorch. Currently
+                support "nccl" and "gloo".
         """
         # TODO: add support for mixed precision
-        # TODO: add support for callbacks
         if num_replicas > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "

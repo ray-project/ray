@@ -27,6 +27,10 @@ For example:
     def model_creator(config):
         """Constructor function for the model(s) to be optimized.
 
+        Note that if multiple models are returned, the same number of optimizers
+        must be returned. By default, the PyTorchTrainer will run each model
+        over the provided datasets one at a time.
+
         Args:
             config (dict): Configuration dictionary passed into ``PyTorchTrainer``.
 
@@ -36,12 +40,12 @@ For example:
         return nn.Linear(1, 1)
 
 
-    def optimizer_creator(model, config):
-        """Constructor of the optimizer.
+    def optimizer_creator(models, config):
+        """Constructor of the optimizers.
 
         Args:
-            model: The return values from ``model_creator``. This can be one
-                or more torch neural networks.
+            models: The return values from ``model_creator``. This can be one
+                or more torch nn modules.
             config (dict): Configuration dictionary passed into ``PyTorchTrainer``.
 
         Returns:
@@ -52,8 +56,32 @@ For example:
 
 
     def data_creator(config):
-      """Returns training dataset, validation dataset."""
-      return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+        """Constructs torch.utils.data.Dataset objects.
+
+        Note that even though two Dataset objects can be returned,
+        only one dataset will be used for training.
+
+        Args:
+            config: Configuration dictionary passed into ``PyTorchTrainer``
+
+        Returns:
+            One or Two Dataset objects. If only one Dataset object is provided,
+            ``trainer.validate()`` will throw a ValueError.
+        """
+        return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+
+    def loss_creator(config):
+        """Constructs the Torch Loss object.
+
+        Note that optionally, you can pass in a Torch Loss constructor directly
+        into the PyTorchTrainer (i.e., ``PyTorchTrainer(loss_creator=nn.BCELoss, ...))``).
+
+        Returns:
+            Torch Loss object.
+        """
+        return torch.nn.BCELoss()
+
+
 
 Before instantiating the trainer, you'll have to start or connect to a Ray cluster:
 
@@ -75,6 +103,7 @@ Instantiate the trainer object:
         loss_creator=nn.MSELoss,
         config={"lr": 0.001})
 
+
 You can also set the number of workers and whether the workers are using GPU:
 
 .. code-block:: python
@@ -88,16 +117,8 @@ You can also set the number of workers and whether the workers are using GPU:
         num_replicas=100,
         use_gpu=True)
 
-Shutting down training
-~~~~~~~~~~~~~~~~~~~~~~
 
-After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the trainer:
-
-.. code-block:: python
-
-    trainer.shutdown()
-
-.. note:: Be sure to call ``save`` or ``get_model`` before shutting down.
+See the documentation on the PyTorchTrainer here: :ref:`ref-pytorch-trainer`.
 
 Training APIs
 -------------
@@ -117,6 +138,18 @@ To run the model on the validation data passed in by the ``data_creator``, you c
     trainer.validate()
 
 You can customize the exact function that is called by using a customized training function (see :ref:`raysgd-custom-training`).
+
+
+Shutting down training
+----------------------
+
+After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the trainer:
+
+.. code-block:: python
+
+    trainer.shutdown()
+
+.. note:: Be sure to call ``save`` or ``get_model`` before shutting down.
 
 Initialization Functions
 ------------------------
