@@ -295,6 +295,8 @@ void CoreWorker::RunIOService() {
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
+  // TODO(ekl) we can't unsubscribe to actor notifications here due to
+  // https://github.com/ray-project/ray/pull/6885
 }
 
 void CoreWorker::ReportActiveObjectIDs() {
