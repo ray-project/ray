@@ -278,19 +278,19 @@ def _check_ami(config):
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    if config["head_node"].get("ImageId", "").lower() == "default-dlami":
+    if config["head_node"].get("ImageId", "").lower() == "latest_dlami":
         config["head_node"]["ImageId"] = default_ami
 
-        logger.info("_check_ami: head node ImageId is 'default-dlami'. "
+        logger.info("_check_ami: head node ImageId is 'latest_dlami'. "
                     "Using '{ami_id}', which is the default {ami_name} "
                     "for your region ({region}).".format(
                         ami_id=default_ami,
                         ami_name=DEFAULT_AMI_NAME,
                         region=region))
 
-    if config["worker_nodes"].get("ImageId", "").lower() == "default-dlami":
+    if config["worker_nodes"].get("ImageId", "").lower() == "latest_dlami":
         config["worker_nodes"]["ImageId"] = default_ami
-        logger.info("_check_ami: worker nodes ImageId is 'default-dlami'. "
+        logger.info("_check_ami: worker nodes ImageId is 'latest_dlami'. "
                     "Using '{ami_id}', which is the default {ami_name} "
                     "for your region ({region}).".format(
                         ami_id=default_ami,
