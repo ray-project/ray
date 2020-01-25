@@ -64,7 +64,6 @@ class TFPolicy(Policy):
                  prev_reward_input=None,
                  seq_lens=None,
                  max_seq_len=20,
-                 explore=None,
                  batch_divisibility_req=1,
                  update_ops=None):
         """Initialize the policy.
@@ -112,6 +111,7 @@ class TFPolicy(Policy):
         self._prev_reward_input = prev_reward_input
         self._action = action_sampler
         self._is_training = self._get_is_training_placeholder()
+        self._is_exploring = tf.placeholder_with_default(True, ())
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
                              if self._action_logp is not None else None)
@@ -119,7 +119,6 @@ class TFPolicy(Policy):
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
-        self._explore = explore
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
         self._stats_fetches = {}
@@ -143,18 +142,12 @@ class TFPolicy(Policy):
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
 
-        # Extend `self._action` according to our Exploration (iff it
-        # implements `get_action`).
-
         # Apply the post-forward-pass exploration if applicable.
-        #sampler_fetch = self._action
-        #extra_action_fetches = self.extra_compute_action_fetches()
-        #print(extra_action_fetches)
+        self._exploration_action = None
         if self.exploration:
-            # TODO(sven): unify extra_action_fetches
-            # TODO(sven): (maybe call it "raw_model_outputs").
-            self._action = self.exploration.get_action(
-                self._action, self.model, action_dist=self.dist_class
+            self._exploration_action = self.exploration.get_exploration_action(
+                self._action, self.model,
+                action_dist=self.dist_class, is_exploring=self._is_exploring
             )
 
     def variables(self):
@@ -477,9 +470,10 @@ class TFPolicy(Policy):
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        builder.add_feed_dict({self._explore: explore})
-        fetches = builder.add_fetches([self._action] + self._state_outputs +
-                                      [self.extra_compute_action_fetches()])
+        fetches = builder.add_fetches(
+            [self._exploration_action if explore and self.exploration else
+             self._action] + self._state_outputs +
+            [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):

@@ -19,18 +19,18 @@ class Exploration(metaclass=ABCMeta):
         self.action_space = action_space
         self.framework = check_framework(framework)
 
-    def get_action(self, model_output, model=None, action_dist=None,
-                   action_sample=None):
+    def get_exploration_action(self, action, model=None,
+                               action_dist=None, is_exploring=None):
         """
         Given the Model's output and action distribution, return an exploration
         action.
 
         Args:
-            model_output (any): The Model's output Tensor(s).
+            action (any): The already sampled action (non-exploratory case).
             model (ModelV2): The Model object.
-            action_dist: The ActionDistribution object resulting from
-                `model_output`. TODO: Or the class?
-            action_sample (any): An optional action sample.
+            action_dist: The ActionDistribution class.
+            is_exploring (bool): Whether to explore or not (this could be a tf
+                placeholder).
 
         Returns:
             any: The chosen exploration action or a tf-op to fetch the

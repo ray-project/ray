@@ -53,11 +53,10 @@ class EpsilonGreedy(Exploration):
             0, framework=framework, tf_name="time-step")
 
     @override(Exploration)
-    def get_action(self, action, model=None, action_dist=None):
-        #model_output = model_output[self.raw_model_output_key]
-
+    def get_exploration_action(self, action, model=None, action_dist=None,
+                               is_exploring=None):
         if self.framework == "tf":
-            return self._get_tf_action_op(action)
+            return self._get_tf_exploration_action_op(action)
 
         self.last_time_step += 1
         # Get the current epsilon.
@@ -73,14 +72,14 @@ class EpsilonGreedy(Exploration):
             return action  #np.argmax(model_output, axis=1), \
                    #np.ones(model_output.shape[0])
 
-    def _get_tf_action_op(self, action):
+    def _get_tf_exploration_action_op(self, action):
         """
         Tf helper method to produce the tf op for an epsilon exploration
             action.
 
         Args:
-            #time_step (int): The current (sampling) time step.
-            model_output (any): The Model's output Tensor(s).
+            action (tf.Tensor): The already sampled action (non-exploratory
+                case) as tf op.
 
         Returns:
             tf.Tensor: The tf exploration-action op.
@@ -91,10 +90,10 @@ class EpsilonGreedy(Exploration):
             pred=tf.random_uniform(shape=()) < epsilon,
             true_fn=lambda: tf.random_uniform(
                 shape=tf.shape(action), maxval=self.action_space.n,
-                dtype=action.dtype
+                dtype=self.action_space.dtype
             ),
-            false_fn=lambda: action,  # tf.argmax(action, axis=1),
-        )  #, tf.ones(action.shape[0])
+            false_fn=lambda: action,
+        )
 
         # Update `last_time_step` and return action op.
         update_op = tf.assign_add(self.last_time_step, 1)

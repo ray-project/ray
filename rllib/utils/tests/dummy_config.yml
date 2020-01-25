@@ -1,4 +1,3 @@
-type: ray.rllib.utils.tests.test_framework_independent_components.DummyComponent
 type: ray.rllib.utils.tests.test_framework_agnostic_components.DummyComponent
 prop_a: something else
 prop_b: 1.0
