@@ -14,7 +14,7 @@ from ray.test_utils import RayTestTimeoutException
 
 
 def test_worker_stats(shutdown_only):
-    ray.init(num_cpus=1, include_webui=False)
+    addresses = ray.init(num_cpus=1, include_webui=True)
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
@@ -112,6 +112,39 @@ def test_worker_stats(shutdown_only):
                     or "travis" in process)
         break
 
+    # Test kill_actor.
+    def actor_killed(PID):
+        """Check For the existence of a unix pid."""
+        try:
+            os.kill(PID, 0)
+        except OSError:
+            return True
+        else:
+            return False
+
+    webui_url = addresses["webui_url"]
+    webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+    for worker in reply.workers_stats:
+        if worker.is_driver:
+            continue
+        requests.get(
+            webui_url + "/api/kill_actor",
+            params={
+                "actor_id": ray.utils.binary_to_hex(
+                    worker.core_worker_stats.actor_id),
+                "ip_address": worker.core_worker_stats.ip_address,
+                "port": worker.core_worker_stats.port
+            })
+    timeout_seconds = 20
+    start_time = time.time()
+    while True:
+        if time.time() - start_time > timeout_seconds:
+            raise RayTestTimeoutException("Timed out while killing actors")
+        if all(
+                actor_killed(worker.pid) for worker in reply.workers_stats
+                if not worker.is_driver):
+            break
+
 
 def test_raylet_info_endpoint(shutdown_only):
     addresses = ray.init(include_webui=True, num_cpus=6)
@@ -190,21 +223,23 @@ def test_raylet_info_endpoint(shutdown_only):
             "node_id": ray.nodes()[0]["NodeID"],
             "pid": actor_pid,
             "duration": 5
-        }).json()
+        }).json()["result"]
     start_time = time.time()
     while True:
-        time.sleep(1)
-        try:
-            profiling_info = requests.get(
-                webui_url + "/api/check_profiling_status",
-                params={
-                    "profiling_id": profiling_id,
-                }).json()
-            assert profiling_info["status"] in ("finished", "pending", "error")
+        # Sometimes some startup time is required
+        if time.time() - start_time > 30:
+            raise RayTestTimeoutException(
+                "Timed out while collecting profiling stats.")
+        profiling_info = requests.get(
+            webui_url + "/api/check_profiling_status",
+            params={
+                "profiling_id": profiling_id,
+            }).json()
+        status = profiling_info["result"]["status"]
+        assert status in ("finished", "pending", "error")
+        if status in ("finished", "error"):
             break
-        except AssertionError:
-            if time.time() - start_time + 10:
-                raise Exception("Timed out while collecting profiling stats.")
+        time.sleep(1)
 
 
 def test_profiling_info_endpoint(shutdown_only):
