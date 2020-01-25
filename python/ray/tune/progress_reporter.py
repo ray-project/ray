@@ -17,7 +17,10 @@ except ImportError:
 
 class ProgressReporter:
     def should_report(self, trials):
-        """Returns whether or not progress should be reported."""
+        """Returns whether or not progress should be reported.
+
+        This is called at the end of every execution step.
+        """
         raise NotImplementedError
 
     def report(self, trials, *sys_info):

@@ -708,6 +708,73 @@ By default, Tune will run hyperparameter evaluations on multiple processes. Howe
 
 Note that some behavior such as writing to files by depending on the current working directory in a Trainable and setting global process variables may not work as expected. Local mode with multiple configuration evaluations will interleave computation, so it is most naturally used when running a single configuration evaluation.
 
+CLI Progress Reporting
+----------------------
+
+By default, Tune periodically reports experiment progress to command-line as follows:
+
+.. code-block:: bash
+
+    == Status ==
+    Memory usage on this node: 11.4/16.0 GiB
+    Using FIFO scheduling algorithm.
+    Resources requested: 4/12 CPUs, 0/0 GPUs, 0.0/3.17 GiB heap, 0.0/1.07 GiB objects
+    Result logdir: /Users/foo/ray_results/myexp
+    Number of trials: 4 (4 RUNNING)
+    +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
+    | Trial name           | status   | loc                 |    param1 | param2 | param3 |    acc |   loss |   total time (s) |  iter |
+    |----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------|
+    | MyTrainable_a826033a | RUNNING  | 10.234.98.164:31115 | 0.303706  | 0.0761 | 0.4328 | 0.1289 | 1.8572 |          7.54952 |    15 |
+    | MyTrainable_a8263fc6 | RUNNING  | 10.234.98.164:31117 | 0.929276  | 0.158  | 0.3417 | 0.4865 | 1.6307 |          7.0501  |    14 |
+    | MyTrainable_a8267914 | RUNNING  | 10.234.98.164:31111 | 0.068426  | 0.0319 | 0.1147 | 0.9585 | 1.9603 |          7.0477  |    14 |
+    | MyTrainable_a826b7bc | RUNNING  | 10.234.98.164:31112 | 0.729127  | 0.0748 | 0.1784 | 0.1797 | 1.7161 |          7.05715 |    14 |
+    +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
+
+This output can be configured in various ways. Here are some examples:
+
+.. code-block:: python
+
+    from ray.tune import CLIReporter
+
+    # Limit the number of rows.
+    reporter = CLIReporter(max_progress_rows=10)
+    # Add a custom metric column, in addition to accuracy, loss, total time and iterations.
+    reporter.add_metric_column("custom_metric")
+    tune.run(my_trainable, progress_reporter=reporter)
+
+    # Report only at the end of the experiment instead of periodically.
+    class ExperimentTerminationReporter(CLIReporter):
+        def should_report(self, trials):
+            return trial_runner.is_finished()
+
+    tune.run(my_trainable, progress_reporter=ExperimentTerminationReporter())
+
+    # Report only on trial termination events.
+    class TrialTerminationReporter(CLIReporter):
+      def __init__(self):
+        self.num_terminated = 0
+
+      def should_report(self, trials):
+        old_num_terminated = self.num_terminated
+        self.num_terminated = len([t for t in trial_runner.get_trials() if t.status == Trial.TERMINATED])
+        return self.num_terminated > old_num_terminated
+
+    tune.run(my_trainable, progress_reporter=TrialTerminationReporter())
+
+The default reporting style can be overriden more broadly by extending the ``ProgressReporter`` interface directly.
+
+.. code-block:: python
+
+    from ray.tune import ProgressReporter
+
+    class CustomReporter(ProgressReporter):
+
+        def should_report(self, trials):
+            return True
+
+        def report(self, trials, *sys_info):
+            print(*sys_info)
+            print(" ".join([str(trial) for trial in trials]))
 
 Tune CLI (Experimental)
 -----------------------
