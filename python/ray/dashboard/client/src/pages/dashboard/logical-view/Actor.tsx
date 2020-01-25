@@ -36,6 +36,13 @@ const styles = (theme: Theme) =>
     infeasible: {
       color: theme.palette.error.main
     },
+    overloaded: {
+      "&:not(:first-child)": {
+        marginLeft: theme.spacing(2)
+      },
+      color: theme.palette.error.main,
+      fontWeight: "bold"
+    },
     information: {
       fontSize: "0.875rem"
     },
@@ -46,6 +53,18 @@ const styles = (theme: Theme) =>
     },
     webuiDisplay: {
       fontSize: "0.875rem"
+    },
+    actorTitle: {
+      fontWeight: "bold"
+    },
+    secondaryFields : {
+      color: theme.palette.text.secondary,
+      "&:not(:first-child)": {
+        marginLeft: theme.spacing(2)
+      }
+    },
+    secondaryFieldsHeader: {
+      color: theme.palette.text.secondary
     }
   });
 
@@ -61,6 +80,12 @@ interface State {
       latestResponse: CheckProfilingStatusResponse | null;
     };
   };
+}
+
+interface InformationItem {
+  label: string;
+  value: string | undefined | boolean;
+  rendered?: JSX.Element | undefined;
 }
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
@@ -110,16 +135,12 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
     const { classes, actor } = this.props;
     const { expanded, profiling } = this.state;
 
-    const information =
+    let information : InformationItem[] =
       actor.state !== -1
         ? [
             {
               label: "ActorTitle",
               value: actor.actorTitle
-            },
-            {
-              label: "State",
-              value: actor.state.toLocaleString()
             },
             {
               label: "Resources",
@@ -170,7 +191,45 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                   .join(", ")
             }
           ];
+    
+    if (actor.state !== -1) {
+      let foundPending = information.find((object=>object.label ==="Pending"))
+      if (foundPending && actor.taskQueueLength >= 50) {
+        foundPending.rendered = <React.Fragment key={foundPending.label}>
+        <span className={classes.overloaded}>{foundPending.label}: {foundPending.value}</span>{" "}
+      </React.Fragment>
+      }
 
+      let foundActorTitle = information.find(object=>object.label==="ActorTitle")
+      if (foundActorTitle) {
+        foundActorTitle.rendered = <React.Fragment key={foundActorTitle.label}>
+          {/* <span className={classes.datum}>{foundActorTitle.label}:</span> */}
+          <span className={classes.actorTitle}> {foundActorTitle.value}</span>{" "}
+        </React.Fragment>
+      }
+
+      const grayOutFields = [
+        "NumObjectIdsInScope",
+        "NumLocalObjects",
+        "UsedLocalObjectMemory"
+      ]
+
+      grayOutFields.map((fieldName, idx, _) => {
+        let found = information.find(object=>object.label===fieldName)
+        if (found) {
+          found.rendered = <React.Fragment key={found.label}>
+            {idx === 0 && <br></br>}
+            <span className={
+              idx === 0 ? classes.secondaryFieldsHeader : classes.secondaryFields
+              }>{found.label}: {found.value}</span>{" "}
+          </React.Fragment>
+
+          information.splice(information.indexOf(found), 1)
+          information.push(found)
+        }
+        })
+    }
+    
     return (
       <div className={classes.root}>
         <Typography className={classes.title}>
@@ -236,15 +295,17 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         <Typography className={classes.information}>
           {information.map(
-            ({ label, value }) =>
-              value &&
-              value.length > 0 && (
-                <React.Fragment key={label}>
-                  <span className={classes.datum}>
-                    {label}: {value}
-                  </span>{" "}
-                </React.Fragment>
-              )
+            ({ label, value, rendered }) => {
+              return rendered ||
+                value && value.toString().length > 0 && (
+                  <React.Fragment key={label.toString()}>
+                    <span className={classes.datum}>
+                      {label}: {value}
+                    </span>{" "}
+                  </React.Fragment>
+                )
+            }
+              
           )}
         </Typography>
         {actor.state !== -1 && (
