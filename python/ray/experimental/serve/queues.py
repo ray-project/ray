@@ -21,23 +21,27 @@ class Query:
         self.request_kwargs = request_kwargs
         self.request_context = request_context
 
-        self.result_object_id = None
-
         self.async_future = asyncio.get_event_loop().create_future()
 
         # Service level objective in milliseconds. This is expected to be the
         # absolute time since unix epoch.
         self.request_slo_ms = request_slo_ms
+    
+    def ray_serialize(self):
+        copy = self.copy()
+        copy.async_future = None
+        return ray.cloudpickle.dumps(copy)
+    
+    @staticmethod
+    def ray_deserialize(value):
+        return ray.cloudpickle.loads(value)
 
     # adding comparator fn for maintaining an
     # ascending order sorted list w.r.t request_slo_ms
     def __lt__(self, other):
         return self.request_slo_ms < other.request_slo_ms
 
-
-class WorkIntent:
-    def __init__(self, replica_handle):
-        self.replica_handle = replica_handle
+ray.register_custom_serializer(Query, Query.ray_serialize, Query.ray_deserialize)
 
 
 class CentralizedQueues:
