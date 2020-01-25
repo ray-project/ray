@@ -16,15 +16,16 @@ except ImportError:
 
 
 class ProgressReporter:
-    def should_report(self, trial_runner):
+    def should_report(self, trials):
         """Returns whether or not progress should be reported."""
         raise NotImplementedError
 
-    def report(self, trial_runner):
-        """Reports progress across all trials of the trial runner.
+    def report(self, trials, *sys_info):
+        """Reports progress across trials.
 
         Args:
-            trial_runner: Trial runner to report on.
+            trials (list[Trial]): Trials to report on.
+            sys_info: System info.
         """
         raise NotImplementedError
 
@@ -62,7 +63,7 @@ class TuneReporterBase(ProgressReporter):
         self._max_progress_rows = max_progress_rows
         self._max_error_rows = max_error_rows
 
-    def should_report(self, trial_runner):
+    def should_report(self, trials, *sys_info):
         return True
 
     def add_metric_column(self, metric, representation=None):
@@ -87,33 +88,26 @@ class TuneReporterBase(ProgressReporter):
                     "of metric columns.")
             self._metric_columns.append(metric)
 
-    def _progress_str(self, trial_runner, fmt="psql", delim="\n"):
+    def _progress_str(self, trials, *sys_info, fmt="psql", delim="\n"):
         """Returns full progress string.
 
         Args:
-            trial_runner (TrialRunner): Trial runner to report on.
+            trials (list[Trial]): Trials to report on.
             fmt (str): Table format. See `tablefmt` in tabulate API.
             delim (str): Delimiter between messages.
         """
-        messages = [
-            "== Status ==",
-            memory_debug_str(),
-            trial_runner.scheduler_alg.debug_string(),
-            trial_runner.trial_executor.debug_string(),
-        ]
+        messages = ["== Status ==", memory_debug_str(), *sys_info]
         if self._max_progress_rows > 0:
             messages.append(
                 trial_progress_str(
-                    trial_runner.get_trials(),
+                    trials,
                     metric_columns=self._metric_columns,
                     fmt=fmt,
                     max_rows=self._max_progress_rows))
         if self._max_error_rows > 0:
             messages.append(
                 trial_errors_str(
-                    trial_runner.get_trials(),
-                    fmt=fmt,
-                    max_rows=self._max_error_rows))
+                    trials, fmt=fmt, max_rows=self._max_error_rows))
         return delim.join(messages) + delim
 
 
@@ -142,13 +136,14 @@ class JupyterNotebookReporter(TuneReporterBase):
               self).__init__(metric_columns, max_progress_rows, max_error_rows)
         self._overwrite = overwrite
 
-    def report(self, trial_runner):
+    def report(self, trials, *sys_info):
         from IPython.display import clear_output
         from IPython.core.display import display, HTML
         if self._overwrite:
             clear_output(wait=True)
-        html = HTML(self._progress_str(trial_runner, fmt="html", delim="<br>"))
-        display(html)
+        progress_str = self._progress_str(
+            trials, *sys_info, fmt="html", delim="<br>")
+        display(HTML(progress_str))
 
 
 class CLIReporter(TuneReporterBase):
@@ -173,8 +168,8 @@ class CLIReporter(TuneReporterBase):
         super(CLIReporter, self).__init__(metric_columns, max_progress_rows,
                                           max_error_rows)
 
-    def report(self, trial_runner):
-        print(self._progress_str(trial_runner))
+    def report(self, trials, *sys_info):
+        print(self._progress_str(trials, *sys_info))
 
 
 def memory_debug_str():

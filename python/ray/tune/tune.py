@@ -51,6 +51,20 @@ def _check_default_resources_override(run_identifier):
         Trainable.default_resource_request.__code__)
 
 
+def _report_progress(runner, reporter):
+    """Reports experiment progress.
+
+    Args:
+        runner (TrialRunner): Trial runner to report on.
+        reporter (ProgressReporter): Progress reporter.
+    """
+    trials = runner.get_trials()
+    if reporter.should_report(trials):
+        sched_debug_str = runner.scheduler_alg.debug_string()
+        executor_debug_str = runner.trial_executor.debug_string()
+        reporter.report(trials, sched_debug_str, executor_debug_str)
+
+
 def run(run_or_experiment,
         name=None,
         stop=None,
@@ -305,8 +319,8 @@ def run(run_or_experiment,
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            if verbose and progress_reporter.should_report(runner):
-                progress_reporter.report(runner)
+            if verbose:
+                _report_progress(runner, progress_reporter)
             last_debug = time.time()
 
     try:
@@ -314,8 +328,8 @@ def run(run_or_experiment,
     except Exception:
         logger.exception("Trial Runner checkpointing failed.")
 
-    if verbose and progress_reporter.should_report(runner):
-        progress_reporter.report(runner)
+    if verbose:
+        _report_progress(runner, progress_reporter)
 
     wait_for_sync()
 
