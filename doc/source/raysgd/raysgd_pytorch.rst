@@ -24,6 +24,14 @@ For example:
 
 .. code-block:: python
 
+    import numpy as np
+    import torch
+    import torch.nn as nn
+    from torch import distributed
+
+    from ray.experimental.sgd import PyTorchTrainer
+    from ray.experimental.sgd.examples.train_example import LinearDataset
+
     def model_creator(config):
         """Constructor function for the model(s) to be optimized.
 
@@ -119,6 +127,7 @@ You can also set the number of workers and whether the workers are using GPU:
 
 
 See the documentation on the PyTorchTrainer here: :ref:`ref-pytorch-trainer`.
+We'll look at the training APIs next.
 
 Training APIs
 -------------
