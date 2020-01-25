@@ -621,7 +621,6 @@ class RolloutWorker(EvaluatorInterface):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
 
-    @DeveloperAPI
     def sample_and_learn(self, train_batch_size, num_sgd_iter,
                          sgd_minibatch_size, standardize_fields):
         """Sample and batch and learn on it.
