@@ -711,7 +711,7 @@ Note that some behavior such as writing to files by depending on the current wor
 CLI Progress Reporting
 ----------------------
 
-By default, Tune periodically reports experiment progress to command-line as follows:
+By default, Tune periodically reports experiment progress to command-line as follows. Columns are hidden if they are completely empty.
 
 .. code-block:: bash
 
@@ -738,7 +738,8 @@ This output can be configured in various ways. Here are some examples:
 
     # Limit the number of rows.
     reporter = CLIReporter(max_progress_rows=10)
-    # Add a custom metric column, in addition to accuracy, loss, total time and iterations.
+    # Add a custom metric column, in addition to the default metrics.
+    # Note that this must be a metric that is returned in your training results.
     reporter.add_metric_column("custom_metric")
     tune.run(my_trainable, progress_reporter=reporter)
 

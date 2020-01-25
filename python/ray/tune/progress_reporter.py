@@ -73,7 +73,8 @@ class TuneReporterBase(ProgressReporter):
         """Adds a metric to the existing columns.
 
         Args:
-            metric (str): Metric to add.
+            metric (str): Metric to add. This must be a metric being returned
+                in training step results.
             representation (str): Representation to use in table. Defaults to
                 `metric`.
         """
