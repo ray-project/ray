@@ -64,7 +64,8 @@ class Policy(metaclass=ABCMeta):
         # Create the Exploration object to use for this Policy.
         self.exploration = from_config(
             Exploration, config.get("exploration"),
-            action_space=self.action_space)
+            action_space=self.action_space,
+            framework="torch" if self.config.get("use_pytorch") else "tf")
         # The default sampling behavior for actions if not explicitly given
         # in calls to `compute_actions`.
         self.deterministic = config.get("deterministic", False)

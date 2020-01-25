@@ -115,10 +115,12 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
         }
+        # Placeholder for RNN time-chunk valid lengths.
         self._seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
-        self._time_step = tf.placeholder_with_default(
-            input=0, shape=(), name="time_step"
+        # Placeholder for switching off exploration (e.g. for inference/evals).
+        self._explore = tf.placeholder_with_default(
+            input=True, shape=(), name="explore"
         )
 
         # Setup model
@@ -197,7 +199,6 @@ class DynamicTFPolicy(TFPolicy):
             prev_reward_input=prev_rewards,
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
-            time_step=self._time_step,
             batch_divisibility_req=batch_divisibility_req)
 
         # Phase 2 init.

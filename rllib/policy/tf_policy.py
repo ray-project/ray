@@ -64,7 +64,7 @@ class TFPolicy(Policy):
                  prev_reward_input=None,
                  seq_lens=None,
                  max_seq_len=20,
-                 time_step=None,
+                 explore=None,
                  batch_divisibility_req=1,
                  update_ops=None):
         """Initialize the policy.
@@ -96,8 +96,7 @@ class TFPolicy(Policy):
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
                 policy/rnn_sequencing.py for more information.
             max_seq_len (int): Max sequence length for LSTM training.
-            time_step (Tensor): Placeholder (with default) for the current
-                time step value.
+            explore (Tensor): Placeholder for whether to explore or not.
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
                 a LSTM model.
@@ -111,7 +110,7 @@ class TFPolicy(Policy):
         self._obs_input = obs_input
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input
-        self._sampler = action_sampler
+        self._action = action_sampler
         self._is_training = self._get_is_training_placeholder()
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
@@ -120,12 +119,12 @@ class TFPolicy(Policy):
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
         self._max_seq_len = max_seq_len
-        self._time_step = time_step
+        self._explore = explore
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
         self._stats_fetches = {}
         self._loss_input_dict = None
-
+        
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
         else:
@@ -143,6 +142,20 @@ class TFPolicy(Policy):
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
+
+        # Extend `self._action` according to our Exploration (iff it
+        # implements `get_action`).
+
+        # Apply the post-forward-pass exploration if applicable.
+        #sampler_fetch = self._action
+        #extra_action_fetches = self.extra_compute_action_fetches()
+        #print(extra_action_fetches)
+        if self.exploration:
+            # TODO(sven): unify extra_action_fetches
+            # TODO(sven): (maybe call it "raw_model_outputs").
+            self._action = self.exploration.get_action(
+                self._action, self.model, action_dist=self.dist_class
+            )
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -232,15 +245,13 @@ class TFPolicy(Policy):
                         episodes=None,
                         deterministic=None,
                         explore=True,
-                        time_step=None,
                         **kwargs):
 
         deterministic = deterministic if deterministic is not None else self.deterministic
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
-            builder, obs_batch,state_batches, prev_action_batch,
-            prev_reward_batch, deterministic=deterministic, explore=explore,
-            time_step=time_step
+            builder, obs_batch, state_batches, prev_action_batch,
+            prev_reward_batch, deterministic=deterministic, explore=explore
         )
         return builder.get(fetches)
 
@@ -425,7 +436,7 @@ class TFPolicy(Policy):
         # build output signatures
         output_signature = self._extra_output_signature_def()
         output_signature["actions"] = \
-            tf.saved_model.utils.build_tensor_info(self._sampler)
+            tf.saved_model.utils.build_tensor_info(self._action)
         for state_output in self._state_outputs:
             output_signature[state_output.name] = \
                 tf.saved_model.utils.build_tensor_info(state_output)
@@ -446,8 +457,7 @@ class TFPolicy(Policy):
                                prev_reward_batch=None,
                                episodes=None,
                                deterministic=False,
-                               explore=True,
-                               time_step=None
+                               explore=True
                                ):
 
         state_batches = state_batches or []
@@ -467,24 +477,8 @@ class TFPolicy(Policy):
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        if time_step is not None:
-            builder.add_feed_dict({self._time_step: time_step})
-
-        # Apply the post-forward-pass exploration if applicable.
-        sampler_fetch = self._sampler
-        extra_action_fetches = self.extra_compute_action_fetches()
-        # If `explore` is fixed to (boolean) False (or np.array(False)),
-        # don't explore. But it could be a Tensor as well.
-        if explore and self.exploration:
-            # TODO(sven): unify extra_action_fetches
-            # TODO(sven): (maybe call it "raw_model_outputs").
-            #assert "behavior_logits" in extra_action_fetches
-            sampler_fetch = self.exploration.get_action(
-                extra_action_fetches, self.model,
-                action_dist=self.dist_class, action_sample=sampler_fetch
-            )
-
-        fetches = builder.add_fetches([sampler_fetch] + self._state_outputs +
+        builder.add_feed_dict({self._explore: explore})
+        fetches = builder.add_fetches([self._action] + self._state_outputs +
                                       [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 

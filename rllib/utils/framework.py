@@ -91,3 +91,21 @@ def try_import_torch(error=False):
         return torch, nn
     except ImportError:
         return None, None
+
+
+def get_variable(value, framework="tf", tf_name="unnamed-variable"):
+    """
+    Args:
+        value (any): The initial value to use. In the non-tf case, this will
+            be returned as is.
+        framework (str): One of "tf", "torch", or None.
+        tf_name (str): An optional name for the variable. Only for tf.
+
+    Returns:
+        any: A framework-specific variable (tf.Variable or python primitive).
+    """
+    if framework == "tf":
+        tf = try_import_tf()
+        return tf.get_variable(tf_name, initializer=value)
+    # torch or None: Return python primitive.
+    return value
