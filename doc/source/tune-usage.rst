@@ -743,22 +743,15 @@ This output can be configured in various ways. Here are some examples:
     reporter.add_metric_column("custom_metric")
     tune.run(my_trainable, progress_reporter=reporter)
 
-    # Report only at the end of the experiment instead of periodically.
-    class ExperimentTerminationReporter(CLIReporter):
-        def should_report(self, trials):
-            return trial_runner.is_finished()
-
-    tune.run(my_trainable, progress_reporter=ExperimentTerminationReporter())
-
     # Report only on trial termination events.
     class TrialTerminationReporter(CLIReporter):
-      def __init__(self):
-        self.num_terminated = 0
+        def __init__(self):
+            self.num_terminated = 0
 
-      def should_report(self, trials):
-        old_num_terminated = self.num_terminated
-        self.num_terminated = len([t for t in trial_runner.get_trials() if t.status == Trial.TERMINATED])
-        return self.num_terminated > old_num_terminated
+        def should_report(self, trials):
+            old_num_terminated = self.num_terminated
+            self.num_terminated = len([t for t in trial_runner.get_trials() if t.status == Trial.TERMINATED])
+            return self.num_terminated > old_num_terminated
 
     tune.run(my_trainable, progress_reporter=TrialTerminationReporter())
 
@@ -775,7 +768,7 @@ The default reporting style can be overriden more broadly by extending the ``Pro
 
         def report(self, trials, *sys_info):
             print(*sys_info)
-            print(" ".join([str(trial) for trial in trials]))
+            print("\n".join([str(trial) for trial in trials]))
 
 Tune CLI (Experimental)
 -----------------------
