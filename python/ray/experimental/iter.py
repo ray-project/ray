@@ -1,6 +1,7 @@
 from typing import TypeVar, Generic, Iterable, List, Callable, Any
 
 import ray
+import random
 
 # The type of an iterator element.
 T = TypeVar("T")
@@ -237,6 +238,17 @@ class ParallelIterator(Generic[T]):
         it = self.for_each(fn).flatten()
         it.name = self.name + ".combine()"
         return it
+
+    def local_shuffle(self, shuffle_buffer_size: int) -> "ParallelIterator[T]":
+        """Shuffles elements of each shard independently.
+        """
+        return ParallelIterator(
+            [
+                a.with_transform(
+                    lambda local_it: local_it.shuffle(shuffle_buffer_size))
+                for a in self.actor_sets
+            ],
+            name=self.name + ".local_shuffle({})".format(shuffle_buffer_size))
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
@@ -526,6 +538,24 @@ class LocalIterator(Generic[T]):
             self.base_iterator,
             self.local_transforms + [apply_flatten],
             name=self.name + ".flatten()")
+
+    def shuffle(self, shuffle_buffer_size: int) -> "LocalIterator[T]":
+        def apply_shuffle(it):
+            buffer = []
+            for item in it:
+                if isinstance(item, _NextValueNotReady):
+                    yield item
+                else:
+                    buffer.append(item)
+                    if len(buffer) >= shuffle_buffer_size:
+                        yield buffer.pop(random.randint(0, len(buffer) - 1))
+            while len(buffer) > 0:
+                yield buffer.pop(random.randint(0, len(buffer) - 1))
+
+        return LocalIterator(
+            self.base_iterator,
+            self.local_transforms + [apply_shuffle],
+            name=self.name + ".shuffle({})".format(shuffle_buffer_size))
 
     def combine(self, fn: Callable[[T], List[U]]) -> "LocalIterator[U]":
         it = self.for_each(fn).flatten()

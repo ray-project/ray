@@ -70,6 +70,38 @@ def test_filter(ray_start_regular_shared):
     assert list(it.gather_sync()) == [0, 2, 1]
 
 
+def test_local_shuffle(ray_start_regular_shared):
+    # confirm that no data disappears, and they all stay within the same shard
+    it = from_range(8, num_shards=2).local_shuffle(shuffle_buffer_size=2)
+    assert repr(
+        it) == "ParallelIterator[from_range[8, shards=2].local_shuffle(2)]"
+    shard_0 = it.get_shard(0)
+    shard_1 = it.get_shard(1)
+    assert set(shard_0) == set([0, 1, 2, 3])
+    assert set(shard_1) == set([4, 5, 6, 7])
+
+    # check that shuffling results in different orders
+    it1 = from_range(100, num_shards=10).local_shuffle(shuffle_buffer_size=5)
+    it2 = from_range(100, num_shards=10).local_shuffle(shuffle_buffer_size=5)
+    assert list(it1.gather_sync()) != list(it2.gather_sync())
+
+    # buffer size of 1 should not result in any shuffling
+    it3 = from_range(10, num_shards=1).local_shuffle(shuffle_buffer_size=1)
+    assert list(it3.gather_sync()) == list(range(10))
+
+    # statistical test
+    it4 = from_items(
+        [0, 1] * 10000, num_shards=1).local_shuffle(shuffle_buffer_size=100)
+    result = ''.join(it4.gather_sync().for_each(str))
+    freq_dict = {}
+    for i in range(0, len(result), 2):
+        s = result[i:i + 2]
+        freq_dict[s] = freq_dict.get(s, 0) + 1
+    assert len(freq_dict) == 4
+    for key, value in freq_dict.items():
+        assert value / len(freq_dict) > 0.2
+
+
 def test_batch(ray_start_regular_shared):
     it = from_range(4, 1).batch(2)
     assert repr(it) == "ParallelIterator[from_range[4, shards=1].batch(2)]"
