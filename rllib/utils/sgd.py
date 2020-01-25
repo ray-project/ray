@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def averaged(kv):
     """Average the value lists of a dictionary.
-    
+
     Arguments:
         kv (dict): dictionary with values that are lists of floats.
 
