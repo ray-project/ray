@@ -280,7 +280,6 @@ def _check_ami(config):
 
     if config["head_node"].get("ImageId", "").lower() == "latest_dlami":
         config["head_node"]["ImageId"] = default_ami
-
         logger.info("_check_ami: head node ImageId is 'latest_dlami'. "
                     "Using '{ami_id}', which is the default {ami_name} "
                     "for your region ({region}).".format(
