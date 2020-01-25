@@ -15,6 +15,7 @@ import ray.utils
 import ray.ray_constants as ray_constants
 from ray.utils import (binary_to_hex, binary_to_object_id, binary_to_task_id,
                        hex_to_binary, setup_logger)
+from ray.autoscaler.commands import teardown_cluster
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +49,10 @@ class Monitor:
         if autoscaling_config:
             self.autoscaler = StandardAutoscaler(autoscaling_config,
                                                  self.load_metrics)
+            self.autoscaling_config = autoscaling_config
         else:
             self.autoscaler = None
+            self.autoscaling_config = None
 
         # Experimental feature: GCS flushing.
         self.issue_gcs_flushes = "RAY_USE_NEW_GCS" in os.environ
@@ -353,6 +356,39 @@ class Monitor:
             time.sleep(
                 ray._config.raylet_heartbeat_timeout_milliseconds() * 1e-3)
 
+    def destroy_autoscaler_workers(self):
+        """Cleanup the autoscaler, in case of an exception in the run() method.
+
+        We kill the worker nodes, but retain the head node in order to keep
+        logs around, keeping costs minimal. This monitor process runs on the
+        head node anyway, so this is more reliable."""
+
+        if self.autoscaler is None:
+            return  # Nothing to clean up.
+
+        if self.autoscaling_config is None:
+            # This is a logic error in the program. Can't do anything.
+            logger.error(
+                "Monitor: Cleanup failed due to lack of autoscaler config.")
+            return
+
+        logger.info("Monitor: Exception caught. Taking down workers...")
+        clean = False
+        while not clean:
+            try:
+                teardown_cluster(
+                    config_file=self.autoscaling_config,
+                    yes=True,  # Non-interactive.
+                    workers_only=True,  # Retain head node for logs.
+                    override_cluster_name=None,
+                    keep_min_workers=True,  # Retain minimal amount of workers.
+                )
+                clean = True
+                logger.info("Monitor: Workers taken down.")
+            except Exception:
+                logger.error("Monitor: Cleanup exception. Trying again...")
+                time.sleep(2)
+
     def run(self):
         try:
             self._run()
@@ -412,6 +448,9 @@ if __name__ == "__main__":
     try:
         monitor.run()
     except Exception as e:
+        # Take down autoscaler workers if necessary.
+        monitor.destroy_autoscaler_workers()
+
         # Something went wrong, so push an error to all drivers.
         redis_client = ray.services.create_redis_client(
             args.redis_address, password=args.redis_password)

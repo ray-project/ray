@@ -200,7 +200,7 @@ class _MockTrialExecutor(TrialExecutor):
         pass
 
     def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
-        return trial.trainable_name
+        return Checkpoint(Checkpoint.PERSISTENT, trial.trainable_name, result)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False

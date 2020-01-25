@@ -555,6 +555,8 @@ tune.run(
     cluster.shutdown()
 
 
+# TODO(ujvl): Fix test.
+@pytest.mark.skip(reason="Not very consistent.")
 def test_cluster_interrupt(start_connected_cluster, tmpdir):
     """Tests run_experiment on cluster shutdown with actual interrupt.
 
