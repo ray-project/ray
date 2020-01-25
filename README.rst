@@ -201,6 +201,7 @@ More Information
 Getting Involved
 ----------------
 
+- `Building from source`_: Instructions for building Ray yourself.
 - `ray-dev@googlegroups.com`_: For discussions about development or any general
   questions.
 - `StackOverflow`_: For questions about how to use Ray.
@@ -210,6 +211,7 @@ Getting Involved
 - `Community Slack`_: Join our Slack workspace.
 - `Twitter`_: Follow updates on Twitter.
 
+.. _`Building from source`: https://ray.readthedocs.io/en/latest/installation.html#building-ray-from-source
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray

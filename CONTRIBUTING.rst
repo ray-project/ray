@@ -1,6 +1,11 @@
 Contributing to Ray
 ===================
 
+To Build Ray Yourself
+---------------------
+
+See the instructions `in the docs`_.
+
 Reporting bugs and asking questions
 -----------------------------------
 
@@ -22,6 +27,7 @@ To contribute a patch:
    a git hook that will run the linter before you push your changes.
 5. Add new unit tests for your code.
 
+.. _`in the docs`: https://ray.readthedocs.io/en/latest/installation.html#building-ray-from-source
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
