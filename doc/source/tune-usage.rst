@@ -711,7 +711,7 @@ Note that some behavior such as writing to files by depending on the current wor
 CLI Progress Reporting
 ----------------------
 
-By default, Tune periodically reports experiment progress to command-line as follows. Columns are hidden if they are completely empty.
+By default, Tune reports experiment progress to the command-line at the end of each training iteration as follows.
 
 .. code-block:: bash
 
@@ -730,7 +730,7 @@ By default, Tune periodically reports experiment progress to command-line as fol
     | MyTrainable_a826b7bc | RUNNING  | 10.234.98.164:31112 | 0.729127  | 0.0748 | 0.1784 | 0.1797 | 1.7161 |          7.05715 |    14 |
     +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
 
-This output can be configured in various ways. Here are some examples:
+Note that columns will be hidden if they are completely empty. The output can be configured in various ways by instantiating a ``CLIReporter`` instance (or ``JupyterNotebookReporter`` if you're using jupyter notebook). Here's an example:
 
 .. code-block:: python
 
@@ -743,19 +743,23 @@ This output can be configured in various ways. Here are some examples:
     reporter.add_metric_column("custom_metric")
     tune.run(my_trainable, progress_reporter=reporter)
 
-    # Report only on trial termination events.
+Extending ``CLIReporter`` lets you control reporting frequency. For example:
+
+.. code-block:: python
+
     class TrialTerminationReporter(CLIReporter):
         def __init__(self):
             self.num_terminated = 0
 
         def should_report(self, trials):
+            """Reports only on trial termination events."""
             old_num_terminated = self.num_terminated
-            self.num_terminated = len([t for t in trial_runner.get_trials() if t.status == Trial.TERMINATED])
+            self.num_terminated = len([t for t in trials if t.status == Trial.TERMINATED])
             return self.num_terminated > old_num_terminated
 
     tune.run(my_trainable, progress_reporter=TrialTerminationReporter())
 
-The default reporting style can be overriden more broadly by extending the ``ProgressReporter`` interface directly.
+The default reporting style can also be overriden more broadly by extending the ``ProgressReporter`` interface directly. Note that you can print to any output stream, file etc.
 
 .. code-block:: python
 
@@ -769,6 +773,8 @@ The default reporting style can be overriden more broadly by extending the ``Pro
         def report(self, trials, *sys_info):
             print(*sys_info)
             print("\n".join([str(trial) for trial in trials]))
+
+    tune.run(my_trainable, progress_reporter=CustomReporter())
 
 Tune CLI (Experimental)
 -----------------------
