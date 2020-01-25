@@ -13,7 +13,14 @@ logger = logging.getLogger(__name__)
 
 
 def averaged(kv):
-    """Average the value lists of a dictionary."""
+    """Average the value lists of a dictionary.
+    
+    Arguments:
+        kv (dict): dictionary with values that are lists of floats.
+
+    Returns:
+        dictionary with single averaged float as values.
+    """
     out = {}
     for k, v in kv.items():
         if v[0] is not None and not isinstance(v[0], dict):
@@ -22,7 +29,15 @@ def averaged(kv):
 
 
 def minibatches(samples, sgd_minibatch_size):
-    """Return a generator yielding minibatches from a sample batch."""
+    """Return a generator yielding minibatches from a sample batch.
+
+    Arguments:
+        samples (SampleBatch): batch of samples to split up.
+        sgd_minibatch_size (int): size of minibatches to return.
+
+    Returns:
+        generator that returns mini-SampleBatches of size sgd_minibatch_size.
+    """
     if not sgd_minibatch_size:
         yield samples
         return
@@ -49,7 +64,20 @@ def minibatches(samples, sgd_minibatch_size):
 
 def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
                      sgd_minibatch_size, standardize_fields):
-    """Execute minibatch SGD with the given parameters."""
+    """Execute minibatch SGD.
+
+    Arguments:
+        samples (SampleBatch): batch of samples to optimize.
+        policies (dict): dictionary of policies to optimize.
+        local_worker (RolloutWorker): master rollout worker instance.
+        num_sgd_iter (int): number of epochs of optimization to take.
+        sgd_minibatch_size (int): size of minibatches to use for optimization.
+        standardize_fields (list): list of sample field names that should be
+            normalized prior to optimization.
+
+    Returns:
+        averaged info fetches over the last SGD epoch taken.
+    """
     if isinstance(samples, SampleBatch):
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
