@@ -8,11 +8,12 @@ Each schedule has a function `value(t)` which returns the current value
 of the parameter given the timestep t of the optimization procedure.
 """
 
+from ray.rllib.utils.deprecation import deprecation_warning
 
-class Schedule:
-    def value(self, t):
-        """Value of the schedule at time t"""
-        raise NotImplementedError()
+#class Schedule:
+#    def value(self, t):
+#        """Value of the schedule at time t"""
+#        raise NotImplementedError()
 
 
 class ConstantSchedule:
@@ -24,6 +25,9 @@ class ConstantSchedule:
         value: float
           Constant value of the schedule
         """
+        deprecation_warning(
+            "ray.rllib.utils.schedules.ConstantSchedule",
+            "ray.rllib.utils.schedules.constant_schedule.ConstantSchedule")
         self._v = value
 
     def value(self, t):
@@ -60,6 +64,9 @@ class PiecewiseSchedule:
           `endpoints` this value is returned. If None then AssertionError is
           raised when outside value is requested.
         """
+        deprecation_warning(
+            "ray.rllib.utils.schedules.PiecewiseSchedule",
+            "ray.rllib.utils.schedules.piecewise_schedule.PiecewiseSchedule")
         idxes = [e[0] for e in endpoints]
         assert idxes == sorted(idxes)
         self._interpolation = interpolation
@@ -95,6 +102,9 @@ class LinearSchedule:
         final_p: float
           final output value
         """
+        deprecation_warning(
+            "ray.rllib.utils.schedules.LinearSchedule",
+            "ray.rllib.utils.schedules.linear_schedule.LinearSchedule")
         self.schedule_timesteps = schedule_timesteps
         self.final_p = final_p
         self.initial_p = initial_p
