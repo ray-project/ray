@@ -44,7 +44,8 @@ class PyTorchTrainer:
                 model_creator,
                 data_creator,
                 optimizer_creator,
-                loss_creator=nn.MSELoss
+                loss_creator=nn.MSELoss,
+                use_gpu=True
             )
             trainer.train()
 
@@ -92,20 +93,24 @@ class PyTorchTrainer:
                 takes in the provided config for customization or a subclass
                 of ``torch.nn.modules.loss._Loss``, which is most Pytorch
                 loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
-            train_function: Trains a model for a epoch. This takes in (
-                model, train_dataloader, criterion, optimizer, config), and
-                returns a dict of training stats.
-            validation_function: Runs validation. This takes in (
-                model, val_dataloader, criterion, config) and returns a dict of
-                validation stats.
-            config (dict): configuration passed to "model_creator",
-                "data_creator", "optimizer_creator", and "loss_creator".
+            train_function: Custom function for training. This function
+                will be executed in parallel across all workers at once. The
+                function needs to take in (models, train_dataloader, criterion,
+                optimizer, config), and return a dict of training stats.
+            validation_function: Custom function for validation. This function
+                will be executed in parallel across all workers at once.
+                This takes in (model, val_dataloader, criterion, config)
+                and returns a dict of validation stats.
+            config (dict): Custom configuration value to be passed to
+                "model_creator", "data_creator", "optimizer_creator", and
+                "loss_creator".
             num_replicas (int): the number of workers used in distributed
                 training.
             use_gpu (bool): Sets resource allocation for workers to 1 GPU
-                if true.
+                if true, and automatically moves both the model and optimizer
+                to the available CUDA device.
             batch_size (int): Total batch size for each minibatch. This
-                value is divided among all workersr and
+                value is divided among all workers and rounded.
             backend (string): backend used by distributed PyTorch. Currently
                 support "nccl" and "gloo".
         """
