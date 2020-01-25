@@ -1543,17 +1543,26 @@ def wait(object_ids, num_returns=1, timeout=None):
     .. warning::
 
         The **timeout** argument used to be in **milliseconds** (up through
-        ``ray==0.6.1``) and now it is in **seconds**.
+        ``ray==0.6.1``) and now it is in **seconds**. It is also expected to
+        be a float value, e.g., ``0.5`` for 500 milliseconds.
 
-    If timeout is set, the function returns either when the requested number of
-    IDs are ready or when the timeout is reached, whichever occurs first. If it
-    is not set, the function simply waits until that number of objects is ready
-    and returns that exact number of object IDs.
+    If ``timeout`` is set, the function returns either when the requested 
+    number of IDs (``num_returns``) are ready or when the timeout is reached, 
+    whichever occurs first. If it is not set, the function simply waits until
+    ``num_returns`` objects are ready and returns that exact number of object 
+    IDs.
+
+    When ``num_returns`` is *greater than* the size of ``object_ids``, then 
+    the smaller size value is used instead as the "effective" ``num_returns``.
+    This is most convenient when looping through a long list of ids, returning
+    several at a time as they complete, so it is not necessary to adjust the
+    value of ``num_returns`` to a smaller number as you reach the end of list.
 
     This method returns two lists. The first list consists of object IDs that
     correspond to objects that are available in the object store. The second
-    list corresponds to the rest of the object IDs (which may or may not be
-    ready).
+    list corresponds to the rest of the object IDs, which may or may not be
+    ready. In other words, if more than ``num_returns`` values are actually
+    ready, the extra objects will be in the second list returned.
 
     Ordering of the input list of object IDs is preserved. That is, if A
     precedes B in the input list, and both are in the ready list, then A will
@@ -1562,8 +1571,16 @@ def wait(object_ids, num_returns=1, timeout=None):
 
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
-            may not be ready. Note that these IDs must be unique.
-        num_returns (int): The number of object IDs that should be returned.
+            may not be ready. Note that these IDs must be unique. Otherwise, an
+            exception is thrown
+        num_returns (int): The number of object IDs that should be returned.  
+            It is an error for this number to be <= 0.
+            If this number is greater than the size of the object_ids list, 
+            then that size is used instead. Hence, this argument is a maximum 
+            number of items to return. Also, if the timeout is specified and 
+            num_returns objects are not ready when the timeout is reached, 
+            then the returned list of available ready object ids will be less
+            than num_returns.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
 
@@ -1624,8 +1641,7 @@ def wait(object_ids, num_returns=1, timeout=None):
             raise Exception(
                 "Invalid number of objects to return %d." % num_returns)
         if num_returns > len(object_ids):
-            raise Exception("num_returns cannot be greater than the number "
-                            "of objects provided to ray.wait.")
+            num_returns = len(object_ids)
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)

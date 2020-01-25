@@ -1589,52 +1589,6 @@ def test_direct_actor_concurrent(ray_start_regular):
     assert r1 == r2 == r3
 
 
-def test_wait(ray_start_regular):
-    @ray.remote
-    def f(delay):
-        time.sleep(delay)
-        return
-
-    object_ids = [f.remote(0), f.remote(0), f.remote(0), f.remote(0)]
-    ready_ids, remaining_ids = ray.wait(object_ids)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 3
-    ready_ids, remaining_ids = ray.wait(object_ids, num_returns=4)
-    assert set(ready_ids) == set(object_ids)
-    assert remaining_ids == []
-
-    object_ids = [f.remote(0), f.remote(5)]
-    ready_ids, remaining_ids = ray.wait(object_ids, timeout=0.5, num_returns=2)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 1
-
-    # Verify that calling wait with duplicate object IDs throws an
-    # exception.
-    x = ray.put(1)
-    with pytest.raises(Exception):
-        ray.wait([x, x])
-
-    # Make sure it is possible to call wait with an empty list.
-    ready_ids, remaining_ids = ray.wait([])
-    assert ready_ids == []
-    assert remaining_ids == []
-
-    # Test semantics of num_returns with no timeout.
-    oids = [ray.put(i) for i in range(10)]
-    (found, rest) = ray.wait(oids, num_returns=2)
-    assert len(found) == 2
-    assert len(rest) == 8
-
-    # Verify that incorrect usage raises a TypeError.
-    x = ray.put(1)
-    with pytest.raises(TypeError):
-        ray.wait(x)
-    with pytest.raises(TypeError):
-        ray.wait(1)
-    with pytest.raises(TypeError):
-        ray.wait([1])
-
-
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
