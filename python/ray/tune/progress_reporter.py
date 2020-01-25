@@ -116,8 +116,8 @@ class JupyterNotebookReporter(TuneReporterBase):
             max_error_rows (int): Maximum number of error rows to print in the
                 error table. Defaults to 20.
         """
-        super(JupyterNotebookReporter, self).__init__(
-            metric_columns, max_progress_rows, max_error_rows)
+        super(JupyterNotebookReporter,
+              self).__init__(metric_columns, max_progress_rows, max_error_rows)
         self._overwrite = overwrite
 
     def report(self, trial_runner):
