@@ -30,6 +30,8 @@ from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+from ray.core.generated import core_worker_pb2
+from ray.core.generated import core_worker_pb2_grpc
 import ray.ray_constants as ray_constants
 
 # Logger for this module. It should be configured at the entry point
@@ -269,6 +271,13 @@ class Dashboard(object):
             return aiohttp.web.json_response(
                 self.raylet_stats.get_profiling_info(profiling_id))
 
+        async def kill_actor(req) -> aiohttp.web.Response:
+            actor_id = req.query.get("actor_id")
+            ip_address = req.query.get("ip_address")
+            port = req.query.get("port")
+            return await json_response(
+                self.raylet_stats.kill_actor(actor_id, ip_address, port))
+
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
             pid = req.query.get("pid")
@@ -307,6 +316,7 @@ class Dashboard(object):
         self.app.router.add_get("/api/check_profiling_status",
                                 check_profiling_status)
         self.app.router.add_get("/api/get_profiling_info", get_profiling_info)
+        self.app.router.add_get("/api/kill_actor", kill_actor)
         self.app.router.add_get("/api/logs", logs)
         self.app.router.add_get("/api/errors", errors)
 
@@ -655,6 +665,19 @@ class RayletStats(threading.Thread):
             profiling_stats = self._profiling_stats.get(profiling_id)
         assert profiling_stats, "profiling not finished"
         return json.loads(profiling_stats.profiling_stats)
+
+    def kill_actor(self, actor_id, ip_address, port):
+        channel = grpc.insecure_channel("{}:{}".format(ip_address, int(port)))
+        stub = core_worker_pb2_grpc.CoreWorkerServiceStub(channel)
+
+        def _callback(reply_future):
+            _ = reply_future.result()
+
+        reply_future = stub.KillActor.future(
+            core_worker_pb2.KillActorRequest(
+                intended_actor_id=ray.utils.hex_to_binary(actor_id)))
+        reply_future.add_done_callback(_callback)
+        return {}
 
     def run(self):
         counter = 0
