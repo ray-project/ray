@@ -1,5 +1,7 @@
-RaySGD Examples
-===============
+.. _raysgd-pytorch-example
+
+RaySGD PyTorch Examples
+=======================
 
 Here are some examples of using RaySGD for training PyTorch models. If you'd like
 to contribute an example, feel free to create a `pull request here <https://github.com/ray-project/ray/pull/>`_.
