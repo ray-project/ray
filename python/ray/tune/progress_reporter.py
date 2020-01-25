@@ -65,6 +65,27 @@ class TuneReporterBase(ProgressReporter):
     def should_report(self, trial_runner):
         return True
 
+    def add_metric_column(self, metric, representation=None):
+        """Adds a metric to the existing columns.
+
+        Args:
+            metric (str): Metric to add.
+            representation (str): Representation to use in table. Defaults to
+                `metric`.
+        """
+        if metric in self._metric_columns:
+            raise ValueError("Column {} already exists.".format(metric))
+
+        if isinstance(self._metric_columns, collections.Mapping):
+            representation = representation or metric
+            self._metric_columns[metric] = representation
+        else:
+            if representation is not None and representation != metric:
+               raise ValueError("`representation` cannot differ from `metric` "
+                                "if this reporter was initialized with a list "
+                                "of metric columns.")
+            self._metric_columns.append(metric)
+
     def _progress_str(self, trial_runner, fmt="psql", delim="\n"):
         """Returns full progress string.
 
