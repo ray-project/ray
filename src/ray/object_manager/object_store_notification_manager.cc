@@ -22,14 +22,33 @@ ObjectStoreNotificationManager::ObjectStoreNotificationManager(
       socket_(io_service) {
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket_name.c_str(), "", 0, 300));
 
-  RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket_));
+  int c_socket;  // TODO(mehrdadn): This should be type SOCKET for Windows
+  RAY_ARROW_CHECK_OK(store_client_.Subscribe(&c_socket));
   boost::system::error_code ec;
-#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-  local_stream_protocol sp;
-#else  // TODO(mehrdadn): HACK: FIXME: This is just to get things compiling!
-  local_stream_protocol sp(AF_UNIX, 0);
+#ifdef _WIN32
+  WSAPROTOCOL_INFO pi;
+  size_t n = sizeof(pi);
+  char *p = reinterpret_cast<char *>(&pi);
+  const int level = SOL_SOCKET;
+  const int opt = SO_PROTOCOL_INFO;
+  if (boost::asio::detail::socket_ops::getsockopt(c_socket, 0, level, opt, p, &n, ec) !=
+      boost::asio::detail::socket_error_retval) {
+    switch (pi.iAddressFamily) {
+    case AF_INET:
+      socket_.assign(local_stream_protocol::v4(), c_socket, ec);
+      break;
+    case AF_INET6:
+      socket_.assign(local_stream_protocol::v6(), c_socket, ec);
+      break;
+    default:
+      ec = boost::system::errc::make_error_code(
+          boost::system::errc::address_family_not_supported);
+      break;
+    }
+  }
+#else
+  socket_.assign(local_stream_protocol(), c_socket, ec);
 #endif
-  socket_.assign(sp, c_socket_, ec);
   assert(!ec.value());
   NotificationWait();
 }

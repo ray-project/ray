@@ -10,14 +10,14 @@ from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.env.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
 
-class MockPolicy(Policy):
+class MockPolicy(TestPolicy):
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,

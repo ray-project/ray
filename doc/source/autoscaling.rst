@@ -34,6 +34,8 @@ Test that it works by running the following commands from your local machine:
     # Tear down the cluster.
     $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
 
+.. tip:: For the AWS node configuration, you can set ``"ImageId: DEFAULT"`` to automatically use the newest `Deep Learning AMI <https://aws.amazon.com/machine-learning/amis/>`_ for your region. For example, ``head_node: {InstanceType: c5.xlarge, ImageId: DEFAULT}``.
+
 GCP
 ~~~
 

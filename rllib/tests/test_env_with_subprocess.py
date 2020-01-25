@@ -30,11 +30,11 @@ class EnvWithSubprocess(gym.Env):
         self.subproc = subprocess.Popen(UNIQUE_CMD.split(" "), shell=False)
         self.config = config
         # Exit handler should be called
+        atexit.register(lambda: self.subproc.kill())
         if config.worker_index == 0:
             atexit.register(lambda: os.unlink(UNIQUE_FILE_0))
         else:
             atexit.register(lambda: os.unlink(UNIQUE_FILE_1))
-        atexit.register(lambda: self.subproc.kill())
 
     def close(self):
         if self.config.worker_index == 0:
@@ -76,7 +76,7 @@ if __name__ == "__main__":
             },
         },
     })
-    time.sleep(5.0)
+    time.sleep(10.0)
     leaked = leaked_processes()
     assert not leaked, "LEAKED PROCESSES: {}".format(leaked)
     assert not os.path.exists(UNIQUE_FILE_0), "atexit handler not called"

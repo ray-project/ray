@@ -99,6 +99,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetWebuiDisplay(const std::string &message);
 
+  void SetActorTitle(const std::string &title);
+
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
   /// by the language frontend when a new reference is created.
@@ -656,6 +658,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// String to be displayed on Web UI.
   std::string webui_display_ GUARDED_BY(mutex_);
+
+  /// Actor title that consists of class name, args, kwargs for actor construction.
+  std::string actor_title_ GUARDED_BY(mutex_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;
