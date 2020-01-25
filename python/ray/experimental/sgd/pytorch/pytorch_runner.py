@@ -38,6 +38,7 @@ class PyTorchRunner:
             train_function: see pytorch_trainer.py
             validation_function: see pytorch_trainer.py
             config (dict): see pytorch_trainer.py.
+            dataloader_config (dict): See pytorch_trainer.py.
             batch_size (int): see pytorch_trainer.py.
         """
         self.model_creator = model_creator
@@ -106,6 +107,8 @@ class PyTorchRunner:
         self._create_loss()
 
         logger.debug("Creating dataset")
+        # When creating datasets, a filelock will be used to ensure no
+        # race conditions in data downloading among different workers.
         with FileLock(os.path.expanduser("~/.ray_data.lock")):
             datasets = self.data_creator(self.config)
             train_set, val_set = self._validate_datasets(datasets)

@@ -1,6 +1,8 @@
 Package Reference
 =================
 
+.. _ref-pytorch-trainer:
+
 PyTorchTrainer
 --------------
 

@@ -113,7 +113,7 @@ You can also set the number of workers and whether the workers are using GPU:
         data_creator,
         optimizer_creator,
         loss_creator=nn.MSELoss,
-        config={"lr": 0.001}
+        config={"lr": 0.001},
         num_replicas=100,
         use_gpu=True)
 
