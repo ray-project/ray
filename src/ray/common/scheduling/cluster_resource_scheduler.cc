@@ -833,3 +833,13 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
     }
   }
 }
+
+void ClusterResourceScheduler::AddCPUResourceInstances(std::vector<double> &cpu_instances) {
+  AddAvailableResourceInstances(cpu_instances,
+                                &local_resources_.predefined_resources[CPU]);
+}
+
+void ClusterResourceScheduler::SubtractCPUResourceInstances(std::vector<double> &cpu_instances) {
+  SubtractAvailableResourceInstances(cpu_instances,
+                                     &local_resources_.predefined_resources[CPU]);
+}

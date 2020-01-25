@@ -330,7 +330,17 @@ class ClusterResourceScheduler {
   void SubtractAvailableResourceInstances(std::vector<double> free,
                                           ResourceInstanceCapacities *resource_instances);
 
-  /// Returns human-readable string for this scheduler.
+  /// Increase the available cpu instances of this node. 
+  ///
+  /// \param cpu_instances Cpu instances to be added to available cpus.
+  void AddCPUResourceInstances(std::vector<double> &cpu_instances);
+
+  /// Decrease the available cpu instances of this node. 
+  ///
+  /// \param cpu_instances Cpu instances to be removed from available cpus.
+  void SubtractCPUResourceInstances(std::vector<double> &cpu_instances);
+
+  /// Return human-readable string for this scheduler state.
   std::string DebugString();
 };
 
