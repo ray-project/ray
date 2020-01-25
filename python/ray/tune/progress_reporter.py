@@ -81,9 +81,10 @@ class TuneReporterBase(ProgressReporter):
             self._metric_columns[metric] = representation
         else:
             if representation is not None and representation != metric:
-               raise ValueError("`representation` cannot differ from `metric` "
-                                "if this reporter was initialized with a list "
-                                "of metric columns.")
+                raise ValueError(
+                    "`representation` cannot differ from `metric` "
+                    "if this reporter was initialized with a list "
+                    "of metric columns.")
             self._metric_columns.append(metric)
 
     def _progress_str(self, trial_runner, fmt="psql", delim="\n"):
