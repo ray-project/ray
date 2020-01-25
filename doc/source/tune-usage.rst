@@ -711,7 +711,7 @@ Note that some behavior such as writing to files by depending on the current wor
 CLI Progress Reporting
 ----------------------
 
-By default, Tune reports experiment progress to the command-line at the end of each training iteration as follows.
+By default, Tune reports experiment progress periodically to the command-line as follows.
 
 .. code-block:: bash
 
@@ -747,11 +747,18 @@ Extending ``CLIReporter`` lets you control reporting frequency. For example:
 
 .. code-block:: python
 
+    class ExperimentTerminationReporter(CLIReporter):
+        def should_report(self, trials, done=False):
+            """Reports only on experiment termination."""
+            return done
+
+    tune.run(my_trainable, progress_reporter=ExperimentTerminationReporter())
+
     class TrialTerminationReporter(CLIReporter):
         def __init__(self):
             self.num_terminated = 0
 
-        def should_report(self, trials):
+        def should_report(self, trials, done=False):
             """Reports only on trial termination events."""
             old_num_terminated = self.num_terminated
             self.num_terminated = len([t for t in trials if t.status == Trial.TERMINATED])
@@ -767,7 +774,7 @@ The default reporting style can also be overriden more broadly by extending the 
 
     class CustomReporter(ProgressReporter):
 
-        def should_report(self, trials):
+        def should_report(self, trials, done=False):
             return True
 
         def report(self, trials, *sys_info):

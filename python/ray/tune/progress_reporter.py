@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import collections
+import time
 
 from ray.tune.result import (CONFIG_PREFIX, EPISODE_REWARD_MEAN, MEAN_ACCURACY,
                              MEAN_LOSS, TRAINING_ITERATION, TIME_TOTAL_S,
@@ -16,10 +17,19 @@ except ImportError:
 
 
 class ProgressReporter:
-    def should_report(self, trials):
+    """Abstract class for experiment progress reporting.
+
+    `should_report()` is called to determine whether or not `report()` should
+    be called. Tune will call these functions after trial state transitions,
+    receiving training results, and so on.
+    """
+
+    def should_report(self, trials, done=False):
         """Returns whether or not progress should be reported.
 
-        This is called at the end of every execution step.
+        Args:
+            trials (list[Trial]): Trials to report on.
+            done (bool): Whether this is the last progress report attempt.
         """
         raise NotImplementedError
 
@@ -34,40 +44,51 @@ class ProgressReporter:
 
 
 class TuneReporterBase(ProgressReporter):
-    """Base class for the default Tune reporters."""
+    """Abstract base class for the default Tune reporters."""
 
     # Truncated representations of column names (to accommodate small screens).
     DEFAULT_COLUMNS = {
-        EPISODE_REWARD_MEAN: "reward",
+        EPISODE_REWARD_MEAN: "rew",
         MEAN_ACCURACY: "acc",
         MEAN_LOSS: "loss",
         TIME_TOTAL_S: "total time (s)",
-        TIMESTEPS_TOTAL: "timesteps",
+        TIMESTEPS_TOTAL: "ts",
         TRAINING_ITERATION: "iter",
     }
 
     def __init__(self,
                  metric_columns=None,
                  max_progress_rows=20,
-                 max_error_rows=20):
-        """Initializes a new TableReporterBase.
+                 max_error_rows=20,
+                 max_report_frequency=5):
+        """Initializes a new TuneReporterBase.
 
         Args:
             metric_columns (dict[str, str]|list[str]): Names of metrics to
                 include in progress table. If this is a dict, the keys should
                 be metric names and the values should be the displayed names.
                 If this is a list, the metric name is used directly.
-            max_progress_rows (int): Maximum number of progress rows to print
-                in the progress table. Defaults to 20.
-            max_error_rows (int): Maximum number of error rows to print in the
-                error table. Defaults to 20.
+            max_progress_rows (int): Maximum number of rows to print
+                in the progress table. The progress table describes the
+                progress of each trial. Defaults to 20.
+            max_error_rows (int): Maximum number of rows to print in the
+                error table. The error table lists the error file, if any,
+                corresponding to each trial. Defaults to 20.
+            max_report_frequency (int): Maximum report frequency in seconds.
+                Defaults to 5s.
         """
         self._metric_columns = metric_columns or self.DEFAULT_COLUMNS
         self._max_progress_rows = max_progress_rows
         self._max_error_rows = max_error_rows
 
-    def should_report(self, trials, *sys_info):
-        return True
+        self._max_report_freqency = max_report_frequency
+        self._last_report_time = 0
+
+    def should_report(self, trials, done=False):
+        if time.time() - self._last_report_time > self._max_report_freqency:
+            self._last_report_time = time.time()
+            return True
+        return done
 
     def add_metric_column(self, metric, representation=None):
         """Adds a metric to the existing columns.
@@ -94,6 +115,11 @@ class TuneReporterBase(ProgressReporter):
 
     def _progress_str(self, trials, *sys_info, fmt="psql", delim="\n"):
         """Returns full progress string.
+
+        This string contains a progress table and error table. The progress
+        table describes the progress of each trial. The error table lists
+        the error file, if any, corresponding to each trial. The latter only
+        exists if errors have occurred.
 
         Args:
             trials (list[Trial]): Trials to report on.
@@ -122,7 +148,8 @@ class JupyterNotebookReporter(TuneReporterBase):
                  overwrite,
                  metric_columns=None,
                  max_progress_rows=20,
-                 max_error_rows=20):
+                 max_error_rows=20,
+                 max_report_frequency=5):
         """Initializes a new JupyterNotebookReporter.
 
         Args:
@@ -131,13 +158,18 @@ class JupyterNotebookReporter(TuneReporterBase):
                 include in progress table. If this is a dict, the keys should
                 be metric names and the values should be the displayed names.
                 If this is a list, the metric name is used directly.
-            max_progress_rows (int): Maximum number of progress rows to print
-                in the progress table. Defaults to 20.
-            max_error_rows (int): Maximum number of error rows to print in the
-                error table. Defaults to 20.
+            max_progress_rows (int): Maximum number of rows to print
+                in the progress table. The progress table describes the
+                progress of each trial. Defaults to 20.
+            max_error_rows (int): Maximum number of rows to print in the
+                error table. The error table lists the error file, if any,
+                corresponding to each trial. Defaults to 20.
+            max_report_frequency (int): Maximum report frequency in seconds.
+                Defaults to 5s.
         """
         super(JupyterNotebookReporter,
-              self).__init__(metric_columns, max_progress_rows, max_error_rows)
+              self).__init__(metric_columns, max_progress_rows, max_error_rows,
+                             max_report_frequency)
         self._overwrite = overwrite
 
     def report(self, trials, *sys_info):
@@ -156,7 +188,8 @@ class CLIReporter(TuneReporterBase):
     def __init__(self,
                  metric_columns=None,
                  max_progress_rows=20,
-                 max_error_rows=20):
+                 max_error_rows=20,
+                 max_report_frequency=5):
         """Initializes a CLIReporter.
 
         Args:
@@ -164,13 +197,17 @@ class CLIReporter(TuneReporterBase):
                 include in progress table. If this is a dict, the keys should
                 be metric names and the values should be the displayed names.
                 If this is a list, the metric name is used directly.
-            max_progress_rows (int): Maximum number of progress rows to print
-                in the progress table. Defaults to 20.
-            max_error_rows (int): Maximum number of error rows to print in the
-                error table. Defaults to 20.
+            max_progress_rows (int): Maximum number of rows to print
+                in the progress table. The progress table describes the
+                progress of each trial. Defaults to 20.
+            max_error_rows (int): Maximum number of rows to print in the
+                error table. The error table lists the error file, if any,
+                corresponding to each trial. Defaults to 20.
+            max_report_frequency (int): Maximum report frequency in seconds.
+                Defaults to 5s.
         """
         super(CLIReporter, self).__init__(metric_columns, max_progress_rows,
-                                          max_error_rows)
+                                          max_error_rows, max_report_frequency)
 
     def report(self, trials, *sys_info):
         print(self._progress_str(trials, *sys_info))

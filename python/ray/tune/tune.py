@@ -1,12 +1,11 @@
 import logging
-import time
 import six
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
@@ -51,15 +50,16 @@ def _check_default_resources_override(run_identifier):
         Trainable.default_resource_request.__code__)
 
 
-def _report_progress(runner, reporter):
+def _report_progress(runner, reporter, done=False):
     """Reports experiment progress.
 
     Args:
         runner (TrialRunner): Trial runner to report on.
         reporter (ProgressReporter): Progress reporter.
+        done (bool): Whether this is the last progress report attempt.
     """
     trials = runner.get_trials()
-    if reporter.should_report(trials):
+    if reporter.should_report(trials, done=done):
         sched_debug_str = runner.scheduler_alg.debug_string()
         executor_debug_str = runner.trial_executor.debug_string()
         reporter.report(trials, sched_debug_str, executor_debug_str)
@@ -315,13 +315,10 @@ def run(run_or_experiment,
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
-    last_debug = 0
     while not runner.is_finished():
         runner.step()
-        if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            if verbose:
-                _report_progress(runner, progress_reporter)
-            last_debug = time.time()
+        if verbose:
+            _report_progress(runner, progress_reporter)
 
     try:
         runner.checkpoint(force=True)
@@ -329,7 +326,7 @@ def run(run_or_experiment,
         logger.exception("Trial Runner checkpointing failed.")
 
     if verbose:
-        _report_progress(runner, progress_reporter)
+        _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
 
