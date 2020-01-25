@@ -139,6 +139,8 @@ via pip.
 
   pip install ray[dashboard]
 
+If you are using a command shell like ``zsh``, you may need to put put quotes around ``ray[dashboard]``.
+
 If you are using Anaconda and have trouble installing ``psutil`` or
 ``setproctitle``, the try
 
