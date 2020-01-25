@@ -92,7 +92,7 @@ def test_local_shuffle(ray_start_regular_shared):
     # statistical test
     it4 = from_items(
         [0, 1] * 10000, num_shards=1).local_shuffle(shuffle_buffer_size=100)
-    result = ''.join(it4.gather_sync().for_each(str))
+    result = "".join(it4.gather_sync().for_each(str))
     freq_dict = {}
     for i in range(0, len(result), 2):
         s = result[i:i + 2]
