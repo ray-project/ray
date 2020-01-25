@@ -137,6 +137,22 @@ matrix:
 
         - ./ci/travis/test-wheels.sh
 
+    # Test RLlib.
+    - os: linux
+      env:
+        - PYTHONWARNINGS=ignore
+      install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
+      script:
+        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:rllib
+
+
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
   - if [ $RAY_CI_SERVE_AFFECTED != "1" ] && [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
@@ -156,6 +172,7 @@ script:
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
+  # TODO(sven): Take out rllib tests from the command below.
   # cc bazel tests
   - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
