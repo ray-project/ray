@@ -32,7 +32,7 @@ features_g = 32
 features_d = 32
 
 
-def data_creator(batch_size, config):
+def data_creator(config):
     return dset.MNIST(
         root="~/mnist/",
         download=True,

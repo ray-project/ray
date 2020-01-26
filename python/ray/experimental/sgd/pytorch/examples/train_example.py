@@ -40,7 +40,7 @@ def optimizer_creator(model, config):
     return torch.optim.SGD(model.parameters(), lr=1e-2)
 
 
-def data_creator(batch_size, config):
+def data_creator(config):
     """Returns training dataloader, validation dataloader."""
     return LinearDataset(2, 5),  LinearDataset(2, 5, size=400)
 

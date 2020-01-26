@@ -1,6 +1,7 @@
 import collections
 from filelock import FileLock
 import logging
+import inspect
 import os
 import torch
 import torch.utils.data
@@ -73,15 +74,16 @@ class PyTorchRunner:
 
     def _validate_datasets(self, dataset):
         assert dataset, "Datasets need to be returned in data_creator."
-        if issubclass(dataset, Dataset):
+        if issubclass(type(dataset), Dataset):
             return dataset, None
-        elif len(dataset) == 2 and issubclass(dataset[0], Dataset):
+        elif len(dataset) == 2 and issubclass(type(dataset[0]), Dataset):
             return dataset
         else:
             raise ValueError("Datasets must be <= 2. Got {}".format(dataset))
 
     def _create_loss(self):
-        if issubclass(self.loss_creator, torch.nn.modules.loss._Loss):
+        if inspect.isclass(self.loss_creator) and issubclass(
+                self.loss_creator, torch.nn.modules.loss._Loss):
             self.criterion = self.loss_creator()
         else:
             self.criterion = self.loss_creator(self.config)
@@ -166,9 +168,18 @@ class PyTorchRunner:
 
     def get_state(self):
         """Returns the state of the runner."""
+        # This is so that we create a duplicate of weights into CPU rather than
+        # move the model weights entirely out of the GPU, so that we can
+        # resume training while saving intermediate checkpoints.
+        cpu_state_dicts = []
+        for model in self.models:
+            state_dict = model.state_dict()
+            for k, v in state_dict.items():
+                state_dict[k] = v.cpu()
+            cpu_state_dicts += [state_dict]
         return {
             "epoch": self.epoch,
-            "models": [model.cpu().state_dict() for model in self.models],
+            "models": cpu_state_dicts,
             "optimizers": [opt.state_dict() for opt in self.optimizers],
             "stats": self.stats()
         }

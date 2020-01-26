@@ -72,12 +72,12 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
         logger.debug("Creating dataset.")
         with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            train_set, val_set = self.data_creator(self.config)
+            datasets = self.data_creator(self.config)
+            train_set, val_set = self._validate_datasets(datasets)
 
         train_loader_config = self.dataloader_config.copy()
         train_loader_config.update(
-            sampler=torch.utils.data.distributed.DistributedSampler(
-                self.training_set),
+            sampler=torch.utils.data.distributed.DistributedSampler(train_set),
             shuffle=False)
 
         self.train_loader = torch.utils.data.DataLoader(
