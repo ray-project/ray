@@ -415,7 +415,6 @@ cc_library(
         ":stats_lib",
         ":worker_rpc",
         "@boost//:asio",
-        "@boost//:process",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
