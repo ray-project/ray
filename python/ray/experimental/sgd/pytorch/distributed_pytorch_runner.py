@@ -129,4 +129,9 @@ class DistributedPyTorchRunner(PyTorchRunner):
     def shutdown(self):
         """Attempts to shut down the worker."""
         super(DistributedPyTorchRunner, self).shutdown()
-        dist.destroy_process_group()
+        # TODO: Temporarily removing since it causes hangs on MacOSX.
+        # However, it seems to be harmless to remove permanently
+        # since the processes are shutdown anyways. This comment can be
+        # removed in a future release if it is still not documented
+        # the stable Pytorch docs.
+        # dist.destroy_process_group()

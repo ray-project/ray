@@ -329,11 +329,12 @@ class PyTorchTrainer:
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
-        for worker in self.workers:
-            if not force:
-                worker.shutdown.remote()
-                worker.__ray_terminate__.remote()
-            else:
+        if not force:
+            cleanup = [worker.shutdown.remote() for worker in self.workers]
+            ray.get(cleanup)
+            [worker.__ray_terminate__.remote() for worker in self.workers]
+        else:
+            for worker in self.workers:
                 logger.warning("Killing worker {}.".format(worker))
                 worker.__ray_kill__()
 
