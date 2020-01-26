@@ -128,6 +128,7 @@ class Policy(metaclass=ABCMeta):
         prev_reward_batch = None
         info_batch = None
         episodes = None
+        state_batch = None
         if prev_action is not None:
             prev_action_batch = [prev_action]
         if prev_reward is not None:
@@ -136,9 +137,12 @@ class Policy(metaclass=ABCMeta):
             info_batch = [info]
         if episode is not None:
             episodes = [episode]
+        if state is not None:
+            state_batch = [[s] for s in state]
 
         [action], state_out, info = self.compute_actions(
-            [obs], [[s] for s in state],
+            [obs],
+            state_batch,
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
@@ -307,9 +311,8 @@ def clip_action(action, space):
         return np.clip(action, space.low, space.high)
     elif isinstance(space, gym.spaces.Tuple):
         if type(action) not in (tuple, list):
-            raise ValueError(
-                "Expected tuple space for actions {}: {}".
-                format(action, space))
+            raise ValueError("Expected tuple space for actions {}: {}".format(
+                action, space))
         out = []
         for a, s in zip(action, space.spaces):
             out.append(clip_action(a, s))

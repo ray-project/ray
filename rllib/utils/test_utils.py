@@ -31,8 +31,13 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         for key, value in x.items():
             assert key in y, \
                 "ERROR: y does not have x's key='{}'! y={}".format(key, y)
-            check(value, y[key], decimals=decimals, atol=atol, rtol=rtol,
-                  false=false)
+            check(
+                value,
+                y[key],
+                decimals=decimals,
+                atol=atol,
+                rtol=rtol,
+                false=false)
             y_keys.remove(key)
         assert not y_keys, \
             "ERROR: y contains keys ({}) that are not in x! y={}".\
@@ -45,8 +50,13 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             "ERROR: y does not have the same length as x ({} vs {})!".\
             format(len(y), len(x))
         for i, value in enumerate(x):
-            check(value, y[i], decimals=decimals, atol=atol, rtol=rtol,
-                  false=false)
+            check(
+                value,
+                y[i],
+                decimals=decimals,
+                atol=atol,
+                rtol=rtol,
+                false=false)
     # Boolean comparison.
     elif isinstance(x, (np.bool_, bool)):
         if false is True:
@@ -55,8 +65,8 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         else:
             assert bool(x) is bool(y), \
                 "ERROR: x ({}) is not y ({})!".format(x, y)
-    # Nones.
-    elif x is None or y is None:
+    # Nones or primitives.
+    elif x is None or y is None or isinstance(x, (str, int, float)):
         if false is True:
             assert x != y, "ERROR: x ({}) is the same as y ({})!".format(x, y)
         else:
