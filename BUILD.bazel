@@ -835,6 +835,38 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "iwyu_sh",
+    srcs = ["ci/travis/iwyu.sh"],
+)
+
+filegroup(
+    name = "extra_actions_base_proto",
+    srcs = [
+        # TODO: Replace our file with the built-in copy once this issue is resolved:
+        #   https://github.com/bazelbuild/bazel/issues/8738
+        "src/ray/protobuf/extra_actions_base.proto",
+        #"@bazel_tools//src/main/protobuf:extra_actions_base.proto",
+    ],
+)
+
+action_listener(
+    name = "iwyu_cpp",
+    mnemonics = ["CppCompile"],
+    extra_actions = [":iwyu_action"],
+)
+
+extra_action(
+    name = "iwyu_action",
+    tools = [
+        ":iwyu_sh",
+        ":extra_actions_base_proto",
+        "@com_google_protobuf//:protoc",
+    ],
+    cmd = "$(location :iwyu_sh) $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE)",
+)
+
+
 cc_library(
     name = "sha256",
     srcs = [
