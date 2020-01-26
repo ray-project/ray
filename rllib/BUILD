@@ -1,6 +1,19 @@
 # --------------------------------------------------------------------
 # BAZEL/Travis-ci test cases.
-## --------------------------------------------------------------------
+# --------------------------------------------------------------------
+
+# ---------------------------------------
+# Agents learning regression tests
+# ---------------------------------------
+
+py_test(
+    name = "tests/run_regression_tests.py",
+    tags = ["learning_tests"],
+    size = "small",
+    srcs = ["tests/run_regression_tests.py"],
+    args = glob(["tuned_examples/regression_tests/**"])
+)
+
 
 # ---------------------------------------
 # Agents (Compilation and Losses)
@@ -776,7 +789,7 @@ py_test(
 py_test(
     name = "tests/multiagent_pendulum.py",
     size = "long",
-    flaky = True,
+    #flaky = True,
     srcs = ["tests/multiagent_pendulum.py"]
 )
 
@@ -796,13 +809,6 @@ py_test(
     name = "tests/test_lstm.py",
     size = "small",
     srcs = ["tests/test_lstm.py"]
-)
-
-py_test(
-    name = "tests/run_regression_tests.py",
-    size = "small",
-    srcs = ["tests/run_regression_tests.py"],
-    args = glob(["tuned_examples/regression_tests/**"])
 )
 
 py_test(
