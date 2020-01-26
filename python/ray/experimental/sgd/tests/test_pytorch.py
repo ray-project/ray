@@ -15,7 +15,7 @@ from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
 from ray.experimental.sgd.pytorch.utils import train
 from ray.experimental.sgd.utils import check_for_failure
 
-from ray.experimental.sgd.examples.train_example import (
+from ray.experimental.sgd.pytorch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
 
 
@@ -97,6 +97,8 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
 
         for k in model1_state_dict:
             assert torch.equal(model1_state_dict[k], model2_state_dict[k])
+
+    trainer2.shutdown()
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]

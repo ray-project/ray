@@ -54,9 +54,9 @@ class PyTorchTrainer:
             config and returns the model(s) to be optimized. These must be
             ``torch.nn.Module`` objects. Note that if multiple models
             are returned, the same number of optimizers must be returned
-            by the optimizer_creator. By default, ``PyTorchTrainer`` will
-            run each model over the provided datasets one at a time.
-            You do not need to handle GPU/devices in this function;
+            by the optimizer_creator. If multiple models are returned,
+            a ``train_function`` must be specified. You do not need to
+            handle GPU/devices in this function;
             RaySGD will do that under the hood.
         data_creator (dict -> Dataset, Dataset): Constructor function
             that takes in the passed config and returns one or
@@ -78,7 +78,7 @@ class PyTorchTrainer:
         train_function: Custom function for training. This function
             will be executed in parallel across all workers at once. The
             function needs to take in (models, train_dataloader, criterion,
-            optimizer, config), and return a dict of training stats.
+            optimizers, config), and return a dict of training stats.
         validation_function: Custom function for validation. This function
             will be executed in parallel across all workers at once.
             This takes in (model, val_dataloader, criterion, config)

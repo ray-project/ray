@@ -38,8 +38,8 @@ For example:
         """Constructor function for the model(s) to be optimized.
 
         Note that if multiple models are returned, the same number of optimizers
-        must be returned. By default, the PyTorchTrainer will run each model
-        over the provided datasets one at a time.
+        must be returned. You will also need to provide a custom training
+        function to specify the optimization procedure for multiple models.
 
         Args:
             config (dict): Configuration dictionary passed into ``PyTorchTrainer``.
@@ -291,7 +291,11 @@ Advanced: Hyperparameter Tuning
 Simultaneous Multi-model training
 ---------------------------------
 
-In certain scenarios such as training GANs, you may want to use multiple models in the training loop. You can do this in the ``PyTorchTrainer`` by allowing the ``model_creator`` and the ``optimizer_creator`` to return multiple values. You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/dcgan.py>`_ for an end-to-end example.
+In certain scenarios such as training GANs, you may want to use multiple models in the training loop. You can do this in the ``PyTorchTrainer`` by allowing the ``model_creator`` and the ``optimizer_creator`` to return multiple values.
+
+If multiple models are returned, you will need to provide a custom training function (and custom validation function if you plan to call ``validate``).
+
+You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/dcgan.py>`_ for an end-to-end example.
 
 .. code-block:: python
 
@@ -313,11 +317,19 @@ In certain scenarios such as training GANs, you may want to use multiple models 
         return discriminator_opt, generator_opt
 
 
+    def custom_train(models, dataloader, criterion, optimizers, config):
+        result = {}
+        for i, (model, optimizer) in enumerate(zip(models, optimizers)):
+            result["model_{}".format(i)] = train(model, dataloader, criterion,
+                                                 optimizer, config)
+        return result
+
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
-        nn.BCELoss)
+        loss_creator=nn.BCELoss,
+        train_function=custom_train)
 
 .. _raysgd-custom-training:
 
@@ -325,6 +337,8 @@ Custom Training and Validation Functions
 ----------------------------------------
 
 ``PyTorchTrainer`` allows you to run a custom training and validation in parallel on each worker, providing a flexibility similar to using PyTorch natively. This is done via the ``train_function`` and ``validation_function`` parameters.
+
+Note that this is needed if the model creator returns multiple models.
 
 .. code-block:: python
 
