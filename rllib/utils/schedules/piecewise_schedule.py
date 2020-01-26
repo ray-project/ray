@@ -6,8 +6,11 @@ def _linear_interpolation(l, r, alpha):
 
 
 class PiecewiseSchedule(Schedule):
-    def __init__(self, endpoints, interpolation=_linear_interpolation,
-                 outside_value=None, framework=None):
+    def __init__(self,
+                 endpoints,
+                 interpolation=_linear_interpolation,
+                 outside_value=None,
+                 framework=None):
         """
         Args:
             endpoints (List[Tuple[int,float]]): A list of tuples

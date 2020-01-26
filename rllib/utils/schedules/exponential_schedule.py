@@ -2,9 +2,11 @@ from ray.rllib.utils.schedules.schedule import Schedule
 
 
 class ExponentialSchedule(Schedule):
-
-    def __init__(self, schedule_timesteps, initial_p=1.0,
-                 decay_rate=0.1, framework=None):
+    def __init__(self,
+                 schedule_timesteps,
+                 initial_p=1.0,
+                 decay_rate=0.1,
+                 framework=None):
         """
         Exponential decay schedule from initial_p to final_p over
         schedule_timesteps. After this many time steps always `final_p` is
@@ -32,4 +34,4 @@ class ExponentialSchedule(Schedule):
         initial_p * decay_rate ** (`t`/t_max)
         """
         return self.initial_p * \
-               self.decay_rate ** (t / self.schedule_timesteps)
+            self.decay_rate ** (t / self.schedule_timesteps)

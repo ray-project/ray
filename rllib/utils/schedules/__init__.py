@@ -6,10 +6,6 @@ from ray.rllib.utils.schedules.polynomial_schedule import PolynomialSchedule
 from ray.rllib.utils.schedules.exponential_schedule import ExponentialSchedule
 
 __all__ = [
-    "ConstantSchedule",
-    "ExponentialSchedule",
-    "LinearSchedule",
-    "Schedule",
-    "PiecewiseSchedule",
-    "PolynomialSchedule"
+    "ConstantSchedule", "ExponentialSchedule", "LinearSchedule", "Schedule",
+    "PiecewiseSchedule", "PolynomialSchedule"
 ]

@@ -5,6 +5,7 @@ class ConstantSchedule(Schedule):
     """
     A Schedule where the value remains constant over time.
     """
+
     def __init__(self, value, framework=None):
         """
         Args:
