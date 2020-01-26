@@ -177,11 +177,19 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       actorCustomDisplay = Object.keys(actor.webuiDisplay)
         .sort()
         .map((key, _, __) => {
-          return (
-            <Typography className={classes.webuiDisplay}>
-              &nbsp; &nbsp; {key}: {actor.webuiDisplay![key]}
-            </Typography>
-          );
+          if (key === "") {
+            return (
+              <Typography className={classes.webuiDisplay}>
+                &nbsp; &nbsp; {actor.webuiDisplay![key]}
+              </Typography>
+            );
+          } else {
+            return (
+              <Typography className={classes.webuiDisplay}>
+                &nbsp; &nbsp; {key}: {actor.webuiDisplay![key]}
+              </Typography>
+            );
+          }
         });
     }
 
@@ -263,18 +271,9 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         {actor.state !== -1 && (
           <React.Fragment>
-            {
-              actorCustomDisplay.length > 0 && (
-                <React.Fragment>
-                  <Typography>
-                    <Typography className={classes.webuiDisplay}>
-                      Actor Custom Display
-                    </Typography>
-                  </Typography>
-                  {actorCustomDisplay}
-                </React.Fragment>
-              )
-            }
+            {actorCustomDisplay.length > 0 && (
+              <React.Fragment>{actorCustomDisplay}</React.Fragment>
+            )}
 
             <Collapse in={expanded}>
               <Actors actors={actor.children} />
