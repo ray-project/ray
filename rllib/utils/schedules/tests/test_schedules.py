@@ -67,7 +67,7 @@ class TestSchedules(unittest.TestCase):
                     framework=fw))
             for t in ts:
                 out = exponential(t)
-                check(out, 2.0 * 0.99**(t / 100))
+                check(out, 2.0 * 0.99**(t / 100), decimals=4)
 
     def test_piecewise_schedule(self):
         piecewise = from_config(
@@ -79,4 +79,4 @@ class TestSchedules(unittest.TestCase):
         expected = [50.0, 60.0, 70.0, 14.5, 14.5, 54.0, 52.0, 14.5, 140.0]
         for t, e in zip(ts, expected):
             out = piecewise(t)
-            check(out, e)
+            check(out, e, decimals=4)
