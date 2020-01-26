@@ -25,7 +25,6 @@ class TestSchedules(unittest.TestCase):
                 check(out, value)
 
     def test_linear_schedule(self):
-        tf.enable_eager_execution()
         ts = [0, 50, 10, 100, 90, 2, 1, 99, 23]
         for fw in ["tf", "torch", None]:
             linear = from_config(
@@ -35,6 +34,8 @@ class TestSchedules(unittest.TestCase):
                     "final_p": 0.6,
                     "framework": fw
                 })
+            if fw == "tf":
+                tf.enable_eager_execution()
             for t in ts:
                 out = linear(t)
                 check(out, 2.1 - (t / 100) * (2.1 - 0.6), decimals=4)
@@ -51,6 +52,8 @@ class TestSchedules(unittest.TestCase):
                     final_p=0.5,
                     power=2.0,
                     framework=fw))
+            if fw == "tf":
+                tf.enable_eager_execution()
             for t in ts:
                 out = polynomial(t)
                 check(out, 0.5 + (2.0 - 0.5) * (1.0 - t / 100)**2, decimals=4)
