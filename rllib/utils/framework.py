@@ -19,7 +19,8 @@ def check_framework(framework="tf"):
         try_import_tf(error=True)
     elif framework == "torch":
         try_import_torch(error=True)
-    assert framework is None
+    else:
+        assert framework is None
     return framework
 
 
@@ -40,7 +41,9 @@ def try_import_tf(error=False):
             os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
         import tensorflow.compat.v1 as tf
         tf.logging.set_verbosity(tf.logging.ERROR)
-        tf.disable_v2_behavior()
+        # If eager was not already enabled.
+        if tf.executing_eagerly() is False:
+            tf.disable_v2_behavior()
         return tf
     except ImportError:
         try:

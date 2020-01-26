@@ -1,5 +1,7 @@
 from abc import ABCMeta, abstractmethod
 
+from ray.rllib.utils.framework import check_framework
+
 
 class Schedule(metaclass=ABCMeta):
     """
@@ -16,6 +18,9 @@ class Schedule(metaclass=ABCMeta):
     Each schedule can be called directly with the `t` (absolute time step)
     value and returns the value dependent on the Schedule and the passed time.
     """
+    def __init__(self, framework=None):
+        self.framework = check_framework(framework)
+
     @abstractmethod
     def value(self, t):
         """

@@ -1,5 +1,4 @@
 from ray.rllib.utils.schedules.schedule import Schedule
-from ray.rllib.utils.framework import check_framework
 
 
 def _linear_interpolation(l, r, alpha):
@@ -11,7 +10,7 @@ class PiecewiseSchedule(Schedule):
                  outside_value=None, framework=None):
         """
         Args:
-            endpoints (List[Tuple[float,float]]): A list of tuples
+            endpoints (List[Tuple[int,float]]): A list of tuples
                 `(t, value)` such that the output
                 is an interpolation (given by the `interpolation` callable)
                 between two values.
@@ -31,17 +30,15 @@ class PiecewiseSchedule(Schedule):
                 returned. If None then an AssertionError is raised when outside
                 value is requested.
         """
-        super().__init__()
+        # TODO(sven): support tf.
+        assert framework is None
+        super().__init__(framework=None)
+
         idxes = [e[0] for e in endpoints]
         assert idxes == sorted(idxes)
         self.interpolation = interpolation
         self.outside_value = outside_value
         self.endpoints = endpoints
-
-        # TODO(sven): support tf.
-        assert framework is None
-
-        self.framework = check_framework(framework)
 
     def value(self, t):
         for (l_t, l), (r_t, r) in zip(self.endpoints[:-1], self.endpoints[1:]):

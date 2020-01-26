@@ -5,12 +5,12 @@ class ConstantSchedule(Schedule):
     """
     A Schedule where the value remains constant over time.
     """
-    def __init__(self, value):
+    def __init__(self, value, framework=None):
         """
         Args:
             value (float): The constant value to return, independently of time.
         """
-        super().__init__()
+        super().__init__(framework=None)
         self._v = value
 
     def value(self, t=None):
