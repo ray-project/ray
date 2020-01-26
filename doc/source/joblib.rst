@@ -22,7 +22,7 @@ Quickstart
 ----------
 
 To get started, first `install Ray <installation.html>`__, then use 
-``from joblib.ray import register_ray`` and run ``register_ray()``.
+``from ray.experimental.joblib import register_ray`` and run ``register_ray()``.
 This will register Ray as a joblib backend for ``scikit-learn`` to use.
 Then run your original ``scikit-learn`` code inside 
 ``with joblib.parallel_backend('ray')``. This will start a local Ray cluster. 
