@@ -36,7 +36,7 @@ class RayBackend(MultiprocessingBackend):
                     ray.init(address=ray_address)
                 else:
                     logger.info("Starting local ray cluster")
-                    ray.init(num_cpus=None)
+                    ray.init()
             ray_cpus = int(ray.state.cluster_resources()["CPU"])
             n_jobs = ray_cpus
 
