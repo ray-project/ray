@@ -175,11 +175,8 @@ def test_fail_with_recover(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
 
-    def single_loader(batch_size, config):
-        train_dataset = LinearDataset(2, 5, size=1000000)
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=batch_size)
-        return train_loader
+    def single_loader(config):
+        return LinearDataset(2, 5, size=1000000)
 
     def step_with_fail(self):
         worker_stats = [w.step.remote() for w in self.workers]
@@ -206,11 +203,8 @@ def test_resize(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
 
-    def single_loader(batch_size, config):
-        train_dataset = LinearDataset(2, 5, size=1000000)
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=batch_size)
-        return train_loader
+    def single_loader(config):
+        return LinearDataset(2, 5, size=1000000)
 
     def step_with_fail(self):
         worker_stats = [w.step.remote() for w in self.workers]
@@ -243,11 +237,8 @@ def test_fail_twice(ray_start_2_cpus):  # noqa: F811
     if not dist.is_available():
         return
 
-    def single_loader(batch_size, config):
-        train_dataset = LinearDataset(2, 5, size=1000000)
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=batch_size)
-        return train_loader
+    def single_loader(config):
+        return LinearDataset(2, 5, size=1000000)
 
     def step_with_fail(self):
         worker_stats = [w.step.remote() for w in self.workers]

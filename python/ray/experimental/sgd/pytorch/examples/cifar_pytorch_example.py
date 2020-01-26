@@ -69,7 +69,7 @@ def validate(model, val_iterator, criterion, config):
     return stats
 
 
-def cifar_creator(batch_size, config):
+def cifar_creator(config):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
