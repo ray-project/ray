@@ -10,15 +10,17 @@ def check_framework(framework="tf"):
     necessary dependencies are installed. Errors otherwise.
 
     Args:
-        framework (str): Once of "tf" or "torch".
+        framework (str): Once of "tf", "torch", or None.
 
     Returns:
         str: The input framework string.
     """
     if framework == "tf":
         try_import_tf(error=True)
-    else:
+    elif framework == "torch":
         try_import_torch(error=True)
+    else:
+        assert framework is None
     return framework
 
 
