@@ -1,9 +1,10 @@
 from joblib._parallel_backends import MultiprocessingBackend
-from joblib.pool import MemmappingPool, PicklingPool
+from joblib.pool import PicklingPool
 import logging
 
 from ray.experimental.multiprocessing.pool import Pool
 import ray
+
 RAY_ADDRESS_ENV = "RAY_ADDRESS"
 
 logger = logging.getLogger(__name__)
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class RayBackend(MultiprocessingBackend):
     """Ray backend uses ray, a system for scalable distributed computing.
-    more info are available here: https://ray.readthedocs.io
+    More info about Ray is available here: https://ray.readthedocs.io.
     """
 
     def configure(self,
@@ -20,9 +21,12 @@ class RayBackend(MultiprocessingBackend):
                   prefer=None,
                   require=None,
                   **memmappingpool_args):
-        # Make Ray Pool the father class of PicklingPool
+        """Make Ray Pool the father class of PicklingPool. PicklingPool is a
+        father class that inherits Pool from multiprocessing.pool. The next
+        line is a patch, which changes the inheritance of Pool to be from
+        ray.experimental.multiprocessing.pool.
+        """
         PicklingPool.__bases__ = (Pool, )
-        MemmappingPool.__bases__ = (PicklingPool, )
         """Use all available resources when n_jobs == -1. Must set RAY_ADDRESS
         variable in the environment or run ray.init(address=..) to run on
         multiple nodes.

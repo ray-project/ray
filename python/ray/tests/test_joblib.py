@@ -28,7 +28,7 @@ def test_register_ray():
 
 def test_ray_backend(shutdown_only):
     register_ray()
-    from ray.experimental.joblib._raybackend import RayBackend
+    from ray.experimental.joblib.ray_backend import RayBackend
     with joblib.parallel_backend("ray"):
         assert type(joblib.parallel.get_active_backend()[0]) == RayBackend
 
@@ -69,6 +69,13 @@ def test_svm_multiple_nodes(ray_start_cluster_2_nodes):
     assert ray.is_initialized()
 
 
+"""This test only makes sure the different sklearn classifiers are supported
+and do not fail. It can be improved to check for accuracy similar to
+'test_cross_validation' but the classifiers need to be improved (to improve
+the accuracy), which results in longer test time.
+"""
+
+
 def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
     ESTIMATORS = {
         "CART": DecisionTreeClassifier(),
@@ -102,17 +109,16 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
             tol=1e-2,
             random_state=1)
     }
-    ######################################################################
-    # Load dataset
+    # Load dataset.
     print("Loading dataset...")
     data = fetch_openml("mnist_784")
     X = check_array(data["data"], dtype=np.float32, order="C")
     y = data["target"]
 
-    # Normalize features
+    # Normalize features.
     X = X / 255
 
-    # Create train-test split (as [Joachims, 2006])
+    # Create train-test split.
     print("Creating train-test split...")
     n_train = 6000
     X_train = X[:n_train]
@@ -121,7 +127,8 @@ def test_sklearn_benchmarks(ray_start_cluster_2_nodes):
 
     train_time = {}
     random_seed = 0
-    num_jobs = 2  # use all available resources
+    # Use two workers per classifier.
+    num_jobs = 2
     with joblib.parallel_backend("ray"):
         for name in sorted(ESTIMATORS.keys()):
             print("Training %s ... " % name, end="")

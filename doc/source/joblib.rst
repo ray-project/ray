@@ -1,4 +1,4 @@
-sklearn ray backend API (Experimental)
+sklearn Ray Backend API (Experimental)
 =======================================
 
 .. warning::
@@ -10,8 +10,8 @@ sklearn ray backend API (Experimental)
 
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
-Ray supports running distributed python `scikit-learn`_ programs by 
-implementing `joblib`_ ray backend using `Ray Actors <actors.html>`__ 
+Ray supports running distributed `scikit-learn`_ programs by 
+implementing a Ray backend for `joblib`_ using `Ray Actors <actors.html>`__ 
 instead of local processes. This makes it easy to scale existing applications
 that use scikit-learn from a single node to a cluster.
 
