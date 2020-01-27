@@ -287,6 +287,25 @@ class ClusterResourceScheduler {
                              ResourceInstanceCapacities *instance_list);
 
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
+  /// If resource has multiple unit-capacity instance, we consider two cases.
+  ///
+  /// 1) If the constraint is hard, allocate full unit-capacity instances until
+  /// demand becomes fractional, and then satisfy the fractional deman using the
+  /// instance with the smallest available capacity that can satisfy the fractional 
+  /// demand. For example, assume a resource conisting of 4 instances, with available
+  /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full 
+  /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
+  /// with the smalest available capacity that can satisfy the remaining demand of 0.2). 
+  /// As a result remaining available capacities will be (0., 1., .7, .2). 
+  /// Thus, if the constraint is hard, we will allocate at most a fractional resource.     
+  ///
+  /// 2) If the constraint is soft, we can allocate multiple fractional resources,
+  /// and even overallocate the resource. For example, in the previous case, if we
+  /// have a demand of 1.8, we can allocate one full instance, the 0.5 instance, and
+  /// 0.1 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
+  /// all instances, and return success (true), despite the fact that the total
+  /// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less 
+  /// than the demand, 3.5. 
   ///
   /// \param demand: The resource amount to be allocated.
   /// \param soft: Specifies whether this demand has soft or hard constraints.
@@ -330,9 +349,9 @@ class ClusterResourceScheduler {
   void SubtractAvailableResourceInstances(std::vector<double> free,
                                           ResourceInstanceCapacities *resource_instances);
 
-  /// Increase the available cpu instances of this node. 
+  /// Increase the available CPU instances of this node. 
   ///
-  /// \param cpu_instances Cpu instances to be added to available cpus.
+  /// \param cpu_instances CPU instances to be added to available cpus.
   void AddCPUResourceInstances(std::vector<double> &cpu_instances);
 
   /// Decrease the available cpu instances of this node. 

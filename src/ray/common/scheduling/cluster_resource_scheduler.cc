@@ -12,7 +12,7 @@ bool NodeResources::operator==(const NodeResources &other) {
   }
 
   if (this->custom_resources.size() != other.custom_resources.size()) {
-    return true;
+    return false;
   }
 
   for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
@@ -77,7 +77,7 @@ bool NodeResourceInstances::operator==(const NodeResourceInstances &other) {
   }
 
   if (this->custom_resources.size() != other.custom_resources.size()) {
-    return true;
+    return false;
   }
 
   for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
@@ -123,9 +123,9 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
     task_resources.predefined_resources[i] = this->predefined_resources[i].available;
   }
 
-  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
-       ++it) {
-    task_resources.custom_resources.emplace(it->first, it->second.available);
+  
+  for (const auto it : this->custom_resources) {
+    task_resources.custom_resources.emplace(it.first, it.second.available);
   }
 
   return task_resources;
@@ -689,12 +689,13 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
     double demand, bool soft, std::vector<double> &available,
     std::vector<double> *allocation /* return */) {
   allocation->resize(available.size());
+  double remaining_demand = demand;
 
   if (available.size() == 1) {
     // This resource has just an instance.
-    if (available[0] >= demand) {
-      available[0] -= demand;
-      (*allocation)[0] = demand;
+    if (available[0] >= remaining_demand) {
+      available[0] -= remaining_demand;
+      (*allocation)[0] = remaining_demand;
       return true;
     } else {
       if (soft) {
@@ -706,18 +707,26 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
     }
   }
 
-  // If resources has multiple instances, each instance has total capcity of 1.
-  // If demand is greater than 1., allocate full unit-capacity instances until the
-  // remaining demand is fractional.
-  if (demand >= 1.) {
+  // If resources has multiple instances, each instance has total capacity of 1.
+  // 
+  // If this resource constraint is hard, as long as remaining_demand is greater than 1., 
+  // allocate full unit-capacity instances until the remaining_demand becomes fractional. 
+  // Then try to find the best fit for the fractional remaining_resources. Best fist means
+  // allocating the resource instance with the smallest available capacity greater than
+  // remaining_demand
+  // 
+  // If resource constraint is soft, allocate as many full unit-capacity resources and then
+  // distribute remaining_demand across remaining instances. Note that in case we can 
+  // overallocate this resource. 
+  if (remaining_demand >= 1.) {
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] == 1.) {
         // Allocate a full unit-capacity instance.
         (*allocation)[i] = 1.;
         available[i] = 0;
-        demand -= 1.;
+        remaining_demand -= 1.;
       }
-      if (demand < 1.) {
+      if (remaining_demand < 1.) {
         break;
       }
     }
@@ -726,32 +735,32 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   if (soft) {
     // Just get as much resources as available.
     for (size_t i = 0; i < available.size(); i++) {
-      if (available[i] >= demand) {
-        available[i] -= demand;
-        (*allocation)[i] = demand;
+      if (available[i] >= remaining_demand) {
+        available[i] -= remaining_demand;
+        (*allocation)[i] = remaining_demand;
         return true;
       } else {
         (*allocation)[i] = available[i];
-        demand -= available[i];
+        remaining_demand -= available[i];
         available[i] = 0;
       }
     }
     return true;
   }
 
-  if (demand >= 1.) {
-    // Cannot satisfy a deman greater than one if no unit caapcity resource is available.
+  if (remaining_demand >= 1.) {
+    // Cannot satisfy a demand greater than one if no unit caapcity resource is available.
     return false;
   }
 
-  // Demand is fractional. Find the best fit, if exists.
-  if (demand > 0.) {
+  // Remaining demand is fractional. Find the best fit, if exists.
+  if (remaining_demand > 0.) {
     size_t idx_best_fit = -1;
     double available_best_fit = 1.;
     for (size_t i = 0; i < available.size(); i++) {
-      if (available[i] >= demand) {
-        if (idx_best_fit == -1 || (available[i] - demand < available_best_fit)) {
-          available_best_fit = available[i] - demand;
+      if (available[i] >= remaining_demand) {
+        if (idx_best_fit == -1 || (available[i] - remaining_demand < available_best_fit)) {
+          available_best_fit = available[i] - remaining_demand;
           idx_best_fit = i;
         }
       }
@@ -759,8 +768,8 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
     if (idx_best_fit == -1) {
       return false;
     } else {
-      (*allocation)[idx_best_fit] = demand;
-      available[idx_best_fit] -= demand;
+      (*allocation)[idx_best_fit] = remaining_demand;
+      available[idx_best_fit] -= remaining_demand;
     }
   }
   return true;
