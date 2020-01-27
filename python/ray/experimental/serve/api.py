@@ -16,6 +16,7 @@ from ray.experimental.serve.utils import (block_until_http_ready,
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.backend_config import BackendConfig
 from ray.experimental.serve.policy import RoutePolicy
+from ray.experimental.serve.queues import Query
 global_state = None
 
 
@@ -110,6 +111,10 @@ def init(kv_store_connector=None,
         return
     except ValueError:
         pass
+
+    # Register serialization context once
+    ray.register_custom_serializer(Query, Query.ray_serialize,
+                                   Query.ray_deserialize)
 
     if kv_store_path is None:
         _, kv_store_path = mkstemp()

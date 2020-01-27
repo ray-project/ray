@@ -1,20 +1,13 @@
 from enum import Enum
-from ray.experimental.serve.queues import (
-    RoundRobinPolicyQueueActor, RandomPolicyQueueActor,
-    PowerOfTwoPolicyQueueActor, FixedPackingPolicyQueueActor)
+import itertools
 
+import numpy as np
 
-class RoutePolicy(Enum):
-    """
-    A class for registering the backend selection policy.
-    Add a name and the corresponding class.
-    Serve will support the added policy and policy can be accessed
-    in `serve.init` method through name provided here.
-    """
-    Random = RandomPolicyQueueActor
-    RoundRobin = RoundRobinPolicyQueueActor
-    PowerOfTwo = PowerOfTwoPolicyQueueActor
-    FixedPacking = FixedPackingPolicyQueueActor
+import ray
+from ray.experimental.serve.queues import (CentralizedQueues,
+                                           CentralizedQueuesActor)
+from ray.experimental.serve.utils import logger
+
 
 class RandomPolicyQueue(CentralizedQueues):
     """
@@ -25,18 +18,20 @@ class RandomPolicyQueue(CentralizedQueues):
     weights assigned to backends.
     """
 
-    def _flush_service_queue(self):
+    async def _flush_service_queues(self):
         # perform traffic splitting for requests
-        for service, queue in self.queues.items():
+        for service, queue in self.service_queues.items():
             # while there are incoming requests and there are backends
-            while len(queue) and len(self.traffic[service]):
+            while queue.qsize() and len(self.traffic[service]):
                 backend_names = list(self.traffic[service].keys())
                 backend_weights = list(self.traffic[service].values())
                 # randomly choose a backend for every query
                 chosen_backend = np.random.choice(
                     backend_names, p=backend_weights).squeeze()
+                logger.debug("Matching service {} to backend {}".format(
+                    service, chosen_backend))
 
-                request = queue.popleft()
+                request = await queue.get()
                 self.buffer_queues[chosen_backend].add(request)
 
 
@@ -68,17 +63,17 @@ class RoundRobinPolicyQueue(CentralizedQueues):
         self.round_robin_iterator_map[service] = itertools.cycle(backend_names)
         self.flush()
 
-    def _flush_service_queue(self):
+    async def _flush_service_queues(self):
         # perform traffic splitting for requests
-        for service, queue in self.queues.items():
+        for service, queue in self.service_queues.items():
             # if there are incoming requests and there are backends
-            if len(queue) and len(self.traffic[service]):
-                while len(queue):
+            if queue.qsize() and len(self.traffic[service]):
+                while queue.qsize():
                     # choose the next backend available from persistent
                     # information
                     chosen_backend = next(
                         self.round_robin_iterator_map[service])
-                    request = queue.popleft()
+                    request = await queue.get()
                     self.buffer_queues[chosen_backend].add(request)
 
 
@@ -98,11 +93,11 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
     the weights assigned to backends.
     """
 
-    def _flush_service_queue(self):
+    async def _flush_service_queues(self):
         # perform traffic splitting for requests
-        for service, queue in self.queues.items():
+        for service, queue in self.service_queues.items():
             # while there are incoming requests and there are backends
-            while len(queue) and len(self.traffic[service]):
+            while queue.qsize() and len(self.traffic[service]):
                 backend_names = list(self.traffic[service].keys())
                 backend_weights = list(self.traffic[service].values())
                 if len(self.traffic[service]) >= 2:
@@ -121,7 +116,7 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
                 else:
                     chosen_backend = np.random.choice(
                         backend_names, p=backend_weights).squeeze()
-                request = queue.popleft()
+                request = await queue.get()
                 self.buffer_queues[chosen_backend].add(request)
 
 
@@ -160,17 +155,17 @@ class FixedPackingPolicyQueue(CentralizedQueues):
                 itertools.repeat(x, self.packing_num) for x in backend_names))
         self.flush()
 
-    def _flush_service_queue(self):
+    async def _flush_service_queues(self):
         # perform traffic splitting for requests
-        for service, queue in self.queues.items():
+        for service, queue in self.service_queues.items():
             # if there are incoming requests and there are backends
-            if len(queue) and len(self.traffic[service]):
-                while len(queue):
+            if queue.qsize() and len(self.traffic[service]):
+                while queue.qsize():
                     # choose the next backend available from persistent
                     # information
                     chosen_backend = next(
                         self.fixed_packing_iterator_map[service])
-                    request = queue.popleft()
+                    request = await queue.get()
                     self.buffer_queues[chosen_backend].add(request)
 
 
@@ -178,3 +173,16 @@ class FixedPackingPolicyQueue(CentralizedQueues):
 class FixedPackingPolicyQueueActor(FixedPackingPolicyQueue,
                                    CentralizedQueuesActor):
     pass
+
+
+class RoutePolicy(Enum):
+    """
+    A class for registering the backend selection policy.
+    Add a name and the corresponding class.
+    Serve will support the added policy and policy can be accessed
+    in `serve.init` method through name provided here.
+    """
+    Random = RandomPolicyQueueActor
+    RoundRobin = RoundRobinPolicyQueueActor
+    PowerOfTwo = PowerOfTwoPolicyQueueActor
+    FixedPacking = FixedPackingPolicyQueueActor

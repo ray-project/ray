@@ -4,6 +4,7 @@ import random
 import string
 import time
 import io
+import os
 
 import requests
 from pygments import formatters, highlight, lexers
@@ -31,7 +32,10 @@ def parse_request_item(request_item):
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    logger.setLevel(logging.INFO)
+    if os.environ.get("SERVE_LOG_DEBUG"):
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     return logger
 
 
