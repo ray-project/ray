@@ -3,14 +3,14 @@ RaySGD Pytorch
 
 .. warning:: This is still an experimental API and is subject to change in the near future.
 
-.. tip:: Get in touch with us if you're using/considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
 
 .. image:: raysgd-pytorch.svg
     :align: center
 
 The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python. For end to end examples, see :ref:`raysgd-pytorch-example`.
 
-Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a Ray actor.
+Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
 
 .. image:: raysgd-actors.svg
     :align: center
@@ -114,7 +114,7 @@ Instantiate the trainer object:
         config={"lr": 0.001})
 
 
-You can also set the number of workers and whether the workers are using GPU:
+You can also set the number of workers and whether the workers will use GPUs:
 
 .. code-block:: python
 
@@ -336,7 +336,7 @@ You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/py
 Custom Training and Validation Functions
 ----------------------------------------
 
-``PyTorchTrainer`` allows you to run a custom training and validation in parallel on each worker, providing a flexibility similar to using PyTorch natively. This is done via the ``train_function`` and ``validation_function`` parameters.
+``PyTorchTrainer`` allows you to run a custom training and validation step in parallel on each worker, providing a flexibility similar to using PyTorch natively. This is done via the ``train_function`` and ``validation_function`` parameters.
 
 Note that this is needed if the model creator returns multiple models.
 
