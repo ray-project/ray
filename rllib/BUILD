@@ -1035,3 +1035,9 @@ py_test(
     srcs = ["examples/custom_keras_rnn_model.py"],
     args = ["--run=PPO", "--stop=50", "--env=RepeatInitialEnv"]
 )
+
+py_test(
+    name = "examples/random_env", main = "examples/random_env.py",
+    size = "small",
+    srcs = ["examples/random_env.py"]
+)
