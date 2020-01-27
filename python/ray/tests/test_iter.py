@@ -1,7 +1,7 @@
 import time
+from collections import Counter
 
 import ray
-from collections import Counter
 from ray.experimental.iter import from_items, from_iterators, from_range, \
     from_actors, ParallelIteratorWorker
 
@@ -75,7 +75,7 @@ def test_local_shuffle(ray_start_regular_shared):
     # confirm that no data disappears, and they all stay within the same shard
     it = from_range(8, num_shards=2).local_shuffle(shuffle_buffer_size=2)
     assert repr(
-        it) == "ParallelIterator[from_range[8, shards=2].local_shuffle(2)]"
+        it) == "ParallelIterator[from_range[8, shards=2].local_shuffle(shuffle_buffer_size=2, seed=None)]"
     shard_0 = it.get_shard(0)
     shard_1 = it.get_shard(1)
     assert set(shard_0) == set([0, 1, 2, 3])

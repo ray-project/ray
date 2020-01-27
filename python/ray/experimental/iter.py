@@ -1,7 +1,7 @@
 from typing import TypeVar, Generic, Iterable, List, Callable, Any
+import random
 
 import ray
-import random
 
 # The type of an iterator element.
 T = TypeVar("T")
@@ -267,7 +267,7 @@ class ParallelIterator(Generic[T]):
                     lambda local_it: local_it.shuffle(shuffle_buffer_size, seed))
                 for a in self.actor_sets
             ],
-            name=self.name + ".local_shuffle(shuffle_buffer_size: {}, seed: {})".format(shuffle_buffer_size, str(seed) if seed is not None else 'None'))
+            name=self.name + ".local_shuffle(shuffle_buffer_size={}, seed={})".format(shuffle_buffer_size, str(seed) if seed is not None else 'None'))
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
@@ -585,7 +585,7 @@ class LocalIterator(Generic[T]):
         return LocalIterator(
             self.base_iterator,
             self.local_transforms + [apply_shuffle],
-            name=self.name + ".shuffle(shuffle_buffer_size: {}, seed: {})".format(shuffle_buffer_size, str(seed) if seed is not None else 'None'))
+            name=self.name + ".shuffle(shuffle_buffer_size={}, seed={})".format(shuffle_buffer_size, str(seed) if seed is not None else 'None'))
 
     def combine(self, fn: Callable[[T], List[U]]) -> "LocalIterator[U]":
         it = self.for_each(fn).flatten()
