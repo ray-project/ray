@@ -177,16 +177,27 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
       actorCustomDisplay = Object.keys(actor.webuiDisplay)
         .sort()
         .map((key, _, __) => {
+          // Construct the value from actor.
+          // Please refer to worker.py::show_in_webui for schema.
+          const valueEncoded = actor.webuiDisplay![key];
+          const valueParsed = JSON.parse(valueEncoded);
+          let valueRendered = valueParsed["message"];
+          if (valueParsed["dtype"] === "html") {
+            valueRendered = (
+              <div dangerouslySetInnerHTML={{ __html: valueRendered }}></div>
+            );
+          }
+
           if (key === "") {
             return (
               <Typography className={classes.webuiDisplay}>
-                &nbsp; &nbsp; {actor.webuiDisplay![key]}
+                &nbsp; &nbsp; {valueRendered}
               </Typography>
             );
           } else {
             return (
               <Typography className={classes.webuiDisplay}>
-                &nbsp; &nbsp; {key}: {actor.webuiDisplay![key]}
+                &nbsp; &nbsp; {key}: {valueRendered}
               </Typography>
             );
           }
