@@ -100,19 +100,25 @@ export interface RayletInfoResponse {
     [actorId: string]:
       | {
           actorId: string;
+          actorTitle: string;
+          averageTaskExecutionSpeed: number;
           children: RayletInfoResponse["actors"];
+          currentTaskFuncDesc: string[];
           ipAddress: string;
           isDirectCall: boolean;
           jobId: string;
+          nodeId: string;
+          numExecutedTasks: number;
           numLocalObjects: number;
           numObjectIdsInScope: number;
+          pid: number;
           port: number;
           state: 0 | 1 | 2;
           taskQueueLength: number;
+          timestamp: number;
           usedObjectStoreMemory: number;
           usedResources: { [key: string]: number };
           currentTaskDesc?: string;
-          currentTaskFuncDesc?: string[];
           numPendingTasks?: number;
           webuiDisplay?: string;
         }
@@ -144,3 +150,31 @@ export interface LogsResponse {
 
 export const getLogs = (hostname: string, pid: string | undefined) =>
   get<LogsResponse>("/api/logs", { hostname, pid: pid || "" });
+
+export type LaunchProfilingResponse = string;
+
+export const launchProfiling = (
+  nodeId: string,
+  pid: number,
+  duration: number
+) =>
+  get<LaunchProfilingResponse>("/api/launch_profiling", {
+    node_id: nodeId,
+    pid: pid,
+    duration: duration
+  });
+
+export type CheckProfilingStatusResponse =
+  | { status: "pending" }
+  | { status: "finished" }
+  | { status: "error"; error: string };
+
+export const checkProfilingStatus = (profilingId: string) =>
+  get<CheckProfilingStatusResponse>("/api/check_profiling_status", {
+    profiling_id: profilingId
+  });
+
+export const getProfilingResultURL = (profilingId: string) =>
+  `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
+    `${base}/api/get_profiling_info?profiling_id=${profilingId}`
+  )}`;
