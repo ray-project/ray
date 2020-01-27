@@ -140,8 +140,7 @@ matrix:
     # Test RLlib (only learning regression tests).
     - os: linux
       env:
-        - PYTHONWARNINGS=ignore
-        - RLLIB_REGRESSION_TESTS=1
+        - RLLIB_REGRESSION_TESTS=1 PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
@@ -156,8 +155,7 @@ matrix:
     # Test RLlib (all other non-learning tests (compilations of agents, loss funcs, envs, etc..)).
     - os: linux
       env:
-        - PYTHONWARNINGS=ignore
-        - RLLIB_REGRESSION_TESTS=0
+        - RLLIB_REGRESSION_TESTS=0 PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
