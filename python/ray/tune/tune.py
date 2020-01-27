@@ -1,12 +1,11 @@
 import logging
-import time
 import six
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.trial import Trial
 from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
@@ -51,6 +50,21 @@ def _check_default_resources_override(run_identifier):
         Trainable.default_resource_request.__code__)
 
 
+def _report_progress(runner, reporter, done=False):
+    """Reports experiment progress.
+
+    Args:
+        runner (TrialRunner): Trial runner to report on.
+        reporter (ProgressReporter): Progress reporter.
+        done (bool): Whether this is the last progress report attempt.
+    """
+    trials = runner.get_trials()
+    if reporter.should_report(trials, done=done):
+        sched_debug_str = runner.scheduler_alg.debug_string()
+        executor_debug_str = runner.trial_executor.debug_string()
+        reporter.report(trials, sched_debug_str, executor_debug_str)
+
+
 def run(run_or_experiment,
         name=None,
         stop=None,
@@ -77,6 +91,7 @@ def run(run_or_experiment,
         with_server=False,
         server_port=TuneServer.DEFAULT_PORT,
         verbose=2,
+        progress_reporter=None,
         resume=False,
         queue_trials=False,
         reuse_actors=False,
@@ -169,6 +184,10 @@ def run(run_or_experiment,
         server_port (int): Port number for launching TuneServer.
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
+        progress_reporter (ProgressReporter): Progress reporter for reporting
+            intermediate experiment progress. Defaults to CLIReporter if
+            running in command-line, or JupyterNotebookReporter if running in
+            a Jupyter notebook.
         resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", or bool.
             LOCAL/True restores the checkpoint from the local_checkpoint_dir.
             REMOTE restores the checkpoint from remote_checkpoint_dir.
@@ -272,10 +291,11 @@ def run(run_or_experiment,
     for exp in experiments:
         runner.add_experiment(exp)
 
-    if IS_NOTEBOOK:
-        reporter = JupyterNotebookReporter(overwrite=verbose < 2)
-    else:
-        reporter = CLIReporter()
+    if progress_reporter is None:
+        if IS_NOTEBOOK:
+            progress_reporter = JupyterNotebookReporter(overwrite=verbose < 2)
+        else:
+            progress_reporter = CLIReporter()
 
     # User Warning for GPUs
     if trial_executor.has_gpus():
@@ -295,13 +315,10 @@ def run(run_or_experiment,
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
 
-    last_debug = 0
     while not runner.is_finished():
         runner.step()
-        if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
-            if verbose:
-                reporter.report(runner)
-            last_debug = time.time()
+        if verbose:
+            _report_progress(runner, progress_reporter)
 
     try:
         runner.checkpoint(force=True)
@@ -309,7 +326,7 @@ def run(run_or_experiment,
         logger.exception("Trial Runner checkpointing failed.")
 
     if verbose:
-        reporter.report(runner)
+        _report_progress(runner, progress_reporter, done=True)
 
     wait_for_sync()
 
@@ -339,6 +356,7 @@ def run_experiments(experiments,
                     with_server=False,
                     server_port=TuneServer.DEFAULT_PORT,
                     verbose=2,
+                    progress_reporter=None,
                     resume=False,
                     queue_trials=False,
                     reuse_actors=False,
@@ -380,6 +398,7 @@ def run_experiments(experiments,
             with_server=with_server,
             server_port=server_port,
             verbose=verbose,
+            progress_reporter=progress_reporter,
             resume=resume,
             queue_trials=queue_trials,
             reuse_actors=reuse_actors,
@@ -396,6 +415,7 @@ def run_experiments(experiments,
                 with_server=with_server,
                 server_port=server_port,
                 verbose=verbose,
+                progress_reporter=progress_reporter,
                 resume=resume,
                 queue_trials=queue_trials,
                 reuse_actors=reuse_actors,

@@ -123,8 +123,6 @@ def ray_deps_setup():
             # Backport Clang-Cl patch on Boost 1.69 to Boost <= 1.68:
             #   https://lists.boost.org/Archives/boost/2018/09/243420.php
             "//thirdparty/patches:boost-type_traits-trivial_move.patch",
-            # Partially backport waitpid() patch on Boost 1.72 to Boost <= 1.68
-            "//thirdparty/patches:boost-process-teminate-waitpid-nohang.patch",
         ],
     )
 

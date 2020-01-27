@@ -138,7 +138,8 @@ else:
     import cPickle as pickle
 
 if PY3:
-    from ray.async_compat import sync_to_async, AsyncGetResponse
+    from ray.async_compat import (sync_to_async,
+                                  AsyncGetResponse, AsyncMonitorState)
 
 
 def set_internal_config(dict options):
@@ -609,10 +610,16 @@ cdef execute_task(
 
                 coroutine = async_function(actor, *arguments, **kwarguments)
                 loop = core_worker.create_or_get_event_loop()
-
+                monitor_state = loop.monitor_state
+                monitor_state.register_coroutine(coroutine,
+                                                 str(function.method))
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-                future.add_done_callback(
-                    lambda future: fiber_event.Notify())
+
+                def callback(future):
+                    fiber_event.Notify()
+                    monitor_state.unregister_coroutine(coroutine)
+
+                future.add_done_callback(callback)
 
                 with nogil:
                     (core_worker.core_worker.get()
@@ -814,8 +821,8 @@ cdef class CoreWorker:
     def get_actor_id(self):
         return ActorID(self.core_worker.get().GetActorId().Binary())
 
-    def set_webui_display(self, message):
-        self.core_worker.get().SetWebuiDisplay(message)
+    def set_webui_display(self, key, message):
+        self.core_worker.get().SetWebuiDisplay(key, message)
 
     def set_actor_title(self, title):
         self.core_worker.get().SetActorTitle(title)
@@ -1187,6 +1194,11 @@ cdef class CoreWorker:
             # Delayed import due to async_api depends on _raylet.
             from ray.experimental.async_api import _async_init
             self.async_event_loop.run_until_complete(_async_init())
+
+            # Create and attach the monitor object
+            monitor_state = AsyncMonitorState(self.async_event_loop)
+            self.async_event_loop.monitor_state = monitor_state
+
         if self.async_thread is None:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()
