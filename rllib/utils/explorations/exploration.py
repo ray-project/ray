@@ -9,18 +9,29 @@ class Exploration(metaclass=ABCMeta):
     and selects the action to actually apply to the environment using some
     predefined exploration schema.
     """
-    def __init__(self, action_space=None, framework="tf"):
+
+    def __init__(self,
+                 action_space=None,
+                 worker_info=None,
+                 framework="tf"):
         """
         Args:
             action_space (Optional[gym.spaces.Space]): The action space in
                 which to explore.
+            worker_info (Optional[dict]): A dict with information on the worker
+                that is using this Exploration component. Should contain
+                keys: `worker_index` and `num_workers`.
             framework (str): One of "tf" or "torch".
         """
         self.action_space = action_space
+        self.worker_info = worker_info or {}
         self.framework = check_framework(framework)
 
-    def get_exploration_action(self, action, model=None,
-                               action_dist=None, is_exploring=None):
+    def get_exploration_action(self,
+                               action,
+                               model=None,
+                               action_dist=None,
+                               is_exploring=None):
         """
         Given the Model's output and action distribution, return an exploration
         action.
@@ -38,8 +49,11 @@ class Exploration(metaclass=ABCMeta):
         """
         pass
 
-    def get_loss_exploration_term(self, model_output, model=None,
-                                  action_dist=None, action_sample=None):
+    def get_loss_exploration_term(self,
+                                  model_output,
+                                  model=None,
+                                  action_dist=None,
+                                  action_sample=None):
         """
         Given the Model's output and action distribution, returns an extra loss
         term to be added to the loss.
@@ -73,5 +87,16 @@ class Exploration(metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def merge_states(cls, exploration_states):
+    def merge_states(cls, exploration_objects):
+        """
+        Returns the merged states of all exploration_objects as a value
+        or tf.Tensor.
+        
+        Args:
+            exploration_objects (List[Exploration]): All Exploration objects,
+                whose states have to be merged somehow.
+
+        Returns:
+            The merged value or a tf.op to execute.
+        """
         raise NotImplementedError

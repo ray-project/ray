@@ -9,7 +9,7 @@ from ray.rllib.evaluation.episode import MultiAgentEpisode, _flatten_action
 from ray.rllib.evaluation.rollout_metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.policy.policy import TupleActions
+from ray.rllib.policy.policy import TupleActions, clip_action
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
 from ray.rllib.env.atari_wrappers import get_wrapper_by_cls, MonitorEnv
@@ -17,7 +17,6 @@ from ray.rllib.offline import InputReader
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.policy.policy import Policy
 
 logger = logging.getLogger(__name__)
 
@@ -530,8 +529,9 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                         TFPolicy.compute_actions.__code__):
             # TODO(ekl): how can we make info batch available to TF code?
             pending_fetches[policy_id] = policy._build_compute_actions(
-                builder, [t.obs for t in eval_data],
-                rnn_in_cols,
+                builder, 
+                obs_batch=[t.obs for t in eval_data],
+                state_batches=rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data])
         else:
@@ -587,7 +587,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
             env_id = eval_data[i].env_id
             agent_id = eval_data[i].agent_id
             if clip_actions:
-                actions_to_send[env_id][agent_id] = Policy.clip_action(
+                actions_to_send[env_id][agent_id] = clip_action(
                     action, policy.action_space)
             else:
                 actions_to_send[env_id][agent_id] = action

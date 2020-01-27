@@ -118,10 +118,6 @@ class DynamicTFPolicy(TFPolicy):
         # Placeholder for RNN time-chunk valid lengths.
         self._seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
-        # Placeholder for switching off exploration (e.g. for inference/evals).
-        self._explore = tf.placeholder_with_default(
-            input=True, shape=(), name="explore"
-        )
 
         # Setup model
         if action_sampler_fn:

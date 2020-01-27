@@ -57,7 +57,7 @@ class DistributionalQModel(TFModelV2):
 
         # setup the Q head output (i.e., model for get_q_values)
         self.model_out = tf.keras.layers.Input(
-            shape=(num_outputs, ), name="model_out")
+            shape=(num_outputs,), name="model_out")
 
         def build_action_value(model_out):
             if q_hiddens:

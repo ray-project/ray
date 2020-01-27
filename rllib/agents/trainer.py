@@ -450,7 +450,7 @@ class Trainer(Trainable):
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
-                result = Trainable.train(self)
+                result = super().train()
             except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(
@@ -555,11 +555,12 @@ class Trainer(Trainable):
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "batch_steps": 1
+                    "batch_steps": 1,
+                    # Switch off all Exploration for evaluation policies.
+                    "exploration": False
                 })
-                # Switch off all types of Explorations.
-                extra_config["exploration"] = False
-                logger.debug("using evaluation_config: {}".format(extra_config))
+                logger.debug(
+                    "using evaluation_config: {}".format(extra_config))
 
                 self.evaluation_workers = self._make_workers(
                     self.env_creator,
@@ -588,7 +589,8 @@ class Trainer(Trainable):
         self.__setstate__(extra_data)
 
     @DeveloperAPI
-    def _make_workers(self, env_creator, policy, config, num_workers, remote_config_updates=None):
+    def _make_workers(self, env_creator, policy, config, num_workers):
+        #remote_config_updates=None):
         """
         Default factory method for a WorkerSet running under this Trainer.
         Override this method by passing a custom `make_workers` into `build_trainer`.
@@ -605,9 +607,12 @@ class Trainer(Trainable):
             WorkerSet: The created WorkerSet.
         """
         return WorkerSet(
-            env_creator, policy, config, num_workers=num_workers, logdir=self.logdir,
-            remote_config_updates=remote_config_updates
-        )
+            env_creator,
+            policy,
+            config,
+            num_workers=num_workers,
+            logdir=self.logdir)
+        #remote_config_updates=remote_config_updates)
 
     @DeveloperAPI
     def _init(self, config, env_creator):
@@ -682,17 +687,20 @@ class Trainer(Trainable):
         preprocessed = self.workers.local_worker().preprocessors[policy_id].\
             transform(observation)
         filtered_obs = self.workers.local_worker().filters[policy_id](
-            preprocessed, update=False
-        )
+            preprocessed, update=False)
 
         # Figure out the current (sample) time step and pass it into Policy.
         time_step = self.optimizer.num_steps_sampled \
             if self._has_policy_optimizer() else 0
 
         result = self.get_policy(policy_id).compute_single_action(
-            filtered_obs, state, prev_action, prev_reward, info,
-            clip_actions=self.config["clip_actions"], time_step=time_step
-        )
+            filtered_obs,
+            state,
+            prev_action,
+            prev_reward,
+            info,
+            clip_actions=self.config["clip_actions"],
+            time_step=time_step)
 
         if state or full_fetch:
             return result
@@ -805,7 +813,8 @@ class Trainer(Trainable):
         if "policy_graphs" in config["multiagent"]:
             deprecation_warning("policy_graphs", "policies")
             # Backwards compatibility.
-            config["multiagent"]["policies"] = config["multiagent"].pop("policy_graphs")
+            config["multiagent"]["policies"] = config["multiagent"].pop(
+                "policy_graphs")
         if "gpu" in config:
             deprecation_warning("gpu", "num_gpus=0|1", error=ValueError)
         if "gpu_fraction" in config:
@@ -813,12 +822,13 @@ class Trainer(Trainable):
                 "gpu_fraction", "num_gpus=<fraction>", error=ValueError)
         if "use_gpu_for_workers" in config:
             deprecation_warning(
-                "use_gpu_for_workers", "num_gpus_per_worker=1",
+                "use_gpu_for_workers",
+                "num_gpus_per_worker=1",
                 error=ValueError)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
-                "`input_evaluation` must be a list of strings, got {}".format(config["input_evaluation"])
-            )
+                "`input_evaluation` must be a list of strings, got {}".format(
+                    config["input_evaluation"]))
 
     def _try_recover(self):
         """Try to identify and blacklist any unhealthy workers.
@@ -864,7 +874,8 @@ class Trainer(Trainable):
         Returns:
             bool: True if this Trainer holds a PolicyOptimizer object in property `self.optimizer`.
         """
-        return hasattr(self, "optimizer") and isinstance(self.optimizer, PolicyOptimizer)
+        return hasattr(self, "optimizer") and isinstance(
+            self.optimizer, PolicyOptimizer)
 
     @override(Trainable)
     def _export_model(self, export_formats, export_dir):

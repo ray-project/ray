@@ -63,9 +63,11 @@ class Policy(metaclass=ABCMeta):
 
         # Create the Exploration object to use for this Policy.
         self.exploration = from_config(
-            Exploration, config.get("exploration"),
+            Exploration,
+            config.get("exploration"),
             action_space=self.action_space,
-            framework="torch" if self.config.get("use_pytorch") else "tf")
+            framework="torch" if self.config.get("use_pytorch") else "tf",
+            worker_info=self.config.get("worker_info"))
         # The default sampling behavior for actions if not explicitly given
         # in calls to `compute_actions`.
         self.deterministic = config.get("deterministic", False)
@@ -178,8 +180,7 @@ class Policy(metaclass=ABCMeta):
             episodes=episodes,
             deterministic=deterministic,
             explore=explore,
-            time_step=time_step
-        )
+            time_step=time_step)
 
         if clip_actions:
             action = self.clip_action(action, self.action_space)
@@ -269,6 +270,29 @@ class Policy(metaclass=ABCMeta):
             weights (obj): Serializable copy or view of model weights
         """
         raise NotImplementedError
+
+    @DeveloperAPI
+    def get_exploration_state(self):
+        """
+        Returns the current exploration state of this policy, which depends
+        on the policy's Exploration object.
+
+        Returns:
+            any: Serializable copy or view of the current exploration state.
+        """
+        if self.exploration is not None:
+            return self.exploration.get_state()
+
+    @DeveloperAPI
+    def set_exploration_state(self, exploration_state):
+        """Sets the current exploration state of this Policy.
+
+        Arguments:
+            exploration_state (any): Serializable copy or view of the new
+                exploration state.
+        """
+        if self.exploration is not None:
+            return self.exploration.set_state(exploration_state)
 
     @DeveloperAPI
     def num_state_tensors(self):

@@ -5,7 +5,6 @@ import logging
 
 import ray
 from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
@@ -23,36 +22,12 @@ Q_TARGET_SCOPE = "target_q_func"
 
 
 class ParameterNoiseMixin:
-
     def __init__(self, obs_space, action_space, config):
         pass
-
-#        # Python value, should always be same as the TF variable
-#        self.cur_epsilon_value = 1.0
-#        self.cur_epsilon = tf.get_variable(
-#            initializer=tf.constant_initializer(self.cur_epsilon_value),
-#            name="eps",
-#            shape=(),
-#            trainable=False,
-#            dtype=tf.float32)
 
     def add_parameter_noise(self):
         if self.config["parameter_noise"]:
             self.sess.run(self.add_noise_op)
-
-#    def set_epsilon(self, epsilon):
-#        self.cur_epsilon_value = epsilon
-#        self.cur_epsilon.load(
-#            self.cur_epsilon_value, session=self.get_session())
-
-#    @override(Policy)
-#    def get_state(self):
-#        return [TFPolicy.get_state(self), self.cur_epsilon_value]
-
-#    @override(Policy)
-#    def set_state(self, state):
-#        TFPolicy.set_state(self, state[0])
-#        self.set_epsilon(state[1])
 
 
 class TargetNetworkMixin:

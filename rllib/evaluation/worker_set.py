@@ -27,8 +27,7 @@ class WorkerSet:
                  trainer_config=None,
                  num_workers=0,
                  logdir=None,
-                 _setup=True,
-                 remote_config_updates=None):
+                 _setup=True):
         """Create a new WorkerSet and initialize its workers.
 
         Arguments:
@@ -39,9 +38,6 @@ class WorkerSet:
             num_workers (int): Number of remote rollout workers to create.
             logdir (str): Optional logging directory for workers.
             _setup (bool): Whether to setup workers. This is only for testing.
-            remote_config_updates (Optional[List[dict]]): A list of config
-                dicts to update `config` with for each Worker
-                (len must be same as `num_workers`).
         """
 
         if not trainer_config:
@@ -51,7 +47,6 @@ class WorkerSet:
         self._env_creator = env_creator
         self._policy = policy
         self._remote_config = trainer_config
-        self._remote_config_updates = remote_config_updates
         self._num_workers = num_workers
         self._logdir = logdir
 
@@ -66,7 +61,7 @@ class WorkerSet:
 
             # Create a number of remote workers
             self._remote_workers = []
-            self.add_workers(self._num_workers, self._remote_config_updates)
+            self.add_workers(self._num_workers)
 
     def local_worker(self):
         """Return the local rollout worker."""
@@ -76,17 +71,13 @@ class WorkerSet:
         """Return a list of remote rollout workers."""
         return self._remote_workers
 
-    def add_workers(self, num_workers, remote_config_updates=None):
+    def add_workers(self, num_workers):
         """
         Creates and add a number of remote workers to this worker set.
 
         Args:
             num_workers (int): The number of remote Workers to add to this WorkerSet.
-            remote_config_updates (Optional[List[dict]]): A list of config dicts to update `config` with for each Worker
-                (len must be same as `num_workers`).
         """
-        assert remote_config_updates is None or num_workers == len(remote_config_updates)
-
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
@@ -97,9 +88,11 @@ class WorkerSet:
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
         for i in range(num_workers):
-            config = self._remote_config if not remote_config_updates else \
-                self._remote_config.copy().update(remote_config_updates[i])
-            self._remote_workers.append(self._make_worker(cls, self._env_creator, self._policy, i + 1, config))
+            #config = self._remote_config if not remote_config_updates else \
+            #    self._remote_config.copy().update(remote_config_updates[i])
+            self._remote_workers.append(
+                self._make_worker(cls, self._env_creator, self._policy, i + 1,
+                                  self._remote_config, num_workers))
 
     def reset(self, new_remote_workers):
         """Called to change the set of remote workers."""
@@ -150,8 +143,8 @@ class WorkerSet:
         local_results = self.local_worker().foreach_policy(func)
         remote_results = []
         for worker in self.remote_workers():
-            res = ray_get_and_free([worker.apply.remote(
-                lambda w: w.foreach_policy(func))])
+            res = ray_get_and_free(
+                [worker.apply.remote(lambda w: w.foreach_policy(func))])
             remote_results.extend(res)
         return local_results + remote_results
 
@@ -172,8 +165,9 @@ class WorkerSet:
         local_results = self.local_worker().foreach_trainable_policy(func)
         remote_results = []
         for worker in self.remote_workers():
-            res = ray_get_and_free([worker.apply.remote(
-                lambda w: w.foreach_trainable_policy(func))])
+            res = ray_get_and_free([
+                worker.apply.remote(lambda w: w.foreach_trainable_policy(func))
+            ])
             remote_results.extend(res)
         return local_results + remote_results
 
@@ -256,6 +250,7 @@ class WorkerSet:
             model_config=config["model"],
             policy_config=config,
             worker_index=worker_index,
+            num_workers=self._num_workers,
             monitor_path=self._logdir if config["monitor"] else None,
             log_dir=self._logdir,
             log_level=config["log_level"],

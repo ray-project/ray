@@ -56,8 +56,7 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def entropy(self):
-        a0 = self.inputs - tf.reduce_max(
-            self.inputs, axis=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=[1], keep_dims=True)
         ea0 = tf.exp(a0)
         z0 = tf.reduce_sum(ea0, axis=[1], keep_dims=True)
         p0 = ea0 / z0
@@ -65,8 +64,7 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(
-            self.inputs, axis=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=[1], keep_dims=True)
         a1 = other.inputs - tf.reduce_max(
             other.inputs, axis=[1], keep_dims=True)
         ea0 = tf.exp(a0)
@@ -174,8 +172,7 @@ class DiagGaussian(TFActionDistribution):
     @override(ActionDistribution)
     def entropy(self):
         return tf.reduce_sum(
-            self.log_std + .5 * np.log(2.0 * np.pi * np.e),
-            axis=[1])
+            self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=[1])
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -192,6 +189,7 @@ class Deterministic(TFActionDistribution):
 
     This is similar to DiagGaussian with standard deviation zero.
     """
+
     @override(ActionDistribution)
     def deterministic_sample(self):
         return self.inputs
@@ -268,7 +266,8 @@ class MultiActionDistribution(TFActionDistribution):
 
     @override(ActionDistribution)
     def deterministic_sample(self):
-        return TupleActions([s.deterministic_sample() for s in self.child_distributions])
+        return TupleActions(
+            [s.deterministic_sample() for s in self.child_distributions])
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):

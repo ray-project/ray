@@ -111,7 +111,8 @@ class TFPolicy(Policy):
         self._prev_reward_input = prev_reward_input
         self._action = action_sampler
         self._is_training = self._get_is_training_placeholder()
-        self._is_exploring = tf.placeholder_with_default(True, ())
+        self._is_exploring = tf.placeholder_with_default(
+            True, (), name="is-exploring")
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
                              if self._action_logp is not None else None)
@@ -123,7 +124,8 @@ class TFPolicy(Policy):
         self._update_ops = update_ops
         self._stats_fetches = {}
         self._loss_input_dict = None
-        
+        self._time_step = tf.placeholder_with_default(0, (), name="time-step")
+
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
         else:
@@ -146,9 +148,11 @@ class TFPolicy(Policy):
         self._exploration_action = None
         if self.exploration:
             self._exploration_action = self.exploration.get_exploration_action(
-                self._action, self.model,
-                action_dist=self.dist_class, is_exploring=self._is_exploring
-            )
+                self._action,
+                self.model,
+                action_dist=self.dist_class,
+                is_exploring=self._is_exploring,
+                time_step=self._time_step)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -160,7 +164,6 @@ class TFPolicy(Policy):
         If the loss has not been initialized and a loss input placeholder is
         requested, an error is raised.
         """
-
         obs_inputs = {
             SampleBatch.CUR_OBS: self._obs_input,
             SampleBatch.PREV_ACTIONS: self._prev_action_input,
@@ -202,11 +205,12 @@ class TFPolicy(Policy):
             if g is not None
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
+
+        # TODO(sven/ekl): Deprecate support for v1 models.
         if hasattr(self, "model") and isinstance(self.model, ModelV2):
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
         else:
-            # TODO(ekl) deprecate support for v1 models
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 self._loss, self._sess)
 
@@ -238,14 +242,20 @@ class TFPolicy(Policy):
                         episodes=None,
                         deterministic=None,
                         explore=True,
+                        time_step=None,
                         **kwargs):
 
         deterministic = deterministic if deterministic is not None else self.deterministic
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
-            builder, obs_batch, state_batches, prev_action_batch,
-            prev_reward_batch, deterministic=deterministic, explore=explore
-        )
+            builder,
+            obs_batch,
+            state_batches,
+            prev_action_batch,
+            prev_reward_batch,
+            deterministic=deterministic,
+            explore=explore,
+            time_step=time_step)
         return builder.get(fetches)
 
     @override(Policy)
@@ -374,7 +384,8 @@ class TFPolicy(Policy):
         This can be called safely before __init__ has run.
         """
         if not hasattr(self, "_is_training"):
-            self._is_training = tf.placeholder_with_default(False, ())
+            self._is_training = tf.placeholder_with_default(
+                False, (), name="is-training")
         return self._is_training
 
     def _debug_vars(self):
@@ -450,8 +461,8 @@ class TFPolicy(Policy):
                                prev_reward_batch=None,
                                episodes=None,
                                deterministic=False,
-                               explore=True
-                               ):
+                               explore=True,
+                               time_step=None):
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
@@ -469,11 +480,14 @@ class TFPolicy(Policy):
            prev_reward_batch is not None:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
+        builder.add_feed_dict({self._is_exploring: explore})
+        if time_step is not None:
+            builder.add_feed_dict({self._time_step: time_step})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches(
-            [self._exploration_action if explore and self.exploration else
-             self._action] + self._state_outputs +
-            [self.extra_compute_action_fetches()])
+        fetches = builder.add_fetches([
+            self._exploration_action
+            if explore is not False and self.exploration else self._action
+        ] + self._state_outputs + [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):

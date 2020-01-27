@@ -6,7 +6,6 @@ import ray
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin, \
     ParameterNoiseMixin
-#from ray.rllib.exploration.epsilon_exploration import EpsilonExploration
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -102,34 +101,6 @@ class QLoss:
                 "max_q": tf.reduce_max(q_t_selected),
                 "mean_td_error": tf.reduce_mean(self.td_error),
             }
-
-
-#class QValuePolicy:
-#    def __init__(self, q_values, observations, num_actions, cur_epsilon,
-#                 softmax, softmax_temp, model_config):
-#        if softmax:
-#            action_dist = Categorical(q_values / softmax_temp)
-#            self.action = action_dist.sample()
-#            self.action_prob = tf.exp(action_dist.sampled_action_logp())
-#            return
-
-#        deterministic_actions = tf.argmax(q_values, axis=1)
-#        batch_size = tf.shape(observations)[0]
-
-#        # Special case masked out actions (q_value ~= -inf) so that we don't
-#        # even consider them for exploration.
-#        random_valid_action_logits = tf.where(
-#            tf.equal(q_values, tf.float32.min),
-#            tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-#        random_actions = tf.squeeze(
-#            tf.multinomial(random_valid_action_logits, 1), axis=1)
-
-#        chose_random = tf.random_uniform(
-#            tf.stack([batch_size]), minval=0, maxval=1,
-#            dtype=tf.float32) < cur_epsilon
-#        self.action = tf.where(chose_random, random_actions,
-#                               deterministic_actions)
-#        self.action_prob = None
 
 
 class ComputeTDErrorMixin:
@@ -231,9 +202,8 @@ def build_q_model(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def action_sampler_function(
-        policy, q_model, input_dict, obs_space, action_space, config
-):
+def action_sampler_function(policy, q_model, input_dict, obs_space,
+                            action_space, config):
     # Action Q network.
     q_values, q_logits, q_dist = _compute_q_values(
         policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
@@ -248,15 +218,6 @@ def action_sampler_function(
             [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
         policy.action_probs = tf.nn.softmax(policy.q_values)
 
-    # Action outputs.
-    #policy.output_actions, policy.action_prob = policy.exploration.compute_actions(
-    #    policy.q_values, policy.config["epsilon_exploration"]
-    #)
-    #qvp = QValuePolicy(q_values, input_dict[SampleBatch.CUR_OBS], action_space.n, policy.cur_epsilon,
-    #                   config["soft_q"], config["softmax_temp"], config["model"])
-    #policy.output_actions, policy.action_prob = qvp.action, qvp.action_prob
-    #actions = policy.output_actions
-
     # TODO(sven): Move soft_q logic to different Exploration child-component.
     action_log_prob = None
     if config["soft_q"]:
@@ -266,23 +227,9 @@ def action_sampler_function(
         policy.action_prob = tf.exp(action_log_prob)
     else:
         policy.output_actions = tf.argmax(q_values, axis=1)
-        #batch_size = tf.shape(observations)[0]
-
-        # TODO (sven): check, why q-values could ever be -inf? And even if yes, why shouldn't we still try their actions during exploration phase?
-        # Special case masked out actions (q_value ~= -inf) so that we don't
-        # even consider them for exploration.
-        #random_valid_action_logits = tf.where(
-        #    tf.equal(q_values, tf.float32.min),
-        #    tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-        #random_actions = tf.squeeze(
-        #    tf.multinomial(random_valid_action_logits, 1), axis=1)
-
-        #chose_random = tf.random_uniform(
-        #    tf.stack([batch_size]), minval=0, maxval=1,
-        #    dtype=tf.float32) < cur_epsilon)
-        #policy.output_actions = tf.where(chose_random, random_actions, deterministic_actions)
-
+        policy.action_prob = None
     return policy.output_actions, action_log_prob
+
 
 
 def _build_parameter_noise(policy, pnet_params):
@@ -517,7 +464,6 @@ DQNTFPolicy = build_tf_policy(
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
-    #exploration=EpsilonGreedy,
     mixins=[
         ParameterNoiseMixin,
         TargetNetworkMixin,

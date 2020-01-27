@@ -26,26 +26,26 @@ class SyncReplayOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    def __init__(self,
-                 workers,
-                 learning_starts=1000,
-                 buffer_size=10000,
-                 prioritized_replay=True,
-                 prioritized_replay_alpha=0.6,
-                 prioritized_replay_beta=0.4,
-                 prioritized_replay_eps=1e-6,
-                 schedule_max_timesteps=None,  # DEPRECATED
-                 beta_annealing_fraction=None,  # DEPRECATED
-                 final_prioritized_replay_beta=0.4,
-                 train_batch_size=32,
-                 #sample_batch_size=4,
-                 before_learn_on_batch=None,
-                 synchronize_sampling=False,
-                 prioritized_replay_beta_annealing_timesteps=100000 * 0.2,
-                 ):
+    def __init__(
+            self,
+            workers,
+            learning_starts=1000,
+            buffer_size=10000,
+            prioritized_replay=True,
+            prioritized_replay_alpha=0.6,
+            prioritized_replay_beta=0.4,
+            prioritized_replay_eps=1e-6,
+            schedule_max_timesteps=None,  # DEPRECATED
+            beta_annealing_fraction=None,  # DEPRECATED
+            final_prioritized_replay_beta=0.4,
+            train_batch_size=32,
+            before_learn_on_batch=None,
+            synchronize_sampling=False,
+            prioritized_replay_beta_annealing_timesteps=100000 * 0.2,
+    ):
         """Initialize an sync replay optimizer.
 
-        Arguments:
+        Args:
             workers (WorkerSet): all workers
             learning_starts (int): wait until this many steps have been sampled
                 before starting optimization.
@@ -60,7 +60,6 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 to anneal PR-beta over.
             final_prioritized_replay_beta (float): final value of beta
             train_batch_size (int): size of batches to learn on
-            sample_batch_size (int): size of batches to sample from workers
             before_learn_on_batch (function): callback to run before passing
                 the sampled batch to learn on
             synchronize_sampling (bool): whether to sample the experiences for
@@ -78,13 +77,11 @@ class SyncReplayOptimizer(PolicyOptimizer):
             prioritized_replay_beta_annealing_timesteps = \
                 schedule_max_timesteps * beta_annealing_fraction
         if schedule_max_timesteps is not None:
-            deprecation_warning(
-                "schedule_max_timesteps",
-                "prioritized_replay_beta_annealing_timesteps")
+            deprecation_warning("schedule_max_timesteps",
+                                "prioritized_replay_beta_annealing_timesteps")
         if beta_annealing_fraction is not None:
-            deprecation_warning(
-                "beta_annealing_fraction",
-                "prioritized_replay_beta_annealing_timesteps")
+            deprecation_warning("beta_annealing_fraction",
+                                "prioritized_replay_beta_annealing_timesteps")
 
         # linearly annealing beta used in Rainbow paper
         self.prioritized_replay_beta = LinearSchedule(

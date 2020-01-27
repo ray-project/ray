@@ -43,8 +43,7 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
-        super().__init__(
-            observation_space, action_space, config)
+        super().__init__(observation_space, action_space, config)
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
@@ -86,21 +85,16 @@ class TorchPolicy(Policy):
             # Try our Exploration, if any.
             if self.exploration:
                 actions = self.exploration.get_action(
-                    model_out, self.model, action_dist, explore, time_step
-                )
+                    model_out, self.model, action_dist, explore, time_step)
             else:
                 # TODO: pass deterministic flag into sample (deterministic=deterministic).
                 actions = action_dist.sample()
 
             input_dict[SampleBatch.ACTIONS] = actions
 
-            return (
-                actions.cpu().numpy(),
-                [h.cpu().numpy() for h in state],
-                self.extra_action_out(
-                    input_dict, state_batches, self.model, action_dist
-                )
-            )
+            return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
+                    self.extra_action_out(input_dict, state_batches,
+                                          self.model, action_dist))
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
