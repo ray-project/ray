@@ -1,4 +1,3 @@
-import Collapse from "@material-ui/core/Collapse";
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
@@ -12,6 +11,7 @@ import {
   RayletInfoResponse
 } from "../../../api";
 import Actors from "./Actors";
+import Collapse from "@material-ui/core/Collapse";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -171,6 +171,39 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             }
           ];
 
+    // Construct the custom message from the actor.
+    let actorCustomDisplay: JSX.Element[] = [];
+    if (actor.state !== -1 && actor.webuiDisplay) {
+      actorCustomDisplay = Object.keys(actor.webuiDisplay)
+        .sort()
+        .map((key, _, __) => {
+          // Construct the value from actor.
+          // Please refer to worker.py::show_in_webui for schema.
+          const valueEncoded = actor.webuiDisplay![key];
+          const valueParsed = JSON.parse(valueEncoded);
+          let valueRendered = valueParsed["message"];
+          if (valueParsed["dtype"] === "html") {
+            valueRendered = (
+              <div dangerouslySetInnerHTML={{ __html: valueRendered }}></div>
+            );
+          }
+
+          if (key === "") {
+            return (
+              <Typography className={classes.webuiDisplay}>
+                &nbsp; &nbsp; {valueRendered}
+              </Typography>
+            );
+          } else {
+            return (
+              <Typography className={classes.webuiDisplay}>
+                &nbsp; &nbsp; {key}: {valueRendered}
+              </Typography>
+            );
+          }
+        });
+    }
+
     return (
       <div className={classes.root}>
         <Typography className={classes.title}>
@@ -249,11 +282,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         {actor.state !== -1 && (
           <React.Fragment>
-            {actor.webuiDisplay && (
-              <Typography className={classes.webuiDisplay}>
-                {actor.webuiDisplay}
-              </Typography>
+            {actorCustomDisplay.length > 0 && (
+              <React.Fragment>{actorCustomDisplay}</React.Fragment>
             )}
+
             <Collapse in={expanded}>
               <Actors actors={actor.children} />
             </Collapse>
