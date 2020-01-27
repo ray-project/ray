@@ -67,9 +67,10 @@ class _TuneFunctionDecoder(json.JSONDecoder):
 
 
 class Stopper:
-    """Abstract class for implementing a Tune experiment stopper.
+    """Base class for implementing a Tune experiment stopper.
 
-    Allows users to implement experiment-level stopping via ``stop_all``.
+    Allows users to implement experiment-level stopping via ``stop_all``. By
+    default, this class does not stop any trials.
 
     .. code-block:: python
 
@@ -199,7 +200,7 @@ class TrialRunner:
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
                                         remote_checkpoint_dir, sync_to_cloud)
-        self._stopper = stopper or None
+        self._stopper = stopper or Stopper()
         self._resumed = False
 
         if self._validate_resume(resume_type=resume):
