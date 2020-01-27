@@ -1422,7 +1422,7 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
-def show_in_webui(message):
+def show_in_webui(message, key="", dtype="text"):
     """Display message in dashboard.
 
     Display message for the current task or actor in the dashboard.
@@ -1431,10 +1431,23 @@ def show_in_webui(message):
 
     Args:
         message (str): Message to be displayed.
+        key (str): The key name for the message. Multiple message under
+            different keys will be displayed at the same time. Messages
+            under the same key will be overriden.
+        data_type (str): The type of message for rendering. One of the
+            following: text, html.
     """
     worker = global_worker
     worker.check_connected()
-    worker.core_worker.set_webui_display(message.encode())
+
+    acceptable_dtypes = {"text", "html"}
+    assert dtype in acceptable_dtypes, "dtype accepts only: {}".format(
+        acceptable_dtypes)
+
+    message_wrapped = {"message": message, "dtype": dtype}
+    message_encoded = json.dumps(message_wrapped).encode()
+
+    worker.core_worker.set_webui_display(key.encode(), message_encoded)
 
 
 def get(object_ids, timeout=None):
