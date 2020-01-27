@@ -1,6 +1,7 @@
 import time
 
 import ray
+from collections import Counter
 from ray.experimental.iter import from_items, from_iterators, from_range, \
     from_actors, ParallelIteratorWorker
 
@@ -93,13 +94,10 @@ def test_local_shuffle(ray_start_regular_shared):
     it4 = from_items(
         [0, 1] * 10000, num_shards=1).local_shuffle(shuffle_buffer_size=100)
     result = "".join(it4.gather_sync().for_each(str))
-    freq_dict = {}
-    for i in range(0, len(result), 2):
-        s = result[i:i + 2]
-        freq_dict[s] = freq_dict.get(s, 0) + 1
-    assert len(freq_dict) == 4
-    for key, value in freq_dict.items():
-        assert value / len(freq_dict) > 0.2
+    freq_counter = Counter(zip(result[:-1], result[1:]))
+    assert len(freq_counter) == 4
+    for key, value in freq_counter.items():
+        assert value / len(freq_counter) > 0.2
 
 
 def test_batch(ray_start_regular_shared):
