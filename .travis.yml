@@ -84,6 +84,7 @@ matrix:
       env: SANITIZER=1 CC=clang PYTHON=3.5 PYTHONWARNINGS=ignore
 
       install:
+        - echo $TRAVIS_COMMIT_RANGE
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
 
