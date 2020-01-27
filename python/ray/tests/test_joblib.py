@@ -26,14 +26,13 @@ from sklearn.neural_network import MLPClassifier
 def test_register_ray():
     register_ray()
     assert "ray" in joblib.parallel.BACKENDS
+    assert not ray.is_initialized()
 
-
-def test_ray_backend():
+def test_ray_backend(shutdown_only):
     register_ray()
     from ray.experimental.joblib._raybackend import RayBackend
     with joblib.parallel_backend("ray"):
         assert type(joblib.parallel.get_active_backend()[0]) == RayBackend
-
 
 def test_svm_crossvalidation():
     digits = load_digits()
@@ -50,52 +49,21 @@ def test_svm_crossvalidation():
         model, param_space, cv=5, n_iter=100, verbose=10)
     register_ray()
 
-    def test_local():
-        if ray.is_initialized():
-            ray.shutdown()
+    def test_local(shutdown_only):
         with joblib.parallel_backend("ray"):
             search.fit(digits.data, digits.target)
         assert ray.is_initialized()
 
-    def test_multiple_nodes():
-        if ray.is_initialized():
-            ray.shutdown()
+    def test_multiple_nodesr(call_ray_stop_only):
         subprocess.check_output(
             ["ray", "start", "--head", "--num-cpus={}".format(4)])
         ray.init(address="auto")
         with joblib.parallel_backend("ray"):
             search.fit(digits.data, digits.target)
         assert ray.is_initialized()
-        subprocess.check_output(["ray", "stop"])
 
     test_local()
     test_multiple_nodes()
-
-
-memory = Memory(
-    os.path.join(get_data_home(), "mnist_benchmark_data"), mmap_mode="r")
-
-
-@memory.cache
-def load_data(dtype=np.float32, order="F"):
-    """Load the data, then cache and memmap the train/test split"""
-    ######################################################################
-    # Load dataset
-    print("Loading dataset...")
-    data = fetch_openml("mnist_784")
-    X = check_array(data["data"], dtype=dtype, order=order)
-    y = data["target"]
-
-    # Normalize features
-    X = X / 255
-
-    # Create train-test split (as [Joachims, 2006])
-    print("Creating train-test split...")
-    n_train = 6000
-    X_train = X[:n_train]
-    y_train = y[:n_train]
-
-    return X_train, y_train
 
 
 ESTIMATORS = {
@@ -132,14 +100,27 @@ ESTIMATORS = {
 }
 
 
-def test_sklearn_benchmarks():
+def test_sklearn_benchmarks(call_ray_stop_only):
+    ######################################################################
+    # Load dataset
+    print("Loading dataset...")
+    data = fetch_openml("mnist_784")
+    X = check_array(data["data"], dtype=np.float32, order="C")
+    y = data["target"]
+
+    # Normalize features
+    X = X / 255
+
+    # Create train-test split (as [Joachims, 2006])
+    print("Creating train-test split...")
+    n_train = 6000
+    X_train = X[:n_train]
+    y_train = y[:n_train]
     register_ray()
-    X_train, y_train = load_data(order="C")
+    
     train_time = {}
     random_seed = 0
     num_jobs = 2  # use all available resources
-    if ray.is_initialized():
-        ray.shutdown()
     subprocess.check_output(
         ["ray", "start", "--head", "--num-cpus={}".format(20)])
     ray.init(address="auto")
@@ -160,4 +141,3 @@ def test_sklearn_benchmarks():
             estimator.fit(X_train, y_train)
             train_time[name] = time() - time_start
             print("training", name, "took", train_time[name], "seconds")
-    subprocess.check_output(["ray", "stop"])
