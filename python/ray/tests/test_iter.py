@@ -74,12 +74,12 @@ def test_filter(ray_start_regular_shared):
 def test_local_shuffle(ray_start_regular_shared):
     # confirm that no data disappears, and they all stay within the same shard
     it = from_range(8, num_shards=2).local_shuffle(shuffle_buffer_size=2)
-    assert repr(
-        it) == "ParallelIterator[from_range[8, shards=2].local_shuffle(shuffle_buffer_size=2, seed=None)]"
+    assert repr(it) == ("ParallelIterator[from_range[8, shards=2]" +
+                        ".local_shuffle(shuffle_buffer_size=2, seed=None)]")
     shard_0 = it.get_shard(0)
     shard_1 = it.get_shard(1)
-    assert set(shard_0) == set([0, 1, 2, 3])
-    assert set(shard_1) == set([4, 5, 6, 7])
+    assert set(shard_0) == {0, 1, 2, 3}
+    assert set(shard_1) == {4, 5, 6, 7}
 
     # check that shuffling results in different orders
     it1 = from_range(100, num_shards=10).local_shuffle(shuffle_buffer_size=5)

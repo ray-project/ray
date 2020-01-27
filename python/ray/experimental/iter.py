@@ -239,35 +239,45 @@ class ParallelIterator(Generic[T]):
         it.name = self.name + ".combine()"
         return it
 
-    def local_shuffle(self, shuffle_buffer_size: int, seed: int = None) -> "ParallelIterator[T]":
+    def local_shuffle(self, shuffle_buffer_size: int,
+                      seed: int = None) -> "ParallelIterator[T]":
         """Remotely shuffle items of each shard independently
 
         Arguments:
-            shuffle_buffer_size (int): The algorithm fills a buffer with shuffle_buffer_size elements and randomly samples elements from this buffer, replacing the selected elements with new elements.
-            For perfect shuffling, this argument should be greater than or equal to the largest iterator size.
-            seed (int): Seed to use for randomness. Default value is None.
+            shuffle_buffer_size (int): The algorithm fills a buffer with
+            shuffle_buffer_size elements and randomly samples elements from
+            this buffer, replacing the selected elements with new elements.
+            For perfect shuffling, this argument should be greater than or
+            equal to the largest iterator size.
+            seed (int): Seed to use for
+            randomness. Default value is None.
 
         Returns:
-            Returns a ParallelIterator with a local shuffle applied on the base iterator
+            Returns a ParallelIterator with a local shuffle applied on the
+            base iterator
 
         Examples:
-            >>> it = from_range(10, 1).local_shuffle(shuffle_buffer_size=2).gather_sync()
+            >>> it = from_range(10, 1).local_shuffle(shuffle_buffer_size=2)
+            >>> it = it.gather_sync()
             >>> next(it)
-            ... 0
+            0
             >>> next(it)
-            ... 2
+            2
             >>> next(it)
-            ... 3
+            3
             >>> next(it)
-            ... 1
+            1
         """
         return ParallelIterator(
             [
                 a.with_transform(
-                    lambda local_it: local_it.shuffle(shuffle_buffer_size, seed))
+                    lambda localit: localit.shuffle(shuffle_buffer_size, seed))
                 for a in self.actor_sets
             ],
-            name=self.name + ".local_shuffle(shuffle_buffer_size={}, seed={})".format(shuffle_buffer_size, str(seed) if seed is not None else 'None'))
+            name=self.name +
+            ".local_shuffle(shuffle_buffer_size={}, seed={})".format(
+                shuffle_buffer_size,
+                str(seed) if seed is not None else "None"))
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
@@ -558,18 +568,24 @@ class LocalIterator(Generic[T]):
             self.local_transforms + [apply_flatten],
             name=self.name + ".flatten()")
 
-    def shuffle(self, shuffle_buffer_size: int, seed: int = None) -> "LocalIterator[T]":
+    def shuffle(self, shuffle_buffer_size: int,
+                seed: int = None) -> "LocalIterator[T]":
         """Shuffle items of this iterator
 
         Arguments:
-            shuffle_buffer_size (int): The algorithm fills a buffer with shuffle_buffer_size elements and randomly samples elements from this buffer, replacing the selected elements with new elements.
-            For perfect shuffling, this argument should be greater than or equal to the largest iterator size.
-            seed (int): Seed to use for randomness. Default value is None.
+            shuffle_buffer_size (int): The algorithm fills a buffer with
+            shuffle_buffer_size elements and randomly samples elements from
+            this buffer, replacing the selected elements with new elements.
+            For perfect shuffling, this argument should be greater than or
+            equal to the largest iterator size.
+            seed (int): Seed to use for
+            randomness. Default value is None.
 
         Returns:
             A new LocalIterator with shuffling applied
         """
         shuffle_random = random.Random(seed)
+
         def apply_shuffle(it):
             buffer = []
             for item in it:
@@ -578,14 +594,19 @@ class LocalIterator(Generic[T]):
                 else:
                     buffer.append(item)
                     if len(buffer) >= shuffle_buffer_size:
-                        yield buffer.pop(shuffle_random.randint(0, len(buffer) - 1))
+                        yield buffer.pop(
+                            shuffle_random.randint(0,
+                                                   len(buffer) - 1))
             while len(buffer) > 0:
                 yield buffer.pop(shuffle_random.randint(0, len(buffer) - 1))
 
         return LocalIterator(
             self.base_iterator,
             self.local_transforms + [apply_shuffle],
-            name=self.name + ".shuffle(shuffle_buffer_size={}, seed={})".format(shuffle_buffer_size, str(seed) if seed is not None else 'None'))
+            name=self.name +
+            ".shuffle(shuffle_buffer_size={}, seed={})".format(
+                shuffle_buffer_size,
+                str(seed) if seed is not None else "None"))
 
     def combine(self, fn: Callable[[T], List[U]]) -> "LocalIterator[U]":
         it = self.for_each(fn).flatten()
