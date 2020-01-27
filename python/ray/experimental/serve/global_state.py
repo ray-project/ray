@@ -1,7 +1,7 @@
 import ray
 from ray.experimental.serve.constants import (
     BOOTSTRAP_KV_STORE_CONN_KEY, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-    SERVE_NURSERY_NAME)
+    SERVE_NURSERY_NAME, ASYNC_CONCURRENCY)
 from ray.experimental.serve.kv_store_service import (
     BackendTable, RoutingTable, TrafficPolicyTable)
 from ray.experimental.serve.metric import (MetricMonitor,
@@ -44,11 +44,9 @@ class ActorNursery:
                     init_kwargs={},
                     is_asyncio=False):
         """Start an actor and add it to the nursery"""
-        max_concurrency = 1000000 if is_asyncio else None
-        handle = (actor_cls.options(
-            is_direct_call=True,
-            is_asyncio=is_asyncio,
-            max_concurrency=max_concurrency).remote(*init_args, **init_kwargs))
+        max_concurrency = ASYNC_CONCURRENCY if is_asyncio else None
+        handle = (actor_cls.options(max_concurrency=max_concurrency).remote(
+            *init_args, **init_kwargs))
         self.actor_handles[handle] = tag
         return [handle]
 

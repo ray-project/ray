@@ -4,8 +4,7 @@ import itertools
 import numpy as np
 
 import ray
-from ray.experimental.serve.queues import (CentralizedQueues,
-                                           CentralizedQueuesActor)
+from ray.experimental.serve.queues import (CentralizedQueues)
 from ray.experimental.serve.utils import logger
 
 
@@ -36,7 +35,7 @@ class RandomPolicyQueue(CentralizedQueues):
 
 
 @ray.remote
-class RandomPolicyQueueActor(RandomPolicyQueue, CentralizedQueuesActor):
+class RandomPolicyQueueActor(RandomPolicyQueue):
     pass
 
 
@@ -78,8 +77,7 @@ class RoundRobinPolicyQueue(CentralizedQueues):
 
 
 @ray.remote
-class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue,
-                                 CentralizedQueuesActor):
+class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue):
     pass
 
 
@@ -121,8 +119,7 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
 
 
 @ray.remote
-class PowerOfTwoPolicyQueueActor(PowerOfTwoPolicyQueue,
-                                 CentralizedQueuesActor):
+class PowerOfTwoPolicyQueueActor(PowerOfTwoPolicyQueue):
     pass
 
 
@@ -170,8 +167,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
 
 
 @ray.remote
-class FixedPackingPolicyQueueActor(FixedPackingPolicyQueue,
-                                   CentralizedQueuesActor):
+class FixedPackingPolicyQueueActor(FixedPackingPolicyQueue):
     pass
 
 

@@ -15,3 +15,9 @@ DEFAULT_HTTP_HOST = "0.0.0.0"
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
+
+#: Max concurrency
+ASYNC_CONCURRENCY = int(1e6)
+
+#: Default latency SLO
+DEFAULT_LATENCY_SLO_MS = 1e9

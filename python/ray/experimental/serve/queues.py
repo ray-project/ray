@@ -15,6 +15,7 @@ import blist
 
 import ray
 from ray.experimental.serve.utils import logger
+from ray.experimental.serve.constants import DEFAULT_LATENCY_SLO_MS
 
 
 class Query:
@@ -31,6 +32,11 @@ class Query:
         self.request_slo_ms = request_slo_ms
 
     def ray_serialize(self):
+        # NOTE: this method is needed because Query need to be serialized and
+        # sent to the replica worker. However, after we send the query to
+        # replica worker the async_future is still needed to retrieve the final
+        # result. Therefore we need a way to pass the information to replica
+        # worker without removing async_future.
         clone = copy.copy(self)
         clone.async_future = None
         # We can't use cloudpickle due to a recursion issue
@@ -47,9 +53,15 @@ class Query:
 
 
 def _adjust_latency_slo(slo_ms: Union[float, int, None]) -> float:
-    """Normalize the input latency objective to absoluate timestamp."""
+    """Normalize the input latency objective to absoluate timestamp.
+
+    Input:
+        slo_ms(float, int, None): If value is None, then we use a high default
+           value so other queries can be prioritize and put in front of these
+           queries.
+    """
     if slo_ms is None:
-        slo_ms = 1e9
+        slo_ms = DEFAULT_LATENCY_SLO_MS
     current_time_ms = time.time() * 1000
     return current_time_ms + slo_ms
 
@@ -133,8 +145,15 @@ class CentralizedQueues:
 
         # -- Synchronization -- #
 
-        # Only one flush operation can happen at a time
+        # This lock guarantee that only one flush operation can happen at a
+        # time. Without the lock, multiple flush operation can pop from the
+        # same buffer_queue and worker_queue and create deadlock. For example
+        # an operation holding the only query and the other flush operation
+        # holding the only idle replica. Additionally, allowing only one flush
+        # operation at a time simplifies design overhead for custom queuing and
+        # batching polcies.
         self.flush_lock = asyncio.Lock()
+        self.remove_replica_lock = asyncio.Lock()
 
     def is_ready(self):
         return True
@@ -172,16 +191,17 @@ class CentralizedQueues:
         await self.flush()
 
     async def remove_and_destory_replica(self, backend, replica_handle):
-        # NOTE: this function scale by O(#replicas for the backend)
-        new_queue = asyncio.Queue()
-        target_id = replica_handle._actor_id
+        with self.remove_replica_lock:
+            new_queue = asyncio.Queue()
+            target_id = replica_handle._actor_id
 
-        for replica_handle in self.worker_queues[backend]:
-            if replica_handle._actor_id != target_id:
-                await new_queue.put(replica_handle)
+            for replica_handle in self.worker_queues[backend]:
+                if replica_handle._actor_id != target_id:
+                    await new_queue.put(replica_handle)
 
-        self.worker_queues[backend] = new_queue
-        await replica_handle.__ray_terminate__.remote()
+            self.worker_queues[backend] = new_queue
+            # TODO: consider await this with timeout, or use ray_kill
+            replica_handle.__ray_terminate__.remote()
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
