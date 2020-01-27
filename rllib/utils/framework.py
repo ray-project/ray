@@ -91,5 +91,7 @@ def try_import_torch(error=False):
         import torch
         import torch.nn as nn
         return torch, nn
-    except ImportError:
+    except ImportError as e:
+        if error:
+            raise e
         return None, None
