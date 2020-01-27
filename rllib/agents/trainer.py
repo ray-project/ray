@@ -415,7 +415,7 @@ class Trainer(Trainable):
 
             logger_creator = default_logger_creator
 
-        Trainable.__init__(self, config, logger_creator)
+        super().__init__(config, logger_creator)
 
     @classmethod
     @override(Trainable)

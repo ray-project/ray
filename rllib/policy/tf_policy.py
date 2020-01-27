@@ -103,7 +103,7 @@ class TFPolicy(Policy):
                 applying gradients. Otherwise we run all update ops found in
                 the current variable scope.
         """
-        super(TFPolicy, self).__init__(observation_space, action_space, config)
+        super().__init__(observation_space, action_space, config)
         self.model = model
         self._sess = sess
         self._obs_input = obs_input
