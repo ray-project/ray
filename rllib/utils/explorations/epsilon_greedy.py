@@ -73,7 +73,8 @@ class EpsilonGreedy(Exploration):
                                action_dist=None,
                                is_exploring=True,
                                time_step=None):
-        q_values = model.q_value_head.output[0]
+        # TODO(sven): This is hardcoded. Put a meaningful error, in case model API is not as required.
+        q_values = model.q_value_head(model._last_output)[0]
         if self.framework == "tf":
             return self._get_tf_exploration_action_op(action, is_exploring,
                                                       time_step, q_values)

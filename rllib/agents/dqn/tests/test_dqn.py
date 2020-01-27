@@ -3,12 +3,6 @@ import unittest
 
 import ray
 import ray.rllib.agents.dqn as dqn
-from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.models.tf.tf_action_dist import Categorical
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils import check, fc
-
 
 class TestPDQN(unittest.TestCase):
 
