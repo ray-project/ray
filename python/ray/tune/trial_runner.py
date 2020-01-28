@@ -9,6 +9,7 @@ import types
 
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
+from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
@@ -64,54 +65,6 @@ class _TuneFunctionDecoder(json.JSONDecoder):
 
     def _from_cloudpickle(self, obj):
         return cloudpickle.loads(hex_to_binary(obj["value"]))
-
-
-class Stopper:
-    """Base class for implementing a Tune experiment stopper.
-
-    Allows users to implement experiment-level stopping via ``stop_all``. By
-    default, this class does not stop any trials.
-
-    .. code-block:: python
-
-        import time
-        from ray import tune
-        from ray.tune import Stopper
-
-        class TimeStopper(Stopper):
-                def __init__(self):
-                    self._start = time.time()
-                    self._deadline = 300
-
-                def stop_all(self):
-                    return time.time() - self._start > self.deadline
-
-        tune.run(Trainable, num_samples=200, stop=TimeStopper())
-
-    """
-
-    def __call__(self, trial_id, result):
-        return False
-
-    def stop_all(self):
-        return False
-
-
-class FunctionStopper(Stopper):
-    def __init__(self, function):
-        self._fn = function
-
-    def __call__(self, trial_id, result):
-        return self._fn(trial_id, result)
-
-    @classmethod
-    def is_valid_function(cls, fn):
-        is_valid = callable(fn) and not issubclass(type(fn), Stopper)
-        if hasattr(fn, "stop_all"):
-            raise ValueError(
-                "Stop object must be ray.tune.Stopper subclass to be detected "
-                "correctly.")
-        return is_valid
 
 
 class TrialRunner:
@@ -200,7 +153,7 @@ class TrialRunner:
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
                                         remote_checkpoint_dir, sync_to_cloud)
-        self._stopper = stopper or Stopper()
+        self._stopper = stopper or NoopStopper()
         self._resumed = False
 
         if self._validate_resume(resume_type=resume):
