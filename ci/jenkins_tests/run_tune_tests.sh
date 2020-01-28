@@ -122,9 +122,10 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/python/ray/tune/examples/skopt_example.py \
     --smoke-test
 
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/pbt_memnn_example.py \
-    --smoke-test
+# Commenting out because flaky
+# $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+#     python /ray/python/ray/tune/examples/pbt_memnn_example.py \
+#     --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/tune/examples/pbt_convnet_example.py \
