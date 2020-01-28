@@ -66,7 +66,6 @@ class ObjectStoreNotificationManager {
   std::vector<std::function<void(const ray::ObjectID &)>> rem_handlers_;
 
   plasma::PlasmaClient store_client_;
-  int c_socket_;
   int64_t length_;
   int64_t num_adds_processed_;
   int64_t num_removes_processed_;

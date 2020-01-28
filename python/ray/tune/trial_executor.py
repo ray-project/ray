@@ -196,7 +196,7 @@ class TrialExecutor:
 
         Assumes the trial is running.
 
-        Return:
+        Returns:
             Result object for the trial.
         """
         raise NotImplementedError
@@ -219,7 +219,7 @@ class TrialExecutor:
             trial (Trial): Trial to be restored.
             checkpoint (Checkpoint): Checkpoint to restore from.
 
-        Return:
+        Returns:
             False if error occurred, otherwise return True.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
@@ -236,9 +236,8 @@ class TrialExecutor:
                 PERSISTENT.
             result (dict): The state of this trial as a dictionary to be saved.
 
-        Return:
-            A Python object if storage==Checkpoint.MEMORY otherwise
-            a path to the checkpoint.
+        Returns:
+            A Checkpoint object.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "save() method")
@@ -249,7 +248,7 @@ class TrialExecutor:
         Args:
             trial (Trial): The state of this trial to be saved.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "

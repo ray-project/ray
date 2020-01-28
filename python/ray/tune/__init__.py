@@ -7,6 +7,8 @@ from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.suggest import grid_search
+from ray.tune.progress_reporter import (ProgressReporter, CLIReporter,
+                                        JupyterNotebookReporter)
 from ray.tune.sample import (function, sample_from, uniform, choice, randint,
                              randn, loguniform)
 
@@ -31,4 +33,7 @@ __all__ = [
     "loguniform",
     "ExperimentAnalysis",
     "Analysis",
+    "CLIReporter",
+    "JupyterNotebookReporter",
+    "ProgressReporter",
 ]
