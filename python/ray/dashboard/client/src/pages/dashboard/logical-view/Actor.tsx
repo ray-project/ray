@@ -46,6 +46,10 @@ const styles = (theme: Theme) =>
     },
     webuiDisplay: {
       fontSize: "0.875rem"
+    },
+    inlineHTML: {
+      fontSize: "0.875rem",
+      display: "inline"
     }
   });
 
@@ -184,7 +188,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           let valueRendered = valueParsed["message"];
           if (valueParsed["dtype"] === "html") {
             valueRendered = (
-              <div dangerouslySetInnerHTML={{ __html: valueRendered }}></div>
+              <div
+                className={classes.inlineHTML}
+                dangerouslySetInnerHTML={{ __html: valueRendered }}
+              ></div>
             );
           }
 
