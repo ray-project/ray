@@ -11,8 +11,7 @@ tf = try_import_tf()
 def post_process_advantages(policy, sample_batch, other_agent_batches=None,
                             episode=None):
     """This adds the "advantages" column to the sample train_batch."""
-    return compute_advantages(sample_batch, 0.0, policy.config["gamma"],
-                              use_gae=False)
+    return compute_advantages(sample_batch, 0.0, policy.config["gamma"], use_gae=False, use_critic=False)
 
 
 def pg_tf_loss(policy, model, dist_class, train_batch):
