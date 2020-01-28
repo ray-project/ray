@@ -270,7 +270,8 @@ class Trial:
         """Init logger."""
         if not self.result_logger:
             if not self.logdir:
-                self.logdir = Trial.create_logdir(str(self), self.local_dir)
+                self.logdir = Trial.create_logdir(
+                    str(self) + "_" + self.experiment_tag, self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 
