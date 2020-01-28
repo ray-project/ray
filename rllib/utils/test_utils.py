@@ -66,7 +66,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             assert bool(x) is bool(y), \
                 "ERROR: x ({}) is not y ({})!".format(x, y)
     # Nones or primitives.
-    elif x is None or y is None or isinstance(x, (str, int, float)):
+    elif x is None or y is None or isinstance(x, (str, int)):
         if false is True:
             assert x != y, "ERROR: x ({}) is the same as y ({})!".format(x, y)
         else:
