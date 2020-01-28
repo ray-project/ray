@@ -210,7 +210,7 @@ def build_eager_tf_policy(name,
                 if not make_model:
                     raise ValueError(
                         "make_model is required if action_sampler_fn is given")
-                self.dist_class = None
+                self.dist_class = logit_dim = None
             else:
                 self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"])
@@ -252,8 +252,8 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_with_dummy_batch(
-                dummy_batch, dummy_states, dummy_seq_len)
+            self._initialize_loss_with_dummy_batch(dummy_batch, dummy_states,
+                                                   dummy_seq_len)
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -471,63 +471,16 @@ def build_eager_tf_policy(name,
             return fetches
 
         def _initialize_loss_with_dummy_batch(self, batch, states, seq_len):
-            # Add dummy actions and rewards.# Dummy forward pass to initialize any policy attributes, etc.
-            #action_dtype, action_shape = ModelCatalog.get_action_shape(
-            #    self.action_space)
-
-            #dummy_batch = {
-            #    SampleBatch.CUR_OBS: tf.convert_to_tensor(
-            #        np.array([observation_space.sample()])),
-            #    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-            #        [_flatten_action(action_space.sample())]),
-            #    SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
-            #}
-            #dummy_states = [
-            #    tf.convert_to_tensor(np.array([s]))
-            #    for s in self.model.get_initial_state()
-            #]
-            #dummy_seq_len = tf.convert_to_tensor([1])
-
-            #dummy_batch = {
-            #    SampleBatch.CUR_OBS: tf.convert_to_tensor(
-            #        np.array([self.observation_space.sample()])),
-            #    SampleBatch.NEXT_OBS: tf.convert_to_tensor(
-            #        np.array([self.observation_space.sample()])),
-            #    SampleBatch.DONES: tf.convert_to_tensor(
-            #        np.array([False], dtype=np.bool)),
-            #    SampleBatch.ACTIONS: tf.convert_to_tensor(
-            #        np.zeros(
-            #            (1, ) + action_shape[1:],
-            #            dtype=action_dtype.as_numpy_dtype())),
-            #    SampleBatch.REWARDS: tf.convert_to_tensor(
-            #        np.array([0], dtype=np.float32)),
-            #}
-            #if obs_include_prev_action_reward:
-            #    dummy_batch.update({
-            #        SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
-            #        SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
-            #    })
-            #state_init = self.get_initial_state()
             if states:
                 for i, h in enumerate(states):
                     batch["state_in_{}".format(i)] = h
                     batch["state_out_{}".format(i)] = h
-            #state_batches = []
-            #for i, h in enumerate(state_init):
-            #    dummy_batch["state_in_{}".format(i)] = tf.convert_to_tensor(
-            #        np.expand_dims(h, 0))
-            #    dummy_batch["state_out_{}".format(i)] = tf.convert_to_tensor(
-            #        np.expand_dims(h, 0))
-            #    state_batches.append(
-            #        tf.convert_to_tensor(np.expand_dims(h, 0)))
                 batch["seq_lens"] = tf.convert_to_tensor(
                     np.array([1], dtype=np.int32))
 
             # for IMPALA which expects a certain sample batch size
-
             def tile_to(tensor, n):
-                return tf.tile(tensor,
-                               [n] + [1 for _ in tensor.shape[1:]])  #.as_list()[1:]])
+                return tf.tile(tensor, [n] + [1 for _ in tensor.shape[1:]])
 
             if get_batch_divisibility_req:
                 batch = {

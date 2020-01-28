@@ -1,5 +1,7 @@
+# Explains Issue:
+# https://github.com/ray-project/ray/issues/6928
+
 import numpy as np
-import gym
 
 from ray.rllib.models import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -98,7 +100,7 @@ if __name__ == "__main__":
             "eager": True,
             "model": {
                 "custom_model": "my_model",
-                "use_lstm": True
+                #"use_lstm": True
             },
             "vf_share_layers": False,
             "num_workers": 0,  # no parallelism
