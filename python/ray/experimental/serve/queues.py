@@ -299,11 +299,3 @@ class CentralizedQueues:
                     _make_future_unwrapper(
                         client_futures=[req.async_future for req in requests],
                         host_future=future))
-
-
-class CentralizedQueuesActor(CentralizedQueues):
-    """
-    A wrapper class for converting wrapper policy classes to ray
-    actors. This is needed to make `flush` call asynchronous.
-    """
-    pass
