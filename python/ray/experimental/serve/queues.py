@@ -147,13 +147,12 @@ class CentralizedQueues:
 
         # This lock guarantee that only one flush operation can happen at a
         # time. Without the lock, multiple flush operation can pop from the
-        # same buffer_queue and worker_queue and create deadlock. For example
+        # same buffer_queue and worker_queue and create deadlock. For example,
         # an operation holding the only query and the other flush operation
         # holding the only idle replica. Additionally, allowing only one flush
         # operation at a time simplifies design overhead for custom queuing and
         # batching polcies.
         self.flush_lock = asyncio.Lock()
-        self.remove_replica_lock = asyncio.Lock()
 
     def is_ready(self):
         return True
@@ -191,7 +190,8 @@ class CentralizedQueues:
         await self.flush()
 
     async def remove_and_destory_replica(self, backend, replica_handle):
-        with self.remove_replica_lock:
+        # We need this lock because we modify worker_queue here.
+        with self.flush_lock:
             new_queue = asyncio.Queue()
             target_id = replica_handle._actor_id
 
@@ -287,6 +287,7 @@ class CentralizedQueues:
             if max_batch_size is None:  # No batching
                 request = buffer_queue.pop(0)
                 future = worker._ray_serve_call.remote(request).as_future()
+                # chaining satisfies request.async_future with future result.
                 asyncio.futures._chain_future(future, request.async_future)
             else:
                 real_batch_size = min(buffer_queue.qsize(), max_batch_size)
