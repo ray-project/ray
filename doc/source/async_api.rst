@@ -63,8 +63,8 @@ To do so, you can define an actor with async method:
 
 Under the hood, Ray runs all the method inside a single python event loop.
 Please note that running blocking ``ray.get`` or ``ray.wait`` inside async
-actor method is not allowed. ``ray.get`` will block the execution of the event
-loop.
+actor method is not allowed, because ``ray.get`` will block the execution
+of the event loop.
 
 You can limit the number of concurrent task running at once using the
 ``max_concurrency`` flag. By default, only 1000 tasks can be running at once.
