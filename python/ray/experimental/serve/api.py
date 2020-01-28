@@ -444,3 +444,16 @@ def stat(percentiles=[50, 90, 95],
     """
     return ray.get(global_state.init_or_get_metric_monitor().collect.remote(
         percentiles, agg_windows_seconds))
+
+
+class route:
+    def __init__(self, url_route):
+        self.route = url_route
+
+    def __call__(self, func_or_class):
+        name = func_or_class.__name__
+        backend_tag = "{}:v0".format(name)
+
+        create_backend(func_or_class, backend_tag)
+        create_endpoint(name, self.route)
+        link(name, backend_tag)
