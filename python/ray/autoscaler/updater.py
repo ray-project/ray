@@ -257,9 +257,6 @@ class SSHCommandRunner:
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                # logger.error(self.log_prefix +
-                #              "Command failed: \n\n  {}\n".format(quoted_cmd))
-                # sys.exit(1)
                 raise Exception("Command failed: \n\n  {}\n".format(quoted_cmd))
             else:
                 raise

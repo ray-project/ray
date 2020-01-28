@@ -85,42 +85,28 @@ def dashboard(cluster_config_file, cluster_name, port):
     else:
         dashboard_port = remote_port
 
-    # available = False
-    # sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # while not available:
-    #     try:
-    #         socket.getaddrinfo("example.org", 80, proto=socket.IPPROTO_TCP)[0]
-    #         addr = socket.getaddrinfo("localhost", dashboard_port, proto=socket.IPPROTO_TCP)[0]
-    #         sock.bind(addr)
-    #         available = True
-    #     except OSError as e:
-    #         click.echo(e)
-    #         click.echo("Port % already taken, trying different port..." % dashboard_port);
-    #         dashboard_port += 1
-    #     finally:
-    #         sock.close()
-
-
     port_taken = True
 
+    # Figure out what's the first port we can use
     while port_taken:
         try:
             port_forward = [ (dashboard_port, remote_port), ]
-            click.echo("Dashboard at: localhost:%i" % port_forward[0][0])
-            exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
+            click.echo("Dashboard at: localhost:{}".format(port_forward[0][0]))
+            # We want to probe with a no-op that returns quickly to avoid exceptions caused by network errors
+            exec_cluster(cluster_config_file, ":", docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
             port_taken=False
         except Exception as e:
-            print("Failed to forward dashboard, trying a new port...")
+            click.echo("Failed to forward dashboard, trying a new port...")
             port_taken = True
             dashboard_port += 1
             pass
 
     port_forward = [ (dashboard_port, remote_port), ]
-    click.echo("Dashboard at: localhost:%i" % port_forward[0][0])
+    click.echo("Dashboard at: localhost:{}".format(port_forward[0][0]))
 
-    # while True:
-    #     exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
-    #     click.echo("Connection broke, restarting...")
+    while True:
+        exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
+        click.echo("Connection broke, restarting...")
 
 
 @cli.command()
