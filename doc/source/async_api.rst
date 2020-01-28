@@ -1,78 +1,94 @@
 Async API (Experimental)
 ========================
 
-Since Python 3.5, it is possible to write concurrent code using the ``async/await`` `syntax <https://docs.python.org/3/library/asyncio.html>`__.
+Since Python 3.5, it is possible to write concurrent code using the
+``async/await`` `syntax <https://docs.python.org/3/library/asyncio.html>`__.
 
-This document describes Ray's support for asyncio, which enables integration with popular async frameworks (e.g., aiohttp, aioredis, etc.) for high performance web and prediction serving.
+This document describes Ray's support for asyncio, which enables integration
+with popular async frameworks (e.g., aiohttp, aioredis, etc.) for highly
+concurrent workload.
 
+ObjectID == asyncio.Future
+--------------------------
+In asyncio context, ObjectIDs can be translated to asyncio.Future. This feature
+make it possible to ``await`` on ray futures in existing concurrent
+applications.
 
-Converting Ray objects into asyncio futures
--------------------------------------------
-
-Ray object IDs can be converted into asyncio futures with ``ray.experimental.async_api``.
+Instead of:
 
 .. code-block:: python
 
-  import asyncio
-  import time
-  import ray
-  from ray.experimental import async_api
+    @ray.remote
+    def some_task():
+        return 1
 
-  @ray.remote
-  def f():
-      time.sleep(1)
-      return {'key1': ['value']}
+    ray.get(some_task.remote())
+    ray.wait([some_task.remote()])
 
-  ray.init()
-  future = async_api.as_future(f.remote())
-  asyncio.get_event_loop().run_until_complete(future)  # {'key1': ['value']}
+you can do:
+
+.. code-block:: python
+
+    @ray.remote
+    def some_task():
+        return 1
+
+    await some_task.remote()
+    await asyncio.wait([some_task.remote()])
+
+Please refer to `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
+for more patterns including timeouts and ``asyncio.gather``.
 
 
-.. autofunction:: ray.experimental.async_api.as_future
+Async Actor
+-----------
+Ray also support concurrent multitasking by executing many actor tasks at once.
+To do so, you can define an actor with async method:
 
+.. code-block:: python
 
-Example Usage
--------------
+    import asyncio
 
-+----------------------------------------+-----------------------------------------------------+
-| **Basic Python**                       | **Distributed with Ray**                            |
-+----------------------------------------+-----------------------------------------------------+
-| .. code-block:: python                 | .. code-block:: python                              |
-|                                        |                                                     |
-|   # Execute f serially.                |   # Execute f in parallel.                          |
-|                                        |                                                     |
-|                                        |                                                     |
-|   def f():                             |   @ray.remote                                       |
-|     time.sleep(1)                      |   def f():                                          |
-|     return 1                           |       time.sleep(1)                                 |
-|                                        |       return 1                                      |
-|                                        |                                                     |
-|                                        |   ray.init()                                        |
-|   results = [f() for i in range(4)]    |   results = ray.get([f.remote() for i in range(4)]) |
-+----------------------------------------+-----------------------------------------------------+
-| **Async Python**                       | **Async Ray**                                       |
-+----------------------------------------+-----------------------------------------------------+
-| .. code-block:: python                 | .. code-block:: python                              |
-|                                        |                                                     |
-|   # Execute f asynchronously.          |   # Execute f asynchronously with Ray/asyncio.      |
-|                                        |                                                     |
-|                                        |   from ray.experimental import async_api            |
-|                                        |                                                     |
-|                                        |   @ray.remote                                       |
-|   async def f():                       |   def f():                                          |
-|       await asyncio.sleep(1)           |       time.sleep(1)                                 |
-|       return 1                         |       return 1                                      |
-|                                        |                                                     |
-|                                        |   ray.init()                                        |
-|   loop = asyncio.get_event_loop()      |   loop = asyncio.get_event_loop()                   |
-|   tasks = [f() for i in range(4)]      |   tasks = [async_api.as_future(f.remote())          |
-|                                        |            for i in range(4)]                       |
-|   results = loop.run_until_complete(   |   results = loop.run_until_complete(                |
-|       asyncio.gather(tasks))           |       asyncio.gather(tasks))                        |
-+----------------------------------------+-----------------------------------------------------+
+    @ray.remote
+    class AsyncActor:
+        async def run_task(self):
+            print("started")
+            await asyncio.sleep(1) # Network, I/O task here
+            print("ended")
+
+    actor = AsyncActor.remote()
+    # Expect all 50 tasks started at once, after 1 seconds
+    # they should finish at the same time
+    ray.get([actor.run_task.remote() for _ in range(50)])
+
+Under the hood, Ray runs all the method inside a single python event loop.
+Please note that running blocking ``ray.get`` or ``ray.wait`` inside async
+actor method is not allowed. ``ray.get`` will block the execution of the event
+loop.
+
+You can limit the number of concurrent task running at once using the
+``max_concurrency`` flag. By default, only 1000 tasks can be running at once.
+
+.. code-block:: python
+
+    import asyncio
+
+    @ray.remote
+    class AsyncActor:
+        async def run_task(self):
+            print("started")
+            await asyncio.sleep(1) # Network, I/O task here
+            print("ended")
+
+    actor = AsyncActor.options(max_concurreny=10).remote()
+
+    # Expect only 10 tasks will be running at once.
+    ray.get([actor.run_task.remote() for _ in range(50)])
 
 
 Known Issues
 ------------
 
-Async API support is experimental, and we are working to improve its performance. Please `let us know <https://github.com/ray-project/ray/issues>`__ any issues you encounter.
+Async API support is experimental, and we are working to improve it.
+Please `let us know <https://github.com/ray-project/ray/issues>`__
+any issues you encounter.
