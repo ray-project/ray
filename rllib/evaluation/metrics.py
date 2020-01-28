@@ -97,6 +97,7 @@ def summarize_episodes(episodes, new_episodes):
     policy_rewards = collections.defaultdict(list)
     custom_metrics = collections.defaultdict(list)
     perf_stats = collections.defaultdict(list)
+    hist_stats = collections.defaultdict(list)
     for episode in episodes:
         episode_lengths.append(episode.episode_length)
         episode_rewards.append(episode.episode_reward)
@@ -107,6 +108,8 @@ def summarize_episodes(episodes, new_episodes):
         for (_, policy_id), reward in episode.agent_rewards.items():
             if policy_id != DEFAULT_POLICY_ID:
                 policy_rewards[policy_id].append(reward)
+        for k, v in episode.hist_data.items():
+            hist_stats[k] += v
     if episode_rewards:
         min_reward = min(episode_rewards)
         max_reward = max(episode_rewards)
@@ -125,8 +128,8 @@ def summarize_episodes(episodes, new_episodes):
         policy_reward_max[policy_id] = np.max(rewards)
 
     for k, v_list in custom_metrics.copy().items():
-        custom_metrics[k + "_mean"] = np.mean(v_list)
         filt = [v for v in v_list if not np.isnan(v)]
+        custom_metrics[k + "_mean"] = np.mean(filt)
         if filt:
             custom_metrics[k + "_min"] = np.min(filt)
             custom_metrics[k + "_max"] = np.max(filt)
@@ -158,6 +161,7 @@ def summarize_episodes(episodes, new_episodes):
         policy_reward_max=policy_reward_max,
         policy_reward_mean=policy_reward_mean,
         custom_metrics=dict(custom_metrics),
+        hist_stats=dict(hist_stats),
         sampler_perf=dict(perf_stats),
         off_policy_estimator=dict(estimators))
 
