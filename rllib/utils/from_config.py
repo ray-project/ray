@@ -92,7 +92,8 @@ def from_config(cls, config=None, **kwargs):
     if type_ is None:
         # We have a default constructor that was defined directly by cls
         # (not by its children).
-        if cls is not None and cls.__default_constructor__ is not None and \
+        if cls is not None and hasattr(cls, "__default_constructor__") and \
+                cls.__default_constructor__ is not None and \
                 ctor_args == [] and \
                 (
                     not hasattr(cls.__bases__[0], "__default_constructor__")
@@ -199,11 +200,12 @@ def from_file(cls, filename, *args, **kwargs):
 
 
 def lookup_type(cls, type_):
-    if cls is not None and isinstance(cls.__type_registry__, dict) and \
+    if cls is not None and hasattr(cls, "__type_registry__") and \
+            isinstance(cls.__type_registry__, dict) and \
             (
                 type_ in cls.__type_registry__ or (
                     isinstance(type_, str) and
-                    re.sub("[\W_]", "", type_.lower())
+                    re.sub("[\\W_]", "", type_.lower())
                     in cls.__type_registry__
                 )
             ):
