@@ -7,12 +7,8 @@ Number of trials: 4 (4 TERMINATED)
 +---------------------------------------------+------------+-------+-----------------------------+--------+------------------+-------------+----------+
 | Trial name                                  | status     | loc   | env                         |   iter |   total time (s) |   timesteps |   reward |
 |---------------------------------------------+------------+-------+-----------------------------+--------+------------------+-------------+----------|
-| IMPALA_BreakoutNoFrameskip-v4_511a1830      | TERMINATED |       | BreakoutNoFrameskip-v4      |     39 |
-      699.024 |     3050000 |   44.21  |
-| IMPALA_BeamRiderNoFrameskip-v4_511b6726     | TERMINATED |       | BeamRiderNoFrameskip-v4     |     37 |
-      664.972 |     3083500 |  449.72  |
-| IMPALA_QbertNoFrameskip-v4_511bd44a         | TERMINATED |       | QbertNoFrameskip-v4         |     40 |
-      707.975 |     3088000 |  495.464 |
-| IMPALA_SpaceInvadersNoFrameskip-v4_511c4858 | TERMINATED |       | SpaceInvadersNoFrameskip-v4 |     38 |
-      680.926 |     3004500 |  380.35  |
+| IMPALA_BreakoutNoFrameskip-v4_511a1830      | TERMINATED |       | BreakoutNoFrameskip-v4      |     39 |      699.024 |     3050000 |   44.21  |
+| IMPALA_BeamRiderNoFrameskip-v4_511b6726     | TERMINATED |       | BeamRiderNoFrameskip-v4     |     37 |      664.972 |     3083500 |  449.72  |
+| IMPALA_QbertNoFrameskip-v4_511bd44a         | TERMINATED |       | QbertNoFrameskip-v4         |     40 |      707.975 |     3088000 |  495.464 |
+| IMPALA_SpaceInvadersNoFrameskip-v4_511c4858 | TERMINATED |       | SpaceInvadersNoFrameskip-v4 |     38 |      680.926 |     3004500 |  380.35  |
 +---------------------------------------------+------------+-------+-----------------------------+--------+------------------+-------------+----------+
