@@ -39,7 +39,7 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True, us
         traj[key] = np.stack(rollout[key])
 
     assert SampleBatch.VF_PREDS in rollout or not use_critic, "use_critic=True but values not found"
-    assert use_critic or not use_gae, "Can't use gae without a using value function"
+    assert use_critic or not use_gae, "Can't use gae without using a value function"
 
     if use_gae:
         vpred_t = np.concatenate(
