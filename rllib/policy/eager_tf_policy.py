@@ -229,32 +229,31 @@ def build_eager_tf_policy(name,
 
             # Initialize the model (create weights using a dummy forward pass).
             dummy_batch = {
-                SampleBatch.CUR_OBS: np.array(
-                    [self.observation_space.sample()]),
-                SampleBatch.NEXT_OBS: np.array(
-                    [self.observation_space.sample()]),
-                SampleBatch.ACTIONS: [
-                    _flatten_action(self.action_space.sample())
-                ],
-                SampleBatch.PREV_ACTIONS: [
-                    _flatten_action(self.action_space.sample())
-                ],
-                SampleBatch.REWARDS: np.array([0.]),
-                SampleBatch.PREV_REWARDS: np.array([0.]),
-                SampleBatch.DONES: np.array([False], dtype=np.bool)
+                SampleBatch.CUR_OBS: tf.convert_to_tensor(
+                    np.array([self.observation_space.sample()])),
+                SampleBatch.NEXT_OBS: tf.convert_to_tensor(
+                    np.array([self.observation_space.sample()])),
+                SampleBatch.ACTIONS: tf.convert_to_tensor(
+                    [_flatten_action(self.action_space.sample())]),
+                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+                    [_flatten_action(self.action_space.sample())]),
+                SampleBatch.REWARDS: tf.convert_to_tensor([0.]),
+                SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
+                SampleBatch.DONES: tf.convert_to_tensor([False])
             }
             dummy_states = [
-                np.array([s]) for s in self.model.get_initial_state()
+                tf.convert_to_tensor(np.array([s]))
+                for s in self.model.get_initial_state()
             ]
-            dummy_seq_len = np.array([1], dtype=np.int32)
+            dummy_seq_len = tf.convert_to_tensor([1])
             self.model(dummy_batch, dummy_states, dummy_seq_len)
 
             # Loss and optimizer initialization sequence.
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_with_dummy_batch(dummy_batch, dummy_states,
-                                                   dummy_seq_len)
+            self._initialize_loss_with_dummy_batch(
+                dummy_batch, dummy_states, dummy_seq_len)
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -528,7 +527,7 @@ def build_eager_tf_policy(name,
 
             def tile_to(tensor, n):
                 return tf.tile(tensor,
-                               [n] + [1 for _ in tensor.shape.as_list()[1:]])
+                               [n] + [1 for _ in tensor.shape[1:]])  #.as_list()[1:]])
 
             if get_batch_divisibility_req:
                 batch = {
