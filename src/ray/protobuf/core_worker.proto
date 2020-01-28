@@ -147,6 +147,25 @@ message GetCoreWorkerStatsReply {
   CoreWorkerStats core_worker_stats = 1;
 }
 
+message WaitForRefRemovedRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ObjectID of the pinned object.
+  bytes object_id = 2;
+}
+
+message ObjectReference {
+  bytes object_id = 1;
+  bytes owner_id = 2;
+  Address owner_address = 3;
+  bool has_local_ref = 4;
+  repeated Address borrowers = 5;
+}
+
+message WaitForRefRemovedReply {
+  repeated ObjectReference borrower_refs = 1;
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -165,4 +184,5 @@ service CoreWorkerService {
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
+  rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
 }

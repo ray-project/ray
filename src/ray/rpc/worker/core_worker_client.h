@@ -40,6 +40,11 @@ class CoreWorkerClientInterface;
 // TODO(swang): Remove and replace with rpc::Address.
 class WorkerAddress {
  public:
+  WorkerAddress(const rpc::Address &address)
+    : ip_address(address.ip_address()),
+      port(address.port()),
+      worker_id(WorkerID::FromBinary(address.worker_id())),
+      raylet_id(ClientID::FromBinary(address.raylet_id())) {}
   template <typename H>
   friend H AbslHashValue(H h, const WorkerAddress &w) {
     return H::combine(std::move(h), w.ip_address, w.port, w.worker_id, w.raylet_id);
@@ -140,6 +145,12 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  virtual ray::Status WaitForRefRemoved(
+      const WaitForRefRemovedRequest &request,
+      const ClientCallback<WaitForRefRemovedReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ~CoreWorkerClientInterface(){};
 };
 
@@ -171,6 +182,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   RPC_CLIENT_METHOD(CoreWorkerService, WaitForObjectEviction, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, GetCoreWorkerStats, grpc_client_, override)
+
+  RPC_CLIENT_METHOD(CoreWorkerService, WaitForRefRemoved, grpc_client_, override)
 
   ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
                             const ClientCallback<PushTaskReply> &callback) override {

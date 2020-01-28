@@ -7,6 +7,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/grpc_server.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -24,11 +26,25 @@ class ReferenceCounter {
         : owned_by_us(true), owner({owner_id, owner_address}) {}
 
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in.size() + borrowers.size();
+      return local_ref_count + submitted_task_ref_count + contained_in.size();
     }
 
     size_t NumBorrowers() const {
       return borrowers.size();
+    }
+
+    rpc::ObjectReference ToProto() const {
+      rpc::ObjectReference ref;
+      if (owner.has_value()) {
+        ref.set_owner_id(owner->first.Binary());
+        ref.mutable_owner_address()->CopyFrom(owner->second);
+      }
+      bool has_local_ref = RefCount() > 0;
+      ref.set_has_local_ref(has_local_ref);
+      for (const auto &borrower : borrowers) {
+        ref.add_borrowers()->CopyFrom(borrower.ToProto());
+      }
+      return ref;
     }
 
     /// The local ref count for the ObjectID in the language frontend.
@@ -48,13 +64,15 @@ class ReferenceCounter {
 
     /// Callback for a borrower that is called when this process is no longer a
     /// borrower.
-    std::function<void(const ObjectID &)> on_local_ref_deleted;
+    std::function<void()> on_local_ref_deleted;
     absl::flat_hash_set<ObjectID> contained_in;
     absl::flat_hash_set<ObjectID> contains;
-    absl::flat_hash_set<WorkerID> borrowers;
+    absl::flat_hash_set<rpc::WorkerAddress> borrowers;
   };
 
-  ReferenceCounter() {}
+  using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+
+  ReferenceCounter(rpc::ClientFactoryFn client_factory = nullptr) : client_factory_(client_factory) {}
 
   ~ReferenceCounter() {}
 
@@ -86,7 +104,9 @@ class ReferenceCounter {
   /// \param[in] object_ids The object IDs to remove references for.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
-                                     std::vector<ObjectID> *deleted)
+    const rpc::Address &borrower,
+    const ReferenceTable &borrower_refs,
+    std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -148,39 +168,51 @@ class ReferenceCounter {
       LOCKS_EXCLUDED(mutex_);
 
 
-  bool PopBorrowerRefs(ObjectID &object_id, absl::flat_hash_map<ObjectID, Reference> *borrower_refs);
+  ReferenceTable PopBorrowerRefs(const ObjectID &object_id);
 
-  void MergeBorrowerRefs(const rpc::Address &borrower, const absl::flat_hash_map<ObjectID, Reference> &borrower_refs);
-
-  void WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids, bool ray_put = true);
+  void WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids, bool ray_put = true) LOCKS_EXCLUDED(mutex_);
 
   // Handler for when a borrower's ref count goes to 0.
-  void HandleWaitForRefRemoved(const ObjectID &object_id, const absl::optional<ObjectID> contained_in_id);
+  void HandleWaitForRefRemoved(const ObjectID &object_id, const absl::optional<ObjectID> contained_in_id, rpc::WaitForRefRemovedReply *reply,
+    rpc::SendReplyCallback send_reply_callback) LOCKS_EXCLUDED(mutex_);
 
-  const Reference &GetReference(const ObjectID &object_id) {
+  const Reference &GetReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_) {
     const auto it = object_id_refs_.find(object_id);
     RAY_CHECK(it != object_id_refs_.end());
     return it->second;
   }
 
-  bool HasReference(const ObjectID &object_id) {
+  bool HasReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_) {
     const auto it = object_id_refs_.find(object_id);
     return it != object_id_refs_.end();
   }
 
  private:
+  bool PopBorrowerRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void MergeBorrowerRefs(const rpc::WorkerAddress &borrower, const ReferenceTable &borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Helper method to delete an entry from the reference map and run any necessary
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
   /// iterator.
-  void DeleteReferenceInternal(absl::flat_hash_map<ObjectID, Reference>::iterator entry,
+  void DeleteReferenceInternal(ReferenceTable::iterator entry,
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Factory for producing new core worker clients.
+  rpc::ClientFactoryFn client_factory_;
+
+  /// Map from worker address to core worker client. The owner of an object
+  /// uses this client to request a notification from borrowers once the
+  /// borrower's ref count for the ID goes to 0.
+  absl::flat_hash_map<rpc::WorkerAddress,
+                      std::shared_ptr<rpc::CoreWorkerClientInterface>>
+      borrower_cache_ GUARDED_BY(mu_);
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
-  absl::flat_hash_map<ObjectID, Reference> object_id_refs_ GUARDED_BY(mutex_);
+  ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

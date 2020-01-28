@@ -171,7 +171,11 @@ void TaskManager::ShutdownIfNeeded() {
 
 void TaskManager::RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids) {
   std::vector<ObjectID> deleted;
-  reference_counter_->RemoveSubmittedTaskReferences(object_ids, &deleted);
+  // TODO: Fill in the borrower address.
+  reference_counter_->RemoveSubmittedTaskReferences(object_ids,
+      rpc::Address(),
+      ReferenceCounter::ReferenceTable(),
+      &deleted);
   in_memory_store_->Delete(deleted);
 }
 

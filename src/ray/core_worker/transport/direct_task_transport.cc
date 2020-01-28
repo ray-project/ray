@@ -117,10 +117,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             // We got a lease for a worker. Add the lease client state and try to
             // assign work to the worker.
             RAY_LOG(DEBUG) << "Lease granted " << task_id;
-            rpc::WorkerAddress addr = {
-                reply.worker_address().ip_address(), reply.worker_address().port(),
-                WorkerID::FromBinary(reply.worker_address().worker_id()),
-                ClientID::FromBinary(reply.worker_address().raylet_id())};
+            rpc::WorkerAddress addr(reply.worker_address());
             AddWorkerLeaseClient(addr, std::move(lease_client));
             auto resources_copy = reply.resource_mapping();
             OnWorkerIdle(addr, scheduling_key,
