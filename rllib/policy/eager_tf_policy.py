@@ -239,8 +239,8 @@ def build_eager_tf_policy(name,
                 SampleBatch.PREV_ACTIONS: [
                     _flatten_action(self.action_space.sample())
                 ],
-                SampleBatch.REWARDS: np.array([0.]),
-                SampleBatch.PREV_REWARDS: np.array([0.]),
+                SampleBatch.REWARDS: np.array([0.], dtype=np.float32),
+                SampleBatch.PREV_REWARDS: np.array([0.], dtype=np.float32),
                 SampleBatch.DONES: np.array([False], dtype=np.bool)
             }
             dummy_states = [
@@ -253,8 +253,8 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_with_dummy_batch(dummy_batch, dummy_states,
-                                                   dummy_seq_len)
+            self._initialize_loss_with_dummy_batch(
+                dummy_batch, dummy_states, dummy_seq_len)
             self._loss_initialized = True
 
             if optimizer_fn:
