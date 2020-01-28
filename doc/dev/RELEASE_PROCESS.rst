@@ -144,7 +144,7 @@ This document describes the process for creating new releases.
    scripts. Make sure that it is finding the version of Ray that you just
    installed by checking ``ray.__version__`` and ``ray.__file__``.
 
-   Do this at least for MacOS and Linux, as well as for Python 2 and Python 3.
+   Do this at least for MacOS and Linux.
 
 9. **Upload to PyPI:** Now that you've tested the wheels on the PyPI test
    repository, they can be uploaded to the main PyPI repository. Be careful,
