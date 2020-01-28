@@ -1,7 +1,7 @@
 import pytest
 import ray
-from ray.experimental.serve.queues import RandomPolicyQueue
-from ray.experimental.serve.queues import (RoundRobinPolicyQueue,
+from ray.experimental.serve.policy import (RandomPolicyQueue,
+                                          RoundRobinPolicyQueue,
                                            FixedPackingPolicyQueue)
 
 
@@ -21,14 +21,14 @@ def task_runner_mock_actor():
     actor = TaskRunnerMock.remote()
     yield actor
 
-
-def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
+@pytest.mark.asyncio
+async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     q = RandomPolicyQueue()
     q.link("svc", "backend")
 
-    result_object_id = q.enqueue_request("svc", 1, "kwargs", None)
-    q.dequeue_request("backend", task_runner_mock_actor)
-    got_work = ray.get(task_runner_mock_actor.get_recent_call.remote())
+    result_future = await q.enqueue_request("svc", 1, "kwargs", None)
+    await q.dequeue_request("backend", task_runner_mock_actor)
+    got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.request_args == 1
     assert got_work.request_kwargs == "kwargs"
 
