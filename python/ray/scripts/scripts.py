@@ -59,6 +59,21 @@ def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
     ray.utils.setup_logger(level, logging_format)
 
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def dashboard(cluster_config_file, cluster_name):
+    # Sleeping in a loop is preferable to `sleep infinity` because the latter
+    # only works on linux
+    cmd = "while true; do sleep 86400; done"
+    port_forward = [8265]
+    exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=list(port_forward))
+
 
 @cli.command()
 @click.option(
@@ -870,7 +885,7 @@ def stat(address):
             node_manager_pb2.GetNodeStatsRequest(), timeout=2.0)
         print(reply)
 
-
+cli.add_command(dashboard)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update, name="up")
