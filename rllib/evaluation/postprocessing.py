@@ -37,8 +37,9 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
     for key in rollout:
         traj[key] = np.stack(rollout[key])
 
+    assert SampleBatch.VF_PREDS in rollout, "Values not found in postprocessing.compute_advantages()!"
+
     if use_gae:
-        assert SampleBatch.VF_PREDS in rollout, "Values not found!"
         vpred_t = np.concatenate(
             [rollout[SampleBatch.VF_PREDS],
              np.array([last_r])])
@@ -54,10 +55,9 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True):
         rewards_plus_v = np.concatenate(
             [rollout[SampleBatch.REWARDS],
              np.array([last_r])])
-        traj[Postprocessing.ADVANTAGES] = discount(rewards_plus_v, gamma)[:-1]
-        # TODO(ekl): support using a critic without GAE
-        traj[Postprocessing.VALUE_TARGETS] = np.zeros_like(
-            traj[Postprocessing.ADVANTAGES])
+        discounted_returns = discount(rewards_plus_v, gamma)[:-1].copy().astype(np.float32)
+        traj[Postprocessing.VALUE_TARGETS] = discounted_returns
+        traj[Postprocessing.ADVANTAGES] = discounted_returns - rollout[SampleBatch.VF_PREDS]
 
     traj[Postprocessing.ADVANTAGES] = traj[
         Postprocessing.ADVANTAGES].copy().astype(np.float32)
