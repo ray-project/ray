@@ -3,6 +3,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
@@ -14,6 +15,45 @@ namespace ray {
 /// collection. This class is thread safe.
 class ReferenceCounter {
  public:
+  /// Metadata for an ObjectID reference in the language frontend.
+  struct Reference {
+    /// Constructor for a reference whose origin is unknown.
+    Reference() : owned_by_us(false) {}
+    /// Constructor for a reference that we created.
+    Reference(const TaskID &owner_id, const rpc::Address &owner_address)
+        : owned_by_us(true), owner({owner_id, owner_address}) {}
+
+    size_t RefCount() const {
+      return local_ref_count + submitted_task_ref_count + contained_in.size() + borrowers.size();
+    }
+
+    size_t NumBorrowers() const {
+      return borrowers.size();
+    }
+
+    /// The local ref count for the ObjectID in the language frontend.
+    size_t local_ref_count = 0;
+    /// The ref count for submitted tasks that depend on the ObjectID.
+    size_t submitted_task_ref_count = 0;
+    /// Whether we own the object. If we own the object, then we are
+    /// responsible for tracking the state of the task that creates the object
+    /// (see task_manager.h).
+    bool owned_by_us;
+    /// The object's owner, if we know it. This has no value if the object is
+    /// if we do not know the object's owner (because distributed ref counting
+    /// is not yet implemented).
+    absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    /// Callback that will be called when this ObjectID no longer has references.
+    std::function<void(const ObjectID &)> on_delete;
+
+    /// Callback for a borrower that is called when this process is no longer a
+    /// borrower.
+    std::function<void(const ObjectID &)> on_local_ref_deleted;
+    absl::flat_hash_set<ObjectID> contained_in;
+    absl::flat_hash_set<ObjectID> contains;
+    absl::flat_hash_set<WorkerID> borrowers;
+  };
+
   ReferenceCounter() {}
 
   ~ReferenceCounter() {}
@@ -72,7 +112,8 @@ class ReferenceCounter {
   /// \param[in] owner_id The ID of the owner of the object. This is either the
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
-  void AddBorrowedObject(const ObjectID &object_id, const TaskID &owner_id,
+  /// TODO: Add the outer object ID that this ID came from.
+  void AddBorrowedObject(const ObjectID &outer_id, const ObjectID &object_id, const TaskID &owner_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner ID and address of the given object.
@@ -106,30 +147,28 @@ class ReferenceCounter {
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const
       LOCKS_EXCLUDED(mutex_);
 
- private:
-  /// Metadata for an ObjectID reference in the language frontend.
-  struct Reference {
-    /// Constructor for a reference whose origin is unknown.
-    Reference() : owned_by_us(false) {}
-    /// Constructor for a reference that we created.
-    Reference(const TaskID &owner_id, const rpc::Address &owner_address)
-        : owned_by_us(true), owner({owner_id, owner_address}) {}
-    /// The local ref count for the ObjectID in the language frontend.
-    size_t local_ref_count = 0;
-    /// The ref count for submitted tasks that depend on the ObjectID.
-    size_t submitted_task_ref_count = 0;
-    /// Whether we own the object. If we own the object, then we are
-    /// responsible for tracking the state of the task that creates the object
-    /// (see task_manager.h).
-    bool owned_by_us;
-    /// The object's owner, if we know it. This has no value if the object is
-    /// if we do not know the object's owner (because distributed ref counting
-    /// is not yet implemented).
-    absl::optional<std::pair<TaskID, rpc::Address>> owner;
-    /// Callback that will be called when this ObjectID no longer has references.
-    std::function<void(const ObjectID &)> on_delete;
-  };
 
+  bool PopBorrowerRefs(ObjectID &object_id, absl::flat_hash_map<ObjectID, Reference> *borrower_refs);
+
+  void MergeBorrowerRefs(const rpc::Address &borrower, const absl::flat_hash_map<ObjectID, Reference> &borrower_refs);
+
+  void WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids, bool ray_put = true);
+
+  // Handler for when a borrower's ref count goes to 0.
+  void HandleWaitForRefRemoved(const ObjectID &object_id, const absl::optional<ObjectID> contained_in_id);
+
+  const Reference &GetReference(const ObjectID &object_id) {
+    const auto it = object_id_refs_.find(object_id);
+    RAY_CHECK(it != object_id_refs_.end());
+    return it->second;
+  }
+
+  bool HasReference(const ObjectID &object_id) {
+    const auto it = object_id_refs_.find(object_id);
+    return it != object_id_refs_.end();
+  }
+
+ private:
   /// Helper method to delete an entry from the reference map and run any necessary
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
   /// iterator.

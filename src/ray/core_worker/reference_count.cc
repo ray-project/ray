@@ -2,7 +2,7 @@
 
 namespace ray {
 
-void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
+void ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id, const ObjectID &object_id,
                                          const TaskID &owner_id,
                                          const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
@@ -12,6 +12,13 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
   if (!it->second.owner.has_value()) {
     it->second.owner = {owner_id, owner_address};
   }
+
+  auto outer_it = object_id_refs_.find(outer_id);
+  if (outer_it == object_id_refs_.end()) {
+    outer_it = object_id_refs_.emplace(outer_id, Reference()).first;
+  }
+  it->second.contained_in.insert(outer_id);
+  outer_it->second.contains.insert(object_id);
 }
 
 void ReferenceCounter::AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
@@ -162,6 +169,19 @@ ReferenceCounter::GetAllReferenceCounts() const {
                                                      it.second.submitted_task_ref_count));
   }
   return all_ref_counts;
+}
+
+bool ReferenceCounter::PopBorrowerRefs(ObjectID &object_id, absl::flat_hash_map<ObjectID, Reference> *borrower_refs) {
+  return true;
+}
+
+void ReferenceCounter::MergeBorrowerRefs(const rpc::Address &borrower, const absl::flat_hash_map<ObjectID, Reference> &borrower_refs) {
+}
+
+void ReferenceCounter::WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids, bool ray_put) {
+}
+
+void ReferenceCounter::HandleWaitForRefRemoved(const ObjectID &object_id, absl::optional<ObjectID> contained_in_id) {
 }
 
 }  // namespace ray

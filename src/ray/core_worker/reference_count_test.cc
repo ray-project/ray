@@ -132,6 +132,56 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   ASSERT_EQ(store.Size(), 1);
 }
 
+TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
+  ReferenceCounter owner_rc;
+  ReferenceCounter borrower_rc;
+
+  auto inner_id = ObjectID::FromRandom();
+  TaskID owner_id = TaskID::ForFakeTask();
+  rpc::Address owner_address;
+  owner_address.set_ip_address("1234");
+  owner_rc.AddOwnedObject(inner_id, owner_id, owner_address);
+
+  auto outer_id = ObjectID::FromRandom();
+  owner_rc.WrapObjectId(outer_id, {inner_id});
+  owner_rc.AddSubmittedTaskReferences({outer_id});
+  ASSERT_TRUE(owner_rc.GetReference(outer_id).RefCount() > 0);
+  // Check that the owner's ref count > 0.
+  ASSERT_TRUE(owner_rc.GetReference(inner_id).RefCount() > 0);
+  ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() == 0);
+
+  borrower_rc.AddBorrowedObject(outer_id, inner_id, owner_id, owner_address);
+  borrower_rc.AddSubmittedTaskReferences({inner_id});
+  // Check that the borrower's ref count > 0.
+  ASSERT_TRUE(borrower_rc.GetReference(inner_id).RefCount() > 0);
+  ASSERT_TRUE(borrower_rc.GetReference(outer_id).RefCount() == 0);
+
+  rpc::Address borrower_address;
+  auto borrower_id = WorkerID::FromRandom();
+  borrower_address.set_ip_address("5678");
+  borrower_address.set_worker_id(borrower_id.Binary());
+  absl::flat_hash_map<ObjectID, ReferenceCounter::Reference> borrower_refs;
+  borrower_rc.PopBorrowerRefs(outer_id, &borrower_refs);
+  // Check that the borrower's ref count for inner_id > 0.
+  // Check that the borrower's ref count for outer == 0.
+  ASSERT_TRUE(borrower_rc.GetReference(inner_id).RefCount() > 0);
+  ASSERT_TRUE(borrower_rc.GetReference(outer_id).RefCount() == 0);
+
+  owner_rc.MergeBorrowerRefs(borrower_address, borrower_refs);
+  // Check that owner now has borrower in inner's borrowers list.
+  // Check that owner's ref count for outer == 0.
+  ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() > 0);
+  ASSERT_FALSE(owner_rc.HasReference(outer_id));
+
+  std::vector<ObjectID> deleted;
+  borrower_rc.RemoveSubmittedTaskReferences({inner_id}, nullptr);
+  ASSERT_TRUE(borrower_rc.GetReference(inner_id).RefCount() == 0);
+  // Check that the owner's ref count for inner == 0 after flushing the
+  // WaitForRefRemoved reply.
+  ASSERT_EQ(owner_rc.GetReference(inner_id).RefCount(), 0);
+}
+
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
