@@ -9,8 +9,6 @@ DEFAULT_CONFIG = with_common_config({
     "num_workers": 0,
     # Learning rate.
     "lr": 0.0004,
-    "use_critic": False,
-    "use_gae": False
 })
 # __sphinx_doc_end__
 # yapf: enable
