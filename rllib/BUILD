@@ -628,17 +628,17 @@ py_test(
 
 # MARWIL
 
-py_test(
-    name = "test_marwil_cartpole_v0",
-    main = "train.py", srcs = ["train.py"],
-    data = [":data//tests/data/cartpole_small"],
-    args = [
-        "--env", "CartPole-v0",
-        "--run", "MARWIL",
-        "--stop", "'{\"training_iteration\": 1}'",
-        "--config", "'{\"input\": \":tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
-        ]
-)
+#py_test(
+#    name = "test_marwil_cartpole_v0",
+#    main = "train.py", srcs = ["train.py"],
+#    data = [":tests/data/cartpole_small"],
+#    args = [
+#        "--env", "CartPole-v0",
+#        "--run", "MARWIL",
+#        "--stop", "'{\"training_iteration\": 1}'",
+#        "--config", "'{\"input\": \":tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
+#        ]
+#)
 
 # ---------------------------------------
 # contrib Agents
@@ -788,7 +788,7 @@ py_test(
 
 py_test(
     name = "tests/multiagent_pendulum.py",
-    size = "long",
+    size = "large",
     #flaky = True,
     srcs = ["tests/multiagent_pendulum.py"]
 )
@@ -931,12 +931,6 @@ py_test(
     size = "small",
     srcs = ["examples/custom_loss.py"],
     args = ["--iters=2"]
-)
-
-py_test(
-    name = "examples/rollout_worker_custom_workflow.py",
-    size = "small",
-    srcs = ["examples/rollout_worker_custom_workflow.py"]
 )
 
 py_test(
