@@ -1,3 +1,5 @@
+import numpy as np
+
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
@@ -56,8 +58,12 @@ class RecurrentTFModelV2(TFModelV2):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
+        obs_flat_w_time = add_time_dimension(input_dict["obs_flat"], seq_lens)
         output, new_state = self.forward_rnn(
-            add_time_dimension(input_dict["obs_flat"], seq_lens), state,
+            obs_flat_w_time,
+            state if len(state) > 0 else
+            self._get_initial_state_batched(
+                obs_flat_w_time.shape.as_list()[0]),
             seq_lens)
         return tf.reshape(output, [-1, self.num_outputs]), new_state
 
@@ -83,10 +89,8 @@ class RecurrentTFModelV2(TFModelV2):
         raise NotImplementedError("You must implement this for a RNN model")
 
     def get_initial_state(self):
-        """Get the initial recurrent state values for the model.
-
-        Returns:
-            list of np.array objects, if any
+        """Get the initial recurrent state values for the model without
+        a batch rank.
 
         Sample implementation for the ``MyRNNClass`` example::
 
@@ -95,5 +99,15 @@ class RecurrentTFModelV2(TFModelV2):
                     np.zeros(self.cell_size, np.float32),
                     np.zeros(self.cell_size, np.float32),
                 ]
+
+        Returns:
+            List[np.array]: List of np.array objects, if any.
         """
-        raise NotImplementedError("You must implement this for a RNN model")
+        raise NotImplementedError("You must implement this for an RNN model")
+
+    def _get_initial_state_batched(self, batch_size):
+        state = self.get_initial_state()
+        batched = []
+        for s in state:
+            batched.append(np.array([s] * batch_size))
+        return batched

@@ -128,8 +128,8 @@ class ModelV2:
         Arguments:
             input_dict (dict): dictionary of input tensors, including "obs",
                 "prev_action", "prev_reward", "is_training"
-            state (list): list of state tensors with sizes matching those
-                returned by get_initial_state + the batch dimension
+            state (Optional[list]): List of state tensors with sizes matching
+                those returned by `self.get_initial_state` + the batch dimension.
             seq_lens (Tensor): 1d tensor holding input sequence lengths
 
         Returns:

@@ -216,32 +216,40 @@ def build_eager_tf_policy(name,
                     action_space, self.config["model"])
 
             if make_model:
-                self.model = make_model(self, observation_space, action_space,
-                                        config)
+                self.model = make_model(self,
+                                        self.observation_space,
+                                        self.action_space,
+                                        self.config)
             else:
                 self.model = ModelCatalog.get_model_v2(
-                    observation_space,
-                    action_space,
+                    self.observation_space,
+                    self.action_space,
                     logit_dim,
-                    config["model"],
+                    self.config["model"],
                     framework="tf",
                 )
 
-            self.model({
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(
-                    np.array([observation_space.sample()])),
-                SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
-                    [_flatten_action(action_space.sample())]),
-                SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
-            }, [
-                tf.convert_to_tensor(np.array([s]))
-                for s in self.model.get_initial_state()
-            ], tf.convert_to_tensor([1]))
+            # Initialize the model (create weights using a dummy forward pass).
+            dummy_batch = {
+                SampleBatch.CUR_OBS: np.array([self.observation_space.sample()]),
+                SampleBatch.NEXT_OBS: np.array([self.observation_space.sample()]),
+                SampleBatch.ACTIONS: [_flatten_action(self.action_space.sample())],
+                SampleBatch.PREV_ACTIONS: [_flatten_action(self.action_space.sample())],
+                SampleBatch.REWARDS: np.array([0.]),
+                SampleBatch.PREV_REWARDS: np.array([0.]),
+                SampleBatch.DONES: np.array([False], dtype=np.bool)
+            }
+            dummy_states = [
+                np.array([s]) for s in self.model.get_initial_state()]
+            dummy_seq_len = np.array([1], dtype=np.int32)
+            self.model(dummy_batch, dummy_states, dummy_seq_len)
 
+            # Loss and optimizer initialization sequence.
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_with_dummy_batch()
+            self._initialize_loss_with_dummy_batch(
+                dummy_batch, dummy_states, dummy_seq_len)
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -287,7 +295,7 @@ def build_eager_tf_policy(name,
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
-                            state_batches,
+                            state_batches=None,
                             prev_action_batch=None,
                             prev_reward_batch=None,
                             info_batch=None,
@@ -303,7 +311,7 @@ def build_eager_tf_policy(name,
             else:
                 n = obs_batch.shape[0]
 
-            seq_lens = tf.ones(n)
+            seq_lens = tf.ones(n, dtype=tf.int32)
             input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
                 "is_training": tf.constant(False),
@@ -458,40 +466,62 @@ def build_eager_tf_policy(name,
                 })
             return fetches
 
-        def _initialize_loss_with_dummy_batch(self):
-            # Dummy forward pass to initialize any policy attributes, etc.
-            action_dtype, action_shape = ModelCatalog.get_action_shape(
-                self.action_space)
-            dummy_batch = {
-                SampleBatch.CUR_OBS: tf.convert_to_tensor(
-                    np.array([self.observation_space.sample()])),
-                SampleBatch.NEXT_OBS: tf.convert_to_tensor(
-                    np.array([self.observation_space.sample()])),
-                SampleBatch.DONES: tf.convert_to_tensor(
-                    np.array([False], dtype=np.bool)),
-                SampleBatch.ACTIONS: tf.convert_to_tensor(
-                    np.zeros(
-                        (1, ) + action_shape[1:],
-                        dtype=action_dtype.as_numpy_dtype())),
-                SampleBatch.REWARDS: tf.convert_to_tensor(
-                    np.array([0], dtype=np.float32)),
-            }
-            if obs_include_prev_action_reward:
-                dummy_batch.update({
-                    SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
-                    SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
-                })
-            state_init = self.get_initial_state()
-            state_batches = []
-            for i, h in enumerate(state_init):
-                dummy_batch["state_in_{}".format(i)] = tf.convert_to_tensor(
-                    np.expand_dims(h, 0))
-                dummy_batch["state_out_{}".format(i)] = tf.convert_to_tensor(
-                    np.expand_dims(h, 0))
-                state_batches.append(
-                    tf.convert_to_tensor(np.expand_dims(h, 0)))
-            if state_init:
-                dummy_batch["seq_lens"] = tf.convert_to_tensor(
+        def _initialize_loss_with_dummy_batch(self,
+                                              batch,
+                                              states,
+                                              seq_len):
+            # Add dummy actions and rewards.# Dummy forward pass to initialize any policy attributes, etc.
+            #action_dtype, action_shape = ModelCatalog.get_action_shape(
+            #    self.action_space)
+
+
+            #dummy_batch = {
+            #    SampleBatch.CUR_OBS: tf.convert_to_tensor(
+            #        np.array([observation_space.sample()])),
+            #    SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
+            #        [_flatten_action(action_space.sample())]),
+            #    SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
+            #}
+            #dummy_states = [
+            #    tf.convert_to_tensor(np.array([s]))
+            #    for s in self.model.get_initial_state()
+            #]
+            #dummy_seq_len = tf.convert_to_tensor([1])
+
+
+            #dummy_batch = {
+            #    SampleBatch.CUR_OBS: tf.convert_to_tensor(
+            #        np.array([self.observation_space.sample()])),
+            #    SampleBatch.NEXT_OBS: tf.convert_to_tensor(
+            #        np.array([self.observation_space.sample()])),
+            #    SampleBatch.DONES: tf.convert_to_tensor(
+            #        np.array([False], dtype=np.bool)),
+            #    SampleBatch.ACTIONS: tf.convert_to_tensor(
+            #        np.zeros(
+            #            (1, ) + action_shape[1:],
+            #            dtype=action_dtype.as_numpy_dtype())),
+            #    SampleBatch.REWARDS: tf.convert_to_tensor(
+            #        np.array([0], dtype=np.float32)),
+            #}
+            #if obs_include_prev_action_reward:
+            #    dummy_batch.update({
+            #        SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
+            #        SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
+            #    })
+            #state_init = self.get_initial_state()
+            if states:
+                for i, h in enumerate(states):
+                    batch["state_in_{}".format(i)] = h
+                    batch["state_out_{}".format(i)] = h
+            #state_batches = []
+            #for i, h in enumerate(state_init):
+            #    dummy_batch["state_in_{}".format(i)] = tf.convert_to_tensor(
+            #        np.expand_dims(h, 0))
+            #    dummy_batch["state_out_{}".format(i)] = tf.convert_to_tensor(
+            #        np.expand_dims(h, 0))
+            #    state_batches.append(
+            #        tf.convert_to_tensor(np.expand_dims(h, 0)))
+                batch["seq_lens"] = tf.convert_to_tensor(
                     np.array([1], dtype=np.int32))
 
             # for IMPALA which expects a certain sample batch size
@@ -500,25 +530,25 @@ def build_eager_tf_policy(name,
                                [n] + [1 for _ in tensor.shape.as_list()[1:]])
 
             if get_batch_divisibility_req:
-                dummy_batch = {
+                batch = {
                     k: tile_to(v, get_batch_divisibility_req(self))
-                    for k, v in dummy_batch.items()
+                    for k, v in batch.items()
                 }
 
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
             _, _, fetches = self.compute_actions(
-                dummy_batch[SampleBatch.CUR_OBS], state_batches,
-                dummy_batch.get(SampleBatch.PREV_ACTIONS),
-                dummy_batch.get(SampleBatch.PREV_REWARDS))
-            dummy_batch.update(fetches)
+                batch[SampleBatch.CUR_OBS], states,
+                batch.get(SampleBatch.PREV_ACTIONS),
+                batch.get(SampleBatch.PREV_REWARDS))
+            batch.update(fetches)
 
             postprocessed_batch = self.postprocess_trajectory(
-                SampleBatch(dummy_batch))
+                SampleBatch(batch))
 
             # model forward pass for the loss (needed after postprocess to
             # overwrite any tensor state from that call)
-            self.model.from_batch(dummy_batch)
+            self.model.from_batch(batch)
 
             postprocessed_batch = {
                 k: tf.convert_to_tensor(v)
