@@ -6,11 +6,11 @@ Since Python 3.5, it is possible to write concurrent code using the
 
 This document describes Ray's support for asyncio, which enables integration
 with popular async frameworks (e.g., aiohttp, aioredis, etc.) for highly
-concurrent workload.
+concurrent workloads.
 
-ObjectID == asyncio.Future
+ObjectIDs as asyncio.Futures
 --------------------------
-In asyncio context, ObjectIDs can be translated to asyncio.Future. This feature
+ObjectIDs can be translated to asyncio.Future. This feature
 make it possible to ``await`` on ray futures in existing concurrent
 applications.
 
@@ -37,13 +37,13 @@ you can do:
     await asyncio.wait([some_task.remote()])
 
 Please refer to `asyncio doc <https://docs.python.org/3/library/asyncio-task.html>`__
-for more patterns including timeouts and ``asyncio.gather``.
+for more `asyncio` patterns including timeouts and ``asyncio.gather``.
 
 
 Async Actor
 -----------
-Ray also support concurrent multitasking by executing many actor tasks at once.
-To do so, you can define an actor with async method:
+Ray also supports concurrent multitasking by executing many actor tasks at once.
+To do so, you can define an actor with async methods:
 
 .. code-block:: python
 
@@ -57,17 +57,17 @@ To do so, you can define an actor with async method:
             print("ended")
 
     actor = AsyncActor.remote()
-    # Expect all 50 tasks started at once, after 1 seconds
+    # All 50 tasks should start at once. After 1 second they should all finish.
     # they should finish at the same time
     ray.get([actor.run_task.remote() for _ in range(50)])
 
-Under the hood, Ray runs all the method inside a single python event loop.
+Under the hood, Ray runs all of the methods inside a single python event loop.
 Please note that running blocking ``ray.get`` or ``ray.wait`` inside async
 actor method is not allowed. ``ray.get`` will block the execution of the event
 loop.
 
 You can limit the number of concurrent task running at once using the
-``max_concurrency`` flag. By default, only 1000 tasks can be running at once.
+``max_concurrency`` flag. By default, 1000 tasks can be running concurrently.
 
 .. code-block:: python
 
@@ -82,7 +82,7 @@ You can limit the number of concurrent task running at once using the
 
     actor = AsyncActor.options(max_concurreny=10).remote()
 
-    # Expect only 10 tasks will be running at once.
+    # Only 10 tasks will be running concurrently. Once 10 finish, the next 10 should run.
     ray.get([actor.run_task.remote() for _ in range(50)])
 
 
