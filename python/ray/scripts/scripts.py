@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 import logging
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -67,12 +68,48 @@ def cli(logging_level, logging_format):
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def dashboard(cluster_config_file, cluster_name):
+@click.option(
+    "--port",
+    "-p",
+    required=False,
+    type=int,
+    default=8265,
+    help="The local port to forward to the dashboard")
+def dashboard(cluster_config_file, cluster_name, port):
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux
     cmd = "while true; do sleep 86400; done"
-    port_forward = [8265]
-    exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=list(port_forward))
+    remote_port = 8265
+    if port:
+        dashboard_port = port
+    else:
+        dashboard_port = 8265
+
+    # available = False
+    # sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # while not available:
+    #     try:
+    #         socket.getaddrinfo("example.org", 80, proto=socket.IPPROTO_TCP)[0]
+    #         addr = socket.getaddrinfo("localhost", dashboard_port, proto=socket.IPPROTO_TCP)[0]
+    #         sock.bind(addr)
+    #         available = True
+    #     except OSError as e:
+    #         click.echo(e)
+    #         click.echo("Port % already taken, trying different port..." % dashboard_port);
+    #         dashboard_port += 1
+    #     finally:
+    #         sock.close()
+
+    port_forward = [ (dashboard_port, remote_port), ]
+    click.echo("Dashboard at: localhost:%i" % port_forward[0][0])
+    try:
+        exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
+    except Exception as e:
+        click.echo("Caught exeption...")
+
+    while True:
+        exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
+        click.echo("Connection broke, restarting...")
 
 
 @cli.command()
@@ -727,9 +764,11 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     command_parts = ["python", target]
     if args is not None:
         command_parts += [args]
+
+    port_forward = [(port, port) for port in list(port_forward)]
     cmd = " ".join(command_parts)
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
-                 cluster_name, list(port_forward))
+                 cluster_name, port_forward)
 
 
 @cli.command()
@@ -771,8 +810,9 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
              cluster_name, port_forward):
+    port_forward = [(port, port) for port in list(port_forward)]
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-                 cluster_name, list(port_forward))
+                 cluster_name, port_forward)
 
 
 @cli.command()

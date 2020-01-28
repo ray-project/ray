@@ -243,8 +243,8 @@ class SSHCommandRunner:
         if port_forward:
             if not isinstance(port_forward, list):
                 port_forward = [port_forward]
-            for fwd in port_forward:
-                ssh += ["-L", "{}:localhost:{}".format(fwd, fwd)]
+            for local, remote in port_forward:
+                ssh += ["-L", "{}:localhost:{}".format(local, remote)]
 
         final_cmd = ssh + self.get_default_ssh_options(timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
