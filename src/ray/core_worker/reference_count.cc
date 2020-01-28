@@ -151,6 +151,7 @@ void ReferenceCounter::DeleteReferenceInternal(
   }
   if (it->second.RefCount() + it->second.NumBorrowers() == 0) {
     const auto contains = std::move(it->second.contains);
+
     if (it->second.on_delete) {
       it->second.on_delete(it->first);
     }
@@ -160,10 +161,13 @@ void ReferenceCounter::DeleteReferenceInternal(
     object_id_refs_.erase(it);
 
     for (const auto &inner_id : contains) {
+      RAY_LOG(DEBUG) << "Decrementing ref count for inner ID " << inner_id;
       auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end());
-      inner_it->second.contained_in.erase(it->first);
-      DeleteReferenceInternal(inner_it, deleted);
+      // The inner ID can go out of scope before the outer one.
+      if (inner_it != object_id_refs_.end()) {
+        inner_it->second.contained_in.erase(it->first);
+        DeleteReferenceInternal(inner_it, deleted);
+      }
     }
   }
 }

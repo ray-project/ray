@@ -34,7 +34,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     auto send_reply_callback = [this, r](Status status, std::function<void()> success,
                                       std::function<void()> failure) {
-
       requests_[r].second(status, *requests_[r].first);
     };
     client_.HandleWaitForRefRemoved(ObjectID::FromBinary(request.object_id()), absl::optional<ObjectID>(), requests_[r].first.get(), send_reply_callback);
@@ -165,63 +164,133 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   ASSERT_EQ(store.Size(), 1);
 }
 
-TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
+TEST(DistributedReferenceCountTest, TestNoBorrow) {
   ReferenceCounter borrower_rc;
   auto borrower_client = std::make_shared<MockWorkerClient>(borrower_rc);
   ReferenceCounter owner_rc([&](const std::string &addr, int port) { return borrower_client;});
-
-  auto inner_id = ObjectID::FromRandom();
   TaskID owner_id = TaskID::ForFakeTask();
   rpc::Address owner_address;
   owner_address.set_ip_address("1234");
+
+  // The owner creates an inner object.
+  auto inner_id = ObjectID::FromRandom();
   owner_rc.AddOwnedObject(inner_id, owner_id, owner_address);
   owner_rc.AddLocalReference(inner_id);
 
+  // The owner creates an outer object that wraps the inner.
   auto outer_id = ObjectID::FromRandom();
   owner_rc.AddOwnedObject(outer_id, owner_id, owner_address);
   owner_rc.WrapObjectId(outer_id, {inner_id});
+
+  // The owner submits a task that depends on the outer object. The task will
+  // be given a reference to inner_id.
   owner_rc.AddSubmittedTaskReferences({outer_id});
   owner_rc.RemoveLocalReference(inner_id, nullptr);
+  // The owner's ref count > 0 for both objects.
   ASSERT_TRUE(owner_rc.GetReference(outer_id).RefCount() > 0);
-  // Check that the owner's ref count > 0.
   ASSERT_TRUE(owner_rc.GetReference(inner_id).RefCount() > 0);
   ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() == 0);
 
+  // The borrower is given a reference to the inner object.
   borrower_rc.AddLocalReference(inner_id);
   borrower_rc.AddBorrowedObject(outer_id, inner_id, owner_id, owner_address);
+  // The borrower submits a task that depends on the inner object.
   borrower_rc.AddSubmittedTaskReferences({inner_id});
+  // The borrower waits for the task to finish before returning.
+  borrower_rc.RemoveSubmittedTaskReferences({inner_id}, empty_borrower, empty_refs, nullptr);
   borrower_rc.RemoveLocalReference(inner_id, nullptr);
-  // Check that the borrower's ref count > 0.
-  ASSERT_TRUE(borrower_rc.GetReference(inner_id).RefCount() > 0);
+  // Check that the borrower's ref count is now 0 for all objects.
+  ASSERT_FALSE(borrower_rc.HasReference(inner_id));
   ASSERT_TRUE(borrower_rc.GetReference(outer_id).RefCount() == 0);
 
+  // The borrower task returns to the owner.
   rpc::Address borrower_address;
   auto borrower_id = WorkerID::FromRandom();
   borrower_address.set_ip_address("5678");
   borrower_address.set_worker_id(borrower_id.Binary());
   auto borrower_refs = borrower_rc.PopBorrowerRefs(outer_id);
-  // Check that the borrower's ref count for inner_id > 0.
+  // Check that the borrower's ref count is now 0 for all objects.
+  ASSERT_FALSE(borrower_rc.HasReference(inner_id));
+  ASSERT_FALSE(borrower_rc.HasReference(outer_id));
+
+  // The owner receives the borrower's reply and merges the borrower's ref
+  // count into its own.
+  owner_rc.RemoveSubmittedTaskReferences({outer_id}, borrower_address, borrower_refs, nullptr);
+  // Check that owner's ref count is now 0 for all objects.
+  ASSERT_FALSE(owner_rc.HasReference(inner_id));
+  ASSERT_FALSE(owner_rc.HasReference(outer_id));
+}
+
+TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
+  ReferenceCounter borrower_rc;
+  auto borrower_client = std::make_shared<MockWorkerClient>(borrower_rc);
+  ReferenceCounter owner_rc([&](const std::string &addr, int port) { return borrower_client;});
+  TaskID owner_id = TaskID::ForFakeTask();
+  rpc::Address owner_address;
+  owner_address.set_ip_address("1234");
+
+  // The owner creates an inner object.
+  auto inner_id = ObjectID::FromRandom();
+  owner_rc.AddOwnedObject(inner_id, owner_id, owner_address);
+  owner_rc.AddLocalReference(inner_id);
+
+  // The owner creates an outer object that wraps the inner.
+  auto outer_id = ObjectID::FromRandom();
+  owner_rc.AddOwnedObject(outer_id, owner_id, owner_address);
+  owner_rc.WrapObjectId(outer_id, {inner_id});
+
+  // The owner submits a task that depends on the outer object. The task will
+  // be given a reference to inner_id.
+  owner_rc.AddSubmittedTaskReferences({outer_id});
+  owner_rc.RemoveLocalReference(inner_id, nullptr);
+  // The owner's ref count > 0 for both objects.
+  ASSERT_TRUE(owner_rc.GetReference(outer_id).RefCount() > 0);
+  ASSERT_TRUE(owner_rc.GetReference(inner_id).RefCount() > 0);
+  ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() == 0);
+
+  // The borrower is given a reference to the inner object.
+  borrower_rc.AddLocalReference(inner_id);
+  borrower_rc.AddBorrowedObject(outer_id, inner_id, owner_id, owner_address);
+  // The borrower submits a task that depends on the inner object.
+  borrower_rc.AddSubmittedTaskReferences({inner_id});
+  // The borrower finishes without waiting for the submitted task to finish.
+  borrower_rc.RemoveLocalReference(inner_id, nullptr);
+  // Check that the borrower's ref count > 0.
+  ASSERT_TRUE(borrower_rc.GetReference(inner_id).RefCount() > 0);
+  ASSERT_TRUE(borrower_rc.GetReference(outer_id).RefCount() == 0);
+
+  // The borrower task returns to the owner.
+  rpc::Address borrower_address;
+  auto borrower_id = WorkerID::FromRandom();
+  borrower_address.set_ip_address("5678");
+  borrower_address.set_worker_id(borrower_id.Binary());
+  auto borrower_refs = borrower_rc.PopBorrowerRefs(outer_id);
+  // Check that the borrower's ref count for inner_id > 0 because of the
+  // pending task.
   ASSERT_TRUE(borrower_rc.HasReference(inner_id));
   ASSERT_TRUE(borrower_rc.GetReference(inner_id).RefCount() > 0);
   // Check that the borrower's ref count for outer == 0.
   ASSERT_FALSE(borrower_rc.HasReference(outer_id));
 
+  // The owner receives the borrower's reply and merges the borrower's ref
+  // count into its own.
   owner_rc.RemoveSubmittedTaskReferences({outer_id}, borrower_address, borrower_refs, nullptr);
   // Check that owner now has borrower in inner's borrowers list.
-  // Check that owner's ref count for outer == 0.
   ASSERT_TRUE(owner_rc.HasReference(inner_id));
   ASSERT_TRUE(owner_rc.GetReference(inner_id).RefCount() == 0);
   ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() > 0);
+  // Check that owner's ref count for outer == 0 since the borrower task
+  // returned and there were no local references to outer_id.
   ASSERT_FALSE(owner_rc.HasReference(outer_id));
 
-  std::vector<ObjectID> deleted;
+  // The task submitted by the borrower returns. Everyone's ref count should go
+  // to 0.
   borrower_rc.RemoveSubmittedTaskReferences({inner_id}, empty_borrower, empty_refs, nullptr);
   ASSERT_FALSE(borrower_rc.HasReference(inner_id));
-  // Check that the owner's ref count for inner == 0 after flushing the
-  // WaitForRefRemoved reply.
+  ASSERT_FALSE(borrower_rc.HasReference(outer_id));
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
+  ASSERT_FALSE(owner_rc.HasReference(outer_id));
 }
-
 
 }  // namespace ray
 
