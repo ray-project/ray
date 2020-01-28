@@ -60,11 +60,9 @@ class RecurrentTFModelV2(TFModelV2):
         You should implement forward_rnn() in your subclass."""
         obs_flat_w_time = add_time_dimension(input_dict["obs_flat"], seq_lens)
         output, new_state = self.forward_rnn(
-            obs_flat_w_time,
-            state if len(state) > 0 else
-            self._get_initial_state_batched(
-                obs_flat_w_time.shape.as_list()[0]),
-            seq_lens)
+            obs_flat_w_time, state
+            if len(state) > 0 else self._get_initial_state_batched(
+                obs_flat_w_time.shape.as_list()[0]), seq_lens)
         return tf.reshape(output, [-1, self.num_outputs]), new_state
 
     def forward_rnn(self, inputs, state, seq_lens):

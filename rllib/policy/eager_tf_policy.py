@@ -216,10 +216,8 @@ def build_eager_tf_policy(name,
                     action_space, self.config["model"])
 
             if make_model:
-                self.model = make_model(self,
-                                        self.observation_space,
-                                        self.action_space,
-                                        self.config)
+                self.model = make_model(self, self.observation_space,
+                                        self.action_space, self.config)
             else:
                 self.model = ModelCatalog.get_model_v2(
                     self.observation_space,
@@ -231,16 +229,23 @@ def build_eager_tf_policy(name,
 
             # Initialize the model (create weights using a dummy forward pass).
             dummy_batch = {
-                SampleBatch.CUR_OBS: np.array([self.observation_space.sample()]),
-                SampleBatch.NEXT_OBS: np.array([self.observation_space.sample()]),
-                SampleBatch.ACTIONS: [_flatten_action(self.action_space.sample())],
-                SampleBatch.PREV_ACTIONS: [_flatten_action(self.action_space.sample())],
+                SampleBatch.CUR_OBS: np.array(
+                    [self.observation_space.sample()]),
+                SampleBatch.NEXT_OBS: np.array(
+                    [self.observation_space.sample()]),
+                SampleBatch.ACTIONS: [
+                    _flatten_action(self.action_space.sample())
+                ],
+                SampleBatch.PREV_ACTIONS: [
+                    _flatten_action(self.action_space.sample())
+                ],
                 SampleBatch.REWARDS: np.array([0.]),
                 SampleBatch.PREV_REWARDS: np.array([0.]),
                 SampleBatch.DONES: np.array([False], dtype=np.bool)
             }
             dummy_states = [
-                np.array([s]) for s in self.model.get_initial_state()]
+                np.array([s]) for s in self.model.get_initial_state()
+            ]
             dummy_seq_len = np.array([1], dtype=np.int32)
             self.model(dummy_batch, dummy_states, dummy_seq_len)
 
@@ -248,8 +253,8 @@ def build_eager_tf_policy(name,
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)
 
-            self._initialize_loss_with_dummy_batch(
-                dummy_batch, dummy_states, dummy_seq_len)
+            self._initialize_loss_with_dummy_batch(dummy_batch, dummy_states,
+                                                   dummy_seq_len)
             self._loss_initialized = True
 
             if optimizer_fn:
@@ -466,14 +471,10 @@ def build_eager_tf_policy(name,
                 })
             return fetches
 
-        def _initialize_loss_with_dummy_batch(self,
-                                              batch,
-                                              states,
-                                              seq_len):
+        def _initialize_loss_with_dummy_batch(self, batch, states, seq_len):
             # Add dummy actions and rewards.# Dummy forward pass to initialize any policy attributes, etc.
             #action_dtype, action_shape = ModelCatalog.get_action_shape(
             #    self.action_space)
-
 
             #dummy_batch = {
             #    SampleBatch.CUR_OBS: tf.convert_to_tensor(
@@ -487,7 +488,6 @@ def build_eager_tf_policy(name,
             #    for s in self.model.get_initial_state()
             #]
             #dummy_seq_len = tf.convert_to_tensor([1])
-
 
             #dummy_batch = {
             #    SampleBatch.CUR_OBS: tf.convert_to_tensor(
@@ -525,6 +525,7 @@ def build_eager_tf_policy(name,
                     np.array([1], dtype=np.int32))
 
             # for IMPALA which expects a certain sample batch size
+
             def tile_to(tensor, n):
                 return tf.tile(tensor,
                                [n] + [1 for _ in tensor.shape.as_list()[1:]])
