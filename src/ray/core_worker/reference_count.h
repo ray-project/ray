@@ -65,6 +65,8 @@ class ReferenceCounter {
     /// Callback for a borrower that is called when this process is no longer a
     /// borrower.
     std::function<void()> on_local_ref_deleted;
+    /// Object IDs that contain this object ID. This field contains only object
+    /// IDs that we own.
     absl::flat_hash_set<ObjectID> contained_in;
     absl::flat_hash_set<ObjectID> contains;
     absl::flat_hash_set<rpc::WorkerAddress> borrowers;
