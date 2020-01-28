@@ -127,7 +127,9 @@ if __name__ == "__main__":
 
     # Log the modified environment variables visible in console.
     for output_stream in [sys.stdout, sys.stderr]:
-        _print = partial(print, file=output_stream)
+        def _print(str):
+            print(str)
+            print(str, file=output_stream)
         _print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
         _print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
         _print("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))

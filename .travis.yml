@@ -140,7 +140,7 @@ matrix:
     # Test RLlib (only learning regression tests).
     - os: linux
       env:
-        - RLLIB_REGRESSION_TESTS=1 PYTHONWARNINGS=ignore
+        - PYTHON=3.5 RLLIB_REGRESSION_TESTS=1 PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
@@ -155,7 +155,7 @@ matrix:
     # Test RLlib (all other non-learning tests (compilations of agents, loss funcs, envs, etc..)).
     - os: linux
       env:
-        - RLLIB_REGRESSION_TESTS=0 PYTHONWARNINGS=ignore
+        - PYTHON=3.5 RLLIB_REGRESSION_TESTS=0 PYTHONWARNINGS=ignore
       install:
         - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
         - echo "RAY_CI_RLLIB_AFFECTED=$RAY_CI_RLLIB_AFFECTED"
@@ -165,7 +165,7 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        #- if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=-learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
 install:
