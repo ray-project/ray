@@ -1,7 +1,7 @@
 RaySGD: Distributed Deep Learning
 =================================
 
-.. tip:: Get in touch with us if you're using/considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
 .. warning:: This is still an experimental API and is subject to change in the near future.
 
 
@@ -14,8 +14,8 @@ RaySGD is a lightweight library for distributed deep learning, providing thin wr
 The main features are:
 
   - **Ease of use**: Scale Pytorch's native ``DistributedDataParallel`` and TensorFlow's ``tf.distribute.MirroredStrategy`` without needing to monitor individual nodes.
-  - **Composibility**: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications such as RLlib, Tune, and Ray.Serve.
-  - **Scale up and down**: Start on single CPU. Scale up to multi-node, multi-gpu by changing 2 lines of code.
+  - **Composability**: RaySGD is built on top of the Ray Actor API, enabling seamless integration with existing Ray applications such as RLlib, Tune, and Ray.Serve.
+  - **Scale up and down**: Start on single CPU. Scale up to multi-node, multi-CPU, or multi-GPU clusters by changing 2 lines of code.
 
 
 Getting Started
