@@ -173,6 +173,7 @@ class SSHCommandRunner:
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
             ("IdentitiesOnly", "yes"),
+            ("ExitOnForwardFailure", "yes")
         ]
 
         return ["-i", self.ssh_private_key] + [
@@ -227,6 +228,8 @@ class SSHCommandRunner:
 
     def run(self,
             cmd,
+
+
             timeout=120,
             allocate_tty=False,
             exit_on_fail=False,
@@ -254,9 +257,10 @@ class SSHCommandRunner:
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                logger.error(self.log_prefix +
-                             "Command failed: \n\n  {}\n".format(quoted_cmd))
-                sys.exit(1)
+                # logger.error(self.log_prefix +
+                #              "Command failed: \n\n  {}\n".format(quoted_cmd))
+                # sys.exit(1)
+                raise Exception("Command failed: \n\n  {}\n".format(quoted_cmd))
             else:
                 raise
 

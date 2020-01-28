@@ -83,7 +83,7 @@ def dashboard(cluster_config_file, cluster_name, port):
     if port:
         dashboard_port = port
     else:
-        dashboard_port = 8265
+        dashboard_port = remote_port
 
     # available = False
     # sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -100,16 +100,27 @@ def dashboard(cluster_config_file, cluster_name, port):
     #     finally:
     #         sock.close()
 
+
+    port_taken = True
+
+    while port_taken:
+        try:
+            port_forward = [ (dashboard_port, remote_port), ]
+            click.echo("Dashboard at: localhost:%i" % port_forward[0][0])
+            exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
+            port_taken=False
+        except Exception as e:
+            print("Failed to forward dashboard, trying a new port...")
+            port_taken = True
+            dashboard_port += 1
+            pass
+
     port_forward = [ (dashboard_port, remote_port), ]
     click.echo("Dashboard at: localhost:%i" % port_forward[0][0])
-    try:
-        exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
-    except Exception as e:
-        click.echo("Caught exeption...")
 
-    while True:
-        exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
-        click.echo("Connection broke, restarting...")
+    # while True:
+    #     exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
+    #     click.echo("Connection broke, restarting...")
 
 
 @cli.command()
