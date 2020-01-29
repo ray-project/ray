@@ -1020,6 +1020,7 @@ pyx_library(
     srcs = glob([
         "python/ray/streaming/_streaming.pyx",
         "python/ray/__init__.py",
+        "python/ray/_raylet.pxd",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
         "python/ray/streaming/__init__.pxd",
