@@ -47,7 +47,6 @@ class ResourceSpec(
                 object_store_memory=None,
                 resources=None,
                 redis_max_memory=None):
-        print("^^^^^^^^^^^^^^^^", object_store_memory)
         return super(ResourceSpec, cls).__new__(cls, num_cpus, num_gpus,
                                                 memory, object_store_memory,
                                                 resources, redis_max_memory)
@@ -82,7 +81,6 @@ class ResourceSpec(
                             ray_constants.MEMORY_RESOURCE_UNIT_BYTES /
                             ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION)),
                     self.object_store_memory))
-        print("==============",self.object_store_memory)
         object_store_memory_units = ray_constants.to_memory_units(
             self.object_store_memory *
             ray_constants.PLASMA_RESERVABLE_MEMORY_FRACTION,
