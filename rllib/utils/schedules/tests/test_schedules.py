@@ -36,6 +36,7 @@ class TestSchedules(unittest.TestCase):
                 })
             if fw == "tf":
                 tf.enable_eager_execution()
+                ts = [tf.convert_to_tensor(i) for i in ts]
             for t in ts:
                 out = linear(t)
                 check(out, 2.1 - (t / 100) * (2.1 - 0.6), decimals=4)
