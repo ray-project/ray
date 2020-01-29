@@ -60,11 +60,21 @@ class KubernetesCommandRunner:
                 self.node_id,
             ] + ["{}:{}".format(local, remote) for local,remote in port_forward]
             port_forward_process = subprocess.Popen(port_forward_cmd)
-            # Give port-forward a grace period to run and print output before
-            # running the actual command. This is a little ugly, but it should
-            # work in most scenarios and nothing should go very wrong if the
-            # command starts running before the port forward starts.
-            time.sleep(1)
+            try:
+                #Give port-forward a chance to connect before running the
+                #actual command. If port forward fails (and returns
+                #immediately) we failed to port forward and should abort the command
+                port_forward_ret = port_forward_process.wait(5)
+            except subprocess.TimeoutExpired:
+                # Lasting for more than a second is a good thing
+                pass
+            else:
+                # Indicates that port forwarding failed, likely because we
+                # couldn't bind to a port.
+                pout, perr = port_forward_process.communicate()
+                exception_str = " ".join(port_forward_cmd) + " failed with error: " + perr
+                raise Exception(exception_str)
+
 
         final_cmd = self.kubectl + [
             "exec",
@@ -175,7 +185,7 @@ class SSHCommandRunner:
             ("IdentitiesOnly", "yes"),
             ("ExitOnForwardFailure", "yes"),
             ("ServerAliveInterval", 5),
-            ("ServerAliveCountMax", 3)
+            ("ServerAliveCountMax", 3),
         ]
 
         return ["-i", self.ssh_private_key] + [

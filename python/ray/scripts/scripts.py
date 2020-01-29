@@ -91,7 +91,7 @@ def dashboard(cluster_config_file, cluster_name, port):
     while port_taken:
         try:
             port_forward = [ (dashboard_port, remote_port), ]
-            click.echo("Dashboard at: localhost:{}".format(port_forward[0][0]))
+            click.echo("Attempting to establish dashboard at localhost:{}".format(port_forward[0][0]))
             # We want to probe with a no-op that returns quickly to avoid exceptions caused by network errors
             exec_cluster(cluster_config_file, ":", docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
             port_taken=False
@@ -336,7 +336,6 @@ def start(node_ip_address, redis_address, address, redis_port,
         load_code_from_local=load_code_from_local,
         use_pickle=use_pickle,
         _internal_config=internal_config)
-
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
