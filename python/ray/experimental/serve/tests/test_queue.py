@@ -5,7 +5,7 @@ import ray
 
 from ray.experimental.serve.policy import (
     RandomPolicyQueue, RandomPolicyQueueActor, RoundRobinPolicyQueueActor,
-    FixedPackingPolicyQueueActor)
+    PowerOfTwoPolicyQueueActor, FixedPackingPolicyQueueActor)
 
 pytestmark = pytest.mark.asyncio
 
@@ -76,7 +76,7 @@ async def test_slo(serve_instance, task_runner_mock_actor):
 
 
 async def test_alter_backend(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueue.remote()
+    q = RandomPolicyQueueActor.remote()
 
     await q.set_traffic.remote("svc", {"backend-1": 1})
     await q.dequeue_request.remote("backend-1", task_runner_mock_actor)
@@ -84,7 +84,7 @@ async def test_alter_backend(serve_instance, task_runner_mock_actor):
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.request_args == 1
 
-    await q.set_traffic("svc", {"backend-2": 1})
+    await q.set_traffic.remote("svc", {"backend-2": 1})
     await q.dequeue_request.remote("backend-2", task_runner_mock_actor)
     await q.enqueue_request.remote("svc", 2, "kwargs", None)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
@@ -112,15 +112,14 @@ async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
     assert [g.request_args for g in got_work] == [1, 1]
 
 
-async def test_split_traffic_round_robin(serve_instance,
-                                         task_runner_mock_actor):
+async def test_round_robin(serve_instance, task_runner_mock_actor):
     q = RoundRobinPolicyQueueActor.remote()
 
     await q.set_traffic.remote("svc", {"backend-1": 0.5, "backend-2": 0.5})
     runner_1, runner_2 = [make_task_runner_mock() for _ in range(2)]
 
     #NOTE: this is the only difference between the
-    # test_split_traffic_random and test_split_traffic_round_robin
+    # test_split_traffic_random and test_round_robin
     for _ in range(10):
         await q.dequeue_request.remote("backend-1", runner_1)
         await q.dequeue_request.remote("backend-2", runner_2)
@@ -135,30 +134,52 @@ async def test_split_traffic_round_robin(serve_instance,
     assert [g.request_args for g in got_work] == [1, 1]
 
 
-def test_split_traffic_fixed_packing(serve_instance, task_runner_mock_actor):
+async def test_fixed_packing(serve_instance):
     packing_num = 4
-    q = FixedPackingPolicyQueue(packing_num=packing_num)
-    q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})
+    q = FixedPackingPolicyQueueActor.remote(packing_num=packing_num)
+    await q.set_traffic.remote("svc", {"backend-1": 0.5, "backend-2": 0.5})
 
-    # fire twice the number of queries as the packing number
-    for i in range(2 * packing_num):
-        q.enqueue_request("svc", i, "kwargs", None)
-
+    runner_1, runner_2 = (make_task_runner_mock() for _ in range(2))
     # both the backends will get equal number of queries
     # as it is packed round robin
     for _ in range(packing_num):
-        q.dequeue_request("backend-1", task_runner_mock_actor)
+        await q.dequeue_request.remote("backend-1", runner_1)
+        await q.dequeue_request.remote("backend-2", runner_2)
 
-    result_one = ray.get(task_runner_mock_actor.get_recent_call.remote())
+    for backend, runner in zip(["1", "2"], [runner_1, runner_2]):
+        for _ in range(packing_num):
+            input_value = "should-go-to-backend-{}".format(backend)
+            await q.enqueue_request.remote("svc", input_value, "kwargs", None)
+            all_calls = await runner.get_all_calls.remote()
+            for call in all_calls:
+                assert call.request_args == input_value
 
-    for _ in range(packing_num):
-        q.dequeue_request("backend-2", task_runner_mock_actor)
 
-    result_two = ray.get(task_runner_mock_actor.get_recent_call.remote())
+async def test_power_of_two_choices(serve_instance):
+    q = PowerOfTwoPolicyQueueActor.remote()
+    enqueue_futures = []
 
-    got_work = [result_one, result_two]
-    assert [g.request_args
-            for g in got_work] == [packing_num - 1, 2 * packing_num - 1]
+    # First, fill the queue for backend-1 with 3 requests
+    await q.set_traffic.remote("svc", {"backend-1": 1.0})
+    for _ in range(3):
+        future = q.enqueue_request.remote("svc", "1", "", None)
+        enqueue_futures.append(future)
+
+    # Then, add a new backend, this backend should be filled next
+    await q.set_traffic.remote("svc", {"backend-1": 0.5, "backend-2": 0.5})
+    for _ in range(2):
+        future = q.enqueue_request.remote("svc", "2", "", None)
+        enqueue_futures.append(future)
+
+    runner_1, runner_2 = (make_task_runner_mock() for _ in range(2))
+    for _ in range(3):
+        await q.dequeue_request.remote("backend-1", runner_1)
+        await q.dequeue_request.remote("backend-2", runner_2)
+
+    await asyncio.gather(*enqueue_futures)
+
+    assert len(await runner_1.get_all_calls.remote()) == 3
+    assert len(await runner_2.get_all_calls.remote()) == 2
 
 
 async def test_queue_remove_replicas(serve_instance):

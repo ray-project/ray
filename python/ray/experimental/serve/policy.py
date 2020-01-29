@@ -54,13 +54,13 @@ class RoundRobinPolicyQueue(CentralizedQueues):
     # backend for every service
     round_robin_iterator_map = {}
 
-    def set_traffic(self, service, traffic_dict):
+    async def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,
                      traffic_dict)
         self.traffic[service] = traffic_dict
         backend_names = list(self.traffic[service].keys())
         self.round_robin_iterator_map[service] = itertools.cycle(backend_names)
-        self.flush()
+        await self.flush()
 
     async def _flush_service_queues(self):
         # perform traffic splitting for requests
@@ -111,6 +111,9 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
                         chosen_backend = backend1
                     else:
                         chosen_backend = backend2
+                    logger.debug("[Power of two chocies] found two backends "
+                                 "{} and {}: choosing {}.".format(
+                                     backend1, backend2, chosen_backend))
                 else:
                     chosen_backend = np.random.choice(
                         backend_names, p=backend_weights).squeeze()
@@ -142,7 +145,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
         self.packing_num = packing_num
         super().__init__()
 
-    def set_traffic(self, service, traffic_dict):
+    async def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,
                      traffic_dict)
         self.traffic[service] = traffic_dict
@@ -150,7 +153,7 @@ class FixedPackingPolicyQueue(CentralizedQueues):
         self.fixed_packing_iterator_map[service] = itertools.cycle(
             itertools.chain.from_iterable(
                 itertools.repeat(x, self.packing_num) for x in backend_names))
-        self.flush()
+        await self.flush()
 
     async def _flush_service_queues(self):
         # perform traffic splitting for requests
