@@ -1381,11 +1381,13 @@ def determine_plasma_store_config(object_store_memory,
         else:
             plasma_directory = "/tmp"
 
+
+        print("The requested object store memory size ({}) is greater than the total available memory ({}).".format(object_store_memory, system_memory))
         # Do some sanity checks.
         if object_store_memory > system_memory:
             raise Exception(
-                "The requested object store memory size is greater "
-                "than the total available memory.")
+                "The requested object store memory size ({}) is greater "
+                "than the total available memory ({}).".format(object_store_memory, system_memory))
     else:
         plasma_directory = os.path.abspath(plasma_directory)
         logger.warning("WARNING: object_store_memory is not verified when "

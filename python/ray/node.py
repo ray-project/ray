@@ -218,11 +218,13 @@ class Node:
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
         if not self._resource_spec:
+            print(self._ray_params.object_store_memory)
             self._resource_spec = ResourceSpec(
                 self._ray_params.num_cpus, self._ray_params.num_gpus,
                 self._ray_params.memory, self._ray_params.object_store_memory,
                 self._ray_params.resources,
                 self._ray_params.redis_max_memory).resolve(is_head=self.head)
+        print(self._resource_spec.object_store_memory)
         return self._resource_spec
 
     @property

@@ -134,7 +134,7 @@ head_node:
           resources:
               requests:
                   cpu: 1000m
-                  memory: 512Mi
+                  memory: 20Gi
               limits:
                   # The maximum memory that this pod is allowed to use. The
                   # limit will be detected by ray and split to use 10% for
@@ -143,7 +143,7 @@ head_node:
                   # the object store size is not set manually, ray will
                   # allocate a very large object store in each pod that may
                   # cause problems for other pods.
-                  memory: 2Gi
+                  memory: 20Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
@@ -152,6 +152,10 @@ head_node:
                 valueFrom:
                     resourceFieldRef:
                         resource: requests.cpu
+              - name: MY_MEMORY_LIMIT
+                valueFrom:
+                    resourceFieldRef:
+                        resource: limits.memory
 
 # Kubernetes pod config for worker node pods.
 worker_nodes:
@@ -199,11 +203,11 @@ worker_nodes:
           resources:
               requests:
                   cpu: 1000m
-                  memory: 512Mi
+                  memory: 20Gi
               limits:
                   # This memory limit will be detected by ray and split into
                   # 30% for plasma, and 70% for workers.
-                  memory: 2Gi
+                  memory: 20Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
@@ -212,6 +216,10 @@ worker_nodes:
                 valueFrom:
                     resourceFieldRef:
                         resource: requests.cpu
+              - name: MY_MEMORY_LIMIT
+                valueFrom:
+                    resourceFieldRef:
+                        resource: limits.memory
 
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
@@ -237,9 +245,9 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; ray start --head --memory=$MY_MEMORY_LIMIT --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml 
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ulimit -n 65536; ray start --memory=$MY_MEMORY_LIMIT --num-cpus=$MY_CPU_REQUEST --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
