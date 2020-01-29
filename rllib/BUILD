@@ -41,3 +41,10 @@ py_test(
 #    size = "small",
 #    srcs = ["models/tests/test_distributions.py"]
 #)
+
+# Schedules
+py_test(
+    name = "test_schedules",
+    size = "small",
+    srcs = ["utils/schedules/tests/test_schedules.py"]
+)
