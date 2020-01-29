@@ -398,7 +398,7 @@ class TrialRunner:
 
         if self._stopper.stop_all():
             [self.trial_executor.stop_trial(t) for t in self._trials]
-            logger.info("trial_runner: All trials stopped.")
+            logger.info("All trials stopped due to meeting stopper `stop_all` condition.")
 
     def _get_next_trial(self):
         """Replenishes queue.
