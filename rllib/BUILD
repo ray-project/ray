@@ -1,3 +1,20 @@
+Simon's idea to check around oneself inside script for the other files:
+
+import pytest
+from pathlib import Path
+import sys
+
+if __name__ == "__main__":
+    curr_dir = Path(__file__).parent
+    test_paths = curr_dir.rglob("test_*.py")
+    sorted_path = sorted(map(lambda path: str(path.absolute()), test_paths))
+    serve_tests_files = list(sorted_path)
+
+    print("Testing the following files")
+    for test_file in serve_tests_files:
+        print("->", test_file.split("/")[-1])
+
+    sys.exit(pytest.main(["-v", "-s"] + serve_tests_files))
 # --------------------------------------------------------------------
 # BAZEL/Travis-ci test cases.
 # --------------------------------------------------------------------
@@ -7,13 +24,14 @@
 # ---------------------------------------
 
 py_test(
-    name = "tests/run_regression_tests.py",
+    name = "run_regression_tests",
+    main = "tests/run_regression_tests.py",
     tags = ["learning_tests"],
     size = "small",
     srcs = ["tests/run_regression_tests.py"],
+    data = glob(["tuned_examples/regression_tests/**"]),
     args = glob(["tuned_examples/regression_tests/**"])
 )
-
 
 # ---------------------------------------
 # Agents (Compilation and Losses)
