@@ -3,13 +3,38 @@ Async API (Experimental)
 
 Since Python 3.5, it is possible to write concurrent code using the
 ``async/await`` `syntax <https://docs.python.org/3/library/asyncio.html>`__.
+Ray natively integrates with asyncio. You can use ray alongside with popular
+async frameworks like aiohttp, aioredis, etc. 
 
-This document describes Ray's support for asyncio, which enables integration
-with popular async frameworks (e.g., aiohttp, aioredis, etc.) for highly
-concurrent workloads.
+You can try it about by running the following snippet in ``ipython`` or a shell
+that supports top level ``await``:
 
+.. code-block:: python
+
+    import ray
+    import asyncio
+    ray.init()
+
+    @ray.remote
+    class AsyncActor:
+        # multiple invocation of this method can be running in
+        # the event loop at the same time
+        async def run_concurrent(self):
+            print("started")
+            await asyncio.sleep(2) # concurrent workload here
+            print("finished")
+
+    actor = AsyncActor.remote()
+    
+    # regular ray.get
+    ray.get([actor.run_concurrent.remote() for _ in range(4)])
+
+    # async ray.get
+    await actor.run_concurrent.remote()
+
+    
 ObjectIDs as asyncio.Futures
---------------------------
+----------------------------
 ObjectIDs can be translated to asyncio.Future. This feature
 make it possible to ``await`` on ray futures in existing concurrent
 applications.
