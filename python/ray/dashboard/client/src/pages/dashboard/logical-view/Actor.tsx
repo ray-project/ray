@@ -250,7 +250,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               ))}
               ){" "}
-              {actor.state !== 2 ? (
+              {actor.state === 0 ? (
                 <span className={classes.action} onClick={this.killActor}>
                   Kill Actor
                 </span>
