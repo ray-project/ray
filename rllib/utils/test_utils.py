@@ -100,8 +100,12 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                     with tf.Session() as sess:
                         x = sess.run(x)
                         check(
-                            x, y, decimals=decimals, atol=atol,
-                            rtol=rtol, false=false)
+                            x,
+                            y,
+                            decimals=decimals,
+                            atol=atol,
+                            rtol=rtol,
+                            false=false)
 
         # Using decimals.
         if atol is None and rtol is None:
