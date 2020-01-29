@@ -510,7 +510,7 @@ Finally, you can implement the ``Stopper`` abstract class for stopping entire ex
         def __init__(self):
             self.should_stop = False
 
-        def stop(self, trial_id, result):
+        def __call__(self, trial_id, result):
             if not self.should_stop and result['foo'] > 10:
                 self.should_stop = True
             return self.should_stop
@@ -523,7 +523,7 @@ Finally, you can implement the ``Stopper`` abstract class for stopping entire ex
     tune.run(my_trainable, stop=stopper)
 
 
-Note that in the above example all trials will not stop immediately, but will do so once their current iterations are complete.
+Note that in the above example the curretnly running trials will not stop immediately but will do so once their current iterations are complete.
 
 Auto-Filled Results
 -------------------
