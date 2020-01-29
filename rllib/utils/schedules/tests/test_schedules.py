@@ -34,9 +34,6 @@ class TestSchedules(unittest.TestCase):
                     "final_p": 0.6,
                     "framework": fw
                 })
-            if fw == "tf":
-                tf.enable_eager_execution()
-                ts = [tf.convert_to_tensor(i) for i in ts]
             for t in ts:
                 out = linear(t)
                 check(out, 2.1 - (t / 100) * (2.1 - 0.6), decimals=4)
@@ -53,8 +50,6 @@ class TestSchedules(unittest.TestCase):
                     final_p=0.5,
                     power=2.0,
                     framework=fw))
-            if fw == "tf":
-                tf.enable_eager_execution()
             for t in ts:
                 out = polynomial(t)
                 check(out, 0.5 + (2.0 - 0.5) * (1.0 - t / 100)**2, decimals=4)
@@ -74,13 +69,15 @@ class TestSchedules(unittest.TestCase):
                 check(out, 2.0 * 0.99**(t / 100), decimals=4)
 
     def test_piecewise_schedule(self):
-        piecewise = from_config(
-            PiecewiseSchedule,
-            dict(
-                endpoints=[(0, 50.0), (25, 100.0), (30, 200.0)],
-                outside_value=14.5))
         ts = [0, 5, 10, 100, 90, 2, 1, 99, 27]
         expected = [50.0, 60.0, 70.0, 14.5, 14.5, 54.0, 52.0, 14.5, 140.0]
-        for t, e in zip(ts, expected):
-            out = piecewise(t)
-            check(out, e, decimals=4)
+        for fw in ["tf", "torch", None]:
+            piecewise = from_config(
+                PiecewiseSchedule,
+                dict(
+                    endpoints=[(0, 50.0), (25, 100.0), (30, 200.0)],
+                    outside_value=14.5, framework=fw))
+            
+            for t, e in zip(ts, expected):
+                out = piecewise(t)
+                check(out, e, decimals=4)

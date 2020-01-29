@@ -43,7 +43,8 @@ class Schedule(metaclass=ABCMeta):
 
     def value(self, t):
         if self.framework == "tf" and tf.executing_eagerly() is False:
-            return tf.py_func(self._value, [t], tf.float32)
+            return tf.cast(tf.py_func(self._value, [t], tf.float64),
+                           tf.float32, name="schedule-value")
         return self._value(t)
 
     def __call__(self, t):
