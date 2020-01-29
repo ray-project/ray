@@ -1,104 +1,137 @@
+import asyncio
+
 import pytest
 import ray
-from ray.experimental.serve.policy import (RandomPolicyQueue,
-                                          RoundRobinPolicyQueue,
-                                           FixedPackingPolicyQueue)
+
+from ray.experimental.serve.policy import (
+    RandomPolicyQueue, RandomPolicyQueueActor, RoundRobinPolicyQueueActor,
+    FixedPackingPolicyQueueActor)
+
+pytestmark = pytest.mark.asyncio
+
+
+def make_task_runner_mock():
+    @ray.remote(num_cpus=0)
+    class TaskRunnerMock:
+        def __init__(self):
+            self.query = None
+            self.queries = []
+
+        async def _ray_serve_call(self, request_item):
+            self.query = request_item
+            self.queries.append(request_item)
+            return "DONE"
+
+        def get_recent_call(self):
+            return self.query
+
+        def get_all_calls(self):
+            return self.queries
+
+    return TaskRunnerMock.remote()
 
 
 @pytest.fixture(scope="session")
 def task_runner_mock_actor():
-    @ray.remote
-    class TaskRunnerMock:
-        def __init__(self):
-            self.result = None
+    yield make_task_runner_mock()
 
-        def _ray_serve_call(self, request_item):
-            self.result = request_item
 
-        def get_recent_call(self):
-            return self.result
-
-    actor = TaskRunnerMock.remote()
-    yield actor
-
-@pytest.mark.asyncio
 async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueue()
-    q.link("svc", "backend")
+    q = RandomPolicyQueueActor.remote()
+    q.link.remote("svc", "backend")
+    q.dequeue_request.remote("backend", task_runner_mock_actor)
 
-    result_future = await q.enqueue_request("svc", 1, "kwargs", None)
-    await q.dequeue_request("backend", task_runner_mock_actor)
+    # Make sure we get the request result back
+    result = await q.enqueue_request.remote("svc", 1, "kwargs", None)
+    assert result == "DONE"
+
+    # Make sure it's the right request
     got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.request_args == 1
     assert got_work.request_kwargs == "kwargs"
 
-    ray.worker.global_worker.put_object(2, got_work.result_object_id)
-    assert ray.get(ray.ObjectID(result_object_id)) == 2
 
+async def test_slo(serve_instance, task_runner_mock_actor):
+    q = RandomPolicyQueueActor.remote()
+    await q.link.remote("svc", "backend")
 
-def test_slo(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueue()
-    q.link("svc", "backend")
-
+    all_request_sent = []
     for i in range(10):
         slo_ms = 1000 - 100 * i
-        q.enqueue_request("svc", i, "kwargs", None, request_slo_ms=slo_ms)
+        all_request_sent.append(
+            q.enqueue_request.remote(
+                "svc", i, "kwargs", None, request_slo_ms=slo_ms))
+
     for i in range(10):
-        q.dequeue_request("backend", task_runner_mock_actor)
-        got_work = ray.get(task_runner_mock_actor.get_recent_call.remote())
-        assert got_work.request_args == (9 - i)
+        await q.dequeue_request.remote("backend", task_runner_mock_actor)
+
+    await asyncio.gather(*all_request_sent)
+
+    i_should_be = 9
+    all_calls = await task_runner_mock_actor.get_all_calls.remote()
+    all_calls = all_calls[-10:]
+    for call in all_calls:
+        assert call.request_args == i_should_be
+        i_should_be -= 1
 
 
-def test_alter_backend(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueue()
+async def test_alter_backend(serve_instance, task_runner_mock_actor):
+    q = RandomPolicyQueue.remote()
 
-    q.set_traffic("svc", {"backend-1": 1})
-    result_object_id = q.enqueue_request("svc", 1, "kwargs", None)
-    q.dequeue_request("backend-1", task_runner_mock_actor)
-    got_work = ray.get(task_runner_mock_actor.get_recent_call.remote())
+    await q.set_traffic.remote("svc", {"backend-1": 1})
+    await q.dequeue_request.remote("backend-1", task_runner_mock_actor)
+    await q.enqueue_request.remote("svc", 1, "kwargs", None)
+    got_work = await task_runner_mock_actor.get_recent_call.remote()
     assert got_work.request_args == 1
-    ray.worker.global_worker.put_object(2, got_work.result_object_id)
-    assert ray.get(ray.ObjectID(result_object_id)) == 2
 
-    q.set_traffic("svc", {"backend-2": 1})
-    result_object_id = q.enqueue_request("svc", 1, "kwargs", None)
-    q.dequeue_request("backend-2", task_runner_mock_actor)
-    got_work = ray.get(task_runner_mock_actor.get_recent_call.remote())
-    assert got_work.request_args == 1
-    ray.worker.global_worker.put_object(2, got_work.result_object_id)
-    assert ray.get(ray.ObjectID(result_object_id)) == 2
+    await q.set_traffic("svc", {"backend-2": 1})
+    await q.dequeue_request.remote("backend-2", task_runner_mock_actor)
+    await q.enqueue_request.remote("svc", 2, "kwargs", None)
+    got_work = await task_runner_mock_actor.get_recent_call.remote()
+    assert got_work.request_args == 2
 
 
-def test_split_traffic(serve_instance, task_runner_mock_actor):
-    q = RandomPolicyQueue()
+async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
+    q = RandomPolicyQueueActor.remote()
 
-    q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})
+    await q.set_traffic.remote("svc", {"backend-1": 0.5, "backend-2": 0.5})
+    runner_1, runner_2 = [make_task_runner_mock() for _ in range(2)]
+    for _ in range(20):
+        await q.dequeue_request.remote("backend-1", runner_1)
+        await q.dequeue_request.remote("backend-2", runner_2)
+
     # assume 50% split, the probability of all 20 requests goes to a
     # single queue is 0.5^20 ~ 1-6
     for _ in range(20):
-        q.enqueue_request("svc", 1, "kwargs", None)
-    q.dequeue_request("backend-1", task_runner_mock_actor)
-    result_one = ray.get(task_runner_mock_actor.get_recent_call.remote())
-    q.dequeue_request("backend-2", task_runner_mock_actor)
-    result_two = ray.get(task_runner_mock_actor.get_recent_call.remote())
+        await q.enqueue_request.remote("svc", 1, "kwargs", None)
 
-    got_work = [result_one, result_two]
+    got_work = [
+        await runner.get_recent_call.remote()
+        for runner in (runner_1, runner_2)
+    ]
     assert [g.request_args for g in got_work] == [1, 1]
 
 
-def test_split_traffic_round_robin(serve_instance, task_runner_mock_actor):
-    q = RoundRobinPolicyQueue()
-    q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})
-    # since round robin policy is stateful firing two queries consecutively
-    # would transfer the queries to two different backends
-    for _ in range(2):
-        q.enqueue_request("svc", 1, "kwargs", None)
-    q.dequeue_request("backend-1", task_runner_mock_actor)
-    result_one = ray.get(task_runner_mock_actor.get_recent_call.remote())
-    q.dequeue_request("backend-2", task_runner_mock_actor)
-    result_two = ray.get(task_runner_mock_actor.get_recent_call.remote())
+async def test_split_traffic_round_robin(serve_instance,
+                                         task_runner_mock_actor):
+    q = RoundRobinPolicyQueueActor.remote()
 
-    got_work = [result_one, result_two]
+    await q.set_traffic.remote("svc", {"backend-1": 0.5, "backend-2": 0.5})
+    runner_1, runner_2 = [make_task_runner_mock() for _ in range(2)]
+
+    #NOTE: this is the only difference between the
+    # test_split_traffic_random and test_split_traffic_round_robin
+    for _ in range(10):
+        await q.dequeue_request.remote("backend-1", runner_1)
+        await q.dequeue_request.remote("backend-2", runner_2)
+
+    for _ in range(20):
+        await q.enqueue_request.remote("svc", 1, "kwargs", None)
+
+    got_work = [
+        await runner.get_recent_call.remote()
+        for runner in (runner_1, runner_2)
+    ]
     assert [g.request_args for g in got_work] == [1, 1]
 
 
@@ -128,8 +161,9 @@ def test_split_traffic_fixed_packing(serve_instance, task_runner_mock_actor):
             for g in got_work] == [packing_num - 1, 2 * packing_num - 1]
 
 
-def test_queue_remove_replicas(serve_instance, task_runner_mock_actor):
+async def test_queue_remove_replicas(serve_instance):
+    temp_actor = make_task_runner_mock()
     q = RandomPolicyQueue()
-    q.dequeue_request("backend", task_runner_mock_actor)
-    q.remove_and_destory_replica("backend", task_runner_mock_actor)
-    assert len(q.workers["backend"]) == 0
+    await q.dequeue_request("backend", temp_actor)
+    await q.remove_and_destory_replica("backend", temp_actor)
+    assert q.worker_queues["backend"].qsize() == 0

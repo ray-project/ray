@@ -51,6 +51,10 @@ class Query:
     def __lt__(self, other):
         return self.request_slo_ms < other.request_slo_ms
 
+    def __repr__(self):
+        return "<Query args={} kwargs={}>".format(self.request_args,
+                                                  self.request_kwargs)
+
 
 def _adjust_latency_slo(slo_ms: Union[float, int, None]) -> float:
     """Normalize the input latency objective to absoluate timestamp.
@@ -186,16 +190,20 @@ class CentralizedQueues:
         return result
 
     async def dequeue_request(self, backend, replica_handle):
+        logger.debug(
+            "Received a dequeue request for backend {}".format(backend))
         await self.worker_queues[backend].put(replica_handle)
         await self.flush()
 
     async def remove_and_destory_replica(self, backend, replica_handle):
         # We need this lock because we modify worker_queue here.
-        with self.flush_lock:
+        async with self.flush_lock:
+            old_queue = self.worker_queues[backend]
             new_queue = asyncio.Queue()
             target_id = replica_handle._actor_id
 
-            for replica_handle in self.worker_queues[backend]:
+            while not old_queue.empty():
+                replica_handle = await old_queue.get()
                 if replica_handle._actor_id != target_id:
                     await new_queue.put(replica_handle)
 
@@ -203,9 +211,9 @@ class CentralizedQueues:
             # TODO: consider await this with timeout, or use ray_kill
             replica_handle.__ray_terminate__.remote()
 
-    def link(self, service, backend):
+    async def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
-        self.set_traffic(service, {backend: 1.0})
+        await self.set_traffic(service, {backend: 1.0})
 
     async def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,
