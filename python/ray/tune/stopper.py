@@ -2,7 +2,8 @@ class Stopper:
     """Base class for implementing a Tune experiment stopper.
 
     Allows users to implement experiment-level stopping via ``stop_all``. By
-    default, this class does not stop any trials.
+    default, this class does not stop any trials. Subclasses need to
+    implement ``__call__`` and ``stop_all``.
 
     .. code-block:: python
 
@@ -14,6 +15,9 @@ class Stopper:
             def __init__(self):
                 self._start = time.time()
                 self._deadline = 300
+
+            def __call__(self, trial_id, result):
+                return False
 
             def stop_all(self):
                 return time.time() - self._start > self.deadline
