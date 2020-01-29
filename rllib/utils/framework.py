@@ -109,7 +109,7 @@ def get_variable(value, framework="tf", tf_name="unnamed-variable"):
         any: A framework-specific variable (tf.Variable or python primitive).
     """
     if framework == "tf":
-        tf = try_import_tf()
-        return tf.get_variable(tf_name, initializer=value)
+        import tensorflow as tf
+        return tf.compat.v1.get_variable(tf_name, initializer=value)
     # torch or None: Return python primitive.
     return value

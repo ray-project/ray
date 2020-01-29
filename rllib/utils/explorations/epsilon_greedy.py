@@ -73,7 +73,8 @@ class EpsilonGreedy(Exploration):
                                action_dist=None,
                                is_exploring=True,
                                time_step=None):
-        # TODO(sven): This is hardcoded. Put a meaningful error, in case model API is not as required.
+        # TODO(sven): This is hardcoded. Put a meaningful error, in case model
+        # API is not as required.
         q_values = model.q_value_head(model._last_output)[0]
         if self.framework == "tf":
             return self._get_tf_exploration_action_op(action, is_exploring,
@@ -85,7 +86,7 @@ class EpsilonGreedy(Exploration):
 
         if is_exploring:
             # Get the current epsilon.
-            epsilon = self.epsilon_schedule.value(self.last_time_step)
+            epsilon = self.epsilon_schedule(self.last_time_step)
 
             batch_size = len(q_values)
             # Mask out actions, whose Q-values are -inf, so that we don't
@@ -120,7 +121,7 @@ class EpsilonGreedy(Exploration):
         Returns:
             tf.Tensor: The tf exploration-action op.
         """
-        epsilon = self.epsilon_schedule.value(
+        epsilon = self.epsilon_schedule(
             time_step if time_step is not None else self.last_time_step)
 
         batch_size = tf.shape(action)[0]
@@ -134,7 +135,8 @@ class EpsilonGreedy(Exploration):
             tf.multinomial(random_valid_action_logits, 1), axis=1)
 
         chose_random = tf.random_uniform(
-            tf.stack([batch_size]), minval=0, maxval=1, dtype=epsilon.dtype) \
+            tf.stack([batch_size]),
+            minval=0, maxval=1, dtype=epsilon.dtype) \
             < epsilon
 
         exploration_action = tf.cond(
@@ -151,15 +153,17 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def get_state(self):
-        return self.last_time_step
+        return [
+            self.last_time_step, self.epsilon_schedule(self.last_time_step)]
 
     @override(Exploration)
     def set_state(self, exploration_state):
+        time_step = exploration_state[0]
         if self.framework == "tf":
-            update_op = tf.assign(self.last_time_step, exploration_state)
+            update_op = tf.assign(self.last_time_step, time_step)
             with tf.control_dependencies([update_op]):
                 return tf.no_op()
-        self.last_time_step = exploration_state
+        self.last_time_step = time_step
 
     @override(Exploration)
     def reset_state(self, tf_session=None):
@@ -168,7 +172,7 @@ class EpsilonGreedy(Exploration):
     @classmethod
     @override(Exploration)
     def merge_states(cls, exploration_objects):
-        states = [e.get_state() for e in exploration_objects]
+        time_steps = [e.get_state()[0] for e in exploration_objects]
         if exploration_objects[0].framework == "tf":
-            return tf.reduce_sum(states)
-        return np.sum(states)
+            return tf.reduce_sum(time_steps)
+        return np.sum(time_steps)

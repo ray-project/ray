@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 
-from ray.rllib.utils.framework import check_framework
+#from ray.rllib.utils.framework import check_framework
 
 
 class Exploration(metaclass=ABCMeta):
@@ -25,7 +25,7 @@ class Exploration(metaclass=ABCMeta):
         """
         self.action_space = action_space
         self.worker_info = worker_info or {}
-        self.framework = check_framework(framework)
+        self.framework = framework
 
     def get_exploration_action(self,
                                action,

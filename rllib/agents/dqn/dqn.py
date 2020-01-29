@@ -239,7 +239,7 @@ def before_train_step(trainer):
     # TODO(sven): Is this still useful (we don't know, which Exploration
     # we are using (whether it's epsilon or something else)?
     trainer.cur_exp_states = trainer.workers.foreach_trainable_policy(
-        lambda p, _: p.exploration.get_state())
+        lambda p, _: p.last_exploration_state)
 
 
 def add_trainer_metrics(trainer, result):

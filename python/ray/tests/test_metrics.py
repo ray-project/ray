@@ -61,11 +61,11 @@ def test_worker_stats(shutdown_only):
     target_worker_present = False
     for worker in reply.workers_stats:
         stats = worker.core_worker_stats
-        if stats.webui_display == "test":
+        if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
             assert worker.pid == worker_pid
         else:
-            assert stats.webui_display == ""
+            assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
     # Test show_in_webui for remote actors.
@@ -75,11 +75,11 @@ def test_worker_stats(shutdown_only):
     target_worker_present = False
     for worker in reply.workers_stats:
         stats = worker.core_worker_stats
-        if stats.webui_display == "test":
+        if stats.webui_display[""] == '{"message": "test", "dtype": "text"}':
             target_worker_present = True
             assert worker.pid == worker_pid
         else:
-            assert stats.webui_display == ""
+            assert stats.webui_display[""] == ""  # Empty proto
     assert target_worker_present
 
     timeout_seconds = 20

@@ -145,7 +145,9 @@ class TFPolicy(Policy):
                 "seq_lens tensor must be given if state inputs are defined")
 
         # Apply the post-forward-pass exploration if applicable.
+        # And store the `get_state` op.
         self._exploration_action = None
+        self._exploration_state = None
         if self.exploration:
             self._exploration_action = self.exploration.get_exploration_action(
                 self._action,
@@ -153,6 +155,7 @@ class TFPolicy(Policy):
                 action_dist=self.dist_class,
                 is_exploring=self._is_exploring,
                 time_step=self._time_step)
+            self._exploration_state = self.exploration.get_state()
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -256,7 +259,10 @@ class TFPolicy(Policy):
             deterministic=deterministic,
             explore=explore,
             time_step=time_step)
-        return builder.get(fetches)
+        # Extract last exploration state from fetches and return rest.
+        ret = builder.get(fetches)
+        self.last_exploration_state = ret[3]
+        return ret[:3]
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):
@@ -337,13 +343,11 @@ class TFPolicy(Policy):
 
         By default we only return action probability info (if present).
         """
+        ret = {}
         if self._action_logp is not None:
-            return {
-                ACTION_PROB: self._action_prob,
-                ACTION_LOGP: self._action_logp,
-            }
-        else:
-            return {}
+            ret[ACTION_PROB] = self._action_prob
+            ret[ACTION_LOGP] = self._action_logp
+        return ret
 
     @DeveloperAPI
     def extra_compute_grad_feed_dict(self):
@@ -484,11 +488,18 @@ class TFPolicy(Policy):
         if time_step is not None:
             builder.add_feed_dict({self._time_step: time_step})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches([
-            self._exploration_action
-            if explore is not False and self.exploration else self._action
-        ] + self._state_outputs + [self.extra_compute_action_fetches()])
-        return fetches[0], fetches[1:-1], fetches[-1]
+        # Get an exploration action.
+        if explore and self.exploration:
+            fetches = builder.add_fetches(
+                [self._exploration_action] + self._state_outputs +
+                [self.extra_compute_action_fetches()] +
+                [self._exploration_state])
+        # Do not explore.
+        else:
+            fetches = builder.add_fetches(
+                [self._action] + self._state_outputs +
+                [self.extra_compute_action_fetches()]) + [None]
+        return fetches[0], fetches[1:-2], fetches[-2], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()

@@ -68,6 +68,8 @@ class Policy(metaclass=ABCMeta):
             action_space=self.action_space,
             framework="torch" if self.config.get("use_pytorch") else "tf",
             worker_info=self.config.get("worker_info"))
+        self.last_exploration_state = []
+        
         # The default sampling behavior for actions if not explicitly given
         # in calls to `compute_actions`.
         self.deterministic = config.get("deterministic", False)
@@ -126,7 +128,7 @@ class Policy(metaclass=ABCMeta):
                               info=None,
                               episode=None,
                               clip_actions=False,
-                              deterministic=False,
+                              deterministic=None,
                               explore=True,
                               time_step=None,
                               **kwargs):

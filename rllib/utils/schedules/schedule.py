@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 
-from ray.rllib.utils.framework import check_framework
+#from ray.rllib.utils.framework import check_framework
 
 
 class Schedule(metaclass=ABCMeta):
@@ -20,7 +20,10 @@ class Schedule(metaclass=ABCMeta):
     """
 
     def __init__(self, framework=None):
-        self.framework = check_framework(framework)
+        # TODO(sven): replace with .tf_value() / torch_value() methods that
+        # can be applied late binding, so no need to set framework during
+        # construction.
+        self.framework = framework
 
     @abstractmethod
     def value(self, t):
