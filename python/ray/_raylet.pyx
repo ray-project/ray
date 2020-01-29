@@ -102,9 +102,6 @@ from ray.utils import decode
 from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
-    RAW_BUFFER_METADATA,
-    PICKLE_BUFFER_METADATA,
-    PICKLE5_BUFFER_METADATA,
 )
 
 # pyarrow cannot be imported until after _raylet finishes initializing
@@ -219,84 +216,6 @@ def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
 
-cdef c_bool is_simple_value(value, int64_t *num_elements_contained):
-    num_elements_contained[0] += 1
-
-    if num_elements_contained[0] >= RayConfig.instance().num_elements_limit():
-        return False
-
-    if (cpython.PyInt_Check(value) or cpython.PyLong_Check(value) or
-            value is False or value is True or cpython.PyFloat_Check(value) or
-            value is None):
-        return True
-
-    if cpython.PyBytes_CheckExact(value):
-        num_elements_contained[0] += cpython.PyBytes_Size(value)
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if cpython.PyUnicode_CheckExact(value):
-        num_elements_contained[0] += cpython.PyUnicode_GET_SIZE(value)
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if (cpython.PyList_CheckExact(value) and
-            cpython.PyList_Size(value) < RayConfig.instance().size_limit()):
-        for item in value:
-            if not is_simple_value(item, num_elements_contained):
-                return False
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if (cpython.PyDict_CheckExact(value) and
-            cpython.PyDict_Size(value) < RayConfig.instance().size_limit()):
-        # TODO(suquark): Using "items" in Python2 is not very efficient.
-        for k, v in value.items():
-            if not (is_simple_value(k, num_elements_contained) and
-                    is_simple_value(v, num_elements_contained)):
-                return False
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if (cpython.PyTuple_CheckExact(value) and
-            cpython.PyTuple_Size(value) < RayConfig.instance().size_limit()):
-        for item in value:
-            if not is_simple_value(item, num_elements_contained):
-                return False
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    if isinstance(value, numpy.ndarray):
-        if value.dtype == "O":
-            return False
-        num_elements_contained[0] += value.nbytes
-        return (num_elements_contained[0] <
-                RayConfig.instance().num_elements_limit())
-
-    return False
-
-
-def check_simple_value(value):
-    """Check if value is simple enough to be send by value.
-
-    This method checks if a Python object is sufficiently simple that it can
-    be serialized and passed by value as an argument to a task (without being
-    put in the object store). The details of which objects are sufficiently
-    simple are defined by this method and are not particularly important.
-    But for performance reasons, it is better to place "small" objects in
-    the task itself and "large" objects in the object store.
-
-    Args:
-        value: Python object that should be checked.
-
-    Returns:
-        True if the value should be send by value, False otherwise.
-    """
-
-    cdef int64_t num_elements_contained = 0
-    return is_simple_value(value, &num_elements_contained)
-
-
 cdef class Language:
     cdef CLanguage lang
 
@@ -361,56 +280,30 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
         out.push_back(s)
     return out
 
-
-cdef:
-    c_string pickle_metadata_str = PICKLE_BUFFER_METADATA
-    shared_ptr[CBuffer] pickle_metadata = dynamic_pointer_cast[
-        CBuffer, LocalMemoryBuffer](
-        make_shared[LocalMemoryBuffer](
-            <uint8_t*>(pickle_metadata_str.data()),
-            pickle_metadata_str.size(), True))
-    c_string raw_meta_str = RAW_BUFFER_METADATA
-    shared_ptr[CBuffer] raw_metadata = dynamic_pointer_cast[
-        CBuffer, LocalMemoryBuffer](
-        make_shared[LocalMemoryBuffer](
-            <uint8_t*>(raw_meta_str.data()),
-            raw_meta_str.size(), True))
-
 cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
     cdef:
         c_string pickled_str
         const unsigned char[:] buffer
         size_t size
         shared_ptr[CBuffer] arg_data
-        shared_ptr[CBuffer] arg_metadata
 
-    # TODO be consistent with store_task_outputs
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
                 CTaskArg.PassByReference((<ObjectID>arg).native()))
-        elif not ray._raylet.check_simple_value(arg):
+        worker = ray.worker.global_worker
+        serialized_arg = worker.get_serialization_context().serialize(arg)
+        if serialized_arg.total_bytes > 100 * 1024:
             args_vector.push_back(
                 CTaskArg.PassByReference((<ObjectID>ray.put(arg)).native()))
-        elif type(arg) is bytes:
-            buffer = arg
-            size = buffer.nbytes
-            arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-                make_shared[LocalMemoryBuffer](
-                    <uint8_t*>(&buffer[0]), size, True))
-            args_vector.push_back(
-                CTaskArg.PassByValue(
-                    make_shared[CRayObject](arg_data, raw_metadata)))
         else:
-            buffer = pickle.dumps(
-                arg, protocol=pickle.HIGHEST_PROTOCOL)
-            size = buffer.nbytes
+            size = serialized_arg.total_bytes
             arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(&buffer[0]), size, True))
+                    make_shared[LocalMemoryBuffer](size))
+            write_serialized_object(serialized_arg, arg_data)
             args_vector.push_back(
-                CTaskArg.PassByValue(
-                    make_shared[CRayObject](arg_data, pickle_metadata)))
+                CTaskArg.PassByValue(make_shared[CRayObject](
+                    arg_data, string_to_buffer(serialized_arg.metadata))))
 
 
 cdef class RayletClient:
@@ -479,34 +372,11 @@ cdef deserialize_args(
     ids_to_deserialize = []
     id_indices = []
     for i in range(c_args.size()):
-        # Passed by value.
-        if arg_reference_ids[i].IsNil():
-            if (c_args[i].get().HasMetadata()
-                and Buffer.make(
-                    c_args[i].get().GetMetadata()).to_pybytes()
-                    == RAW_BUFFER_METADATA):
-                data = Buffer.make(c_args[i].get().GetData())
-                args.append(data.to_pybytes())
-            elif (c_args[i].get().HasMetadata() and Buffer.make(
-                    c_args[i].get().GetMetadata()).to_pybytes()
-                    == PICKLE_BUFFER_METADATA):
-                # This is a pickled "simple python value" argument.
-                data = Buffer.make(c_args[i].get().GetData())
-                args.append(pickle.loads(data.to_pybytes()))
-            else:
-                # This is a Ray object inlined by the direct task submitter.
-                ids_to_deserialize.append(
-                    ObjectID(arg_reference_ids[i].Binary()))
-                id_indices.append(i)
-                objects_to_deserialize.push_back(c_args[i])
-                args.append(None)
-        # Passed by reference.
-        else:
-            ids_to_deserialize.append(
-                ObjectID(arg_reference_ids[i].Binary()))
-            id_indices.append(i)
-            objects_to_deserialize.push_back(c_args[i])
-            args.append(None)
+        ids_to_deserialize.append(
+            ObjectID(arg_reference_ids[i].Binary()))
+        id_indices.append(i)
+        objects_to_deserialize.push_back(c_args[i])
+        args.append(None)
 
     data_metadata_pairs = RayObjectsToDataMetadataPairs(
         objects_to_deserialize)
