@@ -143,7 +143,7 @@ head_node:
                   # the object store size is not set manually, ray will
                   # allocate a very large object store in each pod that may
                   # cause problems for other pods.
-                  memory: 20Gi
+                  memory: 2Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
@@ -203,7 +203,7 @@ worker_nodes:
               limits:
                   # This memory limit will be detected by ray and split into
                   # 30% for plasma, and 70% for workers.
-                  memory: 20Gi
+                  memory: 2Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
