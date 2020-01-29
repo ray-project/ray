@@ -260,14 +260,6 @@ py_test(
 )
 
 py_test(
-    name = "test_joblib",
-    size = "medium",
-    srcs = ["test_joblib.py"],
-    tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_multi_node_2",
     size = "medium",
     srcs = ["test_multi_node_2.py"],
