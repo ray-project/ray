@@ -171,7 +171,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     python /ray/python/ray/experimental/sgd/pytorch/examples/dcgan.py --smoke-test --num-replicas=2
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/experimental/sgd/examples/tensorflow_train_example.py
+    python /ray/python/ray/experimental/sgd/tf/examples/tensorflow_train_example.py
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/python/ray/experimental/sgd/tf/examples/tensorflow_train_example.py --num-replicas=2
