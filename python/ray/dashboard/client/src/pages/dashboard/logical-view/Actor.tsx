@@ -8,7 +8,8 @@ import {
   CheckProfilingStatusResponse,
   getProfilingResultURL,
   launchProfiling,
-  RayletInfoResponse
+  RayletInfoResponse,
+  launchKillActor
 } from "../../../api";
 import Actors from "./Actors";
 import Collapse from "@material-ui/core/Collapse";
@@ -107,6 +108,13 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         }
       };
       await checkProfilingStatusLoop();
+    }
+  };
+
+  killActor = () => {
+    const actor = this.props.actor;
+    if (actor.state === 0) {
+      launchKillActor(actor.actorId, actor.ipAddress, actor.port);
     }
   };
 
@@ -242,6 +250,13 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               ))}
               ){" "}
+              {actor.state === 0 ? (
+                <span className={classes.action} onClick={this.killActor}>
+                  Kill Actor
+                </span>
+              ) : (
+                ""
+              )}
               {Object.entries(profiling).map(
                 ([profilingId, { startTime, latestResponse }]) =>
                   latestResponse !== null && (
