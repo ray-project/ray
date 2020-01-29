@@ -297,6 +297,7 @@ Getting Involved
    serve.rst
    iter.rst
    multiprocessing.rst
+   joblib.rst
 
 .. toctree::
    :maxdepth: -1

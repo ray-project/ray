@@ -11,6 +11,8 @@ from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
     SMALL_NUMBER, LARGE_INTEGER
 from ray.rllib.utils.policy_client import PolicyClient
 from ray.rllib.utils.policy_server import PolicyServer
+from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
+    PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check
 from ray.tune.utils import merge_dicts, deep_update
 
@@ -75,12 +77,17 @@ __all__ = [
     "try_import_tf",
     "try_import_tfp",
     "try_import_torch",
+    "ConstantSchedule",
     "DeveloperAPI",
+    "ExponentialSchedule",
     "Filter",
     "FilterManager",
     "LARGE_INTEGER",
+    "LinearSchedule",
+    "PiecewiseSchedule",
     "PolicyClient",
     "PolicyServer",
+    "PolynomialSchedule",
     "PublicAPI",
     "SMALL_NUMBER",
 ]

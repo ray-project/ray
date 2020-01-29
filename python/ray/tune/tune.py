@@ -362,7 +362,7 @@ def run_experiments(experiments,
                     reuse_actors=False,
                     trial_executor=None,
                     raise_on_failed_trial=True,
-                    concurrent=False):
+                    concurrent=True):
     """Runs and blocks until all trials finish.
 
     Examples:

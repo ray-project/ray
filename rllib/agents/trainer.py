@@ -210,7 +210,7 @@ COMMON_CONFIG = {
     # Whether to LZ4 compress individual observations
     "compress_observations": False,
     # Wait for metric batches for at most this many seconds. Those that
-    # have not returned in time will be collected in the next iteration.
+    # have not returned in time will be collected in the next train iteration.
     "collect_metrics_timeout": 180,
     # Smooth metrics over this many episodes.
     "metrics_smoothing_episodes": 100,
@@ -224,10 +224,10 @@ COMMON_CONFIG = {
     # but optimal value could be obtained by measuring your environment
     # step / reset and model inference perf.
     "remote_env_batch_wait_ms": 0,
-    # Minimum time per iteration
+    # Minimum time per train iteration
     "min_iter_time_s": 0,
     # Minimum env steps to optimize for per train call. This value does
-    # not affect learning, only the length of iterations.
+    # not affect learning, only the length of train iterations.
     "timesteps_per_iteration": 0,
     # This argument, in conjunction with worker_index, sets the random seed of
     # each worker, so that identically configured trials will have identical

@@ -292,7 +292,10 @@ def trial_progress_str(trials, metric_columns, fmt="psql", max_rows=None):
         keys = list(metric_columns.keys())
     else:
         keys = metric_columns
-    keys = [k for k in keys if any(t.last_result.get(k) for t in trials)]
+    keys = [
+        k for k in keys if any(
+            t.last_result.get(k) is not None for t in trials)
+    ]
     # Build trial rows.
     params = list(set().union(*[t.evaluated_params for t in trials]))
     trial_table = [_get_trial_info(trial, params, keys) for trial in trials]
