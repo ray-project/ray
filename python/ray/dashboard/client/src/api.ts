@@ -120,7 +120,7 @@ export interface RayletInfoResponse {
           usedResources: { [key: string]: number };
           currentTaskDesc?: string;
           numPendingTasks?: number;
-          webuiDisplay?: string;
+          webuiDisplay?: Record<string, string>;
         }
       | {
           actorId: string;

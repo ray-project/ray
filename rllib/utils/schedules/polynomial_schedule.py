@@ -37,11 +37,3 @@ class PolynomialSchedule(Schedule):
         """
         return self.final_p + (self.initial_p - self.final_p) * (
             1.0 - (t / self.schedule_timesteps))**self.power
-
-
-#return tf.train.polynomial_decay(
-#    learning_rate=self.initial_p,
-#    global_step=t,
-#    decay_steps=self.schedule_timesteps,
-#    end_learning_rate=self.final_p,
-#    power=self.power)
