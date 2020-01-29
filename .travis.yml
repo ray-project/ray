@@ -142,8 +142,9 @@ matrix:
       env:
         - PYTHON=3.5 RLLIB_REGRESSION_TESTS=1 PYTHONWARNINGS=ignore
       install:
+        - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        #- if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
@@ -158,7 +159,7 @@ matrix:
         - PYTHON=3.5 RLLIB_REGRESSION_TESTS=0 PYTHONWARNINGS=ignore
       install:
         - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
-        - echo "RAY_CI_RLLIB_AFFECTED=$RAY_CI_RLLIB_AFFECTED"
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         #- if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
