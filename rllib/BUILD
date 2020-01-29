@@ -658,6 +658,13 @@ py_test(
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
+# Schedules
+py_test(
+    name = "test_schedules",
+    size = "small",
+    srcs = ["utils/schedules/tests/test_schedules.py"]
+)
+
 # ----------------------------------------
 # rllib/tests/ directory
 # ----------------------------------------
