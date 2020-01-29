@@ -28,7 +28,7 @@ class TestSchedules(unittest.TestCase):
 
         # Test eager as well.
         with eager_mode():
-            constant = from_config(ConstantSchedule, config, framework=fw)
+            constant = from_config(ConstantSchedule, config, framework="tf")
             for t in ts:
                 out = constant(t)
                 check(out, value)
@@ -48,7 +48,7 @@ class TestSchedules(unittest.TestCase):
 
         # Test eager as well.
         with eager_mode():
-            linear = from_config(LinearSchedule, config, framework=fw)
+            linear = from_config(LinearSchedule, config, framework="tf")
             for t in ts:
                 out = linear(t)
                 check(out, 2.1 - (t / 100) * (2.1 - 0.6), decimals=4)
