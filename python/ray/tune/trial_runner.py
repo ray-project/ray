@@ -393,12 +393,10 @@ class TrialRunner:
 
     def _stop_experiment_if_needed(self):
         """Stops all trials if the user condition is satisfied."""
-        if not self._stopper:
-            return
 
         if self._stopper.stop_all():
             [self.trial_executor.stop_trial(t) for t in self._trials]
-            logger.info("All trials stopped due to meeting stopper `stop_all` condition.")
+            logger.info("All trials stopped due to ``stopper.stop_all``.")
 
     def _get_next_trial(self):
         """Replenishes queue.
