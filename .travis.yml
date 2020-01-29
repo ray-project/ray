@@ -150,7 +150,7 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        #- if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
     # Test RLlib (all other non-learning tests (compilations of agents, loss funcs, envs, etc..)).
