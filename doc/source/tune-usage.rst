@@ -523,7 +523,7 @@ Finally, you can implement the ``Stopper`` abstract class for stopping entire ex
     tune.run(my_trainable, stop=stopper)
 
 
-Note that in the above example the curretnly running trials will not stop immediately but will do so once their current iterations are complete.
+Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete.
 
 Auto-Filled Results
 -------------------
