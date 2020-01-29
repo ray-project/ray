@@ -113,7 +113,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
 
   killActor = () => {
     const actor = this.props.actor;
-    if (actor.state !== -1) {
+    if (actor.state === 0) {
       launchKillActor(actor.actorId, actor.ipAddress, actor.port);
     }
   };
