@@ -3,7 +3,6 @@ from datetime import datetime
 import json
 import logging
 import os
-import socket
 import subprocess
 import sys
 import time
@@ -60,6 +59,7 @@ def cli(logging_level, logging_format):
     level = logging.getLevelName(logging_level.upper())
     ray.utils.setup_logger(level, logging_format)
 
+
 @click.command()
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
@@ -90,22 +90,47 @@ def dashboard(cluster_config_file, cluster_name, port):
     # Figure out what's the first port we can use
     while port_taken:
         try:
-            port_forward = [ (dashboard_port, remote_port), ]
-            click.echo("Attempting to establish dashboard at localhost:{}".format(port_forward[0][0]))
-            # We want to probe with a no-op that returns quickly to avoid exceptions caused by network errors
-            exec_cluster(cluster_config_file, ":", docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
-            port_taken=False
-        except Exception as e:
+            port_forward = [
+                (dashboard_port, remote_port),
+            ]
+            click.echo(
+                "Attempting to establish dashboard at localhost:{}".format(
+                    port_forward[0][0]))
+            # We want to probe with a no-op that returns quickly to avoid
+            # exceptions caused by network errors
+            exec_cluster(
+                cluster_config_file,
+                ":",
+                docker=False,
+                screen=False,
+                tmux=False,
+                stop=False,
+                start=False,
+                override_cluster_name=cluster_name,
+                port_forward=port_forward)
+            port_taken = False
+        except Exception:
             click.echo("Failed to forward dashboard, trying a new port...")
             port_taken = True
             dashboard_port += 1
             pass
 
-    port_forward = [ (dashboard_port, remote_port), ]
+    port_forward = [
+        (dashboard_port, remote_port),
+    ]
     click.echo("Dashboard at: localhost:{}".format(port_forward[0][0]))
 
     while True:
-        exec_cluster(cluster_config_file, cmd, docker=False, screen=False, tmux=False, stop=False, start=False, override_cluster_name=cluster_name, port_forward=port_forward)
+        exec_cluster(
+            cluster_config_file,
+            cmd,
+            docker=False,
+            screen=False,
+            tmux=False,
+            stop=False,
+            start=False,
+            override_cluster_name=cluster_name,
+            port_forward=port_forward)
         click.echo("Connection broke, restarting...")
 
 
@@ -920,6 +945,7 @@ def stat(address):
         reply = stub.GetNodeStats(
             node_manager_pb2.GetNodeStatsRequest(), timeout=2.0)
         print(reply)
+
 
 cli.add_command(dashboard)
 cli.add_command(start)

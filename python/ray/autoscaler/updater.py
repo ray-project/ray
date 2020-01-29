@@ -58,13 +58,16 @@ class KubernetesCommandRunner:
             port_forward_cmd = self.kubectl + [
                 "port-forward",
                 self.node_id,
-            ] + ["{}:{}".format(local, remote) for local,remote in port_forward]
+            ] + [
+                "{}:{}".format(local, remote) for local, remote in port_forward
+            ]
             port_forward_process = subprocess.Popen(port_forward_cmd)
             try:
-                #Give port-forward a chance to connect before running the
-                #actual command. If port forward fails (and returns
-                #immediately) we failed to port forward and should abort the command
-                port_forward_ret = port_forward_process.wait(5)
+                # Give port-forward a chance to connect before running the
+                # actual command. If port forward fails (and returns
+                # immediately) we failed to port forward and should abort the
+                # command
+                port_forward_process.wait(5)
             except subprocess.TimeoutExpired:
                 # Lasting for more than a second is a good thing
                 pass
@@ -72,9 +75,9 @@ class KubernetesCommandRunner:
                 # Indicates that port forwarding failed, likely because we
                 # couldn't bind to a port.
                 pout, perr = port_forward_process.communicate()
-                exception_str = " ".join(port_forward_cmd) + " failed with error: " + perr
+                exception_str = " ".join(
+                    port_forward_cmd) + " failed with error: " + perr
                 raise Exception(exception_str)
-
 
         final_cmd = self.kubectl + [
             "exec",
@@ -240,8 +243,6 @@ class SSHCommandRunner:
 
     def run(self,
             cmd,
-
-
             timeout=120,
             allocate_tty=False,
             exit_on_fail=False,
@@ -269,7 +270,8 @@ class SSHCommandRunner:
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                raise Exception("Command failed: \n\n  {}\n".format(quoted_cmd))
+                raise Exception(
+                    "Command failed: \n\n  {}\n".format(quoted_cmd))
             else:
                 raise
 
