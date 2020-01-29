@@ -1,10 +1,11 @@
 import collections
 from filelock import FileLock
 import logging
+import inspect
 import os
 import torch
 import torch.utils.data
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
 
 import ray
 from ray.experimental.sgd.pytorch import utils as pytorch_utils
@@ -24,19 +25,21 @@ class PyTorchRunner:
                  train_function=None,
                  validation_function=None,
                  config=None,
+                 dataloader_config=None,
                  batch_size=16):
         """Initializes the runner.
 
         Args:
             model_creator (dict -> torch.nn.Module): see pytorch_trainer.py
-            data_creator (int, dict -> DataLoader, DataLoader): see
+            data_creator (int, dict -> Dataset, Dataset): see
                 pytorch_trainer.py.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
                 see pytorch_trainer.py.
-            loss_creator (dict -> loss): see pytorch_trainer.py.
+            loss_creator (dict -> loss | Loss class): see pytorch_trainer.py.
             train_function: see pytorch_trainer.py
             validation_function: see pytorch_trainer.py
             config (dict): see pytorch_trainer.py.
+            dataloader_config (dict): See pytorch_trainer.py.
             batch_size (int): see pytorch_trainer.py.
         """
         self.model_creator = model_creator
@@ -44,6 +47,10 @@ class PyTorchRunner:
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
         self.config = {} if config is None else config
+        self.dataloader_config = {
+            "num_workers": 2,
+            "pin_memory": True
+        } if dataloader_config is None else dataloader_config
         self.train_function = train_function or pytorch_utils.train
         self.validation_function = (validation_function
                                     or pytorch_utils.validate)
@@ -65,16 +72,24 @@ class PyTorchRunner:
         self.train_loader = None
         self.validation_loader = None
 
-    def _validate_loaders(self, data_loaders):
-        assert data_loaders, "Dataloaders need to be returned in data_creator."
-        if isinstance(data_loaders, DataLoader):
-            return data_loaders, None
-        elif len(data_loaders) == 2 and isinstance(data_loaders[0],
-                                                   DataLoader):
-            return data_loaders
+    def _validate_datasets(self, dataset):
+        assert dataset, "Datasets need to be returned in data_creator."
+        if issubclass(type(dataset), Dataset):
+            return dataset, None
+        elif len(dataset) == 2 and issubclass(type(dataset[0]), Dataset):
+            return dataset
         else:
-            raise ValueError(
-                "Dataloaders must be <= 2. Got {}".format(data_loaders))
+            raise ValueError("Datasets must be <= 2. Got {}".format(dataset))
+
+    def _create_loss(self):
+        if inspect.isclass(self.loss_creator) and issubclass(
+                self.loss_creator, torch.nn.modules.loss._Loss):
+            self.criterion = self.loss_creator()
+        else:
+            self.criterion = self.loss_creator(self.config)
+
+        if torch.cuda.is_available():
+            self.criterion = self.criterion.cuda()
 
     def setup(self):
         """Initializes the model."""
@@ -90,15 +105,23 @@ class PyTorchRunner:
                                                  self.config)
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
-        self.criterion = self.loss_creator(self.config)
-        if torch.cuda.is_available():
-            self.criterion = self.criterion.cuda()
+
+        self._create_loss()
 
         logger.debug("Creating dataset")
+        # When creating datasets, a filelock will be used to ensure no
+        # race conditions in data downloading among different workers.
         with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            dataloaders = self.data_creator(self.batch_size, self.config)
-            self.train_loader, self.validation_loader = self._validate_loaders(
-                dataloaders)
+            datasets = self.data_creator(self.config)
+            train_set, val_set = self._validate_datasets(datasets)
+
+        self.train_loader = torch.utils.data.DataLoader(
+            train_set, batch_size=self.batch_size, **self.dataloader_config)
+
+        self.validation_loader = None
+        if val_set:
+            self.validation_loader = torch.utils.data.DataLoader(
+                val_set, batch_size=self.batch_size, **self.dataloader_config)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
@@ -145,9 +168,18 @@ class PyTorchRunner:
 
     def get_state(self):
         """Returns the state of the runner."""
+        # This is so that we create a duplicate of weights into CPU rather than
+        # move the model weights entirely out of the GPU, so that we can
+        # resume training while saving intermediate checkpoints.
+        cpu_state_dicts = []
+        for model in self.models:
+            state_dict = model.state_dict()
+            for k, v in state_dict.items():
+                state_dict[k] = v.cpu()
+            cpu_state_dicts += [state_dict]
         return {
             "epoch": self.epoch,
-            "models": [model.cpu().state_dict() for model in self.models],
+            "models": cpu_state_dicts,
             "optimizers": [opt.state_dict() for opt in self.optimizers],
             "stats": self.stats()
         }
