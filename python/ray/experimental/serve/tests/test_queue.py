@@ -118,7 +118,7 @@ async def test_round_robin(serve_instance, task_runner_mock_actor):
     await q.set_traffic.remote("svc", {"backend-1": 0.5, "backend-2": 0.5})
     runner_1, runner_2 = [make_task_runner_mock() for _ in range(2)]
 
-    #NOTE: this is the only difference between the
+    # NOTE: this is the only difference between the
     # test_split_traffic_random and test_round_robin
     for _ in range(10):
         await q.dequeue_request.remote("backend-1", runner_1)

@@ -64,6 +64,7 @@ class HTTPProxy:
         self.serve_global_state = GlobalState()
         self.route_table_cache = dict()
 
+        self.route_checker_task = None
         self.route_checker_should_shutdown = False
 
     async def route_checker(self, interval):
@@ -82,10 +83,11 @@ class HTTPProxy:
         message = await receive()
         if message["type"] == "lifespan.startup":
             await _async_init()
-            asyncio.ensure_future(
+            self.route_checker_task = asyncio.get_event_loop().create_task(
                 self.route_checker(interval=HTTP_ROUTER_CHECKER_INTERVAL_S))
             await send({"type": "lifespan.startup.complete"})
         elif message["type"] == "lifespan.shutdown":
+            self.route_checker_task.cancel()
             self.route_checker_should_shutdown = True
             await send({"type": "lifespan.shutdown.complete"})
 

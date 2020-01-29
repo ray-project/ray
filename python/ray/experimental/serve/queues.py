@@ -73,11 +73,20 @@ def _adjust_latency_slo(slo_ms: Union[float, int, None]) -> float:
 def _make_future_unwrapper(client_futures: List[asyncio.Future],
                            host_future: asyncio.Future):
     """Distribute the result of host_future to each of client_future"""
+    for client_future in client_futures:
+        # Keep a reference to host future so the host future won't get
+        # garbage collected.
+        client_future.host_ref = host_future
 
-    def unwrap_future():
+    def unwrap_future(_):
         result = host_future.result()
-        for client_future, result_item in zip(client_futures, result):
-            client_future.set_result(result_item)
+
+        if isinstance(result, list):
+            for client_future, result_item in zip(client_futures, result):
+                client_future.set_result(result_item)
+        else:  # Result is an exception.
+            for client_future in client_futures:
+                client_future.set_result(result)
 
     return unwrap_future
 
@@ -298,7 +307,7 @@ class CentralizedQueues:
                 # chaining satisfies request.async_future with future result.
                 asyncio.futures._chain_future(future, request.async_future)
             else:
-                real_batch_size = min(buffer_queue.qsize(), max_batch_size)
+                real_batch_size = min(len(buffer_queue), max_batch_size)
                 requests = [
                     buffer_queue.pop(0) for _ in range(real_batch_size)
                 ]
