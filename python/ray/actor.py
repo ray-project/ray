@@ -359,8 +359,7 @@ class ActorClass:
                 is_direct_call=None,
                 max_concurrency=None,
                 name=None,
-                detached=False,
-                is_asyncio=False):
+                detached=False):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -386,8 +385,6 @@ class ActorClass:
             name: The globally unique name for the actor.
             detached: Whether the actor should be kept alive after driver
                 exits.
-            is_asyncio: Turn on async actor calls. This only works with direct
-                actor calls.
 
         Returns:
             A handle to the newly created actor.
@@ -398,6 +395,14 @@ class ActorClass:
             kwargs = {}
         if is_direct_call is None:
             is_direct_call = ray_constants.direct_call_enabled()
+
+        meta = self.__ray_metadata__
+        actor_has_async_methods = len(
+            inspect.getmembers(
+                meta.modified_class,
+                predicate=inspect.iscoroutinefunction)) > 0
+        is_asyncio = actor_has_async_methods
+
         if max_concurrency is None:
             if is_asyncio:
                 max_concurrency = 1000
@@ -418,8 +423,6 @@ class ActorClass:
         if worker.mode is None:
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
-
-        meta = self.__ray_metadata__
 
         if detached and name is None:
             raise Exception("Detached actors must be named. "

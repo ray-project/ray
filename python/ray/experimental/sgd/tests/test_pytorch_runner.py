@@ -36,18 +36,12 @@ def loss_creator(config):
     return nn.MSELoss()
 
 
-def single_loader(batch_size, config):
-    train_dataset = LinearDataset(2, 5)
-    train_loader = torch.utils.data.DataLoader(train_dataset)
-    return train_loader
+def single_loader(config):
+    return LinearDataset(2, 5)
 
 
-def create_dataloaders(batch_size, config):
-    train_dataset = LinearDataset(2, 5)
-    validation_dataset = LinearDataset(2, 5, size=400)
-    train_loader = torch.utils.data.DataLoader(train_dataset)
-    validation_loader = torch.utils.data.DataLoader(validation_dataset)
-    return train_loader, validation_loader
+def create_dataloaders(config):
+    return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
 
 class TestPyTorchRunner(unittest.TestCase):
@@ -109,12 +103,9 @@ class TestPyTorchRunner(unittest.TestCase):
         self.assertNotEqual(runner2.given_optimizers, runner2.optimizers)
 
     def testMultiLoaders(self):
-        def three_data_loader(batch_size, config):
-            train_dataset = LinearDataset(2, 5)
-            validation_dataset = LinearDataset(2, 5, size=400)
-            train_loader = torch.utils.data.DataLoader(train_dataset)
-            validation_loader = torch.utils.data.DataLoader(validation_dataset)
-            return train_loader, validation_loader, validation_loader
+        def three_data_loader(config):
+            return (LinearDataset(2, 5), LinearDataset(2, 5, size=400),
+                    LinearDataset(2, 5, size=400))
 
         runner = PyTorchRunner(model_creator, three_data_loader,
                                optimizer_creator, loss_creator)
@@ -133,6 +124,15 @@ class TestPyTorchRunner(unittest.TestCase):
         runner.step()
         with self.assertRaises(ValueError):
             runner.validate()
+
+    def testNativeLoss(self):
+        runner = PyTorchRunner(
+            model_creator,
+            single_loader,
+            optimizer_creator,
+            loss_creator=nn.MSELoss)
+        runner.setup()
+        runner.step()
 
     def testMultiModel(self):
         def multi_model_creator(config):

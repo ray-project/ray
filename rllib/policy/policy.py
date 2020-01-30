@@ -141,7 +141,8 @@ class Policy(metaclass=ABCMeta):
             state_batch = [[s] for s in state]
 
         [action], state_out, info = self.compute_actions(
-            [obs], state_batch,
+            [obs],
+            state_batch,
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
@@ -310,9 +311,8 @@ def clip_action(action, space):
         return np.clip(action, space.low, space.high)
     elif isinstance(space, gym.spaces.Tuple):
         if type(action) not in (tuple, list):
-            raise ValueError(
-                "Expected tuple space for actions {}: {}".
-                format(action, space))
+            raise ValueError("Expected tuple space for actions {}: {}".format(
+                action, space))
         out = []
         for a, s in zip(action, space.spaces):
             out.append(clip_action(a, s))

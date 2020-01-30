@@ -25,6 +25,85 @@ class PyTorchTrainer:
 
     Launches a set of actors which connect via distributed PyTorch and
     coordinate gradient updates to train the provided model.
+
+        .. code-block:: python
+
+            def model_creator(config):
+                return nn.Linear(1, 1)
+
+
+            def optimizer_creator(model, config):
+                return torch.optim.SGD(
+                    model.parameters(), lr=config.get("lr", 1e-4))
+
+
+            def data_creator(config):
+                return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+
+            trainer = PyTorchTrainer(
+                model_creator,
+                data_creator,
+                optimizer_creator,
+                loss_creator=nn.MSELoss,
+                use_gpu=True
+            )
+            trainer.train()
+
+    Args:
+        model_creator (dict -> *): Constructor function that takes in
+            config and returns the model(s) to be optimized. These must be
+            ``torch.nn.Module`` objects. Note that if multiple models
+            are returned, the same number of optimizers must be returned
+            by the optimizer_creator. If multiple models are returned,
+            a ``train_function`` must be specified. You do not need to
+            handle GPU/devices in this function;
+            RaySGD will do that under the hood.
+        data_creator (dict -> Dataset, Dataset): Constructor function
+            that takes in the passed config and returns one or
+            two ``torch.utils.data.Dataset`` objects.
+            Note that even though two Dataset objects can be returned,
+            only one dataset will be used for training. RaySGD
+            will automatically wrap the objects with a ``DataLoader``.
+        optimizer_creator (models, dict -> optimizers): Constructor
+            function that takes in the return values from
+            ``model_creator`` and the passed config and returns One or
+            more Torch optimizer objects. You must return as many
+            optimizers as you have models. You do not need to handle
+            GPU/devices in this function; ``RaySGD`` will do that for you.
+        loss_creator (dict -> loss or torch.nn.*Loss): A constructor function
+            for the training loss. This can be either a function that
+            takes in the provided config for customization or a subclass
+            of ``torch.nn.modules.loss._Loss``, which is most Pytorch
+            loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
+        train_function: Custom function for training. This function
+            will be executed in parallel across all workers at once. The
+            function needs to take in (models, train_dataloader, criterion,
+            optimizers, config), and return a dict of training stats.
+        validation_function: Custom function for validation. This function
+            will be executed in parallel across all workers at once.
+            This takes in (model, val_dataloader, criterion, config)
+            and returns a dict of validation stats.
+        config (dict): Custom configuration value to be passed to
+            "model_creator", "data_creator", "optimizer_creator", and
+            "loss_creator".
+        dataloader_config (dict): Configuration values to be passed into
+            the ``torch.utils.data.DataLoader`` object that wraps
+            the dataset on each parallel worker for both training
+            and validation. Note that if ``num_replicas``
+            is greater than 1, ``shuffle`` and ``sampler`` will be
+            automatically set. See the available arguments
+            here https://pytorch.org/docs/stable/data.html.
+        num_replicas (int): the number of workers used in distributed
+            training.
+        use_gpu (bool): Sets resource allocation for workers to 1 GPU
+            if true, and automatically moves both the model and optimizer
+            to the available CUDA device.
+        batch_size (int): Total batch size for each minibatch. This
+            value is divided among all workers and rounded.
+        backend (string): backend used by distributed PyTorch. Currently
+            support "nccl", "gloo", and "auto". If "auto", RaySGD will
+            automatically use "nccl" if `use_gpu` is True, and "gloo"
+            otherwise.
     """
 
     def __init__(self,
@@ -36,39 +115,12 @@ class PyTorchTrainer:
                  validation_function=None,
                  initialization_hook=None,
                  config=None,
+                 dataloader_config=None,
                  num_replicas=1,
                  use_gpu=False,
                  batch_size=16,
                  backend="auto"):
-        """Sets up the PyTorch trainer.
-
-        Args:
-            model_creator (dict -> torch.nn.Module): creates the model
-                using the config.
-            data_creator (int, dict -> DataLoader, DataLoader): Function that
-                takes in (batch_size, config) and returns two Torch DataLoader
-                objects.
-            optimizer_creator (torch.nn.Module, dict -> optimizer):
-                creates the loss and optimizer using the model and the config.
-            loss_creator (dict -> loss): Creates the loss function/criterion
-                using the config.
-            train_function: Trains a model for a epoch. This takes in (
-                model, train_dataloader, criterion, optimizer, config), and
-                returns a dict of training stats.
-            validation_function: Runs validation. This takes in (
-                model, val_dataloader, criterion, config) and returns a dict of
-                validation stats.
-            config (dict): configuration passed to "model_creator",
-                "data_creator", "optimizer_creator", and "loss_creator".
-            num_replicas (int): the number of workers used in distributed
-                training.
-            use_gpu (bool): Sets resource allocation for workers to 1 GPU
-                if true.
-            batch_size (int): batch size for an update.
-            backend (string): backend used by distributed PyTorch.
-        """
         # TODO: add support for mixed precision
-        # TODO: add support for callbacks
         if num_replicas > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
@@ -84,6 +136,7 @@ class PyTorchTrainer:
         self.validation_function = validation_function
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
+        self.dataloader_config = dataloader_config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
         if backend == "auto":
@@ -115,6 +168,7 @@ class PyTorchTrainer:
                     train_function=self.train_function,
                     validation_function=self.validation_function,
                     config=self.config,
+                    dataloader_config=self.dataloader_config,
                     batch_size=self.batch_size)
             ]
             if self.initialization_hook:
@@ -148,6 +202,7 @@ class PyTorchTrainer:
                     train_function=self.train_function,
                     validation_function=self.validation_function,
                     config=self.config,
+                    dataloader_config=self.dataloader_config,
                     batch_size=batch_size_per_replica)
                 for i in range(num_replicas)
             ]
@@ -274,11 +329,12 @@ class PyTorchTrainer:
 
     def shutdown(self, force=False):
         """Shuts down workers and releases resources."""
-        for worker in self.workers:
-            if not force:
-                worker.shutdown.remote()
-                worker.__ray_terminate__.remote()
-            else:
+        if not force:
+            cleanup = [worker.shutdown.remote() for worker in self.workers]
+            ray.get(cleanup)
+            [worker.__ray_terminate__.remote() for worker in self.workers]
+        else:
+            for worker in self.workers:
                 logger.warning("Killing worker {}.".format(worker))
                 worker.__ray_kill__()
 
