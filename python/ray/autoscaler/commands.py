@@ -415,11 +415,8 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             attach_info = "Use `{}` to check on command status.".format(
                 attach_command)
             logger.info(attach_info)
-    except Exception as e:
+    finally:
         provider.cleanup()
-        raise e
-
-    provider.cleanup()
 
 
 def _exec(updater, cmd, screen, tmux, port_forward=None):

@@ -185,8 +185,13 @@ class SSHCommandRunner:
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
+            # Try less extraneous key pairs
             ("IdentitiesOnly", "yes"),
+            # Abort if port forwarding fails (instead of just printing to
+            # stderr)
             ("ExitOnForwardFailure", "yes"),
+            # Quickly kill the connection if network connection breaks (as
+            # opposed to hanging/blocking)
             ("ServerAliveInterval", 5),
             ("ServerAliveCountMax", 3),
         ]
