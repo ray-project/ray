@@ -16,7 +16,7 @@ class TestDQN(unittest.TestCase):
         # tf.
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
 
-        num_iterations = 100
+        num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()
             print(results)

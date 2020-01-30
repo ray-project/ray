@@ -18,7 +18,7 @@ def deprecation_warning(old, new=None, error=None):
 
     if error is True:
         raise ValueError(msg)
-    elif issubclass(error, Exception):
+    elif error and issubclass(error, Exception):
         raise error(msg)
     else:
         logger.warning("DeprecationWarning: " + msg +

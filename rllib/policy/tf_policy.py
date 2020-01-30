@@ -263,7 +263,8 @@ class TFPolicy(Policy):
         # Execute session run to get action (and other fetches).
         ret = builder.get(fetches)
         # Extract last exploration info from fetches and return rest.
-        self.last_exploration_info = ret[3]
+        if len(ret) > 3:
+            self.last_exploration_info = ret[3]
         return ret[:3]
 
     @override(Policy)
@@ -503,7 +504,7 @@ class TFPolicy(Policy):
             fetches = builder.add_fetches(
                 [self._action] + self._state_outputs +
                 [self.extra_compute_action_fetches()])
-            return fetches[0], fetches[1:-1], fetches[-1], None
+            return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()

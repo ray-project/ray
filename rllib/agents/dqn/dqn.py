@@ -78,8 +78,7 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
-    # Fraction of entire training period over which the beta parameter is
-    # annealed.
+    # Time steps over which the beta parameter is annealed.
     "prioritized_replay_beta_annealing_timesteps": 20000,
 
     # Final value of beta
@@ -168,15 +167,18 @@ def validate_config(config):
                             "exploration.final_epsilon")
         config["exploration"] = config.get("exploration",
                                            {"type": EpsilonGreedy})
-        config["exploration"]["final_p"] = config.pop("exploration_final_eps")
+        if isinstance(config["exploration"], dict):
+            config["exploration"]["final_p"] = \
+                config.pop("exploration_final_eps")
     if "exploration_fraction" in config:
         assert schedule_max_timesteps is not None
         deprecation_warning("exploration_fraction",
                             "exploration.final_timestep")
         config["exploration"] = config.get("exploration",
                                            {"type": EpsilonGreedy})
-        config["exploration"]["final_timestep"] = config.pop(
-            "exploration_fraction") * schedule_max_timesteps
+        if isinstance(config["exploration"], dict):
+            config["exploration"]["final_timestep"] = config.pop(
+                "exploration_fraction") * schedule_max_timesteps
     if "beta_annealing_fraction" in config:
         assert schedule_max_timesteps is not None
         deprecation_warning("beta_annealing_fraction",
@@ -187,8 +189,9 @@ def validate_config(config):
         deprecation_warning(
             "per_worker_exploration",
             "exploration(must be type=EpsilonGreedy).fixed_per_worker_epsilon")
-        config["exploration"]["fixed_per_worker_epsilon"] = config.pop(
-            "per_worker_exploration")
+        if isinstance(config["exploration"], dict):
+            config["exploration"]["fixed_per_worker_epsilon"] = config.pop(
+                "per_worker_exploration")
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):
