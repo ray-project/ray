@@ -46,8 +46,11 @@ class TFTrainer:
         self.verbose = verbose
 
         # Generate actor class
+        # todo: are these resource quotas right? should they be exposed to the client codee?
         Runner = ray.remote(num_cpus=1, num_gpus=int(use_gpu))(TFRunner)
 
+        # todo: should we warn about using distributed training on one device only?
+        # it's likely that whenever this happens it's a mistake
         if num_replicas == 1:
             # Start workers
             self.workers = [
@@ -86,6 +89,16 @@ class TFTrainer:
                 worker.setup_distributed.remote(urls, i, len(self.workers))
                 for i, worker in enumerate(self.workers)
             ])
+
+
+    # MultiWorkerMirroredStrategy handles everything for us, from
+    # sharding the dataset (or even sharding the data itself if the loader
+    # reads files from disk) to merging the metrics and weight updates
+    #
+    # worker 0 is the "chief" worker and will handle the map-reduce
+    # every worker ends up with the exact same metrics and model after model.fit
+    #
+    # because of this, we only really ever need to query its state
 
     def train(self):
         """Runs a training epoch."""
