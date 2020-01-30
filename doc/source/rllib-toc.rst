@@ -17,15 +17,17 @@ Training APIs
 
    -  `Tuned Examples <rllib-training.html#tuned-examples>`__
 
-*  `Python API <rllib-training.html#python-api>`__
-
-   -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
+*  `Basic Python API <rllib-training.html#basic-python-api>`__
 
    -  `Computing Actions <rllib-training.html#computing-actions>`__
 
    -  `Accessing Policy State <rllib-training.html#accessing-policy-state>`__
 
    -  `Accessing Model State <rllib-training.html#accessing-model-state>`__
+
+*  `Advanced Python APIs <rllib-training.html#advanced-python-apis>`__
+
+   -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
 
    -  `Global Coordination <rllib-training.html#global-coordination>`__
 
@@ -69,6 +71,7 @@ Models, Preprocessors, and Action Distributions
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 * `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
+* `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 

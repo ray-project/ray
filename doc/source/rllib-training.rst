@@ -109,8 +109,8 @@ You can run these with the ``rllib train`` command as follows:
 
     rllib train -f /path/to/tuned/example.yaml
 
-Python API
-----------
+Basic Python API
+----------------
 
 The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
@@ -178,13 +178,6 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
     RUNNING trials:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
-
-Custom Training Workflows
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
-
-For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
 
 Computing Actions
 ~~~~~~~~~~~~~~~~~
@@ -432,6 +425,16 @@ Similar to accessing policy state, you may want to get a reference to the underl
     _________________________________________________________________
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
+
+Advanced Python APIs
+--------------------
+
+Custom Training Workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+
+For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
