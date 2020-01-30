@@ -359,3 +359,19 @@ py_test(
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
+
+py_test(
+    name = "test_args",
+    size = "small",
+    srcs = ["test_args.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_asyncio",
+    size = "small",
+    srcs = ["test_asyncio.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
