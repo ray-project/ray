@@ -202,14 +202,10 @@ def from_file(cls, filename, *args, **kwargs):
 
 def lookup_type(cls, type_):
     if cls is not None and hasattr(cls, "__type_registry__") and \
-            isinstance(cls.__type_registry__, dict) and \
-            (
-                    type_ in cls.__type_registry__ or (
-                    isinstance(type_, str) and
-                    re.sub("[\\W_]", "", type_.lower())
-                    in cls.__type_registry__
-            )
-            ):
+            isinstance(cls.__type_registry__, dict) and (
+            type_ in cls.__type_registry__ or (
+            isinstance(type_, str) and
+            re.sub("[\\W_]", "", type_.lower()) in cls.__type_registry__)):
         available_class_for_type = cls.__type_registry__.get(type_)
         if available_class_for_type is None:
             available_class_for_type = \

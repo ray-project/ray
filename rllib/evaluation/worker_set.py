@@ -89,7 +89,7 @@ class WorkerSet:
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
         self._remote_workers.extend([
-                self._make_worker(cls, self._env_creator, self._policy, i + 1,
+            self._make_worker(cls, self._env_creator, self._policy, i + 1,
                               self._remote_config) for i in range(num_workers)
         ])
 
@@ -130,7 +130,7 @@ class WorkerSet:
     def foreach_policy(self, func):
         """
         Apply the given function to each worker's (policy, policy_id) tuple.
-        
+
         Args:
             func (callable): A function - taking a Policy and its ID - that is
                 called on all workers' Policies.

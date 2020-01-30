@@ -1,6 +1,5 @@
 from abc import ABCMeta, abstractmethod
 
-from ray.rllib.utils.framework import check_framework
 from ray.rllib.utils.framework import try_import_tf
 
 tf = try_import_tf()

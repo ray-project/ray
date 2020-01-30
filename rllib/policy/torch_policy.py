@@ -87,8 +87,10 @@ class TorchPolicy(Policy):
                 actions = self.exploration.get_action(
                     model_out, self.model, action_dist, explore, time_step)
             else:
-                # TODO: pass deterministic flag into sample (deterministic=deterministic).
-                actions = action_dist.sample()
+                if deterministic:
+                    actions = action_dist.deterministic_sample()
+                else:
+                    actions = action_dist.sample()
 
             input_dict[SampleBatch.ACTIONS] = actions
 

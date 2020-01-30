@@ -20,9 +20,3 @@ class TestDQN(unittest.TestCase):
         for i in range(num_iterations):
             results = trainer.train()
             print(results)
-
-        # Torch.
-        #config["use_pytorch"] = True
-        #trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
-        #for i in range(num_iterations):
-        #    trainer.train()

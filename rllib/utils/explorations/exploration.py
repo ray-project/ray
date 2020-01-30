@@ -80,7 +80,7 @@ class Exploration:
         """
         Sets the current state of the Exploration to the given value or
         returns a tf op that will do the set.
-        
+
         Args:
             state (List[any]): The new state to set.
 
@@ -103,7 +103,7 @@ class Exploration:
         """
         Returns the merged states of all exploration_objects as a value
         or a tf.Tensor (whose execution will trigger the merge).
-        
+
         Args:
             exploration_objects (List[Exploration]): All Exploration objects,
                 whose states have to be merged somehow.
