@@ -164,7 +164,12 @@ COMMON_CONFIG = {
     # Disable eager execution on workers (but allow it on the driver). This
     # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
-
+    
+    # How to sample non-exploratory actions by default (if no action sampler
+    # is provided).
+    # TODO(kismuz): implement determ. actions and include relevant keys hints
+    "deterministic": False,
+    
     # === Exploration Settings ===
     # Provide a dict specifying the Exploration object's config.
     # Set to False or None for no exploration behavior (e.g. for evaluation).
@@ -179,9 +184,8 @@ COMMON_CONFIG = {
     # Number of episodes to run per evaluation period.
     "evaluation_num_episodes": 10,
     # Extra arguments to pass to evaluation workers.
-    # Typical usage is to pass extra args to evaluation env creator
-    # and to disable exploration by computing deterministic actions
-    # TODO(kismuz): implement determ. actions and include relevant keys hints
+    # Typical usage is to pass extra args to evaluation env creator.
+    # NOTE: Exploration is disabled automatically in all evaluation policies.
     "evaluation_config": {},
 
     # === Advanced Rollout Settings ===

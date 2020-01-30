@@ -35,6 +35,10 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
+    # How to sample non-exploratory actions.
+    # TODO(sven): This has no effect so far as we don't use a distribution.
+    "deterministic": True,
+
     # === Exploration Settings ===
     "exploration": {
         "type": EpsilonGreedy,  # Exploration class.

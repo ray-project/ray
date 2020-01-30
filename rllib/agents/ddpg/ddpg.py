@@ -54,7 +54,10 @@ DEFAULT_CONFIG = with_common_config({
     "critic_hidden_activation": "relu",
     # N-step Q learning
     "n_step": 1,
-
+    
+    # How to sample non-exploratory actions.
+    "deterministic": True,
+    
     # === Exploration ===
     # Turns on annealing schedule for exploration noise. Exploration is
     # annealed from 1.0 to exploration_final_eps over schedule_max_timesteps
