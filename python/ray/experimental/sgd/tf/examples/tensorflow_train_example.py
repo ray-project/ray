@@ -14,7 +14,7 @@ NUM_TEST_SAMPLES = 400
 
 def create_config(batch_size):
     return {
-        "batch_size": batch_size,
+        "batch_size": batch_size,  # todo: batch size needs to scale with # of workers
         "fit_config": {
             "steps_per_epoch": NUM_TRAIN_SAMPLES // batch_size
         },
@@ -68,16 +68,14 @@ def train_example(num_replicas=1, batch_size=128, use_gpu=False):
         verbose=True,
         config=create_config(batch_size))
 
-    train_stats1 = trainer.train()
-    train_stats1.update(trainer.validate())
-    print(train_stats1)
+    start_stats = trainer.validate()
+    print(start_stats)
 
-    train_stats2 = trainer.train()
-    train_stats2.update(trainer.validate())
-    print(train_stats2)
+    trainer.train()
+    trainer.train()
 
-    val_stats = trainer.validate()
-    print(val_stats)
+    end_stats = trainer.validate()
+    print(end_stats)
     print("success!")
 
 
@@ -116,7 +114,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use-gpu",
         action="store_true",
-        default=False,
+        default=True,
         help="Enables GPU training")
     parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
