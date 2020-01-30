@@ -558,8 +558,8 @@ Below are some examples of how the custom evaluation metrics are reported nested
     ------------------------------------------------------------------------
 
     INFO trainer.py:631 -- Running custom eval function <function ...>
-    Update corridor length to 5
-    Update corridor length to 20
+    Update corridor length to 4
+    Update corridor length to 7
     Custom evaluation round 1
     Custom evaluation round 2
     Custom evaluation round 3
