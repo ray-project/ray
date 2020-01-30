@@ -31,7 +31,8 @@ def compute_advantages(rollout,
         gamma (float): Discount factor.
         lambda_ (float): Parameter for GAE
         use_gae (bool): Using Generalized Advantage Estimation
-        use_critic (bool): Whether to use critic (value estimates). Setting this to False will use 0 as baseline
+        use_critic (bool): Whether to use critic (value estimates). Setting
+                           this to False will use 0 as baseline.
 
     Returns:
         SampleBatch (SampleBatch): Object with experience from rollout and
@@ -43,8 +44,10 @@ def compute_advantages(rollout,
     for key in rollout:
         traj[key] = np.stack(rollout[key])
 
-    assert SampleBatch.VF_PREDS in rollout or not use_critic, "use_critic=True but values not found"
-    assert use_critic or not use_gae, "Can't use gae without using a value function"
+    assert SampleBatch.VF_PREDS in rollout or not use_critic, \
+        "use_critic=True but values not found"
+    assert use_critic or not use_gae, \
+        "Can't use gae without using a value function"
 
     if use_gae:
         vpred_t = np.concatenate(
