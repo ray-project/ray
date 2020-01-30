@@ -48,12 +48,15 @@ worker_nodes:
 
 setup_commands:
     - conda install setuptools=45.1.0=py36_0 wrapt=1.11.2 --yes # workaround to fix wrapt error
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     - pip install -U ray[tune]
     - pip install tensorflow==2.1.0
+    # todo: git clone distribution token
 
-file_mounts: {
-}
+file_mounts:
+    "~/anaconda3/lib/python3.6/site-packages/ray/experimental/sgd/pytorch/": "../../pytorch/"
+    "~/anaconda3/lib/python3.6/site-packages/ray/experimental/sgd/tf/": "../../tf/"
+    "~/anaconda3/lib/python3.6/site-packages/ray/experimental/sgd/examples/": "."
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
