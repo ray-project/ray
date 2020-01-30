@@ -163,7 +163,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use-gpu",
         action="store_true",
-        default=True,
+        default=False,
         help="Enables GPU training")
     parser.add_argument(
         "--augment-data",
