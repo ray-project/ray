@@ -61,7 +61,7 @@ and renders its behavior in the environment specified by ``--env``.
 
 (Type ``rllib rollout --help`` to see the available evaluation options.)
 
-For more advanced online evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
+For more advanced evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
 
 Configuration
 -------------
