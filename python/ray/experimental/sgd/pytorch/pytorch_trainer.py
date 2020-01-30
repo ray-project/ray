@@ -4,6 +4,8 @@ import logging
 import numbers
 import tempfile
 import time
+import torch
+import torch.distributed as dist
 
 import ray
 
@@ -16,12 +18,6 @@ from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
-
-try:
-    import torch
-    import torch.distributed as dist
-except ImportError:
-    logger.warning("PyTorch not found. PyTorchTrainer will not be available")
 
 class PyTorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
