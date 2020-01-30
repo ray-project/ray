@@ -82,8 +82,9 @@ def train_example(num_replicas=1, batch_size=128, use_gpu=False):
     print(end_stats)
 
     # sanity check that training worked
-    dloss = end_stats["validation_loss"]-start_stats["validation_loss"]
-    dmse = end_stats["validation_mean_squared_error"]-start_stats["validation_mean_squared_error"]
+    dloss = end_stats["validation_loss"] - start_stats["validation_loss"]
+    dmse = (end_stats["validation_mean_squared_error"] -
+            start_stats["validation_mean_squared_error"])
     print(f"dLoss: {dloss}, dMSE: {dmse}")
 
     if dloss > 0 or dmse > 0:
