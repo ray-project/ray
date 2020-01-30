@@ -5,9 +5,18 @@
 # Cause the script to exit if a single command fails
 set -eo pipefail
 
+FLAKE8_VERSION_REQUIRED="3.7.7"
+YAPF_VERSION_REQUIRED="0.23.0"
+
+YAPF_DOWNLOAD_COMMAND_MSG="Run pip install yapf==$YAPF_VERSION_REQUIRED Make sure you are using python 3 interpreter"
+if ! [ -x "$(command -v yapf)" ]; then
+  echo "YAPF not installed. $YAPF_DOWNLOAD_COMMAND_MSG"
+  exit 1
+fi
+
 ver=$(yapf --version)
 if ! echo $ver | grep -q 0.23.0; then
-    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver"
+    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver. $YAPF_DOWNLOAD_COMMAND_MSG"
     exit 1
 fi
 
@@ -32,8 +41,8 @@ tool_version_check() {
     fi
 }
 
-tool_version_check "flake8" $FLAKE8_VERSION "3.7.7"
-tool_version_check "yapf" $YAPF_VERSION "0.23.0"
+tool_version_check "flake8" $FLAKE8_VERSION $FLAKE8_VERSION_REQUIRED
+tool_version_check "yapf" $YAPF_VERSION $YAPF_VERSION_REQUIRED
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
