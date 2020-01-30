@@ -77,7 +77,7 @@ def cli(logging_level, logging_format):
     help="The local port to forward to the dashboard")
 def dashboard(cluster_config_file, cluster_name, port):
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
-    # only works on linux
+    # only works on linux.
     cmd = "while true; do sleep 86400; done"
     remote_port = 8265
     if port:
@@ -87,7 +87,7 @@ def dashboard(cluster_config_file, cluster_name, port):
 
     port_taken = True
 
-    # Figure out what's the first port we can use
+    # Find the first open port sequentially from `remote_port`.
     while port_taken:
         try:
             port_forward = [
@@ -97,7 +97,7 @@ def dashboard(cluster_config_file, cluster_name, port):
                 "Attempting to establish dashboard at localhost:{}".format(
                     port_forward[0][0]))
             # We want to probe with a no-op that returns quickly to avoid
-            # exceptions caused by network errors
+            # exceptions caused by network errors.
             exec_cluster(
                 cluster_config_file,
                 ":",
