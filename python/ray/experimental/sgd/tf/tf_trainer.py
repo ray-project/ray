@@ -90,7 +90,6 @@ class TFTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-
     # MultiWorkerMirroredStrategy handles everything for us, from
     # sharding the dataset (or even sharding the data itself if the loader
     # reads files from disk) to merging the metrics and weight updates

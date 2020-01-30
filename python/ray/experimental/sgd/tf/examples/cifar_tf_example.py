@@ -144,6 +144,8 @@ def data_augmentation_creator(config):
     return trainset, test_dataset
 
 
+import time
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -162,7 +164,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use-gpu",
         action="store_true",
-        default=False,
+        default=True,
         help="Enables GPU training")
     parser.add_argument(
         "--augment-data",
@@ -201,17 +203,27 @@ if __name__ == "__main__":
             }
         })
 
+    training_start = time.time()
     for i in range(3):
         # Trains num epochs
         train_stats1 = trainer.train()
         train_stats1.update(trainer.validate())
         print("iter {}:".format(i), train_stats1)
+    print(
+        f'Training on workers takes: {(time.time() - training_start)/3:.3f} seconds/epoch'
+    )
 
     model = trainer.get_model()
     trainer.shutdown()
     dataset, test_dataset = data_augmentation_creator(
         dict(batch_size=batch_size))
+
+    training_start = time.time()
     model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
+    print(
+        f'Training on HEAD takes: {(time.time() - training_start):.3f} seconds/epoch'
+    )
+
     scores = model.evaluate(test_dataset, steps=num_eval_steps)
     print("Test loss:", scores[0])
     print("Test accuracy:", scores[1])

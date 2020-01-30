@@ -19,6 +19,7 @@ from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
 
+
 class PyTorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 
