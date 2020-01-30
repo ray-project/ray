@@ -100,7 +100,7 @@ def dashboard(cluster_config_file, cluster_name, port):
             # exceptions caused by network errors.
             exec_cluster(
                 cluster_config_file,
-                ":",
+                None,
                 docker=False,
                 screen=False,
                 tmux=False,
@@ -115,23 +115,6 @@ def dashboard(cluster_config_file, cluster_name, port):
             dashboard_port += 1
             pass
 
-    port_forward = [
-        (dashboard_port, remote_port),
-    ]
-    click.echo("Dashboard at: localhost:{}".format(port_forward[0][0]))
-
-    while True:
-        exec_cluster(
-            cluster_config_file,
-            cmd,
-            docker=False,
-            screen=False,
-            tmux=False,
-            stop=False,
-            start=False,
-            override_cluster_name=cluster_name,
-            port_forward=port_forward)
-        click.echo("Connection broke, restarting...")
 
 
 @cli.command()
