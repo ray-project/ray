@@ -14,13 +14,9 @@ ray.init(address="auto")
 from ray.experimental import serve
 serve.init()
 
-
-def function(flask_request):
+@serve.route("/driver")
+def driver(flask_request):
     return "OK!"
-
-serve.create_endpoint("driver", "/driver")
-serve.create_backend(function, "driver:v1")
-serve.link("driver", "driver:v1")
 """
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
