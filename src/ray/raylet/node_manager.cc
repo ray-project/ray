@@ -990,9 +990,6 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
   } break;
-  case protocol::MessageType::ReportActiveObjectIDs: {
-    ProcessReportActiveObjectIDs(client, message_data);
-  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
@@ -1450,22 +1447,6 @@ void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message
   RAY_LOG(DEBUG) << "Actor " << actor_id << " was resumed from checkpoint "
                  << checkpoint_id;
   checkpoint_id_to_restore_.emplace(actor_id, checkpoint_id);
-}
-
-void NodeManager::ProcessReportActiveObjectIDs(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-  if (!worker) {
-    worker = worker_pool_.GetRegisteredDriver(client);
-    if (!worker) {
-      RAY_LOG(ERROR) << "Ignoring object ids report from failed / unknown worker.";
-      return;
-    }
-  }
-
-  auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
-  worker->SetActiveObjectIds(
-      unordered_set_from_flatbuf<ObjectID>(*message->object_ids()));
 }
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
