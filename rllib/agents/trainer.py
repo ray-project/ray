@@ -187,7 +187,7 @@ COMMON_CONFIG = {
     # to zero by default, which means evaluation will be run in the trainer
     # process. If you increase this, it will increase the Ray resource usage
     # of the trainer since evaluation workers are created separately from
-    # rollout workers!
+    # rollout workers.
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
