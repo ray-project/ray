@@ -408,8 +408,8 @@ def split(endpoint_name, traffic_policy_dictionary):
 
     global_state.policy_table.register_traffic_policy(
         endpoint_name, traffic_policy_dictionary)
-    global_state.init_or_get_router().set_traffic.remote(
-        endpoint_name, traffic_policy_dictionary)
+    ray.get(global_state.init_or_get_router().set_traffic.remote(
+        endpoint_name, traffic_policy_dictionary))
 
 
 @_ensure_connected
