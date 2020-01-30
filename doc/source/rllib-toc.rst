@@ -4,6 +4,9 @@ RLlib Table of Contents
 Training APIs
 -------------
 *  `Command-line <rllib-training.html>`__
+
+   -  `Evaluating Trained Policies <rllib-training.html#evaluating-trained-policies>`__
+
 *  `Configuration <rllib-training.html#configuration>`__
 
    -  `Specifying Parameters <rllib-training.html#specifying-parameters>`__
@@ -27,6 +30,8 @@ Training APIs
    -  `Global Coordination <rllib-training.html#global-coordination>`__
 
    -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
+
+   -  `Customized Evaluation During Training <rllib-training.html#customized-evaluation-during-training>`__
 
    -  `Rewriting Trajectories <rllib-training.html#rewriting-trajectories>`__
 

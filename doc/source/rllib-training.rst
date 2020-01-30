@@ -515,6 +515,67 @@ Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
 
+Customized Evaluation During Training
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib will report online training rewards, however in some cases you may want to compute
+rewards with different settings (e.g., with exploration turned off, or on a specific set
+of environment configurations). You can evaluate policies during training by setting one
+or more of the ``evaluation_interval``, ``evaluation_num_episodes``, ``evaluation_config``,
+``evaluation_num_workers``, and ``custom_eval_function`` configs.
+
+There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
+
+Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
+
+.. code-block:: bash
+
+    ------------------------------------------------------------------------
+    Sample output for `python custom_eval.py`
+    ------------------------------------------------------------------------
+
+    INFO trainer.py:623 -- Evaluating current policy for 10 episodes.
+    INFO trainer.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
+    INFO trainer.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
+    INFO trainer.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
+    INFO trainer.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
+    INFO trainer.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
+
+    Result for PG_SimpleCorridor_2c6b27dc:
+      ...
+      evaluation:
+        custom_metrics: {}
+        episode_len_mean: 15.864661654135338
+        episode_reward_max: 1.0
+        episode_reward_mean: 0.49624060150375937
+        episode_reward_min: 0.0
+        episodes_this_iter: 133
+
+.. code-block:: bash
+
+    ------------------------------------------------------------------------
+    Sample output for `python custom_eval.py --custom-eval`
+    ------------------------------------------------------------------------
+
+    INFO trainer.py:631 -- Running custom eval function <function ...>
+    Update corridor length to 5
+    Update corridor length to 20
+    Custom evaluation round 1
+    Custom evaluation round 2
+    Custom evaluation round 3
+    Custom evaluation round 4
+
+    Result for PG_SimpleCorridor_0de4e686:
+      ...
+      evaluation:
+        custom_metrics: {}
+        episode_len_mean: 9.15695067264574
+        episode_reward_max: 1.0
+        episode_reward_mean: 0.9596412556053812
+        episode_reward_min: 0.0
+        episodes_this_iter: 223
+        foo: 1
+
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
 
