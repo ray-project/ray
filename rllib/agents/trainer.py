@@ -475,28 +475,32 @@ class Trainer(Trainable):
         if result is None:
             raise RuntimeError("Failed to recover from worker crash")
 
-        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
-                and hasattr(self, "workers")
-                and isinstance(self.workers, WorkerSet)):
-            FilterManager.synchronize(
-                self.workers.local_worker().filters,
-                self.workers.remote_workers(),
-                update_remote=self.config["synchronize_filters"])
-            logger.debug("synchronized filters: {}".format(
-                self.workers.local_worker().filters))
+        self._sync_filters_if_needed(self.workers)
 
         if self._has_policy_optimizer():
             result["num_healthy_workers"] = len(
                 self.optimizer.workers.remote_workers())
 
-        if self.config["evaluation_interval"]:
-            if self._iteration % self.config["evaluation_interval"] == 0:
-                evaluation_metrics = self._evaluate()
-                assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
-                result.update(evaluation_metrics)
+        if self.config["evaluation_interval"] == 1 or (
+                self._iteration > 0 and self.config["evaluation_interval"]
+                and self._iteration % self.config["evaluation_interval"] == 0):
+            evaluation_metrics = self._evaluate()
+            assert isinstance(evaluation_metrics, dict), \
+                "_evaluate() needs to return a dict."
+            result.update(evaluation_metrics)
 
         return result
+
+    def _sync_filters_if_needed(self, workers):
+        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
+                and hasattr(self, "workers")
+                and isinstance(workers, WorkerSet)):
+            FilterManager.synchronize(
+                workers.local_worker().filters,
+                workers.remote_workers(),
+                update_remote=self.config["synchronize_filters"])
+            logger.debug("synchronized filters: {}".format(
+                workers.local_worker().filters))
 
     @override(Trainable)
     def _log_result(self, result):
@@ -568,7 +572,7 @@ class Trainer(Trainable):
                     self._policy,
                     merge_dicts(self.config, extra_config),
                     num_workers=self.config["evaluation_num_workers"])
-                self.evaluation_metrics = self._evaluate()
+                self.evaluation_metrics = {}
 
     @override(Trainable)
     def _stop(self):
@@ -626,9 +630,10 @@ class Trainer(Trainable):
         weights = ray.put(self.workers.local_worker().save())
         self.evaluation_workers.foreach_worker(
             lambda w: w.restore(ray.get(weights)))
+        self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
-            logger.info("Running custom eval function {}".format(
+            logger.info("Running custom eval function {}".formaet(
                 self.config["custom_eval_function"]))
             metrics = self.config["custom_eval_function"](
                 self, self.evaluation_workers)
