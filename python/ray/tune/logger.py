@@ -345,14 +345,16 @@ class TBXLogger(Logger):
 
         flat_result = flatten_dict(tmp, delimiter="/")
         path = ["ray", "tune"]
-        valid_result = {
-            "/".join(path + [attr]): value
-            for attr, value in flat_result.items()
-            if type(value) in VALID_SUMMARY_TYPES
-        }
+        valid_result = {}
+        for attr, value in flat_result.items():
+            full_attr = "/".join(path + [attr])
+            if type(value) in VALID_SUMMARY_TYPES:
+                valid_result[full_attr] = value
+                self._file_writer.add_scalar(full_attr, value, global_step=step)
+            elif type(value) is list and len(value) > 0:
+                valid_result[full_attr] = value
+                self._file_writer.add_histogram(full_attr, value, global_step=step)
 
-        for attr, value in valid_result.items():
-            self._file_writer.add_scalar(attr, value, global_step=step)
         self.last_result = valid_result
         self._file_writer.flush()
 
