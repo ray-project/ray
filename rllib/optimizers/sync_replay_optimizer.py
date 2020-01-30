@@ -68,11 +68,9 @@ class SyncReplayOptimizer(PolicyOptimizer):
         # Linearly annealing beta used in Rainbow paper, stopping at
         # `final_prioritized_replay_beta`.
         self.prioritized_replay_beta = PiecewiseSchedule(
-            endpoints=[
-                (0, prioritized_replay_beta),
-                (schedule_max_timesteps * beta_annealing_fraction,
-                 final_prioritized_replay_beta)
-            ],
+            endpoints=[(0, prioritized_replay_beta),
+                       (schedule_max_timesteps * beta_annealing_fraction,
+                        final_prioritized_replay_beta)],
             outside_value=final_prioritized_replay_beta)
         self.prioritized_replay_eps = prioritized_replay_eps
         self.train_batch_size = train_batch_size
