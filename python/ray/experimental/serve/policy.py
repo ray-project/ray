@@ -26,7 +26,7 @@ class RandomPolicyQueue(CentralizedQueues):
                 backend_weights = list(self.traffic[service].values())
                 # randomly choose a backend for every query
                 chosen_backend = np.random.choice(
-                    backend_names, p=backend_weights).squeeze()
+                    backend_names, replace=False, p=backend_weights).squeeze()
                 logger.debug("Matching service {} to backend {}".format(
                     service, chosen_backend))
 
@@ -101,7 +101,7 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
                 if len(self.traffic[service]) >= 2:
                     # randomly pick 2 backends
                     backend1, backend2 = np.random.choice(
-                        backend_names, 2, p=backend_weights)
+                        backend_names, 2, replace=False, p=backend_weights)
 
                     # see the length of buffer queues of the two backends
                     # and pick the one which has less no. of queries
@@ -116,7 +116,8 @@ class PowerOfTwoPolicyQueue(CentralizedQueues):
                                      backend1, backend2, chosen_backend))
                 else:
                     chosen_backend = np.random.choice(
-                        backend_names, p=backend_weights).squeeze()
+                        backend_names, replace=False,
+                        p=backend_weights).squeeze()
                 request = await queue.get()
                 self.buffer_queues[chosen_backend].add(request)
 
