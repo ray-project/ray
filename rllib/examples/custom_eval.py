@@ -110,8 +110,10 @@ def custom_eval_function(trainer, eval_workers):
     # episode stats into a metrics dict.
     episodes, _ = collect_episodes(
         remote_workers=eval_workers.remote_workers(), timeout_seconds=99999)
-    metrics = summarize_episodes(episodes, episodes)
-    # Note that the above two lines are the equivalent of:
+    # You can compute metrics from the episodes manually, or use the
+    # convenient `summarize_episodes()` utility:
+    metrics = summarize_episodes(episodes)
+    # Note that the above two statements are the equivalent of:
     # metrics = collect_metrics(eval_workers.local_worker(),
     #                           eval_workers.remote_workers())
 
