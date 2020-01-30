@@ -25,7 +25,7 @@ if os.path.exists(so_path):
     CDLL(so_path, ctypes.RTLD_GLOBAL)
 
 if "psutil" in sys.modules:
-    print("please remove psutil")
+    print("init: please remove psutil")
     #TODO(ianrodney): Please look into handling what happens if psutil is pre-installed
 else:
     psutil_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),

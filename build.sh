@@ -115,6 +115,13 @@ if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
   popd
 fi
 
+
+"$PYTHON_EXECUTABLE" -m pip install -q setproctitle \
+        --target="$ROOT_DIR/python/ray/setproctitle_files"
+
+"$PYTHON_EXECUTABLE" -m pip install -q psutil \
+        --target="$ROOT_DIR/python/ray/psutil_files"
+
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
