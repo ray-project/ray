@@ -90,17 +90,11 @@ class TFTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-    # MultiWorkerMirroredStrategy handles everything for us, from
-    # sharding the dataset (or even sharding the data itself if the loader
-    # reads files from disk) to merging the metrics and weight updates
-    #
-    # worker 0 is the "chief" worker and will handle the map-reduce
-    # every worker ends up with the exact same metrics and model after model.fit
-    #
-    # because of this, we only really ever need to query its state
-
     def train(self):
         """Runs a training epoch."""
+
+        # see ./tf_runner.py:setup_distributed
+        # for an explanation of only taking the first worker's data
         worker_stats = ray.get([w.step.remote() for w in self.workers])
         stats = worker_stats[0].copy()
         return stats
@@ -108,6 +102,9 @@ class TFTrainer:
     def validate(self):
         """Evaluates the model on the validation data set."""
         logger.info("Starting validation step.")
+
+        # see ./tf_runner.py:setup_distributed
+        # for an explanation of only taking the first worker's data
         stats = ray.get([w.validate.remote() for w in self.workers])
         stats = stats[0].copy()
         return stats
