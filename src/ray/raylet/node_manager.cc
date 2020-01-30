@@ -300,25 +300,6 @@ void NodeManager::Heartbeat() {
     heartbeat_data->add_resource_load_capacity(resource_pair.second);
   }
 
-  size_t max_size = RayConfig::instance().raylet_max_active_object_ids();
-  std::unordered_set<ObjectID> active_object_ids = worker_pool_.GetActiveObjectIDs();
-  if (active_object_ids.size() <= max_size) {
-    for (const auto &object_id : active_object_ids) {
-      heartbeat_data->add_active_object_id(object_id.Binary());
-    }
-  } else {
-    // If there are more than the configured maximum number of object IDs to send per
-    // heartbeat, sample from them randomly.
-    // TODO(edoakes): we might want to improve the sampling technique here, for example
-    // preferring object IDs with the earliest last-refreshed timestamp.
-    std::vector<ObjectID> downsampled;
-    random_sample(active_object_ids.begin(), active_object_ids.end(), max_size,
-                  &downsampled);
-    for (const auto &object_id : downsampled) {
-      heartbeat_data->add_active_object_id(object_id.Binary());
-    }
-  }
-
   ray::Status status = gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data,
                                                                  /*done*/ nullptr);
   RAY_CHECK_OK_PREPEND(status, "Heartbeat failed");
@@ -706,29 +687,13 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch) {
   // Update load information provided by each heartbeat.
-  // TODO(edoakes): this isn't currently used, but will be used to refresh the LRU
-  // cache in the object store.
-  std::unordered_set<ObjectID> active_object_ids;
   for (const auto &heartbeat_data : heartbeat_batch.batch()) {
-    for (int i = 0; i < heartbeat_data.active_object_id_size(); i++) {
-      active_object_ids.insert(ObjectID::FromBinary(heartbeat_data.active_object_id(i)));
-    }
     const ClientID &client_id = ClientID::FromBinary(heartbeat_data.client_id());
     if (client_id == self_node_id_) {
       // Skip heartbeats from self.
       continue;
     }
     HeartbeatAdded(client_id, heartbeat_data);
-  }
-
-  // Refresh the active object IDs in plasma to prevent them from being evicted.
-  std::vector<plasma::ObjectID> plasma_ids;
-  plasma_ids.reserve(active_object_ids.size());
-  for (const ObjectID &object_id : active_object_ids) {
-    plasma_ids.push_back(object_id.ToPlasmaId());
-  }
-  if (!store_client_.Refresh(plasma_ids).ok()) {
-    RAY_LOG(WARNING) << "Failed to refresh active object IDs in plasma.";
   }
 }
 
