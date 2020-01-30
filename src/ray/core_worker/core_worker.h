@@ -97,7 +97,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorId(const ActorID &actor_id);
 
-  void SetWebuiDisplay(const std::string &message);
+  void SetWebuiDisplay(const std::string &key, const std::string &message);
 
   void SetActorTitle(const std::string &title);
 
@@ -656,8 +656,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
   TaskSpecification current_task_ GUARDED_BY(mutex_);
 
-  /// String to be displayed on Web UI.
-  std::string webui_display_ GUARDED_BY(mutex_);
+  /// Key value pairs to be displayed on Web UI.
+  std::unordered_map<std::string, std::string> webui_display_ GUARDED_BY(mutex_);
 
   /// Actor title that consists of class name, args, kwargs for actor construction.
   std::string actor_title_ GUARDED_BY(mutex_);

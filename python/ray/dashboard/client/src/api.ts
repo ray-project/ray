@@ -120,7 +120,7 @@ export interface RayletInfoResponse {
           usedResources: { [key: string]: number };
           currentTaskDesc?: string;
           numPendingTasks?: number;
-          webuiDisplay?: string;
+          webuiDisplay?: Record<string, string>;
         }
       | {
           actorId: string;
@@ -178,3 +178,14 @@ export const getProfilingResultURL = (profilingId: string) =>
   `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
     `${base}/api/get_profiling_info?profiling_id=${profilingId}`
   )}`;
+
+export const launchKillActor = (
+  actorId: string,
+  actorIpAddress: string,
+  actorPort: number
+) =>
+  get<string>("/api/kill_actor", {
+    actor_id: actorId,
+    ip_address: actorIpAddress,
+    port: actorPort
+  });
