@@ -475,7 +475,8 @@ class Trainer(Trainable):
         if result is None:
             raise RuntimeError("Failed to recover from worker crash")
 
-        self._sync_filters_if_needed(self.workers)
+        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
+            self._sync_filters_if_needed(self.workers)
 
         if self._has_policy_optimizer():
             result["num_healthy_workers"] = len(
@@ -492,9 +493,7 @@ class Trainer(Trainable):
         return result
 
     def _sync_filters_if_needed(self, workers):
-        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
-                and hasattr(self, "workers")
-                and isinstance(workers, WorkerSet)):
+        if self.config.get("observation_filter", "NoFilter") != "NoFilter":
             FilterManager.synchronize(
                 workers.local_worker().filters,
                 workers.remote_workers(),
