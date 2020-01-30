@@ -16,7 +16,12 @@ class Postprocessing:
 
 
 @DeveloperAPI
-def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True, use_critic=True):
+def compute_advantages(rollout,
+                       last_r,
+                       gamma=0.9,
+                       lambda_=1.0,
+                       use_gae=True,
+                       use_critic=True):
     """
     Given a rollout, compute its value targets and the advantage.
 
@@ -57,16 +62,21 @@ def compute_advantages(rollout, last_r, gamma=0.9, lambda_=1.0, use_gae=True, us
         rewards_plus_v = np.concatenate(
             [rollout[SampleBatch.REWARDS],
              np.array([last_r])])
-        discounted_returns = discount(rewards_plus_v, gamma)[:-1].copy().astype(np.float32)
+        discounted_returns = discount(rewards_plus_v,
+                                      gamma)[:-1].copy().astype(np.float32)
 
         if use_critic:
-            traj[Postprocessing.ADVANTAGES] = discounted_returns - rollout[SampleBatch.VF_PREDS]
+            traj[Postprocessing.
+                 ADVANTAGES] = discounted_returns - rollout[SampleBatch.
+                                                            VF_PREDS]
             traj[Postprocessing.VALUE_TARGETS] = discounted_returns
         else:
             traj[Postprocessing.ADVANTAGES] = discounted_returns
-            traj[Postprocessing.VALUE_TARGETS] = np.zeros_like(traj[Postprocessing.ADVANTAGES])
+            traj[Postprocessing.VALUE_TARGETS] = np.zeros_like(
+                traj[Postprocessing.ADVANTAGES])
 
-    traj[Postprocessing.ADVANTAGES] = traj[Postprocessing.ADVANTAGES].copy().astype(np.float32)
+    traj[Postprocessing.ADVANTAGES] = traj[
+        Postprocessing.ADVANTAGES].copy().astype(np.float32)
 
     assert all(val.shape[0] == trajsize for val in traj.values()), \
         "Rollout stacked incorrectly!"

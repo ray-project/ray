@@ -71,7 +71,11 @@ class MARWILPostprocessing:
                 len(sample_batch[SampleBatch.DONES]),
                 sample_batch[SampleBatch.DONES][-1])
         batch = compute_advantages(
-            sample_batch, last_r, gamma=self.config["gamma"], use_gae=False, use_critic=False)
+            sample_batch,
+            last_r,
+            gamma=self.config["gamma"],
+            use_gae=False,
+            use_critic=False)
         return batch
 
 
