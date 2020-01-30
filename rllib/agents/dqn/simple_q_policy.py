@@ -5,7 +5,6 @@ import logging
 
 import ray
 from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
-from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
@@ -22,34 +21,13 @@ Q_SCOPE = "q_func"
 Q_TARGET_SCOPE = "target_q_func"
 
 
-class ExplorationStateMixin:
+class ParameterNoiseMixin:
     def __init__(self, obs_space, action_space, config):
-        # Python value, should always be same as the TF variable
-        self.cur_epsilon_value = 1.0
-        self.cur_epsilon = tf.get_variable(
-            initializer=tf.constant_initializer(self.cur_epsilon_value),
-            name="eps",
-            shape=(),
-            trainable=False,
-            dtype=tf.float32)
+        pass
 
     def add_parameter_noise(self):
         if self.config["parameter_noise"]:
             self.sess.run(self.add_noise_op)
-
-    def set_epsilon(self, epsilon):
-        self.cur_epsilon_value = epsilon
-        self.cur_epsilon.load(
-            self.cur_epsilon_value, session=self.get_session())
-
-    @override(Policy)
-    def get_state(self):
-        return [TFPolicy.get_state(self), self.cur_epsilon_value]
-
-    @override(Policy)
-    def set_state(self, state):
-        TFPolicy.set_state(self, state[0])
-        self.set_epsilon(state[1])
 
 
 class TargetNetworkMixin:
@@ -119,26 +97,28 @@ def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
     policy.q_values = q_values
     policy.q_func_vars = q_model.variables()
 
-    # Action outputs
+    # Action outputs.
     deterministic_actions = tf.argmax(q_values, axis=1)
-    batch_size = tf.shape(input_dict[SampleBatch.CUR_OBS])[0]
+    #batch_size = tf.shape(input_dict[SampleBatch.CUR_OBS])[0]
 
-    # Special case masked out actions (q_value ~= -inf) so that we don't
-    # even consider them for exploration.
-    random_valid_action_logits = tf.where(
-        tf.equal(q_values, tf.float32.min),
-        tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-    random_actions = tf.squeeze(
-        tf.multinomial(random_valid_action_logits, 1), axis=1)
+    # TODO: How do we do this with new epsilon exploration API?
+    # TODO: Special case masked out actions (q_value ~= -inf) so that we don't
+    # TODO: even consider them for exploration.
+    #random_valid_action_logits = tf.where(
+    #    tf.equal(q_values, tf.float32.min),
+    #    tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
+    #random_actions = tf.squeeze(tf.multinomial(random_valid_action_logits, 1), axis=1)
 
-    chose_random = tf.random_uniform(
-        tf.stack([batch_size]), minval=0, maxval=1,
-        dtype=tf.float32) < policy.cur_epsilon
-    stochastic_actions = tf.where(chose_random, random_actions,
-                                  deterministic_actions)
-    action_logp = None
+    #chose_random = tf.random_uniform(
+    #    tf.stack([batch_size]), minval=0, maxval=1,
+    #    dtype=tf.float32) < policy.cur_epsilon
 
-    return stochastic_actions, action_logp
+    #stochastic_actions = tf.where(chose_random, random_actions, deterministic_actions)
+    #action_logp = None
+
+    #return stochastic_actions, action_logp
+    # TODO: Sampler will have to return the model-out as well (for the exploration interface to work).
+    return deterministic_actions, None
 
 
 def build_q_losses(policy, model, dist_class, train_batch):
@@ -190,7 +170,7 @@ def _compute_q_values(policy, model, obs, obs_space, action_space):
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):
-    ExplorationStateMixin.__init__(policy, obs_space, action_space, config)
+    ParameterNoiseMixin.__init__(policy, obs_space, action_space, config)
 
 
 def setup_late_mixins(policy, obs_space, action_space, config):
@@ -209,6 +189,6 @@ SimpleQPolicy = build_tf_policy(
     after_init=setup_late_mixins,
     obs_include_prev_action_reward=False,
     mixins=[
-        ExplorationStateMixin,
+        ParameterNoiseMixin,
         TargetNetworkMixin,
     ])

@@ -19,7 +19,7 @@ class PiecewiseSchedule(Schedule):
                 between two values.
                 E.g.
                 t=400 and endpoints=[(0, 20.0),(500, 30.0)]
-                output=20.0 + 0.8 * 10.0 = 28.0
+                output=20.0 + 0.8 * (30.0 - 20.0) = 28.0
                 NOTE: All the values for time must be sorted in an increasing
                 order.
 
@@ -28,14 +28,12 @@ class PiecewiseSchedule(Schedule):
                 (0.0=only left value, 1.0=only right value), which is the
                 fraction of distance from left endpoint to right endpoint.
 
-            outside_value (Optional[float]): If t_pct in call to `value` is
+            outside_value (Optional[float]): If t in call to `value` is
                 outside of all the intervals in `endpoints` this value is
                 returned. If None then an AssertionError is raised when outside
                 value is requested.
         """
-        # TODO(sven): support tf.
-        assert framework is None
-        super().__init__(framework=None)
+        super().__init__(framework=framework)
 
         idxes = [e[0] for e in endpoints]
         assert idxes == sorted(idxes)
@@ -43,7 +41,7 @@ class PiecewiseSchedule(Schedule):
         self.outside_value = outside_value
         self.endpoints = endpoints
 
-    def value(self, t):
+    def _value(self, t):
         for (l_t, l), (r_t, r) in zip(self.endpoints[:-1], self.endpoints[1:]):
             if l_t <= t < r_t:
                 alpha = float(t - l_t) / (r_t - l_t)

@@ -7,12 +7,13 @@ def sequence_mask(lengths, maxlen, dtype=torch.bool):
     """
     Exact same behavior as tf.sequence_mask.
     Thanks to Dimitris Papatheodorou
-    (https://discuss.pytorch.org/t/pytorch-equivalent-for-tf-sequence-mask/39036).
+    (https://discuss.pytorch.org/t/pytorch-equivalent-for-tf-sequence-mask/
+    39036).
     """
     if maxlen is None:
         maxlen = lengths.max()
 
-    mask = ~(torch.ones((len(lengths), maxlen)).cumsum(dim=1).t() > lengths).\
+    mask = ~(torch.ones((len(lengths), maxlen)).cumsum(dim=1).t() > lengths). \
         t()
     mask.type(dtype)
 

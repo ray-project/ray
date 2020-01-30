@@ -14,6 +14,7 @@ from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.schedules import LinearSchedule
 from ray.rllib.utils.memory import ray_get_and_free
+from ray.rllib.utils.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
 
@@ -25,24 +26,26 @@ class SyncReplayOptimizer(PolicyOptimizer):
     "td_error" array in the info return of compute_gradients(). This error
     term will be used for sample prioritization."""
 
-    def __init__(self,
-                 workers,
-                 learning_starts=1000,
-                 buffer_size=10000,
-                 prioritized_replay=True,
-                 prioritized_replay_alpha=0.6,
-                 prioritized_replay_beta=0.4,
-                 prioritized_replay_eps=1e-6,
-                 schedule_max_timesteps=100000,
-                 beta_annealing_fraction=0.2,
-                 final_prioritized_replay_beta=0.4,
-                 train_batch_size=32,
-                 sample_batch_size=4,
-                 before_learn_on_batch=None,
-                 synchronize_sampling=False):
+    def __init__(
+            self,
+            workers,
+            learning_starts=1000,
+            buffer_size=10000,
+            prioritized_replay=True,
+            prioritized_replay_alpha=0.6,
+            prioritized_replay_beta=0.4,
+            prioritized_replay_eps=1e-6,
+            schedule_max_timesteps=None,  # DEPRECATED
+            beta_annealing_fraction=None,  # DEPRECATED
+            final_prioritized_replay_beta=0.4,
+            train_batch_size=32,
+            before_learn_on_batch=None,
+            synchronize_sampling=False,
+            prioritized_replay_beta_annealing_timesteps=100000 * 0.2,
+    ):
         """Initialize an sync replay optimizer.
 
-        Arguments:
+        Args:
             workers (WorkerSet): all workers
             learning_starts (int): wait until this many steps have been sampled
                 before starting optimization.
@@ -51,24 +54,38 @@ class SyncReplayOptimizer(PolicyOptimizer):
             prioritized_replay_alpha (float): replay alpha hyperparameter
             prioritized_replay_beta (float): replay beta hyperparameter
             prioritized_replay_eps (float): replay eps hyperparameter
-            schedule_max_timesteps (int): number of timesteps in the schedule
-            beta_annealing_fraction (float): fraction of schedule to anneal
-                beta over
+            schedule_max_timesteps (int): DEPRECATED: number of timesteps in
+                the schedule to anneal PR-beta.
+            beta_annealing_fraction (float): DEPRECATED: Fraction of schedule
+                to anneal PR-beta over.
             final_prioritized_replay_beta (float): final value of beta
             train_batch_size (int): size of batches to learn on
-            sample_batch_size (int): size of batches to sample from workers
             before_learn_on_batch (function): callback to run before passing
                 the sampled batch to learn on
             synchronize_sampling (bool): whether to sample the experiences for
                 all policies with the same indices (used in MADDPG).
+            prioritized_replay_beta_annealing_timesteps (int): The timestep at
+                which PR-beta annealing should end.
         """
         PolicyOptimizer.__init__(self, workers)
 
         self.replay_starts = learning_starts
+
+        # Deprecated parameters.
+        if prioritized_replay_beta_annealing_timesteps is None:
+            assert schedule_max_timesteps and beta_annealing_fraction
+            prioritized_replay_beta_annealing_timesteps = \
+                schedule_max_timesteps * beta_annealing_fraction
+        if schedule_max_timesteps is not None:
+            deprecation_warning("schedule_max_timesteps",
+                                "prioritized_replay_beta_annealing_timesteps")
+        if beta_annealing_fraction is not None:
+            deprecation_warning("beta_annealing_fraction",
+                                "prioritized_replay_beta_annealing_timesteps")
+
         # linearly annealing beta used in Rainbow paper
         self.prioritized_replay_beta = LinearSchedule(
-            schedule_timesteps=int(
-                schedule_max_timesteps * beta_annealing_fraction),
+            schedule_timesteps=prioritized_replay_beta_annealing_timesteps,
             initial_p=prioritized_replay_beta,
             final_p=final_prioritized_replay_beta)
         self.prioritized_replay_eps = prioritized_replay_eps

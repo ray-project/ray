@@ -4,6 +4,8 @@ import gym
 import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.explorations.exploration import Exploration
+from ray.rllib.utils.from_config import from_config
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
@@ -58,6 +60,22 @@ class Policy(metaclass=ABCMeta):
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
+        # The global timestep, broadcast down from time to time from the
+        # driver.
+        self.global_timestep = 0
+
+        # Create the Exploration object to use for this Policy.
+        self.exploration = from_config(
+            Exploration,
+            config.get("exploration"),
+            action_space=self.action_space,
+            framework="torch" if self.config.get("use_pytorch") else "tf",
+            worker_info=self.config.get("worker_info"))
+        self.last_exploration_info = []
+        
+        # The default sampling behavior for actions if not explicitly given
+        # in calls to `compute_actions`.
+        self.deterministic = config.get("deterministic", False)
 
     @abstractmethod
     @DeveloperAPI
@@ -68,6 +86,9 @@ class Policy(metaclass=ABCMeta):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        deterministic=None,
+                        explore=True,
+                        time_step=None,
                         **kwargs):
         """Computes actions for the current policy.
 
@@ -83,6 +104,12 @@ class Policy(metaclass=ABCMeta):
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
+            deterministic (Optional[bool]): Whether the action should be
+                sampled deterministically or stochastically.
+                If None, use this Policy's `self.deterministic` value.
+            explore (bool): Whether we should use exploration
+                (e.g. when training) or not (for inference/evaluation).
+            time_step (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -104,6 +131,9 @@ class Policy(metaclass=ABCMeta):
                               info=None,
                               episode=None,
                               clip_actions=False,
+                              deterministic=None,
+                              explore=True,
+                              time_step=None,
                               **kwargs):
         """Unbatched version of compute_actions.
 
@@ -117,6 +147,12 @@ class Policy(metaclass=ABCMeta):
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
             clip_actions (bool): should the action be clipped
+            deterministic (Optional[bool]): Whether the action should be
+                sampled deterministically or stochastically.
+                If None, use this Policy's `self.deterministic` value.
+            explore (bool): Whether we should use exploration (i.e. when
+                training) or not (e.g. for inference/evaluation).
+            time_step (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -146,9 +182,13 @@ class Policy(metaclass=ABCMeta):
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
-            episodes=episodes)
+            episodes=episodes,
+            deterministic=deterministic,
+            explore=explore,
+            time_step=time_step)
+
         if clip_actions:
-            action = clip_action(action, self.action_space)
+            action = self.clip_action(action, self.action_space)
 
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
@@ -237,6 +277,29 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
+    def get_exploration_state(self):
+        """
+        Returns the current exploration state of this policy, which depends
+        on the policy's Exploration object.
+
+        Returns:
+            any: Serializable copy or view of the current exploration state.
+        """
+        if self.exploration is not None:
+            return self.exploration.get_state()
+
+    @DeveloperAPI
+    def set_exploration_state(self, exploration_state):
+        """Sets the current exploration state of this Policy.
+
+        Arguments:
+            exploration_state (any): Serializable copy or view of the new
+                exploration state.
+        """
+        if self.exploration is not None:
+            return self.exploration.set_state(exploration_state)
+
+    @DeveloperAPI
     def num_state_tensors(self):
         """
         Returns:
@@ -274,7 +337,7 @@ class Policy(metaclass=ABCMeta):
         Arguments:
             global_vars (dict): Global variables broadcast from the driver.
         """
-        pass
+        self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
     def export_model(self, export_dir):

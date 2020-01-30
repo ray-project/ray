@@ -14,10 +14,11 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
+    try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils import FilterManager, deep_update, merge_dicts
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.memory import ray_get_and_free
-from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -164,6 +165,19 @@ COMMON_CONFIG = {
     # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
 
+    # === Exploration Settings ===
+
+    # Exploration settings:
+    # Provide a dict specifying the Exploration object's
+    # config.
+    # Set to False or None for no exploration behavior (e.g. for evaluation).
+    "exploration": False,
+
+    # If True parameter space noise will be used for exploration
+    # See https://blog.openai.com/better-exploration-with-parameter-noise/
+    # TODO(sven): Implement ParameterNoiseExploration component.
+    #"parameter_noise": False,
+
     # === Evaluation Settings ===
     # Evaluate with every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
@@ -283,7 +297,7 @@ COMMON_CONFIG = {
     "input_evaluation": ["is", "wis"],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
-    # policy, not the *behaviour* policy, which is typically undesirable for
+    # policy, not the *behavior* policy, which is typically undesirable for
     # on-policy algorithms.
     "postprocess_inputs": False,
     # If positive, input batches will be shuffled via a sliding window buffer
@@ -401,7 +415,7 @@ class Trainer(Trainable):
 
             logger_creator = default_logger_creator
 
-        Trainable.__init__(self, config, logger_creator)
+        super().__init__(config, logger_creator)
 
     @classmethod
     @override(Trainable)
@@ -436,7 +450,7 @@ class Trainer(Trainable):
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
-                result = Trainable.train(self)
+                result = super().train()
             except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(
@@ -516,7 +530,8 @@ class Trainer(Trainable):
             self.env_creator = (
                 lambda env_config: NormalizeActionWrapper(inner(env_config)))
 
-        Trainer._validate_config(self.config)
+        self._validate_config(self.config)
+        #self._setup_parameter_noise_config(self.config)
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -534,16 +549,19 @@ class Trainer(Trainable):
         with get_scope():
             self._init(self.config, self.env_creator)
 
-            # Evaluation related
+            # Evaluation setup.
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
                 extra_config.update({
                     "batch_mode": "complete_episodes",
                     "batch_steps": 1,
+                    # Switch off all Exploration for evaluation policies.
+                    "exploration": False
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
+
                 self.evaluation_workers = self._make_workers(
                     self.env_creator,
                     self._policy,
@@ -572,17 +590,33 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(self, env_creator, policy, config, num_workers):
+        #remote_config_updates=None):
+        """
+        Default factory method for a WorkerSet running under this Trainer.
+        Override this method by passing a custom `make_workers` into `build_trainer`.
+
+        Args:
+            env_creator (callable): A function that return and Env given an env config.
+            policy (class): The Policy class to use for creating the policies of the workers.
+            config (dict): The Trainer's config.
+            num_workers (int): Number of remote rollout workers to create. 0 for local only.
+            remote_config_updates (Optional[List[dict]]): A list of config dicts to update `config` with for each Worker
+                (len must be same as `num_workers`).
+
+        Returns:
+            WorkerSet: The created WorkerSet.
+        """
         return WorkerSet(
             env_creator,
             policy,
             config,
             num_workers=num_workers,
             logdir=self.logdir)
+        #remote_config_updates=remote_config_updates)
 
     @DeveloperAPI
     def _init(self, config, env_creator):
         """Subclasses should override this for custom initialization."""
-
         raise NotImplementedError
 
     @DeveloperAPI
@@ -592,7 +626,6 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
-
         if not self.config["evaluation_config"]:
             raise ValueError(
                 "No evaluation_config specified. It doesn't make sense "
@@ -634,57 +667,54 @@ class Trainer(Trainable):
             observation (obj): observation from the environment.
             state (list): RNN hidden state, if any. If state is not None,
                           then all of compute_single_action(...) is returned
-                          (computed action, rnn state, logits dictionary).
+                          (computed action, rnn state(s), logits dictionary).
                           Otherwise compute_single_action(...)[0] is
                           returned (computed action).
             prev_action (obj): previous action value, if any
             prev_reward (int): previous reward, if any
             info (dict): info object, if any
             policy_id (str): policy to query (only applies to multi-agent).
-            full_fetch (bool): whether to return extra action fetch results.
-                This is always set to true if RNN state is specified.
+            full_fetch (bool): Whether to return extra action fetch results.
+                This is always set to True if RNN state is specified.
 
         Returns:
-            Just the computed action if full_fetch=False, or the full output
-            of policy.compute_actions() otherwise.
+            any: The computed action if full_fetch=False, or
+            tuple: The full output of policy.compute_actions() if full_fetch=True or we have an RNN-based Policy.
         """
-
         if state is None:
             state = []
-        preprocessed = self.workers.local_worker().preprocessors[
-            policy_id].transform(observation)
+
+        preprocessed = self.workers.local_worker().preprocessors[policy_id].\
+            transform(observation)
         filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
-        if state:
-            return self.get_policy(policy_id).compute_single_action(
-                filtered_obs,
-                state,
-                prev_action,
-                prev_reward,
-                info,
-                clip_actions=self.config["clip_actions"])
-        res = self.get_policy(policy_id).compute_single_action(
+
+        # Figure out the current (sample) time step and pass it into Policy.
+        time_step = self.optimizer.num_steps_sampled \
+            if self._has_policy_optimizer() else 0
+
+        result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
             state,
             prev_action,
             prev_reward,
             info,
-            clip_actions=self.config["clip_actions"])
-        if full_fetch:
-            return res
+            clip_actions=self.config["clip_actions"],
+            time_step=time_step)
+
+        if state or full_fetch:
+            return result
         else:
-            return res[0]  # backwards compatibility
+            return result[0]  # backwards compatibility
 
     @property
     def _name(self):
         """Subclasses should override this to declare their name."""
-
         raise NotImplementedError
 
     @property
     def _default_config(self):
         """Subclasses should override this to declare their default config."""
-
         raise NotImplementedError
 
     @PublicAPI
@@ -694,7 +724,6 @@ class Trainer(Trainable):
         Arguments:
             policy_id (str): id of policy to return.
         """
-
         return self.workers.local_worker().get_policy(policy_id)
 
     @PublicAPI
@@ -766,32 +795,36 @@ class Trainer(Trainable):
 
     @classmethod
     def resource_help(cls, config):
-        return ("\n\nYou can adjust the resource requests of RLlib agents by "
-                "setting `num_workers`, `num_gpus`, and other configs. See "
-                "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
-                "The config of this agent is: {}".format(config))
+        return \
+            "\n\nYou can adjust the resource requests of RLlib agents by " \
+            "setting `num_workers`, `num_gpus`, and other configs. See the " \
+            "DEFAULT_CONFIG defined by each agent for more info.\n\n" \
+            "The config of this agent ({}) is: {}".format(cls.__name__, config)
 
     @staticmethod
     def _validate_config(config):
+        """
+        Generic config checking method for all Trainer types. Raises errors and outputs warnings in case
+        of deprecated config settings.
+
+        Args:
+            config (dict): The Trainer's config.
+        """
         if "policy_graphs" in config["multiagent"]:
-            logger.warning(
-                "The `policy_graphs` config has been renamed to `policies`.")
-            # Backwards compatibility
-            config["multiagent"]["policies"] = config["multiagent"][
-                "policy_graphs"]
-            del config["multiagent"]["policy_graphs"]
+            deprecation_warning("policy_graphs", "policies")
+            # Backwards compatibility.
+            config["multiagent"]["policies"] = config["multiagent"].pop(
+                "policy_graphs")
         if "gpu" in config:
-            raise ValueError(
-                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
-                "instead.")
+            deprecation_warning("gpu", "num_gpus=0|1", error=ValueError)
         if "gpu_fraction" in config:
-            raise ValueError(
-                "The `gpu_fraction` config is deprecated, please use "
-                "`num_gpus=<fraction>` instead.")
+            deprecation_warning(
+                "gpu_fraction", "num_gpus=<fraction>", error=ValueError)
         if "use_gpu_for_workers" in config:
-            raise ValueError(
-                "The `use_gpu_for_workers` config is deprecated, please use "
-                "`num_gpus_per_worker=1` instead.")
+            deprecation_warning(
+                "use_gpu_for_workers",
+                "num_gpus_per_worker=1",
+                error=ValueError)
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(
@@ -837,6 +870,10 @@ class Trainer(Trainable):
         self.optimizer.reset(healthy_workers)
 
     def _has_policy_optimizer(self):
+        """
+        Returns:
+            bool: True if this Trainer holds a PolicyOptimizer object in property `self.optimizer`.
+        """
         return hasattr(self, "optimizer") and isinstance(
             self.optimizer, PolicyOptimizer)
 
