@@ -23,7 +23,11 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id, const ObjectI
   auto it = object_id_refs_.find(object_id);
   RAY_CHECK(it != object_id_refs_.end());
 
+  RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   if (!it->second.owner.has_value()) {
+    // TODO: Skip adding this object as a borrower if we already have ownership
+    // info. If we already have ownership info, then either we are the owner or
+    // someone else knows that we are a borrower.
     it->second.owner = {owner_id, owner_address};
   }
 
@@ -144,19 +148,30 @@ void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids)
 void ReferenceCounter::DeleteReferenceInternal(
     ReferenceTable::iterator it,
     std::vector<ObjectID> *deleted) {
+  const ObjectID id = it->first;
+  RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.on_local_ref_deleted) {
+    RAY_LOG(DEBUG) << "Calling on_local_ref_deleted for object " << id;
     auto on_local_ref_deleted = it->second.on_local_ref_deleted;
     it->second.on_local_ref_deleted = nullptr;
     on_local_ref_deleted();
+    // on_local_ref_deleted may have called delete again, so make sure that the
+    // iterator is still valid.
+    // TODO: This is very ugly.
+    it = object_id_refs_.find(id);
+    if (it == object_id_refs_.end()) {
+      return;
+    }
   }
   if (it->second.RefCount() + it->second.NumBorrowers() == 0) {
+    RAY_LOG(DEBUG) << "Deleting object " << id;
     const auto contains = std::move(it->second.contains);
 
     if (it->second.on_delete) {
-      it->second.on_delete(it->first);
+      it->second.on_delete(id);
     }
     if (deleted) {
-      deleted->push_back(it->first);
+      deleted->push_back(id);
     }
     object_id_refs_.erase(it);
 
@@ -165,7 +180,7 @@ void ReferenceCounter::DeleteReferenceInternal(
       auto inner_it = object_id_refs_.find(inner_id);
       // The inner ID can go out of scope before the outer one.
       if (inner_it != object_id_refs_.end()) {
-        inner_it->second.contained_in.erase(it->first);
+        inner_it->second.contained_in.erase(id);
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
