@@ -24,6 +24,29 @@ if os.path.exists(so_path):
     from ctypes import CDLL
     CDLL(so_path, ctypes.RTLD_GLOBAL)
 
+if "psutil" in sys.modules:
+    print("please remove psutil")
+    #TODO(ianrodney): Please look into handling what happens if psutil is pre-installed
+else:
+    psutil_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                               "psutil_files")
+    sys.path.insert(0, psutil_path)
+
+try:
+    import psutil
+    print("Successfully loaded psutil")
+except ImportError as e:
+    print("Failure in loading psutil")
+
+if "setproctitle" in sys.modules:
+    print("Please remove setproctitle")
+    #TODO(ianrodney): Please look into handling what happens if psutil is pre-installed
+else:
+    setproc_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                        "setproctitle_files")
+    sys.path.insert(0, setproc_path)
+
+
 # MUST import ray._raylet before pyarrow to initialize some global variables.
 # It seems the library related to memory allocation in pyarrow will destroy the
 # initialization of grpc if we import pyarrow at first.

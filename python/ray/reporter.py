@@ -9,6 +9,15 @@ import grpc
 import subprocess
 from concurrent import futures
 
+import sys
+if "psutil" in sys.modules:
+    print("please remove psutil")
+else:
+    print("Loading reporter")
+    psutil_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                               "psutil_files")
+    sys.path.insert(0, psutil_path)
+
 try:
     import psutil
 except ImportError:
@@ -21,6 +30,7 @@ import ray.services
 import ray.utils
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+import ray.psutil
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
