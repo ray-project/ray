@@ -46,10 +46,12 @@ class TFTrainer:
         self.verbose = verbose
 
         # Generate actor class
-        # todo: are these resource quotas right? should they be exposed to the client codee?
+        # todo: are these resource quotas right?
+        # should they be exposed to the client codee?
         Runner = ray.remote(num_cpus=1, num_gpus=int(use_gpu))(TFRunner)
 
-        # todo: should we warn about using distributed training on one device only?
+        # todo: should we warn about using
+        # distributed training on one device only?
         # it's likely that whenever this happens it's a mistake
         if num_replicas == 1:
             # Start workers

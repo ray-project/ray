@@ -53,6 +53,11 @@ setup_commands:
     - pip install tensorflow==2.1.0
     # todo: git clone distribution token
 
+file_mounts:
+    "~/anaconda3/lib/python3.6/site-packages/ray/experimental/sgd/pytorch/": "../../pytorch/"
+    "~/anaconda3/lib/python3.6/site-packages/ray/experimental/sgd/tf/": "../../tf/"
+    "~/anaconda3/lib/python3.6/site-packages/ray/experimental/sgd/examples/": "."
+
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
 

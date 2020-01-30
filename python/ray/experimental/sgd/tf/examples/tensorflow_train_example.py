@@ -14,7 +14,8 @@ NUM_TEST_SAMPLES = 400
 
 def create_config(batch_size):
     return {
-        "batch_size": batch_size,  # todo: batch size needs to scale with # of workers
+        # todo: batch size needs to scale with # of workers
+        "batch_size": batch_size,
         "fit_config": {
             "steps_per_epoch": NUM_TRAIN_SAMPLES // batch_size
         },

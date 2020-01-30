@@ -5,6 +5,7 @@ It gets to 75% validation accuracy in 25 epochs, and 79% after 50 epochs.
 (it"s still underfitting at that point, though).
 """
 import argparse
+import time
 
 from tensorflow.keras.datasets import cifar10
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -144,8 +145,6 @@ def data_augmentation_creator(config):
     return trainset, test_dataset
 
 
-import time
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -209,9 +208,9 @@ if __name__ == "__main__":
         train_stats1 = trainer.train()
         train_stats1.update(trainer.validate())
         print("iter {}:".format(i), train_stats1)
-    print(
-        f'Training on workers takes: {(time.time() - training_start)/3:.3f} seconds/epoch'
-    )
+
+    dt = (time.time() - training_start) / 3
+    print(f"Training on workers takes: {dt:.3f} seconds/epoch")
 
     model = trainer.get_model()
     trainer.shutdown()
@@ -220,9 +219,8 @@ if __name__ == "__main__":
 
     training_start = time.time()
     model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
-    print(
-        f'Training on HEAD takes: {(time.time() - training_start):.3f} seconds/epoch'
-    )
+    dt = (time.time() - training_start)
+    print(f"Training on workers takes: {dt:.3f} seconds/epoch")
 
     scores = model.evaluate(test_dataset, steps=num_eval_steps)
     print("Test loss:", scores[0])

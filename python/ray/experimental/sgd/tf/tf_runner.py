@@ -71,7 +71,8 @@ class TFRunner:
         # reads files from disk) to merging the metrics and weight updates
         #
         # worker 0 is the "chief" worker and will handle the map-reduce
-        # every worker ends up with the exact same metrics and model after model.fit
+        # every worker ends up with the exact same metrics and model
+        # after model.fit
         #
         # because of this, we only really ever need to query its state
         self.strategy = MultiWorkerMirroredStrategy()
