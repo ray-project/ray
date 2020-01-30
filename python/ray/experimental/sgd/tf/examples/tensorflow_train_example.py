@@ -69,15 +69,27 @@ def train_example(num_replicas=1, batch_size=128, use_gpu=False):
         verbose=True,
         config=create_config(batch_size))
 
+    # model baseline performance
     start_stats = trainer.validate()
     print(start_stats)
 
+    # train for 2 epochs
     trainer.train()
     trainer.train()
 
+    # model performance after training (should improve)
     end_stats = trainer.validate()
     print(end_stats)
-    print("success!")
+
+    # sanity check that training worked
+    dloss = end_stats["validation_loss"]-start_stats["validation_loss"]
+    dmse = end_stats["validation_mean_squared_error"]-start_stats["validation_mean_squared_error"]
+    print(f"dLoss: {dloss}, dMSE: {dmse}")
+
+    if dloss > 0 or dmse > 0:
+        print("training sanity check failed. loss increased!")
+    else:
+        print("success!")
 
 
 def tune_example(num_replicas=1, use_gpu=False):
