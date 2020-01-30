@@ -78,7 +78,6 @@ def cli(logging_level, logging_format):
 def dashboard(cluster_config_file, cluster_name, port):
     # Sleeping in a loop is preferable to `sleep infinity` because the latter
     # only works on linux.
-    cmd = "while true; do sleep 86400; done"
     remote_port = 8265
     if port:
         dashboard_port = port
@@ -114,7 +113,6 @@ def dashboard(cluster_config_file, cluster_name, port):
             port_taken = True
             dashboard_port += 1
             pass
-
 
 
 @cli.command()

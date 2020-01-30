@@ -436,10 +436,7 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
             ]
             cmd = " ".join(cmd)
     updater.cmd_runner.run(
-        cmd,
-        allocate_tty=True,
-        exit_on_fail=True,
-        port_forward=port_forward)
+        cmd, allocate_tty=True, exit_on_fail=True, port_forward=port_forward)
 
 
 def rsync(config_file, source, target, override_cluster_name, down):

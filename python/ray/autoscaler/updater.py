@@ -50,7 +50,9 @@ class KubernetesCommandRunner:
             exit_on_fail=False,
             port_forward=None):
         if cmd and port_forward:
-            raise Exception("exec with Kubernetes only can't forward ports and execute commands together")
+            raise Exception(
+                "exec with Kubernetes only can't forward ports and execute"
+                "commands together")
 
         if port_forward:
             if not isinstance(port_forward, list):
@@ -61,7 +63,8 @@ class KubernetesCommandRunner:
             ] + [
                 "{}:{}".format(local, remote) for local, remote in port_forward
             ]
-            logger.info("Port forwarding with: {}".format(" ".join(port_forward_cmd)))
+            logger.info("Port forwarding with: {}".format(
+                " ".join(port_forward_cmd)))
             port_forward_process = subprocess.Popen(port_forward_cmd)
             port_forward_process.wait()
             print("kubectl port-forward finished")
@@ -83,9 +86,11 @@ class KubernetesCommandRunner:
                 self.process_runner.check_call(" ".join(final_cmd), shell=True)
             except subprocess.CalledProcessError:
                 if exit_on_fail:
-                    quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
-                    logger.error(self.log_prefix +
-                                "Command failed: \n\n  {}\n".format(quoted_cmd))
+                    quoted_cmd = " ".join(final_cmd[:-1] +
+                                          [quote(final_cmd[-1])])
+                    logger.error(
+                        self.log_prefix +
+                        "Command failed: \n\n  {}\n".format(quoted_cmd))
                     sys.exit(1)
                 else:
                     raise
