@@ -7,9 +7,7 @@ tf = try_import_tf()
 
 
 class TestDQN(unittest.TestCase):
-
     def test_dqn_compilation(self):
-        
         """Test whether a DQNTrainer can be built with both frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.

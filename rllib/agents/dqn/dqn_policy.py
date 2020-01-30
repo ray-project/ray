@@ -231,7 +231,6 @@ def action_sampler_function(policy, q_model, input_dict, obs_space,
     return policy.output_actions, action_log_prob
 
 
-
 def _build_parameter_noise(policy, pnet_params):
     policy.parameter_noise_sigma_val = 1.0
     policy.parameter_noise_sigma = tf.get_variable(

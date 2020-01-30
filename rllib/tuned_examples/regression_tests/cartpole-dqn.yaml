@@ -7,5 +7,3 @@ cartpole-dqn:
     config:
         n_step: 3
         gamma: 0.95
-        exploration:
-            epsilon_timesteps: 10000

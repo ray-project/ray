@@ -354,6 +354,7 @@ def build_eager_tf_policy(name,
             if extra_action_fetches_fn:
                 extra_fetches.update(extra_action_fetches_fn(self))
 
+            # Increase our global sampling timestep counter by 1.
             self.global_timestep += 1
 
             return action, state_out, extra_fetches
@@ -381,6 +382,7 @@ def build_eager_tf_policy(name,
             """Return the list of all savable variables for this policy."""
             return self.model.variables()
 
+        @override(Policy)
         def is_recurrent(self):
             return len(self._state_in) > 0
 

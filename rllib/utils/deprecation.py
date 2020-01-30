@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def deprecation_warning(old, new=None):
+def deprecation_warning(old, new=None, error=None):
     """
     Logs a deprecation warning via the `logger` object.
 

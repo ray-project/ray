@@ -166,17 +166,9 @@ COMMON_CONFIG = {
     "no_eager_on_workers": False,
 
     # === Exploration Settings ===
-
-    # Exploration settings:
-    # Provide a dict specifying the Exploration object's
-    # config.
+    # Provide a dict specifying the Exploration object's config.
     # Set to False or None for no exploration behavior (e.g. for evaluation).
     "exploration": False,
-
-    # If True parameter space noise will be used for exploration
-    # See https://blog.openai.com/better-exploration-with-parameter-noise/
-    # TODO(sven): Implement ParameterNoiseExploration component.
-    #"parameter_noise": False,
 
     # === Evaluation Settings ===
     # Evaluate with every `evaluation_interval` training iterations.
@@ -531,7 +523,6 @@ class Trainer(Trainable):
                 lambda env_config: NormalizeActionWrapper(inner(env_config)))
 
         self._validate_config(self.config)
-        #self._setup_parameter_noise_config(self.config)
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -590,18 +581,22 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(self, env_creator, policy, config, num_workers):
-        #remote_config_updates=None):
         """
         Default factory method for a WorkerSet running under this Trainer.
-        Override this method by passing a custom `make_workers` into `build_trainer`.
+        Override this method by passing a custom `make_workers` into
+        `build_trainer`.
 
         Args:
-            env_creator (callable): A function that return and Env given an env config.
-            policy (class): The Policy class to use for creating the policies of the workers.
+            env_creator (callable): A function that return and Env given an env
+                config.
+            policy (class): The Policy class to use for creating the policies
+                of the workers.
             config (dict): The Trainer's config.
-            num_workers (int): Number of remote rollout workers to create. 0 for local only.
-            remote_config_updates (Optional[List[dict]]): A list of config dicts to update `config` with for each Worker
-                (len must be same as `num_workers`).
+            num_workers (int): Number of remote rollout workers to create.
+                0 for local only.
+            remote_config_updates (Optional[List[dict]]): A list of config
+                dicts to update `config` with for each Worker (len must be
+                same as `num_workers`).
 
         Returns:
             WorkerSet: The created WorkerSet.
@@ -612,7 +607,6 @@ class Trainer(Trainable):
             config,
             num_workers=num_workers,
             logdir=self.logdir)
-        #remote_config_updates=remote_config_updates)
 
     @DeveloperAPI
     def _init(self, config, env_creator):
@@ -657,8 +651,9 @@ class Trainer(Trainable):
                        prev_reward=None,
                        info=None,
                        policy_id=DEFAULT_POLICY_ID,
-                       full_fetch=False):
-        """Computes an action for the specified policy.
+                       full_fetch=False,
+                       explore=True):
+        """Computes an action for the specified policy on the local Worker.
 
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
@@ -673,13 +668,15 @@ class Trainer(Trainable):
             prev_action (obj): previous action value, if any
             prev_reward (int): previous reward, if any
             info (dict): info object, if any
-            policy_id (str): policy to query (only applies to multi-agent).
+            policy_id (str): Policy to query (only applies to multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
+            explore (bool): Whether to pick an action using exploration or not.
 
         Returns:
             any: The computed action if full_fetch=False, or
-            tuple: The full output of policy.compute_actions() if full_fetch=True or we have an RNN-based Policy.
+            tuple: The full output of policy.compute_actions() if
+                full_fetch=True or we have an RNN-based Policy.
         """
         if state is None:
             state = []
@@ -700,6 +697,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
+            explore=explore,
             time_step=time_step)
 
         if state or full_fetch:
@@ -804,8 +802,8 @@ class Trainer(Trainable):
     @staticmethod
     def _validate_config(config):
         """
-        Generic config checking method for all Trainer types. Raises errors and outputs warnings in case
-        of deprecated config settings.
+        Generic config checking method for all Trainer types. Raises errors and
+        outputs warnings in case of deprecated config settings.
 
         Args:
             config (dict): The Trainer's config.
@@ -815,6 +813,7 @@ class Trainer(Trainable):
             # Backwards compatibility.
             config["multiagent"]["policies"] = config["multiagent"].pop(
                 "policy_graphs")
+            del config["multiagent"]["policy_graphs"]
         if "gpu" in config:
             deprecation_warning("gpu", "num_gpus=0|1", error=ValueError)
         if "gpu_fraction" in config:
@@ -872,7 +871,8 @@ class Trainer(Trainable):
     def _has_policy_optimizer(self):
         """
         Returns:
-            bool: True if this Trainer holds a PolicyOptimizer object in property `self.optimizer`.
+            bool: True if this Trainer holds a PolicyOptimizer object in
+                property `self.optimizer`.
         """
         return hasattr(self, "optimizer") and isinstance(
             self.optimizer, PolicyOptimizer)

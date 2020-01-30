@@ -57,7 +57,7 @@ class DistributionalQModel(TFModelV2):
 
         # setup the Q head output (i.e., model for get_q_values)
         self.model_out = tf.keras.layers.Input(
-            shape=(num_outputs,), name="model_out")
+            shape=(num_outputs, ), name="model_out")
 
         def build_action_value(model_out):
             if q_hiddens:
@@ -70,14 +70,13 @@ class DistributionalQModel(TFModelV2):
                         action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
                             activation_fn=tf.nn.relu,
-                            normalizer_fn=tf.keras.layers.LayerNormalization
-                        )(action_out)
+                            normalizer_fn=tf.keras.layers.LayerNormalization)(
+                                action_out)
                     else:
                         action_out = tf.keras.layers.Dense(
                             units=q_hiddens[i],
                             activation=tf.nn.relu,
-                            name="hidden_%d" % i
-                        )(action_out)
+                            name="hidden_%d" % i)(action_out)
             else:
                 # Avoid postprocessing the outputs. This enables custom models
                 # to be used for parametric action DQN.
@@ -92,8 +91,7 @@ class DistributionalQModel(TFModelV2):
             elif q_hiddens:
                 action_scores = tf.keras.layers.Dense(
                     units=self.action_space.n * num_atoms,
-                    activation=None
-                )(action_out)
+                    activation=None)(action_out)
             else:
                 action_scores = model_out
             if num_atoms > 1:
@@ -129,12 +127,10 @@ class DistributionalQModel(TFModelV2):
                     state_out = tf.keras.layers.Dense(
                         units=q_hiddens[i],
                         activation_fn=tf.nn.relu,
-                        normalizer_fn=tf.contrib.layers.layer_norm
-                    )(state_out)
+                        normalizer_fn=tf.contrib.layers.layer_norm)(state_out)
                 else:
                     state_out = tf.keras.layers.Dense(
-                        units=q_hiddens[i], activation=tf.nn.relu
-                    )(state_out)
+                        units=q_hiddens[i], activation=tf.nn.relu)(state_out)
             if use_noisy:
                 state_score = self._noisy_layer(
                     "dueling_output",
@@ -144,8 +140,7 @@ class DistributionalQModel(TFModelV2):
                     non_linear=False)
             else:
                 state_score = tf.keras.layers.Dense(
-                    units=num_atoms, activation=None
-                )(state_out)
+                    units=num_atoms, activation=None)(state_out)
             return state_score
 
         if tf.executing_eagerly():
@@ -187,8 +182,7 @@ class DistributionalQModel(TFModelV2):
         self.register_variables(self.q_value_head.variables)
 
         if dueling:
-            state_out = build_state_score_in_scope(
-                self.model_out)
+            state_out = build_state_score_in_scope(self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
             self.register_variables(self.state_value_head.variables)
 

@@ -35,11 +35,7 @@ class TestSchedules(unittest.TestCase):
 
     def test_linear_schedule(self):
         ts = [0, 50, 10, 100, 90, 2, 1, 99, 23]
-        config = {
-            "schedule_timesteps": 100,
-            "initial_p": 2.1,
-            "final_p": 0.6
-        }
+        config = {"schedule_timesteps": 100, "initial_p": 2.1, "final_p": 0.6}
         for fw in ["tf", "torch", None]:
             linear = from_config(LinearSchedule, config, framework=fw)
             for t in ts:
@@ -57,7 +53,7 @@ class TestSchedules(unittest.TestCase):
         ts = [0, 5, 10, 100, 90, 2, 1, 99, 23]
         config = dict(
             type="ray.rllib.utils.schedules.polynomial_schedule."
-                 "PolynomialSchedule",
+            "PolynomialSchedule",
             schedule_timesteps=100,
             initial_p=2.0,
             final_p=0.5,
@@ -79,17 +75,14 @@ class TestSchedules(unittest.TestCase):
 
     def test_exponential_schedule(self):
         ts = [0, 5, 10, 100, 90, 2, 1, 99, 23]
-        config = dict(
-            initial_p=2.0,
-            decay_rate=0.99,
-            schedule_timesteps=100)
+        config = dict(initial_p=2.0, decay_rate=0.99, schedule_timesteps=100)
         for fw in ["tf", "torch", None]:
             config["framework"] = fw
             exponential = from_config(ExponentialSchedule, config)
             for t in ts:
                 out = exponential(t)
                 check(out, 2.0 * 0.99**(t / 100), decimals=4)
-                
+
         # Test eager as well.
         with eager_mode():
             config["framework"] = "tf"

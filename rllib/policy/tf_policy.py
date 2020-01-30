@@ -95,7 +95,6 @@ class TFPolicy(Policy):
                 [NUM_SEQUENCES]. Note that NUM_SEQUENCES << BATCH_SIZE. See
                 policy/rnn_sequencing.py for more information.
             max_seq_len (int): Max sequence length for LSTM training.
-            explore (Tensor): Placeholder for whether to explore or not.
             batch_divisibility_req (int): pad all agent experiences batches to
                 multiples of this value. This only has an effect if not using
                 a LSTM model.
@@ -147,7 +146,7 @@ class TFPolicy(Policy):
         # Apply the post-forward-pass exploration if applicable.
         # And store the `get_state` op.
         self._exploration_action = None
-        self._exploration_state = None
+        self._exploration_info = None
         if self.exploration:
             self._exploration_action = self.exploration.get_exploration_action(
                 self._action,
@@ -155,7 +154,7 @@ class TFPolicy(Policy):
                 action_dist=self.dist_class,
                 explore=self._is_exploring,
                 time_step=self._time_step)
-            self._exploration_state = self.exploration.get_state()
+            self._exploration_info = self.exploration.get_info()
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -247,10 +246,10 @@ class TFPolicy(Policy):
                         explore=True,
                         time_step=None,
                         **kwargs):
-    
+
         deterministic = deterministic if deterministic is not None else \
             self.deterministic
-        
+
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
@@ -328,6 +327,7 @@ class TFPolicy(Policy):
         Optional, only required to work with the multi-GPU optimizer."""
         raise NotImplementedError
 
+    @override(Policy)
     def is_recurrent(self):
         return len(self._state_inputs) > 0
 
@@ -496,13 +496,14 @@ class TFPolicy(Policy):
             fetches = builder.add_fetches(
                 [self._exploration_action] + self._state_outputs +
                 [self.extra_compute_action_fetches()] +
-                [self._exploration_state])
+                [self._exploration_info])
+            return fetches[0], fetches[1:-2], fetches[-2], fetches[-1]
         # Do not explore.
         else:
             fetches = builder.add_fetches(
                 [self._action] + self._state_outputs +
-                [self.extra_compute_action_fetches()]) + [None]
-        return fetches[0], fetches[1:-2], fetches[-2], fetches[-1]
+                [self.extra_compute_action_fetches()])
+            return fetches[0], fetches[1:-1], fetches[-1], None
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()

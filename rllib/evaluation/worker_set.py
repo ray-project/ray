@@ -76,7 +76,8 @@ class WorkerSet:
         Creates and add a number of remote workers to this worker set.
 
         Args:
-            num_workers (int): The number of remote Workers to add to this WorkerSet.
+            num_workers (int): The number of remote Workers to add to this
+                WorkerSet.
         """
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
@@ -87,12 +88,10 @@ class WorkerSet:
             "resources": self._remote_config["custom_resources_per_worker"],
         }
         cls = RolloutWorker.as_remote(**remote_args).remote
-        for i in range(num_workers):
-            #config = self._remote_config if not remote_config_updates else \
-            #    self._remote_config.copy().update(remote_config_updates[i])
-            self._remote_workers.append(
+        self._remote_workers.extend([
                 self._make_worker(cls, self._env_creator, self._policy, i + 1,
-                                  self._remote_config, num_workers))
+                              self._remote_config) for i in range(num_workers)
+        ])
 
     def reset(self, new_remote_workers):
         """Called to change the set of remote workers."""

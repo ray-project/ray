@@ -72,7 +72,7 @@ class Policy(metaclass=ABCMeta):
             framework="torch" if self.config.get("use_pytorch") else "tf",
             worker_info=self.config.get("worker_info"))
         self.last_exploration_info = []
-        
+
         # The default sampling behavior for actions if not explicitly given
         # in calls to `compute_actions`.
         self.deterministic = config.get("deterministic", False)
@@ -188,7 +188,7 @@ class Policy(metaclass=ABCMeta):
             time_step=time_step)
 
         if clip_actions:
-            action = self.clip_action(action, self.action_space)
+            action = clip_action(action, self.action_space)
 
         # Return action, internal state(s), infos.
         return action, [s[0] for s in state_out], \
@@ -286,7 +286,7 @@ class Policy(metaclass=ABCMeta):
             any: Serializable copy or view of the current exploration state.
         """
         if self.exploration is not None:
-            return self.exploration.get_state()
+            raise NotImplementedError
 
     @DeveloperAPI
     def set_exploration_state(self, exploration_state):
@@ -297,7 +297,15 @@ class Policy(metaclass=ABCMeta):
                 exploration state.
         """
         if self.exploration is not None:
-            return self.exploration.set_state(exploration_state)
+            raise NotImplementedError
+
+    @DeveloperAPI
+    def is_recurrent(self):
+        """
+        Returns:
+            int: The number of RNN hidden states kept by this Policy's Model.
+        """
+        return 0
 
     @DeveloperAPI
     def num_state_tensors(self):
@@ -337,6 +345,8 @@ class Policy(metaclass=ABCMeta):
         Arguments:
             global_vars (dict): Global variables broadcast from the driver.
         """
+        # Store the current global time step (sum over all policies' sample
+        # steps).
         self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI

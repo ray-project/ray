@@ -99,25 +99,6 @@ def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
 
     # Action outputs.
     deterministic_actions = tf.argmax(q_values, axis=1)
-    #batch_size = tf.shape(input_dict[SampleBatch.CUR_OBS])[0]
-
-    # TODO: How do we do this with new epsilon exploration API?
-    # TODO: Special case masked out actions (q_value ~= -inf) so that we don't
-    # TODO: even consider them for exploration.
-    #random_valid_action_logits = tf.where(
-    #    tf.equal(q_values, tf.float32.min),
-    #    tf.ones_like(q_values) * tf.float32.min, tf.ones_like(q_values))
-    #random_actions = tf.squeeze(tf.multinomial(random_valid_action_logits, 1), axis=1)
-
-    #chose_random = tf.random_uniform(
-    #    tf.stack([batch_size]), minval=0, maxval=1,
-    #    dtype=tf.float32) < policy.cur_epsilon
-
-    #stochastic_actions = tf.where(chose_random, random_actions, deterministic_actions)
-    #action_logp = None
-
-    #return stochastic_actions, action_logp
-    # TODO: Sampler will have to return the model-out as well (for the exploration interface to work).
     return deterministic_actions, None
 
 

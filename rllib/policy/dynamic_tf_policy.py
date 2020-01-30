@@ -256,13 +256,6 @@ class DynamicTFPolicy(TFPolicy):
         else:
             return []
 
-    def is_recurrent(self):
-        return len(self._state_in) > 0
-
-    @override(Policy)
-    def num_state_tensors(self):
-        return len(self._state_in)
-
     def _initialize_loss(self):
         def fake_array(tensor):
             shape = tensor.shape.as_list()

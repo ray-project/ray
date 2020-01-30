@@ -5,10 +5,7 @@ class Exploration:
     predefined exploration schema.
     """
 
-    def __init__(self,
-                 action_space=None,
-                 worker_info=None,
-                 framework="tf"):
+    def __init__(self, action_space=None, worker_info=None, framework="tf"):
         """
         Args:
             action_space (Optional[gym.spaces.Space]): The action space in

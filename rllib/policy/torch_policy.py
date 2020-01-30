@@ -164,6 +164,10 @@ class TorchPolicy(Policy):
         self.model.load_state_dict(weights)
 
     @override(Policy)
+    def is_recurrent(self):
+        return len(self.model.get_initial_state()) > 0
+
+    @override(Policy)
     def num_state_tensors(self):
         return len(self.model.get_initial_state())
 

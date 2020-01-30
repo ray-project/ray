@@ -37,9 +37,10 @@ class EpsilonGreedy(Exploration):
         # For now, require Discrete action space (may loosen this restriction
         # in the future).
         assert isinstance(action_space, gym.spaces.Discrete)
-        super().__init__(action_space=action_space,
-                         worker_info=worker_info,
-                         framework=framework)
+        super().__init__(
+            action_space=action_space,
+            worker_info=worker_info,
+            framework=framework)
 
         self.epsilon_schedule = None
         # Use a fixed, different epsilon per worker. See: Ape-X paper.
@@ -56,8 +57,8 @@ class EpsilonGreedy(Exploration):
                     self.epsilon_schedule = ConstantSchedule(0.0)
         if self.epsilon_schedule is None:
             self.epsilon_schedule = PiecewiseSchedule(
-                endpoints=[(0, initial_epsilon),
-                           (epsilon_timesteps, final_epsilon)],
+                endpoints=[(0, initial_epsilon), (epsilon_timesteps,
+                                                  final_epsilon)],
                 outside_value=final_epsilon,
                 framework=self.framework)
 
@@ -124,8 +125,9 @@ class EpsilonGreedy(Exploration):
         Returns:
             tf.Tensor: The tf exploration-action op.
         """
-        epsilon = tf.convert_to_tensor(self.epsilon_schedule(
-            time_step if time_step is not None else self.last_time_step))
+        epsilon = tf.convert_to_tensor(
+            self.epsilon_schedule(time_step if time_step is not None else
+                                  self.last_time_step))
 
         batch_size = tf.shape(action)[0]
 

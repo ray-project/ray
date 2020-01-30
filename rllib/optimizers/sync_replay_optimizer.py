@@ -58,7 +58,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
                 the schedule to anneal PR-beta.
             beta_annealing_fraction (float): DEPRECATED: Fraction of schedule
                 to anneal PR-beta over.
-            final_prioritized_replay_beta (float): final value of beta
+            final_prioritized_replay_beta (float): Final value of beta.
             train_batch_size (int): size of batches to learn on
             before_learn_on_batch (function): callback to run before passing
                 the sampled batch to learn on
