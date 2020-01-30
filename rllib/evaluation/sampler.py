@@ -390,7 +390,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
                 outputs.append(
                     RolloutMetrics(episode.length, episode.total_reward,
                                    dict(episode.agent_rewards),
-                                   episode.custom_metrics, {}, episode.hist_data))
+                                   episode.custom_metrics, {},
+                                   episode.hist_data))
         else:
             hit_horizon = False
             all_done = False

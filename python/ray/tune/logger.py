@@ -226,10 +226,14 @@ def to_tf_values(result, path):
     values = []
     for attr, value in flat_result.items():
         if type(value) in VALID_SUMMARY_TYPES:
-            values.append(tf.Summary.Value(tag="/".join(path + [attr]), simple_value=value))
+            values.append(
+                tf.Summary.Value(
+                    tag="/".join(path + [attr]), simple_value=value))
         elif type(value) is list and len(value) > 0:
-            values.append(tf.Summary.Value(tag="/".join(path + [attr]),
-                                           histo=make_histogram(values=np.array(value), bins=10)))
+            values.append(
+                tf.Summary.Value(
+                    tag="/".join(path + [attr]),
+                    histo=make_histogram(values=np.array(value), bins=10)))
     return values
 
 
@@ -350,10 +354,12 @@ class TBXLogger(Logger):
             full_attr = "/".join(path + [attr])
             if type(value) in VALID_SUMMARY_TYPES:
                 valid_result[full_attr] = value
-                self._file_writer.add_scalar(full_attr, value, global_step=step)
+                self._file_writer.add_scalar(
+                    full_attr, value, global_step=step)
             elif type(value) is list and len(value) > 0:
                 valid_result[full_attr] = value
-                self._file_writer.add_histogram(full_attr, value, global_step=step)
+                self._file_writer.add_histogram(
+                    full_attr, value, global_step=step)
 
         self.last_result = valid_result
         self._file_writer.flush()
