@@ -56,7 +56,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     borrower_callbacks_.clear();
   }
 
-  void Put(const ObjectID &object_id) {
+  void PutSerializedObjectId(const ObjectID &object_id) {
     rc_.AddOwnedObject(object_id, task_id_, address_);
     rc_.AddLocalReference(object_id);
   }
@@ -67,17 +67,32 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     rc_.AddLocalReference(outer_id);
   }
 
-  void UnwrapObjectId(const ObjectID outer_id, const ObjectID &inner_id, const TaskID &owner_id, const rpc::Address &owner_address) {
+  void GetSerializedObjectId(const ObjectID outer_id, const ObjectID &inner_id, const TaskID &owner_id, const rpc::Address &owner_address) {
     rc_.AddLocalReference(inner_id);
     rc_.AddBorrowedObject(outer_id, inner_id, owner_id, owner_address);
   }
 
-  void SubmitTask(const ObjectID &arg_id) {
+  void ExecuteTaskWithArg(const ObjectID &arg_id, const ObjectID &inner_id, const TaskID &owner_id, const rpc::Address &owner_address) {
+    // Add a sentinel reference to keep the argument ID in scope even though
+    // the frontend won't have a reference.
+    rc_.AddLocalReference(arg_id);
+    GetSerializedObjectId(arg_id, inner_id, owner_id, owner_address);
+  }
+
+  void SubmitTaskWithArg(const ObjectID &arg_id) {
     rc_.AddSubmittedTaskReferences({arg_id});
   }
 
   ReferenceCounter::ReferenceTable FinishExecutingTask(const ObjectID &arg_id) {
-    return rc_.PopBorrowerRefs(arg_id);
+    auto refs = rc_.PopBorrowerRefs(arg_id);
+    // Remove the sentinel reference.
+    auto it = refs.find(arg_id);
+    if (it != refs.end()) {
+      RAY_CHECK(it->second.local_ref_count > 0);
+      it->second.local_ref_count--;
+    }
+    rc_.RemoveLocalReference(arg_id, nullptr);
+    return refs;
   }
 
   void HandleSubmittedTaskFinished(const ObjectID &arg_id, const rpc::Address &borrower_address = empty_borrower, const ReferenceCounter::ReferenceTable &borrower_refs = empty_refs) {
@@ -222,12 +237,12 @@ TEST(DistributedReferenceCountTest, TestNoBorrow) {
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
   auto outer_id = ObjectID::FromRandom();
-  owner->Put(inner_id);
+  owner->PutSerializedObjectId(inner_id);
   owner->WrapObjectId(outer_id, inner_id);
 
   // The owner submits a task that depends on the outer object. The task will
   // be given a reference to inner_id.
-  owner->SubmitTask(outer_id);
+  owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
   owner_rc.RemoveLocalReference(outer_id, nullptr);
   owner_rc.RemoveLocalReference(inner_id, nullptr);
@@ -237,19 +252,14 @@ TEST(DistributedReferenceCountTest, TestNoBorrow) {
   ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() == 0);
 
   // The borrower is given a reference to the inner object.
-  borrower->UnwrapObjectId(outer_id, inner_id, owner->task_id_, owner->address_);
+  borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->task_id_, owner->address_);
   // The borrower submits a task that depends on the inner object.
-  borrower->SubmitTask(inner_id);
+  borrower->SubmitTaskWithArg(inner_id);
   borrower_rc.RemoveLocalReference(inner_id, nullptr);
   ASSERT_TRUE(borrower_rc.HasReference(inner_id));
 
-  // The borrower waits for the task to finish before returning.
+  // The borrower waits for the task to finish before returning to the owner.
   borrower->HandleSubmittedTaskFinished(inner_id);
-  // Check that the borrower's ref count is now 0 for all objects.
-  ASSERT_FALSE(borrower_rc.HasReference(inner_id));
-  ASSERT_TRUE(borrower_rc.GetReference(outer_id).RefCount() == 0);
-
-  // The borrower task returns to the owner.
   auto borrower_refs = borrower->FinishExecutingTask(outer_id);
   // Check that the borrower's ref count is now 0 for all objects.
   ASSERT_FALSE(borrower_rc.HasReference(inner_id));
@@ -273,12 +283,12 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
   auto outer_id = ObjectID::FromRandom();
-  owner->Put(inner_id);
+  owner->PutSerializedObjectId(inner_id);
   owner->WrapObjectId(outer_id, inner_id);
 
   // The owner submits a task that depends on the outer object. The task will
   // be given a reference to inner_id.
-  owner->SubmitTask(outer_id);
+  owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
   owner_rc.RemoveLocalReference(outer_id, nullptr);
   owner_rc.RemoveLocalReference(inner_id, nullptr);
@@ -288,9 +298,9 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
   ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() == 0);
 
   // The borrower is given a reference to the inner object.
-  borrower->UnwrapObjectId(outer_id, inner_id, owner->task_id_, owner->address_);
+  borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->task_id_, owner->address_);
   // The borrower submits a task that depends on the inner object.
-  borrower->SubmitTask(inner_id);
+  borrower->SubmitTaskWithArg(inner_id);
   borrower_rc.RemoveLocalReference(inner_id, nullptr);
   ASSERT_TRUE(borrower_rc.HasReference(inner_id));
 
@@ -333,12 +343,12 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
   auto outer_id = ObjectID::FromRandom();
-  owner->Put(inner_id);
+  owner->PutSerializedObjectId(inner_id);
   owner->WrapObjectId(outer_id, inner_id);
 
   // The owner submits a task that depends on the outer object. The task will
   // be given a reference to inner_id.
-  owner->SubmitTask(outer_id);
+  owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
   owner_rc.RemoveLocalReference(outer_id, nullptr);
   owner_rc.RemoveLocalReference(inner_id, nullptr);
@@ -348,7 +358,7 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
   ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() == 0);
 
   // The borrower is given a reference to the inner object.
-  borrower->UnwrapObjectId(outer_id, inner_id, owner->task_id_, owner->address_);
+  borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->task_id_, owner->address_);
   ASSERT_TRUE(borrower_rc.HasReference(inner_id));
 
   // The borrower task returns to the owner while still using inner_id.
@@ -398,12 +408,12 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   // The owner creates an inner object and wraps it.
   auto inner_id = ObjectID::FromRandom();
   auto outer_id = ObjectID::FromRandom();
-  owner->Put(inner_id);
+  owner->PutSerializedObjectId(inner_id);
   owner->WrapObjectId(outer_id, inner_id);
 
   // The owner submits a task that depends on the outer object. The task will
   // be given a reference to inner_id.
-  owner->SubmitTask(outer_id);
+  owner->SubmitTaskWithArg(outer_id);
   // The owner's references go out of scope.
   owner_rc.RemoveLocalReference(outer_id, nullptr);
   owner_rc.RemoveLocalReference(inner_id, nullptr);
@@ -413,11 +423,11 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   ASSERT_TRUE(owner_rc.GetReference(inner_id).NumBorrowers() == 0);
 
   // Borrower 1 is given a reference to the inner object.
-  borrower1->UnwrapObjectId(outer_id, inner_id, owner->task_id_, owner->address_);
+  borrower1->ExecuteTaskWithArg(outer_id, inner_id, owner->task_id_, owner->address_);
   // The borrower submits a task that depends on the inner object.
   auto outer_id2 = ObjectID::FromRandom();
   borrower1->WrapObjectId(outer_id2, inner_id);
-  borrower1->SubmitTask(outer_id2);
+  borrower1->SubmitTaskWithArg(outer_id2);
   borrower_rc1.RemoveLocalReference(inner_id, nullptr);
   borrower_rc1.RemoveLocalReference(outer_id2, nullptr);
   ASSERT_TRUE(borrower_rc1.HasReference(inner_id));
@@ -444,7 +454,7 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
 
   // Borrower 2 starts executing. It is given a reference to the inner object
   // when it gets outer_id2 as an argument.
-  borrower2->UnwrapObjectId(outer_id2, inner_id, owner->task_id_, owner->address_);
+  borrower2->ExecuteTaskWithArg(outer_id2, inner_id, owner->task_id_, owner->address_);
   ASSERT_TRUE(borrower_rc2.HasReference(inner_id));
   // Borrower 2 finishes but it is still using inner_id.
   borrower_refs = borrower2->FinishExecutingTask(outer_id2);

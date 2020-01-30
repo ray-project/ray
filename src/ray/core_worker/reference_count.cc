@@ -49,7 +49,9 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id, const ObjectI
     outer_it = object_id_refs_.emplace(outer_id, Reference()).first;
   }
   if (it->second.owned_by_us) {
-    it->second.contained_in.insert(outer_id);
+    it->second.contained_in_owned.insert(outer_id);
+  } else {
+    it->second.contained_in_borrowed.insert(outer_id);
   }
   outer_it->second.contains.insert(object_id);
 }
@@ -176,9 +178,20 @@ void ReferenceCounter::DeleteReferenceInternal(
       return;
     }
   }
-  if (it->second.RefCount() + it->second.NumBorrowers() == 0) {
+  // Consider all types of ref counts.
+  // - If RefCount() > 0, then we are still using the object ID locally (we
+  // have a reference in the frontend language, there is a submitted task that
+  // depends on the object, and/or we stored the object ID inside another
+  // object ID that is still in scope).
+  // - If contained_in_borrowed > 0, then the object ID was inside another
+  // object ID, and we haven't told the outer ID's owner that we deserialized
+  // the inner ID yet.
+  // - If NumBorrowers > 0, then there is a remote process that is using the
+  // object ID.
+  if (it->second.RefCount() + it->second.contained_in_borrowed.size() + it->second.NumBorrowers() == 0) {
     RAY_LOG(DEBUG) << "Deleting object " << id;
     const auto contains = std::move(it->second.contains);
+    const bool owned_by_us = it->second.owned_by_us;
 
     if (it->second.on_delete) {
       it->second.on_delete(id);
@@ -191,11 +204,15 @@ void ReferenceCounter::DeleteReferenceInternal(
     for (const auto &inner_id : contains) {
       RAY_LOG(DEBUG) << "Decrementing ref count for inner ID " << inner_id;
       auto inner_it = object_id_refs_.find(inner_id);
-      // The inner ID can go out of scope before the outer one.
-      if (inner_it != object_id_refs_.end()) {
-        inner_it->second.contained_in.erase(id);
-        DeleteReferenceInternal(inner_it, deleted);
+      RAY_CHECK(inner_it != object_id_refs_.end());
+      bool erased;
+      if (owned_by_us) {
+        erased = inner_it->second.contained_in_owned.erase(id);
+      } else {
+        erased = inner_it->second.contained_in_borrowed.erase(id);
       }
+      RAY_CHECK(erased);
+      DeleteReferenceInternal(inner_it, deleted);
     }
   }
 }
@@ -253,6 +270,7 @@ ReferenceCounter::ReferenceTable ReferenceCounter::PopBorrowerRefs(const ObjectI
 }
 
 bool ReferenceCounter::PopBorrowerRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs) {
+  RAY_LOG(DEBUG) << "Pop " << object_id;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -260,10 +278,6 @@ bool ReferenceCounter::PopBorrowerRefsInternal(const ObjectID &object_id, Refere
 
   borrower_refs->emplace(object_id, it->second);
   it->second.borrowers.clear();
-
-  if (it->second.RefCount() == 0) {
-    DeleteReferenceInternal(it, nullptr);
-  }
 
   for (const auto &contained_id : (*borrower_refs)[object_id].contains) {
     PopBorrowerRefsInternal(contained_id, borrower_refs);
@@ -342,10 +356,11 @@ void ReferenceCounter::WrapObjectId(const ObjectID &object_id, const std::vector
     if (it->second.owned_by_us) {
       // `ray.put()` case. We are wrapping an object ID that we have a
       // reference to inside another object that we own.
-      inner_it->second.contained_in.insert(object_id);
+      inner_it->second.contained_in_owned.insert(object_id);
     } else {
       // TODO: Task return case. We are putting an object ID that we have a
       // reference to inside an object that is owned by the task's caller.
+      inner_it->second.contained_in_borrowed.insert(object_id);
     }
   }
 }
@@ -363,7 +378,7 @@ void ReferenceCounter::HandleWaitForRefRemoved(const ObjectID &object_id, const 
     // the object was zero. Also, we should have popped our borrowers and
     // returned them in the reply to the owner, so we should have removed this
     // reference completely.
-    RAY_CHECK(object_id_refs_.count(object_id) == 0);
+    //RAY_CHECK(object_id_refs_.count(object_id) == 0);
     *reply = ReferenceTableToWaitForRefRemovedReply(borrower_refs);
     RAY_LOG(DEBUG) << "reply has " << reply->borrower_refs().size();
     send_reply_callback(Status::OK(), nullptr, nullptr);

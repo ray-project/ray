@@ -26,7 +26,7 @@ class ReferenceCounter {
         : owned_by_us(true), owner({owner_id, owner_address}) {}
 
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in.size();
+      return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
     }
 
     size_t NumBorrowers() const {
@@ -67,7 +67,10 @@ class ReferenceCounter {
     std::function<void()> on_local_ref_deleted;
     /// Object IDs that contain this object ID. This field contains only object
     /// IDs that we own.
-    absl::flat_hash_set<ObjectID> contained_in;
+    absl::flat_hash_set<ObjectID> contained_in_owned;
+    /// Object IDs that contain this object ID. This field contains only object
+    /// IDs that we are borrowing.
+    absl::flat_hash_set<ObjectID> contained_in_borrowed;
     absl::flat_hash_set<ObjectID> contains;
     absl::flat_hash_set<rpc::WorkerAddress> borrowers;
   };
