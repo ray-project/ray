@@ -61,6 +61,8 @@ and renders its behavior in the environment specified by ``--env``.
 
 (Type ``rllib rollout --help`` to see the available evaluation options.)
 
+For more advanced online evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
+
 Configuration
 -------------
 
@@ -522,7 +524,8 @@ RLlib will report online training rewards, however in some cases you may want to
 rewards with different settings (e.g., with exploration turned off, or on a specific set
 of environment configurations). You can evaluate policies during training by setting one
 or more of the ``evaluation_interval``, ``evaluation_num_episodes``, ``evaluation_config``,
-``evaluation_num_workers``, and ``custom_eval_function`` configs (see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
+``evaluation_num_workers``, and ``custom_eval_function`` configs
+(see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
 
 There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
 
