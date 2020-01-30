@@ -27,7 +27,7 @@ if [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   pip install -q scipy tensorflow cython==0.29.0 gym opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-    blist torch torchvision
+    blist torch torchvision scikit-learn
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
@@ -36,7 +36,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   pip install -q cython==0.29.0 tensorflow gym opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
-    blist torch torchvision
+    blist torch torchvision scikit-learn
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip
