@@ -5,15 +5,24 @@ logger = logging.getLogger(__name__)
 
 def deprecation_warning(old, new=None, error=None):
     """
-    Logs a deprecation warning via the `logger` object.
+    Logs (via the `logger` object) or throws a deprecation warning/error.
 
     Args:
         old (str): A description of the "thing" that is to be deprecated.
         new (Optional[str]): A description of the new "thing" that replaces it.
+        error (Optional[bool,Exception]): Whether or which exception to throw.
+            If True, throw ValueError.
     """
-    logger.warning("DeprecationWarning: `{}` has been deprecated.{}".format(
-        old, (" Use `{}` instead.".format(new) if new else "")) +
-                   " This will raise an error in the future!")
+    msg = "`{}` has been deprecated.{}".format(
+        old, (" Use `{}` instead.".format(new) if new else ""))
+
+    if error is True:
+        raise ValueError(msg)
+    elif issubclass(error, Exception):
+        raise error(msg)
+    else:
+        logger.warning("DeprecationWarning: " + msg +
+                       "This will raise an error in the future!")
 
 
 def renamed_class(cls, old_name):
