@@ -1557,11 +1557,6 @@ def put(value, weakref=False):
 def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
-    .. warning::
-
-        The **timeout** argument used to be in **milliseconds** (up through
-        ``ray==0.6.1``) and now it is in **seconds**.
-
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
@@ -1609,11 +1604,6 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise TypeError(
             "wait() expected a list of ray.ObjectID, got {}".format(
                 type(object_ids)))
-
-    if isinstance(timeout, int) and timeout != 0:
-        logger.warning("The 'timeout' argument now requires seconds instead "
-                       "of milliseconds. This message can be suppressed by "
-                       "passing in a float.")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
