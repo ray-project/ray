@@ -1459,6 +1459,10 @@ def get(object_ids, timeout=None):
     object has been created). If object_ids is a list, then the objects
     corresponding to each object in the list will be returned.
 
+    This method will error will error if it's running inside async context,
+    you can use ``await object_id`` instead of ``ray.get(object_id)``. For
+    a list of object ids, you can use ``await asyncio.gather(*object_ids)``.
+
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
             get.
@@ -1572,6 +1576,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     precedes B in the input list, and both are in the ready list, then A will
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
+
+    This method will error if it's running inside an async context. Instead of
+    ``ray.wait(object_ids)``, you can use ``await asyncio.wait(object_ids)``.
 
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
