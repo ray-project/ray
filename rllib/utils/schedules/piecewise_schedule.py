@@ -33,7 +33,7 @@ class PiecewiseSchedule(Schedule):
                 returned. If None then an AssertionError is raised when outside
                 value is requested.
         """
-        super().__init__(framework=None)
+        super().__init__(framework=framework)
 
         idxes = [e[0] for e in endpoints]
         assert idxes == sorted(idxes)
