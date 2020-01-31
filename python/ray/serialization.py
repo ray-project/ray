@@ -274,7 +274,7 @@ class SerializationContext:
                         id_type, id_serializer, id_deserializer)
 
     def get_and_clear_contained_object_ids(self):
-        if not self._thread_local.object_ids:
+        if not hasattr(self._thread_local, "object_ids"):
             self._thread_local.object_ids = set()
             return set()
 
@@ -283,7 +283,7 @@ class SerializationContext:
         return object_ids
 
     def add_contained_object_id(self, object_id):
-        if not self._thread_local.object_ids:
+        if not hasattr(self._thread_local, "object_ids"):
             self._thread_local.object_ids = set()
 
         self._thread_local.object_ids.add(object_id)
