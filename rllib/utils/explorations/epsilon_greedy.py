@@ -100,7 +100,7 @@ class EpsilonGreedy(Exploration):
                 np.ones_like(q_values) * float("-inf"), np.ones_like(q_values))
 
             random_actions = np.squeeze(
-                # TODO
+                # TODO(sven): torch
                 np.multinomial(random_valid_action_logits, 1),
                 axis=1)
 

@@ -116,6 +116,15 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+    
+    # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
+    # by user's config). If we don't set them here, we will get an error
+    # from the config-key checker.
+    "schedule_max_timesteps": -1,
+    "exploration_final_eps": -1,
+    "exploration_fraction": -1,
+    "beta_annealing_fraction": -1,
+    "per_worker_exploration": -1,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -160,32 +169,41 @@ def validate_config(config):
     # fraction settings (both based on schedule_max_timesteps, which is
     # deprecated).
     schedule_max_timesteps = None
-    if "schedule_max_timesteps" in config:
+    if "schedule_max_timesteps" in config and \
+            config["schedule_max_timesteps"] > 0:
+        deprecation_warning(
+            "schedule_max_timesteps",
+            "exploration.epsilon_timesteps AND "
+            "prioritized_replay_beta_annealing_timesteps")
         schedule_max_timesteps = config["schedule_max_timesteps"]
-    if "exploration_final_eps" in config:
+    if "exploration_final_eps" in config and \
+            config["exploration_final_eps"] > 0:
         deprecation_warning("exploration_final_eps",
                             "exploration.final_epsilon")
         config["exploration"] = config.get("exploration",
                                            {"type": EpsilonGreedy})
         if isinstance(config["exploration"], dict):
-            config["exploration"]["final_p"] = \
+            config["exploration"]["final_epsilon"] = \
                 config.pop("exploration_final_eps")
-    if "exploration_fraction" in config:
+    if "exploration_fraction" in config and config["exploration_fraction"] > 0:
         assert schedule_max_timesteps is not None
         deprecation_warning("exploration_fraction",
-                            "exploration.final_timestep")
+                            "exploration.epsilon_timesteps")
         config["exploration"] = config.get("exploration",
                                            {"type": EpsilonGreedy})
         if isinstance(config["exploration"], dict):
-            config["exploration"]["final_timestep"] = config.pop(
+            config["exploration"]["epsilon_timesteps"] = config.pop(
                 "exploration_fraction") * schedule_max_timesteps
-    if "beta_annealing_fraction" in config:
+    if "beta_annealing_fraction" in config and \
+            config["beta_annealing_fraction"] > 0:
         assert schedule_max_timesteps is not None
-        deprecation_warning("beta_annealing_fraction",
-                            "prioritized_replay_beta_annealing_timesteps")
+        deprecation_warning(
+            "beta_annealing_fraction (decimal)",
+            "prioritized_replay_beta_annealing_timesteps (int)")
         config["prioritized_replay_beta_annealing_timesteps"] = config.pop(
             "beta_annealing_fraction") * schedule_max_timesteps
-    if "per_worker_exploration" in config:
+    if "per_worker_exploration" in config and \
+            config["per_worker_exploration"] != -1:
         deprecation_warning(
             "per_worker_exploration",
             "exploration(must be type=EpsilonGreedy).fixed_per_worker_epsilon")

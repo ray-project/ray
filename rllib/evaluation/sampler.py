@@ -575,9 +575,8 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-        res = eval_results[policy_id]
-        # res[3]=Exploration state (could be None and we don't need it here).
-        actions, rnn_out_cols, pi_info_cols = res[0], res[1], res[2]
+        actions, rnn_out_cols, pi_info_cols, exploration_info = \
+            eval_results[policy_id]
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))
@@ -608,6 +607,8 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
                                          off_policy_actions[env_id][agent_id])
             else:
                 episode._set_last_action(agent_id, action)
+        # Save exploration-state in policy.
+        policy.last_exploration_info = exploration_info
 
     return actions_to_send
 
@@ -649,6 +650,10 @@ def _to_column_format(rnn_state_rows):
 
 
 def _get_or_raise(mapping, policy_id):
+    """
+    Returns:
+        Policy: The found Policy object.
+    """
     if policy_id not in mapping:
         raise ValueError(
             "Could not find policy for agent: agent policy id `{}` not "

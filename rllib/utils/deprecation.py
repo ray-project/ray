@@ -22,7 +22,7 @@ def deprecation_warning(old, new=None, error=None):
         raise error(msg)
     else:
         logger.warning("DeprecationWarning: " + msg +
-                       "This will raise an error in the future!")
+                       " This will raise an error in the future!")
 
 
 def renamed_class(cls, old_name):
