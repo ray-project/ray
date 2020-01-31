@@ -1,6 +1,7 @@
 import inspect
 from functools import wraps
 from tempfile import mkstemp
+from multiprocessing import cpu_count
 
 import numpy as np
 
@@ -12,7 +13,7 @@ from ray.experimental.serve.global_state import (GlobalState,
 from ray.experimental.serve.kv_store_service import SQLiteKVStore
 from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.experimental.serve.utils import (block_until_http_ready,
-                                          get_random_letters)
+                                          get_random_letters, logger)
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.backend_config import BackendConfig
 from ray.experimental.serve.policy import RoutePolicy
@@ -65,7 +66,10 @@ def init(kv_store_connector=None,
          blocking=False,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         ray_init_kwargs={"object_store_memory": int(1e8)},
+         ray_init_kwargs={
+             "object_store_memory": int(1e8),
+             "num_cpus": max(cpu_count(), 8)
+         },
          gc_window_seconds=3600,
          queueing_policy=RoutePolicy.Random,
          policy_kwargs={}):
@@ -102,6 +106,7 @@ def init(kv_store_connector=None,
 
     # Initialize ray if needed.
     if not ray.is_initialized():
+        logger.debug("Initializing ray with kwargs {}".format(ray_init_kwargs))
         ray.init(**ray_init_kwargs)
 
     # Try to get serve nursery if there exists
