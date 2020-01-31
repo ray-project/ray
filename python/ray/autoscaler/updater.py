@@ -164,6 +164,7 @@ class SSHCommandRunner:
         OPTS = [
             ("ConnectTimeout", "{}s".format(connect_timeout)),
             ("StrictHostKeyChecking", "no"),
+            ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
             # Try less extraneous key pairs
@@ -254,7 +255,9 @@ class SSHCommandRunner:
         if cmd:
             final_cmd += with_interactive(cmd)
         else:
-            final_cmd.append("-N")
+            # We do this because `-o ControlMaster` causes the `-N` flag to
+            # still create an interactive shell in some ssh versions
+            final_cmd.append("while true; do sleep 86400; done")
 
         try:
             print("SSH Runner final command: ", final_cmd)
