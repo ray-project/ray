@@ -17,6 +17,9 @@ check_command_exist() {
         flake8)
             VERSION=$FLAKE8_VERSION_REQUIRED
             ;;
+        *)
+            echo "$1 is not a required dependency"
+            exit 1
     esac
     if ! [ -x "$(command -v $1)" ]; then
         echo "$1 not installed. pip install $1==$VERSION"
