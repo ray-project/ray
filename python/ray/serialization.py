@@ -2,6 +2,7 @@ import hashlib
 import io
 import logging
 import time
+import threading
 
 import pyarrow
 import pyarrow.plasma as plasma
@@ -37,8 +38,9 @@ class DeserializationError(Exception):
 
 
 class SerializedObject:
-    def __init__(self, metadata):
+    def __init__(self, metadata, contained_object_ids=None):
         self._metadata = metadata
+        self._contained_object_ids = contained_object_ids or []
 
     @property
     def total_bytes(self):
@@ -48,11 +50,15 @@ class SerializedObject:
     def metadata(self):
         return self._metadata
 
+    @property
+    def contained_object_ids(self):
+        return self._contained_object_ids
+
 
 class Pickle5SerializedObject(SerializedObject):
-    def __init__(self, inband, writer):
-        super(Pickle5SerializedObject,
-              self).__init__(ray_constants.PICKLE5_BUFFER_METADATA)
+    def __init__(self, inband, writer, contained_object_ids):
+        super(Pickle5SerializedObject, self).__init__(
+            ray_constants.PICKLE5_BUFFER_METADATA, contained_object_ids)
         self.inband = inband
         self.writer = writer
         # cached total bytes
@@ -66,8 +72,8 @@ class Pickle5SerializedObject(SerializedObject):
 
 
 class ArrowSerializedObject(SerializedObject):
-    def __init__(self, serialized_object):
-        super(ArrowSerializedObject, self).__init__(b"")
+    def __init__(self, serialized_object, contained_object_ids):
+        super(ArrowSerializedObject, self).__init__(b"", contained_object_ids)
         self.serialized_object = serialized_object
 
     @property
@@ -138,6 +144,7 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self.use_pickle = worker.use_pickle
+        self._thread_local = None
 
         def actor_handle_serializer(obj):
             return obj._serialization_helper(True)
@@ -162,6 +169,7 @@ class SerializationContext:
                 return pickle.loads(serialized_obj)
 
             def object_id_serializer(obj):
+                self.add_contained_object_id(obj)
                 owner_id = ""
                 owner_address = ""
                 if obj.is_direct_call_type():
@@ -227,6 +235,7 @@ class SerializationContext:
                 return serialized_obj[0](*serialized_obj[1])
 
             def object_id_serializer(obj):
+                self.add_contained_object_id(obj)
                 owner_id = ""
                 owner_address = ""
                 if obj.is_direct_call_type():
@@ -245,6 +254,7 @@ class SerializationContext:
                 # the core worker to resolve the value. This is to make sure
                 # that the ref count for the ObjectID is greater than 0 by the
                 # time the core worker resolves the value of the object.
+
                 deserialized_object_id = id_deserializer(obj_id)
                 if owner_id:
                     worker = ray.worker.get_global_worker()
@@ -262,6 +272,22 @@ class SerializationContext:
                 else:
                     self._register_cloudpickle_serializer(
                         id_type, id_serializer, id_deserializer)
+
+    def get_and_clear_contained_object_ids(self):
+        if not self._thread_local:
+            self._thread_local = threading.local()
+            self._thread_local.object_ids = set()
+
+        object_ids = self._thread_local.object_ids
+        self._thread_local.object_ids = set()
+        return object_ids
+
+    def add_contained_object_id(self, object_id):
+        if not self._thread_local:
+            self._thread_local = threading.local()
+            self._thread_local.object_ids = set()
+
+        self._thread_local.object_ids.add(object_id)
 
     def initialize(self):
         """ Register custom serializers """
@@ -480,7 +506,8 @@ class SerializationContext:
                     value, protocol=5, buffer_callback=writer.buffer_callback)
             else:
                 inband = pickle.dumps(value)
-            return Pickle5SerializedObject(inband, writer)
+            return Pickle5SerializedObject(
+                inband, writer, self.get_and_clear_contained_object_ids())
         else:
             try:
                 serialized_value = self._store_and_register_pyarrow(value)
@@ -495,7 +522,8 @@ class SerializationContext:
                                    type(value)))
                 serialized_value = self._store_and_register_pyarrow(value)
 
-            return ArrowSerializedObject(serialized_value)
+            return ArrowSerializedObject(
+                serialized_value, self.get_and_clear_contained_object_ids())
 
     def register_custom_serializer(self,
                                    cls,
