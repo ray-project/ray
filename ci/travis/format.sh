@@ -5,9 +5,34 @@
 # Cause the script to exit if a single command fails
 set -eo pipefail
 
+FLAKE8_VERSION_REQUIRED="3.7.7"
+YAPF_VERSION_REQUIRED="0.23.0"
+
+check_command_exist() {
+    VERSION=""
+    case "$1" in
+        yapf)
+            VERSION=$YAPF_VERSION_REQUIRED
+            ;;
+        flake8)
+            VERSION=$FLAKE8_VERSION_REQUIRED
+            ;;
+        *)
+            echo "$1 is not a required dependency"
+            exit 1
+    esac
+    if ! [ -x "$(command -v $1)" ]; then
+        echo "$1 not installed. pip install $1==$VERSION"
+        exit 1
+    fi 
+}
+
+check_command_exist yapf
+check_command_exist flake8
+
 ver=$(yapf --version)
 if ! echo $ver | grep -q 0.23.0; then
-    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver"
+    echo "Wrong YAPF version installed: 0.23.0 is required, not $ver. $YAPF_DOWNLOAD_COMMAND_MSG"
     exit 1
 fi
 
@@ -32,8 +57,8 @@ tool_version_check() {
     fi
 }
 
-tool_version_check "flake8" $FLAKE8_VERSION "3.7.7"
-tool_version_check "yapf" $YAPF_VERSION "0.23.0"
+tool_version_check "flake8" $FLAKE8_VERSION $FLAKE8_VERSION_REQUIRED
+tool_version_check "yapf" $YAPF_VERSION $YAPF_VERSION_REQUIRED
 
 if which clang-format >/dev/null; then
   CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
