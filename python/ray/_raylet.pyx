@@ -283,16 +283,16 @@ cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
         size_t size
         shared_ptr[CBuffer] arg_data
 
+    worker = ray.worker.global_worker
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
                 CTaskArg.PassByReference((<ObjectID>arg).native()))
 
         else:
-            worker = ray.worker.global_worker
             serialized_arg = worker.get_serialization_context().serialize(arg)
             size = serialized_arg.total_bytes
-            if size <= 100 * 1024:
+            if size <= RayConfig.instance().max_direct_call_object_size():
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
