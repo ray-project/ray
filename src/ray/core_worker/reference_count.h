@@ -68,9 +68,9 @@ class ReferenceCounter {
     /// Object IDs that contain this object ID. This field contains only object
     /// IDs that we own.
     absl::flat_hash_set<ObjectID> contained_in_owned;
-    /// Object IDs that contain this object ID. This field contains only object
-    /// IDs that we are borrowing.
-    absl::flat_hash_set<ObjectID> contained_in_borrowed;
+    /// Object ID that contain this object ID. Needed for nested Object IDs.
+    /// This field must be an ObjectID that we are currently borrowing.
+    absl::optional<ObjectID> contained_in_borrowed_id;
     absl::flat_hash_set<ObjectID> contains;
     absl::flat_hash_set<rpc::WorkerAddress> borrowers;
   };

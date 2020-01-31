@@ -51,7 +51,9 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id, const ObjectI
   if (it->second.owned_by_us) {
     it->second.contained_in_owned.insert(outer_id);
   } else {
-    it->second.contained_in_borrowed.insert(outer_id);
+    // TODO: Skip this if we already have a value.
+    RAY_CHECK(!it->second.contained_in_borrowed_id.has_value());
+    it->second.contained_in_borrowed_id = outer_id;
   }
   outer_it->second.contains.insert(object_id);
 }
@@ -188,7 +190,7 @@ void ReferenceCounter::DeleteReferenceInternal(
   // the inner ID yet.
   // - If NumBorrowers > 0, then there is a remote process that is using the
   // object ID.
-  if (it->second.RefCount() + it->second.contained_in_borrowed.size() + it->second.NumBorrowers() == 0) {
+  if (it->second.RefCount() + it->second.NumBorrowers() == 0 && !it->second.contained_in_borrowed_id.has_value()) {
     RAY_LOG(DEBUG) << "Deleting object " << id;
     const auto contains = std::move(it->second.contains);
     const bool owned_by_us = it->second.owned_by_us;
@@ -209,7 +211,8 @@ void ReferenceCounter::DeleteReferenceInternal(
       if (owned_by_us) {
         erased = inner_it->second.contained_in_owned.erase(id);
       } else {
-        erased = inner_it->second.contained_in_borrowed.erase(id);
+        erased = inner_it->second.contained_in_borrowed_id.has_value();
+        inner_it->second.contained_in_borrowed_id.reset();
       }
       RAY_CHECK(erased);
       DeleteReferenceInternal(inner_it, deleted);
@@ -360,7 +363,8 @@ void ReferenceCounter::WrapObjectId(const ObjectID &object_id, const std::vector
     } else {
       // TODO: Task return case. We are putting an object ID that we have a
       // reference to inside an object that is owned by the task's caller.
-      inner_it->second.contained_in_borrowed.insert(object_id);
+      RAY_CHECK(!inner_it->second.contained_in_borrowed_id.has_value());
+      inner_it->second.contained_in_borrowed_id = object_id;
     }
   }
 }
