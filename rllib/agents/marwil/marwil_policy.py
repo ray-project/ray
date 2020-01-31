@@ -13,6 +13,7 @@ from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 
+
 class ValueNetworkMixin(object):
     def __init__(self):
         @make_tf_callable(self.get_session())
@@ -25,8 +26,9 @@ class ValueNetworkMixin(object):
             }, [tf.convert_to_tensor([s]) for s in state],
                                       tf.convert_to_tensor([1]))
             return self.model.value_function()[0]
-        
+
         self._value = value
+
 
 class ValueLoss(object):
     def __init__(self, state_values, cumulative_rewards):
@@ -35,8 +37,8 @@ class ValueLoss(object):
 
 
 class ReweightedImitationLoss(object):
-    def __init__(self, state_values, cumulative_rewards, actions,
-                 action_dist, beta):
+    def __init__(self, state_values, cumulative_rewards, actions, action_dist,
+                 beta):
         ma_adv_norm = tf.get_variable(
             name="moving_average_of_advantage_norm",
             dtype=tf.float32,
@@ -77,17 +79,13 @@ def postprocess_advantages(policy,
                                sample_batch[SampleBatch.ACTIONS][-1],
                                sample_batch[SampleBatch.REWARDS][-1],
                                *next_state)
-    return compute_advantages(sample_batch, last_r, policy.config["gamma"],
-                              use_gae=False)
+    return compute_advantages(
+        sample_batch, last_r, policy.config["gamma"], use_gae=False)
+
 
 class MARWILLoss(object):
-    def __init__(self,
-                 state_values,
-                 action_dist,
-                 actions,
-                 advantages,
-                 vf_loss_coeff,
-                 beta):
+    def __init__(self, state_values, action_dist, actions, advantages,
+                 vf_loss_coeff, beta):
 
         self.v_loss = self._build_value_loss(state_values, advantages)
         self.p_loss = self._build_policy_loss(state_values, advantages,
@@ -100,23 +98,24 @@ class MARWILLoss(object):
     def _build_value_loss(self, state_values, cum_rwds):
         return ValueLoss(state_values, cum_rwds)
 
-    def _build_policy_loss(self, state_values, cum_rwds, actions,
-                           action_dist, beta):
+    def _build_policy_loss(self, state_values, cum_rwds, actions, action_dist,
+                           beta):
         return ReweightedImitationLoss(state_values, cum_rwds, actions,
                                        action_dist, beta)
+
 
 def marwil_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
     action_dist = dist_class(model_out, model)
     state_values = model.value_function()
 
-    policy.loss = MARWILLoss(state_values, action_dist, 
-            train_batch[SampleBatch.ACTIONS], 
-            train_batch[Postprocessing.ADVANTAGES], 
-            policy.config["vf_coeff"],
-            policy.config["beta"])
+    policy.loss = MARWILLoss(state_values, action_dist,
+                             train_batch[SampleBatch.ACTIONS],
+                             train_batch[Postprocessing.ADVANTAGES],
+                             policy.config["vf_coeff"], policy.config["beta"])
 
     return policy.loss.total_loss
+
 
 def stats(policy, train_batch):
     return {
@@ -126,8 +125,10 @@ def stats(policy, train_batch):
         "vf_explained_var": policy.loss.explained_variance,
     }
 
+
 def setup_mixins(policy, obs_space, action_space, config):
     ValueNetworkMixin.__init__(policy)
+
 
 MARWILTFPolicy = build_tf_policy(
     name="MARWILTFPolicy",

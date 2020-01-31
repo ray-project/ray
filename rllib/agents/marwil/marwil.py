@@ -55,5 +55,4 @@ MARWILTrainer = build_trainer(
     default_config=DEFAULT_CONFIG,
     default_policy=MARWILTFPolicy,
     validate_config=validate_config,
-    make_policy_optimizer=make_optimizer
-)
+    make_policy_optimizer=make_optimizer)
