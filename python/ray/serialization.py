@@ -144,7 +144,7 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self.use_pickle = worker.use_pickle
-        self._thread_local = None
+        self._thread_local = threading.local()
 
         def actor_handle_serializer(obj):
             return obj._serialization_helper(True)
@@ -274,17 +274,16 @@ class SerializationContext:
                         id_type, id_serializer, id_deserializer)
 
     def get_and_clear_contained_object_ids(self):
-        if not self._thread_local:
-            self._thread_local = threading.local()
+        if not self._thread_local.object_ids:
             self._thread_local.object_ids = set()
+            return set()
 
         object_ids = self._thread_local.object_ids
         self._thread_local.object_ids = set()
         return object_ids
 
     def add_contained_object_id(self, object_id):
-        if not self._thread_local:
-            self._thread_local = threading.local()
+        if not self._thread_local.object_ids:
             self._thread_local.object_ids = set()
 
         self._thread_local.object_ids.add(object_id)

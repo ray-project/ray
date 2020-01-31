@@ -382,13 +382,14 @@ Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
 }
 
 Status CoreWorker::Put(const RayObject &object,
-                       const std::vector<ObjectID> contained_object_ids,
+                       const std::vector<ObjectID> &contained_object_ids,
                        ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
   RAY_RETURN_NOT_OK(Put(object, *object_id));
+  // TODO(edoakes,swang): add contained object IDs to the reference counter.
   // Tell the raylet to pin the object **after** it is created.
   RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
   return Status::OK();
@@ -402,13 +403,13 @@ Status CoreWorker::Put(const RayObject &object, const ObjectID &object_id) {
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                          const std::vector<ObjectID> contained_object_ids,
+                          const std::vector<ObjectID> &contained_object_ids,
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   RAY_RETURN_NOT_OK(Create(metadata, data_size, *object_id, data));
-  // XXX: add contained
+  // TODO(edoakes,swang): add contained object IDs to the reference counter.
   if (data) {
     reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
   }

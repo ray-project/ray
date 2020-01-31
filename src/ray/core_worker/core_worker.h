@@ -180,7 +180,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const RayObject &object, const std::vector<ObjectID> contained_object_ids,
+  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
              ObjectID *object_id);
 
   /// Put an object with specified ID into object store.
@@ -202,7 +202,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const std::vector<ObjectID> contained_object_ids, ObjectID *object_id,
+                const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
                 std::shared_ptr<Buffer> *data);
 
   /// Create and return a buffer in the object store that can be directly written
