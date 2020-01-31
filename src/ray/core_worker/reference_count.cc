@@ -378,10 +378,14 @@ void ReferenceCounter::HandleWaitForRefRemoved(const ObjectID &object_id, const 
     for (const auto &pair : borrower_refs) {
       RAY_LOG(DEBUG) << pair.first << " has " << pair.second.NumBorrowers() << " borrowers";
     }
-    // We should only have called this callback once our local ref count for
-    // the object was zero. Also, we should have popped our borrowers and
-    // returned them in the reply to the owner, so we should have removed this
-    // reference completely.
+    auto it = object_id_refs_.find(object_id);
+    if (it != object_id_refs_.end()) {
+      // We should only have called this callback once our local ref count for
+      // the object was zero. Also, we should have popped our borrowers and
+      // returned them in the reply to the owner.
+      RAY_CHECK(it->second.RefCount() + it->second.NumBorrowers() == 0);
+      RAY_CHECK(!it->second.contained_in_borrowed_id.has_value());
+    }
     //RAY_CHECK(object_id_refs_.count(object_id) == 0);
     *reply = ReferenceTableToWaitForRefRemovedReply(borrower_refs);
     RAY_LOG(DEBUG) << "reply has " << reply->borrower_refs().size();
