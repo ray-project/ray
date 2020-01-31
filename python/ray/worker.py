@@ -1458,6 +1458,10 @@ def get(object_ids, timeout=None):
     object has been created). If object_ids is a list, then the objects
     corresponding to each object in the list will be returned.
 
+    This method will error will error if it's running inside async context,
+    you can use ``await object_id`` instead of ``ray.get(object_id)``. For
+    a list of object ids, you can use ``await asyncio.gather(*object_ids)``.
+
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
             get.
@@ -1552,11 +1556,6 @@ def put(value, weakref=False):
 def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
-    .. warning::
-
-        The **timeout** argument used to be in **milliseconds** (up through
-        ``ray==0.6.1``) and now it is in **seconds**.
-
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
@@ -1571,6 +1570,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     precedes B in the input list, and both are in the ready list, then A will
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
+
+    This method will error if it's running inside an async context. Instead of
+    ``ray.wait(object_ids)``, you can use ``await asyncio.wait(object_ids)``.
 
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
@@ -1601,11 +1603,6 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise TypeError(
             "wait() expected a list of ray.ObjectID, got {}".format(
                 type(object_ids)))
-
-    if isinstance(timeout, int) and timeout != 0:
-        logger.warning("The 'timeout' argument now requires seconds instead "
-                       "of milliseconds. This message can be suppressed by "
-                       "passing in a float.")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "

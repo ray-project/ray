@@ -4,8 +4,6 @@ import torch.nn as nn
 import argparse
 from ray import tune
 import torch.utils.data
-from torch import distributed
-from torch.utils.data.distributed import DistributedSampler
 import torchvision
 import torchvision.transforms as transforms
 
@@ -71,7 +69,7 @@ def validate(model, val_iterator, criterion, config):
     return stats
 
 
-def cifar_creator(batch_size, config):
+def cifar_creator(config):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
@@ -90,29 +88,7 @@ def cifar_creator(batch_size, config):
     validation_dataset = torchvision.datasets.CIFAR10(
         root="~/data", train=False, download=False, transform=transform_test)
 
-    train_sampler = None
-    if distributed.is_initialized():
-        train_sampler = DistributedSampler(train_dataset)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=(train_sampler is None),
-        num_workers=2,
-        pin_memory=False,
-        sampler=train_sampler)
-
-    validation_sampler = None
-    if distributed.is_initialized():
-        validation_sampler = DistributedSampler(validation_dataset)
-    validation_loader = torch.utils.data.DataLoader(
-        validation_dataset,
-        batch_size=batch_size,
-        shuffle=(validation_sampler is None),
-        num_workers=2,
-        pin_memory=False,
-        sampler=validation_sampler)
-
-    return train_loader, validation_loader
+    return train_dataset, validation_dataset
 
 
 def optimizer_creator(model, config):
@@ -126,7 +102,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         ResNet18,
         cifar_creator,
         optimizer_creator,
-        lambda config: nn.CrossEntropyLoss(),
+        nn.CrossEntropyLoss,
         initialization_hook=initialization_hook,
         train_function=train,
         validation_function=validate,
