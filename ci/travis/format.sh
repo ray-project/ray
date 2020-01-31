@@ -8,18 +8,24 @@ set -eo pipefail
 FLAKE8_VERSION_REQUIRED="3.7.7"
 YAPF_VERSION_REQUIRED="0.23.0"
 
-YAPF_DOWNLOAD_COMMAND_MSG="pip install yapf==$YAPF_VERSION_REQUIRED"
-FLAKE8_DOWNLOAD_COMMAND_MSG="pip install flake8=$FLAKE8_VERSION_REQUIRED"
+check_command_exist() {
+    VERSION=""
+    case "$1" in
+        yapf)
+            VERSION=$YAPF_VERSION_REQUIRED
+            ;;
+        flake8)
+            VERSION=$FLAKE8_VERSION_REQUIRED
+            ;;
+    esac
+    if ! [ -x "$(command -v $1)" ]; then
+        echo "$1 not installed. pip install $1==$VERSION"
+        exit 1
+    fi 
+}
 
-if ! [ -x "$(command -v yapf)" ]; then
-  echo "YAPF not installed. $YAPF_DOWNLOAD_COMMAND_MSG"
-  exit 1
-fi
-
-if ! [ -x "$(command -v flake8)" ]; then
-  echo "Flake8 not installed. $FLAKE8_DOWNLOAD_COMMAND_MSG"
-  exit 1
-fi
+check_command_exist yapf
+check_command_exist flake8
 
 ver=$(yapf --version)
 if ! echo $ver | grep -q 0.23.0; then
