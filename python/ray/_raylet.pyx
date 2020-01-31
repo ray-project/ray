@@ -712,6 +712,7 @@ cdef class CoreWorker:
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,
+                            c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
         delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
         for attempt in reversed(
@@ -720,7 +721,7 @@ cdef class CoreWorker:
                 if object_id is None:
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                     metadata, data_size,
+                                     metadata, data_size, contained_ids,
                                      c_object_id, data))
                 else:
                     c_object_id[0] = object_id.native()
@@ -752,22 +753,20 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
-            # The object won't be pinned if an ObjectID is provided by the
-            # user (because we can't track its lifetime to unpin). Note that
-            # the API to do this isn't supported as a public API.
-            c_bool owns_object = object_id is None
 
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_id,
+            ObjectIDsToVector(serialized_object.contained_object_ids),
             &c_object_id, &data)
+
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
                 check_status(
                     self.core_worker.get().Seal(
-                        c_object_id, owns_object, pin_object))
+                        c_object_id, pin_object))
 
         return ObjectID(c_object_id.Binary())
 
@@ -1010,6 +1009,7 @@ cdef class CoreWorker:
         cdef:
             c_vector[size_t] data_sizes
             c_vector[shared_ptr[CBuffer]] metadatas
+            c_vector[c_vector[CObjectID]] contained_ids
 
         if return_ids.size() == 0:
             return
@@ -1031,9 +1031,11 @@ cdef class CoreWorker:
                 metadatas.push_back(
                     string_to_buffer(serialized_object.metadata))
                 serialized_objects.append(serialized_object)
+                contained_ids.push_back(
+                    ObjectIDsToVector(serialized_object.contained_object_ids))
 
         check_status(self.core_worker.get().AllocateReturnObjects(
-            return_ids, data_sizes, metadatas, returns))
+            return_ids, data_sizes, metadatas, contained_ids, returns))
 
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.

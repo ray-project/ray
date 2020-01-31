@@ -16,7 +16,7 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_objec
   RAY_CHECK(ray_object != nullptr);
   ray::ObjectID object_id;
   auto status = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
-                    ->Put(*ray_object, &object_id);
+                    ->Put(*ray_object, {}, &object_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }

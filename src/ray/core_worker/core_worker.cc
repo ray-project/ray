@@ -381,7 +381,9 @@ Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
   return plasma_store_provider_->SetClientOptions(name, limit_bytes);
 }
 
-Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
+Status CoreWorker::Put(const RayObject &object,
+                       const std::vector<ObjectID> contained_object_ids,
+                       ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
@@ -400,11 +402,17 @@ Status CoreWorker::Put(const RayObject &object, const ObjectID &object_id) {
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                          const std::vector<ObjectID> contained_object_ids,
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
-  return Create(metadata, data_size, *object_id, data);
+  RAY_RETURN_NOT_OK(Create(metadata, data_size, *object_id, data));
+  // XXX: add contained
+  if (data) {
+    reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
+  }
+  return Status::OK();
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -412,14 +420,11 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
 
-Status CoreWorker::Seal(const ObjectID &object_id, bool owns_object, bool pin_object) {
+Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
-  if (owns_object) {
-    reference_counter_->AddOwnedObject(object_id, GetCallerId(), rpc_address_);
-    if (pin_object) {
-      // Tell the raylet to pin the object **after** it is created.
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
-    }
+  if (pin_object) {
+    // Tell the raylet to pin the object **after** it is created.
+    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
   }
   return Status::OK();
 }
@@ -863,6 +868,7 @@ void CoreWorker::StartExecutingTasks() { task_execution_service_.run(); }
 Status CoreWorker::AllocateReturnObjects(
     const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
     const std::vector<std::shared_ptr<Buffer>> &metadatas,
+    const std::vector<std::vector<ObjectID>> &contained_object_ids,
     std::vector<std::shared_ptr<RayObject>> *return_objects) {
   RAY_CHECK(object_ids.size() == metadatas.size());
   RAY_CHECK(object_ids.size() == data_sizes.size());
@@ -948,7 +954,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       continue;
     }
     if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i], /*owns_object=*/false, /*pin_object=*/false).ok()) {
+      if (!Seal(return_ids[i], /*pin_object=*/false).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
