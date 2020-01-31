@@ -48,7 +48,7 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id, const ObjectI
   if (outer_it == object_id_refs_.end()) {
     outer_it = object_id_refs_.emplace(outer_id, Reference()).first;
   }
-  if (it->second.owned_by_us) {
+  if (outer_it->second.owned_by_us) {
     it->second.contained_in_owned.insert(outer_id);
   } else {
     // TODO: Skip this if we already have a value.
