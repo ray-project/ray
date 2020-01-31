@@ -48,10 +48,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t max_time_for_handler_milliseconds() const
 
-        int64_t size_limit() const
-
-        int64_t num_elements_limit() const
-
         int64_t max_time_for_loop() const
 
         int64_t redis_db_connect_retries()
