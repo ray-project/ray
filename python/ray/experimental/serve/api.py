@@ -106,7 +106,6 @@ def init(kv_store_connector=None,
 
     # Initialize ray if needed.
     if not ray.is_initialized():
-        logger.debug("Initializing ray with kwargs {}".format(ray_init_kwargs))
         ray.init(**ray_init_kwargs)
 
     # Try to get serve nursery if there exists
