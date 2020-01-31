@@ -276,10 +276,9 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
         out.push_back(s)
     return out
 
-cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
+cdef void prepare_args(
+        CoreWorker core_worker, list args, c_vector[CTaskArg] *args_vector):
     cdef:
-        c_string pickled_str
-        const unsigned char[:] c_buffer
         size_t size
         shared_ptr[CBuffer] arg_data
 
@@ -302,7 +301,8 @@ cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference(
-                        (<ObjectID>ray.put(arg)).native()))
+                        (<ObjectID>core_worker.put_serialized_object(
+                            serialized_arg)).native()))
 
 
 cdef class RayletClient:
@@ -840,7 +840,7 @@ cdef class CoreWorker:
                 num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
@@ -872,7 +872,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
@@ -906,7 +906,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitActorTask(
