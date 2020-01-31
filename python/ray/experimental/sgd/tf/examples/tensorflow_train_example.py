@@ -14,6 +14,7 @@ NUM_TEST_SAMPLES = 400
 
 def create_config(batch_size):
     return {
+        # todo: batch size needs to scale with # of workers
         "batch_size": batch_size,
         "fit_config": {
             "steps_per_epoch": NUM_TRAIN_SAMPLES // batch_size
@@ -68,17 +69,28 @@ def train_example(num_replicas=1, batch_size=128, use_gpu=False):
         verbose=True,
         config=create_config(batch_size))
 
-    train_stats1 = trainer.train()
-    train_stats1.update(trainer.validate())
-    print(train_stats1)
+    # model baseline performance
+    start_stats = trainer.validate()
+    print(start_stats)
 
-    train_stats2 = trainer.train()
-    train_stats2.update(trainer.validate())
-    print(train_stats2)
+    # train for 2 epochs
+    trainer.train()
+    trainer.train()
 
-    val_stats = trainer.validate()
-    print(val_stats)
-    print("success!")
+    # model performance after training (should improve)
+    end_stats = trainer.validate()
+    print(end_stats)
+
+    # sanity check that training worked
+    dloss = end_stats["validation_loss"] - start_stats["validation_loss"]
+    dmse = (end_stats["validation_mean_squared_error"] -
+            start_stats["validation_mean_squared_error"])
+    print(f"dLoss: {dloss}, dMSE: {dmse}")
+
+    if dloss > 0 or dmse > 0:
+        print("training sanity check failed. loss increased!")
+    else:
+        print("success!")
 
 
 def tune_example(num_replicas=1, use_gpu=False):
