@@ -364,11 +364,11 @@ class TBXLogger(Logger):
                         full_attr, value, global_step=step)
                 # In case TensorboardX still doesn't think it's a valid value
                 # (e.g. `[[]]`), warn and move on.
-                except ValueError as e:
+                except ValueError:
                     logger.warning(
                         "You are trying to log an invalid value ({}={}) "
-                        "via {}!".format(
-                            full_attr, value, type(self).__name__))
+                        "via {}!".format(full_attr, value,
+                                         type(self).__name__))
 
         self.last_result = valid_result
         self._file_writer.flush()
