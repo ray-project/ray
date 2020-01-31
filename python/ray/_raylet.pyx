@@ -5,11 +5,7 @@
 
 from cpython.exc cimport PyErr_CheckSignals
 
-try:
-    import asyncio
-except ImportError:
-    # Python2 doesn't have asyncio
-    asyncio = None
+import asyncio
 import numpy
 import gc
 import inspect

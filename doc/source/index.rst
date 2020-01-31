@@ -280,6 +280,11 @@ Getting Involved
    :caption: RaySGD
 
    raysgd/raysgd.rst
+   raysgd/raysgd_pytorch.rst
+   raysgd/raysgd_pytorch_examples.rst
+   raysgd/raysgd_tensorflow.rst
+   raysgd/raysgd_ref.rst
+
 
 .. toctree::
    :maxdepth: -1
