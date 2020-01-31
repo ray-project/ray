@@ -101,7 +101,7 @@ DEFAULT_CONFIG = with_common_config({
     "num_cpus_per_worker": 1,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
+    # Prevent iterations from going lower than this time span.
     "min_iter_time_s": 1,
 
     # TODO(ekl) these are unused; remove them from sac config
