@@ -279,7 +279,7 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
 cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
     cdef:
         c_string pickled_str
-        const unsigned char[:] buffer
+        const unsigned char[:] c_buffer
         size_t size
         shared_ptr[CBuffer] arg_data
 
@@ -287,19 +287,22 @@ cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
         if isinstance(arg, ObjectID):
             args_vector.push_back(
                 CTaskArg.PassByReference((<ObjectID>arg).native()))
-        worker = ray.worker.global_worker
-        serialized_arg = worker.get_serialization_context().serialize(arg)
-        if serialized_arg.total_bytes > 100 * 1024:
-            args_vector.push_back(
-                CTaskArg.PassByReference((<ObjectID>ray.put(arg)).native()))
+
         else:
+            worker = ray.worker.global_worker
+            serialized_arg = worker.get_serialization_context().serialize(arg)
             size = serialized_arg.total_bytes
-            arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](size))
-            write_serialized_object(serialized_arg, arg_data)
-            args_vector.push_back(
-                CTaskArg.PassByValue(make_shared[CRayObject](
-                    arg_data, string_to_buffer(serialized_arg.metadata))))
+            if size <= 100 * 1024:
+                arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                        make_shared[LocalMemoryBuffer](size))
+                write_serialized_object(serialized_arg, arg_data)
+                args_vector.push_back(
+                    CTaskArg.PassByValue(make_shared[CRayObject](
+                        arg_data, string_to_buffer(serialized_arg.metadata))))
+            else:
+                args_vector.push_back(
+                    CTaskArg.PassByReference(
+                        (<ObjectID>ray.put(arg)).native()))
 
 
 cdef class RayletClient:
@@ -358,28 +361,12 @@ cdef class RayletClient:
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &arg_reference_ids):
-    cdef:
-        c_vector[shared_ptr[CRayObject]] objects_to_deserialize
-
-    if c_args.size() == 0:
+    if c_args.empty():
         return [], {}
 
-    args = []
-    ids_to_deserialize = []
-    id_indices = []
-    for i in range(c_args.size()):
-        ids_to_deserialize.append(
-            ObjectID(arg_reference_ids[i].Binary()))
-        id_indices.append(i)
-        objects_to_deserialize.push_back(c_args[i])
-        args.append(None)
-
-    data_metadata_pairs = RayObjectsToDataMetadataPairs(
-        objects_to_deserialize)
-    for i, arg in enumerate(
-        ray.worker.global_worker.deserialize_objects(
-            data_metadata_pairs, ids_to_deserialize)):
-        args[id_indices[i]] = arg
+    args = ray.worker.global_worker.deserialize_objects(
+             RayObjectsToDataMetadataPairs(c_args),
+             VectorToObjectIDs(arg_reference_ids))
 
     for arg in args:
         if isinstance(arg, RayError):
