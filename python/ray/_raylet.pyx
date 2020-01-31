@@ -299,7 +299,7 @@ cdef void prepare_args(
             # arguments aren't associated ObjectIDs right now so this is a
             # simple fix for reference counting purposes.
             if (<int64_t>size <= put_threshold and
-                    len(serialized_arg.contained_object_ids) > 0):
+                    len(serialized_arg.contained_object_ids) == 0):
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
