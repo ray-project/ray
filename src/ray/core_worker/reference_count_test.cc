@@ -479,6 +479,59 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+TEST(DistributedReferenceCountTest, TestNestedObjectNoBorrow) {
+  ReferenceCounter borrower_rc;
+  auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");
+  ReferenceCounter owner_rc([&](const std::string &addr, int port) { return borrower;});
+  auto owner = std::make_shared<MockWorkerClient>(owner_rc, "2");
+
+  // The owner creates an inner object and wraps it.
+  auto inner_id = ObjectID::FromRandom();
+  auto mid_id = ObjectID::FromRandom();
+  auto outer_id = ObjectID::FromRandom();
+  owner->PutSerializedObjectId(inner_id);
+  owner->WrapObjectId(mid_id, inner_id);
+  owner->WrapObjectId(outer_id, mid_id);
+
+  // The owner submits a task that depends on the outer object. The task will
+  // be given a reference to mid_id.
+  owner->SubmitTaskWithArg(outer_id);
+  // The owner's references go out of scope.
+  owner_rc.RemoveLocalReference(outer_id, nullptr);
+  owner_rc.RemoveLocalReference(mid_id, nullptr);
+  owner_rc.RemoveLocalReference(inner_id, nullptr);
+  // The owner's ref count > 0 for all objects.
+  ASSERT_TRUE(owner_rc.GetReference(outer_id).RefCount() > 0);
+  ASSERT_TRUE(owner_rc.GetReference(mid_id).RefCount() > 0);
+  ASSERT_TRUE(owner_rc.GetReference(inner_id).RefCount() > 0);
+
+  // The borrower is given a reference to the middle object.
+  borrower->ExecuteTaskWithArg(outer_id, mid_id, owner->task_id_, owner->address_);
+  ASSERT_TRUE(borrower_rc.HasReference(mid_id));
+  ASSERT_FALSE(borrower_rc.HasReference(inner_id));
+
+  // The borrower unwraps the inner object with ray.get.
+  borrower->GetSerializedObjectId(mid_id, inner_id, owner->task_id_, owner->address_);
+  borrower_rc.RemoveLocalReference(mid_id, nullptr);
+  ASSERT_TRUE(borrower_rc.HasReference(inner_id));
+  // The borrower's reference to inner_id goes out of scope.
+  borrower_rc.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower_rc.HasReference(inner_id));
+  ASSERT_FALSE(borrower_rc.HasReference(mid_id));
+
+  // The borrower task returns to the owner.
+  auto borrower_refs = borrower->FinishExecutingTask(outer_id);
+  ASSERT_FALSE(borrower_rc.HasReference(outer_id));
+
+  // The owner receives the borrower's reply and merges the borrower's ref
+  // count into its own.
+  owner->HandleSubmittedTaskFinished(outer_id, borrower->address_, borrower_refs);
+  // Check that owner now has nothing in scope.
+  ASSERT_FALSE(owner_rc.HasReference(outer_id));
+  ASSERT_FALSE(owner_rc.HasReference(mid_id));
+  ASSERT_FALSE(owner_rc.HasReference(inner_id));
+}
+
 TEST(DistributedReferenceCountTest, TestNestedObject) {
   ReferenceCounter borrower_rc;
   auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");

@@ -172,13 +172,6 @@ void ReferenceCounter::DeleteReferenceInternal(
     auto on_local_ref_deleted = std::move(it->second.on_local_ref_deleted);
     it->second.on_local_ref_deleted = nullptr;
     on_local_ref_deleted();
-    // on_local_ref_deleted may have called delete again, so make sure that the
-    // iterator is still valid.
-    // TODO: This is very ugly.
-    it = object_id_refs_.find(id);
-    if (it == object_id_refs_.end()) {
-      return;
-    }
   }
   // Consider all types of ref counts.
   // - If RefCount() > 0, then we are still using the object ID locally (we
@@ -190,32 +183,48 @@ void ReferenceCounter::DeleteReferenceInternal(
   // the inner ID yet.
   // - If NumBorrowers > 0, then there is a remote process that is using the
   // object ID.
-  if (it->second.RefCount() + it->second.NumBorrowers() == 0 && !it->second.contained_in_borrowed_id.has_value()) {
-    RAY_LOG(DEBUG) << "Deleting object " << id;
-    const auto contains = std::move(it->second.contains);
-    const bool owned_by_us = it->second.owned_by_us;
-
-    if (it->second.on_delete) {
-      it->second.on_delete(id);
-    }
-    if (deleted) {
-      deleted->push_back(id);
-    }
-    object_id_refs_.erase(it);
-
-    for (const auto &inner_id : contains) {
-      RAY_LOG(DEBUG) << "Decrementing ref count for inner ID " << inner_id;
-      auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end());
-      bool erased;
-      if (owned_by_us) {
-        erased = inner_it->second.contained_in_owned.erase(id);
-      } else {
-        erased = inner_it->second.contained_in_borrowed_id.has_value();
-        inner_it->second.contained_in_borrowed_id.reset();
+  const bool was_nested = it->second.contained_in_borrowed_id.has_value();
+  if (it->second.RefCount() + it->second.NumBorrowers() == 0) {
+    if (!was_nested or (was_nested && it->second.contains.empty())) {
+      RAY_LOG(DEBUG) << "Deleting object " << id;
+      const auto contains = std::move(it->second.contains);
+      auto contained_in = std::move(it->second.contained_in_owned);
+      if (was_nested) {
+        contained_in.insert(*it->second.contained_in_borrowed_id);
       }
-      RAY_CHECK(erased);
-      DeleteReferenceInternal(inner_it, deleted);
+      const bool owned_by_us = it->second.owned_by_us;
+
+      if (it->second.on_delete) {
+        it->second.on_delete(id);
+      }
+      if (deleted) {
+        deleted->push_back(id);
+      }
+      object_id_refs_.erase(it);
+
+      for (const auto &inner_id : contains) {
+        RAY_LOG(DEBUG) << "Decrementing ref count for inner ID " << inner_id;
+        auto inner_it = object_id_refs_.find(inner_id);
+        RAY_CHECK(inner_it != object_id_refs_.end());
+        bool erased;
+        if (owned_by_us) {
+          erased = inner_it->second.contained_in_owned.erase(id);
+        } else {
+          erased = inner_it->second.contained_in_borrowed_id.has_value();
+          inner_it->second.contained_in_borrowed_id.reset();
+        }
+        RAY_CHECK(erased);
+        DeleteReferenceInternal(inner_it, deleted);
+      }
+
+      for (const auto &outer_id : contained_in) {
+        RAY_LOG(DEBUG) << "Decrementing ref count for outer ID " << outer_id;
+        auto outer_it = object_id_refs_.find(outer_id);
+        RAY_CHECK(outer_it != object_id_refs_.end());
+        auto erased = outer_it->second.contains.erase(id);
+        RAY_CHECK(erased);
+        DeleteReferenceInternal(outer_it, deleted);
+      }
     }
   }
 }
