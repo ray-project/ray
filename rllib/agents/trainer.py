@@ -632,7 +632,7 @@ class Trainer(Trainable):
         self._sync_filters_if_needed(self.evaluation_workers)
 
         if self.config["custom_eval_function"]:
-            logger.info("Running custom eval function {}".formaet(
+            logger.info("Running custom eval function {}".format(
                 self.config["custom_eval_function"]))
             metrics = self.config["custom_eval_function"](
                 self, self.evaluation_workers)
