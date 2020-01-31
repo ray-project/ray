@@ -65,6 +65,16 @@ class TFRunner:
         os.environ["TF_CONFIG"] = json.dumps(tf_config)
 
         MultiWorkerMirroredStrategy = _try_import_strategy()
+
+        # MultiWorkerMirroredStrategy handles everything for us, from
+        # sharding the dataset (or even sharding the data itself if the loader
+        # reads files from disk) to merging the metrics and weight updates
+        #
+        # worker 0 is the "chief" worker and will handle the map-reduce
+        # every worker ends up with the exact same metrics and model
+        # after model.fit
+        #
+        # because of this, we only really ever need to query its state
         self.strategy = MultiWorkerMirroredStrategy()
 
         self.train_dataset, self.test_dataset = self.data_creator(self.config)

@@ -2,12 +2,14 @@ import pytest
 
 import ray
 import ray.experimental.serve.context as context
-from ray.experimental.serve.queues import RoundRobinPolicyQueueActor
+from ray.experimental.serve.policy import RoundRobinPolicyQueueActor
 from ray.experimental.serve.task_runner import (
     RayServeMixin, TaskRunner, TaskRunnerActor, wrap_to_ray_error)
 
+pytestmark = pytest.mark.asyncio
 
-def test_runner_basic():
+
+async def test_runner_basic():
     def echo(i):
         return i
 
@@ -15,12 +17,12 @@ def test_runner_basic():
     assert r(1) == 1
 
 
-def test_runner_wraps_error():
+async def test_runner_wraps_error():
     wrapped = wrap_to_ray_error(Exception())
     assert isinstance(wrapped, ray.exceptions.RayTaskError)
 
 
-def test_runner_actor(serve_instance):
+async def test_runner_actor(serve_instance):
     q = RoundRobinPolicyQueueActor.remote()
 
     def echo(flask_request, i=None):
@@ -30,24 +32,21 @@ def test_runner_actor(serve_instance):
     PRODUCER_NAME = "prod"
 
     runner = TaskRunnerActor.remote(echo)
-
     runner._ray_serve_setup.remote(CONSUMER_NAME, q, runner)
     runner._ray_serve_fetch.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
     for query in [333, 444, 555]:
-        result_token = ray.ObjectID(
-            ray.get(
-                q.enqueue_request.remote(
-                    PRODUCER_NAME,
-                    request_args=None,
-                    request_kwargs={"i": query},
-                    request_context=context.TaskContext.Python)))
-        assert ray.get(result_token) == query
+        result = await q.enqueue_request.remote(
+            PRODUCER_NAME,
+            request_args=None,
+            request_kwargs={"i": query},
+            request_context=context.TaskContext.Python)
+        assert result == query
 
 
-def test_ray_serve_mixin(serve_instance):
+async def test_ray_serve_mixin(serve_instance):
     q = RoundRobinPolicyQueueActor.remote()
 
     CONSUMER_NAME = "runner-cls"
@@ -72,17 +71,15 @@ def test_ray_serve_mixin(serve_instance):
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
     for query in [333, 444, 555]:
-        result_token = ray.ObjectID(
-            ray.get(
-                q.enqueue_request.remote(
-                    PRODUCER_NAME,
-                    request_args=None,
-                    request_kwargs={"i": query},
-                    request_context=context.TaskContext.Python)))
-        assert ray.get(result_token) == query + 3
+        result = await q.enqueue_request.remote(
+            PRODUCER_NAME,
+            request_args=None,
+            request_kwargs={"i": query},
+            request_context=context.TaskContext.Python)
+        assert result == query + 3
 
 
-def test_task_runner_check_context(serve_instance):
+async def test_task_runner_check_context(serve_instance):
     q = RoundRobinPolicyQueueActor.remote()
 
     def echo(flask_request, i=None):
@@ -98,13 +95,11 @@ def test_task_runner_check_context(serve_instance):
     runner._ray_serve_fetch.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
-    result_token = ray.ObjectID(
-        ray.get(
-            q.enqueue_request.remote(
-                PRODUCER_NAME,
-                request_args=None,
-                request_kwargs={"i": 42},
-                request_context=context.TaskContext.Python)))
+    result_oid = q.enqueue_request.remote(
+        PRODUCER_NAME,
+        request_args=None,
+        request_kwargs={"i": 42},
+        request_context=context.TaskContext.Python)
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        ray.get(result_token)
+        await result_oid

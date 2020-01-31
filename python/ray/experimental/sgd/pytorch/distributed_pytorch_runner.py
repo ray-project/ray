@@ -66,15 +66,27 @@ class DistributedPyTorchRunner(PyTorchRunner):
                                                  self.config)
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
-        self.criterion = self.loss_creator(self.config)
-        if torch.cuda.is_available():
-            self.criterion = self.criterion.cuda()
+
+        logger.debug("Creating loss.")
+        self._create_loss()
 
         logger.debug("Creating dataset.")
         with FileLock(os.path.expanduser("~/.ray_data.lock")):
-            data_loaders = self.data_creator(self.batch_size, self.config)
-        self.train_loader, self.validation_loader = self._validate_loaders(
-            data_loaders)
+            datasets = self.data_creator(self.config)
+            train_set, val_set = self._validate_datasets(datasets)
+
+        train_loader_config = self.dataloader_config.copy()
+        train_loader_config.update(
+            sampler=torch.utils.data.distributed.DistributedSampler(train_set),
+            shuffle=False)
+
+        self.train_loader = torch.utils.data.DataLoader(
+            train_set, batch_size=self.batch_size, **train_loader_config)
+
+        self.validation_loader = None
+        if val_set:
+            self.validation_loader = torch.utils.data.DataLoader(
+                val_set, batch_size=self.batch_size, **self.dataloader_config)
 
     def step(self):
         """Runs a training epoch and updates the model parameters.
@@ -117,4 +129,9 @@ class DistributedPyTorchRunner(PyTorchRunner):
     def shutdown(self):
         """Attempts to shut down the worker."""
         super(DistributedPyTorchRunner, self).shutdown()
-        dist.destroy_process_group()
+        # TODO: Temporarily removing since it causes hangs on MacOSX.
+        # However, it seems to be harmless to remove permanently
+        # since the processes are shutdown anyways. This comment can be
+        # removed in a future release if it is still not documented
+        # the stable Pytorch docs.
+        # dist.destroy_process_group()

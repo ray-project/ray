@@ -8,7 +8,8 @@ import {
   CheckProfilingStatusResponse,
   getProfilingResultURL,
   launchProfiling,
-  RayletInfoResponse
+  RayletInfoResponse,
+  launchKillActor
 } from "../../../api";
 import Actors from "./Actors";
 import Collapse from "@material-ui/core/Collapse";
@@ -46,6 +47,10 @@ const styles = (theme: Theme) =>
     },
     webuiDisplay: {
       fontSize: "0.875rem"
+    },
+    inlineHTML: {
+      fontSize: "0.875rem",
+      display: "inline"
     }
   });
 
@@ -103,6 +108,13 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         }
       };
       await checkProfilingStatusLoop();
+    }
+  };
+
+  killActor = () => {
+    const actor = this.props.actor;
+    if (actor.state === 0) {
+      launchKillActor(actor.actorId, actor.ipAddress, actor.port);
     }
   };
 
@@ -184,7 +196,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
           let valueRendered = valueParsed["message"];
           if (valueParsed["dtype"] === "html") {
             valueRendered = (
-              <div dangerouslySetInnerHTML={{ __html: valueRendered }}></div>
+              <div
+                className={classes.inlineHTML}
+                dangerouslySetInnerHTML={{ __html: valueRendered }}
+              ></div>
             );
           }
 
@@ -235,6 +250,13 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               ))}
               ){" "}
+              {actor.state === 0 ? (
+                <span className={classes.action} onClick={this.killActor}>
+                  Kill Actor
+                </span>
+              ) : (
+                ""
+              )}
               {Object.entries(profiling).map(
                 ([profilingId, { startTime, latestResponse }]) =>
                   latestResponse !== null && (
