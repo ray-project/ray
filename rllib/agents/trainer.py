@@ -185,8 +185,9 @@ COMMON_CONFIG = {
     "evaluation_num_episodes": 10,
     # Extra arguments to pass to evaluation workers.
     # Typical usage is to pass extra args to evaluation env creator.
-    # NOTE: Exploration is disabled automatically in all evaluation policies.
-    "evaluation_config": {},
+    "evaluation_config": {
+        "exploration": False
+    },
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -550,9 +551,7 @@ class Trainer(Trainable):
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "batch_steps": 1,
-                    # Switch off all Exploration for evaluation policies.
-                    "exploration": False
+                    "batch_steps": 1
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
