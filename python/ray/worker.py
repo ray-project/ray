@@ -276,6 +276,10 @@ class Worker:
         return self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id, pin_object=pin_object)
 
+    def deserialize_objects(self, data_metadata_pairs, object_ids):
+        context = self.get_serialization_context()
+        return context.deserialize_objects(data_metadata_pairs, object_ids)
+
     def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.
 
@@ -306,8 +310,7 @@ class Worker:
         timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
             object_ids, self.current_task_id, timeout_ms)
-        context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_ids)
+        return self.deserialize_objects(data_metadata_pairs, object_ids)
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):

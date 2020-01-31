@@ -291,7 +291,13 @@ cdef void prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             size = serialized_arg.total_bytes
-            if size <= RayConfig.instance().max_direct_call_object_size():
+
+            # TODO(edoakes): any objects containing ObjectIDs are spilled to
+            # plasma here. This is inefficient for small objects, but inlined
+            # arguments aren't associated ObjectIDs right now so this is a
+            # simple fix for reference counting purposes.
+            if (size <= RayConfig.instance().max_direct_call_object_size()
+                    and len(serialized_arg.contained_object_ids) > 0):
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
