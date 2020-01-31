@@ -14,5 +14,5 @@ class ConstantSchedule(Schedule):
         super().__init__(framework=None)
         self._v = value
 
-    def value(self, t=None):
+    def _value(self, t=None):
         return self._v
