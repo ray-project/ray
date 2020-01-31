@@ -1,11 +1,11 @@
 import numpy as np
 import os
-import torch
-import torch.distributed as dist
 import logging
 import numbers
 import tempfile
 import time
+import torch
+import torch.distributed as dist
 
 import ray
 
