@@ -28,7 +28,7 @@ class ExponentialSchedule(Schedule):
         self.initial_p = initial_p
         self.decay_rate = decay_rate
 
-    def value(self, t):
+    def _value(self, t):
         """
         Returns the result of:
         initial_p * decay_rate ** (`t`/t_max)

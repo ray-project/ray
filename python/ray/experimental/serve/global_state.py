@@ -1,7 +1,7 @@
 import ray
 from ray.experimental.serve.constants import (
     BOOTSTRAP_KV_STORE_CONN_KEY, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-    SERVE_NURSERY_NAME)
+    SERVE_NURSERY_NAME, ASYNC_CONCURRENCY)
 from ray.experimental.serve.kv_store_service import (
     BackendTable, RoutingTable, TrafficPolicyTable)
 from ray.experimental.serve.metric import (MetricMonitor,
@@ -37,9 +37,16 @@ class ActorNursery:
 
         self.bootstrap_state = dict()
 
-    def start_actor(self, actor_cls, tag, init_args=(), init_kwargs={}):
+    def start_actor(self,
+                    actor_cls,
+                    tag,
+                    init_args=(),
+                    init_kwargs={},
+                    is_asyncio=False):
         """Start an actor and add it to the nursery"""
-        handle = actor_cls.remote(*init_args, **init_kwargs)
+        max_concurrency = ASYNC_CONCURRENCY if is_asyncio else None
+        handle = (actor_cls.options(max_concurrency=max_concurrency).remote(
+            *init_args, **init_kwargs))
         self.actor_handles[handle] = tag
         return [handle]
 
@@ -137,8 +144,9 @@ class GlobalState:
                 self.actor_nursery_handle.start_actor.remote(
                     self.queueing_policy.value,
                     init_kwargs=policy_kwargs,
-                    tag=queue_actor_tag))
-            handle.register_self_handle.remote(handle)
+                    tag=queue_actor_tag,
+                    is_asyncio=True))
+            # handle.register_self_handle.remote(handle)
             self.refresh_actor_handle_cache()
 
         return self.actor_handle_cache[queue_actor_tag]
