@@ -280,9 +280,11 @@ cdef void prepare_args(
         CoreWorker core_worker, list args, c_vector[CTaskArg] *args_vector):
     cdef:
         size_t size
+        int64_t put_threshold
         shared_ptr[CBuffer] arg_data
 
     worker = ray.worker.global_worker
+    put_threshold = RayConfig.instance().max_direct_call_object_size()
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
@@ -296,8 +298,8 @@ cdef void prepare_args(
             # plasma here. This is inefficient for small objects, but inlined
             # arguments aren't associated ObjectIDs right now so this is a
             # simple fix for reference counting purposes.
-            if (size <= RayConfig.instance().max_direct_call_object_size()
-                    and len(serialized_arg.contained_object_ids) > 0):
+            if (<int64_t>size <= put_threshold and
+                    len(serialized_arg.contained_object_ids) > 0):
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
