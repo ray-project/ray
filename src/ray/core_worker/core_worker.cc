@@ -304,12 +304,14 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-  // If the raylet fails, we will be reassigned to init (PID=1).
-  // TODO(mehrdadn): need a different solution for Windows.
+// If the raylet fails, we will be reassigned to init (PID=1).
+// TODO(mehrdadn): need a different solution for Windows.
+#if defined(_WIN32)
   if (getppid() == 1) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
+#endif
 
   // Reset the timer from the previous expiration time to avoid drift.
   death_check_timer_.expires_at(
