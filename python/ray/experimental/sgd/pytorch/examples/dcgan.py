@@ -4,7 +4,6 @@ import argparse
 import os
 import torch
 import torch.nn as nn
-from torch import distributed
 import torch.optim as optim
 import torch.utils.data
 import torchvision.datasets as dset
@@ -13,11 +12,10 @@ import numpy as np
 
 from torch.autograd import Variable
 from torch.nn import functional as F
-from torch.utils.data.distributed import DistributedSampler
 from scipy.stats import entropy
 
 import ray
-from ray.experimental.sgd.pytorch import PyTorchTrainer
+from ray.experimental.sgd import PyTorchTrainer
 
 # Training parameters
 TRAIN_BATCHES = 5
@@ -34,8 +32,8 @@ features_g = 32
 features_d = 32
 
 
-def data_creator(batch_size, config):
-    dataset = dset.MNIST(
+def data_creator(config):
+    return dset.MNIST(
         root="~/mnist/",
         download=True,
         transform=transforms.Compose([
@@ -43,19 +41,6 @@ def data_creator(batch_size, config):
             transforms.ToTensor(),
             transforms.Normalize((0.5, ), (0.5, )),
         ]))
-
-    # Create the dataloader
-    train_sampler = None
-    if distributed.is_initialized():
-        train_sampler = DistributedSampler(dataset)
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=3,
-        shuffle=(train_sampler is None),
-        sampler=train_sampler)
-
-    return dataloader, None
 
 
 def weights_init(m):
@@ -231,7 +216,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         model_creator,
         data_creator,
         optimizer_creator,
-        lambda config: nn.BCELoss(),
+        nn.BCELoss,
         train_function=train,
         validation_function=False,
         num_replicas=num_replicas,
