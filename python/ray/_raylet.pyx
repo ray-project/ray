@@ -280,9 +280,11 @@ cdef void prepare_args(
         CoreWorker core_worker, list args, c_vector[CTaskArg] *args_vector):
     cdef:
         size_t size
+        int64_t put_threshold
         shared_ptr[CBuffer] arg_data
 
     worker = ray.worker.global_worker
+    put_threshold = RayConfig.instance().max_direct_call_object_size()
     for arg in args:
         if isinstance(arg, ObjectID):
             args_vector.push_back(
@@ -291,7 +293,7 @@ cdef void prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             size = serialized_arg.total_bytes
-            if size <= RayConfig.instance().max_direct_call_object_size():
+            if <int64_t>size <= put_threshold:
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
