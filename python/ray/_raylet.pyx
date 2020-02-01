@@ -766,9 +766,11 @@ cdef class CoreWorker:
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
+                # Using custom object IDs is not supported because we can't
+                # track their lifecycle, so don't pin the object in that case.
                 check_status(
                     self.core_worker.get().Seal(
-                        c_object_id, pin_object))
+                        c_object_id, pin_object and object_id is None))
 
         return ObjectID(c_object_id.Binary())
 
