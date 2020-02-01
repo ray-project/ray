@@ -60,7 +60,7 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    worker.raylet_client.push_error(job_id, error_type, message, time.time())
+    worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,

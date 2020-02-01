@@ -9,6 +9,7 @@ import types
 
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
+from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
@@ -98,6 +99,7 @@ class TrialRunner:
                  local_checkpoint_dir=None,
                  remote_checkpoint_dir=None,
                  sync_to_cloud=None,
+                 stopper=None,
                  resume=False,
                  server_port=TuneServer.DEFAULT_PORT,
                  verbose=True,
@@ -115,6 +117,8 @@ class TrialRunner:
             remote_checkpoint_dir (str): Remote path where
                 global checkpoints are stored and restored from. Used
                 if `resume` == REMOTE.
+            stopper: Custom class for stopping whole experiments. See
+                ``Stopper``.
             resume (str|False): see `tune.py:run`.
             sync_to_cloud (func|str): See `tune.py:run`.
             server_port (int): Port number for launching TuneServer.
@@ -149,7 +153,7 @@ class TrialRunner:
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
                                         remote_checkpoint_dir, sync_to_cloud)
-
+        self._stopper = stopper or NoopStopper()
         self._resumed = False
 
         if self._validate_resume(resume_type=resume):
@@ -331,6 +335,8 @@ class TrialRunner:
         else:
             self.trial_executor.on_no_available_trials(self)
 
+        self._stop_experiment_if_needed()
+
         try:
             with warn_if_slow("experiment_checkpoint"):
                 self.checkpoint()
@@ -385,6 +391,13 @@ class TrialRunner:
         """Returns whether this runner has at least the specified resources."""
         return self.trial_executor.has_resources(resources)
 
+    def _stop_experiment_if_needed(self):
+        """Stops all trials if the user condition is satisfied."""
+
+        if self._stopper.stop_all():
+            [self.trial_executor.stop_trial(t) for t in self._trials]
+            logger.info("All trials stopped due to ``stopper.stop_all``.")
+
     def _get_next_trial(self):
         """Replenishes queue.
 
@@ -435,7 +448,8 @@ class TrialRunner:
             self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
             flat_result = flatten_dict(result)
-            if trial.should_stop(flat_result):
+            if self._stopper(trial.trial_id,
+                             result) or trial.should_stop(flat_result):
                 # Hook into scheduler
                 self._scheduler_alg.on_trial_complete(self, trial, flat_result)
                 self._search_alg.on_trial_complete(
