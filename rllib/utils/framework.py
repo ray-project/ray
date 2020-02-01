@@ -1,4 +1,3 @@
-import multiprocessing
 import logging
 import os
 
@@ -87,14 +86,6 @@ def try_import_torch(error=False):
     if "RLLIB_TEST_NO_TORCH_IMPORT" in os.environ:
         logger.warning("Not importing Torch for test purposes.")
         return None, None
-
-    if "OMP_NUM_THREADS" not in os.environ and multiprocessing.cpu_count() > 8:
-        logger.warning(
-            "WARNING framework.py -- Force setting OMP_NUM_THREADS=1 before "
-            "torch import to avoid performance degradation with many CPUs "
-            "(issue #6962). You can override this by explicitly setting "
-            "OMP_NUM_THREADS.")
-        os.environ["OMP_NUM_THREADS"] = "1"
 
     try:
         import torch

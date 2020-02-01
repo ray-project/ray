@@ -1,14 +1,24 @@
 import os
+import logging
+import multiprocessing
 from os.path import dirname
 import sys
 
 # MUST add pickle5 to the import path because it will be imported by some
 # raylet modules.
 
+logger = logging.getLogger(__name__)
+
 if "pickle5" in sys.modules:
     raise ImportError("Ray must be imported before pickle5 because Ray "
                       "requires a specific version of pickle5 (which is "
                       "packaged along with Ray).")
+
+if "OMP_NUM_THREADS" not in os.environ and multiprocessing.cpu_count() > 8:
+    logger.warning("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+                   "degradation with many CPUs. You can override this by "
+                   "explicitly setting OMP_NUM_THREADS.")
+    os.environ["OMP_NUM_THREADS"] = "1"
 
 # Add the directory containing pickle5 to the Python path so that we find the
 # pickle5 version packaged with ray and not a pre-existing pickle5.
