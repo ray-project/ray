@@ -290,7 +290,7 @@ class Worker:
             delta = time.perf_counter() - start
             if delta > 0.1:
                 logger.warning("OMP_NUM_THREADS=1 is set, this may slow down "
-                               "ray.put() for large objects.")
+                               "ray.put() for large objects (issue #6998).")
                 should_warn_of_slow_puts = False
         return result
 
