@@ -16,9 +16,11 @@ def check_framework(framework="tf"):
         str: The input framework string.
     """
     if framework == "tf":
-        try_import_tf(error=True)
+        if tf is None:
+            raise ImportError("Could not import tensorflow.")
     elif framework == "torch":
-        try_import_torch(error=True)
+        if torch is None:
+            raise ImportError("Could not import torch.")
     else:
         assert framework is None
     return framework
@@ -32,6 +34,8 @@ def try_import_tf(error=False):
     Returns:
         The tf module (either from tf2.0.compat.v1 OR as tf1.x.
     """
+    # TODO(sven): Make sure, these are reset after each test case
+    # that uses them.
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow for test purposes")
         return None
@@ -113,3 +117,9 @@ def get_variable(value, framework="tf", tf_name="unnamed-variable"):
         return tf.compat.v1.get_variable(tf_name, initializer=value)
     # torch or None: Return python primitive.
     return value
+
+
+# This call should never happen inside a module's functions/classes
+# as it would re-disable tf-eager.
+tf = try_import_tf()
+torch, _ = try_import_torch()

@@ -113,7 +113,6 @@ def traced_eager_policy(eager_policy_cls):
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
-                            deterministic=None,
                             explore=True,
                             time_step=None,
                             **kwargs):
@@ -130,7 +129,7 @@ def traced_eager_policy(eager_policy_cls):
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, deterministic, explore, time_step,
+                info_batch, episodes, explore, time_step,
                 **kwargs)
 
         @override(Policy)
@@ -296,7 +295,6 @@ def build_eager_tf_policy(name,
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
-                            deterministic=None,
                             explore=True,
                             time_step=None,
                             **kwargs):

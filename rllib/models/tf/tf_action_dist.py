@@ -46,34 +46,32 @@ class Categorical(TFActionDistribution):
         super(Categorical, self).__init__(inputs, model)
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
-        return tf.math.argmax(self.inputs, axis=1)
-
-    @override(ActionDistribution)
     def logp(self, x):
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=self.inputs, labels=tf.cast(x, tf.int32))
 
     @override(ActionDistribution)
     def entropy(self):
-        a0 = self.inputs - tf.reduce_max(self.inputs, axis=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(
+            self.inputs, reduction_indices=[1], keep_dims=True)
         ea0 = tf.exp(a0)
-        z0 = tf.reduce_sum(ea0, axis=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=[1])
+        return tf.reduce_sum(p0 * (tf.log(z0) - a0), reduction_indices=[1])
 
     @override(ActionDistribution)
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(self.inputs, axis=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(
+            self.inputs, reduction_indices=[1], keep_dims=True)
         a1 = other.inputs - tf.reduce_max(
-            other.inputs, axis=[1], keep_dims=True)
+            other.inputs, reduction_indices=[1], keep_dims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
-        z0 = tf.reduce_sum(ea0, axis=[1], keep_dims=True)
-        z1 = tf.reduce_sum(ea1, axis=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
+        z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
         p0 = ea0 / z0
         return tf.reduce_sum(
-            p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=[1])
+            p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -96,10 +94,6 @@ class MultiCategorical(TFActionDistribution):
             for input_ in tf.split(inputs, input_lens, axis=1)
         ]
         self.sample_op = self._build_sample_op()
-
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        return tf.math.argmax(self.inputs, axis=-1)
 
     @override(ActionDistribution)
     def logp(self, actions):
@@ -151,15 +145,11 @@ class DiagGaussian(TFActionDistribution):
         self.std = tf.exp(log_std)
 
     @override(ActionDistribution)
-    def deterministic_sample(self):
-        return self.mean
-
-    @override(ActionDistribution)
     def logp(self, x):
-        return -0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std),
-                                    axis=[1]) - \
-               0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) - \
-               tf.reduce_sum(self.log_std, axis=[1])
+        return (-0.5 * tf.reduce_sum(
+            tf.square((x - self.mean) / self.std), reduction_indices=[1]) -
+                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) -
+                tf.reduce_sum(self.log_std, reduction_indices=[1]))
 
     @override(ActionDistribution)
     def kl(self, other):
@@ -168,12 +158,13 @@ class DiagGaussian(TFActionDistribution):
             other.log_std - self.log_std +
             (tf.square(self.std) + tf.square(self.mean - other.mean)) /
             (2.0 * tf.square(other.std)) - 0.5,
-            axis=[1])
+            reduction_indices=[1])
 
     @override(ActionDistribution)
     def entropy(self):
         return tf.reduce_sum(
-            self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=[1])
+            self.log_std + .5 * np.log(2.0 * np.pi * np.e),
+            reduction_indices=[1])
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -190,10 +181,6 @@ class Deterministic(TFActionDistribution):
 
     This is similar to DiagGaussian with standard deviation zero.
     """
-
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        return self.inputs
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):
@@ -264,11 +251,6 @@ class MultiActionDistribution(TFActionDistribution):
     @override(ActionDistribution)
     def sample(self):
         return TupleActions([s.sample() for s in self.child_distributions])
-
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        return TupleActions(
-            [s.deterministic_sample() for s in self.child_distributions])
 
     @override(TFActionDistribution)
     def sampled_action_logp(self):

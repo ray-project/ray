@@ -24,7 +24,6 @@ class MockPolicy(TestPolicy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
-                        deterministic=None,
                         explore=True,
                         time_step=None,
                         **kwargs):
@@ -45,7 +44,6 @@ class BadPolicy(MockPolicy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
-                        deterministic=None,
                         explore=True,
                         time_step=None,
                         **kwargs):

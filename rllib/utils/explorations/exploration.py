@@ -1,3 +1,6 @@
+from ray.rllib.utils.framework import check_framework
+
+
 class Exploration:
     """
     An Exploration takes the predicted actions or action values from the agent,
@@ -17,7 +20,7 @@ class Exploration:
         """
         self.action_space = action_space
         self.worker_info = worker_info or {}
-        self.framework = framework
+        self.framework = check_framework(framework)
 
     def get_exploration_action(self,
                                action,

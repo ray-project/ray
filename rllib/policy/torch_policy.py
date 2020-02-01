@@ -63,14 +63,9 @@ class TorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        deterministic=None,
                         explore=True,
                         time_step=None,
                         **kwargs):
-
-        deterministic = deterministic if deterministic is not None else \
-            self.deterministic
-
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,
@@ -87,10 +82,7 @@ class TorchPolicy(Policy):
                 actions = self.exploration.get_action(
                     model_out, self.model, action_dist, explore, time_step)
             else:
-                if deterministic:
-                    actions = action_dist.deterministic_sample()
-                else:
-                    actions = action_dist.sample()
+                actions = action_dist.sample()
 
             input_dict[SampleBatch.ACTIONS] = actions
 

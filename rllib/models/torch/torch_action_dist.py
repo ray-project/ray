@@ -34,10 +34,6 @@ class TorchCategorical(TorchDistributionWrapper):
     def __init__(self, inputs, model):
         self.dist = torch.distributions.categorical.Categorical(logits=inputs)
 
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        return self.dist.probs.argmax(dim=1)
-
     @staticmethod
     @override(ActionDistribution)
     def required_model_output_shape(action_space, model_config):
@@ -51,10 +47,6 @@ class TorchDiagGaussian(TorchDistributionWrapper):
     def __init__(self, inputs, model):
         mean, log_std = torch.chunk(inputs, 2, dim=1)
         self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))
-
-    @override(ActionDistribution)
-    def deterministic_sample(self):
-        return self.dist.mean
 
     @override(TorchDistributionWrapper)
     def logp(self, actions):

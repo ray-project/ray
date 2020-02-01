@@ -35,10 +35,6 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # How to sample non-exploratory actions.
-    # TODO(sven): This has no effect so far as we don't use a distribution.
-    "deterministic": True,
-
     # === Exploration Settings ===
     "exploration": {
         "type": EpsilonGreedy,  # Exploration class.
@@ -61,8 +57,6 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
-
-    # TODO(sven): Make Exploration class for softmax Q action selection.
     # Use softmax for sampling actions. Required for off policy estimation.
     "soft_q": False,
     # Softmax temperature. Q values are divided by this value prior to softmax.
@@ -151,7 +145,7 @@ def make_policy_optimizer(workers, config):
         **config["optimizer"])
 
 
-def validate_config(config):
+def validate_config_and_setup_param_noise(config):
     """
     Checks and updates the config based on settings.
     Rewrites sample_batch_size to take into account n_step truncation.
@@ -256,7 +250,7 @@ def get_initial_state(config):
     }
 
 
-# TODO: Move this to generic Trainer/Policy. Every Algo should do this.
+# TODO(sven): Move this to generic Trainer/Policy. Every Algo should do this.
 def before_train_step(trainer):
     """
     Sets epsilon exploration values in all policies
@@ -266,7 +260,6 @@ def before_train_step(trainer):
         trainer (Trainer): The Trainer object for the DQN.
     """
     # Store some data for metrics after learning.
-    # TODO(sven): Move this to generic Trainer (every Trainer should log this).
     global_timestep = trainer.optimizer.num_steps_sampled
     trainer.train_start_timestep = global_timestep
 
@@ -305,7 +298,7 @@ GenericOffPolicyTrainer = build_trainer(
     name="GenericOffPolicyAlgorithm",
     default_policy=None,
     default_config=DEFAULT_CONFIG,
-    validate_config=validate_config,
+    validate_config=validate_config_and_setup_param_noise,
     get_initial_state=get_initial_state,
     make_policy_optimizer=make_policy_optimizer,
     before_train_step=before_train_step,

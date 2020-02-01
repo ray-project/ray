@@ -165,11 +165,6 @@ COMMON_CONFIG = {
     # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
     
-    # How to sample non-exploratory actions by default (if no action sampler
-    # is provided).
-    # TODO(kismuz): implement determ. actions and include relevant keys hints
-    "deterministic": False,
-    
     # === Exploration Settings ===
     # Provide a dict specifying the Exploration object's config.
     # Set to False or None for no exploration behavior (e.g. for evaluation).
@@ -683,15 +678,14 @@ class Trainer(Trainable):
         """
         if state is None:
             state = []
-
-        preprocessed = self.workers.local_worker().preprocessors[policy_id].\
-            transform(observation)
+        preprocessed = self.workers.local_worker().preprocessors[
+            policy_id].transform(observation)
         filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
 
         # Figure out the current (sample) time step and pass it into Policy.
         time_step = self.optimizer.num_steps_sampled \
-            if self._has_policy_optimizer() else 0
+            if self._has_policy_optimizer() else None
 
         result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
@@ -796,37 +790,32 @@ class Trainer(Trainable):
 
     @classmethod
     def resource_help(cls, config):
-        return \
-            "\n\nYou can adjust the resource requests of RLlib agents by " \
-            "setting `num_workers`, `num_gpus`, and other configs. See the " \
-            "DEFAULT_CONFIG defined by each agent for more info.\n\n" \
-            "The config of this agent ({}) is: {}".format(cls.__name__, config)
+        return ("\n\nYou can adjust the resource requests of RLlib agents by "
+                "setting `num_workers`, `num_gpus`, and other configs. See "
+                "the DEFAULT_CONFIG defined by each agent for more info.\n\n"
+                "The config of this agent is: {}".format(config))
 
     @staticmethod
     def _validate_config(config):
-        """
-        Generic config checking method for all Trainer types. Raises errors and
-        outputs warnings in case of deprecated config settings.
-
-        Args:
-            config (dict): The Trainer's config.
-        """
         if "policy_graphs" in config["multiagent"]:
-            deprecation_warning("policy_graphs", "policies")
-            # Backwards compatibility.
-            config["multiagent"]["policies"] = config["multiagent"].pop(
-                "policy_graphs")
+            logger.warning(
+                "The `policy_graphs` config has been renamed to `policies`.")
+            # Backwards compatibility
+            config["multiagent"]["policies"] = config["multiagent"][
+                "policy_graphs"]
             del config["multiagent"]["policy_graphs"]
         if "gpu" in config:
-            deprecation_warning("gpu", "num_gpus=0|1", error=ValueError)
+            raise ValueError(
+                "The `gpu` config is deprecated, please use `num_gpus=0|1` "
+                "instead.")
         if "gpu_fraction" in config:
-            deprecation_warning(
-                "gpu_fraction", "num_gpus=<fraction>", error=ValueError)
+            raise ValueError(
+                "The `gpu_fraction` config is deprecated, please use "
+                "`num_gpus=<fraction>` instead.")
         if "use_gpu_for_workers" in config:
-            deprecation_warning(
-                "use_gpu_for_workers",
-                "num_gpus_per_worker=1",
-                error=ValueError)
+            raise ValueError(
+                "The `use_gpu_for_workers` config is deprecated, please use "
+                "`num_gpus_per_worker=1` instead.")
         if type(config["input_evaluation"]) != list:
             raise ValueError(
                 "`input_evaluation` must be a list of strings, got {}".format(

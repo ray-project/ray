@@ -176,7 +176,7 @@ class ModelCatalog:
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
-                    "Simplex action spaces not supported for Pytorch.")
+                    "Simplex action spaces not supported for torch.")
             dist = Dirichlet
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             if framework == "torch":
@@ -191,8 +191,8 @@ class ModelCatalog:
                 "Dict action spaces are not supported, consider using "
                 "gym.spaces.Tuple instead")
         else:
-            raise NotImplementedError("Unsupported args: {} {}".format(
-                action_space, dist_type))
+            raise NotImplementedError(
+                "Unsupported args: {} {}".format(action_space, dist_type))
 
         return dist, dist.required_model_output_shape(action_space, config)
 

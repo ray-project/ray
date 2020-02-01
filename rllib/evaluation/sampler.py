@@ -529,6 +529,9 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         if builder and (policy.compute_actions.__code__ is
                         TFPolicy.compute_actions.__code__):
             # TODO(ekl): how can we make info batch available to TF code?
+            # TODO(sven): Return dict from _build_compute_actions.
+            # it's becoming more and more unclear otherwise, what's where in
+            # the return tuple.
             pending_fetches[policy_id] = policy._build_compute_actions(
                 builder,
                 obs_batch=[t.obs for t in eval_data],
@@ -537,7 +540,6 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 time_step=policy.global_timestep)
         else:
-            # Capture the 1st 3 returns: 4th output is exploration state.
             eval_results[policy_id] = policy.compute_actions(
                 [t.obs for t in eval_data],
                 state_batches=rnn_in_cols,
@@ -545,7 +547,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 info_batch=[t.info for t in eval_data],
                 episodes=[active_episodes[t.env_id] for t in eval_data],
-                time_step=policy.global_timestep)[:3]
+                time_step=policy.global_timestep)
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)
@@ -607,7 +609,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
                                          off_policy_actions[env_id][agent_id])
             else:
                 episode._set_last_action(agent_id, action)
-        # Save exploration-state in policy.
+        # Save exploration-info in policy.
         policy.last_exploration_info = exploration_info
 
     return actions_to_send

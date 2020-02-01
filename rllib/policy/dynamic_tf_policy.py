@@ -165,10 +165,7 @@ class DynamicTFPolicy(TFPolicy):
         # Default action sampler.
         else:
             action_dist = self.dist_class(model_out, self.model)
-            if config["deterministic"]:
-                action_sampler = action_dist.deterministic_sample()
-            else:
-                action_sampler = action_dist.sample()
+            action_sampler = action_dist.sample()
             action_logp = action_dist.sampled_action_logp()
 
         # Phase 1 init

@@ -3,10 +3,12 @@ import numpy as np
 
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explorations.exploration import Exploration
-from ray.rllib.utils.framework import try_import_tf, get_variable
+from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
+    get_variable
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 tf = try_import_tf()
+torch, _ = try_import_torch()
 
 
 class EpsilonGreedy(Exploration):
@@ -24,7 +26,7 @@ class EpsilonGreedy(Exploration):
                  raw_model_output_key="q_values",
                  fixed_per_worker_epsilon=False,
                  worker_info=None,
-                 framework=None):
+                 framework="tf"):
         """
         Args:
             action_space (Space): The gym action space used by the environment.
@@ -37,6 +39,7 @@ class EpsilonGreedy(Exploration):
         # For now, require Discrete action space (may loosen this restriction
         # in the future).
         assert isinstance(action_space, gym.spaces.Discrete)
+        assert framework is not None
         super().__init__(
             action_space=action_space,
             worker_info=worker_info,
@@ -92,20 +95,19 @@ class EpsilonGreedy(Exploration):
             # Get the current epsilon.
             epsilon = self.epsilon_schedule(self.last_time_step)
 
-            batch_size = len(q_values)
+            batch_size = q_values.size()[0]
             # Mask out actions, whose Q-values are -inf, so that we don't
             # even consider them for exploration.
-            random_valid_action_logits = np.where(
+            random_valid_action_logits = torch.where(
                 q_values == float("-inf"),
-                np.ones_like(q_values) * float("-inf"), np.ones_like(q_values))
+                torch.ones_like(q_values) * float("-inf"),
+                torch.ones_like(q_values))
 
-            random_actions = np.squeeze(
-                # TODO(sven): torch
-                np.multinomial(random_valid_action_logits, 1),
-                axis=1)
+            random_actions = torch.squeeze(
+                torch.multinomial(random_valid_action_logits, 1), axis=1)
 
-            return np.where(
-                np.random.random(tf.stack([batch_size])) < epsilon,
+            return torch.where(
+                torch.empty((batch_size,)).uniform_() < epsilon,
                 random_actions, action)
 
         # Return the action.

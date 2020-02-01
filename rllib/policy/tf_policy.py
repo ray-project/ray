@@ -242,14 +242,9 @@ class TFPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        deterministic=None,
                         explore=True,
                         time_step=None,
                         **kwargs):
-
-        deterministic = deterministic if deterministic is not None else \
-            self.deterministic
-
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
@@ -257,7 +252,6 @@ class TFPolicy(Policy):
             state_batches,
             prev_action_batch,
             prev_reward_batch,
-            deterministic=deterministic,
             explore=explore,
             time_step=time_step)
         # Execute session run to get action (and other fetches).
@@ -468,7 +462,6 @@ class TFPolicy(Policy):
                                prev_action_batch=None,
                                prev_reward_batch=None,
                                episodes=None,
-                               deterministic=False,
                                explore=True,
                                time_step=None):
 

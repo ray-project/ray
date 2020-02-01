@@ -85,26 +85,21 @@ def build_trainer(name,
         def _init(self, config, env_creator):
             if validate_config:
                 validate_config(config)
-
             if get_initial_state:
                 self.state = get_initial_state(self)
             else:
                 self.state = {}
-
             if get_policy_class is None:
                 policy = default_policy
             else:
                 policy = get_policy_class(config)
-
             if before_init:
                 before_init(self)
-
             if make_workers:
                 self.workers = make_workers(self, env_creator, policy, config)
             else:
                 self.workers = self._make_workers(env_creator, policy, config,
                                                   self.config["num_workers"])
-
             if make_policy_optimizer:
                 self.optimizer = make_policy_optimizer(self.workers, config)
             else:
@@ -120,7 +115,6 @@ def build_trainer(name,
         def _train(self):
             if before_train_step:
                 before_train_step(self)
-
             prev_steps = self.optimizer.num_steps_sampled
 
             start = time.time()
@@ -137,7 +131,6 @@ def build_trainer(name,
                 res = collect_metrics_fn(self)
             else:
                 res = self.collect_metrics()
-
             res.update(
                 timesteps_this_iter=self.optimizer.num_steps_sampled -
                 prev_steps,
@@ -145,7 +138,6 @@ def build_trainer(name,
 
             if after_train_result:
                 after_train_result(self, res)
-
             return res
 
         @override(Trainer)

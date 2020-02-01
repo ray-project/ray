@@ -273,7 +273,6 @@ class QMixTorchPolicy(Policy):
             random_numbers = th.rand_like(q_values[:, :, 0])
             pick_random = (random_numbers < self.cur_epsilon).long()
             random_actions = Categorical(avail).sample().long()
-            # TODO(sven): `self.deterministic` has no effect here (hard-coded).
             actions = (pick_random * random_actions +
                        (1 - pick_random) * masked_q_values.argmax(dim=2))
             actions = actions.cpu().numpy()

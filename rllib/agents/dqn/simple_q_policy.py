@@ -98,8 +98,7 @@ def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
     policy.q_func_vars = q_model.variables()
 
     # Action outputs.
-    deterministic_actions = tf.argmax(q_values, axis=1)
-    return deterministic_actions, None
+    return tf.argmax(q_values, axis=1), None
 
 
 def build_q_losses(policy, model, dist_class, train_batch):
