@@ -17,7 +17,6 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
     try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.memory import ray_get_and_free
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
@@ -164,7 +163,7 @@ COMMON_CONFIG = {
     # Disable eager execution on workers (but allow it on the driver). This
     # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
-    
+
     # === Exploration Settings ===
     # Provide a dict specifying the Exploration object's config.
     # Set to False or None for no exploration behavior (e.g. for evaluation).
