@@ -729,7 +729,8 @@ cdef class CoreWorker:
                     c_object_id[0] = object_id.native()
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                    metadata, data_size, c_object_id[0], data))
+                                    metadata, data_size, contained_ids,
+                                    c_object_id[0], data))
                 break
             except ObjectStoreFullError as e:
                 if attempt:
