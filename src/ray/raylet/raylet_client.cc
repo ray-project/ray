@@ -307,7 +307,7 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 }
 
 Status raylet::RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
-                                                    ActorCheckpointID &checkpoint_id) {
+                                                    ActorCheckpointID *checkpoint_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       protocol::CreatePrepareActorCheckpointRequest(fbb, to_flatbuf(fbb, actor_id));
@@ -320,7 +320,7 @@ Status raylet::RayletClient::PrepareActorCheckpoint(const ActorID &actor_id,
   if (!status.ok()) return status;
   auto reply_message =
       flatbuffers::GetRoot<protocol::PrepareActorCheckpointReply>(reply.get());
-  checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());
+  *checkpoint_id = ActorCheckpointID::FromBinary(reply_message->checkpoint_id()->str());
   return Status::OK();
 }
 

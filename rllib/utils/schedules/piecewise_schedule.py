@@ -33,9 +33,7 @@ class PiecewiseSchedule(Schedule):
                 returned. If None then an AssertionError is raised when outside
                 value is requested.
         """
-        # TODO(sven): support tf.
-        assert framework is None
-        super().__init__(framework=None)
+        super().__init__(framework=framework)
 
         idxes = [e[0] for e in endpoints]
         assert idxes == sorted(idxes)
@@ -43,7 +41,7 @@ class PiecewiseSchedule(Schedule):
         self.outside_value = outside_value
         self.endpoints = endpoints
 
-    def value(self, t):
+    def _value(self, t):
         for (l_t, l), (r_t, r) in zip(self.endpoints[:-1], self.endpoints[1:]):
             if l_t <= t < r_t:
                 alpha = float(t - l_t) / (r_t - l_t)
