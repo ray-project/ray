@@ -89,7 +89,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       object_manager_profile_timer_(io_service),
       initial_config_(config),
       local_available_resources_(config.resource_config),
-      worker_pool_(config.num_initial_workers, config.maximum_startup_concurrency,
+      worker_pool_(io_service_,
+                   [this](const std::shared_ptr<LocalClientConnection> &client) {
+                     ProcessDisconnectClientMessage(client);
+                   },
+                   config.num_initial_workers, config.maximum_startup_concurrency,
                    gcs_client_, config.worker_commands),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
@@ -918,7 +922,7 @@ void NodeManager::ProcessClientMessage(
     HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
-    ProcessDisconnectClientMessage(client);
+    // ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;

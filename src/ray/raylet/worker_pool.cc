@@ -38,6 +38,28 @@ bool RemoveWorker(std::unordered_set<std::shared_ptr<ray::raylet::Worker>> &work
   return worker_pool.erase(worker) > 0;
 }
 
+// A helper function to remove a worker client from a map of pid to list of clients.
+// If the list of clients is empty after removing this one, erases it from the map.
+bool RemoveConnection(
+    std::unordered_map<pid_t, std::vector<std::shared_ptr<ray::LocalClientConnection>>>
+        pid_to_connections,
+    const pid_t pid, const std::shared_ptr<ray::LocalClientConnection> &connection) {
+  bool found = false;
+  auto it = pid_to_connections.find(pid);
+  if (it != pid_to_connections.end()) {
+    for (size_t i = 0; i < it->second.size(); i++) {
+      if (it->second[i] == connection) {
+        it->second.erase(it->second.begin() + i);
+        found = true;
+      }
+    }
+    if (it->second.empty()) {
+      pid_to_connections.erase(it);
+    }
+  }
+  return found;
+}
+
 }  // namespace
 
 namespace ray {
@@ -46,19 +68,18 @@ namespace raylet {
 
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
-WorkerPool::WorkerPool(int num_workers, int maximum_startup_concurrency,
-                       std::shared_ptr<gcs::GcsClient> gcs_client,
-                       const WorkerCommandMap &worker_commands)
-    : maximum_startup_concurrency_(maximum_startup_concurrency),
+WorkerPool::WorkerPool(
+    boost::asio::io_service &io_service,
+    std::function<void(const std::shared_ptr<LocalClientConnection> &client)>
+        worker_death_callback,
+    int num_workers, int maximum_startup_concurrency,
+    std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands)
+    : io_service_(io_service),
+      signals_(io_service_, SIGCHLD),
+      worker_death_callback_(worker_death_callback),
+      maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(maximum_startup_concurrency > 0);
-#ifdef _WIN32
-  // TODO(mehrdadn): Is there an equivalent of this we need for Windows?
-#else
-  // Ignore SIGCHLD signals. If we don't do this, then worker processes will
-  // become zombies instead of dying gracefully.
-  signal(SIGCHLD, SIG_IGN);
-#endif
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
@@ -85,7 +106,27 @@ WorkerPool::WorkerPool(int num_workers, int maximum_startup_concurrency,
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
   }
+  signals_.async_wait(boost::bind(&WorkerPool::HandleSIGCHLD, this, _1, _2));
   Start(num_workers);
+}
+
+void WorkerPool::HandleSIGCHLD(const boost::system::error_code &error,
+                               int signal_number) {
+  if (!error) {
+    pid_t child_pid;
+    while ((child_pid = waitpid(-1, NULL, WNOHANG)) > 0) {
+      for (auto &entry : states_by_lang_) {
+        auto &state = entry.second;
+        auto it = state.pid_to_connections.find(child_pid);
+        if (it != state.pid_to_connections.end()) {
+          for (const auto &client : it->second) {
+            worker_death_callback_(client);
+          }
+        }
+      }
+    }
+  }
+  signals_.async_wait(boost::bind(&WorkerPool::HandleSIGCHLD, this, _1, _2));
 }
 
 void WorkerPool::Start(int num_workers) {
@@ -245,10 +286,8 @@ static pid_t spawnvp_wrapper(std::vector<std::string> const &args) {
   pid = fork();
   if (pid == 0) {
     // Child process case.
-    // Reset the SIGCHLD handler for the worker.
     // TODO(mehrdadn): Move any work here to the child process itself
     //                 so that it can also be implemented on Windows.
-    signal(SIGCHLD, SIG_DFL);
     if (execvp(str_args[0], const_cast<char *const *>(str_args.data())) == -1) {
       pid = -1;
       abort();  // fork() succeeded but exec() failed, so abort the child
@@ -293,6 +332,13 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker) {
     state.starting_worker_processes.erase(it);
   }
 
+  auto pid_it = state.pid_to_connections.find(pid);
+  if (pid_it == state.pid_to_connections.end()) {
+    state.pid_to_connections.emplace(
+        pid, std::vector<std::shared_ptr<LocalClientConnection>>{worker->Connection()});
+  } else {
+    pid_it->second.push_back(worker->Connection());
+  }
   state.registered_workers.emplace(std::move(worker));
   return Status::OK();
 }
@@ -405,6 +451,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+  RAY_CHECK(
+      RemoveConnection(state.pid_to_connections, worker->Pid(), worker->Connection()));
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
@@ -416,6 +464,8 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
 void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   auto &state = GetStateForLanguage(driver->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
+  RAY_CHECK(
+      RemoveConnection(state.pid_to_connections, driver->Pid(), driver->Connection()));
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(driver->Pid())}});

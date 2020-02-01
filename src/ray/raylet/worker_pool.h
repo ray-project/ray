@@ -34,13 +34,18 @@ class WorkerPool {
   /// process should create and register the specified number of workers, and add them to
   /// the pool.
   ///
+  /// \param io_service The io_service to run the SIGCHLD handler on.
+  /// \param worker_death_callback Function to be called when a worker dies.
   /// \param num_workers The number of workers to start, per language.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(int num_workers, int maximum_startup_concurrency,
+  WorkerPool(boost::asio::io_service &io_service,
+             std::function<void(const std::shared_ptr<LocalClientConnection> &client)>
+                 worker_death_callback,
+             int num_workers, int maximum_startup_concurrency,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
@@ -190,6 +195,9 @@ class WorkerPool {
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
     std::unordered_map<pid_t, int> starting_worker_processes;
+    /// A map from the pids of worker processes to their connections.
+    std::unordered_map<pid_t, std::vector<std::shared_ptr<LocalClientConnection>>>
+        pid_to_connections;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
     std::unordered_map<pid_t, TaskID> dedicated_workers_to_tasks;
@@ -216,6 +224,18 @@ class WorkerPool {
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
+
+  /// Called on io_service_ when a SIGCHLD is received. When this happens, we
+  /// repeatedly call wait() to get the pids of any exited children and then
+  /// call the worker_death_callback if we still have a connection to the given
+  /// worker.
+  void HandleSIGCHLD(const boost::system::error_code &error, int signal_number);
+
+  /// Used to detect process failures with SIGCHLD.
+  boost::asio::io_service &io_service_;
+  boost::asio::signal_set signals_;
+  std::function<void(const std::shared_ptr<LocalClientConnection> &client)>
+      worker_death_callback_;
 
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
