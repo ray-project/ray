@@ -58,12 +58,6 @@ from ray.includes.common cimport (
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
 )
-from ray.includes.libraylet cimport (
-    CRayletClient,
-    GCSProfileEvent,
-    GCSProfileTableData,
-    WaitResultPair,
-)
 from ray.includes.unique_ids cimport (
     CActorID,
     CActorCheckpointID,
@@ -305,60 +299,6 @@ cdef void prepare_args(
                     CTaskArg.PassByReference(
                         (<ObjectID>core_worker.put_serialized_object(
                             serialized_arg)).native()))
-
-
-cdef class RayletClient:
-    cdef CRayletClient* client
-
-    def __cinit__(self, CoreWorker core_worker):
-        # The core worker and raylet client need to share an underlying
-        # raylet client, so we take a reference to the core worker's client
-        # here. The client is a raw pointer because it is only a temporary
-        # workaround and will be removed once the core worker transition is
-        # complete, so we don't want to change the unique_ptr in core worker
-        # to a shared_ptr. This means the core worker *must* be
-        # initialized before the raylet client.
-        self.client = &core_worker.core_worker.get().GetRayletClient()
-
-    def fetch_or_reconstruct(self, object_ids,
-                             c_bool fetch_only,
-                             TaskID current_task_id=TaskID.nil()):
-        cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
-        check_status(self.client.FetchOrReconstruct(
-            fetch_ids, fetch_only, True, current_task_id.native()))
-
-    def push_error(self, JobID job_id, error_type, error_message,
-                   double timestamp):
-        check_status(self.client.PushError(job_id.native(),
-                                           error_type.encode("ascii"),
-                                           error_message.encode("ascii"),
-                                           timestamp))
-
-    def prepare_actor_checkpoint(self, ActorID actor_id):
-        cdef:
-            CActorCheckpointID checkpoint_id
-            CActorID c_actor_id = actor_id.native()
-
-        # PrepareActorCheckpoint will wait for raylet's reply, release
-        # the GIL so other Python threads can run.
-        with nogil:
-            check_status(self.client.PrepareActorCheckpoint(
-                c_actor_id, checkpoint_id))
-        return ActorCheckpointID(checkpoint_id.Binary())
-
-    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
-                                             ActorCheckpointID checkpoint_id):
-        check_status(self.client.NotifyActorResumedFromCheckpoint(
-            actor_id.native(), checkpoint_id.native()))
-
-    def set_resource(self, basestring resource_name,
-                     double capacity, ClientID client_id):
-        self.client.SetResource(resource_name.encode("ascii"), capacity,
-                                CClientID.FromBinary(client_id.binary()))
-
-    @property
-    def job_id(self):
-        return JobID(self.client.GetJobID().Binary())
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -770,7 +710,6 @@ cdef class CoreWorker:
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
              TaskID current_task_id):
         cdef:
-            WaitResultPair result
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
             CTaskID c_task_id = current_task_id.native()
@@ -1098,6 +1037,35 @@ cdef class CoreWorker:
             async_set_result_callback,
             async_retry_with_plasma_callback,
             <void*>future)
+
+    def push_error(self, JobID job_id, error_type, error_message,
+                   double timestamp):
+        check_status(self.core_worker.get().PushError(
+            job_id.native(), error_type.encode("ascii"),
+            error_message.encode("ascii"), timestamp))
+
+    def prepare_actor_checkpoint(self, ActorID actor_id):
+        cdef:
+            CActorCheckpointID checkpoint_id
+            CActorID c_actor_id = actor_id.native()
+
+        # PrepareActorCheckpoint will wait for raylet's reply, release
+        # the GIL so other Python threads can run.
+        with nogil:
+            check_status(self.core_worker.get().PrepareActorCheckpoint(
+                c_actor_id, &checkpoint_id))
+        return ActorCheckpointID(checkpoint_id.Binary())
+
+    def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
+                                             ActorCheckpointID checkpoint_id):
+        check_status(self.core_worker.get().NotifyActorResumedFromCheckpoint(
+            actor_id.native(), checkpoint_id.native()))
+
+    def set_resource(self, basestring resource_name,
+                     double capacity, ClientID client_id):
+        self.core_worker.get().SetResource(
+            resource_name.encode("ascii"), capacity,
+            CClientID.FromBinary(client_id.binary()))
 
 cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
                                     CObjectID object_id,

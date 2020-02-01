@@ -1252,7 +1252,6 @@ def connect(node,
         node.node_ip_address,
         node.node_manager_port,
     )
-    worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
