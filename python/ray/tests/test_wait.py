@@ -40,8 +40,8 @@ def test_wait_with_no_timeout_returns_object_ids_size_if_it_is_less_than_num_ret
 
 
 def test_wait_with_timeout_returns_up_to_num_returns_items(ray_start_regular):
-    object_ids = [f.remote(0), f.remote(5)]
-    ready_ids, remaining_ids = ray.wait(object_ids, timeout=0.5, num_returns=2)
+    object_ids = [f.remote(0), f.remote(2)]
+    ready_ids, remaining_ids = ray.wait(object_ids, timeout=1.0, num_returns=2)
     assert len(ready_ids) == 1
     assert len(remaining_ids) == 1
 
