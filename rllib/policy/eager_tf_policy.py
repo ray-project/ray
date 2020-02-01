@@ -129,8 +129,7 @@ def traced_eager_policy(eager_policy_cls):
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, explore, time_step,
-                **kwargs)
+                info_batch, episodes, explore, time_step, **kwargs)
 
         @override(Policy)
         @convert_eager_inputs

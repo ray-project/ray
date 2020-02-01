@@ -191,8 +191,8 @@ class ModelCatalog:
                 "Dict action spaces are not supported, consider using "
                 "gym.spaces.Tuple instead")
         else:
-            raise NotImplementedError(
-                "Unsupported args: {} {}".format(action_space, dist_type))
+            raise NotImplementedError("Unsupported args: {} {}".format(
+                action_space, dist_type))
 
         return dist, dist.required_model_output_shape(action_space, config)
 

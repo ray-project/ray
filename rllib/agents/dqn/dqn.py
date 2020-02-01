@@ -110,7 +110,7 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
-    
+
     # DEPRECATED VALUES (set to -1 to indicate they have not been overwritten
     # by user's config). If we don't set them here, we will get an error
     # from the config-key checker.
@@ -166,8 +166,7 @@ def validate_config_and_setup_param_noise(config):
     if "schedule_max_timesteps" in config and \
             config["schedule_max_timesteps"] > 0:
         deprecation_warning(
-            "schedule_max_timesteps",
-            "exploration.epsilon_timesteps AND "
+            "schedule_max_timesteps", "exploration.epsilon_timesteps AND "
             "prioritized_replay_beta_annealing_timesteps")
         schedule_max_timesteps = config["schedule_max_timesteps"]
     if "exploration_final_eps" in config and \
