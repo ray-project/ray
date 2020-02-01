@@ -1252,7 +1252,6 @@ def connect(node,
         node.node_ip_address,
         node.node_manager_port,
     )
-    worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1523,8 +1522,6 @@ def put(value, weakref=False):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
-    Note that this pinning only applies to the particular object ID returned
-    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
