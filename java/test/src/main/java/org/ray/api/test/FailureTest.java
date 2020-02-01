@@ -14,6 +14,7 @@ import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
 import org.ray.api.function.RayFunc0;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -26,6 +27,11 @@ public class FailureTest extends BaseTest {
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
     System.setProperty("raylet.config.num_workers_per_process_java", "1");
+  }
+
+  @AfterClass
+  public void tearDown() {
+    System.clearProperty("raylet.config.num_workers_per_process_java");
   }
 
   public static int badFunc() {
