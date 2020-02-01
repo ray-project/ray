@@ -201,7 +201,7 @@ public class RunManager {
       // start redis shards
       for (int i = 0; i < rayConfig.numberRedisShards; i++) {
         String shard = startRedisInstance(rayConfig.nodeIp,
-            rayConfig.headRedisPort + i + 1, rayConfig.headRedisPassword, i);
+            rayConfig.redisShardPorts[i], rayConfig.headRedisPassword, i);
         client.rpush("RedisShards", shard);
       }
     }
