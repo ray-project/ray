@@ -240,6 +240,17 @@ Troubleshooting installing Arrow
 
 Some candidate possibilities.
 
+When building, you get an error that ``pyarrow==X.Y.Z.RAY`` couldn't be found
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This probably means you are using a version of Python for which the wheel for 
+this customized build of ``PyArrow`` has not been built. To debug, find the 
+exact ``pyarrow=...RAY`` string in ``build.sh``. There will be an AWS S3 bucket
+URL in the same command. Open that URL and look at the names of the wheel files
+for your platform (e.g., Linux). The version strings like ``c37`` indicate the
+Cython version string, e.g., ``3.7``. Make sure your version of Python matches
+one of the files shown.
+
 You have a different version of Flatbuffers installed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
