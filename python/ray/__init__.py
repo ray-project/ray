@@ -4,10 +4,10 @@ import multiprocessing
 from os.path import dirname
 import sys
 
+logger = logging.getLogger(__name__)
+
 # MUST add pickle5 to the import path because it will be imported by some
 # raylet modules.
-
-logger = logging.getLogger(__name__)
 
 if "pickle5" in sys.modules:
     raise ImportError("Ray must be imported before pickle5 because Ray "
