@@ -1,4 +1,5 @@
-"""Example of using RLlib's debug callbacks with Metric implementations and MetricWrapper
+"""Example of using RLlib's debug callbacks with
+Metric implementations and MetricWrapper
 
 Here we use callbacks to track the average CartPole pole angle magnitude as a
 custom metric.
@@ -51,7 +52,7 @@ if __name__ == "__main__":
 
     metric_wrapper = MetricsWrapper([PoleAngle(), NumBatches()])
 
-    ray.init()
+    ray.init(local_mode=True)
     trials = tune.run(
         "PG",
         stop={

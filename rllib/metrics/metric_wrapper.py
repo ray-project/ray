@@ -6,7 +6,8 @@ from rllib.metrics.metric import Metric
 
 
 class MetricsWrapper:
-    """ Wrapper class that gets a list of Metric implementations and exposes callbacks to save boilerplate
+    """ Wrapper class that gets a list of Metric implementations and
+        exposes callbacks to save boilerplate
 
         Example:
              metrics_wrapper = MetricsWrapper([Metric1, Metric2])
@@ -16,6 +17,7 @@ class MetricsWrapper:
                 "callbacks": metrics_wrapper.to_dict()
              }
      """
+
     def __init__(self, metrics: List[Metric]):
         self.metrics = metrics
 
