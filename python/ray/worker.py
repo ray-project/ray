@@ -1252,7 +1252,6 @@ def connect(node,
         node.node_ip_address,
         node.node_manager_port,
     )
-    worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1523,8 +1522,6 @@ def put(value, weakref=False):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
-    Note that this pinning only applies to the particular object ID returned
-    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
@@ -1556,11 +1553,6 @@ def put(value, weakref=False):
 
 def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
-
-    .. warning::
-
-        The **timeout** argument used to be in **milliseconds** (up through
-        ``ray==0.6.1``) and now it is in **seconds**.
 
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
@@ -1609,11 +1601,6 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise TypeError(
             "wait() expected a list of ray.ObjectID, got {}".format(
                 type(object_ids)))
-
-    if isinstance(timeout, int) and timeout != 0:
-        logger.warning("The 'timeout' argument now requires seconds instead "
-                       "of milliseconds. This message can be suppressed by "
-                       "passing in a float.")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
