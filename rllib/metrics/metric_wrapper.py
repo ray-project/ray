@@ -2,7 +2,7 @@ from typing import List, Dict
 
 from ray import tune
 
-from rllib.metrics.metric import Metric
+from ray.rllib.metrics.metric import Metric
 
 
 class MetricsWrapper:
