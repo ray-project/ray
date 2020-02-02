@@ -21,7 +21,6 @@ import yaml
 import ray
 from ray.tune import run_experiments
 
-
 if __name__ == "__main__":
     # Bazel regression test mode: Get path to look for yaml files from argv[2].
     if sys.argv[1] == "BAZEL":
@@ -30,8 +29,7 @@ if __name__ == "__main__":
         rllib_dir = Path(__file__).parent.parent
         print("rllib dir={}".format(rllib_dir))
         yaml_files = rllib_dir.rglob(sys.argv[2] + "/*.yaml")
-        yaml_files = sorted(
-            map(lambda path: str(path.absolute()), yaml_files))
+        yaml_files = sorted(map(lambda path: str(path.absolute()), yaml_files))
     # Normal mode: Get yaml files to run from command line.
     else:
         ray.init()
@@ -62,7 +60,7 @@ if __name__ == "__main__":
                 print("Regression test PASSED")
                 break
             else:
-                print("Regression test FAILED on attempt {}", i+1)
+                print("Regression test FAILED on attempt {}", i + 1)
 
         if not passed:
             print("Overall regression FAILED: Exiting with Error.")
