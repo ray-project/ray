@@ -61,6 +61,8 @@ and renders its behavior in the environment specified by ``--env``.
 
 (Type ``rllib rollout --help`` to see the available evaluation options.)
 
+For more advanced evaluation functionality, refer to `Customized Evaluation During Training <#customized-evaluation-during-training>`__.
+
 Configuration
 -------------
 
@@ -107,8 +109,8 @@ You can run these with the ``rllib train`` command as follows:
 
     rllib train -f /path/to/tuned/example.yaml
 
-Python API
-----------
+Basic Python API
+----------------
 
 The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
@@ -176,13 +178,6 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
     RUNNING trials:
      - PPO_CartPole-v0_0_lr=0.01:	RUNNING [pid=21940], 16 s, 4013 ts, 22 rew
      - PPO_CartPole-v0_1_lr=0.001:	RUNNING [pid=21942], 27 s, 8111 ts, 54.7 rew
-
-Custom Training Workflows
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
-
-For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
 
 Computing Actions
 ~~~~~~~~~~~~~~~~~
@@ -431,6 +426,16 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
+Advanced Python APIs
+--------------------
+
+Custom Training Workflows
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per training iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+
+For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
+
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
 Sometimes, it is necessary to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter used by policies. Ray provides a general way to achieve this through *named actors* (learn more about Ray actors `here <actors.html>`__). As an example, consider maintaining a shared global counter that is incremented by environments and read periodically from your driver program:
@@ -514,6 +519,68 @@ Visualizing Custom Metrics
 Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
+
+Customized Evaluation During Training
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+RLlib will report online training rewards, however in some cases you may want to compute
+rewards with different settings (e.g., with exploration turned off, or on a specific set
+of environment configurations). You can evaluate policies during training by setting one
+or more of the ``evaluation_interval``, ``evaluation_num_episodes``, ``evaluation_config``,
+``evaluation_num_workers``, and ``custom_eval_function`` configs
+(see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
+
+There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
+
+Below are some examples of how the custom evaluation metrics are reported nested under the ``evaluation`` key of normal training results:
+
+.. code-block:: bash
+
+    ------------------------------------------------------------------------
+    Sample output for `python custom_eval.py`
+    ------------------------------------------------------------------------
+
+    INFO trainer.py:623 -- Evaluating current policy for 10 episodes.
+    INFO trainer.py:650 -- Running round 0 of parallel evaluation (2/10 episodes)
+    INFO trainer.py:650 -- Running round 1 of parallel evaluation (4/10 episodes)
+    INFO trainer.py:650 -- Running round 2 of parallel evaluation (6/10 episodes)
+    INFO trainer.py:650 -- Running round 3 of parallel evaluation (8/10 episodes)
+    INFO trainer.py:650 -- Running round 4 of parallel evaluation (10/10 episodes)
+
+    Result for PG_SimpleCorridor_2c6b27dc:
+      ...
+      evaluation:
+        custom_metrics: {}
+        episode_len_mean: 15.864661654135338
+        episode_reward_max: 1.0
+        episode_reward_mean: 0.49624060150375937
+        episode_reward_min: 0.0
+        episodes_this_iter: 133
+
+.. code-block:: bash
+
+    ------------------------------------------------------------------------
+    Sample output for `python custom_eval.py --custom-eval`
+    ------------------------------------------------------------------------
+
+    INFO trainer.py:631 -- Running custom eval function <function ...>
+    Update corridor length to 4
+    Update corridor length to 7
+    Custom evaluation round 1
+    Custom evaluation round 2
+    Custom evaluation round 3
+    Custom evaluation round 4
+
+    Result for PG_SimpleCorridor_0de4e686:
+      ...
+      evaluation:
+        custom_metrics: {}
+        episode_len_mean: 9.15695067264574
+        episode_reward_max: 1.0
+        episode_reward_mean: 0.9596412556053812
+        episode_reward_min: 0.0
+        episodes_this_iter: 223
+        foo: 1
 
 Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
