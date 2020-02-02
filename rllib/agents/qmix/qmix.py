@@ -35,7 +35,9 @@ DEFAULT_CONFIG = with_common_config({
     # Fraction of entire training period over which the exploration rate is
     # annealed
     "exploration_fraction": 0.1,
-    # Final value of random action probability
+    # Initial value of random action probability.
+    "exploration_initial_eps": 1.0,
+    # Final value of random action probability.
     "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,

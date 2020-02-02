@@ -317,7 +317,7 @@ class SerializationContext:
             # use a placeholder for 'self' argument
             pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
 
-    def _deserialize_object_from_arrow(self, data, metadata, object_id):
+    def _deserialize_object(self, data, metadata, object_id):
         if metadata:
             if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
                 if not self.use_pickle:
@@ -437,8 +437,7 @@ class SerializationContext:
             data, metadata = data_metadata_pairs[i]
             try:
                 results.append(
-                    self._deserialize_object_from_arrow(
-                        data, metadata, object_id))
+                    self._deserialize_object(data, metadata, object_id))
                 i += 1
             except DeserializationError:
                 # Wait a little bit for the import thread to import the class.

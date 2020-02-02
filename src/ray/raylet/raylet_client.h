@@ -221,11 +221,11 @@ class RayletClient : public WorkerLeaseInterface {
 
   /// Request raylet backend to prepare a checkpoint for an actor.
   ///
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the new checkpoint (output parameter).
+  /// \param[in] actor_id ID of the actor.
+  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
   /// \return ray::Status.
   ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                     ActorCheckpointID &checkpoint_id);
+                                     ActorCheckpointID *checkpoint_id);
 
   /// Notify raylet backend that an actor was resumed from a checkpoint.
   ///

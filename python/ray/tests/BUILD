@@ -16,7 +16,7 @@ py_test(
 
 py_test(
     name = "test_iter",
-    size = "small",
+    size = "medium",
     srcs = ["test_iter.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
