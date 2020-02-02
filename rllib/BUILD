@@ -52,6 +52,7 @@ py_test(
 py_test(
     name = "test_a3c_tf_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "A3C",
@@ -64,6 +65,7 @@ py_test(
 py_test(
     name = "test_a3c_torch_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "CartPole-v1",
@@ -77,6 +79,7 @@ py_test(
 py_test(
     name = "test_a3c_tf_cartpole_v1_lstm",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v1",
         "--run", "A3C",
@@ -89,6 +92,7 @@ py_test(
 py_test(
     name = "test_a3c_torch_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "Pendulum-v0",
@@ -102,6 +106,7 @@ py_test(
 py_test(
     name = "test_a3c_tf_pong_deterministic_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "PongDeterministic-v0",
         "--run", "A3C",
@@ -114,6 +119,7 @@ py_test(
 py_test(
     name = "test_a3c_torch_pong_deterministic_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "PongDeterministic-v0",
@@ -127,6 +133,7 @@ py_test(
 py_test(
     name = "test_a3c_torch_pong_deterministic_v4",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "PongDeterministic-v0",
@@ -140,6 +147,7 @@ py_test(
 py_test(
     name = "test_a3c_tf_pong_ram_v4",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "Pong-ram-v4",
         "--run", "A3C",
@@ -152,6 +160,7 @@ py_test(
 py_test(
     name = "test_a2c_tf_pong_deterministic_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "PongDeterministic-v0",
         "--run", "A2C",
@@ -166,6 +175,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "FrozenLake-v0",
         "--run", "PPO",
@@ -177,6 +187,7 @@ py_test(
 py_test(
     name = "test_ppo_torch_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "FrozenLake-v0",
@@ -189,6 +200,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v1",
         "--run", "PPO",
@@ -200,6 +212,7 @@ py_test(
 py_test(
     name = "test_ppo_torch_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "CartPole-v1",
@@ -212,6 +225,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_cartpole_v1_lstm",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v1",
         "--run", "PPO",
@@ -224,6 +238,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_cartpole_v1_lstm_simple_optimizer",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v1",
         "--run", "PPO",
@@ -233,7 +248,7 @@ py_test(
         ]
 )
 
-# TODO(sven): Fix LSTM auto-wrapping for torch models. This test case did not exist in Jenkins.
+# TODO(sven): Fix LSTM auto-wrapping for torch models. This test case did not(!) exist in Jenkins.
 #py_test(
 #    name = "test_ppo_torch_cartpole_v1_lstm_simple_optimizer",
 #    main = "train.py", srcs = ["train.py"],
@@ -250,6 +265,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_cartpole_v1_complete_episode_batches",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v1",
         "--run", "PPO",
@@ -261,6 +277,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_cartpole_v1_remote_worker_envs",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v1",
         "--run", "PPO",
@@ -272,6 +289,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_cartpole_v1_remote_worker_envs_b",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v1",
         "--run", "PPO",
@@ -283,6 +301,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_montezuma_revenge_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "MontezumaRevenge-v0",
         "--run", "PPO",
@@ -294,6 +313,7 @@ py_test(
 py_test(
     name = "test_ppo_torch_montezuma_revenge_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "MontezumaRevenge-v0",
@@ -306,6 +326,7 @@ py_test(
 py_test(
     name = "test_appo_tf_pendulum_v0_no_gpus",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "Pendulum-v0",
         "--run", "APPO",
@@ -320,6 +341,7 @@ py_test(
 py_test(
     name = "test_es_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "Pendulum-v0",
         "--run", "ES",
@@ -332,6 +354,7 @@ py_test(
 py_test(
     name = "test_es_pong_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "Pong-v0",
         "--run", "ES",
@@ -346,6 +369,7 @@ py_test(
 py_test(
     name = "test_dqn_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "FrozenLake-v0",
         "--run", "DQN",
@@ -356,6 +380,7 @@ py_test(
 py_test(
     name = "test_dqn_cartpole_v0_no_dueling",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "DQN",
@@ -367,6 +392,7 @@ py_test(
 py_test(
     name = "test_dqn_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "DQN",
@@ -379,7 +405,7 @@ py_test(
 py_test(
     name = "test_dqn_cartpole_v0_with_offline_input_and_softq",
     main = "train.py", srcs = ["train.py"],
-    tags = ["dqn"],
+    tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
     data = glob(["tests/data/cartpole_small/**"]),
@@ -394,6 +420,7 @@ py_test(
 py_test(
     name = "test_dqn_pong_deterministic_v4",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "PongDeterministic-v4",
         "--run", "DQN",
@@ -405,6 +432,7 @@ py_test(
 py_test(
     name = "test_apex_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "APEX",
@@ -419,6 +447,7 @@ py_test(
 py_test(
     name = "test_pg_tf_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "FrozenLake-v0",
         "--run", "PG",
@@ -430,6 +459,7 @@ py_test(
 py_test(
     name = "test_pg_torch_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "FrozenLake-v0",
@@ -442,6 +472,7 @@ py_test(
 py_test(
     name = "test_pg_tf_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "PG",
@@ -453,6 +484,7 @@ py_test(
 py_test(
     name = "test_pg_torch_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--torch",
         "--env", "CartPole-v0",
@@ -465,6 +497,7 @@ py_test(
 py_test(
     name = "test_pg_tf_cartpole_v0_lstm",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "PG",
@@ -476,6 +509,7 @@ py_test(
 py_test(
     name = "test_pg_tf_cartpole_v0_multi_envs_per_worker",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "PG",
@@ -488,6 +522,7 @@ py_test(
 py_test(
     name = "test_pg_tf_pong_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "Pong-v0",
         "--run", "PG",
@@ -501,6 +536,7 @@ py_test(
 py_test(
     name = "test_ddpg_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "Pendulum-v0",
         "--run", "DDPG",
@@ -512,6 +548,7 @@ py_test(
 py_test(
     name = "test_ddpg_mountaincar_continuous_v0_num_workers_0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "MountainCarContinuous-v0",
         "--run", "DDPG",
@@ -524,6 +561,7 @@ py_test(
 py_test(
     name = "test_ddpg_mountaincar_continuous_v0_num_workers_1",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "MountainCarContinuous-v0",
         "--run", "DDPG",
@@ -535,6 +573,7 @@ py_test(
 py_test(
     name = "test_apex_ddpg_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
@@ -548,6 +587,7 @@ py_test(
 py_test(
     name = "test_apex_ddpg_pendulum_v0_complete_episode_batches",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "Pendulum-v0",
         "--run", "APEX_DDPG",
@@ -562,6 +602,7 @@ py_test(
 py_test(
     name = "test_impala_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
@@ -574,6 +615,7 @@ py_test(
 py_test(
     name = "test_impala_cartpole_v0_num_aggregation_workers_2",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
@@ -586,6 +628,7 @@ py_test(
 py_test(
     name = "test_impala_cartpole_v0_lstm",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
@@ -598,6 +641,7 @@ py_test(
 py_test(
     name = "test_impala_buffers_2",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
@@ -610,6 +654,7 @@ py_test(
 py_test(
     name = "test_impala_cartpole_v0_buffers_2_lstm",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
         "--run", "IMPALA",
@@ -622,6 +667,7 @@ py_test(
 py_test(
     name = "test_impala_pong_deterministic_v4_40k_ts_1G_obj_store",
     main = "train.py", srcs = ["train.py"],
+    tags = ["quick_train"],
     args = [
         "--env", "PongDeterministic-v4",
         "--run", "IMPALA",
@@ -636,7 +682,7 @@ py_test(
     name = "test_impala_rollout",
     main = "tests/test_rollout.py",
     data = ["train.py", "rollout.py"],
-    tags = ["sh"],
+    tags = ["quick_train"],
     srcs = ["tests/test_rollout.py"]
 )
 
@@ -645,7 +691,7 @@ py_test(
 py_test(
     name = "test_marwil_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
-    tags = ["marwil"],
+    tags = ["quick_train", "external_files"],
     size = "small",
     # Include the json data file.
     data = glob(["tests/data/cartpole_small/**"]),
