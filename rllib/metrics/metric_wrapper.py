@@ -23,12 +23,12 @@ class MetricsWrapper:
 
     def to_dict(self):
         return {
-            "on_episode_start": tune.function(self.on_episode_start),
-            "on_episode_step": tune.function(self.on_episode_step),
-            "on_episode_end": tune.function(self.on_episode_end),
-            "on_sample_end": tune.function(self.on_sample_end),
-            "on_train_result": tune.function(self.on_train_result),
-            "on_postprocess_traj": tune.function(self.on_postprocess_traj)
+            "on_episode_start": self.on_episode_start,
+            "on_episode_step": self.on_episode_step,
+            "on_episode_end": self.on_episode_end,
+            "on_sample_end": self.on_sample_end,
+            "on_train_result": self.on_train_result,
+            "on_postprocess_traj": self.on_postprocess_traj
         }
 
     def on_episode_start(self, info: Dict):
