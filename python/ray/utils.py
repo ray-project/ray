@@ -263,7 +263,7 @@ def get_cuda_visible_devices():
 
     Returns:
         if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
-            the IDs of the GPUs. If it is not set or is set incorrectly,
+            the IDs of the GPUs. If it is not set or is set to NoDevFiles,
             this returns None.
     """
     gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
@@ -274,16 +274,10 @@ def get_cuda_visible_devices():
     if gpu_ids_str == "":
         return []
 
-    try:
-        gpu_ids = [int(i) for i in gpu_ids_str.split(",")]
-        return gpu_ids
-    except ValueError:
-        # SLURM sets CUDA_VISIBLE_DEVICES to NoDevFiles.
-        # https://github.com/ray-project/ray/issues/6978
-        logger.debug(
-            "Unable to parse GPU IDs, returning empty list. "
-            "Expected a comma separated string, got {}".format(gpu_ids_str))
+    if gpu_ids_str == "NoDevFiles":
         return []
+
+    return [int(i) for i in gpu_ids_str.split(",")]
 
 
 last_set_gpu_ids = None
