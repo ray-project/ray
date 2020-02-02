@@ -1,20 +1,3 @@
-Simon's idea to check around oneself inside script for the other files:
-
-import pytest
-from pathlib import Path
-import sys
-
-if __name__ == "__main__":
-    curr_dir = Path(__file__).parent
-    test_paths = curr_dir.rglob("test_*.py")
-    sorted_path = sorted(map(lambda path: str(path.absolute()), test_paths))
-    serve_tests_files = list(sorted_path)
-
-    print("Testing the following files")
-    for test_file in serve_tests_files:
-        print("->", test_file.split("/")[-1])
-
-    sys.exit(pytest.main(["-v", "-s"] + serve_tests_files))
 # --------------------------------------------------------------------
 # BAZEL/Travis-ci test cases.
 # --------------------------------------------------------------------
@@ -27,10 +10,11 @@ py_test(
     name = "run_regression_tests",
     main = "tests/run_regression_tests.py",
     tags = ["learning_tests"],
-    size = "small",
+    size = "enormous",  # = 60min timeout
     srcs = ["tests/run_regression_tests.py"],
     data = glob(["tuned_examples/regression_tests/**"]),
-    args = glob(["tuned_examples/regression_tests/**"])
+    # Pass `BAZEL` option and the path to look for yaml regression files.
+    args = ["BAZEL", "tuned_examples/regression_tests"]
 )
 
 # ---------------------------------------
@@ -393,6 +377,21 @@ py_test(
 )
 
 py_test(
+    name = "test_dqn_cartpole_v0_with_offline_input_and_softq",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["dqn"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "DQN",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"soft_q\": true}'"
+        ]
+)
+
+py_test(
     name = "test_dqn_pong_deterministic_v4",
     main = "train.py", srcs = ["train.py"],
     args = [
@@ -621,7 +620,7 @@ py_test(
 )
 
 py_test(
-    name = "test_impala_pong_deterministic_v4_40k_ts_huge_obj_store",
+    name = "test_impala_pong_deterministic_v4_40k_ts_1G_obj_store",
     main = "train.py", srcs = ["train.py"],
     args = [
         "--env", "PongDeterministic-v4",
@@ -634,7 +633,20 @@ py_test(
 
 # MARWIL
 
-# One test using offline cartpole_small data (still in jenkins due to BAZEL *.runfile problem).
+py_test(
+    name = "test_marwil_cartpole_v0",
+    main = "train.py", srcs = ["train.py"],
+    tags = ["marwil"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    args = [
+        "--env", "CartPole-v0",
+        "--run", "MARWIL",
+        "--stop", "'{\"training_iteration\": 1}'",
+        "--config", "'{\"input\": \"tests/data/cartpole_small\", \"learning_starts\": 0, \"input_evaluation\": [\"wis\", \"is\"], \"shuffle_buffer_size\": 10}'"
+        ]
+)
 
 # ---------------------------------------
 # contrib Agents
@@ -817,6 +829,13 @@ py_test(
 # ----------------------------------------
 # examples/ directory
 # ----------------------------------------
+
+py_test(
+    name = "examples/custom_eval", main = "examples/custom_eval.py",
+    size = "small",
+    args = ["--custom-eval"],
+    srcs = ["examples/custom_eval.py"]
+)
 
 py_test(
     name = "examples/custom_keras_model_a2c", main="examples/custom_keras_model.py",
