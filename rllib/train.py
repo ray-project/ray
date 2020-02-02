@@ -165,7 +165,7 @@ def run(args, parser):
             rllib_dir = Path(__file__).parent
             input_file = rllib_dir.absolute().joinpath(exp["config"]["input"])
             exp["config"]["input"] = str(input_file)
-    
+
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
         if not exp.get("env") and not exp.get("config", {}).get("env"):
