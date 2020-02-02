@@ -1,4 +1,4 @@
-package org.ray.lib.service.api;
+package org.ray.lib.actorgroup.api.options;
 
 public enum LoadBalancingStrategy {
   ROUND_ROBIN,  // Select the next Actor to invoke the remote function

@@ -1,9 +1,11 @@
-package org.ray.api.id;
+package org.ray.lib.actorgroup.api.id;
 
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Random;
+import org.ray.api.id.BaseId;
+import org.ray.api.id.JobId;
 
 public class ActorGroupId extends BaseId implements Serializable {
 

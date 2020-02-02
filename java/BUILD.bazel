@@ -10,7 +10,7 @@ exports_files([
 all_modules = [
     "api",
     "runtime",
-    "lib-service",
+    "lib-actor-group",
     "test",
     "tutorial",
 ]
@@ -85,7 +85,7 @@ define_java_module(
 )
 
 define_java_module(
-    name = "lib-service",
+    name = "lib-actor-group",
     deps = [
         ":org_ray_ray_api",
     ],
@@ -215,7 +215,7 @@ genrule(
         WORK_DIR="$$(pwd)"
         cp -f $(location //java:org_ray_ray_api_pom) "$$WORK_DIR/java/api/pom.xml"
         cp -f $(location //java:org_ray_ray_runtime_pom) "$$WORK_DIR/java/runtime/pom.xml"
-        cp -f $(location //java:org_ray_ray_lib-service_pom) "$$WORK_DIR/java/lib-service/pom.xml"
+        cp -f $(location //java:org_ray_ray_lib-actor-group_pom) "$$WORK_DIR/java/lib-actor-group/pom.xml"
         cp -f $(location //java:org_ray_ray_tutorial_pom) "$$WORK_DIR/java/tutorial/pom.xml"
         cp -f $(location //java:org_ray_ray_test_pom) "$$WORK_DIR/java/test/pom.xml"
         date > $@

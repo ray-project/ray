@@ -10,9 +10,9 @@
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>ray-lib-service</artifactId>
-  <name>ray service</name>
-  <description>ray service implementation</description>
+  <artifactId>ray-lib-actor-group</artifactId>
+  <name>ray actor group</name>
+  <description>ray actor group implementation</description>
 
   <packaging>jar</packaging>
 

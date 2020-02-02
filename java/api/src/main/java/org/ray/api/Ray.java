@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import org.ray.api.id.ObjectId;
 import org.ray.api.id.UniqueId;
-import org.ray.api.options.ActorGroupOptions;
+import org.ray.api.options.PlacementGroupOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.api.runtimecontext.RuntimeContext;
@@ -119,8 +119,23 @@ public final class Ray extends RayCall {
     return runtime.wait(waitList, waitList.size(), Integer.MAX_VALUE);
   }
 
-  public static RayActorGroup createActorGroup(List<RayActor<?>> actors, ActorGroupOptions options) {
-    return runtime.createActorGroup(actors, options);
+  /**
+   * Create a placement group and preallocate the actor slots.
+   *
+   * @param options The options for creating the placement group.
+   * @return A handle to the created placement group.
+   */
+  public static PlacementGroup createPlacementGroup(PlacementGroupOptions options) {
+    return runtime.createPlacementGroup(options);
+  }
+
+  /**
+   * Creating a life cycle group.
+   *
+   * @return A handle to the created life cycle group.
+   */
+  public static LifeCycleGroup createLifeCycleGroup() {
+    return runtime.createLifeCycleGroup();
   }
 
   /**

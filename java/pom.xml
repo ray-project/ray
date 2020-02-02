@@ -11,7 +11,7 @@
   <modules>
     <module>api</module>
     <module>runtime</module>
-    <module>lib-service</module>
+    <module>lib-actor-group</module>
     <module>test</module>
     <module>tutorial</module>
   </modules>

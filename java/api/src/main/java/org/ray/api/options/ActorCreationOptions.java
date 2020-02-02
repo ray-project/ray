@@ -2,6 +2,8 @@ package org.ray.api.options;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.ray.api.LifeCycleGroup;
+import org.ray.api.SlotSet;
 
 /**
  * The options for creating actor.
@@ -17,15 +19,19 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public final int maxConcurrency;
 
-  public final boolean pending;
+  public final SlotSet slotSet;
+
+  public final LifeCycleGroup lifeCycleGroup;
 
   private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions,
-                               String jvmOptions, int maxConcurrency, boolean pending) {
+                               String jvmOptions, int maxConcurrency, SlotSet slotSet,
+                               LifeCycleGroup lifeCycleGroup) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
     this.jvmOptions = jvmOptions;
     this.maxConcurrency = maxConcurrency;
-    this.pending = pending;
+    this.slotSet = slotSet;
+    this.lifeCycleGroup = lifeCycleGroup;
   }
 
   /**
@@ -37,7 +43,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private int maxReconstructions = NO_RECONSTRUCTION;
     private String jvmOptions = null;
     private int maxConcurrency = 1;
-    private boolean pending = false;
+    private SlotSet slotSet = null;
+    private LifeCycleGroup lifeCycleGroup = null;
 
     public Builder setResources(Map<String, Double> resources) {
       this.resources = resources;
@@ -67,14 +74,19 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    public Builder setPending(boolean pending) {
-      this.pending = pending;
+    public Builder setSlotSet(SlotSet slotSet) {
+      this.slotSet = slotSet;
+      return this;
+    }
+
+    public Builder setLifeCycleGroup(LifeCycleGroup lifeCycleGroup) {
+      this.lifeCycleGroup = lifeCycleGroup;
       return this;
     }
 
     public ActorCreationOptions createActorCreationOptions() {
       return new ActorCreationOptions(
-          resources, maxReconstructions, jvmOptions, maxConcurrency, pending);
+          resources, maxReconstructions, jvmOptions, maxConcurrency, slotSet, lifeCycleGroup);
     }
   }
 

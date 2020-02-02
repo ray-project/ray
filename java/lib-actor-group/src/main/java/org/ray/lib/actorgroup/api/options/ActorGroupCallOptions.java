@@ -1,23 +1,23 @@
-package org.ray.lib.service.api.options;
+package org.ray.lib.actorgroup.api.options;
 
 import org.ray.api.options.CallOptions;
-import org.ray.lib.service.api.LoadBalancingStrategy;
 
 /**
- * The options for calling a Service.
+ * The options for calling an Actor group.
  */
-public class ServiceCallOptions {
+public class ActorGroupCallOptions {
 
   public final CallOptions callOptions;
+
   public final LoadBalancingStrategy loadBalancingStrategy;
 
-  private ServiceCallOptions(CallOptions callOptions, LoadBalancingStrategy loadBalancingStrategy) {
+  private ActorGroupCallOptions(CallOptions callOptions, LoadBalancingStrategy loadBalancingStrategy) {
     this.callOptions = callOptions;
     this.loadBalancingStrategy = loadBalancingStrategy;
   }
 
   /**
-   * The inner class for building ServiceCallOptions.
+   * The inner class for building ActorGroupCallOptions.
    */
   public static class Builder {
 
@@ -34,8 +34,8 @@ public class ServiceCallOptions {
       return this;
     }
 
-    public ServiceCallOptions createServiceCallOptions() {
-      return new ServiceCallOptions(callOptions, loadBalancingStrategy);
+    public ActorGroupCallOptions createActorGroupCallOptions() {
+      return new ActorGroupCallOptions(callOptions, loadBalancingStrategy);
     }
   }
 
