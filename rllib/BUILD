@@ -631,6 +631,15 @@ py_test(
         ]
 )
 
+# From test_rollout.sh (deprecated test file).
+py_test(
+    name = "test_impala_rollout",
+    main = "tests/test_rollout.py",
+    data = ["train.py", "rollout.py"],
+    tags = ["sh"],
+    srcs = ["tests/test_rollout.py"]
+)
+
 # MARWIL
 
 py_test(

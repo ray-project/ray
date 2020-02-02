@@ -159,7 +159,7 @@ def run(args, parser):
 
         # Bazel makes it hard to find files specified in `args` (and `data`).
         # Look for them here.
-        if exp["config"]["input"] and \
+        if exp["config"].get("input") and \
                 not os.path.exists(exp["config"]["input"]):
             # This script runs in the ray/rllib dir.
             rllib_dir = Path(__file__).parent
