@@ -103,6 +103,7 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
+@pytest.mark.xfail
 def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 
     config = {

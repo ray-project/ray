@@ -6,7 +6,7 @@ from ray.rllib.agents.dqn.dqn_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
+from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,9 @@ DEFAULT_CONFIG = with_common_config({
     # Fraction of entire training period over which the exploration rate is
     # annealed
     "exploration_fraction": 0.1,
-    # Final value of random action probability
+    # Initial value of random action probability.
+    "exploration_initial_eps": 1.0,
+    # Final value of random action probability.
     "exploration_final_eps": 0.02,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
@@ -214,11 +216,15 @@ def make_exploration_schedule(config, worker_index):
             # local ev should have zero exploration so that eval rollouts
             # run properly
             return ConstantSchedule(0.0)
-    return LinearSchedule(
-        schedule_timesteps=int(
-            config["exploration_fraction"] * config["schedule_max_timesteps"]),
-        initial_p=1.0,
-        final_p=config["exploration_final_eps"])
+
+    return PiecewiseSchedule(
+        endpoints=[
+            (0, config["exploration_initial_eps"]),
+            (int(config["exploration_fraction"] *
+                 config["schedule_max_timesteps"]),
+             config["exploration_final_eps"]),
+        ],
+        outside_value=config["exploration_final_eps"])
 
 
 def setup_exploration(trainer):
