@@ -4,6 +4,20 @@
 # TO THIS FILE. INSTEAD, ADD NEW RLLIB TEST CASES TO /ray/rllib/BUILD
 # -------------------------------------------------------------------
 # -------------------------------------------------------------------
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/examples/custom_eval.py --custom-eval
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_catalog.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_optimizers.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_filters.py
+
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    /ray/ci/suppress_output python /ray/rllib/tests/test_evaluators.py
 
 
 # Not moved to BAZEL yet due to *.runfile problem (declaring external input files and making them available

@@ -1,7 +1,5 @@
 #include "ray/core_worker/core_worker.h"
 
-#include <cstdlib>
-
 #include "boost/fiber/all.hpp"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
@@ -644,6 +642,26 @@ TaskID CoreWorker::GetCallerId() const {
     caller_id = main_thread_task_id_;
   }
   return caller_id;
+}
+
+Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
+                             const std::string &error_message, double timestamp) {
+  return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
+}
+
+Status CoreWorker::PrepareActorCheckpoint(const ActorID &actor_id,
+                                          ActorCheckpointID *checkpoint_id) {
+  return local_raylet_client_->PrepareActorCheckpoint(actor_id, checkpoint_id);
+}
+
+Status CoreWorker::NotifyActorResumedFromCheckpoint(
+    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
+  return local_raylet_client_->NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
+}
+
+Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
+                               const ClientID &client_id) {
+  return local_raylet_client_->SetResource(resource_name, capacity, client_id);
 }
 
 Status CoreWorker::SubmitTask(const RayFunction &function,
