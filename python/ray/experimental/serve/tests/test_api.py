@@ -10,7 +10,7 @@ import ray
 def test_e2e(serve_instance):
     serve.init()  # so we have access to global state
     serve.create_endpoint("endpoint", "/api", blocking=True)
-    result = serve.api._get_global_state().route_table.list_service()
+    result = serve.api._get_global_state().route_table.list_route_services()
     assert result["/api"] == "endpoint"
 
     retry_count = 5
