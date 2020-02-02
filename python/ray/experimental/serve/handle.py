@@ -2,6 +2,7 @@ from ray.experimental import serve
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.constants import DEFAULT_HTTP_ADDRESS
+from ray.experimental.serve.request_params import RequestInObject
 
 
 class RayServeHandle:
@@ -47,12 +48,19 @@ class RayServeHandle:
             except ValueError as e:
                 raise RayServeException(str(e))
 
+        # create kwargs for RequestInObject
+        in_object_kwargs = dict()
+        if request_slo_ms is not None:
+            in_object_kwargs["request_slo_ms"] = request_slo_ms
+        for kwargs_key in RequestInObject.get_kwargs():
+            if kwargs_key in kwargs:
+                in_object_kwargs[kwargs_key] = kwargs.pop(kwargs_key)
+
+        # create RequestInObject instance
+        request_in_object = RequestInObject(
+            self.endpoint_name, TaskContext.Python, **in_object_kwargs)
         return self.router_handle.enqueue_request.remote(
-            service=self.endpoint_name,
-            request_args=(),
-            request_kwargs=kwargs,
-            request_context=TaskContext.Python,
-            request_slo_ms=request_slo_ms)
+            request_in_object, *args, **kwargs)
 
     def get_traffic_policy(self):
         # TODO(simon): This method is implemented via checking global state

@@ -179,15 +179,19 @@ class CentralizedQueues:
             for backend_name, queue in self.buffer_queues.items()
         }
 
-    async def enqueue_request(self,
-                              service,
-                              request_args,
-                              request_kwargs,
-                              request_context,
-                              request_slo_ms=None):
+    async def enqueue_request(self, request_in_object, *request_args,
+                              **request_kwargs):
+        service = request_in_object.service
         logger.debug("Received a request for service {}".format(service))
 
-        request_slo_ms = _adjust_latency_slo(request_slo_ms)
+        # check if the slo specified is directly the
+        # wall clock time
+        if request_in_object.is_wall_clock_time:
+            request_slo_ms = request_in_object.request_slo_ms
+        else:
+            request_slo_ms = _adjust_latency_slo(
+                request_in_object.request_slo_ms)
+        request_context = request_in_object.request_context
         query = Query(request_args, request_kwargs, request_context,
                       request_slo_ms)
         await self.service_queues[service].put(query)

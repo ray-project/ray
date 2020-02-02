@@ -8,6 +8,8 @@ from ray.experimental.async_api import _async_init
 from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.utils import BytesEncoder
+from ray.experimental.serve.request_params import RequestInObject
+
 from urllib.parse import parse_qs
 
 
@@ -150,13 +152,17 @@ class HTTPProxy:
                 await JSONResponse({"error": str(e)})(scope, receive, send)
                 return
 
+        # create objects necessary for enqueue
+        # enclosing http_body_bytes due to
+        # https://github.com/ray-project/ray/issues/6944
+        args = (scope, [http_body_bytes])
+        kwargs = dict()
+        request_in_object = RequestInObject(
+            endpoint_name, TaskContext.Web, request_slo_ms=request_slo_ms)
+
         actual_result = await (self.serve_global_state.init_or_get_router()
-                               .enqueue_request.remote(
-                                   service=endpoint_name,
-                                   request_args=(scope, http_body_bytes),
-                                   request_kwargs=dict(),
-                                   request_context=TaskContext.Web,
-                                   request_slo_ms=request_slo_ms))
+                               .enqueue_request.remote(request_in_object,
+                                                       *args, **kwargs))
         result = actual_result
 
         if isinstance(result, ray.exceptions.RayTaskError):
