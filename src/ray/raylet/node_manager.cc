@@ -90,7 +90,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       initial_config_(config),
       local_available_resources_(config.resource_config),
       worker_pool_(config.num_initial_workers, config.maximum_startup_concurrency,
-                   gcs_client_, config.worker_commands, config.resource_config),
+                   gcs_client_, config.worker_commands),
       scheduling_policy_(local_queues_),
       reconstruction_policy_(
           io_service_,

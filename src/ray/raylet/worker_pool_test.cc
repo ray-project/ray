@@ -26,9 +26,7 @@ class WorkerPoolMock : public WorkerPool {
 
   explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
       : WorkerPool({{ray::Language::JAVA, 0}, {ray::Language::PYTHON, 0}},
-                   MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands,
-                   ResourceSet(std::unordered_map<std::string, double>(
-                       {{"CPU", static_cast<double>(MAXIMUM_STARTUP_CONCURRENCY)}}))),
+                   MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
         last_worker_pid_(0) {
     for (auto &entry : states_by_lang_) {
       entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;
@@ -304,8 +302,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA,
       ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), {"test_op_0", "test_op_1"});
-  worker_pool_.StartWorkerProcess(Language::JAVA,
-                                  /*limit_concurrently_starting_workers=*/true,
+  worker_pool_.StartWorkerProcess(Language::JAVA, /*is_initial_worker=*/false,
                                   task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
