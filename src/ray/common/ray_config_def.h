@@ -124,11 +124,6 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// when certain event loop handlers take too long.
 RAY_CONFIG(int64_t, max_time_for_handler_milliseconds, 1000)
 
-/// This is used by the Python extension when serializing objects as part of
-/// a task spec.
-RAY_CONFIG(int64_t, size_limit, 10000)
-RAY_CONFIG(int64_t, num_elements_limit, 10000)
-
 /// This is used to cause failures when a certain loop in redis.cc which
 /// synchronously looks up object manager addresses in redis is slow.
 RAY_CONFIG(int64_t, max_time_for_loop, 1000)

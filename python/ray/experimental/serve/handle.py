@@ -1,4 +1,3 @@
-import ray
 from ray.experimental import serve
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.exceptions import RayServeException
@@ -48,14 +47,12 @@ class RayServeHandle:
             except ValueError as e:
                 raise RayServeException(str(e))
 
-        result_object_id_bytes = ray.get(
-            self.router_handle.enqueue_request.remote(
-                service=self.endpoint_name,
-                request_args=(),
-                request_kwargs=kwargs,
-                request_context=TaskContext.Python,
-                request_slo_ms=request_slo_ms))
-        return ray.ObjectID(result_object_id_bytes)
+        return self.router_handle.enqueue_request.remote(
+            service=self.endpoint_name,
+            request_args=(),
+            request_kwargs=kwargs,
+            request_context=TaskContext.Python,
+            request_slo_ms=request_slo_ms)
 
     def get_traffic_policy(self):
         # TODO(simon): This method is implemented via checking global state

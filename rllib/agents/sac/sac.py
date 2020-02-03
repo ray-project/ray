@@ -101,13 +101,14 @@ DEFAULT_CONFIG = with_common_config({
     "num_cpus_per_worker": 1,
     # Whether to compute priorities on workers.
     "worker_side_prioritization": False,
-    # Prevent iterations from going lower than this time span
+    # Prevent iterations from going lower than this time span.
     "min_iter_time_s": 1,
 
     # TODO(ekl) these are unused; remove them from sac config
     "per_worker_exploration": False,
     "exploration_fraction": 0.1,
     "schedule_max_timesteps": 100000,
+    "exploration_initial_eps": 1.0,
     "exploration_final_eps": 0.02,
 })
 # __sphinx_doc_end__

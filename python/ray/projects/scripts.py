@@ -1,3 +1,4 @@
+import argparse
 import click
 import copy
 import jsonschema
@@ -384,6 +385,31 @@ def session_start(command, args, shell, name):
             # Run the actual command.
             logger.info("[4/4] Running command")
             runner.execute_command(run["command"], config)
+
+
+@session_cli.command(
+    name="commands",
+    help="Print available commands for sessions of this project.")
+def session_commands():
+    project_definition = load_project_or_throw()
+    print("Active project: " + project_definition.config["name"])
+    print()
+
+    commands = project_definition.config["commands"]
+
+    for command in commands:
+        print("Command \"{}\":".format(command["name"]))
+        parser = argparse.ArgumentParser(
+            command["name"], description=command.get("help"), add_help=False)
+        params = command.get("params", [])
+        for param in params:
+            name = param.pop("name")
+            if "type" in param:
+                param.pop("type")
+            parser.add_argument("--" + name, **param)
+        help_string = parser.format_help()
+        # Indent the help message by two spaces and print it.
+        print("\n".join(["  " + line for line in help_string.split("\n")]))
 
 
 @session_cli.command(
