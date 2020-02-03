@@ -50,8 +50,8 @@ class EpsilonGreedy(Exploration):
             framework=framework)
 
         self.epsilon_schedule = epsilon_schedule or PiecewiseSchedule(
-            endpoints=[(0, initial_epsilon), (epsilon_timesteps,
-                                              final_epsilon)],
+            endpoints=[(0, initial_epsilon),
+                       (epsilon_timesteps, final_epsilon)],
             outside_value=final_epsilon,
             framework=self.framework)
 
@@ -93,7 +93,7 @@ class EpsilonGreedy(Exploration):
                 torch.multinomial(random_valid_action_logits, 1), axis=1)
 
             return torch.where(
-                torch.empty((batch_size,)).uniform_() < epsilon,
+                torch.empty((batch_size, )).uniform_() < epsilon,
                 random_actions, action)
 
         # Return the action.

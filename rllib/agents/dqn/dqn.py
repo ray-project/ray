@@ -194,9 +194,8 @@ def validate_config_and_setup_param_noise(config):
             "beta_annealing_fraction") * schedule_max_timesteps
     if "per_worker_exploration" in config and \
             config["per_worker_exploration"] != -1:
-        deprecation_warning(
-            "per_worker_exploration",
-            "exploration.type=PerWorkerEpsilonGreedy")
+        deprecation_warning("per_worker_exploration",
+                            "exploration.type=PerWorkerEpsilonGreedy")
         if isinstance(config["exploration"], dict):
             config["exploration"]["type"] = PerWorkerEpsilonGreedy
 

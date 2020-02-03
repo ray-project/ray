@@ -1,5 +1,5 @@
 from ray.rllib.utils.explorations.epsilon_greedy import EpsilonGreedy
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.schedules import ConstantSchedule
 
 
 class PerWorkerEpsilonGreedy(EpsilonGreedy):
