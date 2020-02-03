@@ -7,7 +7,6 @@
 
 #include "ray/common/status.h"
 #include "ray/util/url.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
 
 namespace {
 

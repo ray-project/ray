@@ -197,7 +197,7 @@ ray::Status NodeManager::RegisterGcs() {
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
       [this](const WorkerID &id, const gcs::WorkerFailureData &worker_failure_data) {
-        HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());r
+        HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       worker_failure_handler, /*done_callback=*/nullptr));
