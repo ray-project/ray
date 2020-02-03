@@ -122,7 +122,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def make_policy_optimizer(workers, config):
-    """
+    """Create the single process DQN policy optimizer.
     Returns:
         SyncReplayOptimizer: Used for generic off-policy Trainers.
     """
