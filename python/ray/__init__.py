@@ -36,21 +36,15 @@ if os.path.exists(so_path):
 if "psutil" in sys.modules:
     print("Not using bundled version of psutil")
 else:
-    psutil_path = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "psutil_files")
+    psutil_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                        "psutil_files")
     sys.path.insert(0, psutil_path)
-
-try:
-    import psutil
-    print("Successfully loaded psutil")
-except ImportError as e:
-    print("Failure in loading psutil")
 
 if "setproctitle" in sys.modules:
     print("Not using bundled version of setproctitle")
 else:
-    setproc_path = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "setproctitle_files")
+    setproc_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                        "setproctitle_files")
     sys.path.insert(0, setproc_path)
 
 # MUST import ray._raylet before pyarrow to initialize some global variables.
