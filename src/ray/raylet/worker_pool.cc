@@ -108,9 +108,11 @@ WorkerPool::WorkerPool(
 #ifdef _WIN32
   // TODO(mehrdadn): Handle the Windows case.
 #else
-  signals_ = std::unique_ptr<boost::asio::signal_set>(
-      new boost::asio::signal_set(io_service_, SIGCHLD));
-  signals_->async_wait(boost::bind(&WorkerPool::HandleSIGCHLD, this, _1, _2));
+  if (worker_death_callback_) {
+    signals_ = std::unique_ptr<boost::asio::signal_set>(
+        new boost::asio::signal_set(io_service_, SIGCHLD));
+    signals_->async_wait(boost::bind(&WorkerPool::HandleSIGCHLD, this, _1, _2));
+  }
 #endif
   Start(num_workers);
 }
