@@ -125,10 +125,9 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
   const auto node_id = JavaByteArrayToId<ClientID>(env, nodeId);
   const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
 
-  auto &raylet_client =
-      reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->GetRayletClient();
-  auto status = raylet_client.SetResource(native_resource_name,
-                                          static_cast<double>(capacity), node_id);
+  auto status =
+      reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
+          ->SetResource(native_resource_name, static_cast<double>(capacity), node_id);
   env->ReleaseStringUTFChars(resourceName, native_resource_name);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }

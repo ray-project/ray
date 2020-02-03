@@ -1,5 +1,9 @@
 package org.ray.api.test;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -9,16 +13,11 @@ import org.ray.api.id.ActorId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 public class SingleProcessModeTest extends BaseTest {
 
-  private final static int NUM_ACTOR_INSTANCE = 10;
+  private static final int NUM_ACTOR_INSTANCE = 10;
 
-  private final static int TIMES_TO_CALL_PER_ACTOR = 10;
+  private static final int TIMES_TO_CALL_PER_ACTOR = 10;
 
   @RayRemote
   static class MyActor {

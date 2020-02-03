@@ -12,10 +12,11 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(const WorkerID &worker_id, const Language &language, int port,
+Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
                std::shared_ptr<LocalClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
     : worker_id_(worker_id),
+      pid_(pid),
       language_(language),
       port_(port),
       connection_(connection),
@@ -41,12 +42,7 @@ bool Worker::IsBlocked() const { return blocked_; }
 
 WorkerID Worker::WorkerId() const { return worker_id_; }
 
-ProcessHandle Worker::Process() const { return proc_; }
-
-void Worker::SetProcess(const ProcessHandle &proc) {
-  RAY_CHECK(!proc_);  // this procedure should not be called multiple times
-  proc_ = proc;
-}
+pid_t Worker::Pid() const { return pid_; }
 
 Language Worker::GetLanguage() const { return language_; }
 
@@ -91,6 +87,9 @@ const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;
 }
 
+void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
+const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
+
 const ResourceIdSet &Worker::GetLifetimeResourceIds() const {
   return lifetime_resource_ids_;
 }
@@ -122,14 +121,6 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   // The "release" terminology is a bit confusing here. The resources are being
   // given back to the worker and so "released" by the caller.
   task_resource_ids_.Release(cpu_resources);
-}
-
-const std::unordered_set<ObjectID> &Worker::GetActiveObjectIds() const {
-  return active_object_ids_;
-}
-
-void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids) {
-  active_object_ids_ = object_ids;
 }
 
 Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
