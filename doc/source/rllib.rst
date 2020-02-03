@@ -27,7 +27,7 @@ Then, you can try out training in the following equivalent ways:
 
   rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
                                            # --eager [--trace] for eager execution,
-                                           # --torch to use PyTorch (if available)
+                                           # --torch to use PyTorch
 
 .. code-block:: python
 
