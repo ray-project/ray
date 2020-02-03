@@ -48,6 +48,14 @@ py_test(
 )
 
 py_test(
+    name = "test_wait",
+    size = "medium",
+    srcs = ["test_wait.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_advanced",
     size = "medium",
     srcs = ["test_advanced.py"],
