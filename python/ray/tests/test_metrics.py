@@ -245,8 +245,7 @@ def test_raylet_info_endpoint(shutdown_only):
 
 @pytest.mark.skipif(
     os.environ.get("TRAVIS") is None,
-    reason="This test is skipped when running locally because it requires sudo access"
-)
+    reason="Local env cannot satisfy its password requirement")
 def test_profiling_info_endpoint(shutdown_only):
     ray.init(num_cpus=1)
 
