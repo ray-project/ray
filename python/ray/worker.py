@@ -68,6 +68,12 @@ try:
 except ImportError:
     setproctitle = None
 
+# Whether we should warn about slow put performance.
+if os.environ.get("OMP_NUM_THREADS") == "1":
+    should_warn_of_slow_puts = True
+else:
+    should_warn_of_slow_puts = False
+
 
 class ActorCheckpointInfo:
     """Information used to maintain actor checkpoints."""
@@ -272,9 +278,21 @@ class Worker:
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
+        global should_warn_of_slow_puts
+        if should_warn_of_slow_puts:
+            start = time.perf_counter()
+
         serialized_value = self.get_serialization_context().serialize(value)
-        return self.core_worker.put_serialized_object(
+        result = self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id, pin_object=pin_object)
+
+        if should_warn_of_slow_puts:
+            delta = time.perf_counter() - start
+            if delta > 0.1:
+                logger.warning("OMP_NUM_THREADS=1 is set, this may slow down "
+                               "ray.put() for large objects (issue #6998).")
+                should_warn_of_slow_puts = False
+        return result
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -671,11 +689,6 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
-
-    if "OMP_NUM_THREADS" in os.environ:
-        logger.warning("OMP_NUM_THREADS={} is set, this may impact "
-                       "object transfer performance.".format(
-                           os.environ["OMP_NUM_THREADS"]))
 
     if setproctitle is None:
         logger.warning(

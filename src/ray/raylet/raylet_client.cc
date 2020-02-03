@@ -344,15 +344,6 @@ Status raylet::RayletClient::SetResource(const std::string &resource_name,
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
 
-Status raylet::RayletClient::ReportActiveObjectIDs(
-    const std::unordered_set<ObjectID> &object_ids) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = protocol::CreateReportActiveObjectIDs(fbb, to_flatbuf(fbb, object_ids));
-  fbb.Finish(message);
-
-  return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
-}
-
 Status raylet::RayletClient::RequestWorkerLease(
     const TaskSpecification &resource_spec,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
