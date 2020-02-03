@@ -243,11 +243,6 @@ class RayletClient : public WorkerLeaseInterface {
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
 
-  /// Notifies the raylet of the object IDs currently in use on this worker.
-  /// \param object_ids The set of object IDs currently in use.
-  /// \return ray::Status
-  ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
-
   /// Implements WorkerLeaseInterface.
   ray::Status RequestWorkerLease(
       const ray::TaskSpecification &resource_spec,

@@ -496,13 +496,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
 
-  /// Process client message of ReportActiveObjectIDs.
-  ///
-  /// \param client The client that sent the message.
-  /// \param message_data A pointer to the message data.
-  void ProcessReportActiveObjectIDs(const std::shared_ptr<LocalClientConnection> &client,
-                                    const uint8_t *message_data);
-
   /// Update actor frontier when a task finishes.
   /// If the task is an actor creation task and the actor was resumed from a checkpoint,
   /// restore the frontier from the checkpoint. Otherwise, just extend actor frontier.
