@@ -10,11 +10,14 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(CrossLanguageInvocationTest.class);
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
 
   @Override
@@ -43,7 +46,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   @Test
   public void testCallingPythonFunction() {
     RayObject res = Ray.callPy(PYTHON_MODULE, "py_func", "hello".getBytes());
-    Assert.assertEquals(res.get(), "Response from Python: BytesEcho + hello".getBytes());
+    Assert.assertEquals(res.get(), "[Python]py_func -> [Java]bytesEcho -> hello".getBytes());
   }
 
   @Test(groups = {"directCall"})
@@ -55,25 +58,25 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     Assert.assertEquals(res.get(), "Counter2".getBytes());
   }
 
-  public static byte[] BytesEcho(byte[] value) {
+  public static byte[] bytesEcho(byte[] value) {
+    // This function will be called from test_cross_language_invocation.py
     String valueStr = new String(value);
-    System.out.println(String.format("BytesEcho::new called with: %s",
-            valueStr));
-    return ("BytesEcho + " + valueStr).getBytes();
+    LOGGER.debug(String.format("bytesEcho called with: %s", valueStr));
+    return ("[Java]bytesEcho -> " + valueStr).getBytes();
   }
 
   public static class TestActor {
     public TestActor(byte[] v) {
-      _value = v;
+      value = v;
     }
 
     public byte[] concat(byte[] v) {
-      byte[] c = new byte[_value.length + v.length];
-      System.arraycopy(_value, 0, c, 0, _value.length);
-      System.arraycopy(v, 0, c, _value.length, v.length);
+      byte[] c = new byte[value.length + v.length];
+      System.arraycopy(value, 0, c, 0, value.length);
+      System.arraycopy(v, 0, c, value.length, v.length);
       return c;
     }
 
-    private byte[] _value;
+    private byte[] value;
   }
 }

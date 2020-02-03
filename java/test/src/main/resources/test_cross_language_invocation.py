@@ -10,9 +10,9 @@ import ray
 def py_func(value):
     assert isinstance(value, bytes)
     f = ray.java_function("org.ray.api.test.CrossLanguageInvocationTest",
-                          "BytesEcho")
+                          "bytesEcho")
     r = f.remote(value)
-    return b"Response from Python: " + ray.get(r)
+    return b"[Python]py_func -> " + ray.get(r)
 
 
 @ray.remote
