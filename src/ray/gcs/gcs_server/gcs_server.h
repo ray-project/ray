@@ -70,6 +70,7 @@ class GcsServer {
 
  private:
   /// Set gcs server address to redis.
+  /// Let clients to get gcs server address from redis.
   void SetGcsServerAddress();
 
   /// Gcs server configuration

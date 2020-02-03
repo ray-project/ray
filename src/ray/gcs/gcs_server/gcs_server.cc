@@ -111,7 +111,6 @@ std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
 }
 
 void GcsServer::SetGcsServerAddress() {
-  RAY_LOG(INFO) << "Setting gcs server address.";
   boost::asio::ip::detail::endpoint primary_endpoint;
   boost::asio::ip::tcp::resolver resolver(main_service_);
   boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
