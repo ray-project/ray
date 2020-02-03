@@ -77,7 +77,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      heartbeat_timer_(io_service_),
+      death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
@@ -160,18 +160,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
 
-  // Set timer to periodically send heartbeats containing active object IDs to the raylet.
-  // If the heartbeat timeout is < 0, the heartbeats are disabled.
-  if (RayConfig::instance().worker_heartbeat_timeout_milliseconds() >= 0) {
-    // Seed using current time.
-    std::srand(std::time(nullptr));
-    // Randomly choose a time from [0, timeout]) to send the first heartbeat to avoid all
-    // workers sending heartbeats at the same time.
-    int64_t heartbeat_timeout =
-        std::rand() % RayConfig::instance().worker_heartbeat_timeout_milliseconds();
-    heartbeat_timer_.expires_from_now(
-        boost::asio::chrono::milliseconds(heartbeat_timeout));
-    heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
+  if (worker_type_ == ray::WorkerType::WORKER) {
+    death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
+        RayConfig::instance().raylet_death_check_interval_milliseconds()));
+    death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
   }
 
   internal_timer_.expires_from_now(
@@ -308,28 +300,23 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   }
 }
 
-void CoreWorker::ReportActiveObjectIDs() {
-  std::unordered_set<ObjectID> active_object_ids;
-  size_t max_active = RayConfig::instance().raylet_max_active_object_ids();
-  if (max_active > 0) {
-    active_object_ids = reference_counter_->GetAllInScopeObjectIDs();
-    if (active_object_ids.size() > max_active) {
-      RAY_LOG(INFO) << active_object_ids.size() << " object IDs are currently in scope.";
-    }
-  }
-
-  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
-  if (!local_raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
-    RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
+void CoreWorker::CheckForRayletFailure() {
+// If the raylet fails, we will be reassigned to init (PID=1).
+#ifdef _WIN32
+// TODO(mehrdadn): need a different solution for Windows.
+#else
+  if (getppid() == 1) {
+    RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
+#endif
 
   // Reset the timer from the previous expiration time to avoid drift.
-  heartbeat_timer_.expires_at(
-      heartbeat_timer_.expiry() +
+  death_check_timer_.expires_at(
+      death_check_timer_.expiry() +
       boost::asio::chrono::milliseconds(
-          RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
-  heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
+          RayConfig::instance().raylet_death_check_interval_milliseconds()));
+  death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
 }
 
 void CoreWorker::InternalHeartbeat() {
