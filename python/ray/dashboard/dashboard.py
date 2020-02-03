@@ -423,7 +423,8 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
-    def get_actor_tree(self, workers_info_by_node, infeasible_tasks,ready_tasks) -> Dict:
+    def get_actor_tree(self, workers_info_by_node, infeasible_tasks,
+                       ready_tasks) -> Dict:
         now = time.time()
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
@@ -476,14 +477,12 @@ class NodeStats(threading.Thread):
                 flattened_tree[actor_id] = task
 
             for infeasible_task in infeasible_tasks:
-                _update_flatten_tree(infeasible_task, 
-                                    "actorCreationTaskSpec",
-                                    "infeasibleActor")
+                _update_flatten_tree(infeasible_task, "actorCreationTaskSpec",
+                                     "infeasibleActor")
 
             for ready_task in ready_tasks:
-                _update_flatten_tree(ready_task, 
-                                    "actorCreationTaskSpec",
-                                    "waitUntilResourceAvailable")
+                _update_flatten_tree(ready_task, "actorCreationTaskSpec",
+                                     "waitUntilResourceAvailable")
 
         # construct actor tree
         actor_tree = flattened_tree

@@ -242,39 +242,86 @@ def test_raylet_info_endpoint(shutdown_only):
         time.sleep(1)
 
 
-def test_raylet_infeasible_and_pending_tasks(shutdown_only):
-    AVAILABLE_GPUS = 4
-    INFEASIBLE_GPUS_REQUIRED = 5
+def test_raylet_infeasible_tasks(shutdown_only):
+    AVAILABLE_GPUS = 3
     addresses = ray.init(include_webui=True, num_gpus=AVAILABLE_GPUS)
 
-    @ray.remote(num_gpus=INFEASIBLE_GPUS_REQUIRED) 
-    class ActorB: 
-        def __init__(self):
-            pass 
-    b = ActorB.remote() 
+    # This actor is infeasible to create
+    INFEASIBLE_GPUS_REQUIRED = 5
 
-    @ray.remote(num_gpus=1) 
-    class Actor: 
-        def __init__(self): 
-            pass 
-    @ray.remote 
-    class ActorA: 
-        def __init__(self): 
-            self.a = [Actor.remote() for i in range(4)] 
-    a = ActorA.remote()    
+    @ray.remote(num_gpus=INFEASIBLE_GPUS_REQUIRED)
+    class ActorRequiringGPU:
+        def __init__(self):
+            pass
+
+    ActorRequiringGPU.remote()
 
     start_time = time.time()
     while True:
         time.sleep(1)
         try:
-            webui_url = addresses["webui_url"]
-            webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+            webui_url = addresses["webui_url"].replace("localhost",
+                                                       "http://127.0.0.1")
             raylet_info = requests.get(webui_url + "/api/raylet_info").json()
             actor_info = raylet_info["result"]["actors"]
-            print('raylet info\n{}'.format(raylet_info))
-            print('actor info\n{}'.format(actor_info))
             try:
-                pass
+                assert len(actor_info) == 1
+                _, infeasible_actor_info = actor_info.popitem()
+                assert infeasible_actor_info["state"] == -1
+                assert infeasible_actor_info[
+                    "invalidStateType"] == "infeasibleActor"
+                break
+            except AssertionError:
+                if time.time() > start_time + 30:
+                    raise Exception("Timed out while waiting for actor info \
+                        or object store info update.")
+        except requests.exceptions.ConnectionError:
+            if time.time() > start_time + 30:
+                raise Exception(
+                    "Timed out while waiting for dashboard to start.")
+
+
+def test_raylet_pending_tasks(shutdown_only):
+    AVAILABLE_GPUS = 3
+    CHILD_GPU_REQUIRED = 1
+    SPAWNING_ACTORS_NUM = 4
+    PENDING_ACTOR = (SPAWNING_ACTORS_NUM * CHILD_GPU_REQUIRED) - AVAILABLE_GPUS
+    addresses = ray.init(include_webui=True, num_gpus=AVAILABLE_GPUS)
+
+    @ray.remote(num_gpus=CHILD_GPU_REQUIRED)
+    class ActorRequiringGPU:
+        def __init__(self):
+            pass
+
+    @ray.remote
+    class ParentActor:
+        def __init__(self):
+            self.a = [
+                ActorRequiringGPU.remote() for i in range(SPAWNING_ACTORS_NUM)
+            ]
+
+    ParentActor.remote()
+
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            webui_url = addresses["webui_url"].replace("localhost",
+                                                       "http://127.0.0.1")
+            raylet_info = requests.get(webui_url + "/api/raylet_info").json()
+            actor_info = raylet_info["result"]["actors"]
+            try:
+                assert len(actor_info) == 1
+                _, infeasible_actor_info = actor_info.popitem()
+                children = infeasible_actor_info["children"]
+                assert len(children) == SPAWNING_ACTORS_NUM
+
+                pending_actor_detected = 0
+                for child_id, child in children.items():
+                    if (child["invalidStateType"] ==
+                            "waitUntilResourceAvailable"):
+                        pending_actor_detected += 1
+                assert pending_actor_detected == PENDING_ACTOR
                 break
             except AssertionError:
                 if time.time() > start_time + 30:
@@ -315,7 +362,6 @@ def test_profiling_info_endpoint(shutdown_only):
 
     reply = reporter_stub.GetProfilingStats(
         reporter_pb2.GetProfilingStatsRequest(pid=actor_pid, duration=10))
-    print('reply: {}'.format(reply))
     profiling_stats = json.loads(reply.profiling_stats)
     assert profiling_stats is not None
 
