@@ -245,7 +245,7 @@ def test_raylet_info_endpoint(shutdown_only):
 
 @pytest.mark.skipif(
     os.environ.get("TRAVIS") is None,
-    reason="Local env cannot satisfy its password requirement")
+    reason="This test requires password-less sudo due to py-spy requirement.")
 def test_profiling_info_endpoint(shutdown_only):
     ray.init(num_cpus=1)
 
