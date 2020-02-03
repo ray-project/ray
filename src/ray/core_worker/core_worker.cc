@@ -178,7 +178,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
-      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
+      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
+      check_signals_));
 
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_manager_,
