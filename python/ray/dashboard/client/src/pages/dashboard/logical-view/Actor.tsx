@@ -7,9 +7,9 @@ import {
   checkProfilingStatus,
   CheckProfilingStatusResponse,
   getProfilingResultURL,
+  launchKillActor,
   launchProfiling,
-  RayletInfoResponse,
-  launchKillActor
+  RayletInfoResponse
 } from "../../../api";
 import Actors from "./Actors";
 import Collapse from "@material-ui/core/Collapse";
@@ -250,12 +250,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               ))}
               ){" "}
-              {actor.state === 0 ? (
+              {actor.state === 0 && (
                 <span className={classes.action} onClick={this.killActor}>
                   Kill Actor
                 </span>
-              ) : (
-                ""
               )}
               {Object.entries(profiling).map(
                 ([profilingId, { startTime, latestResponse }]) =>
