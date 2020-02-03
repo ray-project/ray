@@ -763,7 +763,7 @@ py_test(
 
 py_test(
     name = "tests/test_optimizers",
-    size = "small",
+    size = "large",
     srcs = ["tests/test_optimizers.py"]
 )
 
@@ -847,7 +847,7 @@ py_test(
 
 py_test(
     name = "tests/test_supported_spaces",
-    size = "small",
+    size = "large",
     srcs = ["tests/test_supported_spaces.py"]
 )
 
@@ -878,6 +878,7 @@ py_test(
 py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
+    size = "large",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
@@ -915,21 +916,21 @@ py_test(
 
 py_test(
     name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_action_cartpole.py"],
     args = ["--run=PG", "--stop=50"]
 )
 
 py_test(
     name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_action_cartpole.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_action_cartpole.py"],
     args = ["--run=PPO", "--stop=50"]
 )
 
 py_test(
     name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_action_cartpole.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/parametric_action_cartpole.py"],
     args = ["--run=DQN", "--stop=50"]
 )
@@ -978,21 +979,21 @@ py_test(
 
 py_test(
     name = "examples/cartpole_lstm_ppo", main="examples/cartpole_lstm.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=PPO", "--stop=200"]
 )
 
 py_test(
     name = "examples/cartpole_lstm_impala", main="examples/cartpole_lstm.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=IMPALA", "--stop=100"]
 )
 
 py_test(
     name = "examples/cartpole_lstm", main="examples/cartpole_lstm.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--stop=200", "--use-prev-action-reward"]
 )
@@ -1006,7 +1007,7 @@ py_test(
 
 py_test(
     name = "examples/eager_execution",
-    size = "small",
+    size = "large",
     srcs = ["examples/eager_execution.py"],
     args = ["--iters=2"]
 )
@@ -1040,28 +1041,28 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic",
-    size = "small",
+    size = "medium",
     srcs = ["examples/centralized_critic.py"],
     args = ["--stop=2000"]
 )
 
 py_test(
     name = "examples/centralized_critic_2",
-    size = "small",
+    size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--stop=2000"]
 )
 
 py_test(
     name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=contrib/MADDPG"]
 )
 
 py_test(
     name = "examples/twostep_game_pg", main = "examples/twostep_game.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=PG"]
 )
@@ -1069,7 +1070,7 @@ py_test(
 py_test(
     name = "examples/twostep_game_qmix",
     main = "examples/twostep_game.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=QMIX"]
 )
@@ -1077,7 +1078,7 @@ py_test(
 py_test(
     name = "examples/twostep_game_apex_qmix",
     main = "examples/twostep_game.py",
-    size = "small",
+    size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=APEX_QMIX"]
 )
