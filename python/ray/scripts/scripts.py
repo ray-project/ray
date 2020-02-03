@@ -763,9 +763,16 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
 
     port_forward = [(port, port) for port in list(port_forward)]
     cmd = " ".join(command_parts)
-    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop,
-                 start=False, override_cluster_name=cluster_name,
-                 port_forward=port_forward)
+    exec_cluster(
+        cluster_config_file,
+        cmd,
+        docker,
+        screen,
+        tmux,
+        stop,
+        start=False,
+        override_cluster_name=cluster_name,
+        port_forward=port_forward)
 
 
 @cli.command()
