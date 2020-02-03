@@ -258,7 +258,6 @@ class SSHCommandRunner:
             # still create an interactive shell in some ssh versions
             final_cmd.append("while true; do sleep 86400; done")
         try:
-            print("Final command: ", " ".join(final_cmd))
             self.process_runner.check_call(final_cmd)
         except subprocess.CalledProcessError:
             if exit_on_fail:
