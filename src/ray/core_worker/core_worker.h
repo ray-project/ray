@@ -97,7 +97,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorId(const ActorID &actor_id);
 
-  void SetWebuiDisplay(const std::string &message);
+  void SetWebuiDisplay(const std::string &key, const std::string &message);
+
+  void SetActorTitle(const std::string &title);
 
   /// Increase the reference count for this object ID.
   /// Increase the local reference count for this object ID. Should be called
@@ -284,6 +286,40 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// of the bytes zeroed out.
   TaskID GetCallerId() const;
 
+  /// Push an error to the relevant driver.
+  ///
+  /// \param[in] The ID of the job_id that the error is for.
+  /// \param[in] The type of the error.
+  /// \param[in] The error message.
+  /// \param[in] The timestamp of the error.
+  /// \return Status.
+  Status PushError(const JobID &job_id, const std::string &type,
+                   const std::string &error_message, double timestamp);
+
+  /// Request raylet backend to prepare a checkpoint for an actor.
+  ///
+  /// \param[in] actor_id ID of the actor.
+  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
+  /// \return Status.
+  Status PrepareActorCheckpoint(const ActorID &actor_id,
+                                ActorCheckpointID *checkpoint_id);
+
+  /// Notify raylet backend that an actor was resumed from a checkpoint.
+  ///
+  /// \param[in] actor_id ID of the actor.
+  /// \param[in] checkpoint_id ID of the checkpoint from which the actor was resumed.
+  /// \return Status.
+  Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
+                                          const ActorCheckpointID &checkpoint_id);
+
+  /// Sets a resource with the specified capacity and client id
+  /// \param[in] resource_name Name of the resource to be set.
+  /// \param[in] capacity Capacity of the resource.
+  /// \param[in] client_Id ClientID where the resource is to be set.
+  /// \return Status
+  Status SetResource(const std::string &resource_name, const double capacity,
+                     const ClientID &client_id);
+
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
@@ -457,8 +493,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void.
   void Shutdown();
 
-  /// Send the list of active object IDs to the raylet.
-  void ReportActiveObjectIDs();
+  /// Check if the raylet has failed. If so, shutdown.
+  void CheckForRayletFailure();
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
@@ -572,9 +608,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  /// Timer used to periodically send heartbeat containing active object IDs to the
-  /// raylet.
-  boost::asio::steady_timer heartbeat_timer_;
+  /// Timer used to periodically check if the raylet has died.
+  boost::asio::steady_timer death_check_timer_;
 
   /// Timer for internal book-keeping.
   boost::asio::steady_timer internal_timer_;
@@ -654,8 +689,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
   TaskSpecification current_task_ GUARDED_BY(mutex_);
 
-  /// String to be displayed on Web UI.
-  std::string webui_display_ GUARDED_BY(mutex_);
+  /// Key value pairs to be displayed on Web UI.
+  std::unordered_map<std::string, std::string> webui_display_ GUARDED_BY(mutex_);
+
+  /// Actor title that consists of class name, args, kwargs for actor construction.
+  std::string actor_title_ GUARDED_BY(mutex_);
 
   /// Number of tasks that have been pushed to the actor but not executed.
   std::atomic<int64_t> task_queue_length_;

@@ -80,22 +80,6 @@ matrix:
         - go get github.com/bazelbuild/buildtools/buildifier
         - ./ci/travis/bazel-format.sh
 
-    - os: linux
-      env: SANITIZER=1 CC=clang PYTHON=3.5 PYTHONWARNINGS=ignore
-
-      install:
-        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
-
-        - ./ci/suppress_output ./ci/travis/install-bazel.sh
-        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
-
-      script:
-        # Run core worker tests with thread sanitizer
-        - RAY_BAZEL_CONFIG="--config=tsan" TSAN_OPTIONS="report_atomic_races=0" ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
-
     # Build Linux wheels.
     - os: linux
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
@@ -159,7 +143,7 @@ script:
   # cc bazel tests
   - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
-  # ray serve tests
+  # ray serve tests TODO(ekl): these should be moved to bazel
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
 
@@ -169,11 +153,13 @@ script:
   - go test ./...
   - cd ../..
 
-  # bazel python tests. This should be run last to keep its logs at the end of travis logs.
+  # random python tests TODO(ekl): these should be moved to bazel
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
 
-  - ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
+  # bazel python tests. This should be run last to keep its logs at the end of travis logs.
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...; fi
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
   # NO MORE TESTS BELOW, keep them above.
 
 deploy:

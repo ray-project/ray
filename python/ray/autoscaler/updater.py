@@ -29,7 +29,7 @@ KUBECTL_RSYNC = os.path.join(
 
 def with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
-                         "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
+                         "export PYTHONWARNINGS=ignore && ")
     return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 
@@ -172,6 +172,7 @@ class SSHCommandRunner:
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
+            ("IdentitiesOnly", "yes"),
         ]
 
         return ["-i", self.ssh_private_key] + [
@@ -276,8 +277,8 @@ class SSHCommandRunner:
         ])
 
     def remote_shell_command_str(self):
-        return "ssh -i {} {}@{}\n".format(self.ssh_private_key, self.ssh_user,
-                                          self.ssh_ip)
+        return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
+            self.ssh_private_key, self.ssh_user, self.ssh_ip)
 
 
 class NodeUpdater:
