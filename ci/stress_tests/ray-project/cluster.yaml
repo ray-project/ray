@@ -1,5 +1,9 @@
+####################################################################
+# All nodes in this cluster will auto-terminate in 1 hour
+####################################################################
+
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: ray-stress-tests
+cluster_name: stress-testing
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
@@ -24,6 +28,7 @@ provider:
     type: aws
     region: us-west-2
     availability_zone: us-west-2a
+    cache_stopped_nodes: False
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -39,7 +44,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: m4.16xlarge
-    ImageId: ami-06d51e91cea0dac8d
+    ImageId: ami-06d51e91cea0dac8d # Ubuntu 18.04
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
@@ -55,7 +60,7 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: m4.large
-    ImageId: ami-06d51e91cea0dac8d
+    ImageId: ami-06d51e91cea0dac8d # Ubuntu 18.04
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
@@ -81,7 +86,7 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # Install basics.
+    # Uncomment these if you want to build ray from source.
     # - sudo apt-get -qq update
     # - sudo apt-get install -y build-essential curl unzip
     # Install Anaconda.
@@ -109,4 +114,4 @@ head_start_ray_commands:
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --num-gpus=100
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --num-gpus=100
