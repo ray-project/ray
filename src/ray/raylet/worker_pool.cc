@@ -75,7 +75,6 @@ WorkerPool::WorkerPool(
     int num_workers, int maximum_startup_concurrency,
     std::shared_ptr<gcs::GcsClient> gcs_client, const WorkerCommandMap &worker_commands)
     : io_service_(io_service),
-      signals_(io_service_, SIGCHLD),
       worker_death_callback_(worker_death_callback),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
@@ -106,7 +105,13 @@ WorkerPool::WorkerPool(
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
   }
-  signals_.async_wait(boost::bind(&WorkerPool::HandleSIGCHLD, this, _1, _2));
+#ifdef _WIN32
+  // TODO(mehrdadn): Handle the Windows case.
+#else
+  signals_ = std::unique_ptr<boost::asio::signal_set>(
+      new boost::asio::signal_set(io_service_, SIGCHLD));
+  signals_->async_wait(boost::bind(&WorkerPool::HandleSIGCHLD, this, _1, _2));
+#endif
   Start(num_workers);
 }
 
@@ -126,7 +131,7 @@ void WorkerPool::HandleSIGCHLD(const boost::system::error_code &error,
       }
     }
   }
-  signals_.async_wait(boost::bind(&WorkerPool::HandleSIGCHLD, this, _1, _2));
+  signals_->async_wait(boost::bind(&WorkerPool::HandleSIGCHLD, this, _1, _2));
 }
 
 void WorkerPool::Start(int num_workers) {

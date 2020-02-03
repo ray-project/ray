@@ -231,9 +231,13 @@ class WorkerPool {
   /// worker.
   void HandleSIGCHLD(const boost::system::error_code &error, int signal_number);
 
-  /// Used to detect process failures with SIGCHLD.
+  /// Runs the signal handler for the signal_set below.
   boost::asio::io_service &io_service_;
-  boost::asio::signal_set signals_;
+
+  /// Used to detect process failures with SIGCHLD.
+  std::unique_ptr<boost::asio::signal_set> signals_;
+
+  /// Function called when a worker process dies.
   std::function<void(const std::shared_ptr<LocalClientConnection> &client)>
       worker_death_callback_;
 
