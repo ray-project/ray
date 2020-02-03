@@ -25,8 +25,7 @@ if os.path.exists(so_path):
     CDLL(so_path, ctypes.RTLD_GLOBAL)
 
 if "psutil" in sys.modules:
-    print("init: please remove psutil")
-    #TODO(ianrodney): Please look into handling what happens if psutil is pre-installed
+    print("Not using bundled version of psutil")
 else:
     psutil_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
                                "psutil_files")
@@ -39,8 +38,7 @@ except ImportError as e:
     print("Failure in loading psutil")
 
 if "setproctitle" in sys.modules:
-    print("Please remove setproctitle")
-    #TODO(ianrodney): Please look into handling what happens if psutil is pre-installed
+    print("Not using bundled version of setproctitle")
 else:
     setproc_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
                         "setproctitle_files")
