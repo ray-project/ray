@@ -10,10 +10,7 @@ import subprocess
 from concurrent import futures
 
 import sys
-if "psutil" in sys.modules:
-    print("please remove psutil")
-else:
-    print("Loading reporter")
+if "psutil" not in sys.modules:
     psutil_path = os.path.join(
         os.path.abspath(os.path.dirname(__file__)), "psutil_files")
     sys.path.insert(0, psutil_path)
