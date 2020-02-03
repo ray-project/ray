@@ -32,7 +32,8 @@ class MockPolicy(TestPolicy):
                                other_agent_batches=None,
                                episode=None):
         assert episode is not None
-        return compute_advantages(batch, 100.0, 0.9, use_gae=False)
+        return compute_advantages(
+            batch, 100.0, 0.9, use_gae=False, use_critic=False)
 
 
 class BadPolicy(MockPolicy):

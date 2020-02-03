@@ -29,7 +29,7 @@ KUBECTL_RSYNC = os.path.join(
 
 def with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
-                         "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
+                         "export PYTHONWARNINGS=ignore && ")
     return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 

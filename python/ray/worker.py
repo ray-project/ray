@@ -68,6 +68,12 @@ try:
 except ImportError:
     setproctitle = None
 
+# Whether we should warn about slow put performance.
+if os.environ.get("OMP_NUM_THREADS") == "1":
+    should_warn_of_slow_puts = True
+else:
+    should_warn_of_slow_puts = False
+
 
 class ActorCheckpointInfo:
     """Information used to maintain actor checkpoints."""
@@ -272,9 +278,21 @@ class Worker:
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
+        global should_warn_of_slow_puts
+        if should_warn_of_slow_puts:
+            start = time.perf_counter()
+
         serialized_value = self.get_serialization_context().serialize(value)
-        return self.core_worker.put_serialized_object(
+        result = self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id, pin_object=pin_object)
+
+        if should_warn_of_slow_puts:
+            delta = time.perf_counter() - start
+            if delta > 0.1:
+                logger.warning("OMP_NUM_THREADS=1 is set, this may slow down "
+                               "ray.put() for large objects (issue #6998).")
+                should_warn_of_slow_puts = False
+        return result
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -671,11 +689,6 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
-
-    if "OMP_NUM_THREADS" in os.environ:
-        logger.warning("OMP_NUM_THREADS={} is set, this may impact "
-                       "object transfer performance.".format(
-                           os.environ["OMP_NUM_THREADS"]))
 
     if setproctitle is None:
         logger.warning(
@@ -1252,7 +1265,6 @@ def connect(node,
         node.node_ip_address,
         node.node_manager_port,
     )
-    worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1459,6 +1471,10 @@ def get(object_ids, timeout=None):
     object has been created). If object_ids is a list, then the objects
     corresponding to each object in the list will be returned.
 
+    This method will error will error if it's running inside async context,
+    you can use ``await object_id`` instead of ``ray.get(object_id)``. For
+    a list of object ids, you can use ``await asyncio.gather(*object_ids)``.
+
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
             get.
@@ -1519,8 +1535,6 @@ def put(value, weakref=False):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
-    Note that this pinning only applies to the particular object ID returned
-    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
@@ -1553,11 +1567,6 @@ def put(value, weakref=False):
 def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
-    .. warning::
-
-        The **timeout** argument used to be in **milliseconds** (up through
-        ``ray==0.6.1``) and now it is in **seconds**.
-
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
@@ -1572,6 +1581,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     precedes B in the input list, and both are in the ready list, then A will
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
+
+    This method will error if it's running inside an async context. Instead of
+    ``ray.wait(object_ids)``, you can use ``await asyncio.wait(object_ids)``.
 
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
@@ -1602,11 +1614,6 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise TypeError(
             "wait() expected a list of ray.ObjectID, got {}".format(
                 type(object_ids)))
-
-    if isinstance(timeout, int) and timeout != 0:
-        logger.warning("The 'timeout' argument now requires seconds instead "
-                       "of milliseconds. This message can be suppressed by "
-                       "passing in a float.")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
