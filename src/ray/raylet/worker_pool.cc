@@ -46,8 +46,7 @@ namespace raylet {
 
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
-WorkerPool::WorkerPool(int num_workers,
-                       EnumUnorderedMap<Language, int> num_initial_workers,
+WorkerPool::WorkerPool(EnumUnorderedMap<Language, int> num_initial_workers,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,

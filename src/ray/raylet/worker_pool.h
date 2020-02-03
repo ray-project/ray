@@ -42,7 +42,7 @@ class WorkerPool {
   /// language.
   /// \param resource_config The node's resource configuration.
   WorkerPool(EnumUnorderedMap<Language, int> num_initial_workers,
-             std::shared_ptr<gcs::GcsClient> gcs_client,
+             int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands, const ResourceSet &resource_config);
 
   /// Destructor responsible for freeing a set of workers owned by this class.

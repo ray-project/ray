@@ -40,10 +40,7 @@ class WorkerPoolMock : public WorkerPool {
     states_by_lang_.clear();
   }
 
-  void StartWorkerProcess(const Language &language,
-                          const std::vector<std::string> &dynamic_options = {}) {
-    WorkerPool::StartWorkerProcess(language, dynamic_options);
-  }
+  using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
 
   pid_t StartProcess(const std::vector<std::string> &worker_command_args) override {
     last_worker_pid_ += 1;
