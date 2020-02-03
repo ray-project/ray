@@ -155,6 +155,7 @@ class QMixTorchPolicy(Policy):
     dict space with an action_mask key, e.g. {"obs": ob, "action_mask": mask}.
     The mask space must be `Box(0, 1, (n_actions,))`.
     """
+
     def __init__(self, obs_space, action_space, config):
         _validate(obs_space, action_space)
         config = dict(ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG, **config)

@@ -95,8 +95,7 @@ def validate_config(config):
     # PyTorch check.
     if config["use_pytorch"]:
         raise ValueError(
-            "IMPALA does not support PyTorch yet! Use tf instead."
-        )
+            "IMPALA does not support PyTorch yet! Use tf instead.")
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
 

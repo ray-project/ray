@@ -74,7 +74,6 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         CActorID ActorId() const
         uint64_t ActorCounter() const
         CObjectID ActorDummyObject() const
-        c_bool IsCrossLanguage() const
 
 
 cdef extern from "ray/common/task/task_execution_spec.h" nogil:

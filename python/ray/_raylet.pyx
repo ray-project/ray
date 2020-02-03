@@ -264,15 +264,6 @@ cdef int prepare_resources(
     return 0
 
 
-cdef c_vector[c_string] string_vector_from_list(list string_list):
-    cdef:
-        c_vector[c_string] out
-    for s in string_list:
-        if not isinstance(s, bytes):
-            raise TypeError("string_list elements must be bytes")
-        out.push_back(s)
-    return out
-
 cdef void prepare_args(
         CoreWorker core_worker, args, c_vector[CTaskArg] *args_vector):
     cdef:
@@ -781,8 +772,8 @@ cdef class CoreWorker:
             task_options = CTaskOptions(
                 num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+                language.lang, function_descriptor.descriptor)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
@@ -817,8 +808,8 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+                language.lang, function_descriptor.descriptor)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
@@ -855,8 +846,8 @@ cdef class CoreWorker:
                 c_resources[b"CPU"] = num_method_cpus
             task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(args, &args_vector)
+                language.lang, function_descriptor.descriptor)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitActorTask(
