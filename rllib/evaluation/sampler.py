@@ -539,7 +539,9 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
         else:
             # TODO(sven): Does this work for LSTM torch?
             rnn_in_cols = [
-                np.stack([row[i] for row in rnn_in]) for i in range(len(rnn_in[0]))]
+                np.stack([row[i] for row in rnn_in])
+                for i in range(len(rnn_in[0]))
+            ]
             eval_results[policy_id] = policy.compute_actions(
                 [t.obs for t in eval_data],
                 rnn_in_cols,

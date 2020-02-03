@@ -411,13 +411,14 @@ def build_eager_tf_policy(name,
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
                 # TODO: set seq len and state-in properly
-                self._seq_lens = tf.ones(samples[SampleBatch.CUR_OBS].shape[0], dtype=tf.int32)
+                self._seq_lens = tf.ones(
+                    samples[SampleBatch.CUR_OBS].shape[0], dtype=tf.int32)
                 samples["seq_lens"] = self._seq_lens
 
                 state_in = []
                 for i in range(self.num_state_tensors()):
                     state_in.append(samples["state_in_{}".format(i)])
-                
+
                 self._state_in = state_in
                 model_out, _ = self.model(samples, self._state_in,
                                           self._seq_lens)

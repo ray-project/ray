@@ -28,8 +28,8 @@ class CustomModel(RecurrentTFModelV2):
         self.cell_size = 16
         visual_size = cnn_shape[0] * cnn_shape[1] * cnn_shape[2]
 
-        state_in_h = tf.keras.layers.Input(shape=(self.cell_size,), name="h")
-        state_in_c = tf.keras.layers.Input(shape=(self.cell_size,), name="c")
+        state_in_h = tf.keras.layers.Input(shape=(self.cell_size, ), name="h")
+        state_in_c = tf.keras.layers.Input(shape=(self.cell_size, ), name="c")
         seq_in = tf.keras.layers.Input(shape=(), name="seq_in", dtype=tf.int32)
 
         inputs = tf.keras.layers.Input(
@@ -49,7 +49,8 @@ class CustomModel(RecurrentTFModelV2):
         vision_out = cnn_model(input_visual)
         vision_out = tf.reshape(
             vision_out,
-            [-1, tf.shape(inputs)[1], vision_out.shape.as_list()[-1]])
+            [-1, tf.shape(inputs)[1],
+             vision_out.shape.as_list()[-1]])
 
         lstm_out, state_h, state_c = tf.keras.layers.LSTM(
             self.cell_size,
