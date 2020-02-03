@@ -14,11 +14,26 @@ import org.ray.api.exception.RayTaskException;
 import org.ray.api.exception.RayWorkerException;
 import org.ray.api.function.RayFunc0;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
+
+  @BeforeClass
+  public void setUp() {
+    // This is needed by `testGetThrowsQuicklyWhenFoundException`.
+    // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
+    // process, `sleep` will delay `System.exit`.
+    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
+  }
+
+  @AfterClass
+  public void tearDown() {
+    System.clearProperty("ray.raylet.config.num_workers_per_process_java");
+  }
 
   public static int badFunc() {
     throw new RuntimeException(EXCEPTION_MESSAGE);
