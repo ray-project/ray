@@ -122,7 +122,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def make_policy_optimizer(workers, config):
-    """
+    """Create the single process DQN policy optimizer.
     Returns:
         SyncReplayOptimizer: Used for generic off-policy Trainers.
     """
@@ -245,7 +245,7 @@ def get_initial_state(config):
 
 
 # TODO(sven): Move this to generic Trainer/Policy. Every Algo should do this.
-def before_train_step(trainer):
+def update_worker_exploration(trainer):
     """
     Sets epsilon exploration values in all policies
     to updated values (according to current time-step).
@@ -275,7 +275,7 @@ def after_train_result(trainer, result):
         }, **trainer.optimizer.stats()))
 
 
-def after_optimizer_step(trainer, fetches):
+def update_target_if_needed(trainer, fetches):
     """
     Update the target network in configured intervals.
     """
@@ -295,8 +295,8 @@ GenericOffPolicyTrainer = build_trainer(
     validate_config=validate_config_and_setup_param_noise,
     get_initial_state=get_initial_state,
     make_policy_optimizer=make_policy_optimizer,
-    before_train_step=before_train_step,
-    after_optimizer_step=after_optimizer_step,
+    before_train_step=update_worker_exploration,
+    after_optimizer_step=update_target_if_needed,
     after_train_result=after_train_result)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(

@@ -9,18 +9,23 @@ class Exploration:
     predefined exploration schema.
     """
 
-    def __init__(self, action_space=None, worker_info=None, framework="tf"):
+    def __init__(self,
+                 action_space=None,
+                 num_workers=None,
+                 worker_index=None,
+                 framework="tf"):
         """
         Args:
             action_space (Optional[gym.spaces.Space]): The action space in
                 which to explore.
-            worker_info (Optional[dict]): A dict with information on the worker
-                that is using this Exploration component. Should contain
-                keys: `worker_index` and `num_workers`.
+            num_workers (Optional[int]): The overall number of workers used.
+            worker_index (Optional[int]): The index of the Worker using this
+                Exploration.
             framework (str): One of "tf" or "torch".
         """
         self.action_space = action_space
-        self.worker_info = worker_info or {}
+        self.num_workers = num_workers
+        self.worker_index = worker_index
         self.framework = check_framework(framework)
 
     def get_exploration_action(self,
