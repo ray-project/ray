@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import math
 import numpy as np
@@ -14,6 +10,7 @@ from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.optimizers.multi_gpu_impl import LocalSyncParallelOptimizer
 from ray.rllib.optimizers.rollout import collect_samples
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.sgd import averaged
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -205,8 +202,8 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                         for k, v in batch_fetches[LEARNER_STATS_KEY].items():
                             iter_extra_fetches[k].append(v)
                     logger.debug("{} {}".format(i,
-                                                _averaged(iter_extra_fetches)))
-                fetches[policy_id] = _averaged(iter_extra_fetches)
+                                                averaged(iter_extra_fetches)))
+                fetches[policy_id] = averaged(iter_extra_fetches)
 
         self.num_steps_sampled += samples.count
         self.num_steps_trained += tuples_per_device * len(self.devices)
@@ -224,11 +221,3 @@ class LocalMultiGPUOptimizer(PolicyOptimizer):
                                         3),
                 "learner": self.learner_stats,
             })
-
-
-def _averaged(kv):
-    out = {}
-    for k, v in kv.items():
-        if v[0] is not None and not isinstance(v[0], dict):
-            out[k] = np.mean(v)
-    return out

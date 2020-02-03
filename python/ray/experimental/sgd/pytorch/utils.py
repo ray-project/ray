@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import time
 import torch
@@ -108,7 +104,7 @@ def validate(model, val_iterator, criterion, config):
     return stats
 
 
-class AverageMeter(object):
+class AverageMeter:
     """Computes and stores the average and current value."""
 
     def __init__(self):

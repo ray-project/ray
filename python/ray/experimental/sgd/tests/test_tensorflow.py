@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import pytest
 import tempfile
@@ -12,7 +8,7 @@ from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.tf import TFTrainer, TFTrainable
 
-from ray.experimental.sgd.examples.tensorflow_train_example import (
+from ray.experimental.sgd.tf.examples.tensorflow_train_example import (
     simple_model, simple_dataset)
 
 SIMPLE_CONFIG = {

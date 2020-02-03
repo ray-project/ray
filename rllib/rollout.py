@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import collections
 import json
@@ -19,7 +15,7 @@ from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.tune.util import merge_dicts
+from ray.tune.utils import merge_dicts
 
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
@@ -297,10 +293,13 @@ def rollout(agent,
             env_name,
             num_steps,
             num_episodes=0,
-            saver=RolloutSaver(),
+            saver=None,
             no_render=True,
             monitor=False):
     policy_agent_mapping = default_policy_agent_mapping
+
+    if saver is None:
+        saver = RolloutSaver()
 
     if hasattr(agent, "workers"):
         env = agent.workers.local_worker().env

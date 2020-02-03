@@ -36,33 +36,21 @@ class StreamingConfig {
  public:
   void FromProto(const uint8_t *, uint32_t size);
 
-  const std::string &GetTaskJobId() const;
+#define DECL_GET_SET_PROPERTY(TYPE, NAME, VALUE) \
+  TYPE Get##NAME() const { return VALUE; }       \
+  void Set##NAME(TYPE value) { VALUE = value; }
 
-  void SetTaskJobId(const std::string &task_job_id);
-
-  const std::string &GetWorkerName() const;
-
-  void SetWorkerName(const std::string &worker_name);
-
-  const std::string &GetOpName() const;
-
-  void SetOpName(const std::string &op_name);
-
-  uint32_t GetEmptyMessageTimeInterval() const;
-
-  void SetEmptyMessageTimeInterval(uint32_t empty_message_time_interval);
+  DECL_GET_SET_PROPERTY(const std::string &, TaskJobId, task_job_id_)
+  DECL_GET_SET_PROPERTY(const std::string &, WorkerName, worker_name_)
+  DECL_GET_SET_PROPERTY(const std::string &, OpName, op_name_)
+  DECL_GET_SET_PROPERTY(uint32_t, EmptyMessageTimeInterval, empty_message_time_interval_)
+  DECL_GET_SET_PROPERTY(streaming::proto::OperatorType, OperatorType, operator_type_)
+  DECL_GET_SET_PROPERTY(const std::string &, JobName, job_name_)
 
   uint32_t GetRingBufferCapacity() const;
-
+  /// Note(lingxuan.zlx), RingBufferCapacity's valid range is from 1 to
+  /// MESSAGE_BUNDLE_MAX_SIZE, so we don't use DECL_GET_SET_PROPERTY for it.
   void SetRingBufferCapacity(uint32_t ring_buffer_capacity);
-
-  streaming::proto::OperatorType GetOperatorType() const;
-
-  void SetOperatorType(streaming::proto::OperatorType type);
-
-  const std::string &GetJobName() const;
-
-  void SetJobName(const std::string &job_name);
 };
 }  // namespace streaming
 }  // namespace ray

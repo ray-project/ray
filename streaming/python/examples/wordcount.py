@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import logging
 import time
@@ -23,7 +19,7 @@ parser.add_argument(
 # A custom data source that reads articles from wikipedia
 # Custom data sources need to implement a get_next() method
 # that returns the next data element, in this case sentences
-class Wikipedia(object):
+class Wikipedia:
     def __init__(self, title_file):
         # Titles in this file will be as queries
         self.title_file = title_file

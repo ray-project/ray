@@ -1,8 +1,15 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import logging
+logger = logging.getLogger(__name__)
 
-from ray.experimental.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
-                                                          PyTorchTrainable)
+PyTorchTrainer = None
+PyTorchTrainable = None
 
-__all__ = ["PyTorchTrainer", "PyTorchTrainable"]
+try:
+    import torch  # noqa: F401
+
+    from ray.experimental.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
+                                                              PyTorchTrainable)
+
+    __all__ = ["PyTorchTrainer", "PyTorchTrainable"]
+except ImportError:
+    logger.warning("PyTorch not found. PyTorchTrainer will not be available")

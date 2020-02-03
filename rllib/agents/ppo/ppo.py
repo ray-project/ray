@@ -1,24 +1,26 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
 from ray.rllib.agents import with_common_config
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.optimizers import SyncSamplesOptimizer, LocalMultiGPUOptimizer
+from ray.rllib.optimizers import SyncSamplesOptimizer, \
+    LocalMultiGPUOptimizer, TorchDistributedDataParallelOptimizer
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
+
 logger = logging.getLogger(__name__)
 
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # Should use a critic as a baseline (otherwise don't use value baseline;
+    # required for using GAE).
+    "use_critic": True,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
+
     # The GAE(lambda) parameter.
     "lambda": 1.0,
     # Initial coefficient for KL divergence.
@@ -67,12 +69,43 @@ DEFAULT_CONFIG = with_common_config({
     # usually slower, but you might want to try it if you run into issues with
     # the default optimizer.
     "simple_optimizer": False,
+    # Use the experimental torch multi-node SGD optimizer.
+    "distributed_data_parallel_optimizer": False,
+    # Use PyTorch as framework?
+    "use_pytorch": False
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
 def choose_policy_optimizer(workers, config):
+    if config["distributed_data_parallel_optimizer"]:
+        if not config["use_pytorch"]:
+            raise ValueError(
+                "Distributed data parallel is only supported for PyTorch")
+        if config["num_gpus"]:
+            raise ValueError(
+                "When using distributed data parallel, you should set "
+                "num_gpus=0 since all optimization "
+                "is happening on workers. Enable GPUs for workers by setting "
+                "num_gpus_per_worker=1.")
+        if config["batch_mode"] != "truncate_episodes":
+            raise ValueError(
+                "Distributed data parallel requires truncate_episodes "
+                "batch mode.")
+        if config["sample_batch_size"] != config["train_batch_size"]:
+            raise ValueError(
+                "Distributed data parallel requires sample_batch_size to be "
+                "equal to train_batch_size. Each worker will sample and learn "
+                "on train_batch_size samples per iteration.")
+
+        return TorchDistributedDataParallelOptimizer(
+            workers,
+            num_sgd_iter=config["num_sgd_iter"],
+            train_batch_size=config["train_batch_size"],
+            sgd_minibatch_size=config["sgd_minibatch_size"],
+            standardize_fields=["advantages"])
+
     if config["simple_optimizer"]:
         return SyncSamplesOptimizer(
             workers,
@@ -167,14 +200,23 @@ def validate_config(config):
         logger.warning(
             "Using the simple minibatch optimizer. This will significantly "
             "reduce performance, consider simple_optimizer=False.")
-    elif tf and tf.executing_eagerly():
+    elif config["use_pytorch"] or (tf and tf.executing_eagerly()):
         config["simple_optimizer"] = True  # multi-gpu not supported
+
+
+def get_policy_class(config):
+    if config.get("use_pytorch") is True:
+        from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+        return PPOTorchPolicy
+    else:
+        return PPOTFPolicy
 
 
 PPOTrainer = build_trainer(
     name="PPO",
     default_config=DEFAULT_CONFIG,
     default_policy=PPOTFPolicy,
+    get_policy_class=get_policy_class,
     make_policy_optimizer=choose_policy_optimizer,
     validate_config=validate_config,
     after_optimizer_step=update_kl,

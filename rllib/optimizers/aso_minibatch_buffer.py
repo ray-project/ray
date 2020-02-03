@@ -1,11 +1,7 @@
 """Helper class for AsyncSamplesOptimizer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-
-class MinibatchBuffer(object):
+class MinibatchBuffer:
     """Ring buffer of recent data batches for minibatch SGD.
 
     This is for use with AsyncSamplesOptimizer.

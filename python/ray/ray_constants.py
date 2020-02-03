@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """Ray constants used in the Python code."""
 
 import logging
@@ -62,7 +59,7 @@ DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 40000
+MAX_RESOURCE_QUANTITY = 100000
 
 # Each memory "resource" counts as this many bytes of memory.
 MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
@@ -150,8 +147,8 @@ AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
 AUTOSCALER_HEARTBEAT_TIMEOUT_S = env_integer("AUTOSCALER_HEARTBEAT_TIMEOUT_S",
                                              30)
 
-# The reporter will report its' statistics this often (milliseconds).
-REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 500)
+# The reporter will report its statistics this often (milliseconds).
+REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
@@ -195,3 +192,10 @@ PICKLE_BUFFER_METADATA = b"PICKLE"
 PICKLE5_BUFFER_METADATA = b"PICKLE5"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
+
+# The default password to prevent redis port scanning attack.
+# Hex for ray.
+REDIS_DEFAULT_PASSWORD = "5241590000000000"
+
+# The default ip address to bind to.
+NODE_DEFAULT_IP = "127.0.0.1"

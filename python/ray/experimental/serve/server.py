@@ -4,7 +4,7 @@ import json
 import uvicorn
 
 import ray
-from ray.experimental.async_api import _async_init, as_future
+from ray.experimental.async_api import _async_init
 from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.utils import BytesEncoder
@@ -64,6 +64,7 @@ class HTTPProxy:
         self.serve_global_state = GlobalState()
         self.route_table_cache = dict()
 
+        self.route_checker_task = None
         self.route_checker_should_shutdown = False
 
     async def route_checker(self, interval):
@@ -82,10 +83,11 @@ class HTTPProxy:
         message = await receive()
         if message["type"] == "lifespan.startup":
             await _async_init()
-            asyncio.ensure_future(
+            self.route_checker_task = asyncio.get_event_loop().create_task(
                 self.route_checker(interval=HTTP_ROUTER_CHECKER_INTERVAL_S))
             await send({"type": "lifespan.startup.complete"})
         elif message["type"] == "lifespan.shutdown":
+            self.route_checker_task.cancel()
             self.route_checker_should_shutdown = True
             await send({"type": "lifespan.shutdown.complete"})
 
@@ -148,16 +150,14 @@ class HTTPProxy:
                 await JSONResponse({"error": str(e)})(scope, receive, send)
                 return
 
-        result_object_id_bytes = await as_future(
-            self.serve_global_state.init_or_get_router()
-            .enqueue_request.remote(
-                service=endpoint_name,
-                request_args=(scope, http_body_bytes),
-                request_kwargs=dict(),
-                request_context=TaskContext.Web,
-                request_slo_ms=request_slo_ms))
-
-        result = await as_future(ray.ObjectID(result_object_id_bytes))
+        actual_result = await (self.serve_global_state.init_or_get_router()
+                               .enqueue_request.remote(
+                                   service=endpoint_name,
+                                   request_args=(scope, http_body_bytes),
+                                   request_kwargs=dict(),
+                                   request_context=TaskContext.Web,
+                                   request_slo_ms=request_slo_ms))
+        result = actual_result
 
         if isinstance(result, ray.exceptions.RayTaskError):
             await JSONResponse({

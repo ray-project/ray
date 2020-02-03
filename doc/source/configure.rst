@@ -28,7 +28,7 @@ If not running cluster mode, you can specify cluster resources overrides through
   # Specifying custom resources
   ray.init(num_gpus=1, resources={'Resource1': 4, 'Resource2': 16})
 
-When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-cpus`` flags into ``ray start``. You can also specify custom resources.
+When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-gpus`` flags into ``ray start``. You can also specify custom resources.
 
 .. code-block:: bash
 
@@ -137,6 +137,13 @@ password-protected Redis ports:
 While Redis port authentication may protect against external attackers,
 Ray does not encrypt traffic between nodes so man-in-the-middle attacks are
 possible for clusters on untrusted networks.
+
+One of most common attack with Redis is port-scanning attack. Attacker scans
+open port with unprotected redis instance and execute arbitrary code. Ray
+enables a default password for redis. Even though this does not prevent brute
+force password cracking, the default password should alleviate most of the
+port-scanning attack. Furtheremore, redis and other ray services are bind
+to localhost when the ray is started using ``ray.init``.
 
 See the `Redis security documentation <https://redis.io/topics/security>`__
 for more information.

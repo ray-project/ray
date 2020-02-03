@@ -12,7 +12,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task.h"
-#include "ray/gcs/tables.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
@@ -209,9 +209,8 @@ class LineageCache {
  public:
   /// Create a lineage cache for the given task storage system.
   /// TODO(swang): Pass in the policy (interface?).
-  LineageCache(const ClientID &client_id,
-               gcs::TableInterface<TaskID, TaskTableData> &task_storage,
-               gcs::PubsubInterface<TaskID> &task_pubsub, uint64_t max_lineage_size);
+  LineageCache(const ClientID &self_node_id, std::shared_ptr<gcs::GcsClient> gcs_client,
+               uint64_t max_lineage_size);
 
   /// Asynchronously commit a task to the GCS.
   ///
@@ -303,19 +302,15 @@ class LineageCache {
   /// was successful (whether we were subscribed).
   bool UnsubscribeTask(const TaskID &task_id);
 
-  /// The client ID, used to request notifications for specific tasks.
-  /// TODO(swang): Move the ClientID into the generic Table implementation.
-  ClientID client_id_;
-  /// The durable storage system for task information.
-  gcs::TableInterface<TaskID, TaskTableData> &task_storage_;
-  /// The pubsub storage system for task information. This can be used to
-  /// request notifications for the commit of a task entry.
-  gcs::PubsubInterface<TaskID> &task_pubsub_;
+  /// ID of this node.
+  ClientID self_node_id_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;
-  /// The tasks that we've subscribed to notifications for from the pubsub
-  /// storage system. We will receive a notification for these tasks on commit.
+  /// The tasks that we've subscribed to.
+  /// We will receive a notification for these tasks on commit.
   std::unordered_set<TaskID> subscribed_tasks_;
 };
 

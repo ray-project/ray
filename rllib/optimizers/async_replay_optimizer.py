@@ -2,10 +2,6 @@
 
 https://arxiv.org/abs/1803.00933"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os
 import random
@@ -256,7 +252,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
 
 @ray.remote(num_cpus=0)
-class ReplayActor(object):
+class ReplayActor:
     """A replay buffer shard.
 
     Ray actors are single-threaded, so for scalability multiple replay actors
@@ -344,7 +340,7 @@ class ReplayActor(object):
 # note: we set num_cpus=0 to avoid failing to create replay actors when
 # resources are fragmented. This isn't ideal.
 @ray.remote(num_cpus=0)
-class BatchReplayActor(object):
+class BatchReplayActor:
     """The batch replay version of the replay actor.
 
     This allows for RNN models, but ignores prioritization params.

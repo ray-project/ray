@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict, namedtuple
 import logging
 import numpy as np
@@ -31,7 +27,7 @@ PolicyEvalData = namedtuple("PolicyEvalData", [
 ])
 
 
-class PerfStats(object):
+class PerfStats:
     """Sampler perf stats that will be included in rollout metrics."""
 
     def __init__(self):
@@ -394,7 +390,8 @@ def _process_observations(base_env, policies, batch_builder_pool,
                 outputs.append(
                     RolloutMetrics(episode.length, episode.total_reward,
                                    dict(episode.agent_rewards),
-                                   episode.custom_metrics, {}))
+                                   episode.custom_metrics, {},
+                                   episode.hist_data))
         else:
             hit_horizon = False
             all_done = False
@@ -624,7 +621,7 @@ def _fetch_atari_metrics(base_env):
         if not monitor:
             return None
         for eps_rew, eps_len in monitor.next_episode_results():
-            atari_out.append(RolloutMetrics(eps_len, eps_rew, {}, {}, {}))
+            atari_out.append(RolloutMetrics(eps_len, eps_rew))
     return atari_out
 
 

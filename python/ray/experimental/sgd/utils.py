@@ -1,14 +1,16 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from contextlib import closing
+import logging
 import numpy as np
 import socket
 import time
 
+import ray
+from ray.exceptions import RayActorError
 
-class TimerStat(object):
+logger = logging.getLogger(__name__)
+
+
+class TimerStat:
     """A running stat for conveniently logging the duration of a code block.
 
     Note that this class is *not* thread-safe.
@@ -108,7 +110,7 @@ def find_free_port():
         return s.getsockname()[1]
 
 
-class AverageMeter(object):
+class AverageMeter:
     """Computes and stores the average and current value."""
 
     def __init__(self):
@@ -125,3 +127,25 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
+
+
+def check_for_failure(remote_values):
+    """Checks remote values for any that returned and failed.
+
+    Args:
+        remote_values (list): List of object IDs representing functions
+            that may fail in the middle of execution. For example, running
+            a SGD training loop in multiple parallel actor calls.
+
+    Returns:
+        Bool for success in executing given remote tasks.
+    """
+    unfinished = remote_values
+    try:
+        while len(unfinished) > 0:
+            finished, unfinished = ray.wait(unfinished)
+            finished = ray.get(finished)
+        return True
+    except RayActorError as exc:
+        logger.exception(str(exc))
+    return False

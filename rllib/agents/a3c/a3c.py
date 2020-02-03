@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
@@ -10,10 +6,15 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # Should use a critic as a baseline (otherwise don't use value baseline;
+    # required for using GAE).
+    "use_critic": True,
+    # If true, use the Generalized Advantage Estimator (GAE)
+    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+    "use_gae": True,
+
     # Size of rollout batch
     "sample_batch_size": 10,
-    # Use PyTorch as backend - no LSTM support
-    "use_pytorch": False,
     # GAE(gamma) parameter
     "lambda": 1.0,
     # Max global norm for each gradient calculated by worker

@@ -1,10 +1,9 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
+import logging
 from os.path import dirname
 import sys
+
+logger = logging.getLogger(__name__)
 
 # MUST add pickle5 to the import path because it will be imported by some
 # raylet modules.
@@ -13,6 +12,12 @@ if "pickle5" in sys.modules:
     raise ImportError("Ray must be imported before pickle5 because Ray "
                       "requires a specific version of pickle5 (which is "
                       "packaged along with Ray).")
+
+if "OMP_NUM_THREADS" not in os.environ:
+    logger.warning("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+                   "degradation with many workers (issue #6998). You can "
+                   "override this by explicitly setting OMP_NUM_THREADS.")
+    os.environ["OMP_NUM_THREADS"] = "1"
 
 # Add the directory containing pickle5 to the Python path so that we find the
 # pickle5 version packaged with ray and not a pre-existing pickle5.
@@ -102,7 +107,7 @@ from ray._raylet import (
 _config = _Config()
 
 from ray.profiling import profile  # noqa: E402
-from ray.state import (global_state, jobs, nodes, tasks, objects, timeline,
+from ray.state import (jobs, nodes, actors, tasks, objects, timeline,
                        object_transfer_timeline, cluster_resources,
                        available_resources, errors)  # noqa: E402
 from ray.worker import (
@@ -121,6 +126,7 @@ from ray.worker import (
     register_custom_serializer,
     remote,
     shutdown,
+    show_in_webui,
     wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
@@ -132,12 +138,12 @@ from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 
 # Ray version string.
-__version__ = "0.8.0.dev7"
+__version__ = "0.9.0.dev0"
 
 __all__ = [
-    "global_state",
     "jobs",
     "nodes",
+    "actors",
     "tasks",
     "objects",
     "timeline",
@@ -169,6 +175,7 @@ __all__ = [
     "register_custom_serializer",
     "remote",
     "shutdown",
+    "show_in_webui",
     "wait",
 ]
 

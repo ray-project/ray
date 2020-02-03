@@ -1,19 +1,10 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
-import sys
 import time
 import unittest
+from unittest.mock import MagicMock
 
 from ray.tune.trial import Trial
-from ray.tune.progress_reporter import _fair_filter_trials
-
-if sys.version_info >= (3, 3):
-    from unittest.mock import MagicMock
-else:
-    from mock import MagicMock
+from ray.tune.progress_reporter import CLIReporter, _fair_filter_trials
 
 
 class ProgressReporterTest(unittest.TestCase):
@@ -57,3 +48,22 @@ class ProgressReporterTest(unittest.TestCase):
             for i in range(len(state_trials) - 1):
                 self.assertGreaterEqual(state_trials[i].start_time,
                                         state_trials[i + 1].start_time)
+
+    def testAddMetricColumn(self):
+        """Tests edge cases of add_metric_column."""
+
+        # Test list-initialized metric columns.
+        reporter = CLIReporter(metric_columns=["foo", "bar"])
+        with self.assertRaises(ValueError):
+            reporter.add_metric_column("bar")
+
+        with self.assertRaises(ValueError):
+            reporter.add_metric_column("baz", "qux")
+
+        reporter.add_metric_column("baz")
+        self.assertIn("baz", reporter._metric_columns)
+
+        # Test default-initialized (dict) metric columns.
+        reporter = CLIReporter()
+        reporter.add_metric_column("foo", "bar")
+        self.assertIn("foo", reporter._metric_columns)

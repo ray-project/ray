@@ -12,7 +12,6 @@
     <module>api</module>
     <module>runtime</module>
     <module>test</module>
-    <module>streaming</module>
     <module>tutorial</module>
   </modules>
 
@@ -135,6 +134,12 @@
         </plugin>
       </plugins>
     </pluginManagement>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+      </plugin>
+    </plugins>
   </build>
 
 </project>

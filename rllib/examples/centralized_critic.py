@@ -1,6 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 """An example of customizing PPO to leverage a centralized critic.
 
 Here the model and policy are hard-coded to implement a centralized critic
@@ -20,9 +17,10 @@ import numpy as np
 from gym.spaces import Discrete
 
 from ray import tune
+from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.ppo.ppo import PPOTrainer
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy, KLCoeffMixin, \
-    PPOLoss, BEHAVIOUR_LOGITS
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
+    PPOLoss
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.examples.twostep_game import TwoStepGame
@@ -84,7 +82,7 @@ class CentralizedCriticModel(TFModelV2):
         return self.model.value_function()  # not used
 
 
-class CentralizedValueMixin(object):
+class CentralizedValueMixin:
     """Add method to evaluate the central value function from the model."""
 
     def __init__(self):

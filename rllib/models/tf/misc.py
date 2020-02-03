@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 from ray.rllib.utils import try_import_tf
 
@@ -18,6 +14,8 @@ def normc_initializer(std=1.0):
 
 
 def get_activation_fn(name):
+    if name == "linear":
+        return None
     return getattr(tf.nn, name)
 
 

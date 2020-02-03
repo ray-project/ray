@@ -1,10 +1,6 @@
 # Code in this file is copied and adapted from
 # https://github.com/openai/evolution-strategies-starter.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gym
 import numpy as np
 
@@ -56,7 +52,7 @@ def rollout(policy, env, timestep_limit=None, add_noise=False, offset=0):
     return rews, t
 
 
-class GenericPolicy(object):
+class GenericPolicy:
     def __init__(self,
                  sess,
                  action_space,

@@ -63,6 +63,13 @@ def ray_start_regular(request):
         yield res
 
 
+@pytest.fixture(scope="session")
+def ray_start_regular_shared(request):
+    param = getattr(request, "param", {})
+    with _ray_start(**param) as res:
+        yield res
+
+
 @pytest.fixture
 def ray_start_2_cpus(request):
     param = getattr(request, "param", {})
@@ -149,11 +156,11 @@ def call_ray_start(request):
     out = ray.utils.decode(
         subprocess.check_output(command_args, stderr=subprocess.STDOUT))
     # Get the redis address from the output.
-    redis_substring_prefix = "redis_address=\""
+    redis_substring_prefix = "--address='"
     address_location = (
         out.find(redis_substring_prefix) + len(redis_substring_prefix))
     address = out[address_location:]
-    address = address.split("\"")[0]
+    address = address.split("'")[0]
 
     yield address
 

@@ -1,4 +1,5 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
+
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
@@ -11,8 +12,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     absl::MutexLock lock(&mu_);
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
-    const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
-                                       task_spec.GetDependencies());
+    const SchedulingKey scheduling_key(
+        task_spec.GetSchedulingClass(), task_spec.GetDependencies(),
+        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil());
     auto it = task_queues_.find(scheduling_key);
     if (it == task_queues_.end()) {
       it = task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
@@ -107,7 +109,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto status = lease_client->RequestWorkerLease(
       resource_spec,
       [this, lease_client, task_id, scheduling_key](
-          const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
+          const Status &status, const rpc::RequestWorkerLeaseReply &reply) mutable {
         absl::MutexLock lock(&mu_);
         pending_lease_requests_.erase(scheduling_key);
         if (status.ok()) {
@@ -168,6 +170,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
+  request->mutable_caller_address()->CopyFrom(rpc_address_);
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
@@ -175,10 +178,16 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       std::move(request),
       [this, task_id, is_actor, is_actor_creation, scheduling_key, addr,
        assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        // Successful actor creation leases the worker indefinitely from the raylet.
-        if (!status.ok() || !is_actor_creation) {
+        if (reply.worker_exiting()) {
+          // The worker is draining and will shutdown after it is done. Don't return
+          // it to the Raylet since that will kill it early.
           absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok(), assigned_resources);
+          worker_to_lease_client_.erase(addr);
+        } else if (!status.ok() || !is_actor_creation) {
+          // Successful actor creation leases the worker indefinitely from the raylet.
+          absl::MutexLock lock(&mu_);
+          OnWorkerIdle(addr, scheduling_key,
+                       /*error=*/!status.ok(), assigned_resources);
         }
         if (!status.ok()) {
           // TODO: It'd be nice to differentiate here between process vs node

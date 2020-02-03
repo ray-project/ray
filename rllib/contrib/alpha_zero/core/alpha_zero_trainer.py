@@ -1,18 +1,12 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 
-import torch
-import torch.nn as nn
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.optimizers import SyncSamplesOptimizer
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_torch
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
@@ -22,6 +16,8 @@ from ray.rllib.contrib.alpha_zero.optimizer.sync_batches_replay_optimizer \
     import SyncBatchesReplayOptimizer
 
 tf = try_import_tf()
+torch, nn = try_import_torch()
+
 logger = logging.getLogger(__name__)
 
 
@@ -164,8 +160,10 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         def mcts_creator():
             return MCTS(model, config["mcts_config"])
 
-        super().__init__(obs_space, action_space, model, alpha_zero_loss,
-                         TorchCategorical, mcts_creator, _env_creator)
+        super().__init__(
+            obs_space, action_space, config, model, alpha_zero_loss,
+            TorchCategorical, mcts_creator, _env_creator
+        )
 
 
 AlphaZeroTrainer = build_trainer(

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 import numpy as np
 import gym
@@ -21,6 +17,7 @@ from ray.rllib.evaluation.sampler import AsyncSampler, SyncSampler
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
+from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.offline import NoopOutput, IOContext, OutputWriter, InputReader
 from ray.rllib.offline.is_estimator import ImportanceSamplingEstimator
 from ray.rllib.offline.wis_estimator import WeightedImportanceSamplingEstimator
@@ -31,10 +28,13 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import disable_log_once_globally, log_once, \
     summarize, enable_periodic_logging
 from ray.rllib.utils.filter import get_filter
+from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_torch
 
 tf = try_import_tf()
+torch, _ = try_import_torch()
+
 logger = logging.getLogger(__name__)
 
 # Handle to the current rollout worker, which will be set to the most recently
@@ -321,26 +321,14 @@ class RolloutWorker(EvaluatorInterface):
                     self.env))
             self.env.seed(seed)
             try:
-                import torch
+                assert torch is not None
                 torch.manual_seed(seed)
-            except ImportError:
+            except AssertionError:
                 logger.info("Could not seed torch")
         if _has_tensorflow_graph(policy_dict) and not (tf and
                                                        tf.executing_eagerly()):
             if not tf:
                 raise ImportError("Could not import tensorflow")
-            if (ray.is_initialized()
-                    and ray.worker._mode() != ray.worker.LOCAL_MODE):
-                if not ray.get_gpu_ids():
-                    logger.debug(
-                        "Creating policy evaluation worker {}".format(
-                            worker_index) +
-                        " on CPU (please ignore any CUDA init errors)")
-                elif not tf.test.is_gpu_available():
-                    raise RuntimeError(
-                        "GPUs were assigned to this worker by Ray, but "
-                        "TensorFlow reports GPU acceleration is disabled. "
-                        "This could be due to a bad CUDA or TF installation.")
             with tf.Graph().as_default():
                 if tf_session_creator:
                     self.tf_sess = tf_session_creator()
@@ -354,6 +342,18 @@ class RolloutWorker(EvaluatorInterface):
                         tf.set_random_seed(seed)
                     self.policy_map, self.preprocessors = \
                         self._build_policy_map(policy_dict, policy_config)
+            if (ray.is_initialized()
+                    and ray.worker._mode() != ray.worker.LOCAL_MODE):
+                if not ray.get_gpu_ids():
+                    logger.debug(
+                        "Creating policy evaluation worker {}".format(
+                            worker_index) +
+                        " on CPU (please ignore any CUDA init errors)")
+                elif not tf.test.is_gpu_available():
+                    raise RuntimeError(
+                        "GPUs were assigned to this worker by Ray, but "
+                        "TensorFlow reports GPU acceleration is disabled. "
+                        "This could be due to a bad CUDA or TF installation.")
         else:
             self.policy_map, self.preprocessors = self._build_policy_map(
                 policy_dict, policy_config)
@@ -621,6 +621,31 @@ class RolloutWorker(EvaluatorInterface):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
 
+    def sample_and_learn(self, train_batch_size, num_sgd_iter,
+                         sgd_minibatch_size, standardize_fields):
+        """Sample and batch and learn on it.
+
+        This is typically used in combination with distributed allreduce.
+
+        Arguments:
+            train_batch_size (int): Number of samples to learn on.
+            num_sgd_iter (int): Number of SGD iterations.
+            sgd_minibatch_size (int): SGD minibatch size.
+            standardize_fields (list): List of sample fields to normalize.
+
+        Returns:
+            info: dictionary of extra metadata from learn_on_batch().
+            count: number of samples learned on.
+        """
+        batch = self.sample()
+        assert batch.count == train_batch_size, \
+            (batch.count, "Batch size possibly out of sync between workers")
+        logger.info("Executing distributed minibatch SGD "
+                    "on batch of size {}".format(batch.count))
+        info = do_minibatch_sgd(batch, self.policy_map, self, num_sgd_iter,
+                                sgd_minibatch_size, standardize_fields)
+        return info, batch.count
+
     @DeveloperAPI
     def get_metrics(self):
         """Returns a list of new RolloutMetric objects from evaluation."""
@@ -664,10 +689,18 @@ class RolloutWorker(EvaluatorInterface):
 
     @DeveloperAPI
     def foreach_trainable_policy(self, func):
-        """Apply the given function to each (policy, policy_id) tuple.
+        """
+        Applies the given function to each (policy, policy_id) tuple, which
+        can be found in `self.policies_to_train`.
 
-        This only applies func to policies in `self.policies_to_train`."""
+        Args:
+            func (callable): A function - taking a Policy and its ID - that is
+                called on all Policies within `self.policies_to_train`.
 
+        Returns:
+            List[any]: The list of n return values of all
+                `func([policy], [ID])`-calls.
+        """
         return [
             func(policy, pid) for pid, policy in self.policy_map.items()
             if pid in self.policies_to_train
@@ -776,6 +809,33 @@ class RolloutWorker(EvaluatorInterface):
             logger.info("Built policy map: {}".format(policy_map))
             logger.info("Built preprocessor map: {}".format(preprocessors))
         return policy_map, preprocessors
+
+    def setup_torch_data_parallel(self, url, world_rank, world_size, backend):
+        """Join a torch process group for distributed SGD."""
+
+        logger.info("Joining process group, url={}, world_rank={}, "
+                    "world_size={}, backend={}".format(url, world_rank,
+                                                       world_size, backend))
+        torch.distributed.init_process_group(
+            backend=backend,
+            init_method=url,
+            rank=world_rank,
+            world_size=world_size)
+
+        for pid, policy in self.policy_map.items():
+            if not isinstance(policy, TorchPolicy):
+                raise ValueError(
+                    "This policy does not support torch distributed", policy)
+            policy.distributed_world_size = world_size
+
+    def get_node_ip(self):
+        """Returns the IP address of the current node."""
+        return ray.services.get_node_ip_address()
+
+    def find_free_port(self):
+        """Finds a free port on the current node."""
+        from ray.experimental.sgd import utils
+        return utils.find_free_port()
 
     def __del__(self):
         if hasattr(self, "sampler") and isinstance(self.sampler, AsyncSampler):

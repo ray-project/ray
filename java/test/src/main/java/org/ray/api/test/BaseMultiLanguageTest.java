@@ -9,10 +9,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.ray.api.Ray;
 import org.ray.runtime.util.NetworkUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -68,9 +71,15 @@ public abstract class BaseMultiLanguageTest {
 
     String nodeManagerPort = String.valueOf(NetworkUtil.getUnusedPort());
 
-    // Start ray cluster.
+    // jars in the `ray` wheel doesn't contains test classes, so we add test classes explicitly.
+    // Since mvn test classes contains `test` in path and bazel test classes is located at a jar
+    // with `test` included in the name, we can check classpath `test` to filter out test classes.
+    String classpath = Stream.of(System.getProperty("java.class.path").split(":"))
+        .filter(s -> !s.contains(" ") && s.contains("test"))
+        .collect(Collectors.joining(":"));
     String workerOptions =
-        " -classpath " + System.getProperty("java.class.path");
+        " -classpath " + classpath;
+    // Start ray cluster.
     List<String> startCommand = ImmutableList.of(
         "ray",
         "start",
@@ -95,6 +104,7 @@ public abstract class BaseMultiLanguageTest {
     }
 
     // Connect to the cluster.
+    Assert.assertNull(Ray.internal());
     System.setProperty("ray.redis.address", "127.0.0.1:6379");
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);

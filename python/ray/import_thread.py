@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 import threading
 import traceback
@@ -19,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class ImportThread(object):
+class ImportThread:
     """A thread used to import exports from the driver or other workers.
 
     Note: The driver also has an import thread, which is used only to import

@@ -7,6 +7,22 @@ py_test(
 )
 
 py_test(
+    name = "test_actor_pool",
+    size = "small",
+    srcs = ["test_actor_pool.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_iter",
+    size = "medium",
+    srcs = ["test_iter.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_resources",
     size = "medium",
     srcs = ["test_actor_resources.py"],
@@ -172,9 +188,9 @@ py_test(
 )
 
 py_test(
-    name = "test_garbage_collection",
-    size = "small",
-    srcs = ["test_garbage_collection.py"],
+    name = "test_reference_counting",
+    size = "medium",
+    srcs = ["test_reference_counting.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -232,6 +248,22 @@ py_test(
     srcs = ["test_monitors.py"],
     # TODO(ekl) tasks() and objects() are different in direct call mode.
     tags = ["exclusive", "manual"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_multiprocessing",
+    size = "medium",
+    srcs = ["test_multiprocessing.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_joblib",
+    size = "medium",
+    srcs = ["test_joblib.py"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 

@@ -40,14 +40,22 @@ RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 /// type of task from starving other types (see issue #3664).
 RAY_CONFIG(bool, fair_queueing_enabled, true)
 
+/// Whether to enable object pinning for plasma objects. When this is
+/// enabled, objects in scope in the cluster will not be LRU evicted.
+RAY_CONFIG(bool, object_pinning_enabled, true)
+
 /// Whether to enable the new scheduler. The new scheduler is designed
 /// only to work with  direct calls. Once direct calls afre becoming
 /// the default, this scheduler will also become the default.
 RAY_CONFIG(bool, new_scheduler_enabled, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
-// Objects larger than this size will be spilled to plasma.
+// Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
+
+// The min number of retries for direct actor creation tasks. The actual number
+// of creation retries will be MAX(actor_creation_min_retries, max_reconstructions).
+RAY_CONFIG(uint64_t, actor_creation_min_retries, 3)
 
 /// The initial period for a task execution lease. The lease will expire this
 /// many milliseconds after the first acquisition of the lease. Nodes that
@@ -59,11 +67,9 @@ RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
 /// for direct task submission until it must be returned to the raylet.
 RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 
-/// The duration between heartbeats sent from the workers to the raylet.
-/// If set to a negative value, the heartbeats will not be sent.
-/// These are used to report active object IDs for garbage collection and
-/// to ensure that workers go down when the raylet dies unexpectedly.
-RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 1000)
+/// The interval at which the workers will check if their raylet has gone down.
+/// When this happens, they will kill themselves.
+RAY_CONFIG(int64_t, raylet_death_check_interval_milliseconds, 1000)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.
@@ -115,11 +121,6 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// This is a timeout used to cause failures in the plasma manager and raylet
 /// when certain event loop handlers take too long.
 RAY_CONFIG(int64_t, max_time_for_handler_milliseconds, 1000)
-
-/// This is used by the Python extension when serializing objects as part of
-/// a task spec.
-RAY_CONFIG(int64_t, size_limit, 10000)
-RAY_CONFIG(int64_t, num_elements_limit, 10000)
 
 /// This is used to cause failures when a certain loop in redis.cc which
 /// synchronously looks up object manager addresses in redis is slow.

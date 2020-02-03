@@ -24,6 +24,9 @@ int main(int argc, char *argv[]) {
   const std::string redis_password = FLAGS_redis_password;
   gflags::ShutDownCommandLineFlags();
 
+  ray::gcs::GcsClientOptions gcs_client_options(redis_address, redis_port,
+                                                redis_password);
+
   std::unordered_map<std::string, std::string> raylet_config;
 
   // Parse the configuration list.
@@ -52,7 +55,7 @@ int main(int argc, char *argv[]) {
   // signals.async_wait(handler);
 
   // Initialize the monitor.
-  ray::raylet::Monitor monitor(io_service, redis_address, redis_port, redis_password);
+  ray::raylet::Monitor monitor(io_service, gcs_client_options);
   monitor.Start();
   io_service.run();
 }

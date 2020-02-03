@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import pprint
 import time
@@ -106,7 +102,7 @@ def _summarize(obj):
         return obj
 
 
-class _StringValue(object):
+class _StringValue:
     def __init__(self, value):
         self.value = value
 

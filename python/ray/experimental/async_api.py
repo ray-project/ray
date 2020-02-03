@@ -15,7 +15,7 @@ transport = None
 protocol = None
 
 
-class _ThreadSafeProxy(object):
+class _ThreadSafeProxy:
     """This class is used to create a thread-safe proxy for a given object.
         Every method call will be guarded with a lock.
 
@@ -88,9 +88,21 @@ def init():
     """
     assert ray.is_initialized(), "Please call ray.init before async_api.init"
 
+    # Noop when handler is set.
+    if handler is not None:
+        return
+
     loop = asyncio.get_event_loop()
     if loop.is_running():
-        asyncio.ensure_future(_async_init())
+        if loop._thread_id != threading.get_ident():
+            # If the loop is runing outside current thread, we actually need
+            # to do this to make sure the context is initialized.
+            asyncio.run_coroutine_threadsafe(_async_init(), loop=loop)
+        else:
+            async_init_done = asyncio.get_event_loop().create_task(
+                _async_init())
+            # Block until the async init finishes.
+            async_init_done.done()
     else:
         asyncio.get_event_loop().run_until_complete(_async_init())
 

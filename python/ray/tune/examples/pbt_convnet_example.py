@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # __tutorial_imports_begin__
 import argparse
 import os
@@ -17,7 +13,8 @@ from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
 import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.util import validate_save_restore
+from ray.tune.utils import validate_save_restore
+from ray.tune.trial import ExportFormat
 
 # __tutorial_imports_end__
 
@@ -51,12 +48,22 @@ class PytorchTrainble(tune.Trainable):
     def _restore(self, checkpoint_path):
         self.model.load_state_dict(torch.load(checkpoint_path))
 
+    def _export_model(self, export_formats, export_dir):
+        if export_formats == [ExportFormat.MODEL]:
+            path = os.path.join(export_dir, "exported_convnet.pt")
+            torch.save(self.model.state_dict(), path)
+            return {export_formats[0]: path}
+        else:
+            raise ValueError("unexpected formats: " + str(export_formats))
+
     def reset_config(self, new_config):
-        del self.optimizer
-        self.optimizer = optim.SGD(
-            self.model.parameters(),
-            lr=new_config.get("lr", 0.01),
-            momentum=new_config.get("momentum", 0.9))
+        for param_group in self.optimizer.param_groups:
+            if "lr" in new_config:
+                param_group["lr"] = new_config["lr"]
+            if "momentum" in new_config:
+                param_group["momentum"] = new_config["momentum"]
+
+        self.config = new_config
         return True
 
 
@@ -74,7 +81,6 @@ if __name__ == "__main__":
     # check if PytorchTrainble will save/restore correctly before execution
     validate_save_restore(PytorchTrainble)
     validate_save_restore(PytorchTrainble, use_object_store=True)
-    print("Success!")
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
@@ -88,21 +94,50 @@ if __name__ == "__main__":
             # allow perturbations within this set of categorical values
             "momentum": [0.8, 0.9, 0.99],
         })
+
     # __pbt_end__
 
     # __tune_begin__
+    class CustomStopper(tune.Stopper):
+        def __init__(self):
+            self.should_stop = False
+
+        def __call__(self, trial_id, result):
+            max_iter = 5 if args.smoke_test else 100
+            if not self.should_stop and result["mean_accuracy"] > 0.96:
+                self.should_stop = True
+            return self.should_stop or result["training_iteration"] >= max_iter
+
+        def stop_all(self):
+            return self.should_stop
+
+    stopper = CustomStopper()
+
     analysis = tune.run(
         PytorchTrainble,
         name="pbt_test",
         scheduler=scheduler,
         reuse_actors=True,
         verbose=1,
-        stop={
-            "training_iteration": 5 if args.smoke_test else 100,
-        },
+        stop=stopper,
+        export_formats=[ExportFormat.MODEL],
+        checkpoint_score_attr="mean_accuracy",
+        checkpoint_freq=5,
+        keep_checkpoints_num=4,
         num_samples=4,
         config={
             "lr": tune.uniform(0.001, 1),
             "momentum": tune.uniform(0.001, 1),
         })
     # __tune_end__
+
+    best_trial = analysis.get_best_trial("mean_accuracy")
+    best_checkpoint = max(
+        analysis.get_trial_checkpoints_paths(best_trial, "mean_accuracy"))
+    restored_trainable = PytorchTrainble()
+    restored_trainable.restore(best_checkpoint[0])
+    best_model = restored_trainable.model
+    # Note that test only runs on a small random set of the test data, thus the
+    # accuracy may be different from metrics shown in tuning process.
+    test_acc = test(best_model, get_data_loaders()[1])
+    print("best model accuracy: ", test_acc)

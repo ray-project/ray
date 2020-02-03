@@ -9,11 +9,6 @@
 # this is to `import tensorflow` inside the Tune Trainable.
 #
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import argparse
 from tensorflow.keras.layers import Dense, Flatten, Conv2D
 from tensorflow.keras import Model

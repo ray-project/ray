@@ -27,7 +27,8 @@ enum TablePrefix {
   ACTOR_CHECKPOINT_ID = 16;
   NODE_RESOURCE = 17;
   DIRECT_ACTOR = 18;
-  TABLE_PREFIX_MAX = 19;
+  WORKER_FAILURE = 19;
+  TABLE_PREFIX_MAX = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -46,7 +47,8 @@ enum TablePubsub {
   JOB_PUBSUB = 11;
   NODE_RESOURCE_PUBSUB = 12;
   DIRECT_ACTOR_PUBSUB = 13;
-  TABLE_PUBSUB_MAX = 14;
+  WORKER_FAILURE_PUBSUB = 14;
+  TABLE_PUBSUB_MAX = 15;
 }
 
 enum GcsChangeMode {
@@ -68,10 +70,12 @@ message ObjectTableData {
 }
 
 message TaskReconstructionData {
+  // The ID of task.
+  bytes task_id = 1;
   // The number of times this task has been reconstructed so far.
-  uint64 num_reconstructions = 1;
+  uint64 num_reconstructions = 2;
   // The node manager that is trying to reconstruct the task.
-  bytes node_manager_id = 2;
+  bytes node_manager_id = 3;
 }
 
 message TaskTableData {
@@ -113,6 +117,8 @@ message ActorTableData {
   bool is_direct_call = 11;
   // Whether the actor is persistent.
   bool is_detached = 12;
+  // Timestamp that the actor is created or reconstructed.
+  double timestamp = 13;
 }
 
 message ErrorTableData {
@@ -213,14 +219,16 @@ message HeartbeatBatchTableData {
 
 // Data for a lease on task execution.
 message TaskLeaseData {
+  // The task ID.
+  bytes task_id = 1;
   // Node manager client ID.
-  bytes node_manager_id = 1;
+  bytes node_manager_id = 2;
   // The time that the lease was last acquired at. NOTE(swang): This is the
   // system clock time according to the node that added the entry and is not
   // synchronized with other nodes.
-  uint64 acquired_at = 2;
+  uint64 acquired_at = 3;
   // The period that the lease is active for.
-  uint64 timeout = 3;
+  uint64 timeout = 4;
 }
 
 message JobTableData {
@@ -240,20 +248,22 @@ message JobTableData {
 // is the snapshot of an actor's state in the actor registration.
 // See `actor_registration.h` for more detailed explanation of these fields.
 message ActorCheckpointData {
+  // ID of this checkpoint.
+  bytes checkpoint_id = 1;
   // ID of this actor.
-  bytes actor_id = 1;
+  bytes actor_id = 2;
   // The dummy object ID of actor's most recently executed task.
-  bytes execution_dependency = 2;
+  bytes execution_dependency = 3;
   // A list of IDs of this actor's handles.
-  repeated bytes handle_ids = 3;
+  repeated bytes handle_ids = 4;
   // The task counters of the above handles.
-  repeated uint64 task_counters = 4;
+  repeated uint64 task_counters = 5;
   // The frontier dependencies of the above handles.
-  repeated bytes frontier_dependencies = 5;
+  repeated bytes frontier_dependencies = 6;
   // A list of unreleased dummy objects from this actor.
-  repeated bytes unreleased_dummy_objects = 6;
+  repeated bytes unreleased_dummy_objects = 7;
   // The numbers of dependencies for the above unreleased dummy objects.
-  repeated uint32 num_dummy_object_dependencies = 7;
+  repeated uint32 num_dummy_object_dependencies = 8;
 }
 
 // This table stores the actor-to-available-checkpoint-ids mapping.
@@ -264,6 +274,13 @@ message ActorCheckpointIdData {
   repeated bytes checkpoint_ids = 2;
   // A list of the timestamps for each of the above `checkpoint_ids`.
   repeated uint64 timestamps = 3;
+}
+
+message WorkerFailureData {
+  // Address of the worker that failed.
+  Address worker_address = 1;
+  // The UNIX timestamp at which the worker failed.
+  int64 timestamp = 3;
 }
 
 // This enum type is used as object's metadata to indicate the object's creating

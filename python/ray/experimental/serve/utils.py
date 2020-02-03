@@ -3,15 +3,37 @@ import logging
 import random
 import string
 import time
+import io
+import os
 
 import requests
 from pygments import formatters, highlight, lexers
+from ray.experimental.serve.context import FakeFlaskRequest, TaskContext
+from ray.experimental.serve.http_util import build_flask_request
+
+
+def parse_request_item(request_item):
+    if request_item.request_context == TaskContext.Web:
+        is_web_context = True
+        asgi_scope, body_bytes = request_item.request_args
+        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
+        args = (flask_request, )
+        kwargs = {}
+    else:
+        is_web_context = False
+        args = (FakeFlaskRequest(), )
+        kwargs = request_item.request_kwargs
+
+    return args, kwargs, is_web_context
 
 
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    logger.setLevel(logging.INFO)
+    if os.environ.get("SERVE_LOG_DEBUG"):
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     return logger
 
 

@@ -12,6 +12,8 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
+    CActorCheckpointID,
+    CClientID,
     CJobID,
     CTaskID,
     CObjectID,
@@ -31,10 +33,13 @@ from ray.includes.common cimport (
     CGcsClientOptions,
 )
 from ray.includes.task cimport CTaskSpec
-from ray.includes.libraylet cimport CRayletClient
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
+
+ctypedef void (*ray_callback_function) \
+    (shared_ptr[CRayObject] result_object,
+     CObjectID object_id, void* user_data)
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
@@ -49,7 +54,7 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/transport/direct_actor_transport.h" nogil:
+cdef extern from "ray/core_worker/fiber.h" nogil:
     cdef cppclass CFiberEvent "ray::FiberEvent":
         CFiberEvent()
         void Wait()
@@ -77,7 +82,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     CRayStatus() nogil,
                     c_bool ref_counting_enabled)
-        void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
 
@@ -94,6 +98,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
+        CRayStatus KillActor(const CActorID &actor_id)
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -103,19 +108,18 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[shared_ptr[CBuffer]] &metadatas,
             c_vector[shared_ptr[CRayObject]] *return_objects)
 
-        # TODO(edoakes): remove this once the raylet client is no longer used
-        # directly.
-        CRayletClient &GetRayletClient()
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
         const CActorID &GetActorId()
+        void SetActorTitle(const c_string &title)
+        void SetWebuiDisplay(const c_string &key, const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes)
-        void AddObjectIDReference(const CObjectID &object_id)
-        void RemoveObjectIDReference(const CObjectID &object_id)
+        void AddLocalReference(const CObjectID &object_id)
+        void RemoveLocalReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
         void PromoteToPlasmaAndGetOwnershipInfo(const CObjectID &object_id,
                                                 CTaskID *owner_id,
@@ -128,12 +132,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)
         CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size, CObjectID *object_id,
-                          shared_ptr[CBuffer] *data)
+                          const size_t data_size,
+                          CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size, const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id)
+        CRayStatus Seal(const CObjectID &object_id, c_bool owns_object,
+                        c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
@@ -145,3 +150,20 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
+
+        unordered_map[CObjectID, pair[size_t, size_t]] GetAllReferenceCounts()
+
+        void GetAsync(const CObjectID &object_id,
+                      ray_callback_function successs_callback,
+                      ray_callback_function fallback_callback,
+                      void* python_future)
+
+        CRayStatus PushError(const CJobID &job_id, const c_string &type,
+                             const c_string &error_message, double timestamp)
+        CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
+                                          CActorCheckpointID *checkpoint_id)
+        CRayStatus NotifyActorResumedFromCheckpoint(
+            const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
+        CRayStatus SetResource(const c_string &resource_name,
+                               const double capacity,
+                               const CClientID &client_Id)

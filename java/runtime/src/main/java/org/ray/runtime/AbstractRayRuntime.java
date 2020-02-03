@@ -52,9 +52,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
-  public AbstractRayRuntime(RayConfig rayConfig) {
+  public AbstractRayRuntime(RayConfig rayConfig, FunctionManager functionManager) {
     this.rayConfig = rayConfig;
-    functionManager = new FunctionManager(rayConfig.jobResourcePath);
+    this.functionManager = functionManager;
     runtimeContext = new RuntimeContextImpl(this);
   }
 

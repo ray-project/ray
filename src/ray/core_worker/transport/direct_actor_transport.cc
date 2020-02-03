@@ -1,11 +1,30 @@
+#include "ray/core_worker/transport/direct_actor_transport.h"
+
 #include <thread>
 
 #include "ray/common/task/task.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
 
 using ray::rpc::ActorTableData;
 
 namespace ray {
+
+Status CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id) {
+  absl::MutexLock lock(&mu_);
+  pending_force_kills_.insert(actor_id);
+  auto it = rpc_clients_.find(actor_id);
+  if (it == rpc_clients_.end()) {
+    // Actor is not yet created, or is being reconstructed, cache the request
+    // and submit after actor is alive.
+    // TODO(zhijunfu): it might be possible for a user to specify an invalid
+    // actor handle (e.g. from unpickling), in that case it might be desirable
+    // to have a timeout to mark it as invalid if it doesn't show up in the
+    // specified time.
+    RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
+  } else {
+    SendPendingTasks(actor_id);
+  }
+  return Status::OK();
+}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
@@ -23,6 +42,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     const auto &actor_id = task_spec.ActorId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    request->mutable_caller_address()->CopyFrom(rpc_address_);
     // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
     // fails, then the task data will be gone when the TaskManager attempts to
     // access the task.
@@ -58,6 +78,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Update the mapping so new RPCs go out with the right intended worker id.
   worker_ids_[actor_id] = address.worker_id();
   // Create a new connection to the actor.
+  // TODO(edoakes): are these clients cleaned up properly?
   if (rpc_clients_.count(actor_id) == 0) {
     rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
         client_factory_(address.ip_address(), address.port()));
@@ -101,6 +122,15 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
   RAY_CHECK(client);
+  // Check if there is a pending force kill. If there is, send it and disconnect the
+  // client.
+  if (pending_force_kills_.find(actor_id) != pending_force_kills_.end()) {
+    rpc::KillActorRequest request;
+    request.set_intended_actor_id(actor_id.Binary());
+    RAY_CHECK_OK(client->KillActor(request, nullptr));
+    pending_force_kills_.erase(actor_id);
+  }
+
   // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
   auto head = requests.begin();
@@ -140,10 +170,9 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-void CoreWorkerDirectTaskReceiver::Init(raylet::RayletClient &raylet_client,
-                                        rpc::ClientFactoryFn client_factory,
+void CoreWorkerDirectTaskReceiver::Init(rpc::ClientFactoryFn client_factory,
                                         rpc::Address rpc_address) {
-  waiter_.reset(new DependencyWaiterImpl(raylet_client));
+  waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
   rpc_address_ = rpc_address;
   client_factory_ = client_factory;
 }
@@ -157,25 +186,11 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
   }
 }
 
-void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
+void CoreWorkerDirectTaskReceiver::SetActorAsAsync(int max_concurrency) {
   if (!is_asyncio_) {
     RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
-
-    // The main thread will be used the creating new fibers.
-    // The fiber_runner_thread_ will run all fibers.
-    // boost::fibers::algo::shared_work allows two threads to transparently
-    // share all the fibers.
-    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
-
-    fiber_runner_thread_ = std::thread([&]() {
-      boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
-
-      // The event here is used to make sure fiber_runner_thread_ never terminates.
-      // Because fiber_shutdown_event_ is never notified, fiber_runner_thread_ will
-      // immediately start working on any ready fibers.
-      fiber_shutdown_event_.Wait();
-    });
-    fiber_rate_limiter_.reset(new FiberRateLimiter(max_concurrency_));
+    fiber_state_.reset(new FiberState(max_concurrency));
+    max_concurrency_ = max_concurrency;
     is_asyncio_ = true;
   }
 };
@@ -191,9 +206,13 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                         nullptr, nullptr);
     return;
   }
-  SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
+
+  // Only call SetMaxActorConcurrency to configure threadpool size when the
+  // actor is not async actor. Async actor is single threaded.
   if (worker_context_.CurrentActorIsAsync()) {
-    SetActorAsAsync();
+    SetActorAsAsync(worker_context_.CurrentActorMaxConcurrency());
+  } else {
+    SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
   }
 
   std::vector<ObjectID> dependencies;
@@ -218,7 +237,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     }
   }
 
-  auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
+  const rpc::Address &caller_address = request.caller_address();
+  auto accept_callback = [this, caller_address, reply, send_reply_callback, task_spec,
+                          resource_ids]() {
     // We have posted an exit task onto the main event loop,
     // so shouldn't bother executing any further work.
     if (exiting_) return;
@@ -234,6 +255,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     auto status = task_handler_(task_spec, resource_ids, &return_objects);
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
+      std::vector<ObjectID> plasma_return_ids;
       for (size_t i = 0; i < return_objects.size(); i++) {
         auto return_object = reply->add_return_objects();
         ObjectID id = ObjectID::ForTaskReturn(
@@ -245,6 +267,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         const auto &result = return_objects[i];
         if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
+          plasma_return_ids.push_back(id);
         } else {
           if (result->GetData() != nullptr) {
             return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
@@ -255,18 +278,40 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
           }
         }
       }
+      // If we spilled any return objects to plasma, notify the raylet to pin them.
+      // The raylet will then coordinate with the caller to manage the objects'
+      // lifetimes.
+      // TODO(edoakes): the plasma objects could be evicted between creating them
+      // here and when raylet pins them.
+      if (!plasma_return_ids.empty()) {
+        RAY_CHECK_OK(
+            local_raylet_client_->PinObjectIDs(caller_address, plasma_return_ids));
+      }
+      if (task_spec.IsActorCreationTask()) {
+        RAY_LOG(INFO) << "Actor creation task finished, task_id: " << task_spec.TaskId()
+                      << ", actor_id: " << task_spec.ActorCreationId();
+        // Tell raylet that an actor creation task has finished execution, so that
+        // raylet can publish actor creation event to GCS, and mark this worker as
+        // actor, thus if this worker dies later raylet will reconstruct the actor.
+        RAY_CHECK_OK(local_raylet_client_->TaskDone());
+      }
     }
     if (status.IsSystemExit()) {
+      // Don't allow the worker to be reused, even though the reply status is OK.
+      // The worker will be shutting down shortly.
+      reply->set_worker_exiting(true);
       // In Python, SystemExit can only be raised on the main thread. To
       // work around this when we are executing tasks on worker threads,
       // we re-post the exit event explicitly on the main thread.
       exiting_ = true;
       if (objects_valid) {
+        // This happens when max_calls is hit. We still need to return the objects.
         send_reply_callback(Status::OK(), nullptr, nullptr);
       } else {
-        send_reply_callback(Status::SystemExit(), nullptr, nullptr);
+        send_reply_callback(status, nullptr, nullptr);
       }
-      task_main_io_service_.post([this]() { exit_handler_(); });
+      task_main_io_service_.post(
+          [this, status]() { exit_handler_(status.IsIntentionalSystemExit()); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
       send_reply_callback(status, nullptr, nullptr);
@@ -289,7 +334,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     auto result = scheduling_queue_.emplace(
         task_spec.CallerId(),
         std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
+            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_state_)));
     it = result.first;
   }
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),

@@ -1,6 +1,5 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
@@ -45,6 +44,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                          const rpc::Address *addr));
   MOCK_METHOD3(PendingTaskFailed,
                void(const TaskID &task_id, rpc::ErrorType error_type, Status *status));
+
+  MOCK_METHOD1(OnTaskDependenciesInlined, void(const std::vector<ObjectID> &object_ids));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
@@ -62,9 +63,11 @@ class DirectActorTransportTest : public ::testing::Test {
       : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         task_finisher_(std::make_shared<MockTaskFinisher>()),
-        submitter_([&](const std::string ip, int port) { return worker_client_; }, store_,
+        submitter_(address_,
+                   [&](const std::string ip, int port) { return worker_client_; }, store_,
                    task_finisher_) {}
 
+  rpc::Address address_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisher> task_finisher_;

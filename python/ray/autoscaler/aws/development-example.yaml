@@ -99,7 +99,7 @@ setup_commands:
     - git clone https://github.com/ray-project/ray || true
     - ray/ci/travis/install-bazel.sh
     - cd ray/python/ray/dashboard/client; npm ci; npm run build
-    - pip install boto3==1.4.8 cython==0.29.0 aiohttp psutil setproctitle
+    - pip install boto3==1.4.8 cython==0.29.0 aiohttp grpcio psutil setproctitle
     - cd ray/python; pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
@@ -111,9 +111,9 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --include-webui --num-redis-shards=10 --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; ray start --head --num-redis-shards=10 --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379

@@ -37,15 +37,14 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// will be triggered.
   /// \param client_id The client ID to use when requesting notifications from
   /// the GCS.
-  /// \param task_lease_pubsub The GCS pub-sub storage system to request task
+  /// \param gcs_client The Client of GCS.
   /// lease notifications from.
   ReconstructionPolicy(
       boost::asio::io_service &io_service,
       std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
       int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
-      gcs::PubsubInterface<TaskID> &task_lease_pubsub,
-      std::shared_ptr<ObjectDirectoryInterface> object_directory,
-      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log);
+      std::shared_ptr<gcs::GcsClient> gcs_client,
+      std::shared_ptr<ObjectDirectoryInterface> object_directory);
 
   /// Listen for task lease notifications about an object that may require
   /// reconstruction. If no notifications are received within the initial
@@ -109,6 +108,10 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   void SetTaskTimeout(std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
                       int64_t timeout_ms);
 
+  /// Handle task lease notification from GCS.
+  void OnTaskLeaseNotification(const TaskID &task_id,
+                               const boost::optional<rpc::TaskLeaseData> &task_lease);
+
   /// Attempt to re-execute a task to reconstruct the required object.
   ///
   /// \param task_id The task to attempt to re-execute.
@@ -138,11 +141,10 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   const int64_t initial_reconstruction_timeout_ms_;
   /// The client ID to use when requesting notifications from the GCS.
   const ClientID client_id_;
-  /// The GCS pub-sub storage system to request task lease notifications from.
-  gcs::PubsubInterface<TaskID> &task_lease_pubsub_;
+  /// A client connection to the GCS.
+  std::shared_ptr<gcs::GcsClient> gcs_client_;
   /// The object directory used to lookup object locations.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   /// The tasks that we are currently subscribed to in the GCS.
   std::unordered_map<TaskID, ReconstructionTask> listening_tasks_;
 };

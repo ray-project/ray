@@ -1,5 +1,12 @@
 #include "gcs_server.h"
+#include "actor_info_handler_impl.h"
+#include "error_info_handler_impl.h"
 #include "job_info_handler_impl.h"
+#include "node_info_handler_impl.h"
+#include "object_info_handler_impl.h"
+#include "stats_handler_impl.h"
+#include "task_info_handler_impl.h"
+#include "worker_info_handler_impl.h"
 
 namespace ray {
 namespace gcs {
@@ -19,6 +26,40 @@ void GcsServer::Start() {
   job_info_handler_ = InitJobInfoHandler();
   job_info_service_.reset(new rpc::JobInfoGrpcService(main_service_, *job_info_handler_));
   rpc_server_.RegisterService(*job_info_service_);
+
+  actor_info_handler_ = InitActorInfoHandler();
+  actor_info_service_.reset(
+      new rpc::ActorInfoGrpcService(main_service_, *actor_info_handler_));
+  rpc_server_.RegisterService(*actor_info_service_);
+
+  node_info_handler_ = InitNodeInfoHandler();
+  node_info_service_.reset(
+      new rpc::NodeInfoGrpcService(main_service_, *node_info_handler_));
+  rpc_server_.RegisterService(*node_info_service_);
+
+  object_info_handler_ = InitObjectInfoHandler();
+  object_info_service_.reset(
+      new rpc::ObjectInfoGrpcService(main_service_, *object_info_handler_));
+  rpc_server_.RegisterService(*object_info_service_);
+
+  task_info_handler_ = InitTaskInfoHandler();
+  task_info_service_.reset(
+      new rpc::TaskInfoGrpcService(main_service_, *task_info_handler_));
+  rpc_server_.RegisterService(*task_info_service_);
+
+  stats_handler_ = InitStatsHandler();
+  stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
+  rpc_server_.RegisterService(*stats_service_);
+
+  error_info_handler_ = InitErrorInfoHandler();
+  error_info_service_.reset(
+      new rpc::ErrorInfoGrpcService(main_service_, *error_info_handler_));
+  rpc_server_.RegisterService(*error_info_service_);
+
+  worker_info_handler_ = InitWorkerInfoHandler();
+  worker_info_service_.reset(
+      new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
+  rpc_server_.RegisterService(*worker_info_service_);
 
   // Run rpc server.
   rpc_server_.Run();
@@ -40,14 +81,50 @@ void GcsServer::Stop() {
 
 void GcsServer::InitBackendClient() {
   GcsClientOptions options(config_.redis_address, config_.redis_port,
-                           config_.redis_password);
+                           config_.redis_password, config_.is_test);
   redis_gcs_client_ = std::make_shared<RedisGcsClient>(options);
   auto status = redis_gcs_client_->Connect(main_service_);
   RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 }
 
 std::unique_ptr<rpc::JobInfoHandler> GcsServer::InitJobInfoHandler() {
-  return std::unique_ptr<rpc::DefaultJobInfoHandler>(new rpc::DefaultJobInfoHandler());
+  return std::unique_ptr<rpc::DefaultJobInfoHandler>(
+      new rpc::DefaultJobInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::ActorInfoHandler> GcsServer::InitActorInfoHandler() {
+  return std::unique_ptr<rpc::DefaultActorInfoHandler>(
+      new rpc::DefaultActorInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
+  return std::unique_ptr<rpc::DefaultNodeInfoHandler>(
+      new rpc::DefaultNodeInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
+  return std::unique_ptr<rpc::DefaultObjectInfoHandler>(
+      new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
+  return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
+      new rpc::DefaultTaskInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
+  return std::unique_ptr<rpc::DefaultStatsHandler>(
+      new rpc::DefaultStatsHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
+  return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
+      new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
+      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
 }
 
 }  // namespace gcs

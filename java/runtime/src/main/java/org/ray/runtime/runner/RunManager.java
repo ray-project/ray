@@ -32,7 +32,7 @@ public class RunManager {
   private static final Logger LOGGER = LoggerFactory.getLogger(RunManager.class);
 
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
-      DateTimeFormatter.ofPattern("Y-M-d_H-m-s");
+      DateTimeFormatter.ofPattern("YYYY-MM-dd_HH-mm-ss");
 
   private static final String WORKER_CLASS = "org.ray.runtime.runner.worker.DefaultWorker";
 
@@ -57,28 +57,37 @@ public class RunManager {
 
     for (int i = processes.size() - 1; i >= 0; --i) {
       Pair<String, Process> pair = processes.get(i);
-      String name = pair.getLeft();
-      Process p = pair.getRight();
-
-      int numAttempts = 0;
-      while (p.isAlive()) {
-        if (numAttempts == 0) {
-          LOGGER.debug("Terminating process {}.", name);
-          p.destroy();
-        } else {
-          LOGGER.debug("Terminating process {} forcibly.", name);
-          p.destroyForcibly();
-        }
-        try {
-          p.waitFor(KILL_PROCESS_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-          LOGGER.warn("Got InterruptedException while waiting for process {}" +
-              " to be terminated.", processes.get(i));
-        }
-        numAttempts++;
-      }
-      LOGGER.info("Process {} is now terminated.", name);
+      terminateProcess(pair.getLeft(), pair.getRight());
     }
+  }
+
+  public void terminateProcess(String name, Process p) {
+    int numAttempts = 0;
+    while (p.isAlive()) {
+      if (numAttempts == 0) {
+        LOGGER.debug("Terminating process {}.", name);
+        p.destroy();
+      } else {
+        LOGGER.debug("Terminating process {} forcibly.", name);
+        p.destroyForcibly();
+      }
+      try {
+        p.waitFor(KILL_PROCESS_WAIT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        LOGGER.warn("Got InterruptedException while waiting for process {}" +
+            " to be terminated.", name);
+      }
+      numAttempts++;
+    }
+    LOGGER.info("Process {} is now terminated.", name);
+  }
+
+  /**
+   * Get processes by name. For test purposes only.
+   */
+  public List<Process> getProcesses(String name) {
+    return processes.stream().filter(pair -> pair.getLeft().equals(name)).map(Pair::getRight)
+        .collect(Collectors.toList());
   }
 
   private void createTempDirs() {
@@ -130,14 +139,15 @@ public class RunManager {
       LOGGER.error("Failed to start process " + name, e);
       throw new RuntimeException("Failed to start process " + name, e);
     }
-    // Wait 200ms and check whether the process is alive.
+    // Wait 1000 ms and check whether the process is alive.
     try {
-      TimeUnit.MILLISECONDS.sleep(200);
+      TimeUnit.MILLISECONDS.sleep(1000);
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
     if (!p.isAlive()) {
-      throw new RuntimeException("Failed to start " + name);
+      throw new RuntimeException(
+          String.format("Failed to start %s. Exit code: %d.", name, p.exitValue()));
     }
     processes.add(Pair.of(name, p));
     if (LOGGER.isInfoEnabled()) {
@@ -191,7 +201,7 @@ public class RunManager {
       // start redis shards
       for (int i = 0; i < rayConfig.numberRedisShards; i++) {
         String shard = startRedisInstance(rayConfig.nodeIp,
-            rayConfig.headRedisPort + i + 1, rayConfig.headRedisPassword, i);
+            rayConfig.redisShardPorts[i], rayConfig.headRedisPassword, i);
         client.rpush("RedisShards", shard);
       }
     }
@@ -258,7 +268,8 @@ public class RunManager {
           String.format("--raylet_socket_name=%s", rayConfig.rayletSocketName),
           String.format("--store_socket_name=%s", rayConfig.objectStoreSocketName),
           String.format("--object_manager_port=%d", 0), // The object manager port.
-          String.format("--node_manager_port=%d", rayConfig.getNodeManagerPort()),  // The node manager port.
+          // The node manager port.
+          String.format("--node_manager_port=%d", rayConfig.getNodeManagerPort()),
           String.format("--node_ip_address=%s", rayConfig.nodeIp),
           String.format("--redis_address=%s", rayConfig.getRedisIp()),
           String.format("--redis_port=%d", rayConfig.getRedisPort()),
@@ -308,6 +319,10 @@ public class RunManager {
       cmd.add("-Dray.logging.file.path=" + logFile);
     }
 
+    if (!Strings.isNullOrEmpty(rayConfig.jobResourcePath)) {
+      cmd.add("-Dray.job.resource-path=" + rayConfig.jobResourcePath);
+    }
+
     // socket names
     cmd.add("-Dray.raylet.socket-name=" + rayConfig.rayletSocketName);
     cmd.add("-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName);
@@ -339,7 +354,7 @@ public class RunManager {
 
   private void startObjectStore() {
     try (FileUtil.TempFile plasmaStoreFile = FileUtil
-        .getTempFileFromResource("external/plasma/plasma_store_server")) {
+        .getTempFileFromResource("plasma_store_server")) {
       plasmaStoreFile.getFile().setExecutable(true);
       List<String> command = ImmutableList.of(
           // The plasma store executable file.

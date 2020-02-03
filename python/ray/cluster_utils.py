@@ -1,18 +1,15 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import time
 
 import redis
 
 import ray
+from ray import ray_constants
 
 logger = logging.getLogger(__name__)
 
 
-class Cluster(object):
+class Cluster:
     def __init__(self,
                  initialize_head=False,
                  connect=False,
@@ -91,7 +88,8 @@ class Cluster(object):
                 spawn_reaper=self._shutdown_at_exit)
             self.head_node = node
             self.redis_address = self.head_node.redis_address
-            self.redis_password = node_args.get("redis_password")
+            self.redis_password = node_args.get(
+                "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
             self.webui_url = self.head_node.webui_url
         else:
             ray_params.update_if_absent(redis_address=self.redis_address)

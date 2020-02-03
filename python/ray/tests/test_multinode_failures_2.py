@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import os
 import sys
@@ -82,7 +78,6 @@ def test_object_reconstruction(ray_start_cluster):
         ray.get(xs)
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no actor restart yet")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 4,
@@ -95,7 +90,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
     cluster = ray_start_cluster
 
     @ray.remote
-    class Child(object):
+    class Child:
         def __init__(self, death_probability):
             self.death_probability = death_probability
 
@@ -105,7 +100,7 @@ def test_actor_creation_node_failure(ray_start_cluster):
             if exit_chance < self.death_probability:
                 sys.exit(-1)
 
-    num_children = 50
+    num_children = 25
     # Children actors will die about half the time.
     death_probability = 0.5
 

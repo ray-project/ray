@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 import json
 import multiprocessing
@@ -133,7 +129,7 @@ def test_actor_broadcast(ray_start_cluster_with_resource):
     cluster, num_nodes = ray_start_cluster_with_resource
 
     @ray.remote
-    class Actor(object):
+    class Actor:
         def ready(self):
             pass
 

@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import binascii
 import errno
 import hashlib
@@ -18,6 +14,8 @@ import uuid
 
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+
+logger = logging.getLogger(__name__)
 
 
 def _random_string():
@@ -64,7 +62,7 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    worker.raylet_client.push_error(job_id, error_type, message, time.time())
+    worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
@@ -129,6 +127,21 @@ def is_function_or_method(obj):
 def is_class_method(f):
     """Returns whether the given method is a class_method."""
     return hasattr(f, "__self__") and f.__self__ is not None
+
+
+def is_static_method(cls, f_name):
+    """Returns whether the class has a static method with the given name.
+
+    Args:
+        cls: The Python class (i.e. object of type `type`) to
+            search for the method in.
+        f_name: The name of the method to look up in this class
+            and check whether or not it is static.
+    """
+    for cls in inspect.getmro(cls):
+        if f_name in cls.__dict__:
+            return isinstance(cls.__dict__[f_name], staticmethod)
+    return False
 
 
 def random_string():
@@ -250,7 +263,8 @@ def get_cuda_visible_devices():
 
     Returns:
         if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
-            the IDs of the GPUs. If it is not set, this returns None.
+            the IDs of the GPUs. If it is not set or is set to NoDevFiles,
+            this returns None.
     """
     gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
@@ -258,6 +272,9 @@ def get_cuda_visible_devices():
         return None
 
     if gpu_ids_str == "":
+        return []
+
+    if gpu_ids_str == "NoDevFiles":
         return []
 
     return [int(i) for i in gpu_ids_str.split(",")]
@@ -452,16 +469,6 @@ def estimate_available_memory():
         overestimate if psutil is not installed.
     """
 
-    # check cgroup memory first
-    try:
-        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
-            cgroup_memory_usage = int(f.read())
-    except IOError:
-        cgroup_memory_usage = None
-
-    if cgroup_memory_usage is not None:
-        return get_system_memory() - cgroup_memory_usage
-
     # Use psutil if it is available.
     try:
         import psutil
@@ -545,26 +552,14 @@ def try_make_directory_shared(directory_path):
             raise
 
 
-def try_to_create_directory(directory_path, warn_if_exist=True):
+def try_to_create_directory(directory_path):
     """Attempt to create a directory that is globally readable/writable.
 
     Args:
         directory_path: The path of the directory to create.
-        warn_if_exist (bool): Warn if the directory already exists.
     """
     directory_path = os.path.expanduser(directory_path)
-    if not os.path.exists(directory_path):
-        try:
-            os.makedirs(directory_path)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise e
-            if warn_if_exist:
-                logger = logging.getLogger("ray")
-                logger.warning(
-                    "Attempted to create '{}', but the directory already "
-                    "exists.".format(directory_path))
-
+    os.makedirs(directory_path, exist_ok=True)
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)
