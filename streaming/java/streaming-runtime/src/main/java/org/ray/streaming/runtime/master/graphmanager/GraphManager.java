@@ -1,14 +1,19 @@
 package org.ray.streaming.runtime.master.graphmanager;
 
-import java.io.Serializable;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 
 /**
  * Graph manager is one of the important roles of JobMaster. It mainly focuses on graph management.
- * Such as: 1) build execution graph from job graph
- *          2) do modifications or operations on graph
- *          3) query vertex info from graph
+ *
+ * <p>
+ * Such as:
+ * <ul>
+ * <li>1) build execution graph from job graph</li>
+ * <li>2) do modifications or operations on graph</li>
+ * <li>3) query vertex info from graph</li>
+ * </ul>
+ * </p>
  */
 public interface GraphManager {
 

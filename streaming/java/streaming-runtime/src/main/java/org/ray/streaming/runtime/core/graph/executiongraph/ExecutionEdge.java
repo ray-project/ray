@@ -4,7 +4,7 @@ import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 
 /**
- * An edge that attaches two execution vertices.
+ * An edge that connects two execution vertices.
  */
 public class ExecutionEdge implements Serializable {
 
@@ -14,12 +14,12 @@ public class ExecutionEdge implements Serializable {
   private final ExecutionVertex sourceVertex;
 
   /**
-   * This target(downstream) execution vertex.
+   * The target(downstream) execution vertex.
    */
   private final ExecutionVertex targetVertex;
 
   /**
-   * A unique id for execution edge.
+   * An unique id for execution edge.
    */
   private final String executionEdgeIndex;
 
@@ -42,11 +42,11 @@ public class ExecutionEdge implements Serializable {
     return targetVertex;
   }
 
-  public int getProducerId() {
+  public int getSourceVertexId() {
     return sourceVertex.getVertexId();
   }
 
-  public int getConsumerId() {
+  public int getTargetVertexId() {
     return targetVertex.getVertexId();
   }
 

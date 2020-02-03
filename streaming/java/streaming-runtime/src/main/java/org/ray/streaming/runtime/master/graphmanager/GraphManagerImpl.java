@@ -53,19 +53,19 @@ public class GraphManagerImpl implements GraphManager {
       exeJobVertexMap.put(jobVertexId, new ExecutionJobVertex(jobVertex));
     }
 
-    // attach vertex
+    // connect vertex
     jobGraph.getJobEdgeList().stream().forEach(jobEdge -> {
-      ExecutionJobVertex producer = exeJobVertexMap.get(jobEdge.getSrcVertexId());
-      ExecutionJobVertex consumer = exeJobVertexMap.get(jobEdge.getTargetVertexId());
+      ExecutionJobVertex source = exeJobVertexMap.get(jobEdge.getSrcVertexId());
+      ExecutionJobVertex target = exeJobVertexMap.get(jobEdge.getTargetVertexId());
 
       ExecutionJobEdge executionJobEdge =
-          new ExecutionJobEdge(producer, consumer, jobEdge);
+          new ExecutionJobEdge(source, target, jobEdge);
 
-      producer.getOutputEdges().add(executionJobEdge);
-      consumer.getInputEdges().add(executionJobEdge);
+      source.getOutputEdges().add(executionJobEdge);
+      target.getInputEdges().add(executionJobEdge);
 
-      producer.getExecutionVertices().stream().forEach(vertex -> {
-        consumer.getExecutionVertices().stream().forEach(outputVertex -> {
+      source.getExecutionVertices().stream().forEach(vertex -> {
+        target.getExecutionVertices().stream().forEach(outputVertex -> {
           ExecutionEdge executionEdge = new ExecutionEdge(vertex, outputVertex, executionJobEdge);
           vertex.getOutputEdges().add(executionEdge);
           outputVertex.getInputEdges().add(executionEdge);
