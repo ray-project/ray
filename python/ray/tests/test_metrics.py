@@ -242,6 +242,50 @@ def test_raylet_info_endpoint(shutdown_only):
         time.sleep(1)
 
 
+def test_raylet_infeasible_and_pending_tasks(shutdown_only):
+    AVAILABLE_GPUS = 4
+    INFEASIBLE_GPUS_REQUIRED = 5
+    addresses = ray.init(include_webui=True, num_gpus=AVAILABLE_GPUS)
+
+    @ray.remote(num_gpus=INFEASIBLE_GPUS_REQUIRED) 
+    class ActorB: 
+        def __init__(self):
+            pass 
+    b = ActorB.remote() 
+
+    @ray.remote(num_gpus=1) 
+    class Actor: 
+        def __init__(self): 
+            pass 
+    @ray.remote 
+    class ActorA: 
+        def __init__(self): 
+            self.a = [Actor.remote() for i in range(4)] 
+    a = ActorA.remote()    
+
+    start_time = time.time()
+    while True:
+        time.sleep(1)
+        try:
+            webui_url = addresses["webui_url"]
+            webui_url = webui_url.replace("localhost", "http://127.0.0.1")
+            raylet_info = requests.get(webui_url + "/api/raylet_info").json()
+            actor_info = raylet_info["result"]["actors"]
+            print('raylet info\n{}'.format(raylet_info))
+            print('actor info\n{}'.format(actor_info))
+            try:
+                pass
+                break
+            except AssertionError:
+                if time.time() > start_time + 30:
+                    raise Exception("Timed out while waiting for actor info \
+                        or object store info update.")
+        except requests.exceptions.ConnectionError:
+            if time.time() > start_time + 30:
+                raise Exception(
+                    "Timed out while waiting for dashboard to start.")
+
+
 def test_profiling_info_endpoint(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -271,6 +315,7 @@ def test_profiling_info_endpoint(shutdown_only):
 
     reply = reporter_stub.GetProfilingStats(
         reporter_pb2.GetProfilingStatsRequest(pid=actor_pid, duration=10))
+    print('reply: {}'.format(reply))
     profiling_stats = json.loads(reply.profiling_stats)
     assert profiling_stats is not None
 
