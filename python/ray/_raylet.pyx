@@ -580,10 +580,7 @@ cdef write_serialized_object(
         (<Pickle5Writer>serialized_object.writer).write_to(
             serialized_object.inband, buf, MEMCOPY_THREADS)
     else:
-        buffer = Buffer.make(buf)
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
-        stream.set_memcopy_threads(MEMCOPY_THREADS)
-        serialized_object.serialized_object.write_to(stream)
+        raise TypeError("Unsupported serialization type.")
 
 
 cdef class CoreWorker:
