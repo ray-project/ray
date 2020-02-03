@@ -3195,8 +3195,8 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
       infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
     }
   }
-  // Report tasks that are not scheduled (staying in the ready queue for a long time) 
-  // because resources are occupied by other actors/tasks. 
+  // Report tasks that are not scheduled because 
+  // resources are occupied by other actors/tasks. 
   // NOTE(SANG): This solution is workaround. It can be replaced by creating a new state
   // like PENDING_UNTIL_RESOURCE_AVAILABLE
   for (const auto task : local_queues_.GetTasks(TaskState::READY)) {

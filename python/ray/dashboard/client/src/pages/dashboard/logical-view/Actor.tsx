@@ -38,7 +38,7 @@ const styles = (theme: Theme) =>
     invalidStateTypeInfeasible: {
       color: theme.palette.error.main
     },
-    invalidStateWaitingUntilResourceAvailable: {
+    invalidStateTypeWaitingUntilResourceAvailable: {
       color: orange[500]
     },
     information: {
@@ -294,7 +294,7 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               {actor.actorTitle} is an infeasible actor.
             </span>
           ) : (
-            <span className={classes.invalidStateWaitingUntilResourceAvailable}>
+            <span className={classes.invalidStateTypeWaitingUntilResourceAvailable}>
               {actor.actorTitle} is pending until reousrces are available.
             </span>
           )}
