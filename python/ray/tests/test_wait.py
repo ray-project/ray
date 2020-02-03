@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @ray.remote
 def f(delay):
-    time.sleep(delay)
+    ray.ObjectID.from_random()
     return
 
 
@@ -25,8 +25,8 @@ def test_wait_returns_1_item_by_default(ray_start_regular):
 
 
 def test_wait_with_no_timeout_returns_num_returns_items(ray_start_regular):
-    oids = [ray.put(i) for i in range(10)]
-    (found, rest) = ray.wait(oids, num_returns=2)
+    object_ids = [ray.put(i) for i in range(10)]
+    (found, rest) = ray.wait(object_ids, num_returns=2)
     assert len(found) == 2
     assert len(rest) == 8
 
@@ -40,10 +40,11 @@ def test_wait_with_no_timeout_returns_object_ids_size_if_it_is_less_than_num_ret
 
 
 def test_wait_with_timeout_returns_up_to_num_returns_items(ray_start_regular):
-    object_ids = [f.remote(0), f.remote(2)]
-    ready_ids, remaining_ids = ray.wait(object_ids, timeout=1.0, num_returns=2)
-    assert len(ready_ids) == 1
-    assert len(remaining_ids) == 1
+    # object_ids = [f.remote(0), f.remote(2)]
+    object_ids = [ray.put(i) for i in range(10)]
+    ready_ids, remaining_ids = ray.wait(object_ids, timeout=0.1, num_returns=2)
+    assert len(ready_ids) <= 2
+    assert len(remaining_ids) >= 2
 
 
 def test_wait_accepts_empty_object_ids_list(ray_start_regular):
