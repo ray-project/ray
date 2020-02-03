@@ -162,7 +162,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
             ByteString.copyFrom(runtime.getRayConfig().getJobId().getBytes()))
         .setTaskId(ByteString.copyFrom(taskIdBytes))
         .setFunctionDescriptor(org.ray.runtime.generated.Common.FunctionDescriptor.newBuilder()
-                .setJavaFunctionDescriptor(org.ray.runtime.generated.Common.JavaFunctionDescriptor.newBuilder()
+                .setJavaFunctionDescriptor(
+                        org.ray.runtime.generated.Common.JavaFunctionDescriptor.newBuilder()
                         .setClassName(functionDescriptorList.get(0))
                         .setFunctionName(functionDescriptorList.get(1))
                         .setSignature(functionDescriptorList.get(2))))
@@ -312,10 +313,12 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
   }
 
   private static JavaFunctionDescriptor getJavaFunctionDescriptor(TaskSpec taskSpec) {
-    org.ray.runtime.generated.Common.FunctionDescriptor functionDescriptor = taskSpec.getFunctionDescriptor();
+    org.ray.runtime.generated.Common.FunctionDescriptor functionDescriptor =
+            taskSpec.getFunctionDescriptor();
     if (functionDescriptor.getFunctionDescriptorCase() ==
             Common.FunctionDescriptor.FunctionDescriptorCase.JAVA_FUNCTION_DESCRIPTOR) {
-      return new JavaFunctionDescriptor(functionDescriptor.getJavaFunctionDescriptor().getClassName(),
+      return new JavaFunctionDescriptor(
+              functionDescriptor.getJavaFunctionDescriptor().getClassName(),
               functionDescriptor.getJavaFunctionDescriptor().getFunctionName(),
               functionDescriptor.getJavaFunctionDescriptor().getSignature());
     } else {
