@@ -134,7 +134,7 @@ def _configure_key_pair(config):
     ec2 = _resource("ec2", config)
 
     # Try a few times to get or create a good key pair.
-    MAX_NUM_KEYS = 20
+    MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
         key_name, key_path = key_pair(i, config["provider"]["region"])
         key = _get_key(key_name, config)

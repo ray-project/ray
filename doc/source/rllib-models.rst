@@ -212,6 +212,10 @@ You can mix supervised losses into any RLlib algorithm through custom models. Fo
 
 **PyTorch**: There is no explicit API for adding losses to custom torch models. However, you can modify the loss in the policy definition directly. Like for TF models, offline datasets can be incorporated by creating an input reader and calling ``reader.next()`` in the loss forward pass.
 
+Self-Supervised Model Losses
+----------------------------
+
+You can also use the ``custom_loss()`` API to add in self-supervised losses such as VAE reconstruction loss and L2-regularization.
 
 Variable-length / Parametric Action Spaces
 ------------------------------------------
