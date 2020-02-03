@@ -98,7 +98,7 @@ if __name__ == "__main__":
     trainer = PPOTrainer(
         env=RandomEnv,
         config={
-            #"eager": True,  # <- should work for both eager or not
+            # "eager": True,  # <- should work for both eager or not
             "model": {
                 "custom_model": "my_model",
                 "max_seq_len": 20,

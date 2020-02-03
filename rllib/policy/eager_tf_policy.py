@@ -410,11 +410,14 @@ def build_eager_tf_policy(name,
             self._is_training = True
 
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
-                # TODO: set seq len and state in properly
+                # TODO: set seq len and state-in properly
                 self._seq_lens = tf.ones(samples[SampleBatch.CUR_OBS].shape[0], dtype=tf.int32)
+                samples["seq_lens"] = self._seq_lens
+
                 state_in = []
                 for i in range(self.num_state_tensors()):
                     state_in.append(samples["state_in_{}".format(i)])
+                
                 self._state_in = state_in
                 model_out, _ = self.model(samples, self._state_in,
                                           self._seq_lens)
@@ -490,15 +493,10 @@ def build_eager_tf_policy(name,
                     SampleBatch.PREV_ACTIONS: dummy_batch[SampleBatch.ACTIONS],
                     SampleBatch.PREV_REWARDS: dummy_batch[SampleBatch.REWARDS],
                 })
-            #self._state_in = self.get_initial_state()
-            state_batches = []
             for i, h in enumerate(self._state_in):
-                dummy_batch["state_in_{}".format(i)] = tf.convert_to_tensor(
-                    np.expand_dims(h, 0))
-                dummy_batch["state_out_{}".format(i)] = tf.convert_to_tensor(
-                    np.expand_dims(h, 0))
-                state_batches.append(
-                    tf.convert_to_tensor(np.expand_dims(h, 0)))
+                dummy_batch["state_in_{}".format(i)] = h
+                dummy_batch["state_out_{}".format(i)] = h
+
             if self._state_in:
                 dummy_batch["seq_lens"] = tf.convert_to_tensor(
                     np.array([1], dtype=np.int32))
@@ -517,7 +515,7 @@ def build_eager_tf_policy(name,
             # Execute a forward pass to get self.action_dist etc initialized,
             # and also obtain the extra action fetches
             _, _, fetches = self.compute_actions(
-                dummy_batch[SampleBatch.CUR_OBS], state_batches,
+                dummy_batch[SampleBatch.CUR_OBS], self._state_in,
                 dummy_batch.get(SampleBatch.PREV_ACTIONS),
                 dummy_batch.get(SampleBatch.PREV_REWARDS))
             dummy_batch.update(fetches)
