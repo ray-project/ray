@@ -167,7 +167,7 @@ COMMON_CONFIG = {
 
     # === Exploration Settings ===
     # Provide a dict specifying the Exploration object's config.
-    # Set to False or None for no exploration behavior (e.g. for evaluation).
+    # Set to False or None for no exploration behavior (e.g., for evaluation).
     "exploration": False,
 
     # === Evaluation Settings ===
