@@ -45,12 +45,15 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id, const ObjectI
   RAY_CHECK(it != object_id_refs_.end());
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
-  if (!it->second.owner.has_value()) {
-    // TODO: Skip adding this object as a borrower if we already have ownership
-    // info. If we already have ownership info, then either we are the owner or
-    // someone else knows that we are a borrower.
-    it->second.owner = {owner_id, owner_address};
+  // Skip adding this object as a borrower if we already have ownership info.
+  // If we already have ownership info, then either we are the owner or someone
+  // else already knows that we are a borrower.
+  if (it->second.owner.has_value()) {
+    RAY_LOG(DEBUG) << "Skipping add borrowed object " << object_id;
+    return;
   }
+
+  it->second.owner = {owner_id, owner_address};
 
   auto outer_it = object_id_refs_.find(outer_id);
   if (outer_it == object_id_refs_.end()) {
@@ -60,6 +63,7 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id, const ObjectI
     RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id << " contained_in_owned: " << outer_id;
     it->second.contained_in_owned.insert(outer_id);
   } else {
+    RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id << " contained_in_borrowed: " << outer_id;
     // TODO: Skip this if we already have a value.
     RAY_CHECK(!it->second.contained_in_borrowed_id.has_value());
     it->second.contained_in_borrowed_id = outer_id;
