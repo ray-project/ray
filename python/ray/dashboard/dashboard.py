@@ -201,12 +201,9 @@ class Dashboard(object):
             }
             infeasible_tasks = sum(
                 (data.get("infeasibleTasks", []) for data in D.values()), [])
-            """
-            RS-726: Note that we reports tasks in ready_tasks queue in order to
-            report actor creation tasks that are not schedulable because of
-            resource limitation
-            (e.g other actors are occupying required cpu & gpus)
-            """
+            # ready_tasks are used to render tasks that are not schedulable
+            # because of resource limitation
+            # (e.g. Actor requires 2 gpus but therer is only 1 gpu available.)
             ready_tasks = sum(
                 (data.get("readyTasks", []) for data in D.values()), [])
             actor_tree = self.node_stats.get_actor_tree(
