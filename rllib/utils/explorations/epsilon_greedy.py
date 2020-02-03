@@ -12,10 +12,11 @@ torch, _ = try_import_torch()
 
 
 class EpsilonGreedy(Exploration):
-    """
-    An epsilon-greedy Exploration class that produces exploration actions
-    when given a Model's output and a current epsilon value (based on some
-    Schedule).
+    """Epsilon-greedy Exploration class that produces exploration actions.
+
+    When given a Model's output and a current epsilon value (based on some
+    Schedule), it produces a random action (if rand(1) < eps) or
+    uses the model-computed one (if rand(1) >= eps).
     """
 
     def __init__(self,
@@ -102,9 +103,7 @@ class EpsilonGreedy(Exploration):
 
     def _get_tf_exploration_action_op(self, action, explore, time_step,
                                       q_values):
-        """
-        Tf helper method to produce the tf op for an epsilon exploration
-            action.
+        """Tf method to produce the tf op for an epsilon exploration action.
 
         Args:
             action (tf.Tensor): The already sampled action (non-exploratory
@@ -146,7 +145,8 @@ class EpsilonGreedy(Exploration):
 
     @override(Exploration)
     def get_info(self):
-        """
+        """Returns the current epsilon value.
+
         Returns:
             Union[float,tf.Tensor[float]]: The current epsilon value.
         """

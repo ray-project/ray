@@ -3,10 +3,11 @@ from ray.rllib.utils.schedules import ConstantSchedule
 
 
 class PerWorkerEpsilonGreedy(EpsilonGreedy):
-    """
-    An epsilon-greedy Exploration class that produces exploration actions
-    when given a Model's output and a current epsilon value (based on some
-    Schedule).
+    """A per-worker epsilon-greedy class for distributed algorithms.
+    
+    Sets the epsilon schedules of individual workers to a constant:
+    0.4 ^ (1 + [worker-index] / float([num-workers] - 1) * 7)
+    See Ape-X paper.
     """
 
     def __init__(self,
