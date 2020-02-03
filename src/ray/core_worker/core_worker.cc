@@ -387,6 +387,7 @@ Status CoreWorker::Put(const RayObject &object,
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
   RAY_RETURN_NOT_OK(Put(object, contained_object_ids, *object_id));
+  // Tell the raylet to pin the object **after** it is created.
   RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
   return Status::OK();
 }
@@ -398,7 +399,6 @@ Status CoreWorker::Put(const RayObject &object,
             static_cast<uint8_t>(TaskTransportType::RAYLET))
       << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
   // TODO(edoakes,swang): add contained object IDs to the reference counter.
-  // Tell the raylet to pin the object **after** it is created.
   return plasma_store_provider_->Put(object, object_id);
 }
 
@@ -409,6 +409,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   RAY_RETURN_NOT_OK(Create(metadata, data_size, contained_object_ids, *object_id, data));
+  // Only add the object to the reference counter if it didn't already exist.
   if (data) {
     reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
   }
