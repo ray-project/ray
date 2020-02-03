@@ -205,6 +205,21 @@ class SerializationContext:
         # construct a reducer
         pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
 
+    def get_and_clear_contained_object_ids(self):
+        if not hasattr(self._thread_local, "object_ids"):
+            self._thread_local.object_ids = set()
+            return set()
+
+        object_ids = self._thread_local.object_ids
+        self._thread_local.object_ids = set()
+        return object_ids
+
+    def add_contained_object_id(self, object_id):
+        if not hasattr(self._thread_local, "object_ids"):
+            self._thread_local.object_ids = set()
+
+        self._thread_local.object_ids.add(object_id)
+
     def _deserialize_object(self, data, metadata, object_id):
         if metadata:
             if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
