@@ -10,7 +10,7 @@ import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
  *          2) do modifications or operations on graph
  *          3) query vertex info from graph
  */
-public interface GraphManager extends Serializable {
+public interface GraphManager {
 
   /**
    * Build execution graph from job graph.

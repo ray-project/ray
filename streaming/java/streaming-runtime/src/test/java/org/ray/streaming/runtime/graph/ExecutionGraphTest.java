@@ -20,9 +20,9 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-public class GraphTest extends BaseUnitTest {
+public class ExecutionGraphTest extends BaseUnitTest {
 
-  private static final Logger LOG = LoggerFactory.getLogger(GraphTest.class);
+  private static final Logger LOG = LoggerFactory.getLogger(ExecutionGraphTest.class);
 
   @Test
   public void testBuildExecutionGraph() {
