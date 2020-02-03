@@ -14,8 +14,8 @@ if "psutil" in sys.modules:
     print("please remove psutil")
 else:
     print("Loading reporter")
-    psutil_path = os.path.join(os.path.abspath(os.path.dirname(__file__)),
-                               "psutil_files")
+    psutil_path = os.path.join(
+        os.path.abspath(os.path.dirname(__file__)), "psutil_files")
     sys.path.insert(0, psutil_path)
 
 try:
