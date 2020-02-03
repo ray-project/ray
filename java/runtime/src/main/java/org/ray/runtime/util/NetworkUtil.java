@@ -8,7 +8,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.util.Enumeration;
-import java.util.Random;
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,9 +52,8 @@ public class NetworkUtil {
   }
 
   public static int getUnusedPort() {
-    Random random = new Random();
     while (true) {
-      int port = random.nextInt(MAX_PORT - MIN_PORT) + MIN_PORT;
+      int port = ThreadLocalRandom.current().nextInt(MAX_PORT - MIN_PORT) + MIN_PORT;
       if (isPortAvailable(port)) {
         return port;
       }

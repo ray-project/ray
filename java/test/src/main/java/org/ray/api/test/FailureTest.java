@@ -24,6 +24,7 @@ public class FailureTest extends BaseTest {
 
   @BeforeClass
   public void setUp() {
+    // This is needed by `testGetThrowsQuicklyWhenFoundException`.
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
     System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
