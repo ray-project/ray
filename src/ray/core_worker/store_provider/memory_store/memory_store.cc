@@ -289,7 +289,9 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   }
 
   // Repeatedly call Wait() on a shorter timeout so we can check for signals between
-  // calls.
+  // calls. If timeout_ms == -1, this should run forever until all objects are
+  // ready or a signal is received. Else it should run repeatedly until that timeout
+  // is reached.
   while (!(done = get_request->Wait(iteration_timeout)) && !timed_out &&
          signal_status.ok()) {
     if (check_signals_) {
