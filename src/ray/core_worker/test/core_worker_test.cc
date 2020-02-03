@@ -279,7 +279,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       auto buffer2 = GenerateRandomBuffer();
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr), &object_id));
+      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr), {}, &object_id));
 
       std::vector<TaskArg> args;
       args.emplace_back(
@@ -367,7 +367,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
 
     ObjectID object_id;
-    RAY_CHECK_OK(driver.Put(RayObject(buffer1, nullptr), &object_id));
+    RAY_CHECK_OK(driver.Put(RayObject(buffer1, nullptr), {}, &object_id));
 
     // Create arguments with PassByRef and PassByValue.
     std::vector<TaskArg> args;
@@ -712,7 +712,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
     ids[i] = ObjectID::FromRandom().WithDirectTransportType();
-    RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
+    RAY_CHECK_OK(provider.Put(buffers[i], {}, ids[i]));
   }
 
   absl::flat_hash_set<ObjectID> wait_ids(ids.begin(), ids.end());
@@ -769,7 +769,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
     ready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
-    RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
+    RAY_CHECK_OK(provider.Put(buffers[i], {}, ready_ids[i]));
     unready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
   }
 
@@ -777,7 +777,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
     sleep(1);
 
     for (size_t i = 0; i < unready_ids.size(); i++) {
-      RAY_CHECK_OK(provider.Put(buffers[i], unready_ids[i]));
+      RAY_CHECK_OK(provider.Put(buffers[i], {}, unready_ids[i]));
     }
   };
 
@@ -836,7 +836,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(core_worker.Put(buffers[i], &ids[i]));
+    RAY_CHECK_OK(core_worker.Put(buffers[i], {}, &ids[i]));
   }
 
   // Test Get().
@@ -859,7 +859,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
       nullptr, std::make_shared<LocalMemoryBuffer>(
                    reinterpret_cast<uint8_t *>(error_buffer), len));
 
-  RAY_CHECK_OK(core_worker.Put(buffers_with_exception.back(), ids_with_exception.back()));
+  RAY_CHECK_OK(core_worker.Put(buffers_with_exception.back(), {}, ids_with_exception.back()));
   RAY_CHECK_OK(core_worker.Get(ids_with_exception, -1, &results));
 
   // Test Wait().
@@ -909,7 +909,7 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(worker1.Put(RayObject(buffers[i], nullptr), &ids[i]));
+    RAY_CHECK_OK(worker1.Put(RayObject(buffers[i], nullptr), {}, &ids[i]));
   }
 
   // Test Get() from remote node.
