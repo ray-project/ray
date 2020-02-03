@@ -951,14 +951,14 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_dqn", main="examples/batch_norm_model.py",
-    size = "small",
+    size = "large",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DQN", "--num-iters=1"]
 )
 
 py_test(
     name = "examples/batch_norm_model_ddpg", main="examples/batch_norm_model.py",
-    size = "small",
+    size = "large",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--num-iters=1"]
 )
@@ -979,23 +979,23 @@ py_test(
 
 py_test(
     name = "examples/cartpole_lstm_ppo", main="examples/cartpole_lstm.py",
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=PPO", "--stop=200"]
 )
 
 py_test(
     name = "examples/cartpole_lstm_impala", main="examples/cartpole_lstm.py",
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=IMPALA", "--stop=100"]
 )
 
 py_test(
-    name = "examples/cartpole_lstm", main="examples/cartpole_lstm.py",
+    name = "examples/cartpole_lstm_ppo_with_prev_a_and_r", main="examples/cartpole_lstm.py",
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--stop=200", "--use-prev-action-reward"]
+    args = ["--run=PPO", "--stop=200", "--use-prev-action-reward"]
 )
 
 py_test(
