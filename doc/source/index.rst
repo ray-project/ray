@@ -11,7 +11,6 @@ Ray
 
 **Ray is a fast and simple framework for building and running distributed applications.**
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -24,6 +23,8 @@ Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <ht
 
 .. _`on GitHub`: https://github.com/ray-project/ray
 .. _`RaySGD`: raysgd/raysgd.html
+
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 
 Quick Start
@@ -278,6 +279,11 @@ Getting Involved
    :caption: RaySGD
 
    raysgd/raysgd.rst
+   raysgd/raysgd_pytorch.rst
+   raysgd/raysgd_pytorch_examples.rst
+   raysgd/raysgd_tensorflow.rst
+   raysgd/raysgd_ref.rst
+
 
 .. toctree::
    :maxdepth: -1
@@ -290,6 +296,7 @@ Getting Involved
    serve.rst
    iter.rst
    multiprocessing.rst
+   joblib.rst
 
 .. toctree::
    :maxdepth: -1

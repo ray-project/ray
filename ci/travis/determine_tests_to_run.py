@@ -44,8 +44,7 @@ if __name__ == "__main__":
 
     if os.environ["TRAVIS_EVENT_TYPE"] == "pull_request":
 
-        files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"].replace(
-            "...", ".."))
+        files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"])
 
         print(pformat(files), file=sys.stderr)
 

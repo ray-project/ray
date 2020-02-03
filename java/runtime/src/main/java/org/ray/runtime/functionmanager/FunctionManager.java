@@ -63,7 +63,7 @@ public class FunctionManager {
    * Construct a FunctionManager with the specified job resource path.
    *
    * @param jobResourcePath The specified job resource that can store the job's
-   * resources.
+   *                        resources.
    */
   public FunctionManager(String jobResourcePath) {
     this.jobResourcePath = jobResourcePath;
@@ -73,7 +73,7 @@ public class FunctionManager {
    * Get the RayFunction from a RayFunc instance (a lambda).
    *
    * @param jobId current job id.
-   * @param func The lambda.
+   * @param func  The lambda.
    * @return A RayFunction object.
    */
   public RayFunction getFunction(JobId jobId, RayFunc func) {
@@ -94,12 +94,12 @@ public class FunctionManager {
   /**
    * Get the RayFunction from a function descriptor.
    *
-   * @param jobId Current job id.
+   * @param jobId              Current job id.
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
   public RayFunction getFunction(JobId jobId,
-      JavaFunctionDescriptor functionDescriptor) {
+                                 JavaFunctionDescriptor functionDescriptor) {
     JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
     if (jobFunctionTable == null) {
       synchronized (this) {

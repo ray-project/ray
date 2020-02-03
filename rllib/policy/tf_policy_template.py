@@ -96,7 +96,6 @@ def build_tf_policy(name,
     Returns:
         a DynamicTFPolicy instance that uses the specified args
     """
-
     original_kwargs = locals().copy()
     base = add_mixins(DynamicTFPolicy, mixins)
 
@@ -188,16 +187,14 @@ def build_tf_policy(name,
             else:
                 return base.extra_compute_grad_fetches(self)
 
-    @staticmethod
     def with_updates(**overrides):
         return build_tf_policy(**dict(original_kwargs, **overrides))
 
-    @staticmethod
     def as_eager():
         return eager_tf_policy.build_eager_tf_policy(**original_kwargs)
 
-    policy_cls.with_updates = with_updates
-    policy_cls.as_eager = as_eager
+    policy_cls.with_updates = staticmethod(with_updates)
+    policy_cls.as_eager = staticmethod(as_eager)
     policy_cls.__name__ = name
     policy_cls.__qualname__ = name
     return policy_cls

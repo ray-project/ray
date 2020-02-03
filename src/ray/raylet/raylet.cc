@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "ray/common/status.h"
+#include "ray/util/url.h"
 
 namespace {
 
@@ -44,7 +45,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::RedisGcsClient> gcs_client)
+               std::shared_ptr<gcs::GcsClient> gcs_client)
     : self_node_id_(ClientID::FromRandom()),
       gcs_client_(gcs_client),
       object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
@@ -53,13 +54,13 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
       socket_name_(socket_name),
-      acceptor_(main_service, local_stream_protocol::endpoint(
+      acceptor_(main_service,
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-                                  socket_name
-#else  // TODO(mehrdadn): HACK: FIXME: This is just to get things compiling!
-                                  socket_name.data(), socket_name.size()
+                local_stream_protocol::endpoint(socket_name)
+#else
+                parse_ip_tcp_endpoint(socket_name)
 #endif
-                                  )),
+                    ),
       socket_(main_service) {
   self_node_info_.set_node_id(self_node_id_.Binary());
   self_node_info_.set_state(GcsNodeInfo::ALIVE);

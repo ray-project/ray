@@ -12,6 +12,8 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
+    CActorCheckpointID,
+    CClientID,
     CJobID,
     CTaskID,
     CObjectID,
@@ -31,7 +33,6 @@ from ray.includes.common cimport (
     CGcsClientOptions,
 )
 from ray.includes.task cimport CTaskSpec
-from ray.includes.libraylet cimport CRayletClient
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
@@ -53,7 +54,7 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/transport/direct_actor_transport.h" nogil:
+cdef extern from "ray/core_worker/fiber.h" nogil:
     cdef cppclass CFiberEvent "ray::FiberEvent":
         CFiberEvent()
         void Wait()
@@ -107,13 +108,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[shared_ptr[CBuffer]] &metadatas,
             c_vector[shared_ptr[CRayObject]] *return_objects)
 
-        # TODO(edoakes): remove this once the raylet client is no longer used
-        # directly.
-        CRayletClient &GetRayletClient()
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
         const CActorID &GetActorId()
-        void SetWebuiDisplay(const c_string &message)
+        void SetActorTitle(const c_string &title)
+        void SetWebuiDisplay(const c_string &key, const c_string &message)
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
@@ -158,3 +157,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                       ray_callback_function successs_callback,
                       ray_callback_function fallback_callback,
                       void* python_future)
+
+        CRayStatus PushError(const CJobID &job_id, const c_string &type,
+                             const c_string &error_message, double timestamp)
+        CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
+                                          CActorCheckpointID *checkpoint_id)
+        CRayStatus NotifyActorResumedFromCheckpoint(
+            const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
+        CRayStatus SetResource(const c_string &resource_name,
+                               const double capacity,
+                               const CClientID &client_Id)

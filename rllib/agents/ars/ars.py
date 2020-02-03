@@ -162,6 +162,12 @@ class ARSTrainer(Trainer):
 
     @override(Trainer)
     def _init(self, config, env_creator):
+        # PyTorch check.
+        if config["use_pytorch"]:
+            raise ValueError(
+                "ARS does not support PyTorch yet! Use tf instead."
+            )
+
         env = env_creator(config["env_config"])
         from ray.rllib import models
         preprocessor = models.ModelCatalog.get_preprocessor(env)

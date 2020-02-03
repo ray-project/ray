@@ -1,4 +1,3 @@
-import glob
 from itertools import chain
 import os
 import re
@@ -56,12 +55,10 @@ ray_project_files = [
 ]
 
 ray_dashboard_files = [
-    "ray/dashboard/client/build/favicon.ico",
-    "ray/dashboard/client/build/index.html",
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
+    for filename in filenames
 ]
-for dirname in ["css", "js", "media"]:
-    ray_dashboard_files += glob.glob(
-        "ray/dashboard/client/build/static/{}/*".format(dirname))
 
 optional_ray_files += ray_autoscaler_files
 optional_ray_files += ray_project_files
@@ -75,15 +72,19 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ]
 
 extras = {
-    "rllib": [
-        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
-        "tabulate"
-    ],
     "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas", "blist"],
-    "tune": ["tabulate"],
+    "tune": ["tabulate", "tensorboardX"],
 }
+
+extras["rllib"] = extras["tune"] + [
+    "pyyaml",
+    "gym[atari]",
+    "opencv-python-headless",
+    "lz4",
+    "scipy",
+]
 
 extras["all"] = list(set(chain.from_iterable(extras.values())))
 

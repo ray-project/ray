@@ -10,17 +10,17 @@ from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.tests.test_policy import TestPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.env.vector_env import VectorEnv
 from ray.tune.registry import register_env
 
 
-class MockPolicy(Policy):
+class MockPolicy(TestPolicy):
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
@@ -32,25 +32,19 @@ class MockPolicy(Policy):
                                other_agent_batches=None,
                                episode=None):
         assert episode is not None
-        return compute_advantages(batch, 100.0, 0.9, use_gae=False)
+        return compute_advantages(
+            batch, 100.0, 0.9, use_gae=False, use_critic=False)
 
 
-class BadPolicy(Policy):
+class BadPolicy(MockPolicy):
     def compute_actions(self,
                         obs_batch,
-                        state_batches,
+                        state_batches=None,
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
                         **kwargs):
         raise Exception("intentional error")
-
-    def postprocess_trajectory(self,
-                               batch,
-                               other_agent_batches=None,
-                               episode=None):
-        assert episode is not None
-        return compute_advantages(batch, 100.0, 0.9, use_gae=False)
 
 
 class FailOnStepEnv(gym.Env):
@@ -126,7 +120,7 @@ class MockVectorEnv(VectorEnv):
 
 
 class TestRolloutWorker(unittest.TestCase):
-    def testBasic(self):
+    def test_basic(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"), policy=MockPolicy)
         batch = ev.sample()
@@ -150,7 +144,7 @@ class TestRolloutWorker(unittest.TestCase):
                          to_prev(batch["actions"]))
         self.assertGreater(batch["advantages"][0], 1)
 
-    def testBatchIds(self):
+    def test_batch_ids(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"), policy=MockPolicy)
         batch1 = ev.sample()
@@ -160,7 +154,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(
             len(set(SampleBatch.concat(batch1, batch2)["unroll_id"])), 2)
 
-    def testGlobalVarsUpdate(self):
+    def test_global_vars_update(self):
         agent = A2CTrainer(
             env="CartPole-v0",
             config={
@@ -171,12 +165,12 @@ class TestRolloutWorker(unittest.TestCase):
         result2 = agent.train()
         self.assertLess(result2["info"]["learner"]["cur_lr"], 0.0001)
 
-    def testNoStepOnInit(self):
+    def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         pg = PGTrainer(env="fail", config={"num_workers": 1})
         self.assertRaises(Exception, lambda: pg.train())
 
-    def testCallbacks(self):
+    def test_callbacks(self):
         counts = Counter()
         pg = PGTrainer(
             env="CartPole-v0", config={
@@ -200,7 +194,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertGreater(counts["step"], 200)
         self.assertLess(counts["step"], 400)
 
-    def testQueryEvaluators(self):
+    def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v0"))
         pg = PGTrainer(
             env="test",
@@ -218,7 +212,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
         self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
 
-    def testRewardClipping(self):
+    def test_reward_clipping(self):
         # clipping on
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv2(episode_length=10),
@@ -239,7 +233,7 @@ class TestRolloutWorker(unittest.TestCase):
         result2 = collect_metrics(ev2, [])
         self.assertEqual(result2["episode_reward_mean"], 1000)
 
-    def testHardHorizon(self):
+    def test_hard_horizon(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
             policy=MockPolicy,
@@ -253,7 +247,7 @@ class TestRolloutWorker(unittest.TestCase):
         # 3 done values
         self.assertEqual(sum(samples["dones"]), 3)
 
-    def testSoftHorizon(self):
+    def test_soft_horizon(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
             policy=MockPolicy,
@@ -267,7 +261,7 @@ class TestRolloutWorker(unittest.TestCase):
         # only 1 hard done value
         self.assertEqual(sum(samples["dones"]), 1)
 
-    def testMetrics(self):
+    def test_metrics(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=10),
             policy=MockPolicy,
@@ -282,7 +276,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertEqual(result["episodes_this_iter"], 20)
         self.assertEqual(result["episode_reward_mean"], 10)
 
-    def testAsync(self):
+    def test_async(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             sample_async=True,
@@ -292,7 +286,7 @@ class TestRolloutWorker(unittest.TestCase):
             self.assertIn(key, batch)
         self.assertGreater(batch["advantages"][0], 1)
 
-    def testAutoVectorization(self):
+    def test_auto_vectorization(self):
         ev = RolloutWorker(
             env_creator=lambda cfg: MockEnv(episode_length=20, config=cfg),
             policy=MockPolicy,
@@ -315,7 +309,7 @@ class TestRolloutWorker(unittest.TestCase):
             indices.append(env.unwrapped.config.vector_index)
         self.assertEqual(indices, [0, 1, 2, 3, 4, 5, 6, 7])
 
-    def testBatchesLargerWhenVectorized(self):
+    def test_batches_larger_when_vectorized(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(episode_length=8),
             policy=MockPolicy,
@@ -330,7 +324,7 @@ class TestRolloutWorker(unittest.TestCase):
         result = collect_metrics(ev, [])
         self.assertEqual(result["episodes_this_iter"], 4)
 
-    def testVectorEnvSupport(self):
+    def test_vector_env_support(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockVectorEnv(episode_length=20, num_envs=8),
             policy=MockPolicy,
@@ -347,7 +341,7 @@ class TestRolloutWorker(unittest.TestCase):
         result = collect_metrics(ev, [])
         self.assertEqual(result["episodes_this_iter"], 8)
 
-    def testTruncateEpisodes(self):
+    def test_truncate_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             policy=MockPolicy,
@@ -356,7 +350,7 @@ class TestRolloutWorker(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 15)
 
-    def testCompleteEpisodes(self):
+    def test_complete_episodes(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             policy=MockPolicy,
@@ -365,7 +359,7 @@ class TestRolloutWorker(unittest.TestCase):
         batch = ev.sample()
         self.assertEqual(batch.count, 10)
 
-    def testCompleteEpisodesPacking(self):
+    def test_complete_episodes_packing(self):
         ev = RolloutWorker(
             env_creator=lambda _: MockEnv(10),
             policy=MockPolicy,
@@ -377,7 +371,7 @@ class TestRolloutWorker(unittest.TestCase):
             batch["t"].tolist(),
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
-    def testFilterSync(self):
+    def test_filter_sync(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy=MockPolicy,
@@ -390,7 +384,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertNotEqual(obs_f.rs.n, 0)
         self.assertNotEqual(obs_f.buffer.n, 0)
 
-    def testGetFilters(self):
+    def test_get_filters(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy=MockPolicy,
@@ -405,7 +399,7 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertGreaterEqual(obs_f2.rs.n, obs_f.rs.n)
         self.assertGreaterEqual(obs_f2.buffer.n, obs_f.buffer.n)
 
-    def testSyncFilter(self):
+    def test_sync_filter(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy=MockPolicy,

@@ -221,12 +221,19 @@ class TF2Logger(Logger):
 
 
 def to_tf_values(result, path):
+    from tensorboardX.summary import make_histogram
     flat_result = flatten_dict(result, delimiter="/")
-    values = [
-        tf.Summary.Value(tag="/".join(path + [attr]), simple_value=value)
-        for attr, value in flat_result.items()
-        if type(value) in VALID_SUMMARY_TYPES
-    ]
+    values = []
+    for attr, value in flat_result.items():
+        if type(value) in VALID_SUMMARY_TYPES:
+            values.append(
+                tf.Summary.Value(
+                    tag="/".join(path + [attr]), simple_value=value))
+        elif type(value) is list and len(value) > 0:
+            values.append(
+                tf.Summary.Value(
+                    tag="/".join(path + [attr]),
+                    histo=make_histogram(values=np.array(value), bins=10)))
     return values
 
 
@@ -315,7 +322,8 @@ class CSVLogger(Logger):
 class TBXLogger(Logger):
     """TensorBoardX Logger.
 
-    Automatically flattens nested dicts to show on TensorBoard:
+    Note that hparams will be written only after a trial has terminated.
+    This logger automatically flattens nested dicts to show on TensorBoard:
 
         {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
     """
@@ -324,7 +332,7 @@ class TBXLogger(Logger):
         try:
             from tensorboardX import SummaryWriter
         except ImportError:
-            logger.error("pip install tensorboardX to see TensorBoard files.")
+            logger.error("pip install 'ray[tune]' to see TensorBoard files.")
             raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
         self.last_result = None
@@ -341,14 +349,18 @@ class TBXLogger(Logger):
 
         flat_result = flatten_dict(tmp, delimiter="/")
         path = ["ray", "tune"]
-        valid_result = {
-            "/".join(path + [attr]): value
-            for attr, value in flat_result.items()
-            if type(value) in VALID_SUMMARY_TYPES
-        }
+        valid_result = {}
+        for attr, value in flat_result.items():
+            full_attr = "/".join(path + [attr])
+            if type(value) in VALID_SUMMARY_TYPES:
+                valid_result[full_attr] = value
+                self._file_writer.add_scalar(
+                    full_attr, value, global_step=step)
+            elif type(value) is list and len(value) > 0:
+                valid_result[full_attr] = value
+                self._file_writer.add_histogram(
+                    full_attr, value, global_step=step)
 
-        for attr, value in valid_result.items():
-            self._file_writer.add_scalar(attr, value, global_step=step)
         self.last_result = valid_result
         self._file_writer.flush()
 
@@ -359,17 +371,24 @@ class TBXLogger(Logger):
     def close(self):
         if self._file_writer is not None:
             if self.trial and self.trial.evaluated_params and self.last_result:
-                from tensorboardX.summary import hparams
-                experiment_tag, session_start_tag, session_end_tag = hparams(
-                    hparam_dict=self.trial.evaluated_params,
-                    metric_dict=self.last_result)
-                self._file_writer.file_writer.add_summary(experiment_tag)
-                self._file_writer.file_writer.add_summary(session_start_tag)
-                self._file_writer.file_writer.add_summary(session_end_tag)
+                self._try_log_hparams(self.last_result)
             self._file_writer.close()
 
+    def _try_log_hparams(self, result):
+        # TBX currently errors if the hparams value is None.
+        scrubbed_params = {
+            k: v
+            for k, v in self.trial.evaluated_params.items() if v is not None
+        }
+        from tensorboardX.summary import hparams
+        experiment_tag, session_start_tag, session_end_tag = hparams(
+            hparam_dict=scrubbed_params, metric_dict=result)
+        self._file_writer.file_writer.add_summary(experiment_tag)
+        self._file_writer.file_writer.add_summary(session_start_tag)
+        self._file_writer.file_writer.add_summary(session_end_tag)
 
-DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
+
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
 
 class UnifiedLogger(Logger):
@@ -493,6 +512,7 @@ class _SafeFallbackEncoder(json.JSONEncoder):
 def pretty_print(result):
     result = result.copy()
     result.update(config=None)  # drop config from pretty print
+    result.update(hist_stats=None)  # drop hist_stats from pretty print
     out = {}
     for k, v in result.items():
         if v is not None:

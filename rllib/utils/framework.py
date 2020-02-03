@@ -4,8 +4,31 @@ import os
 logger = logging.getLogger(__name__)
 
 
-def try_import_tf():
+def check_framework(framework="tf"):
     """
+    Checks, whether the given framework is "valid", meaning, whether all
+    necessary dependencies are installed. Errors otherwise.
+
+    Args:
+        framework (str): Once of "tf", "torch", or None.
+
+    Returns:
+        str: The input framework string.
+    """
+    if framework == "tf":
+        try_import_tf(error=True)
+    elif framework == "torch":
+        try_import_torch(error=True)
+    else:
+        assert framework is None
+    return framework
+
+
+def try_import_tf(error=False):
+    """
+    Args:
+        error (bool): Whether to raise an error if tf cannot be imported.
+
     Returns:
         The tf module (either from tf2.0.compat.v1 OR as tf1.x.
     """
@@ -24,12 +47,17 @@ def try_import_tf():
         try:
             import tensorflow as tf
             return tf
-        except ImportError:
+        except ImportError as e:
+            if error:
+                raise e
             return None
 
 
-def try_import_tfp():
+def try_import_tfp(error=False):
     """
+    Args:
+        error (bool): Whether to raise an error if tfp cannot be imported.
+
     Returns:
         The tfp module.
     """
@@ -41,12 +69,17 @@ def try_import_tfp():
     try:
         import tensorflow_probability as tfp
         return tfp
-    except ImportError:
+    except ImportError as e:
+        if error:
+            raise e
         return None
 
 
-def try_import_torch():
+def try_import_torch(error=False):
     """
+    Args:
+        error (bool): Whether to raise an error if torch cannot be imported.
+
     Returns:
         tuple: torch AND torch.nn modules.
     """
@@ -58,5 +91,7 @@ def try_import_torch():
         import torch
         import torch.nn as nn
         return torch, nn
-    except ImportError:
+    except ImportError as e:
+        if error:
+            raise e
         return None, None

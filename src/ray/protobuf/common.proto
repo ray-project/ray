@@ -230,11 +230,15 @@ message CoreWorkerStats {
   // A map from the resource name (e.g. "CPU") to the amount of resource used.
   map<string, double> used_resources = 9;
   // A string displayed on Dashboard.
-  string webui_display = 10;
+  map<string, string> webui_display = 10;
   // Number of objects stored in local memory.
   int32 num_local_objects = 11;
   // Used local object store memory.
   int64 used_object_store_memory = 12;
   // Length of the task queue.
   int32 task_queue_length = 13;
+  // Number of executed tasks.
+  int32 num_executed_tasks = 14;
+  // Actor constructor.
+  string actor_title = 15;
 }

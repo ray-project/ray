@@ -12,7 +12,7 @@ TaskDependencyManager::TaskDependencyManager(
     ObjectManagerInterface &object_manager,
     ReconstructionPolicyInterface &reconstruction_policy,
     boost::asio::io_service &io_service, const ClientID &client_id,
-    int64_t initial_lease_period_ms, std::shared_ptr<gcs::RedisGcsClient> gcs_client)
+    int64_t initial_lease_period_ms, std::shared_ptr<gcs::GcsClient> gcs_client)
     : object_manager_(object_manager),
       reconstruction_policy_(reconstruction_policy),
       io_service_(io_service),
@@ -383,7 +383,7 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
 
   auto task_lease_data = std::make_shared<TaskLeaseData>();
   task_lease_data->set_task_id(task_id.Binary());
-  task_lease_data->set_node_manager_id(client_id_.Hex());
+  task_lease_data->set_node_manager_id(client_id_.Binary());
   task_lease_data->set_acquired_at(absl::GetCurrentTimeNanos() / 1000000);
   task_lease_data->set_timeout(it->second.lease_period);
   RAY_CHECK_OK(gcs_client_->Tasks().AsyncAddTaskLease(task_lease_data, nullptr));

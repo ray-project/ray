@@ -1,7 +1,5 @@
 #include "ray/core_worker/core_worker.h"
 
-#include <cstdlib>
-
 #include "boost/fiber/all.hpp"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
@@ -84,6 +82,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
       task_queue_length_(0),
+      num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
@@ -149,7 +148,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       node_ip_address, node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-      std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
+      io_service_, std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
   connected_ = true;
@@ -645,6 +644,26 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
+Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
+                             const std::string &error_message, double timestamp) {
+  return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
+}
+
+Status CoreWorker::PrepareActorCheckpoint(const ActorID &actor_id,
+                                          ActorCheckpointID *checkpoint_id) {
+  return local_raylet_client_->PrepareActorCheckpoint(actor_id, checkpoint_id);
+}
+
+Status CoreWorker::NotifyActorResumedFromCheckpoint(
+    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
+  return local_raylet_client_->NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
+}
+
+Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
+                               const ClientID &client_id) {
+  return local_raylet_client_->SetResource(resource_name, capacity, client_id);
+}
+
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
@@ -896,6 +915,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects) {
   task_queue_length_ -= 1;
+  num_executed_tasks_ += 1;
 
   if (resource_ids != nullptr) {
     resource_ids_ = resource_ids;
@@ -1167,6 +1187,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   auto stats = reply->mutable_core_worker_stats();
   stats->set_num_pending_tasks(task_manager_->NumPendingTasks());
   stats->set_task_queue_length(task_queue_length_);
+  stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
   stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
@@ -1180,7 +1201,11 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
     }
     (*used_resources_map)[it.first] = quantity;
   }
-  stats->set_webui_display(webui_display_);
+  stats->set_actor_title(actor_title_);
+  google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),
+                                                            webui_display_.end());
+  (*stats->mutable_webui_display()) = webui_map;
+
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   stats->set_num_local_objects(memory_store_stats.num_local_objects);
   stats->set_used_object_store_memory(memory_store_stats.used_object_store_memory);
@@ -1212,9 +1237,14 @@ void CoreWorker::SetActorId(const ActorID &actor_id) {
   actor_id_ = actor_id;
 }
 
-void CoreWorker::SetWebuiDisplay(const std::string &message) {
+void CoreWorker::SetWebuiDisplay(const std::string &key, const std::string &message) {
   absl::MutexLock lock(&mutex_);
-  webui_display_ = message;
+  webui_display_[key] = message;
+}
+
+void CoreWorker::SetActorTitle(const std::string &title) {
+  absl::MutexLock lock(&mutex_);
+  actor_title_ = title;
 }
 
 }  // namespace ray
