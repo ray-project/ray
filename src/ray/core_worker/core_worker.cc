@@ -302,8 +302,9 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 
 void CoreWorker::CheckForRayletFailure() {
 // If the raylet fails, we will be reassigned to init (PID=1).
+#ifdef _WIN32
 // TODO(mehrdadn): need a different solution for Windows.
-#if defined(_WIN32)
+#else
   if (getppid() == 1) {
     RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
