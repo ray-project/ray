@@ -237,6 +237,8 @@ class SerializationContext:
                 except pickle.pickle.PicklingError:
                     raise DeserializationError()
 
+                # Check that there are no ObjectIDs serialized in arguments
+                # that are inlined.
                 if object_id.is_nil():
                     assert len(self.get_and_clear_contained_object_ids()) == 0
                 else:
