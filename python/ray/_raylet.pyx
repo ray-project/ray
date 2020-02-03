@@ -755,7 +755,6 @@ cdef class CoreWorker:
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
-                    c_bool is_cross_language,
                     resources,
                     int max_retries):
         cdef:
@@ -764,8 +763,6 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
-
-        # TODO(fyrestone): is_cross_language is for object serialization
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -790,7 +787,6 @@ cdef class CoreWorker:
                      resources,
                      placement_resources,
                      c_bool is_direct_call,
-                     c_bool is_cross_language,
                      int32_t max_concurrency,
                      c_bool is_detached,
                      c_bool is_asyncio):
@@ -801,8 +797,6 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
-
-        # TODO(fyrestone): is_cross_language is for object serialization
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -828,8 +822,7 @@ cdef class CoreWorker:
                           FunctionDescriptor function_descriptor,
                           args,
                           int num_return_vals,
-                          double num_method_cpus,
-                          c_bool is_cross_language):
+                          double num_method_cpus):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -838,8 +831,6 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
-
-        # TODO(fyrestone): is_cross_language is for object serialization
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:

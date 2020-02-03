@@ -225,8 +225,7 @@ class RemoteFunction:
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._language, self._function_descriptor, list_args,
-                    num_return_vals, is_direct_call, self._is_cross_language,
-                    resources, max_retries)
+                    num_return_vals, is_direct_call, resources, max_retries)
 
             if len(object_ids) == 1:
                 return object_ids[0]

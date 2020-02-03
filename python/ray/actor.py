@@ -553,8 +553,7 @@ class ActorClass:
             actor_id = worker.core_worker.create_actor(
                 meta.language, function_descriptor, creation_args,
                 meta.max_reconstructions, resources, actor_placement_resources,
-                is_direct_call, meta.is_cross_language, max_concurrency,
-                detached, is_asyncio)
+                is_direct_call, max_concurrency, detached, is_asyncio)
 
         actor_handle = ActorHandle(
             meta.language,
@@ -703,7 +702,7 @@ class ActorHandle:
             object_ids = worker.core_worker.submit_actor_task(
                 self._ray_actor_language, self._ray_actor_id,
                 function_descriptor, list_args, num_return_vals,
-                self._ray_actor_method_cpus, self._ray_is_cross_language)
+                self._ray_actor_method_cpus)
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
