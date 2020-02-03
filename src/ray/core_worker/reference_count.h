@@ -26,7 +26,11 @@ class ReferenceCounter {
         : owned_by_us(true), owner({owner_id, owner_address}) {}
 
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
+      return local_ref_count + submitted_task_ref_count + contained_in_owned.size() + contained_in_borrowed_id.has_value() ? 1 : 0;
+    }
+
+    bool IsBorrower() const {
+      return local_ref_count + submitted_task_ref_count + contained_in_owned.size() > 0;
     }
 
     size_t NumBorrowers() const {
@@ -43,6 +47,12 @@ class ReferenceCounter {
       ref.set_has_local_ref(has_local_ref);
       for (const auto &borrower : borrowers) {
         ref.add_borrowers()->CopyFrom(borrower.ToProto());
+      }
+      if (contained_in_borrowed_id.has_value()) {
+        ref.set_contained_in_borrowed_id(contained_in_borrowed_id->Binary());
+      }
+      for (const auto &contains_id : contains) {
+        ref.add_contains(contains_id.Binary());
       }
       return ref;
     }
@@ -194,7 +204,7 @@ class ReferenceCounter {
 
  private:
   bool PopBorrowerRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void MergeBorrowerRefs(const rpc::WorkerAddress &borrower, const ReferenceTable &borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void MergeBorrowerRefs(const ObjectID &object_id, const rpc::WorkerAddress &borrower, const ReferenceTable &borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the

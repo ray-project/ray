@@ -160,6 +160,8 @@ message ObjectReference {
   Address owner_address = 3;
   bool has_local_ref = 4;
   repeated Address borrowers = 5;
+  bytes contained_in_borrowed_id = 6;
+  repeated bytes contains = 7;
 }
 
 message WaitForRefRemovedReply {

@@ -16,9 +16,17 @@ ray::ReferenceCounter::ReferenceTable WaitForRefRemovedReplyToReferenceTable(con
   ray::ReferenceCounter::ReferenceTable new_borrower_refs;
   for (const auto &ref : reply.borrower_refs()) {
     ray::ReferenceCounter::Reference reference;
+    reference.owner = {ray::TaskID::FromBinary(ref.owner_id()), ref.owner_address()};
     reference.local_ref_count = ref.has_local_ref() ? 1 : 0;
     for (const auto &borrower : ref.borrowers()) {
       reference.borrowers.insert(ray::rpc::WorkerAddress(borrower));
+    }
+    const auto contained_in_borrowed_id = ray::ObjectID::FromBinary(ref.contained_in_borrowed_id());
+    if (!contained_in_borrowed_id.IsNil()) {
+      reference.contained_in_borrowed_id = contained_in_borrowed_id;
+    }
+    for (const auto &contains_id : ref.contains()) {
+      reference.contains.insert(ray::ObjectID::FromBinary(contains_id));
     }
     new_borrower_refs[ray::ObjectID::FromBinary(ref.object_id())] = reference;
   }
@@ -49,6 +57,7 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id, const ObjectI
     outer_it = object_id_refs_.emplace(outer_id, Reference()).first;
   }
   if (outer_it->second.owned_by_us) {
+    RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id << " contained_in_owned: " << outer_id;
     it->second.contained_in_owned.insert(outer_id);
   } else {
     // TODO: Skip this if we already have a value.
@@ -118,7 +127,9 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
   // to make sure that for serialized IDs, we increment the borrower count for
   // the inner ID before decrementing the submitted_task_ref_count for the
   // outer ID.
-  MergeBorrowerRefs(borrower, borrower_refs);
+  for (const ObjectID &object_id : object_ids) {
+    MergeBorrowerRefs(object_id, borrower, borrower_refs);
+  }
 
   for (const ObjectID &object_id : object_ids) {
     auto it = object_id_refs_.find(object_id);
@@ -173,61 +184,36 @@ void ReferenceCounter::DeleteReferenceInternal(
     it->second.on_local_ref_deleted = nullptr;
     on_local_ref_deleted();
   }
-  // Consider all types of ref counts.
-  // - If RefCount() > 0, then we are still using the object ID locally (we
+  // If RefCount() > 0, then we are still using the object ID locally (we
   // have a reference in the frontend language, there is a submitted task that
   // depends on the object, and/or we stored the object ID inside another
   // object ID that is still in scope).
-  // - If contained_in_borrowed > 0, then the object ID was inside another
-  // object ID, and we haven't told the outer ID's owner that we deserialized
-  // the inner ID yet.
-  // - If NumBorrowers > 0, then there is a remote process that is using the
+  // If NumBorrowers > 0, then there is a remote process that is using the
   // object ID.
-  const bool was_nested = it->second.contained_in_borrowed_id.has_value();
   if (it->second.RefCount() + it->second.NumBorrowers() == 0) {
-    if (!was_nested or (was_nested && it->second.contains.empty())) {
-      RAY_LOG(DEBUG) << "Deleting object " << id;
-      const auto contains = std::move(it->second.contains);
-      auto contained_in = std::move(it->second.contained_in_owned);
-      if (was_nested) {
-        contained_in.insert(*it->second.contained_in_borrowed_id);
+    for (const auto &inner_id : it->second.contains) {
+      RAY_LOG(DEBUG) << "Try to delete inner object " << inner_id;
+      auto inner_it = object_id_refs_.find(inner_id);
+      RAY_CHECK(inner_it != object_id_refs_.end());
+      if (it->second.owned_by_us) {
+        RAY_CHECK(inner_it->second.contained_in_owned.erase(id));
+      } else {
+        RAY_CHECK(!inner_it->second.contained_in_borrowed_id.has_value());
       }
-      const bool owned_by_us = it->second.owned_by_us;
-
-      if (it->second.on_delete) {
-        it->second.on_delete(id);
-      }
-      if (deleted) {
-        deleted->push_back(id);
-      }
-      object_id_refs_.erase(it);
-
-      for (const auto &inner_id : contains) {
-        RAY_LOG(DEBUG) << "Decrementing ref count for inner ID " << inner_id;
-        auto inner_it = object_id_refs_.find(inner_id);
-        RAY_CHECK(inner_it != object_id_refs_.end());
-        bool erased;
-        if (owned_by_us) {
-          erased = inner_it->second.contained_in_owned.erase(id);
-        } else {
-          erased = inner_it->second.contained_in_borrowed_id.has_value();
-          inner_it->second.contained_in_borrowed_id.reset();
-        }
-        RAY_CHECK(erased);
-        DeleteReferenceInternal(inner_it, deleted);
-      }
-
-      for (const auto &outer_id : contained_in) {
-        RAY_LOG(DEBUG) << "Decrementing ref count for outer ID " << outer_id;
-        auto outer_it = object_id_refs_.find(outer_id);
-        RAY_CHECK(outer_it != object_id_refs_.end());
-        auto erased = outer_it->second.contains.erase(id);
-        RAY_CHECK(erased);
-        DeleteReferenceInternal(outer_it, deleted);
-      }
+      DeleteReferenceInternal(inner_it, deleted);
     }
+
+    RAY_LOG(DEBUG) << "Deleting object " << id;
+    if (it->second.on_delete) {
+      it->second.on_delete(id);
+    }
+    if (deleted) {
+      deleted->push_back(id);
+    }
+    object_id_refs_.erase(it);
   }
 }
+
 
 bool ReferenceCounter::SetDeleteCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
@@ -278,82 +264,116 @@ ReferenceCounter::ReferenceTable ReferenceCounter::PopBorrowerRefs(const ObjectI
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrower_refs;
   RAY_CHECK(PopBorrowerRefsInternal(object_id, &borrower_refs));
+  // Try to delete this node since its ref count may now be 0.
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    DeleteReferenceInternal(it, nullptr);
+  }
+
   return borrower_refs;
 }
 
 bool ReferenceCounter::PopBorrowerRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs) {
+  // TODO: Delete references that now have ref count 0.
   RAY_LOG(DEBUG) << "Pop " << object_id;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
   }
 
+  if (it->second.owned_by_us) {
+    return false;
+  }
+
   borrower_refs->emplace(object_id, it->second);
   it->second.borrowers.clear();
 
-  for (const auto &contained_id : (*borrower_refs)[object_id].contains) {
+  if (it->second.contained_in_borrowed_id.has_value()) {
+    if (borrower_refs->count(it->second.contained_in_borrowed_id.value()) > 0) {
+      it->second.contained_in_borrowed_id.reset();
+    } else {
+      // ??? ID was deserialized from 2 different IDs. is this even reachable?
+    }
+  }
+
+  // Attempt to Pop children.
+  for (const auto &contained_id : it->second.contains) {
     PopBorrowerRefsInternal(contained_id, borrower_refs);
   }
 
   return true;
 }
 
-void ReferenceCounter::MergeBorrowerRefs(const rpc::WorkerAddress &borrower, const ReferenceTable &borrower_refs) {
-  for (const auto &id_ref : borrower_refs) {
-    const auto &id = id_ref.first;
-    const auto &ref = id_ref.second;
-    RAY_LOG(DEBUG) << "Merging ref " << id << " has " << ref.NumBorrowers() << " borrowers";
-    auto it = object_id_refs_.find(id);
-    RAY_CHECK(it != object_id_refs_.end());
-    std::vector<rpc::WorkerAddress> new_borrowers;
+void ReferenceCounter::MergeBorrowerRefs(const ObjectID &object_id, const rpc::WorkerAddress &borrower, const ReferenceTable &borrower_refs) {
+  auto borrower_it = borrower_refs.find(object_id);
+  if (borrower_it == borrower_refs.end()) {
+    return;
+  }
+  const auto &borrower_ref = borrower_it->second;
+  RAY_LOG(DEBUG) << "Merging ref " << object_id << " has " << borrower_ref.NumBorrowers() << " borrowers";
 
-    // The worker is still using the reference, so it is still a borrower.
-    if (ref.RefCount() > 0) {
-      auto inserted = it->second.borrowers.insert(borrower).second;
-      // If we are the owner of id, then send WaitForRefRemoved to borrower.
-      if (inserted) {
-        RAY_LOG(DEBUG) << "Adding borrower " << borrower.ip_address << " to id " << id;
-        new_borrowers.push_back(borrower);
-      }
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_CHECK(borrower_it->second.contained_in_borrowed_id.has_value());
+    it = object_id_refs_.emplace(object_id, Reference()).first;
+    auto outer_id = borrower_it->second.contained_in_borrowed_id.value();
+    auto outer_it = object_id_refs_.find(outer_id);
+    RAY_CHECK(outer_it != object_id_refs_.end());
+    if (!outer_it->second.owned_by_us) {
+      outer_it->second.contains.insert(it->first);
+      it->second.contained_in_borrowed_id = borrower_it->second.contained_in_borrowed_id;
     }
+  }
+  std::vector<rpc::WorkerAddress> new_borrowers;
 
-    for (const auto &nested_borrower : ref.borrowers) {
-      auto inserted = it->second.borrowers.insert(nested_borrower).second;
-      if (inserted) {
-        RAY_LOG(DEBUG) << "Adding borrower " << nested_borrower.ip_address << " to id " << id;
-        new_borrowers.push_back(nested_borrower);
-      }
+  // The worker is still using the reference, so it is still a borrower.
+  if (borrower_ref.IsBorrower() > 0) {
+    auto inserted = it->second.borrowers.insert(borrower).second;
+    // If we are the owner of id, then send WaitForRefRemoved to borrower.
+    if (inserted) {
+      RAY_LOG(DEBUG) << "Adding borrower " << borrower.ip_address << " to id " << object_id;
+      new_borrowers.push_back(borrower);
     }
+  }
 
-    // If we own this ID, then wait for all new borrowers to reach a ref count
-    // of 0.
-    rpc::WaitForRefRemovedRequest request;
-    request.set_object_id(id.Binary());
-    if (it->second.owned_by_us) {
-      for (const auto &addr : new_borrowers) {
-        auto it = borrower_cache_.find(addr);
-        if (it == borrower_cache_.end()) {
-          RAY_CHECK(client_factory_ != nullptr);
-          it = borrower_cache_.emplace(addr, client_factory_(addr.ip_address, addr.port)).first;
-          RAY_LOG(DEBUG) << "Connected to borrower " << addr.ip_address << ":" << addr.port;
-        }
-        request.set_intended_worker_id(addr.worker_id.Binary());
-        it->second->WaitForRefRemoved(request, [this, id, addr](const Status &status, const rpc::WaitForRefRemovedReply &reply) {
-          RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":" << addr.port;
-          absl::MutexLock lock(&mutex_);
-          auto it = object_id_refs_.find(id);
-          RAY_CHECK(it != object_id_refs_.end());
-          RAY_CHECK(it->second.borrowers.erase(addr));
-
-          const ReferenceTable new_borrower_refs = WaitForRefRemovedReplyToReferenceTable(reply);
-          MergeBorrowerRefs(addr, new_borrower_refs);
-          RAY_LOG(DEBUG) << "Ref count is now " << it->second.RefCount() << " num borrowers " << it->second.NumBorrowers();
-          if (it->second.RefCount() + it->second.NumBorrowers() == 0) {
-            DeleteReferenceInternal(it, nullptr);
-          }
-        });
-      }
+  for (const auto &nested_borrower : borrower_ref.borrowers) {
+    auto inserted = it->second.borrowers.insert(nested_borrower).second;
+    if (inserted) {
+      RAY_LOG(DEBUG) << "Adding borrower " << nested_borrower.ip_address << " to id " << object_id;
+      new_borrowers.push_back(nested_borrower);
     }
+  }
+
+  // If we own this ID, then wait for all new borrowers to reach a ref count
+  // of 0.
+  rpc::WaitForRefRemovedRequest request;
+  request.set_object_id(object_id.Binary());
+  if (it->second.owned_by_us) {
+    for (const auto &addr : new_borrowers) {
+      auto it = borrower_cache_.find(addr);
+      if (it == borrower_cache_.end()) {
+        RAY_CHECK(client_factory_ != nullptr);
+        it = borrower_cache_.emplace(addr, client_factory_(addr.ip_address, addr.port)).first;
+        RAY_LOG(DEBUG) << "Connected to borrower " << addr.ip_address << ":" << addr.port;
+      }
+      request.set_intended_worker_id(addr.worker_id.Binary());
+      it->second->WaitForRefRemoved(request, [this, object_id, addr](const Status &status, const rpc::WaitForRefRemovedReply &reply) {
+        RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":" << addr.port;
+        absl::MutexLock lock(&mutex_);
+        auto it = object_id_refs_.find(object_id);
+        RAY_CHECK(it != object_id_refs_.end());
+        RAY_CHECK(it->second.borrowers.erase(addr));
+
+        const ReferenceTable new_borrower_refs = WaitForRefRemovedReplyToReferenceTable(reply);
+        MergeBorrowerRefs(object_id, addr, new_borrower_refs);
+        DeleteReferenceInternal(it, nullptr);
+      });
+    }
+  }
+
+  // TODO: Handle contained_in_borrowed_id.
+  for (const auto &inner_id : borrower_ref.contains) {
+    MergeBorrowerRefs(inner_id, borrower, borrower_refs);
   }
 }
 
@@ -368,6 +388,7 @@ void ReferenceCounter::WrapObjectId(const ObjectID &object_id, const std::vector
     if (it->second.owned_by_us) {
       // `ray.put()` case. We are wrapping an object ID that we have a
       // reference to inside another object that we own.
+      RAY_LOG(DEBUG) << "Setting inner ID " << inner_id << " contained_in_owned: " << object_id;
       inner_it->second.contained_in_owned.insert(object_id);
     } else {
       // TODO: Task return case. We are putting an object ID that we have a
