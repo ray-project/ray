@@ -944,7 +944,7 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_pg", main="examples/batch_norm_model.py",
-    size = "small",
+    size = "large",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=PG", "--num-iters=1"]
 )
@@ -993,7 +993,7 @@ py_test(
 
 py_test(
     name = "examples/cartpole_lstm", main="examples/cartpole_lstm.py",
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--stop=200", "--use-prev-action-reward"]
 )
@@ -1041,21 +1041,21 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic",
-    size = "medium",
+    size = "large",
     srcs = ["examples/centralized_critic.py"],
     args = ["--stop=2000"]
 )
 
 py_test(
     name = "examples/centralized_critic_2",
-    size = "medium",
+    size = "large",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--stop=2000"]
 )
 
 py_test(
     name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
-    size = "medium",
+    size = "large",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=contrib/MADDPG"]
 )
@@ -1086,7 +1086,7 @@ py_test(
 py_test(
     name = "autoregressive_action_dist",
     main = "examples/autoregressive_action_dist.py",
-    size = "small",
+    size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--stop=150"]
 )
