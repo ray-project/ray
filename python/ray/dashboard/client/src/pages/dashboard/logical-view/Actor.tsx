@@ -35,10 +35,10 @@ const styles = (theme: Theme) =>
         cursor: "pointer"
       }
     },
-    errorTypeInfeasible: {
+    invalidStateTypeInfeasible: {
       color: theme.palette.error.main
     },
-    errorTypeWaitingUntilResourceAvailable: {
+    invalidStateWaitingUntilResourceAvailable: {
       color: orange[500]
     },
     information: {
@@ -290,11 +290,11 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               )}
             </React.Fragment>
           ) : actor.invalidStateType === 'infeasibleActor' ? (
-            <span className={classes.errorTypeInfeasible}>
+            <span className={classes.invalidStateTypeInfeasible}>
               {actor.actorTitle} is an infeasible actor.
             </span>
           ) : (
-            <span className={classes.errorTypeWaitingUntilResourceAvailable}>
+            <span className={classes.invalidStateWaitingUntilResourceAvailable}>
               {actor.actorTitle} is pending until reousrces are available.
             </span>
           )}
