@@ -5,7 +5,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explorations.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
-from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
 
 tf = try_import_tf()
 torch, _ = try_import_torch()
@@ -23,9 +23,8 @@ class EpsilonGreedy(Exploration):
                  initial_epsilon=1.0,
                  final_epsilon=0.1,
                  epsilon_timesteps=int(1e5),
-                 raw_model_output_key="q_values",
-                 fixed_per_worker_epsilon=False,
                  worker_info=None,
+                 epsilon_schedule=None,
                  framework="tf"):
         """
         Args:
@@ -34,6 +33,11 @@ class EpsilonGreedy(Exploration):
             final_epsilon (float): The final epsilon value to use.
             epsilon_timesteps (int): The time step after which epsilon should
                 always be `final_epsilon`.
+            worker_info (Optional[Dict[str,any]]): Dict with keys:
+                `num_workers`: The overall number of workers used.
+                `worker_index`: The index of the Worker using this Exploration.
+            epsilon_schedule (Optional[Schedule]): An optional Schedule object
+                to use (instead of constructing one from the given parameters).
             framework (Optional[str]): One of None, "tf", "torch".
         """
         # For now, require Discrete action space (may loosen this restriction
@@ -45,29 +49,11 @@ class EpsilonGreedy(Exploration):
             worker_info=worker_info,
             framework=framework)
 
-        self.epsilon_schedule = None
-        # Use a fixed, different epsilon per worker. See: Ape-X paper.
-        if fixed_per_worker_epsilon is True:
-            idx = self.worker_info.get("worker_index", 0)
-            num = self.worker_info.get("num_workers", 0)
-            if num > 0:
-                if idx >= 0:
-                    exponent = (1 + idx / float(num - 1) * 7)
-                    self.epsilon_schedule = ConstantSchedule(0.4**exponent)
-                # Local worker should have zero exploration so that eval
-                # rollouts run properly.
-                else:
-                    self.epsilon_schedule = ConstantSchedule(0.0)
-        if self.epsilon_schedule is None:
-            self.epsilon_schedule = PiecewiseSchedule(
-                endpoints=[(0, initial_epsilon), (epsilon_timesteps,
-                                                  final_epsilon)],
-                outside_value=final_epsilon,
-                framework=self.framework)
-
-        # The key to use to lookup the raw-model output from the
-        # incoming dict.
-        self.raw_model_output_key = raw_model_output_key
+        self.epsilon_schedule = epsilon_schedule or PiecewiseSchedule(
+            endpoints=[(0, initial_epsilon), (epsilon_timesteps,
+                                              final_epsilon)],
+            outside_value=final_epsilon,
+            framework=self.framework)
 
         # The current time_step value (tf-var or python int).
         self.last_time_step = get_variable(

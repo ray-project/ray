@@ -7,7 +7,7 @@ from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.explorations.epsilon_greedy import EpsilonGreedy
+from ray.rllib.utils.explorations import EpsilonGreedy, PerWorkerEpsilonGreedy
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,6 @@ DEFAULT_CONFIG = with_common_config({
         "initial_epsilon": 1.0,  # Initial epsilon value.
         "final_epsilon": 0.02,  # Final epsilon value.
         "epsilon_timesteps": 10000,  # Timesteps over which to anneal eps.
-        # Whether to use a distribution of per-worker fixed epsilons for
-        # exploration.
-        "fixed_per_worker_epsilon": False
     },
 
     # TODO(sven): Make Exploration class for parameter noise.
@@ -199,10 +196,9 @@ def validate_config_and_setup_param_noise(config):
             config["per_worker_exploration"] != -1:
         deprecation_warning(
             "per_worker_exploration",
-            "exploration(must be type=EpsilonGreedy).fixed_per_worker_epsilon")
+            "exploration.type=PerWorkerEpsilonGreedy")
         if isinstance(config["exploration"], dict):
-            config["exploration"]["fixed_per_worker_epsilon"] = config.pop(
-                "per_worker_exploration")
+            config["exploration"]["type"] = PerWorkerEpsilonGreedy
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):

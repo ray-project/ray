@@ -87,7 +87,7 @@ class SyncReplayOptimizer(PolicyOptimizer):
         # `final_prioritized_replay_beta`.
         self.prioritized_replay_beta = PiecewiseSchedule(
             endpoints=[(0, prioritized_replay_beta),
-                       (schedule_max_timesteps * beta_annealing_fraction,
+                       (prioritized_replay_beta_annealing_timesteps,
                         final_prioritized_replay_beta)],
             outside_value=final_prioritized_replay_beta)
         self.prioritized_replay_eps = prioritized_replay_eps
