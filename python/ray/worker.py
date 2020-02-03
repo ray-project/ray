@@ -1597,14 +1597,12 @@ def wait(object_ids, num_returns=1, timeout=None):
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique. Otherwise, an
             exception is thrown
-        num_returns (int): The number of object IDs that should be returned.  
-            It is an error for this number to be <= 0.
-            If this number is greater than the size of the object_ids list, 
-            then that size is used instead. Hence, this argument is a maximum 
-            number of items to return. Also, if the timeout is specified and 
-            num_returns objects are not ready when the timeout is reached, 
-            then the returned list of available ready object ids will be less
-            than num_returns.
+        num_returns (int): The maximum number of ready object IDs that should be
+            returned. This value must be at least 1. If it is greater than 
+            len(object_ids), it is replaced with len(object_ids). If no timeout
+            is specified, exactly num_returns ready object IDs will be returned.
+            If a timeout is specified, and there are not yet num_returns ready 
+            object IDs, then all of the ready object IDs will be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
 
