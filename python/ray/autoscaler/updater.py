@@ -67,7 +67,6 @@ class KubernetesCommandRunner:
                 " ".join(port_forward_cmd)))
             port_forward_process = subprocess.Popen(port_forward_cmd)
             port_forward_process.wait()
-            print("kubectl port-forward finished")
             # We should never get here, this indicates that port forwarding
             # failed, likely because we couldn't bind to a port.
             pout, perr = port_forward_process.communicate()
@@ -239,7 +238,6 @@ class SSHCommandRunner:
 
         logger.info(self.log_prefix +
                     "Running {} on {}...".format(cmd, self.ssh_ip))
-        print("********", self.log_prefix)
         ssh = ["ssh"]
         if allocate_tty:
             ssh.append("-tt")
@@ -376,9 +374,7 @@ class NodeUpdater:
                 sync_cmd(local_path, remote_path)
 
     def wait_ready(self, deadline):
-        print("Gets here")
         with LogTimer(self.log_prefix + "Got remote shell"):
-            print("Gets here")
             logger.info(self.log_prefix + "Waiting for remote shell...")
 
             while time.time() < deadline and \

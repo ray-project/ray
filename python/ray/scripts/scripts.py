@@ -99,12 +99,6 @@ def dashboard(cluster_config_file, cluster_name, port):
             # exceptions caused by network errors.
             exec_cluster(
                 cluster_config_file,
-                None,
-                docker=False,
-                screen=False,
-                tmux=False,
-                stop=False,
-                start=False,
                 override_cluster_name=cluster_name,
                 port_forward=port_forward)
             port_taken = False
@@ -769,8 +763,9 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
 
     port_forward = [(port, port) for port in list(port_forward)]
     cmd = " ".join(command_parts)
-    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
-                 cluster_name, port_forward)
+    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop,
+                 start=False, override_cluster_name=cluster_name,
+                 port_forward=port_forward)
 
 
 @cli.command()

@@ -342,8 +342,8 @@ def attach_cluster(config_file, start, use_screen, use_tmux,
                  override_cluster_name, None)
 
 
-def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
-                 override_cluster_name, port_forward):
+def exec_cluster(config_file, cmd=None, docker=False, screen=False, tmux=False, stop=False, start=False,
+                 override_cluster_name=None, port_forward=None):
     """Runs a command on the specified cluster.
 
     Arguments:
