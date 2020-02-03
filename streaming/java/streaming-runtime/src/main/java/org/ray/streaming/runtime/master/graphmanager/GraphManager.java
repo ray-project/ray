@@ -8,11 +8,11 @@ import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
  *
  * <p>
  * Such as:
- * <ul>
+ * <ol>
  * <li>1) build execution graph from job graph</li>
  * <li>2) do modifications or operations on graph</li>
  * <li>3) query vertex info from graph</li>
- * </ul>
+ * </ol>
  * </p>
  */
 public interface GraphManager {
