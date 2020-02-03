@@ -10,10 +10,7 @@ import ray
 
 logger = logging.getLogger(__name__)
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+import ray.thirdparty_files.psutil as psutil
 
 try:
     import GPUtil

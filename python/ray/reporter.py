@@ -9,19 +9,7 @@ import grpc
 import subprocess
 from concurrent import futures
 
-import sys
-if "psutil" not in sys.modules:
-    psutil_path = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "psutil_files")
-    sys.path.insert(0, psutil_path)
-
-try:
-    import psutil
-except ImportError:
-    print("The reporter requires psutil to run.")
-    import sys
-    sys.exit(1)
-
+import ray.thirdparty_files.psutil as psutil
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils

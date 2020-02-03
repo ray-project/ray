@@ -2,7 +2,7 @@
 import glob
 import logging
 import os
-import setproctitle
+import ray.thirdparty_files.setproctitle as setproctitle
 import shutil
 import json
 import sys

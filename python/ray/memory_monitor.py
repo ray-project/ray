@@ -3,10 +3,7 @@ import os
 import sys
 import time
 
-try:
-    import psutil
-except ImportError:
-    psutil = None
+import ray.thirdparty_files.psutil as psutil
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +102,6 @@ class MemoryMonitor:
         self.worker_name = worker_name
 
     def raise_if_low_memory(self):
-        if psutil is None:
-            return  # nothing we can do
-
         if time.time() - self.last_checked > self.check_interval:
             if "RAY_DEBUG_DISABLE_MEMORY_MONITOR" in os.environ:
                 return  # escape hatch, not intended for user use

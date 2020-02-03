@@ -215,7 +215,7 @@ class CLIReporter(TuneReporterBase):
 
 def memory_debug_str():
     try:
-        import psutil
+        import ray.thirdparty_files.psutil as psutil
         total_gb = psutil.virtual_memory().total / (1024**3)
         used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
         if used_gb > total_gb * 0.9:

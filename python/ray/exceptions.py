@@ -2,10 +2,7 @@ import os
 
 import colorama
 
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
+import ray.thirdparty_files.setproctitle as setproctitle
 
 import ray
 
