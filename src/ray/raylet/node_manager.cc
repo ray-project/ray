@@ -922,9 +922,8 @@ void NodeManager::ProcessClientMessage(
     HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
-    // ProcessDisconnectClientMessage(client);
-    // We don't need to receive future messages from this client,
-    // because it's already disconnected.
+    // Unintentional disconnects are detected by the WorkerPool using SIGCHLD
+    // and waitpid(), so ignore this message.
     return;
   } break;
   case protocol::MessageType::IntentionalDisconnectClient: {
