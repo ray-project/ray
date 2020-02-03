@@ -201,11 +201,14 @@ class Dashboard(object):
             }
             infeasible_tasks = sum(
                 (data.get("infeasibleTasks", []) for data in D.values()), [])
-            # Ready tasks contain pending tasks that are not initialized 
-            # because of resource limitation. 
+            """
+            RS-726: Note that we reports tasks in ready_tasks queue in order to
+            report actor creation tasks that are not schedulable because of
+            resource limitation
+            (e.g other actors are occupying required cpu & gpus)
+            """
             ready_tasks = sum(
-                (data.get('readyTasks', []) for data in D.values()), []
-            )
+                (data.get("readyTasks", []) for data in D.values()), [])
             actor_tree = self.node_stats.get_actor_tree(
                 workers_info_by_node, infeasible_tasks, ready_tasks)
             for address, data in D.items():
@@ -423,7 +426,8 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
-    def get_actor_tree(self, workers_info_by_node, infeasible_tasks, ready_tasks) -> Dict:
+    def get_actor_tree(self, workers_info_by_node, infeasible_tasks,
+                       ready_tasks) -> Dict:
         now = time.time()
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
@@ -462,10 +466,9 @@ class NodeStats(threading.Thread):
 
             def _update_flatten_tree(task, task_spec_type, invalid_state_type):
                 actor_id = ray.utils.binary_to_hex(
-                    b64decode(
-                        task[task_spec_type]["actorId"]))
+                    b64decode(task[task_spec_type]["actorId"]))
                 caller_addr = (task["callerAddress"]["ipAddress"],
-                                str(task["callerAddress"]["port"]))
+                               str(task["callerAddress"]["port"]))
                 caller_id = self._addr_to_actor_id.get(caller_addr, "root")
                 child_to_parent[actor_id] = caller_id
                 task["state"] = -1
@@ -477,10 +480,12 @@ class NodeStats(threading.Thread):
                 flattened_tree[actor_id] = task
 
             for infeasible_task in infeasible_tasks:
-                _update_flatten_tree(infeasible_task, "actorCreationTaskSpec", 'infeasibleActor')
+                _update_flatten_tree(infeasible_task, "actorCreationTaskSpec",
+                                     "infeasibleActor")
 
             for ready_task in ready_tasks:
-                _update_flatten_tree(ready_task, "actorCreationTaskSpec", 'waitUntilResourceAvailable')
+                _update_flatten_tree(ready_task, "actorCreationTaskSpec",
+                                     "waitUntilResourceAvailable")
 
         # construct actor tree
         actor_tree = flattened_tree
