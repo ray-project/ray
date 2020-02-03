@@ -312,14 +312,15 @@ def complex_serialization(use_pickle):
     TUPLE_OBJECTS = [(obj, ) for obj in BASE_OBJECTS]
     # The check that type(obj).__module__ != "numpy" should be unnecessary, but
     # otherwise this seems to fail on Mac OS X on Travis.
-    DICT_OBJECTS = ([{
-        obj: obj
-    } for obj in PRIMITIVE_OBJECTS if (
-        obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
-            0: obj
-        } for obj in BASE_OBJECTS] + [{
-            Foo(123): Foo(456)
-        }])
+    DICT_OBJECTS = (
+        [{
+            obj: obj
+        } for obj in PRIMITIVE_OBJECTS if
+         (obj.__hash__ is not None and type(obj).__module__ != "numpy")] + [{
+             0: obj
+         } for obj in BASE_OBJECTS] + [{
+             Foo(123): Foo(456)
+         }])
 
     RAY_TEST_OBJECTS = (
         BASE_OBJECTS + LIST_OBJECTS + TUPLE_OBJECTS + DICT_OBJECTS)
@@ -1253,8 +1254,8 @@ def test_direct_call_simple(ray_start_cluster):
     f_direct = f.options(is_direct_call=True)
     assert ray.get(f_direct.remote(2)) == 3
     for _ in range(10):
-        assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
-            range(1, 101))
+        assert ray.get([f_direct.remote(i)
+                        for i in range(100)]) == list(range(1, 101))
 
 
 # https://github.com/ray-project/ray/issues/6329

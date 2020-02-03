@@ -1567,13 +1567,13 @@ def put(value, weakref=False):
 def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
-    If ``timeout`` is set, the function returns either when the requested 
-    number of IDs (``num_returns``) are ready or when the timeout is reached, 
+    If ``timeout`` is set, the function returns either when the requested
+    number of IDs (``num_returns``) are ready or when the timeout is reached,
     whichever occurs first. If it is not set, the function simply waits until
-    ``num_returns`` objects are ready and returns that exact number of object 
+    ``num_returns`` objects are ready and returns that exact number of object
     IDs.
 
-    When ``num_returns`` is *greater than* the size of ``object_ids``, then 
+    When ``num_returns`` is *greater than* the size of ``object_ids``, then
     the smaller size value is used instead as the "effective" ``num_returns``.
     This is most convenient when looping through a long list of ids, returning
     several at a time as they complete, so it is not necessary to adjust the
@@ -1597,12 +1597,13 @@ def wait(object_ids, num_returns=1, timeout=None):
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique. Otherwise, an
             exception is thrown
-        num_returns (int): The maximum number of ready object IDs that should be
-            returned. This value must be at least 1. If it is greater than 
-            len(object_ids), it is replaced with len(object_ids). If no timeout
-            is specified, exactly num_returns ready object IDs will be returned.
-            If a timeout is specified, and there are not yet num_returns ready 
-            object IDs, then all of the ready object IDs will be returned.
+        num_returns (int): The maximum number of ready object IDs that should
+            be returned. This value must be at least 1. If it is greater than
+            len(object_ids), it is replaced with len(object_ids). If no
+            timeout is specified, exactly num_returns ready object IDs will be
+            returned. If a timeout is specified, and there are not yet
+            num_returns ready object IDs, then all of the ready object IDs will
+            be returned.
         timeout (float): The maximum amount of time in seconds to wait before
             returning.
 

@@ -1,6 +1,5 @@
 # coding: utf-8
 import sys
-import time
 import logging
 import pytest
 
@@ -31,7 +30,7 @@ def test_wait_with_no_timeout_returns_num_returns_items(ray_start_regular):
     assert len(rest) == 8
 
 
-def test_wait_with_no_timeout_returns_object_ids_size_if_it_is_less_than_num_returns(
+def test_wait_with_no_timeout_returns_object_ids_size_if_less_than_num_returns(
         ray_start_regular):
     object_ids = [f.remote(0), f.remote(0), f.remote(0)]
     ready_ids, remaining_ids = ray.wait(object_ids, num_returns=4)
@@ -73,5 +72,4 @@ def test_wait_raises_if_object_ids_is_not_a_list(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
