@@ -46,7 +46,8 @@ struct ResourceRequestWithId : ResourceRequest {
   int64_t id;
 };
 
-struct TaskRequest {
+class TaskRequest {
+public:  
   /// List of predefined resources required by the task.
   std::vector<ResourceRequest> predefined_resources;
   /// List of custom resources required by the tasl.
@@ -61,7 +62,8 @@ struct TaskRequest {
 };
 
 // Task request specifying instances for each resource.
-struct TaskResourceInstances {
+class TaskResourceInstances {
+public:  
   /// The list of instances of each predifined resource allocated to a task.
   std::vector<std::vector<double>> predefined_resources;
   /// The list of instances of each custom resource allocated to a task.
@@ -74,7 +76,8 @@ struct TaskResourceInstances {
 };
 
 /// Total and available capacities of each resource of a node.
-struct NodeResources {
+class NodeResources {
+public:  
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the
@@ -88,7 +91,8 @@ struct NodeResources {
 
 /// Total and available capacities of each resource instance.
 /// This is used to describe the resources of the local node.
-struct NodeResourceInstances {
+class NodeResourceInstances {
+public:  
   /// Available and total capacities for each instance of a predefined resource.
   std::vector<ResourceInstanceCapacities> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the

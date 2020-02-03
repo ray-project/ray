@@ -50,7 +50,7 @@ std::string NodeResources::DebugString() {
   return buffer.str();
 }
 
-std::string PrintVector(std::vector<double> &vector) {
+std::string Vector2String(std::vector<double> &vector) {
   std::stringstream buffer;
 
   buffer << "[";
@@ -100,16 +100,16 @@ std::string NodeResourceInstances::DebugString() {
   std::stringstream buffer;
   buffer << "  node predefined resources {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    buffer << "(" << PrintVector(predefined_resources[i].total) << ":"
-           << PrintVector(this->predefined_resources[i].available) << ") ";
+    buffer << "(" << Vector2String(predefined_resources[i].total) << ":"
+           << Vector2String(this->predefined_resources[i].available) << ") ";
   }
   buffer << "}" << std::endl;
 
   buffer << "  node custom resources {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":(" << PrintVector(it->second.total) << ":"
-           << PrintVector(it->second.available) << ") ";
+    buffer << it->first << ":(" << Vector2String(it->second.total) << ":"
+           << Vector2String(it->second.available) << ") ";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -154,14 +154,14 @@ std::string TaskResourceInstances::DebugString() {
   std::stringstream buffer;
   buffer << std::endl << "  task allocation: P {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    buffer << PrintVector(this->predefined_resources[i]);
+    buffer << Vector2String(this->predefined_resources[i]);
   }
   buffer << "}";
 
   buffer << "  C {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":" << PrintVector(it->second) << ", ";
+    buffer << it->first << ":" << Vector2String(it->second) << ", ";
   }
 
   buffer << "}" << std::endl;
@@ -733,7 +733,7 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   }
 
   if (soft) {
-    // Just get as much resources as available.
+    // Just get as many resources as available.
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] >= remaining_demand) {
         available[i] -= remaining_demand;
