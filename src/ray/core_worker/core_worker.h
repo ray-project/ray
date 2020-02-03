@@ -493,8 +493,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void.
   void Shutdown();
 
-  /// Send the list of active object IDs to the raylet.
-  void ReportActiveObjectIDs();
+  /// Check if the raylet has failed. If so, shutdown.
+  void CheckForRayletFailure();
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
@@ -608,9 +608,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  /// Timer used to periodically send heartbeat containing active object IDs to the
-  /// raylet.
-  boost::asio::steady_timer heartbeat_timer_;
+  /// Timer used to periodically check if the raylet has died.
+  boost::asio::steady_timer death_check_timer_;
 
   /// Timer for internal book-keeping.
   boost::asio::steady_timer internal_timer_;
