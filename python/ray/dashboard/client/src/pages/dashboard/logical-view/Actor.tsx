@@ -13,6 +13,7 @@ import {
 } from "../../../api";
 import Actors from "./Actors";
 import Collapse from "@material-ui/core/Collapse";
+import orange from '@material-ui/core/colors/orange';
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -34,8 +35,11 @@ const styles = (theme: Theme) =>
         cursor: "pointer"
       }
     },
-    infeasible: {
+    errorTypeInfeasible: {
       color: theme.palette.error.main
+    },
+    errorTypeWaitingUntilResourceAvailable: {
+      color: orange[500]
     },
     information: {
       fontSize: "0.875rem"
@@ -285,8 +289,14 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                   )
               )}
             </React.Fragment>
+          ) : actor.invalidStateType === 'infeasibleActor' ? (
+            <span className={classes.errorTypeInfeasible}>
+              {actor.actorTitle} is an infeasible actor.
+            </span>
           ) : (
-            <span className={classes.infeasible}>Infeasible actor</span>
+            <span className={classes.errorTypeWaitingUntilResourceAvailable}>
+              {actor.actorTitle} is pending until reousrces are available.
+            </span>
           )}
         </Typography>
         <Typography className={classes.information}>

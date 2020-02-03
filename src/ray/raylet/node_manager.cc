@@ -3186,9 +3186,23 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &request,
     worker_stats->set_pid(driver->Pid());
     worker_stats->set_is_driver(true);
   }
+  // NOTE: Currently reporting only infeasible/ready ActorCreationTask 
+  // because Ray dashboard only renders actorCreationTask as of Feb 3 2020. 
+  // TODO-Support dashboard for non-ActorCreationTask
   for (const auto task : local_queues_.GetTasks(TaskState::INFEASIBLE)) {
-    auto infeasible_task = reply->add_infeasible_tasks();
-    infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
+    if (task.GetTaskSpecification().IsActorCreationTask()) {
+      auto infeasible_task = reply->add_infeasible_tasks();
+      infeasible_task->ParseFromString(task.GetTaskSpecification().Serialize());
+    }
+  }
+  // Report tasks that are not scheduled (staying in the ready queue for a long time) 
+  // because resources are occupied by other actors/tasks. 
+  // TODO-Create a new taskState pendingUntilResourceAvailable
+  for (const auto task : local_queues_.GetTasks(TaskState::READY)) {
+    if (task.GetTaskSpecification().IsActorCreationTask()) {
+      auto ready_task = reply->add_ready_tasks();
+      ready_task->ParseFromString(task.GetTaskSpecification().Serialize());
+    }
   }
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {

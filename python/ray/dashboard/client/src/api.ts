@@ -124,8 +124,10 @@ export interface RayletInfoResponse {
         }
       | {
           actorId: string;
+          actorTitle: string;
           requiredResources: { [key: string]: number };
           state: -1;
+          invalidStateType?: 'infeasibleActor' | 'waitUntilResourceAvailable';
         };
   };
 }
