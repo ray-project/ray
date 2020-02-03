@@ -349,9 +349,8 @@ Status CoreWorkerMemoryStore::Get(
     const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
-
   RAY_RETURN_NOT_OK(
       Get(id_vector, id_vector.size(), timeout_ms, ctx, true, &result_objects));
 
