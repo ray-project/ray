@@ -148,19 +148,11 @@ int main(int argc, char *argv[]) {
                  << object_manager_config.rpc_service_threads_number
                  << ", object_chunk_size = " << object_manager_config.object_chunk_size;
 
-  if (RayConfig::instance().num_initial_java_workers() < 0) {
-    node_manager_config.num_initial_workers[ray::Language::JAVA] = num_cpus;
-  } else {
-    node_manager_config.num_initial_workers[ray::Language::JAVA] =
-        static_cast<int>(RayConfig::instance().num_initial_java_workers());
-  }
+  node_manager_config.num_initial_workers[ray::Language::JAVA] =
+      static_cast<int>(RayConfig::instance().num_initial_java_workers());
 
-  if (RayConfig::instance().num_initial_py_workers() < 0) {
-    node_manager_config.num_initial_workers[ray::Language::PYTHON] = num_cpus;
-  } else {
-    node_manager_config.num_initial_workers[ray::Language::PYTHON] =
-        static_cast<int>(RayConfig::instance().num_initial_py_workers());
-  }
+  node_manager_config.num_initial_workers[ray::Language::PYTHON] =
+      static_cast<int>(RayConfig::instance().num_initial_py_workers());
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
