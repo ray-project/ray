@@ -13,7 +13,7 @@ Example: Training on previously saved experiences
 
 .. note::
 
-    For custom models and enviroments, you'll need to use the `Python API <rllib-training.html#python-api>`__.
+    For custom models and enviroments, you'll need to use the `Python API <rllib-training.html#basic-python-api>`__.
 
 In this example, we will save batches of experiences generated during online training to disk, and then leverage this saved data to train a policy offline using DQN. First, we run a simple policy gradient algorithm for 100k steps with ``"output": "/tmp/cartpole-out"`` to tell RLlib to write simulation outputs to the ``/tmp/cartpole-out`` directory.
 

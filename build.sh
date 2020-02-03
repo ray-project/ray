@@ -103,12 +103,12 @@ if [ -z "$SKIP_PYARROW_INSTALL" ]; then
 fi
 
 PYTHON_VERSION=`"$PYTHON_EXECUTABLE" -c 'import sys; version=sys.version_info[:3]; print("{0}.{1}".format(*version))'`
-if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
+if [[ "$PYTHON_VERSION" == "3.5" || "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
   WORK_DIR=`mktemp -d`
   pushd $WORK_DIR
-    git clone https://github.com/pitrou/pickle5-backport
+    git clone https://github.com/suquark/pickle5-backport
     pushd pickle5-backport
-      git checkout 5186f9ca4ce55ae530027db196da51e08208a16b
+      git checkout 43551fbb9add8ac2e8551b96fdaf2fe5a3b5997d
       "$PYTHON_EXECUTABLE" setup.py bdist_wheel
       unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
     popd

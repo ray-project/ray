@@ -67,11 +67,9 @@ RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
 /// for direct task submission until it must be returned to the raylet.
 RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 
-/// The duration between heartbeats sent from the workers to the raylet.
-/// If set to a negative value, the heartbeats will not be sent.
-/// These are used to report active object IDs for garbage collection and
-/// to ensure that workers go down when the raylet dies unexpectedly.
-RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 1000)
+/// The interval at which the workers will check if their raylet has gone down.
+/// When this happens, they will kill themselves.
+RAY_CONFIG(int64_t, raylet_death_check_interval_milliseconds, 1000)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.
@@ -123,11 +121,6 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// This is a timeout used to cause failures in the plasma manager and raylet
 /// when certain event loop handlers take too long.
 RAY_CONFIG(int64_t, max_time_for_handler_milliseconds, 1000)
-
-/// This is used by the Python extension when serializing objects as part of
-/// a task spec.
-RAY_CONFIG(int64_t, size_limit, 10000)
-RAY_CONFIG(int64_t, num_elements_limit, 10000)
 
 /// This is used to cause failures when a certain loop in redis.cc which
 /// synchronously looks up object manager addresses in redis is slow.
