@@ -109,9 +109,9 @@ class build_ext(_build_ext.build_ext):
         # relevant non-Python pickle5 files get copied.
         pickle5_files = self.walk_directory("./ray/pickle5_files/pickle5")
 
-        psutil_files = self.walk_directory("./ray/psutil_files/psutil")
+        psutil_files = self.walk_directory("./ray/thirdparty_files/psutil")
 
-        setproctitle_files = self.walk_directory("./ray/setproctitle_files")
+        setproctitle_files = self.walk_directory("./ray/thirdparty_files")
         
         files_to_include = ray_files + pyarrow_files + pickle5_files + psutil_files + setproctitle_files
 
