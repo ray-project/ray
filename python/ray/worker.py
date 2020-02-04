@@ -293,13 +293,9 @@ class Worker:
                 should_warn_of_slow_puts = False
         return result
 
-    def deserialize_objects(self,
-                            data_metadata_pairs,
-                            object_ids,
-                            error_timeout=10):
+    def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_ids,
-                                           error_timeout)
+        return context.deserialize_objects(data_metadata_pairs, object_ids)
 
     def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.

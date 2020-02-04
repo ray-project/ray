@@ -52,7 +52,8 @@ def dump(obj, file, protocol=None, buffer_callback=None):
     Set protocol=pickle.DEFAULT_PROTOCOL instead if you need to ensure
     compatibility with older versions of Python.
     """
-    CloudPickler(file, protocol=protocol, buffer_callback=buffer_callback).dump(obj)
+    CloudPickler(file, protocol=protocol,
+                 buffer_callback=buffer_callback).dump(obj)
 
 
 def dumps(obj, protocol=None, buffer_callback=None):
@@ -66,7 +67,8 @@ def dumps(obj, protocol=None, buffer_callback=None):
     compatibility with older versions of Python.
     """
     with io.BytesIO() as file:
-        cp = CloudPickler(file, protocol=protocol, buffer_callback=buffer_callback)
+        cp = CloudPickler(file, protocol=protocol,
+                          buffer_callback=buffer_callback)
         cp.dump(obj)
         return file.getvalue()
 
@@ -79,9 +81,9 @@ def _class_getnewargs(obj):
     if hasattr(obj, "__slots__"):
         type_kwargs["__slots__"] = obj.__slots__
 
-    __dict__ = obj.__dict__.get('__dict__', None)
+    __dict__ = obj.__dict__.get("__dict__", None)
     if isinstance(__dict__, property):
-        type_kwargs['__dict__'] = __dict__
+        type_kwargs["__dict__"] = __dict__
 
     return (type(obj), obj.__name__, obj.__bases__, type_kwargs,
             _ensure_tracking(obj), None)
@@ -141,7 +143,7 @@ def _function_getstate(func):
 
 def _class_getstate(obj):
     clsdict = _extract_class_dict(obj)
-    clsdict.pop('__weakref__', None)
+    clsdict.pop("__weakref__", None)
 
     # For ABCMeta in python3.7+, remove _abc_impl as it is not picklable.
     # This is a fix which breaks the cache but this only makes the first
@@ -160,7 +162,7 @@ def _class_getstate(obj):
             for k in obj.__slots__:
                 clsdict.pop(k, None)
 
-    clsdict.pop('__dict__', None)  # unpicklable property object
+    clsdict.pop("__dict__", None)  # unpicklable property object
 
     return (clsdict, {})
 
@@ -428,10 +430,10 @@ def _numpy_ndarray_reduce(array):
     # the PickleBuffer instance will hold a view on the transpose
     # of the initial array, that is C-contiguous.
     if not array.flags.c_contiguous and array.flags.f_contiguous:
-        order = 'F'
+        order = "F"
         picklebuf_args = array.transpose()
     else:
-        order = 'C'
+        order = "C"
         picklebuf_args = array
     try:
         buffer = picklebuf_class(picklebuf_args)
@@ -485,7 +487,8 @@ class CloudPickler(Pickler):
     def __init__(self, file, protocol=None, buffer_callback=None):
         if protocol is None:
             protocol = DEFAULT_PROTOCOL
-        Pickler.__init__(self, file, protocol=protocol, buffer_callback=buffer_callback)
+        Pickler.__init__(self, file, protocol=protocol,
+                         buffer_callback=buffer_callback)
         # map functions __globals__ attribute ids, to ensure that functions
         # sharing the same global namespace at pickling time also share their
         # global namespace at unpickling time.
@@ -531,8 +534,9 @@ class CloudPickler(Pickler):
         # This is a patch for python3.5
         if isinstance(obj, numpy.ndarray):
             if (self.proto < 5 or
-                    (not obj.flags.c_contiguous and not obj.flags.f_contiguous) or
-                    obj.dtype == 'O' or obj.itemsize == 0):
+                    (not obj.flags.c_contiguous and
+                     not obj.flags.f_contiguous) or
+                    obj.dtype == "O" or obj.itemsize == 0):
                 return NotImplemented
             return _numpy_ndarray_reduce(obj)
 
