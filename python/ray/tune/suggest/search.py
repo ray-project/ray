@@ -65,7 +65,7 @@ class SearchAlgorithm:
         raise NotImplementedError
 
 
-class SearcherInterface:
+class Searcher:
     """Abstract class for wrapping suggesting algorithms.
 
     Custom search algorithms can extend this class easily by overriding the
@@ -91,7 +91,7 @@ class SearcherInterface:
 
     .. code-block:: python
 
-        class ExampleSearch(SearcherInterface):
+        class ExampleSearch(Searcher):
             def __init__(self, metric="mean_loss", mode="min", **kwargs):
                 super(ExampleSearch, self).__init__(
                     metric=metric, mode=mode, **kwargs)
@@ -210,7 +210,7 @@ class SearcherInterface:
         return self._mode
 
 
-class _MockSuggestionAlgorithm(SearcherInterface):
+class _MockSuggestionAlgorithm(Searcher):
     def __init__(self, max_concurrent=2, **kwargs):
         self._max_concurrent = max_concurrent
         self.live_trials = {}

@@ -8,7 +8,7 @@ import os
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.search import SearchAlgorithm, SearcherInterface
+from ray.tune.suggest.search import SearchAlgorithm, Searcher
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.trial import Trial
 from ray.tune.utils import merge_dicts, flatten_dict
@@ -134,14 +134,14 @@ class SearchGenerator(SearchAlgorithm):
     without embedding logic into the Searcher.
 
     Args:
-        searcher: Search object that subclasses the SearcherInterface. This
+        searcher: Search object that subclasses the Searcher base class. This
             is then used for generating new hyperparameter samples.
 
     """
 
     def __init__(self, searcher):
-        assert issubclass(type(searcher), SearcherInterface), (
-            "Searcher should be subclassing SearcherInterface.")
+        assert issubclass(type(searcher), Searcher), (
+            "Searcher should be subclassing Searcher.")
         self.searcher = searcher
         self.repeat = searcher.repeat
         self._max_concurrent = searcher.max_concurrent

@@ -176,8 +176,7 @@ def run(run_or_experiment,
             Setting to 0 will disable retries. Defaults to 3.
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
-        search_alg (SearchAlgorithm): Search Algorithm. Defaults to
-            BasicVariantGenerator.
+        search_alg (Searcher): Search algorithm for optimization.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
