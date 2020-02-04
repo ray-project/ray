@@ -693,7 +693,7 @@ def test_export_after_shutdown(ray_start_regular):
 
 
 def test_invalid_unicode_in_worker_log(shutdown_only):
-    info = ray.init(num_cpus=1)
+    info = ray.init(_internal_config=json.dumps({"num_initial_py_workers": 1}))
 
     logs_dir = os.path.join(info["session_dir"], "logs")
 

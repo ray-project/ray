@@ -82,7 +82,7 @@ def test_failed_task(ray_start_regular):
         assert False
 
 
-def test_fail_importing_remote_function(ray_start_2_cpus):
+def test_fail_importing_remote_function(ray_start_2_workers):
     # Create the contents of a temporary Python file.
     temporary_python_file = """
 def temporary_helper_function():
@@ -131,7 +131,7 @@ def temporary_helper_function():
     sys.path.pop(-1)
 
 
-def test_failed_function_to_run(ray_start_2_cpus):
+def test_failed_function_to_run(ray_start_2_workers):
     def f(worker):
         if ray.worker.global_worker.mode == ray.WORKER_MODE:
             raise Exception("Function to run failed.")
@@ -482,7 +482,7 @@ def test_version_mismatch(shutdown_only):
     ray_version = ray.__version__
     ray.__version__ = "fake ray version"
 
-    ray.init(num_cpus=1)
+    ray.init(_internal_config=json.dumps({"num_initial_py_workers": 1}))
 
     wait_for_errors(ray_constants.VERSION_MISMATCH_PUSH_ERROR, 1)
 

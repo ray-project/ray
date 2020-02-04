@@ -14,7 +14,12 @@ from ray.test_utils import RayTestTimeoutException
 
 
 def test_worker_stats(shutdown_only):
-    addresses = ray.init(num_cpus=1, include_webui=True)
+    addresses = ray.init(
+        num_cpus=1,
+        include_webui=True,
+        _internal_config=json.dumps({
+            "num_initial_py_workers": 1
+        }))
     raylet = ray.nodes()[0]
     num_cpus = raylet["Resources"]["CPU"]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],

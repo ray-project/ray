@@ -1,6 +1,7 @@
 import os
 import shutil
 import time
+import json
 import pytest
 import ray
 from ray.cluster_utils import Cluster
@@ -93,7 +94,7 @@ def test_temp_plasma_store_socket(shutdown_only):
 
 
 def test_raylet_tempfiles(shutdown_only):
-    ray.init(num_cpus=0)
+    ray.init(_internal_config=json.dumps({"num_initial_py_workers": 0}))
     node = ray.worker._global_node
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})
@@ -108,7 +109,7 @@ def test_raylet_tempfiles(shutdown_only):
     assert socket_files == {"plasma_store", "raylet"}
     ray.shutdown()
 
-    ray.init(num_cpus=2)
+    ray.init(_internal_config=json.dumps({"num_initial_py_workers": 2}))
     node = ray.worker._global_node
     top_levels = set(os.listdir(node.get_session_dir_path()))
     assert top_levels.issuperset({"sockets", "logs"})

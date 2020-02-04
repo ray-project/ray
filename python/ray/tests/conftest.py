@@ -78,6 +78,16 @@ def ray_start_2_cpus(request):
 
 
 @pytest.fixture
+def ray_start_2_workers(request):
+    param = getattr(request, "param", {})
+    with _ray_start(
+            _internal_config=json.dumps({
+                "num_initial_py_workers": 2
+            }), **param) as res:
+        yield res
+
+
+@pytest.fixture
 def ray_start_10_cpus(request):
     param = getattr(request, "param", {})
     with _ray_start(num_cpus=10, **param) as res:
