@@ -2,8 +2,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/service_based_accessor.h"
 
-static void GetGcsServerAddress(redisContext *context,
-                                std::pair<std::string, int> *address) {
+static void GetGcsServerAddressFromRedis(redisContext *context,
+                                         std::pair<std::string, int> *address) {
   // Get gcs server address.
   int num_attempts = 0;
   redisReply *reply = nullptr;
@@ -53,7 +53,8 @@ Status ServiceBasedGcsClient::Connect(boost::asio::io_service &io_service) {
 
   // Get gcs service address
   std::pair<std::string, int> address;
-  GetGcsServerAddress(redis_gcs_client_->primary_context()->sync_context(), &address);
+  GetGcsServerAddressFromRedis(redis_gcs_client_->primary_context()->sync_context(),
+                               &address);
 
   // Connect to gcs service
   client_call_manager_.reset(new rpc::ClientCallManager(io_service));
