@@ -191,6 +191,20 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
 .. tip::
     Consider using `Ape-X <#distributed-prioritized-experience-replay-ape-x>`__ for faster training with similar timestep efficiency.
 
+.. tip::
+    For a cmplete rainbow setup, use:
+    ``dueling: True, double: True, n_step: [some int > 1 and << 10],
+    batch_mode: "complete_episodes",
+    prioritized_replay: True,
+    num_atoms: [>1],
+    v_min: -10.0 (<- set these according to your expected returns.
+    v_max: 10.0
+    Alternatively:
+    noisy: True (rainbow paper)
+    OR:
+    parameter_noise: True (`[see here] <https://openai.com/blog/better-exploration-with-parameter-noise/>`)
+    ``
+
 **Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
 
 =============  ========================  =============================  ==============================  ===============================
