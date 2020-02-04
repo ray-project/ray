@@ -404,8 +404,10 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+  // Once a worker disconnected, remove the starting workers of the same process.
+  state.starting_worker_processes.erase(static_cast<int>(worker->Pid()));
 
+  RAY_CHECK(RemoveWorker(state.registered_workers, worker));
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
           {stats::WorkerPidKey, std::to_string(worker->Pid())}});
