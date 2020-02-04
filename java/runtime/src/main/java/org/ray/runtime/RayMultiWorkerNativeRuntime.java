@@ -18,6 +18,7 @@ import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.generated.Common.WorkerType;
+import org.ray.runtime.runner.RunManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,7 +64,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
     for (int i = 0; i < numWorkers; i++) {
       final int workerIndex = i;
       threads[i] = new Thread(() -> {
-        RayNativeRuntime runtime = new RayNativeRuntime(rayConfig, functionManager);
+        RayNativeRuntime runtime = new RayNativeRuntime(null, rayConfig, functionManager);
         runtimes[workerIndex] = runtime;
         currentThreadRuntime.set(runtime);
         runtime.run();

@@ -1,11 +1,8 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import java.io.File;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.commons.io.FileUtils;
 import org.ray.api.RayActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
@@ -22,6 +19,7 @@ import org.ray.runtime.runner.RunManager;
 import org.ray.runtime.task.NativeTaskExecutor;
 import org.ray.runtime.task.NativeTaskSubmitter;
 import org.ray.runtime.task.TaskExecutor;
+import org.ray.runtime.util.BinaryFileUtil;
 import org.ray.runtime.util.JniUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,41 +38,34 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
    */
   private long nativeCoreWorkerPointer;
 
-  static {
-    LOGGER.debug("Loading native libraries.");
-    // Expose ray ABI symbols which may be depended by other shared
-    // libraries such as libstreaming_java.so.
-    // See BUILD.bazel:libcore_worker_library_java.so
-    JniUtils.loadLibrary("core_worker_library_java", true);
-    LOGGER.debug("Native libraries loaded.");
-    RayConfig globalRayConfig = RayConfig.create();
-    resetLibraryPath(globalRayConfig);
-
-    try {
-      FileUtils.forceMkdir(new File(globalRayConfig.logDir));
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to create the log directory.", e);
-    }
-    nativeSetup(globalRayConfig.logDir);
-    Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
-  }
-
   private static void resetLibraryPath(RayConfig rayConfig) {
     String separator = System.getProperty("path.separator");
     String libraryPath = String.join(separator, rayConfig.libraryPath);
     JniUtils.resetLibraryPath(libraryPath);
   }
 
-  public RayNativeRuntime(RayConfig rayConfig, FunctionManager functionManager) {
-    super(rayConfig, functionManager);
-
-    // Reset library path at runtime.
+  /**
+   * Do some setups like adding hooks and setup logging.
+   */
+  public static synchronized void setup(RayConfig rayConfig) {
+    LOGGER.debug("Loading native libraries.");
+    // Expose ray ABI symbols which may be depended by other shared
+    // libraries such as libstreaming_java.so.
+    // See BUILD.bazel:libcore_worker_library_java.so
+    JniUtils.loadLibraryByPath("core_worker_library_java",
+        BinaryFileUtil.getFilePath(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY));
+    LOGGER.debug("Native libraries loaded.");
     resetLibraryPath(rayConfig);
 
-    if (rayConfig.getRedisAddress() == null) {
-      manager = new RunManager(rayConfig);
-      manager.startRayProcesses(true);
-    }
+    nativeSetup(rayConfig.logDir);
+    Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
+  }
+
+  public RayNativeRuntime(RunManager manager, RayConfig rayConfig, FunctionManager functionManager) {
+    super(rayConfig, functionManager);
+    this.manager = manager;
+    // Reset library path at runtime.
+    resetLibraryPath(rayConfig);
 
     gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
@@ -104,6 +95,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @Override
   public void shutdown() {
     if (nativeCoreWorkerPointer != 0) {
+      nativeShutdownHook();
       nativeDestroyCoreWorker(nativeCoreWorkerPointer);
       nativeCoreWorkerPointer = 0;
     }

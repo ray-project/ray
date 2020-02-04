@@ -15,7 +15,6 @@ import setuptools.command.build_ext as _build_ext
 # manually.
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
-
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server",
     "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
@@ -28,9 +27,19 @@ ray_files = [
     "ray/streaming/_streaming.so",
 ]
 
+
+def get_library_suffix():
+    if sys.platform == "darwin":
+        return "dylib"
+    elif sys.platform == "linux":
+        return "so"
+    raise RuntimeError("unknown platform")
+
+
 build_java = os.getenv("RAY_INSTALL_JAVA") == "1"
 if build_java:
     ray_files.append("ray/jars/ray_dist.jar")
+    ray_files.append("ray/jars/libcore_worker_library_java." + get_library_suffix())
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.

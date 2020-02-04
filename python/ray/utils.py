@@ -576,3 +576,11 @@ def try_to_symlink(symlink_path, target_path):
         os.symlink(target_path, symlink_path)
     except OSError:
         return
+
+
+def get_library_suffix():
+    if sys.platform == "darwin":
+        return "dylib"
+    elif sys.platform == "linux":
+        return "so"
+    raise RuntimeError("unknown platform")

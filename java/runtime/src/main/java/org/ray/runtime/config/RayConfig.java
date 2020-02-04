@@ -8,9 +8,12 @@ import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValue;
 import java.io.File;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import org.ray.api.id.JobId;
 import org.ray.runtime.generated.Common.WorkerType;
@@ -30,12 +33,20 @@ public class RayConfig {
   public static final String DEFAULT_CONFIG_FILE = "ray.default.conf";
   public static final String CUSTOM_CONFIG_FILE = "ray.conf";
 
+  private static final Random RANDOM = new Random();
+
+  private static final DateTimeFormatter DATE_TIME_FORMATTER =
+      DateTimeFormatter.ofPattern("YYYY-MM-dd_HH-mm-ss");
+
+  private static final String DEFAULT_TEMP_DIR = "/tmp/ray";
+
   public final String nodeIp;
   public final WorkerType workerMode;
   public final RunMode runMode;
   public final Map<String, Double> resources;
   private JobId jobId;
-  public final String logDir;
+  public final String sessionDir;
+  public String logDir;
   public final boolean redirectOutput;
   public final List<String> libraryPath;
   public final List<String> classpath;
@@ -50,10 +61,10 @@ public class RayConfig {
   public final String headRedisPassword;
   public final String redisPassword;
 
-  public final String objectStoreSocketName;
+  public String objectStoreSocketName;
   public final Long objectStoreSize;
 
-  public final String rayletSocketName;
+  public String rayletSocketName;
   private int nodeManagerPort;
   public final List<String> rayletConfigParameters;
 
@@ -118,8 +129,58 @@ public class RayConfig {
     } else {
       this.jobId = JobId.NIL;
     }
+
+    // session dir
+    String localSessionDir = null;
+    if (config.hasPath("ray.session-dir")) {
+      localSessionDir = removeTrailingSlash(config.getString("ray.session-dir"));
+    }
+    if (Strings.isNullOrEmpty(localSessionDir)) {
+      final int minBound = 100000;
+      final int maxBound = 999999;
+      final String sessionName = String.format("session_%s_%d", DATE_TIME_FORMATTER.format(
+          LocalDateTime.now()), RANDOM.nextInt(maxBound - minBound) + minBound);
+      sessionDir = String.format("%s/%s", DEFAULT_TEMP_DIR, sessionName);
+    } else {
+      sessionDir = localSessionDir;
+    }
+
     // Log dir.
-    logDir = removeTrailingSlash(config.getString("ray.log-dir"));
+    String localLogDir = null;
+    if (config.hasPath("ray.log-dir")) {
+      localLogDir = removeTrailingSlash(config.getString("ray.log-dir"));
+    }
+    if (Strings.isNullOrEmpty(localLogDir)) {
+      logDir = String.format("%s/logs", sessionDir);
+    } else {
+      logDir = localLogDir;
+    }
+
+    // Object store configurations.
+    objectStoreSize = config.getBytes("ray.object-store.size");
+
+    // Object store socket name.
+    String localObjectStoreSocketName = null;
+    if (config.hasPath("ray.object-store.socket-name")) {
+      localObjectStoreSocketName = config.getString("ray.object-store.socket-name");
+    }
+    if (Strings.isNullOrEmpty(localObjectStoreSocketName)) {
+      objectStoreSocketName = String.format("%s/sockets/object_store", sessionDir);
+    } else {
+      objectStoreSocketName = localObjectStoreSocketName;
+    }
+
+    // Raylet socket name.
+    String localRayletSocketName = null;
+    if (config.hasPath("ray.raylet.socket-name")) {
+      localRayletSocketName = config.getString("ray.raylet.socket-name");
+    }
+    if (Strings.isNullOrEmpty(localRayletSocketName)) {
+      rayletSocketName = String.format("%s/sockets/raylet", sessionDir);
+    } else {
+      rayletSocketName = localRayletSocketName;
+    }
+
     // Redirect output.
     redirectOutput = config.getBoolean("ray.redirect-output");
     // Library path.
@@ -160,12 +221,6 @@ public class RayConfig {
     headRedisPassword = config.getString("ray.redis.head-password");
     redisPassword = config.getString("ray.redis.password");
 
-    // Object store configurations.
-    objectStoreSocketName = config.getString("ray.object-store.socket-name");
-    objectStoreSize = config.getBytes("ray.object-store.size");
-
-    // Raylet socket name.
-    rayletSocketName = config.getString("ray.raylet.socket-name");
     // Raylet node manager port.
     nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
     if (nodeManagerPort == 0) {

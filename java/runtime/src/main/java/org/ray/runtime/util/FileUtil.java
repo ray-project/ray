@@ -24,6 +24,7 @@ public class FileUtil {
 
     File file;
 
+
     TempFile(File file) {
       this.file = file;
     }
@@ -34,9 +35,6 @@ public class FileUtil {
 
     @Override
     public void close() {
-      if (!file.delete()) {
-        LOGGER.warn("Couldn't delete temp file {}", file.getAbsolutePath());
-      }
     }
   }
 
@@ -65,4 +63,3 @@ public class FileUtil {
     return new TempFile(file);
   }
 }
-

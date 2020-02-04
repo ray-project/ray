@@ -1,11 +1,13 @@
 package org.ray.runtime;
 
+import com.google.common.base.Preconditions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.generated.Common.WorkerType;
+import org.ray.runtime.runner.RunManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,9 +27,17 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
       if (rayConfig.runMode == RunMode.SINGLE_PROCESS) {
         runtime = new RayDevRuntime(rayConfig, functionManager);
       } else {
+        RunManager manager = null;
+        if (rayConfig.getRedisAddress() == null) {
+          manager = new RunManager(rayConfig);
+          manager.startRayProcesses(true);
+        }
+        RayNativeRuntime.setup(rayConfig);
+
         if (rayConfig.workerMode == WorkerType.DRIVER) {
-          runtime = new RayNativeRuntime(rayConfig, functionManager);
+          runtime = new RayNativeRuntime(manager, rayConfig, functionManager);
         } else {
+          Preconditions.checkState(manager == null);
           runtime = new RayMultiWorkerNativeRuntime(rayConfig, functionManager);
         }
       }

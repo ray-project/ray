@@ -37,6 +37,7 @@ public class JniUtils {
       // Load native library.
       String fileName = System.mapLibraryName(libraryName);
       String libPath = null;
+
       try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
         libPath = libFile.getFile().getAbsolutePath();
         if (exportSymbols) {
@@ -50,6 +51,21 @@ public class JniUtils {
       resetLibraryPath(libPath);
       loadedLibs.add(libraryName);
     }
+  }
+
+  public static synchronized void loadLibraryByPath(String libraryName, String libraryPath) {
+    if (loadedLibs.contains(libraryName)) {
+      return ;
+    }
+    LOGGER.debug("Loading native library {}.", libraryName);
+    // Load native library.
+    // Expose library symbols using RTLD_GLOBAL which may be depended by other shared
+    // libraries.
+    NativeLibrary.getInstance(libraryPath);
+    System.load(libraryPath);
+    LOGGER.debug("Native library loaded.");
+    resetLibraryPath(libraryPath);
+    loadedLibs.add(libraryName);
   }
 
   /**
