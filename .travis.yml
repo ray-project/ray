@@ -143,9 +143,8 @@ script:
   # cc bazel tests
   - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
-  # ray serve tests TODO(ekl): these should be moved to bazel
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then SERVE_LOG_DEBUG=1 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then SERVE_LOG_DEBUG=1 ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
+  # ray serve tests
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/experimental/serve/...; fi
 
   # ray operator tests
   - cd ./deploy/ray-operator/
@@ -155,7 +154,6 @@ script:
 
   # random python tests TODO(ekl): these should be moved to bazel
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...; fi
