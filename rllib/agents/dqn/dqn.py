@@ -37,13 +37,13 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Exploration Settings ===
     "exploration": {
-        "type": EpsilonGreedy,  # Exploration class.
+        # The Exploration class to use.
+        "type": "ray.rllib.utils.explorations.epsilon_greedy.EpsilonGreedy",
         # Config for the Exploration class' c'tor:
         "initial_epsilon": 1.0,  # Initial epsilon value.
         "final_epsilon": 0.02,  # Final epsilon value.
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal eps.
+        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
     },
-
     # TODO(sven): Make Exploration class for parameter noise.
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
@@ -123,6 +123,7 @@ DEFAULT_CONFIG = with_common_config({
 
 def make_policy_optimizer(workers, config):
     """Create the single process DQN policy optimizer.
+
     Returns:
         SyncReplayOptimizer: Used for generic off-policy Trainers.
     """
@@ -143,8 +144,8 @@ def make_policy_optimizer(workers, config):
 
 
 def validate_config_and_setup_param_noise(config):
-    """
-    Checks and updates the config based on settings.
+    """Checks and updates the config based on settings.
+    
     Rewrites sample_batch_size to take into account n_step truncation.
     """
     # PyTorch check.
@@ -170,8 +171,6 @@ def validate_config_and_setup_param_noise(config):
             config["exploration_final_eps"] > 0:
         deprecation_warning("exploration_final_eps",
                             "exploration.final_epsilon")
-        config["exploration"] = config.get("exploration",
-                                           {"type": EpsilonGreedy})
         if isinstance(config["exploration"], dict):
             config["exploration"]["final_epsilon"] = \
                 config.pop("exploration_final_eps")
@@ -179,8 +178,6 @@ def validate_config_and_setup_param_noise(config):
         assert schedule_max_timesteps is not None
         deprecation_warning("exploration_fraction",
                             "exploration.epsilon_timesteps")
-        config["exploration"] = config.get("exploration",
-                                           {"type": EpsilonGreedy})
         if isinstance(config["exploration"], dict):
             config["exploration"]["epsilon_timesteps"] = config.pop(
                 "exploration_fraction") * schedule_max_timesteps
@@ -246,9 +243,9 @@ def get_initial_state(config):
 
 # TODO(sven): Move this to generic Trainer/Policy. Every Algo should do this.
 def update_worker_exploration(trainer):
-    """
-    Sets epsilon exploration values in all policies
-    to updated values (according to current time-step).
+    """Sets epsilon exploration values in all policies to updated values.
+    
+    According to current time-step.
 
     Args:
         trainer (Trainer): The Trainer object for the DQN.
@@ -263,8 +260,7 @@ def update_worker_exploration(trainer):
 
 
 def after_train_result(trainer, result):
-    """
-    Add some DQN specific metrics to results.
+    """Add some DQN specific metrics to results.
     """
     global_timestep = trainer.optimizer.num_steps_sampled
     result.update(
@@ -276,8 +272,7 @@ def after_train_result(trainer, result):
 
 
 def update_target_if_needed(trainer, fetches):
-    """
-    Update the target network in configured intervals.
+    """Update the target network in configured intervals.
     """
     global_timestep = trainer.optimizer.num_steps_sampled
     if global_timestep - trainer.state["last_target_update_ts"] > \

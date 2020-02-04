@@ -69,8 +69,9 @@ class Policy(metaclass=ABCMeta):
             Exploration,
             config.get("exploration"),
             action_space=self.action_space,
-            framework="torch" if self.config.get("use_pytorch") else "tf",
-            worker_info=self.config.get("worker_info"))
+            num_workers=self.config.get("num_workers"),
+            worker_index=self.config.get("worker_index"),
+            framework="torch" if self.config.get("use_pytorch") else "tf")
         self.last_exploration_info = []
 
         # The default sampling behavior for actions if not explicitly given
