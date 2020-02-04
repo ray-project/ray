@@ -6,7 +6,8 @@ import time
 psutil_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
 sys.path.insert(0, psutil_path)
-import psutil
+
+import psutil  # noqa E402
 
 logger = logging.getLogger(__name__)
 
