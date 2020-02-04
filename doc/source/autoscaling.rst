@@ -211,6 +211,8 @@ Port-forwarding applications
 
 If you want to run applications on the cluster that are accessible from a web browser (e.g., Jupyter notebook), you can use the ``--port-forward`` option for ``ray exec``. The local port opened is the same as the remote port.
 
+Note: For Kubernetes clusters, the ``port-forward`` option cannot be used while executing a command. To port forward and run a command you need to call ``ray exec`` twice. 
+
 .. code-block:: bash
 
     $ ray exec cluster.yaml --port-forward=8899 'source ~/anaconda3/bin/activate tensorflow_p36 && jupyter notebook --port=8899'
@@ -239,6 +241,8 @@ The default idle timeout is 5 minutes. This is to prevent excessive node churn w
 
 Monitoring cluster status
 ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The autoscaler also comes with an online dashboard. To access the dashboard, which is located on the ray head node on port ``8265``. To access it, forward the port to your local machine. You can also call ``ray dashboard`` to do this. 
 
 You can monitor cluster usage and auto-scaling status by tailing the autoscaling
 logs in ``/tmp/ray/session_*/logs/monitor*``.
