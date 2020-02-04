@@ -1,6 +1,7 @@
-import itertools
 import copy
 import cloudpickle as pickle
+import itertools
+import logging
 import numpy as np
 import os
 
@@ -12,17 +13,19 @@ from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
 from ray.tune.trial import Trial
 from ray.tune.utils import merge_dicts, flatten_dict
 
-SEED = "__seed__"
+INDEX = "__index__"
+
+logger = logging.getLogger(__name__)
 
 
 class _TrialGroup:
-    """Private mechanism for grouping trials of same parameters.
+    """Class for grouping trials of same parameters.
 
     This is used when repeating trials for reducing training variance. See
     https://github.com/ray-project/ray/issues/6994.
 
     Args:
-        primary_trial_id (str): Trial ID of the "parent trial".
+        primary_trial_id (str): Trial ID of the "primary trial".
             This trial is the one that the Searcher is aware of.
         trial_ids (List[str]): List of trial ids of the trials in the group.
             All trials should be using the same hyperparameters.
@@ -40,18 +43,17 @@ class _TrialGroup:
                  config,
                  metric,
                  use_clipped_trials=False):
-        assert type(
-            trial_ids) is list, "trial_ids is not a list, got {}".format(
-                trial_ids)
-        assert type(config) is dict, "config is not a dict, got {}".format(
-            config)
+        assert type(trial_ids) is list, (
+            "trial_ids is not a list, got {}".format(trial_ids))
+        assert type(config) is dict, (
+            "config is not a dict, got {}".format(config))
         self.primary_trial_id = primary_trial_id
         self.trial_ids = trial_ids
         self.metric = metric
         self.config = config
         self.config_str = format_vars(self.config)
         self.use_clipped_trials = use_clipped_trials
-        self._any_clipped = False
+        self._has_clipped_trial = False
         self._completed = {}
         self._errored = set()
 
@@ -83,16 +85,20 @@ class _TrialGroup:
             clipped (bool): Whether the trial was stopped early by a scheduler.
         """
         assert trial_id in self.trial_ids
+
         if error:
             self._errored.add(trial_id)
 
         if clipped:
-            self._any_clipped = True
+            self._has_clipped_trial = True
         if (not self.use_clipped_trials
                 and clipped) or not result or (self.metric not in result):
             self._completed[trial_id] = np.nan
         else:
             self._completed[trial_id] = result[self.metric]
+
+        logger.debug("Trial {} completed: Trial Group updated to {}".format(
+            trial_id, repr(self)))
 
     def all_trials_errored(self):
         """Returns True if all trials in the group errored."""
@@ -120,16 +126,16 @@ class _TrialGroup:
             ))
 
 
-class SearchRunner(SearchAlgorithm):
+class SearchGenerator(SearchAlgorithm):
     """Stateful generator for trials to be passed to the TrialRunner.
 
-    Uses the provided ``searcher`` object to generate trials. Also handles
-    repeated trials with score aggregation without embedding logic into
-    the Searcher.
+    Uses the provided ``searcher`` object to generate trials. This class
+    transparently handles repeating trials with score aggregation
+    without embedding logic into the Searcher.
 
     Args:
-        searcher: Search object that subclasses the SearcherInterface.
-
+        searcher: Search object that subclasses the SearcherInterface. This
+            is then used for generating new hyperparameter samples.
 
     """
 
@@ -137,35 +143,31 @@ class SearchRunner(SearchAlgorithm):
         assert issubclass(type(searcher), SearcherInterface), (
             "Searcher should be subclassing SearcherInterface.")
         self.searcher = searcher
-        self._repeat = searcher.repeat_count
+        self.repeat = searcher.repeat
         self._max_concurrent = searcher.max_concurrent
         self._live_trial_groups = 0
         self._trial_groups = {}  # map primary_trial_id to group.
         self._trial_group_map = {}  # maps trial to corresponding group
         self._parser = make_parser()
         self._trial_generator = []
-        self._counter = 0
+        self._counter = 0  # Keeps track of number of trials created.
         self._finished = False
-
-    def add_configurations(self, experiments):
-        """Chains generator given experiment specifications.
-
-        Arguments:
-            experiments (Experiment | list | dict): Experiments to run.
-        """
-        experiment_list = convert_to_experiment_list(experiments)
-        for experiment in experiment_list:
-            self._trial_generator = itertools.chain(
-                self._trial_generator,
-                self._generate_trials(experiment.spec, experiment.name))
 
     def _generate_trials(self, experiment_spec, output_path=""):
         """Generates trials with configurations from `suggest`.
 
         Creates a trial_id that is passed into `suggest`.
 
+        Args:
+            experiment_spec (dict): Dictionary of tune run configuration
+                values generated by the Experiment object.
+            output_path (str): Subdirectory under Experiment local_dir
+                for trial output.
+
         Yields:
-            Trial objects constructed according to `spec`
+            Trial object constructed according to `spec`. This can be None
+                if the searcher does not have new configurations or is
+                at max_concurrency.
         """
         if "run" not in experiment_spec:
             raise TuneError("Must specify `run` in {}".format(experiment_spec))
@@ -173,14 +175,14 @@ class SearchRunner(SearchAlgorithm):
             trials = None
             while trials is None:
                 trials = self.create_trials(
-                    experiment_spec, output_path, repeat=self._repeat)
+                    experiment_spec, output_path, repeat=self.repeat)
                 if not trials:
                     # This will repeat if trial is None.
                     yield None
             for trial in trials:
                 yield trial
 
-    def create_trials(self, experiment_spec, output_path, repeat=None):
+    def _create_trials(self, experiment_spec, output_path, repeat=None):
         if self.live_trial_groups >= self._max_concurrent:
             return
         primary_trial_id = Trial.generate_id()
@@ -212,6 +214,12 @@ class SearchRunner(SearchAlgorithm):
                                  suggested_config,
                                  output_path,
                                  repeat=1):
+        """Creates ``repeat`` number of trials at once.
+
+        Also sets a tune.result.INDEX in the configuration which corresponds
+        to the index of the repeated trial. This can be used for seeds.
+
+        """
 
         trials = []
         for idx in range(repeat):
@@ -221,8 +229,8 @@ class SearchRunner(SearchAlgorithm):
 
             # Create a new trial_id if duplicate trial is created
             trial_id = Trial.generate_id() if idx > 0 else primary_trial_id
-
-            spec.setdefault(SEED, idx)
+            if repeat > 1:
+                spec["config"].setdefault(INDEX, idx)
             flattened_config = resolve_nested_dict(spec["config"])
             self._counter += 1
             tag = "{0}_{1}".format(
@@ -236,6 +244,18 @@ class SearchRunner(SearchAlgorithm):
                     experiment_tag=tag,
                     trial_id=trial_id))
         return trials
+
+    def add_configurations(self, experiments):
+        """Chains generator given experiment specifications.
+
+        Arguments:
+            experiments (Experiment | list | dict): Experiments to run.
+        """
+        experiment_list = convert_to_experiment_list(experiments)
+        for experiment in experiment_list:
+            self._trial_generator = itertools.chain(
+                self._trial_generator,
+                self._generate_trials(experiment.spec, experiment.name))
 
     def on_trial_result(self, trial_id, result):
         """Notifies the underlying searcher if trial_id is a primary trial.
@@ -252,6 +272,19 @@ class SearchRunner(SearchAlgorithm):
                           result=None,
                           error=False,
                           clipped=False):
+        """Notification for the completion of trial.
+
+        If all trials are complete in the trialgroup, the Searcher
+        will receive the aggregated result of the "complete trial".
+
+        The Searcher will receive a "nan" if all trials in the trial group
+        errored. If only a few of the trials errored in the trial group,
+        the searcher will receive an aggregated value over the valid results.
+
+        If any trials in the trialgroup are clipped, the searcher will receive
+        notification. The trial group will include clipped trials in the
+        aggregate result only if specified via searcher.use_clipped_trials.
+        """
         trial_group = self._trial_group_map[trial_id]
         trial_group.on_trial_complete(
             trial_id, result, error=False, clipped=clipped)
@@ -265,7 +298,14 @@ class SearchRunner(SearchAlgorithm):
                 clipped=trial_group.clipped)
             self._live_trial_groups -= 1
 
+        assert self._live_trial_groups == (
+            len(self._trial_group_map) - sum(
+                group.is_complete() for group in self._trial_group_map)
+        ), ("Trial group accounting is incorrect. Please report this issue on "
+            "https://github.com/ray-project/ray/issues.")
+
     def is_finished(self):
+        """Returns True with the TrialGenerator has no more items."""
         return self._finished
 
     def next_trials(self):
@@ -277,7 +317,6 @@ class SearchRunner(SearchAlgorithm):
             trials (list): Returns a list of trials.
         """
         trials = []
-
         for trial in self._trial_generator:
             if trial is None:
                 return trials
@@ -287,14 +326,12 @@ class SearchRunner(SearchAlgorithm):
         return trials
 
     def save(self, checkpoint_dir):
-        with open(os.path.join(checkpoint_dir, ".searchrunner.data"),
-                  "wb") as f:
+        with open(os.path.join(checkpoint_dir, ".search.data"), "wb") as f:
             pickle.dump(self._trial_groups, f)
         self.searcher.save(checkpoint_dir)
 
     def restore(self, checkpoint_dir):
-        with open(os.path.join(checkpoint_dir, ".searchrunner.data"),
-                  "rb") as f:
+        with open(os.path.join(checkpoint_dir, ".search.data"), "rb") as f:
             self._trial_groups = pickle.load(f)
         for group in self._trial_groups.values():
             for trial_id in group.trial_ids:
