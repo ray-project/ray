@@ -37,11 +37,11 @@ class ReferenceCounter {
       return borrowers.size();
     }
 
-    rpc::ObjectReference ToProto() const {
-      rpc::ObjectReference ref;
+    rpc::ObjectReferenceCount ToProto() const {
+      rpc::ObjectReferenceCount ref;
       if (owner.has_value()) {
-        ref.set_owner_id(owner->first.Binary());
-        ref.mutable_owner_address()->CopyFrom(owner->second);
+        ref.mutable_reference()->set_owner_id(owner->first.Binary());
+        ref.mutable_reference()->mutable_owner_address()->CopyFrom(owner->second);
       }
       bool has_local_ref = RefCount() > 0;
       ref.set_has_local_ref(has_local_ref);
@@ -185,10 +185,10 @@ class ReferenceCounter {
 
   ReferenceTable PopBorrowerRefs(const ObjectID &object_id);
 
-  void WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids, bool ray_put = true) LOCKS_EXCLUDED(mutex_);
+  void WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids, const absl::optional<rpc::WorkerAddress> &owner_address) LOCKS_EXCLUDED(mutex_);
 
   // Handler for when a borrower's ref count goes to 0.
-  void HandleWaitForRefRemoved(const ObjectID &object_id, const absl::optional<ObjectID> contained_in_id, rpc::WaitForRefRemovedReply *reply,
+  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request, rpc::WaitForRefRemovedReply *reply,
     rpc::SendReplyCallback send_reply_callback) LOCKS_EXCLUDED(mutex_);
 
   const Reference &GetReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_) {
@@ -205,6 +205,7 @@ class ReferenceCounter {
  private:
   bool PopBorrowerRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void MergeBorrowerRefs(const ObjectID &object_id, const rpc::WorkerAddress &borrower, const ReferenceTable &borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void WaitForRefRemoved(const ReferenceTable::iterator &ref_it, const rpc::WorkerAddress &addr, const ObjectID &contained_in_id = ObjectID::Nil()) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
