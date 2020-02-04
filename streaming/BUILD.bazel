@@ -214,6 +214,15 @@ cc_test(
     deps = test_common_deps,
 )
 
+cc_test(
+    name = "event_server_tests",
+    srcs = [
+        "src/test/event_server_tests.cc",
+    ],
+    deps = test_common_deps,
+)
+
+
 python_proto_compile(
     name = "streaming_py_proto",
     deps = ["//streaming:streaming_proto"],

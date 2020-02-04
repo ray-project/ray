@@ -23,11 +23,6 @@ bool StreamingRingBuffer::Push(const StreamingMessagePtr &msg) {
   return true;
 }
 
-bool StreamingRingBuffer::Push(StreamingMessagePtr &&msg) {
-  message_buffer_->Push(std::forward<StreamingMessagePtr>(msg));
-  return true;
-}
-
 StreamingMessagePtr &StreamingRingBuffer::Front() {
   STREAMING_CHECK(!message_buffer_->Empty());
   return message_buffer_->Front();

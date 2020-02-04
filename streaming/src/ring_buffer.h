@@ -78,7 +78,6 @@ class StreamingTransientBuffer {
 template <class T>
 class AbstractRingBufferImpl {
  public:
-  virtual void Push(T &&) = 0;
   virtual void Push(const T &) = 0;
   virtual void Pop() = 0;
   virtual T &Front() = 0;
@@ -97,10 +96,6 @@ class RingBufferImplThreadSafe : public AbstractRingBufferImpl<T> {
  public:
   RingBufferImplThreadSafe(size_t size) : buffer_(size) {}
   virtual ~RingBufferImplThreadSafe() = default;
-  void Push(T &&t) {
-    boost::unique_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
-    buffer_.push_back(t);
-  }
   void Push(const T &t) {
     boost::unique_lock<boost::shared_mutex> lock(ring_buffer_mutex_);
     buffer_.push_back(t);
@@ -140,12 +135,6 @@ class RingBufferImplLockFree : public AbstractRingBufferImpl<T> {
   RingBufferImplLockFree(size_t size)
       : buffer_(size, nullptr), capacity_(size), read_index_(0), write_index_(0) {}
   virtual ~RingBufferImplLockFree() = default;
-
-  void Push(T &&t) {
-    STREAMING_CHECK(!Full());
-    buffer_[write_index_] = t;
-    write_index_ = IncreaseIndex(write_index_);
-  }
 
   void Push(const T &t) {
     STREAMING_CHECK(!Full());
@@ -192,8 +181,6 @@ class StreamingRingBuffer {
  public:
   explicit StreamingRingBuffer(size_t buf_size, StreamingRingBufferType buffer_type =
                                                     StreamingRingBufferType::SPSC_LOCK);
-
-  bool Push(StreamingMessagePtr &&msg);
 
   bool Push(const StreamingMessagePtr &msg);
 
