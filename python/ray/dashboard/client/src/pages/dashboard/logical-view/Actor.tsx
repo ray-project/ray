@@ -38,7 +38,7 @@ const styles = (theme: Theme) =>
     invalidStateTypeInfeasible: {
       color: theme.palette.error.main
     },
-    invalidStateTypeWaitingUntilResourceAvailable: {
+    invalidStateTypePendingActor: {
       color: orange[500]
     },
     information: {
@@ -291,11 +291,13 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
             </React.Fragment>
           ) : actor.invalidStateType === 'infeasibleActor' ? (
             <span className={classes.invalidStateTypeInfeasible}>
-              {actor.actorTitle} is an infeasible actor.
+              {actor.actorTitle} is infeasible.  
+              (Infeasible actor means an actor cannot be created because 
+              Ray cluster cannot satisfy resources requirement).
             </span>
           ) : (
-            <span className={classes.invalidStateTypeWaitingUntilResourceAvailable}>
-              {actor.actorTitle} is pending until reousrces are available.
+            <span className={classes.invalidStateTypePendingActor}>
+              {actor.actorTitle} is pending until resources are available.
             </span>
           )}
         </Typography>

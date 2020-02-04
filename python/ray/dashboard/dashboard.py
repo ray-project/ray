@@ -482,7 +482,7 @@ class NodeStats(threading.Thread):
 
             for ready_task in ready_tasks:
                 _update_flatten_tree(ready_task, "actorCreationTaskSpec",
-                                     "waitUntilResourceAvailable")
+                                     "pendingActor")
 
         # construct actor tree
         actor_tree = flattened_tree

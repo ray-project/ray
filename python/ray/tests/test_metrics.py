@@ -318,8 +318,8 @@ def test_raylet_pending_tasks(shutdown_only):
 
                 pending_actor_detected = 0
                 for child_id, child in children.items():
-                    if (child["invalidStateType"] ==
-                            "waitUntilResourceAvailable"):
+                    if ("invalidStateType" in child
+                            and child["invalidStateType"] == "pendingActor"):
                         pending_actor_detected += 1
                 assert pending_actor_detected == PENDING_ACTOR
                 break
