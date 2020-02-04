@@ -4,7 +4,7 @@ from ray.rllib.utils.schedules import ConstantSchedule
 
 class PerWorkerEpsilonGreedy(EpsilonGreedy):
     """A per-worker epsilon-greedy class for distributed algorithms.
-    
+
     Sets the epsilon schedules of individual workers to a constant:
     0.4 ^ (1 + [worker-index] / float([num-workers] - 1) * 7)
     See Ape-X paper.

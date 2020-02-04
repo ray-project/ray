@@ -7,7 +7,7 @@ from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.explorations import EpsilonGreedy, PerWorkerEpsilonGreedy
+from ray.rllib.utils.explorations import PerWorkerEpsilonGreedy
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +145,7 @@ def make_policy_optimizer(workers, config):
 
 def validate_config_and_setup_param_noise(config):
     """Checks and updates the config based on settings.
-    
+
     Rewrites sample_batch_size to take into account n_step truncation.
     """
     # PyTorch check.
@@ -244,7 +244,7 @@ def get_initial_state(config):
 # TODO(sven): Move this to generic Trainer/Policy. Every Algo should do this.
 def update_worker_exploration(trainer):
     """Sets epsilon exploration values in all policies to updated values.
-    
+
     According to current time-step.
 
     Args:

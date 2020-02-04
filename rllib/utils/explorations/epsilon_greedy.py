@@ -159,7 +159,6 @@ class EpsilonGreedy(Exploration):
         else:
             return action
 
-
     @override(Exploration)
     def get_info(self):
         """Returns the current epsilon value.
