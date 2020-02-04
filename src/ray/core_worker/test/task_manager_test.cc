@@ -13,8 +13,6 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies) {
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
-  *task.GetMutableMessage().mutable_function_descriptor() =
-      ray::FunctionDescriptorBuilder::BuildDriver()->GetMessage();
   task.GetMutableMessage().set_num_returns(num_returns);
   for (const ObjectID &dep : dependencies) {
     task.GetMutableMessage().add_args()->add_object_ids(dep.Binary());

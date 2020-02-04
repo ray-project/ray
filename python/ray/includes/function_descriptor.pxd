@@ -21,8 +21,8 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
             "ray::FunctionDescriptorType":
         pass
 
-    cdef CFunctionDescriptorType DriverFunctionDescriptorType \
-        "ray::FunctionDescriptorType::kDriverFunctionDescriptor"
+    cdef CFunctionDescriptorType EmptyFunctionDescriptorType \
+        "ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET"
     cdef CFunctionDescriptorType JavaFunctionDescriptorType \
         "ray::FunctionDescriptorType::kJavaFunctionDescriptor"
     cdef CFunctionDescriptorType PythonFunctionDescriptorType \
@@ -41,7 +41,7 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
 
     cdef cppclass CFunctionDescriptorBuilder "ray::FunctionDescriptorBuilder":
         @staticmethod
-        CFunctionDescriptor BuildDriver()
+        CFunctionDescriptor Empty()
 
         @staticmethod
         CFunctionDescriptor BuildJava(const c_string &class_name,

@@ -145,8 +145,7 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
 }
 
 bool TaskSpecification::IsDriverTask() const {
-  return FunctionDescriptor()->Type() ==
-         FunctionDescriptorType::kDriverFunctionDescriptor;
+  return message_->type() == TaskType::DRIVER_TASK;
 }
 
 Language TaskSpecification::GetLanguage() const { return message_->language(); }

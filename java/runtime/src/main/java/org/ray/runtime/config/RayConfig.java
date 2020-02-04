@@ -11,7 +11,6 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 
 import org.ray.api.id.JobId;
 import org.ray.runtime.generated.Common.WorkerType;

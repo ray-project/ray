@@ -3,7 +3,7 @@ from ray.includes.function_descriptor cimport (
     CFunctionDescriptorBuilder,
     CPythonFunctionDescriptor,
     CJavaFunctionDescriptor,
-    DriverFunctionDescriptorType,
+    EmptyFunctionDescriptorType,
     JavaFunctionDescriptorType,
     PythonFunctionDescriptorType,
 )
@@ -52,21 +52,21 @@ cdef class FunctionDescriptor:
         return d
 
 
-FunctionDescriptor_constructor_map[<int>DriverFunctionDescriptorType] = \
-    DriverFunctionDescriptor.from_cpp
+FunctionDescriptor_constructor_map[<int>EmptyFunctionDescriptorType] = \
+    EmptyFunctionDescriptor.from_cpp
 
 
 @cython.auto_pickle(False)
-cdef class DriverFunctionDescriptor(FunctionDescriptor):
+cdef class EmptyFunctionDescriptor(FunctionDescriptor):
     def __cinit__(self):
-        self.descriptor = CFunctionDescriptorBuilder.BuildDriver()
+        self.descriptor = CFunctionDescriptorBuilder.Empty()
 
     def __reduce__(self):
-        return DriverFunctionDescriptor, ()
+        return EmptyFunctionDescriptor, ()
 
     @staticmethod
     cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
-        return DriverFunctionDescriptor()
+        return EmptyFunctionDescriptor()
 
 
 FunctionDescriptor_constructor_map[<int>JavaFunctionDescriptorType] = \

@@ -1,10 +1,10 @@
 #include "ray/common/function_descriptor.h"
 
 namespace ray {
-FunctionDescriptor FunctionDescriptorBuilder::BuildDriver() {
-  rpc::FunctionDescriptor descriptor;
-  descriptor.mutable_driver_function_descriptor();
-  return ray::FunctionDescriptor(new DriverFunctionDescriptor(std::move(descriptor)));
+FunctionDescriptor FunctionDescriptorBuilder::Empty() {
+  static ray::FunctionDescriptor empty =
+      ray::FunctionDescriptor(new EmptyFunctionDescriptor());
+  return empty;
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::BuildJava(const std::string &class_name,
@@ -32,8 +32,6 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
 
 FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor message) {
   switch (message.function_descriptor_case()) {
-  case ray::FunctionDescriptorType::kDriverFunctionDescriptor:
-    return ray::FunctionDescriptor(new ray::DriverFunctionDescriptor(std::move(message)));
   case ray::FunctionDescriptorType::kJavaFunctionDescriptor:
     return ray::FunctionDescriptor(new ray::JavaFunctionDescriptor(std::move(message)));
   case ray::FunctionDescriptorType::kPythonFunctionDescriptor:
@@ -45,8 +43,7 @@ FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor 
                  << message.function_descriptor_case();
   // When TaskSpecification() constructed without function_descriptor set,
   // we should return a valid ray::FunctionDescriptor instance.
-  // Shall we introduce a new type e.g. DummyFunctionDescriptor?
-  return FunctionDescriptorBuilder::BuildDriver();
+  return FunctionDescriptorBuilder::Empty();
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::Deserialize(

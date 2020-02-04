@@ -22,7 +22,7 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_placement_resources,
     ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
+  builder.SetCommonTaskSpec(ray::TaskType::NORMAL_TASK, task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
                             task_index, caller_id, address, num_returns,
                             transport_type == ray::TaskTransportType::DIRECT,
@@ -210,8 +210,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     std::unordered_map<std::string, double> empty_resources;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
     builder.SetCommonTaskSpec(
-        task_id, language_, ray::FunctionDescriptorBuilder::BuildDriver(),
-        worker_context_.GetCurrentJobID(),
+        TaskType::DRIVER_TASK, task_id, language_,
+        ray::FunctionDescriptorBuilder::Empty(), worker_context_.GetCurrentJobID(),
         TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()), 0, GetCallerId(),
         rpc_address_, 0, false, empty_resources, empty_resources);
 

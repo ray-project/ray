@@ -25,6 +25,8 @@ enum TaskType {
   ACTOR_CREATION_TASK = 1;
   // Actor task.
   ACTOR_TASK = 2;
+  // Driver task.
+  DRIVER_TASK = 3;
 }
 
 // Address of a worker or node manager.
@@ -34,10 +36,6 @@ message Address {
   int32 port = 3;
   // Optional unique id for the worker.
   bytes worker_id = 4;
-}
-
-/// Function descriptor for Driver.
-message DriverFunctionDescriptor {
 }
 
 /// Function descriptor for Java.
@@ -58,9 +56,8 @@ message PythonFunctionDescriptor {
 // A union wrapper for various function descriptor types.
 message FunctionDescriptor {
   oneof function_descriptor {
-    DriverFunctionDescriptor driver_function_descriptor = 1;
-    JavaFunctionDescriptor java_function_descriptor = 2;
-    PythonFunctionDescriptor python_function_descriptor = 3;
+    JavaFunctionDescriptor java_function_descriptor = 1;
+    PythonFunctionDescriptor python_function_descriptor = 2;
   }
 }
 

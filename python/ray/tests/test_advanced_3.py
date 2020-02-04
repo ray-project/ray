@@ -157,8 +157,7 @@ def test_global_state_api(shutdown_only):
     assert task_spec["ActorID"] == nil_actor_id_hex
     assert task_spec["Args"] == []
     assert task_spec["JobID"] == job_id.hex()
-    assert task_spec["FunctionDescriptor"][
-        "type"] == "DriverFunctionDescriptor"
+    assert task_spec["FunctionDescriptor"]["type"] == "EmptyFunctionDescriptor"
     assert task_spec["ReturnObjectIDs"] == []
 
     client_table = ray.nodes()
