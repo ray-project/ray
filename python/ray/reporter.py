@@ -9,7 +9,7 @@ import grpc
 import subprocess
 from concurrent import futures
 
-import ray.thirdparty_files.psutil as psutil
+import psutil
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils
