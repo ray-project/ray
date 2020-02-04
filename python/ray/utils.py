@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 
+import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
 import psutil
