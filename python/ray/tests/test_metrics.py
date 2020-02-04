@@ -1,7 +1,7 @@
 import os
 import json
 import grpc
-import ray.thirdparty_files.psutil as psutil
+import psutil
 import requests
 import time
 

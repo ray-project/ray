@@ -14,7 +14,7 @@ import uuid
 
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
-import ray.thirdparty_files.psutil as psutil
+import psutil
 
 logger = logging.getLogger(__name__)
 

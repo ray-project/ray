@@ -7,7 +7,7 @@ from threading import Thread
 
 import numpy as np
 import ray
-import ray.thirdparty_files.psutil as psutil
+import psutil
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ import sys
 import tempfile
 import time
 
-import ray.thirdparty_files.psutil as psutil
+import psutil
 
 import ray
 

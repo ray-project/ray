@@ -3,7 +3,10 @@ import os
 import sys
 import time
 
-import ray.thirdparty_files.psutil as psutil
+psutil_path = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
+sys.path.insert(0, psutil_path)
+import psutil
 
 logger = logging.getLogger(__name__)
 
