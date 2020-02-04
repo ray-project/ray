@@ -422,26 +422,6 @@ def vm_stat(stat):
     raise ValueError("Can't find {} in 'vmstat' output.".format(stat))
 
 
-# This function is copied and modified from
-# https://github.com/giampaolo/psutil/blob/5e90b0a7f3fccb177445a186cc4fac62cfadb510/psutil/tests/test_osx.py#L29-L38  # noqa: E501
-def sysctl(command):
-    """Run a sysctl command and parse the output.
-
-    Args:
-        command: A sysctl command with an argument, for example,
-            ["sysctl", "hw.memsize"].
-
-    Returns:
-        The parsed output.
-    """
-    out = subprocess.check_output(command)
-    result = out.split(b" ")[1]
-    try:
-        return int(result)
-    except ValueError:
-        return result
-
-
 def get_system_memory():
     """Return the total amount of system memory in bytes.
 
@@ -467,15 +447,30 @@ def get_system_memory():
 
     if psutil_memory_in_bytes is not None:
         memory_in_bytes = psutil_memory_in_bytes
-    elif sys.platform == "linux" or sys.platform == "linux2":
-        # Handle Linux.
-        bytes_in_kilobyte = 1024
-        memory_in_bytes = vmstat("total memory") * bytes_in_kilobyte
     else:
-        # Handle MacOS.
-        memory_in_bytes = sysctl(["sysctl", "hw.memsize"])
+        try:
+            if sys.platform == "linux" or sys.platform == "linux2":
+                # Handle Linux.
+                bytes_in_kilobyte = 1024
+
+                out = subprocess.check_output(["vmstat", "-s"])
+                stat = "total memory"
+                for line in out.split(b"\n"):
+                    line = line.strip()
+                    if stat in line:
+                        memory_in_bytes = int(line.split(b" ")[0])
+                memory_in_bytes *= bytes_in_kilobyte
+            else:
+                # Handle MacOS.
+                out = subprocess.check_output(["sysctl", "hw.memsize"])
+                result = out.split(b" ")[1]
+                memory_in_bytes = int(result)
+        except Exception:
+            raise Exception("Could not find total ram on the system.")
 
     if docker_limit is not None:
+        if memory_in_bytes < docker_limit:
+            logger.warn("Container memory is larger than system memory.")
         return min(docker_limit, memory_in_bytes)
     else:
         return memory_in_bytes
@@ -505,15 +500,39 @@ def get_used_memory():
 
     if psutil_memory_in_bytes is not None:
         memory_in_bytes = psutil_memory_in_bytes
-    elif sys.platform == "linux" or sys.platform == "linux2":
-        # Handle Linux.
-        bytes_in_kilobyte = 1024
-        memory_in_bytes = vmstat("used memory") * bytes_in_kilobyte
     else:
-        # Handle MacOS.
-        memory_in_bytes = sysctl(["sysctl", "hw.memsize"]) - vm_stat("free")
+        try:
+            if sys.platform == "linux" or sys.platform == "linux2":
+                # Handle Linux.
+                bytes_in_kilobyte = 1024
+                out = subprocess.check_output(["vmstat", "-s"])
+                stat = "used memory"
+                for line in out.split(b"\n"):
+                    line = line.strip()
+                    if stat in line:
+                        memory_in_bytes = int(line.split(b" ")[0])
+                memory_in_bytes *= bytes_in_kilobyte
+            else:
+                # Handle MacOS.
+                system_memory = get_system_memory()
+
+                out = subprocess.check_output(["vmstat"])
+                stat = stat.encode("ascii")
+                for line in out.split(b"\n"):
+                    line = line.strip()
+                    if stat in line:
+                        pages = int(float(line.split(b" ")[-1]))
+                        free_memory = pages
+                free_memory *= ray_constants.MACH_PAGE_SIZE_BYTES
+
+                memory_in_bytes = system_memory - free_memory
+        except Exception:
+            raise Exception("Cannot find ram usage on the system")
 
     if docker_usage is not None:
+        if docker_usage > memory_in_bytes:
+            logger.warn("Container is reporting more memory usage than the"
+                        "system.")
         return min(docker_usage, memory_in_bytes)
     else:
         return memory_in_bytes
