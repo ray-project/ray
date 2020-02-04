@@ -46,6 +46,12 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   @Test
   public void testCallingPythonFunction() {
     RayObject res = Ray.callPy(PYTHON_MODULE, "py_func", "hello".getBytes());
+    Assert.assertEquals(res.get(), "Response from Python: hello".getBytes());
+  }
+
+  @Test
+  public void testPythonCallJavaFunction() {
+    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_function", "hello".getBytes());
     Assert.assertEquals(res.get(), "[Python]py_func -> [Java]bytesEcho -> hello".getBytes());
   }
 
@@ -55,7 +61,13 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     TestUtils.skipTestIfDirectActorCallEnabled();
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
-    Assert.assertEquals(res.get(), "Counter2".getBytes());
+    Assert.assertEquals(res.get(), "2".getBytes());
+  }
+
+  @Test
+  public void testPythonCallJavaActor() {
+    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor", "1".getBytes());
+    Assert.assertEquals(res.get(), "Counter1".getBytes());
   }
 
   public static byte[] bytesEcho(byte[] value) {
