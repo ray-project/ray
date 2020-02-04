@@ -188,7 +188,7 @@ class ActorClassMetadata:
             actor_creation_function_descriptor
         self.class_name = str(modified_class and modified_class.__name__
                               or actor_creation_function_descriptor)
-        self.is_cross_language = modified_class is None
+        self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
         self.max_reconstructions = max_reconstructions
         self.num_cpus = num_cpus

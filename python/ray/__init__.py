@@ -137,8 +137,7 @@ import ray.projects  # noqa: E402
 import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
-from ray.cross_language import (python_function, python_actor_class,
-                                java_function, java_actor_class)  # noqa: E402
+from ray.cross_language import java_function, java_actor_class  # noqa: E402
 
 # Ray version string.
 __version__ = "0.9.0.dev0"
@@ -181,8 +180,6 @@ __all__ = [
     "show_in_webui",
     "wait",
     "Language",
-    "python_function",
-    "python_actor_class",
     "java_function",
     "java_actor_class",
 ]

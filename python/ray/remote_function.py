@@ -4,7 +4,7 @@ from functools import wraps
 from ray import cloudpickle as pickle
 from ray import ray_constants
 from ray._raylet import PythonFunctionDescriptor
-from ray import cross_language
+from ray import cross_language, Language
 import ray.signature
 
 # Default parameters for remote functions.
@@ -62,9 +62,6 @@ class RemoteFunction:
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  num_return_vals, max_calls, max_retries):
-        # We do not set self._is_cross_language if self._language !=
-        # Language.PYTHON in order to test cross language feature by
-        # cross calling PYTHON from PYTHON.
         self._language = language
         self._function = function
         self._function_name = (
@@ -72,7 +69,7 @@ class RemoteFunction:
         self._function_signature = ray.signature.extract_signature(
             self._function)
         self._function_descriptor = function_descriptor
-        self._is_cross_language = function_descriptor is not None
+        self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus

@@ -7,8 +7,8 @@ from ray._raylet import PythonFunctionDescriptor, JavaFunctionDescriptor
 import ray.signature
 
 __all__ = [
-    "java_function", "java_actor_class", "python_function",
-    "python_actor_class"
+    "java_function",
+    "java_actor_class",
 ]
 
 
@@ -29,7 +29,7 @@ def format_args(worker, language, function_signature, args, kwargs):
         raise Exception("Cross language feature needs "
                         "--load-code-from-local to be set.")
     if language == Language.PYTHON:
-        # When cross language calling Python from Python,
+        # When cross language calling Python,
         # the args and kwargs needs to be compatible with
         # ray.signature.recover_args.
         return ray.signature.flatten_args(function_signature, args, kwargs)
@@ -89,35 +89,6 @@ def java_actor_class(class_name):
     return ActorClass._ray_from_function_descriptor(
         Language.JAVA,
         JavaFunctionDescriptor(class_name, "<init>", ""),
-        0,  # max_reconstructions,
-        None,  # num_cpus,
-        None,  # num_gpus,
-        None,  # memory,
-        None,  # object_store_memory,
-        None)  # resources,
-
-
-def python_function(module_name, function_name):
-    from ray.remote_function import RemoteFunction
-    return RemoteFunction(
-        Language.PYTHON,
-        lambda *args, **kwargs: None,
-        PythonFunctionDescriptor(module_name, function_name),
-        None,  # num_cpus,
-        None,  # num_gpus,
-        None,  # memory,
-        None,  # object_store_memory,
-        None,  # resources,
-        None,  # num_return_vals,
-        None,  # max_calls,
-        None)  # max_retries)
-
-
-def python_actor_class(module_name, class_name):
-    from ray.actor import ActorClass
-    return ActorClass._ray_from_function_descriptor(
-        Language.PYTHON,
-        PythonFunctionDescriptor(module_name, "__init__", class_name),
         0,  # max_reconstructions,
         None,  # num_cpus,
         None,  # num_gpus,
