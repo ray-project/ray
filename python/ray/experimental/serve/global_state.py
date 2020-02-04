@@ -45,7 +45,7 @@ class ActorNursery:
         """Start an actor and add it to the nursery"""
         # Avoid double initialization
         if tag in self.tag_to_actor_handles.keys():
-            return self.tag_to_actor_handles[tag]
+            return [self.tag_to_actor_handles[tag]]
 
         max_concurrency = ASYNC_CONCURRENCY if is_asyncio else None
         handle = (actor_cls.options(max_concurrency=max_concurrency).remote(
