@@ -13,8 +13,10 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
     after the floating point. Uses assertions.
 
     Args:
-        x (any): The first value to be compared (to `y`).
-        y (any): The second value to be compared (to `x`).
+        x (any): The value to be compared (to the expectation: `y`). This
+            may be a Tensor.
+        y (any): The expected value to be compared to `x`. This must not
+            be a Tensor.
         decimals (int): The number of digits after the floating point up to
             which all numeric values have to match.
         atol (float): Absolute tolerance of the difference between x and y
@@ -66,7 +68,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             assert bool(x) is bool(y), \
                 "ERROR: x ({}) is not y ({})!".format(x, y)
     # Nones or primitives.
-    elif x is None or y is None or isinstance(x, (str, int, float)):
+    elif x is None or y is None or isinstance(x, (str, int)):
         if false is True:
             assert x != y, "ERROR: x ({}) is the same as y ({})!".format(x, y)
         else:
@@ -84,11 +86,26 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
                 raise e
     # Everything else (assume numeric).
     else:
-        # Numpyize tensors if necessary.
-        if tf is not None and isinstance(x, tf.Tensor):
-            x = x.numpy()
-        if tf is not None and isinstance(y, tf.Tensor):
-            y = y.numpy()
+        if tf is not None:
+            # y should never be a Tensor (y=expected value).
+            if isinstance(y, tf.Tensor):
+                raise ValueError("`y` (expected value) must not be a Tensor. "
+                                 "Use numpy.ndarray instead")
+            if isinstance(x, tf.Tensor):
+                # In eager mode, numpyize tensors.
+                if tf.executing_eagerly():
+                    x = x.numpy()
+                # Otherwise, ???
+                else:
+                    with tf.Session() as sess:
+                        x = sess.run(x)
+                        check(
+                            x,
+                            y,
+                            decimals=decimals,
+                            atol=atol,
+                            rtol=rtol,
+                            false=false)
 
         # Using decimals.
         if atol is None and rtol is None:

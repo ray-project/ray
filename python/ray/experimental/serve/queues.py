@@ -1,43 +1,94 @@
-from collections import defaultdict, deque
+import asyncio
+import copy
+from collections import defaultdict
+import time
+from typing import DefaultDict, Union, List
+import pickle
 
-import numpy as np
+# Note on choosing blist instead of stdlib heapq
+# 1. pop operation should be O(1) (amortized)
+#    (helpful even for batched pop)
+# 2. There should not be significant overhead in
+#    maintaining the sorted list.
+# 3. The blist implementation is fast and uses C extensions.
+import blist
 
 import ray
 from ray.experimental.serve.utils import logger
-import itertools
-from blist import sortedlist
-import time
+from ray.experimental.serve.constants import DEFAULT_LATENCY_SLO_MS
 
 
 class Query:
-    def __init__(self,
-                 request_args,
-                 request_kwargs,
-                 request_context,
-                 request_slo_ms,
-                 result_object_id=None):
+    def __init__(self, request_args, request_kwargs, request_context,
+                 request_slo_ms):
         self.request_args = request_args
         self.request_kwargs = request_kwargs
         self.request_context = request_context
 
-        if result_object_id is None:
-            self.result_object_id = ray.ObjectID.from_random()
-        else:
-            self.result_object_id = result_object_id
+        self.async_future = asyncio.get_event_loop().create_future()
 
         # Service level objective in milliseconds. This is expected to be the
         # absolute time since unix epoch.
         self.request_slo_ms = request_slo_ms
+
+    def ray_serialize(self):
+        # NOTE: this method is needed because Query need to be serialized and
+        # sent to the replica worker. However, after we send the query to
+        # replica worker the async_future is still needed to retrieve the final
+        # result. Therefore we need a way to pass the information to replica
+        # worker without removing async_future.
+        clone = copy.copy(self)
+        clone.async_future = None
+        # We can't use cloudpickle due to a recursion issue
+        return pickle.dumps(clone)
+
+    @staticmethod
+    def ray_deserialize(value):
+        return pickle.loads(value)
 
     # adding comparator fn for maintaining an
     # ascending order sorted list w.r.t request_slo_ms
     def __lt__(self, other):
         return self.request_slo_ms < other.request_slo_ms
 
+    def __repr__(self):
+        return "<Query args={} kwargs={}>".format(self.request_args,
+                                                  self.request_kwargs)
 
-class WorkIntent:
-    def __init__(self, replica_handle):
-        self.replica_handle = replica_handle
+
+def _adjust_latency_slo(slo_ms: Union[float, int, None]) -> float:
+    """Normalize the input latency objective to absoluate timestamp.
+
+    Input:
+        slo_ms(float, int, None): If value is None, then we use a high default
+           value so other queries can be prioritize and put in front of these
+           queries.
+    """
+    if slo_ms is None:
+        slo_ms = DEFAULT_LATENCY_SLO_MS
+    current_time_ms = time.time() * 1000
+    return current_time_ms + slo_ms
+
+
+def _make_future_unwrapper(client_futures: List[asyncio.Future],
+                           host_future: asyncio.Future):
+    """Distribute the result of host_future to each of client_future"""
+    for client_future in client_futures:
+        # Keep a reference to host future so the host future won't get
+        # garbage collected.
+        client_future.host_ref = host_future
+
+    def unwrap_future(_):
+        result = host_future.result()
+
+        if isinstance(result, list):
+            for client_future, result_item in zip(client_futures, result):
+                client_future.set_result(result_item)
+        else:  # Result is an exception.
+            for client_future in client_futures:
+                client_future.set_result(result)
+
+    return unwrap_future
 
 
 class CentralizedQueues:
@@ -77,27 +128,44 @@ class CentralizedQueues:
     """
 
     def __init__(self):
+        # Note: Several queues are used in the router
+        # - When a request come in, it's placed inside its corresponding
+        #   service_queue.
+        # - The service_queue is dequed during flush operation, which moves
+        #   the queries to backend buffer_queue. Here we match a request
+        #   for a service to a backend given some policy.
+        # - The worker_queue is used to collect idle actor handle. These
+        #   handles are dequed during the second stage of flush operation,
+        #   which assign queries in buffer_queue to actor handle.
+
+        # -- Queues -- #
+
         # service_name -> request queue
-        self.queues = defaultdict(deque)
+        self.service_queues: DefaultDict[asyncio.Queue[Query]] = defaultdict(
+            asyncio.Queue)
+        # backend_name -> worker request queue
+        self.worker_queues: DefaultDict[asyncio.Queue[
+            ray.actor.ActorHandle]] = defaultdict(asyncio.Queue)
+        # backend_name -> worker payload queue
+        self.buffer_queues = defaultdict(blist.sortedlist)
+
+        # -- Metadata -- #
 
         # service_name -> traffic_policy
         self.traffic = defaultdict(dict)
-
         # backend_name -> backend_config
         self.backend_info = dict()
 
-        # backend_name -> worker request queue
-        self.workers = defaultdict(deque)
+        # -- Synchronization -- #
 
-        # backend_name -> worker payload queue
-        # using blist sortedlist for deadline awareness
-        # blist is chosen because:
-        # 1. pop operation should be O(1) (amortized)
-        #    (helpful even for batched pop)
-        # 2. There should not be significant overhead in
-        #    maintaining the sorted list.
-        # 3. The blist implementation is fast and uses C extensions.
-        self.buffer_queues = defaultdict(sortedlist)
+        # This lock guarantee that only one flush operation can happen at a
+        # time. Without the lock, multiple flush operation can pop from the
+        # same buffer_queue and worker_queue and create deadlock. For example,
+        # an operation holding the only query and the other flush operation
+        # holding the only idle replica. Additionally, allowing only one flush
+        # operation at a time simplifies design overhead for custom queuing and
+        # batching polcies.
+        self.flush_lock = asyncio.Lock()
 
     def is_ready(self):
         return True
@@ -111,79 +179,99 @@ class CentralizedQueues:
             for backend_name, queue in self.buffer_queues.items()
         }
 
-    # request_slo_ms is time specified in milliseconds till which the
-    # answer of the query should be calculated
-    def enqueue_request(self,
-                        service,
-                        request_args,
-                        request_kwargs,
-                        request_context,
-                        request_slo_ms=None):
-        if request_slo_ms is None:
-            # if request_slo_ms is not specified then set it to a high level
-            request_slo_ms = 1e9
+    async def enqueue_request(self,
+                              service,
+                              request_args,
+                              request_kwargs,
+                              request_context,
+                              request_slo_ms=None):
+        logger.debug("Received a request for service {}".format(service))
 
-        # add wall clock time to specify the deadline for completion of query
-        # this also assures FIFO behaviour if request_slo_ms is not specified
-        request_slo_ms += (time.time() * 1000)
+        request_slo_ms = _adjust_latency_slo(request_slo_ms)
         query = Query(request_args, request_kwargs, request_context,
                       request_slo_ms)
-        self.queues[service].append(query)
-        self.flush()
-        return query.result_object_id.binary()
+        await self.service_queues[service].put(query)
+        await self.flush()
 
-    def dequeue_request(self, backend, replica_handle):
-        intention = WorkIntent(replica_handle)
-        self.workers[backend].append(intention)
-        self.flush()
+        # Note: a future change can be to directly return the ObjectID from
+        # replica task submission
+        result = await query.async_future
+        return result
 
-    def remove_and_destory_replica(self, backend, replica_handle):
-        # NOTE: this function scale by O(#replicas for the backend)
-        new_queue = deque()
-        target_id = replica_handle._actor_id
+    async def dequeue_request(self, backend, replica_handle):
+        logger.debug(
+            "Received a dequeue request for backend {}".format(backend))
+        await self.worker_queues[backend].put(replica_handle)
+        await self.flush()
 
-        for work_intent in self.workers[backend]:
-            if work_intent.replica_handle._actor_id != target_id:
-                new_queue.append(work_intent)
+    async def remove_and_destory_replica(self, backend, replica_handle):
+        # We need this lock because we modify worker_queue here.
+        async with self.flush_lock:
+            old_queue = self.worker_queues[backend]
+            new_queue = asyncio.Queue()
+            target_id = replica_handle._actor_id
 
-        self.workers[backend] = new_queue
+            while not old_queue.empty():
+                replica_handle = await old_queue.get()
+                if replica_handle._actor_id != target_id:
+                    await new_queue.put(replica_handle)
 
-        replica_handle.__ray_terminate__.remote()
+            self.worker_queues[backend] = new_queue
+            # TODO: consider await this with timeout, or use ray_kill
+            replica_handle.__ray_terminate__.remote()
 
-    def link(self, service, backend):
+    async def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
-        self.set_traffic(service, {backend: 1.0})
+        await self.set_traffic(service, {backend: 1.0})
 
-    def set_traffic(self, service, traffic_dict):
+    async def set_traffic(self, service, traffic_dict):
         logger.debug("Setting traffic for service %s to %s", service,
                      traffic_dict)
         self.traffic[service] = traffic_dict
-        self.flush()
+        await self.flush()
 
-    def set_backend_config(self, backend, config_dict):
+    async def set_backend_config(self, backend, config_dict):
         logger.debug("Setting backend config for "
                      "backend {} to {}".format(backend, config_dict))
         self.backend_info[backend] = config_dict
 
-    def flush(self):
+    async def flush(self):
         """In the default case, flush calls ._flush.
 
         When this class is a Ray actor, .flush can be scheduled as a remote
         method invocation.
         """
-        self._flush()
+        async with self.flush_lock:
+            await self._flush_service_queues()
+            await self._flush_buffer_queues()
 
     def _get_available_backends(self, service):
         backends_in_policy = set(self.traffic[service].keys())
         available_workers = {
             backend
-            for backend, queues in self.workers.items() if len(queues) > 0
+            for backend, queues in self.worker_queues.items()
+            if queues.qsize() > 0
         }
         return list(backends_in_policy.intersection(available_workers))
 
+    async def _flush_service_queues(self):
+        """Selects the backend and puts the service queue query to the buffer
+        Expected Implementation:
+            The implementer is expected to access and manipulate
+            self.service_queues        : dict[str,Deque]
+            self.buffer_queues : dict[str,sortedlist]
+        For registering the implemented policies register at policy.py
+        Expected Behavior:
+            the Deque of all services in self.service_queues linked with
+            atleast one backend must be empty irrespective of whatever
+            backend policy is implemented.
+        """
+        raise NotImplementedError(
+            "This method should be implemented by child class.")
+
     # flushes the buffer queue and assigns work to workers
-    def _flush_buffer(self):
-        for service in self.queues.keys():
+    async def _flush_buffer_queues(self):
+        for service in self.traffic.keys():
             ready_backends = self._get_available_backends(service)
             for backend in ready_backends:
                 # no work available
@@ -191,224 +279,40 @@ class CentralizedQueues:
                     continue
 
                 buffer_queue = self.buffer_queues[backend]
-                work_queue = self.workers[backend]
+                worker_queue = self.worker_queues[backend]
+
+                logger.debug("Assigning queries for backend {} with buffer "
+                             "queue size {} and worker queue size {}".format(
+                                 backend, len(buffer_queue),
+                                 worker_queue.qsize()))
+
                 max_batch_size = None
                 if backend in self.backend_info:
                     max_batch_size = self.backend_info[backend][
                         "max_batch_size"]
 
-                while len(buffer_queue) and len(work_queue):
-                    # get the work from work intent queue
-                    work = work_queue.popleft()
-                    # see if backend accepts batched queries
-                    if max_batch_size is not None:
-                        pop_size = min(len(buffer_queue), max_batch_size)
-                        request = [
-                            buffer_queue.pop(0) for _ in range(pop_size)
-                        ]
-                    else:
-                        request = buffer_queue.pop(0)
+                await self._assign_query_to_worker(buffer_queue, worker_queue,
+                                                   max_batch_size)
 
-                    work.replica_handle._ray_serve_call.remote(request)
+    async def _assign_query_to_worker(self,
+                                      buffer_queue,
+                                      worker_queue,
+                                      max_batch_size=None):
 
-    # selects the backend and puts the service queue query to the buffer
-    # different policies will implement different backend selection policies
-    def _flush_service_queue(self):
-        """
-        Expected Implementation:
-            The implementer is expected to access and manipulate
-            self.queues        : dict[str,Deque]
-            self.buffer_queues : dict[str,sortedlist]
-        For registering the implemented policies register at policy.py!
-        Expected Behavior:
-            the Deque of all services in self.queues linked with
-            atleast one backend must be empty irrespective of whatever
-            backend policy is implemented.
-        """
-        pass
-
-    # _flush function has to flush the service and buffer queues.
-    def _flush(self):
-        self._flush_service_queue()
-        self._flush_buffer()
-
-
-class CentralizedQueuesActor(CentralizedQueues):
-    """
-    A wrapper class for converting wrapper policy classes to ray
-    actors. This is needed to make `flush` call asynchronous.
-    """
-    self_handle = None
-
-    def register_self_handle(self, handle_to_this_actor):
-        self.self_handle = handle_to_this_actor
-
-    def flush(self):
-        if self.self_handle:
-            self.self_handle._flush.remote()
-        else:
-            self._flush()
-
-
-class RandomPolicyQueue(CentralizedQueues):
-    """
-    A wrapper class for Random policy.This backend selection policy is
-    `Stateless` meaning the current decisions of selecting backend are
-    not dependent on previous decisions. Random policy (randomly) samples
-    backends based on backend weights for every query. This policy uses the
-    weights assigned to backends.
-    """
-
-    def _flush_service_queue(self):
-        # perform traffic splitting for requests
-        for service, queue in self.queues.items():
-            # while there are incoming requests and there are backends
-            while len(queue) and len(self.traffic[service]):
-                backend_names = list(self.traffic[service].keys())
-                backend_weights = list(self.traffic[service].values())
-                # randomly choose a backend for every query
-                chosen_backend = np.random.choice(
-                    backend_names, p=backend_weights).squeeze()
-
-                request = queue.popleft()
-                self.buffer_queues[chosen_backend].add(request)
-
-
-@ray.remote
-class RandomPolicyQueueActor(RandomPolicyQueue, CentralizedQueuesActor):
-    pass
-
-
-class RoundRobinPolicyQueue(CentralizedQueues):
-    """
-    A wrapper class for RoundRobin policy. This backend selection policy
-    is `Stateful` meaning the current decisions of selecting backend are
-    dependent on previous decisions. RoundRobinPolicy assigns queries in
-    an interleaved manner to every backend serving for a service. Consider
-    backend A,B linked to a service. Now queries will be assigned to backends
-    in the following order - [ A, B, A, B ... ] . This policy doesn't use the
-    weights assigned to backends.
-    """
-
-    # Saves the information about last assigned
-    # backend for every service
-    round_robin_iterator_map = {}
-
-    def set_traffic(self, service, traffic_dict):
-        logger.debug("Setting traffic for service %s to %s", service,
-                     traffic_dict)
-        self.traffic[service] = traffic_dict
-        backend_names = list(self.traffic[service].keys())
-        self.round_robin_iterator_map[service] = itertools.cycle(backend_names)
-        self.flush()
-
-    def _flush_service_queue(self):
-        # perform traffic splitting for requests
-        for service, queue in self.queues.items():
-            # if there are incoming requests and there are backends
-            if len(queue) and len(self.traffic[service]):
-                while len(queue):
-                    # choose the next backend available from persistent
-                    # information
-                    chosen_backend = next(
-                        self.round_robin_iterator_map[service])
-                    request = queue.popleft()
-                    self.buffer_queues[chosen_backend].add(request)
-
-
-@ray.remote
-class RoundRobinPolicyQueueActor(RoundRobinPolicyQueue,
-                                 CentralizedQueuesActor):
-    pass
-
-
-class PowerOfTwoPolicyQueue(CentralizedQueues):
-    """
-    A wrapper class for powerOfTwo policy. This backend selection policy is
-    `Stateless` meaning the current decisions of selecting backend are
-    dependent on previous decisions. PowerOfTwo policy (randomly) samples two
-    backends (say Backend A,B among A,B,C) based on the backend weights
-    specified and chooses the backend which is less loaded. This policy uses
-    the weights assigned to backends.
-    """
-
-    def _flush_service_queue(self):
-        # perform traffic splitting for requests
-        for service, queue in self.queues.items():
-            # while there are incoming requests and there are backends
-            while len(queue) and len(self.traffic[service]):
-                backend_names = list(self.traffic[service].keys())
-                backend_weights = list(self.traffic[service].values())
-                if len(self.traffic[service]) >= 2:
-                    # randomly pick 2 backends
-                    backend1, backend2 = np.random.choice(
-                        backend_names, 2, p=backend_weights)
-
-                    # see the length of buffer queues of the two backends
-                    # and pick the one which has less no. of queries
-                    # in the buffer
-                    if (len(self.buffer_queues[backend1]) <= len(
-                            self.buffer_queues[backend2])):
-                        chosen_backend = backend1
-                    else:
-                        chosen_backend = backend2
-                else:
-                    chosen_backend = np.random.choice(
-                        backend_names, p=backend_weights).squeeze()
-                request = queue.popleft()
-                self.buffer_queues[chosen_backend].add(request)
-
-
-@ray.remote
-class PowerOfTwoPolicyQueueActor(PowerOfTwoPolicyQueue,
-                                 CentralizedQueuesActor):
-    pass
-
-
-class FixedPackingPolicyQueue(CentralizedQueues):
-    """
-    A wrapper class for FixedPacking policy. This backend selection policy is
-    `Stateful` meaning the current decisions of selecting backend are dependent
-    on previous decisions. FixedPackingPolicy is k RoundRobin policy where
-    first packing_num queries are handled by 'backend-1' and next k queries are
-    handled by 'backend-2' and so on ... where 'backend-1' and 'backend-2' are
-    served by the same service. This policy doesn't use the weights assigned to
-    backends.
-
-    """
-
-    def __init__(self, packing_num=3):
-        # Saves the information about last assigned
-        # backend for every service
-        self.fixed_packing_iterator_map = {}
-        self.packing_num = packing_num
-        super().__init__()
-
-    def set_traffic(self, service, traffic_dict):
-        logger.debug("Setting traffic for service %s to %s", service,
-                     traffic_dict)
-        self.traffic[service] = traffic_dict
-        backend_names = list(self.traffic[service].keys())
-        self.fixed_packing_iterator_map[service] = itertools.cycle(
-            itertools.chain.from_iterable(
-                itertools.repeat(x, self.packing_num) for x in backend_names))
-        self.flush()
-
-    def _flush_service_queue(self):
-        # perform traffic splitting for requests
-        for service, queue in self.queues.items():
-            # if there are incoming requests and there are backends
-            if len(queue) and len(self.traffic[service]):
-                while len(queue):
-                    # choose the next backend available from persistent
-                    # information
-                    chosen_backend = next(
-                        self.fixed_packing_iterator_map[service])
-                    request = queue.popleft()
-                    self.buffer_queues[chosen_backend].add(request)
-
-
-@ray.remote
-class FixedPackingPolicyQueueActor(FixedPackingPolicyQueue,
-                                   CentralizedQueuesActor):
-    pass
+        while len(buffer_queue) and worker_queue.qsize():
+            worker = await worker_queue.get()
+            if max_batch_size is None:  # No batching
+                request = buffer_queue.pop(0)
+                future = worker._ray_serve_call.remote(request).as_future()
+                # chaining satisfies request.async_future with future result.
+                asyncio.futures._chain_future(future, request.async_future)
+            else:
+                real_batch_size = min(len(buffer_queue), max_batch_size)
+                requests = [
+                    buffer_queue.pop(0) for _ in range(real_batch_size)
+                ]
+                future = worker._ray_serve_call.remote(requests).as_future()
+                future.add_done_callback(
+                    _make_future_unwrapper(
+                        client_futures=[req.async_future for req in requests],
+                        host_future=future))

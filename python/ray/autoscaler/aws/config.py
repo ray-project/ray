@@ -134,7 +134,7 @@ def _configure_key_pair(config):
     ec2 = _resource("ec2", config)
 
     # Try a few times to get or create a good key pair.
-    MAX_NUM_KEYS = 20
+    MAX_NUM_KEYS = 30
     for i in range(MAX_NUM_KEYS):
         key_name, key_path = key_pair(i, config["provider"]["region"])
         key = _get_key(key_name, config)
@@ -278,18 +278,18 @@ def _check_ami(config):
         # If we do not provide a default AMI for the given region, noop.
         return
 
-    if config["head_node"].get("ImageId", "").lower() == "DEFAULT":
+    if config["head_node"].get("ImageId", "").lower() == "latest_dlami":
         config["head_node"]["ImageId"] = default_ami
-        logger.info("_check_ami: head node ImageId specified as 'DEFAULT'. "
+        logger.info("_check_ami: head node ImageId is 'latest_dlami'. "
                     "Using '{ami_id}', which is the default {ami_name} "
                     "for your region ({region}).".format(
                         ami_id=default_ami,
                         ami_name=DEFAULT_AMI_NAME,
                         region=region))
 
-    if config["worker_nodes"].get("ImageId", "").lower() == "DEFAULT":
+    if config["worker_nodes"].get("ImageId", "").lower() == "latest_dlami":
         config["worker_nodes"]["ImageId"] = default_ami
-        logger.info("_check_ami: worker nodes ImageId specified as 'DEFAULT'. "
+        logger.info("_check_ami: worker nodes ImageId is 'latest_dlami'. "
                     "Using '{ami_id}', which is the default {ami_name} "
                     "for your region ({region}).".format(
                         ami_id=default_ami,

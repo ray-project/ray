@@ -46,8 +46,13 @@ class TFTrainer:
         self.verbose = verbose
 
         # Generate actor class
+        # todo: are these resource quotas right?
+        # should they be exposed to the client codee?
         Runner = ray.remote(num_cpus=1, num_gpus=int(use_gpu))(TFRunner)
 
+        # todo: should we warn about using
+        # distributed training on one device only?
+        # it's likely that whenever this happens it's a mistake
         if num_replicas == 1:
             # Start workers
             self.workers = [
@@ -89,6 +94,9 @@ class TFTrainer:
 
     def train(self):
         """Runs a training epoch."""
+
+        # see ./tf_runner.py:setup_distributed
+        # for an explanation of only taking the first worker's data
         worker_stats = ray.get([w.step.remote() for w in self.workers])
         stats = worker_stats[0].copy()
         return stats
@@ -96,6 +104,9 @@ class TFTrainer:
     def validate(self):
         """Evaluates the model on the validation data set."""
         logger.info("Starting validation step.")
+
+        # see ./tf_runner.py:setup_distributed
+        # for an explanation of only taking the first worker's data
         stats = ray.get([w.validate.remote() for w in self.workers])
         stats = stats[0].copy()
         return stats
