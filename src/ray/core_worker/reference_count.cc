@@ -183,9 +183,7 @@ void ReferenceCounter::DeleteReferenceInternal(
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
   if (it->second.RefCount() == 0 && it->second.on_local_ref_deleted) {
     RAY_LOG(DEBUG) << "Calling on_local_ref_deleted for object " << id;
-    auto on_local_ref_deleted = std::move(it->second.on_local_ref_deleted);
-    it->second.on_local_ref_deleted = nullptr;
-    on_local_ref_deleted();
+    it->second.on_local_ref_deleted();
   }
   // If RefCount() > 0, then we are still using the object ID locally (we
   // have a reference in the frontend language, there is a submitted task that
