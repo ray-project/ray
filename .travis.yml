@@ -144,8 +144,8 @@ script:
   - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
   # ray serve tests TODO(ekl): these should be moved to bazel
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then SERVE_LOG_DEBUG=1 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then SERVE_LOG_DEBUG=1 ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
 
   # ray operator tests
   - cd ./deploy/ray-operator/
@@ -164,7 +164,7 @@ script:
 
 deploy:
   - provider: s3
-    edge: true  # This supposedly opts in to deploy v2.
+    edge: true # This supposedly opts in to deploy v2.
     access_key_id: AKIAU6DMUCJUFL3EX3SM
     secret_access_key:
       secure: J1sX71fKFPQhgWzColllxfzcF877ScBZ1cIl71krZ6SO0LKnwsCScpQck5eZOyQo/Iverwye0iKtE87qNsiRi3+V2D9iulSr18T09j7+FjPKfxAmXmjfrNafoMXTDQroSJblCri5vl+DysISPqImJkWTNaYhGJ9QakoSd5djnAopLNWj6PCR3S50baS49+nB5nSIY3jMhtUzlaBdniFPFC81Cxyuafr4pv6McGRfR/dK+ZnPhdGtMnVeIJXB+ooZKQ26mDJKBPka4jm3u1Oa72b/Atu2RO3MwxTg79LTrMxXKh2OcCqhtD2Z3lz1OltvNSunCuwY8AejCJsfSLbM9mGDoz+xhNUWmYNy48YFf+61OY8PXi8S/9Q817yb3GpLbb2l/P+KMgq9eSEiELIOwuYsDxPX5TuAg6dx0wCNgDEBJoThSQjYl6MgJrLrs7p+JBxp3giedHiy0TLa5hCVKTj3euONAXDArYnnT+DvUIOkaeTk5DClRZbZ0sUXhLy//HuT5WJvjFBJJZ0u0f4RLVb5D7DI4uMZr7+yJPDR2AXCyW9YMaBEbmEYbPaKi283jlEyn7R33+AZlnXv0THHwZ4xvjKKG3/fBSXsOUmv5wmUveEqVGDj1mKPGj9NF8iA5qMm2AaZuJpEEBVBZtSlTZt6ZG7rzAJZGNL52t7xuMo=
@@ -180,7 +180,7 @@ deploy:
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
   - provider: s3
-    edge: true  # This supposedly opts in to deploy v2.
+    edge: true # This supposedly opts in to deploy v2.
     access_key_id: AKIAU6DMUCJUFL3EX3SM
     secret_access_key:
       secure: J1sX71fKFPQhgWzColllxfzcF877ScBZ1cIl71krZ6SO0LKnwsCScpQck5eZOyQo/Iverwye0iKtE87qNsiRi3+V2D9iulSr18T09j7+FjPKfxAmXmjfrNafoMXTDQroSJblCri5vl+DysISPqImJkWTNaYhGJ9QakoSd5djnAopLNWj6PCR3S50baS49+nB5nSIY3jMhtUzlaBdniFPFC81Cxyuafr4pv6McGRfR/dK+ZnPhdGtMnVeIJXB+ooZKQ26mDJKBPka4jm3u1Oa72b/Atu2RO3MwxTg79LTrMxXKh2OcCqhtD2Z3lz1OltvNSunCuwY8AejCJsfSLbM9mGDoz+xhNUWmYNy48YFf+61OY8PXi8S/9Q817yb3GpLbb2l/P+KMgq9eSEiELIOwuYsDxPX5TuAg6dx0wCNgDEBJoThSQjYl6MgJrLrs7p+JBxp3giedHiy0TLa5hCVKTj3euONAXDArYnnT+DvUIOkaeTk5DClRZbZ0sUXhLy//HuT5WJvjFBJJZ0u0f4RLVb5D7DI4uMZr7+yJPDR2AXCyW9YMaBEbmEYbPaKi283jlEyn7R33+AZlnXv0THHwZ4xvjKKG3/fBSXsOUmv5wmUveEqVGDj1mKPGj9NF8iA5qMm2AaZuJpEEBVBZtSlTZt6ZG7rzAJZGNL52t7xuMo=
@@ -196,7 +196,7 @@ deploy:
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
   - provider: script
-    edge: true  # This supposedly opts in to deploy v2.
+    edge: true # This supposedly opts in to deploy v2.
     script: bash $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh || true
     skip_cleanup: true
     on:
@@ -204,8 +204,6 @@ deploy:
       all_branches: true
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
-
 cache:
   directories:
     - $HOME/ray-bazel-cache
-
