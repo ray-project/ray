@@ -158,6 +158,34 @@ def wait_for_condition(condition_predictor,
     return False
 
 
+def wait_until_succeed_without_exception(func,
+                                         *args,
+                                         timeout_ms=1000,
+                                         retry_interval_ms=100):
+    """A helper function that waits until a given function
+        completes without exceptions.
+
+    Args:
+        func: A function to run.
+        args: arguments to pass for a given func
+        timeout_ms: Maximum timeout in milliseconds.
+        retry_interval_ms: Retry interval in milliseconds.
+
+    Return:
+        Whether exception occurs within a timeout.
+    """
+    time_elapsed = 0
+    start = time.time()
+    while time_elapsed <= timeout_ms:
+        try:
+            func(*args)
+            return True
+        except Exception:
+            time_elapsed = (time.time() - start) * 1000
+            time.sleep(retry_interval_ms / 1000.0)
+    return False
+
+
 def recursive_fnmatch(dirpath, pattern):
     """Looks at a file directory subtree for a filename pattern.
 

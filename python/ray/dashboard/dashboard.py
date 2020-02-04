@@ -202,8 +202,8 @@ class Dashboard(object):
             infeasible_tasks = sum(
                 (data.get("infeasibleTasks", []) for data in D.values()), [])
             # ready_tasks are used to render tasks that are not schedulable
-            # because of resource limitation
-            # (e.g. Actor requires 2 gpus but therer is only 1 gpu available.)
+            # due to resource limitations.
+            # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
             ready_tasks = sum(
                 (data.get("readyTasks", []) for data in D.values()), [])
             actor_tree = self.node_stats.get_actor_tree(
