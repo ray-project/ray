@@ -409,7 +409,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
   if (it != state.starting_worker_processes.end()) {
     state.starting_worker_processes.erase(it);
   }
-  state.starting_worker_processes.erase(static_cast<int>(worker->Pid()));
 
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
   stats::CurrentWorker().Record(
