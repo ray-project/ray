@@ -440,14 +440,14 @@ def test_return_object_id(one_worker_100MiB):
         return [ray.put(n_MiB_array(40))]
 
     outer_oid = return_an_id.remote()
-    inner_oid_binary = ray.get(outer_oid).binary()
+    inner_oid_binary = ray.get(outer_oid)[0].binary()
 
     # Check that the inner ID is pinned by the outer ID.
     _fill_object_store_and_get(inner_oid_binary)
 
     # Check that taking a reference to the inner ID and removing the outer ID
     # doesn't unpin the object.
-    inner_oid = ray.get(outer_oid)
+    inner_oid = ray.get(outer_oid)[0]
     del outer_oid
     _fill_object_store_and_get(inner_oid_binary)
 
@@ -461,7 +461,7 @@ def test_return_object_id(one_worker_100MiB):
 def test_pass_returned_object_id(one_worker_100MiB):
     @ray.remote
     def return_an_id():
-        return [ray.put(n_MiB_array(40))]
+        return [ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))]
 
     @ray.remote
     def pending(ref, dep):
@@ -469,7 +469,7 @@ def test_pass_returned_object_id(one_worker_100MiB):
         ray.get(ref[0])
 
     outer_oid = return_an_id.remote()
-    inner_oid_binary = ray.get(outer_oid).binary()
+    inner_oid_binary = ray.get(outer_oid)[0].binary()
     random_oid = ray.ObjectID.from_random()
     pending_oid = pending.remote([outer_oid], [random_oid])
 
@@ -492,7 +492,7 @@ def test_pass_returned_object_id(one_worker_100MiB):
 def test_recursively_pass_returned_object_id(one_worker_100MiB):
     @ray.remote
     def return_an_id():
-        return [ray.put(n_MiB_array(40))]
+        return [ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))]
 
     @ray.remote
     def recursive(ref, dep, max_depth, depth=0):
@@ -504,7 +504,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
 
     max_depth = 5
     outer_oid = return_an_id.remote()
-    inner_oid_bytes = ray.get(outer_oid).binary()
+    inner_oid_bytes = ray.get(outer_oid)[0].binary()
     random_oid = ray.ObjectID.from_random()
     head_oid = recursive.remote([outer_oid], [random_oid], max_depth)
 
