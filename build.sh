@@ -94,7 +94,7 @@ do
   fi
 done
 if [[ -z $found ]]
-then 
+then
   cat <<EOF
 ERROR: Detected Python version $PYTHON_VERSION, which is not supported.
        Please use version 3.6 or 3.7.
@@ -128,12 +128,12 @@ fi
 
 WORK_DIR=`mktemp -d`
 pushd $WORK_DIR
-  git clone https://github.com/pitrou/pickle5-backport
-  pushd pickle5-backport
-    git checkout 5186f9ca4ce55ae530027db196da51e08208a16b
-    "$PYTHON_EXECUTABLE" setup.py bdist_wheel
-    unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
-  popd
+git clone https://github.com/suquark/pickle5-backport
+pushd pickle5-backport
+  git checkout 43551fbb9add8ac2e8551b96fdaf2fe5a3b5997d
+  "$PYTHON_EXECUTABLE" setup.py bdist_wheel
+  unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+popd
 popd
 
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
