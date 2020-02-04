@@ -287,7 +287,13 @@ cdef void prepare_args(
         else:
             serialized_arg = worker.get_serialization_context().serialize(arg)
             size = serialized_arg.total_bytes
-            if <int64_t>size <= put_threshold:
+
+            # TODO(edoakes): any objects containing ObjectIDs are spilled to
+            # plasma here. This is inefficient for small objects, but inlined
+            # arguments aren't associated ObjectIDs right now so this is a
+            # simple fix for reference counting purposes.
+            if (<int64_t>size <= put_threshold and
+                    len(serialized_arg.contained_object_ids) == 0):
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
@@ -645,6 +651,7 @@ cdef class CoreWorker:
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,
+                            c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data):
         delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
         for attempt in reversed(
@@ -653,13 +660,14 @@ cdef class CoreWorker:
                 if object_id is None:
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                     metadata, data_size,
+                                     metadata, data_size, contained_ids,
                                      c_object_id, data))
                 else:
                     c_object_id[0] = object_id.native()
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                    metadata, data_size, c_object_id[0], data))
+                                    metadata, data_size, contained_ids,
+                                    c_object_id[0], data))
                 break
             except ObjectStoreFullError as e:
                 if attempt:
@@ -685,22 +693,22 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
-            # The object won't be pinned if an ObjectID is provided by the
-            # user (because we can't track its lifetime to unpin). Note that
-            # the API to do this isn't supported as a public API.
-            c_bool owns_object = object_id is None
 
         metadata = string_to_buffer(serialized_object.metadata)
         total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
             metadata, total_bytes, object_id,
+            ObjectIDsToVector(serialized_object.contained_object_ids),
             &c_object_id, &data)
+
         if not object_already_exists:
             write_serialized_object(serialized_object, data)
             with nogil:
+                # Using custom object IDs is not supported because we can't
+                # track their lifecycle, so don't pin the object in that case.
                 check_status(
                     self.core_worker.get().Seal(
-                        c_object_id, owns_object, pin_object))
+                        c_object_id, pin_object and object_id is None))
 
         return ObjectID(c_object_id.Binary())
 
@@ -942,6 +950,7 @@ cdef class CoreWorker:
         cdef:
             c_vector[size_t] data_sizes
             c_vector[shared_ptr[CBuffer]] metadatas
+            c_vector[c_vector[CObjectID]] contained_ids
 
         if return_ids.size() == 0:
             return
@@ -963,9 +972,11 @@ cdef class CoreWorker:
                 metadatas.push_back(
                     string_to_buffer(serialized_object.metadata))
                 serialized_objects.append(serialized_object)
+                contained_ids.push_back(
+                    ObjectIDsToVector(serialized_object.contained_object_ids))
 
         check_status(self.core_worker.get().AllocateReturnObjects(
-            return_ids, data_sizes, metadatas, returns))
+            return_ids, data_sizes, metadatas, contained_ids, returns))
 
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
