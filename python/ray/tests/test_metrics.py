@@ -287,7 +287,7 @@ def test_raylet_pending_tasks(shutdown_only):
     CHILD_GPU_REQUIRED = 1
     SPAWNING_ACTORS_NUM = 4
     PENDING_ACTOR = (SPAWNING_ACTORS_NUM * CHILD_GPU_REQUIRED) - AVAILABLE_GPUS
-    addresses = ray.init(include_webui=True, num_gpus=AVAILABLE_GPUS)
+    addresses = ray.init(include_webui=True, num_gpus=AVAILABLE_GPUS, num_cpus=4)
 
     @ray.remote(num_gpus=CHILD_GPU_REQUIRED)
     class ActorRequiringGPU:
