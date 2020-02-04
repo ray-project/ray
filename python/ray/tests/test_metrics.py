@@ -2,6 +2,7 @@ import os
 import json
 import grpc
 import psutil
+import pytest
 import requests
 import time
 
@@ -333,6 +334,9 @@ def test_raylet_pending_tasks(shutdown_only):
                     "Timed out while waiting for dashboard to start.")
 
 
+@pytest.mark.skipif(
+    os.environ.get("TRAVIS") is None,
+    reason="This test requires password-less sudo due to py-spy requirement.")
 def test_profiling_info_endpoint(shutdown_only):
     ray.init(num_cpus=1)
 

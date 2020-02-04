@@ -85,14 +85,6 @@ cdef class Config:
         return RayConfig.instance().max_time_for_handler_milliseconds()
 
     @staticmethod
-    def size_limit():
-        return RayConfig.instance().size_limit()
-
-    @staticmethod
-    def num_elements_limit():
-        return RayConfig.instance().num_elements_limit()
-
-    @staticmethod
     def max_time_for_loop():
         return RayConfig.instance().max_time_for_loop()
 

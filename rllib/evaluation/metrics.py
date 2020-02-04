@@ -81,13 +81,17 @@ def collect_episodes(local_worker=None,
 
 
 @DeveloperAPI
-def summarize_episodes(episodes, new_episodes):
+def summarize_episodes(episodes, new_episodes=None):
     """Summarizes a set of episode metrics tuples.
 
     Arguments:
         episodes: smoothed set of episodes including historical ones
-        new_episodes: just the new episodes in this iteration
+        new_episodes: just the new episodes in this iteration. This must be
+            a subset of `episodes`. If None, assumes all episodes are new.
     """
+
+    if new_episodes is None:
+        new_episodes = episodes
 
     episodes, estimates = _partition(episodes)
     new_episodes, _ = _partition(new_episodes)

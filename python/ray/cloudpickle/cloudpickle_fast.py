@@ -20,6 +20,8 @@ import sys
 import types
 import weakref
 
+import numpy
+
 from .cloudpickle import (
     _is_dynamic, _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
     _find_imported_submodules, _get_cell_contents, _is_global, _builtin_type,
@@ -407,6 +409,44 @@ def _property_reduce(obj):
     return property, (obj.fget, obj.fset, obj.fdel, obj.__doc__)
 
 
+def _numpy_ndarray_reduce(array):
+    # This function is implemented according to 'array_reduce_ex_picklebuffer'
+    # in numpy C backend. This is a workaround for python3.5 pickling support.
+    if sys.version_info >= (3, 8):
+        import pickle
+        picklebuf_class = pickle.PickleBuffer
+    elif sys.version_info >= (3, 5):
+        try:
+            import pickle5
+            picklebuf_class = pickle5.PickleBuffer
+        except Exception:
+            raise ImportError("Using pickle protocol 5 requires the pickle5 "
+                              "module for Python >=3.5 and <3.8")
+    else:
+        raise ValueError("pickle protocol 5 is not available for Python < 3.5")
+    # if the array if Fortran-contiguous and not C-contiguous,
+    # the PickleBuffer instance will hold a view on the transpose
+    # of the initial array, that is C-contiguous.
+    if not array.flags.c_contiguous and array.flags.f_contiguous:
+        order = 'F'
+        picklebuf_args = array.transpose()
+    else:
+        order = 'C'
+        picklebuf_args = array
+    try:
+        buffer = picklebuf_class(picklebuf_args)
+    except Exception:
+        # Some arrays may refuse to export a buffer, in which case
+        # just fall back on regular __reduce_ex__ implementation
+        # (gh-12745).
+        return array.__reduce__()
+
+    # Get the _frombuffer() function for reconstruction
+    import numpy.core.numeric as numeric_mod
+    from_buffer_func = numeric_mod._frombuffer
+    return from_buffer_func, (buffer, array.dtype, array.shape, order)
+
+
 class CloudPickler(Pickler):
     """Fast C Pickler extension with additional reducing routines.
 
@@ -487,6 +527,15 @@ class CloudPickler(Pickler):
           for other types that suffered from type-specific reducers, such as
           Exceptions. See https://github.com/cloudpipe/cloudpickle/issues/248
         """
+
+        # This is a patch for python3.5
+        if isinstance(obj, numpy.ndarray):
+            if (self.proto < 5 or
+                    (not obj.flags.c_contiguous and not obj.flags.f_contiguous) or
+                    obj.dtype == 'O' or obj.itemsize == 0):
+                return NotImplemented
+            return _numpy_ndarray_reduce(obj)
+
         t = type(obj)
         try:
             is_anyclass = issubclass(t, type)
