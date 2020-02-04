@@ -4,6 +4,14 @@
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 
+/// Get gcs server address from redis.
+/// This address is set by GcsServer::SetGcsServerAddress function.
+///
+/// \param context The context of redis.
+/// \param address The address of gcs server.
+static void GetGcsServerAddress(redisContext *context,
+                                std::pair<std::string, int> *address);
+
 namespace ray {
 namespace gcs {
 

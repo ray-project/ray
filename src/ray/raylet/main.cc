@@ -163,14 +163,8 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<std::thread> thread_io_service;
   boost::asio::io_service io_service;
 
-  const char *var_value = getenv("GCS_SERVICE_ENABLED");
-  std::string data;
-  if (var_value != nullptr) {
-    data = var_value;
-    std::transform(data.begin(), data.end(), data.begin(), ::tolower);
-  }
-
-  if (data == "true") {
+  // RAY_GCS_SERVICE_ENABLED only set in ci job, so we just check if it is null.
+  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
     gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
   } else {
     gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);

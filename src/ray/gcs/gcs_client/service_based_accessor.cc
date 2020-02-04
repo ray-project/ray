@@ -76,8 +76,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGet(
       request,
       [actor_id, callback](const Status &status, const rpc::GetActorInfoReply &reply) {
         if (reply.has_actor_table_data()) {
-          rpc::ActorTableData actor_table_data;
-          actor_table_data.CopyFrom(reply.actor_table_data());
+          rpc::ActorTableData actor_table_data(reply.actor_table_data());
           callback(status, actor_table_data);
         } else {
           callback(status, boost::none);
@@ -191,8 +190,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpoint(
       request, [checkpoint_id, callback](const Status &status,
                                          const rpc::GetActorCheckpointReply &reply) {
         if (reply.has_checkpoint_data()) {
-          rpc::ActorCheckpointData checkpoint_data;
-          checkpoint_data.CopyFrom(reply.checkpoint_data());
+          rpc::ActorCheckpointData checkpoint_data(reply.checkpoint_data());
           callback(status, checkpoint_data);
         } else {
           callback(status, boost::none);
@@ -213,8 +211,7 @@ Status ServiceBasedActorInfoAccessor::AsyncGetCheckpointID(
       request, [actor_id, callback](const Status &status,
                                     const rpc::GetActorCheckpointIDReply &reply) {
         if (reply.has_checkpoint_id_data()) {
-          rpc::ActorCheckpointIdData checkpoint_id_data;
-          checkpoint_id_data.CopyFrom(reply.checkpoint_id_data());
+          rpc::ActorCheckpointIdData checkpoint_id_data(reply.checkpoint_id_data());
           callback(status, checkpoint_id_data);
         } else {
           callback(status, boost::none);
@@ -536,8 +533,7 @@ Status ServiceBasedTaskInfoAccessor::AsyncGet(
   client_impl_->GetGcsRpcClient().GetTask(
       request, [task_id, callback](const Status &status, const rpc::GetTaskReply &reply) {
         if (reply.has_task_data()) {
-          TaskTableData task_table_data;
-          task_table_data.CopyFrom(reply.task_data());
+          TaskTableData task_table_data(reply.task_data());
           callback(status, task_table_data);
         } else {
           callback(status, boost::none);

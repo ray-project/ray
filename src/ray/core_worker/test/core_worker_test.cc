@@ -93,7 +93,9 @@ class CoreWorkerTest : public ::testing::Test {
     raylet_monitor_pid_ = StartRayletMonitor("127.0.0.1");
 
     // start gcs server
-    gcs_server_pid_ = StartGcsServer("127.0.0.1");
+    if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+      gcs_server_pid_ = StartGcsServer("127.0.0.1");
+    }
 
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
@@ -203,27 +205,26 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartGcsServer(std::string redis_address) {
-    std::string gcs_server_socket_name = "/tmp/gcs_server" + ObjectID::FromRandom().Hex();
-    std::string ray_start_cmd = gcs_server_executable;
-    ray_start_cmd.append(" --redis_address=" + redis_address)
+    std::string gcs_server_pid =
+        "/tmp/gcs_server" + ObjectID::FromRandom().Hex() + ".pid";
+    std::string gcs_server_start_cmd = gcs_server_executable;
+    gcs_server_start_cmd.append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
         .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
-        .append(" & echo $! > " + gcs_server_socket_name + ".pid");
+        .append(" & echo $! > " + gcs_server_pid);
 
-    RAY_LOG(INFO) << "Start gcs server command: " << ray_start_cmd;
-    RAY_CHECK(system(ray_start_cmd.c_str()) == 0);
+    RAY_LOG(DEBUG) << "Starting GCS server, command: " << gcs_server_start_cmd;
+    RAY_CHECK(system(gcs_server_start_cmd.c_str()) == 0);
     usleep(200 * 1000);
-    RAY_LOG(INFO) << "Finished start gcs server.";
-    return gcs_server_socket_name;
+    RAY_LOG(INFO) << "GCS server started.";
+    return gcs_server_pid;
   }
 
-  void StopGcsServer(std::string gcs_server_socket_name) {
-    std::string gcs_server_pid = gcs_server_socket_name + ".pid";
+  void StopGcsServer(std::string gcs_server_pid) {
     std::string kill_9 = "kill -9 `cat " + gcs_server_pid + "`";
     RAY_LOG(DEBUG) << kill_9;
     ASSERT_TRUE(system(kill_9.c_str()) == 0);
-    ASSERT_TRUE(system(("rm -rf " + gcs_server_socket_name).c_str()) == 0);
-    ASSERT_TRUE(system(("rm -rf " + gcs_server_socket_name + ".pid").c_str()) == 0);
+    ASSERT_TRUE(system(("rm -f " + gcs_server_pid).c_str()) == 0);
   }
 
   void SetUp() {}

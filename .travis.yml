@@ -51,7 +51,7 @@ matrix:
       env:
         - TESTSUITE=gcs_service
         - JDK='Oracle JDK 8'
-        - GCS_SERVICE_ENABLED=true
+        - RAY_GCS_SERVICE_ENABLED=true
         - RAY_INSTALL_JAVA=1
         - PYTHON=3.5 PYTHONWARNINGS=ignore
       install:
@@ -62,7 +62,7 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - ./ci/suppress_output bazel test //:gcs_server_test && bash src/ray/test/run_core_worker_tests.sh
+        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh && bash streaming/src/test/run_streaming_queue_test.sh
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
