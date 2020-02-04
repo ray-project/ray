@@ -51,6 +51,8 @@ pyarrow_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "pyarrow_files")
 sys.path.insert(0, pyarrow_path)
 
+sys.modules['psutil'] = ray.thirdparty_files.psutil
+
 # See https://github.com/ray-project/ray/issues/131.
 helpful_message = """
 
