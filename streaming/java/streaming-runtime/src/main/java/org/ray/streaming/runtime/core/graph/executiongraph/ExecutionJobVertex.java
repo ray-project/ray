@@ -15,8 +15,8 @@ import org.ray.streaming.runtime.worker.JobWorker;
 /**
  * Physical job vertex.
  *
- * <p>Execution job vertex is the physical form of {@link JobVertex} and every execution job vertex is
- * corresponding to a group of {@link ExecutionVertex}.
+ * <p>Execution job vertex is the physical form of {@link JobVertex} and
+ * every execution job vertex is corresponding to a group of {@link ExecutionVertex}.
  */
 public class ExecutionJobVertex {
 
