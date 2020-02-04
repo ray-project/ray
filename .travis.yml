@@ -62,7 +62,8 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh && bash streaming/src/test/run_streaming_queue_test.sh
+        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+        - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore

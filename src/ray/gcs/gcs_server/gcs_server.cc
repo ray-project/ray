@@ -64,8 +64,8 @@ void GcsServer::Start() {
   // Run rpc server.
   rpc_server_.Run();
 
-  // Set gcs rpc server address
-  SetGcsServerAddress();
+  // Store gcs rpc server address in redis
+  StoreGcsServerAddressInRedis();
 
   // Run the event loop.
   // Using boost::asio::io_context::work to avoid ending the event loop when
@@ -110,7 +110,7 @@ std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
       new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
 }
 
-void GcsServer::SetGcsServerAddress() {
+void GcsServer::StoreGcsServerAddressInRedis() {
   boost::asio::ip::detail::endpoint primary_endpoint;
   boost::asio::ip::tcp::resolver resolver(main_service_);
   boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");

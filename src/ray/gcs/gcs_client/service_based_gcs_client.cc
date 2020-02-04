@@ -81,11 +81,5 @@ void ServiceBasedGcsClient::Disconnect() {
   RAY_LOG(INFO) << "ServiceBasedGcsClient Disconnected.";
 }
 
-std::string ServiceBasedGcsClient::DebugString() const {
-  std::stringstream result;
-  result << "ServiceBasedGcsClient:";
-  return result.str();
-}
-
 }  // namespace gcs
 }  // namespace ray

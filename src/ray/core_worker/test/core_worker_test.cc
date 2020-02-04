@@ -202,6 +202,7 @@ class CoreWorkerTest : public ::testing::Test {
     std::string kill_9 = "kill -9 `cat " + raylet_monitor_pid + "`";
     RAY_LOG(DEBUG) << kill_9;
     ASSERT_TRUE(system(kill_9.c_str()) == 0);
+    ASSERT_TRUE(system(("rm -f " + raylet_monitor_pid).c_str()) == 0);
   }
 
   std::string StartGcsServer(std::string redis_address) {
