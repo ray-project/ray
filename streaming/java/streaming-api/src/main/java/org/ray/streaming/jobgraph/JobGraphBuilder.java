@@ -57,7 +57,7 @@ public class JobGraphBuilder {
     } else if (stream instanceof StreamSource) {
       jobVertex = new JobVertex(vertexId, parallelism, VertexType.SOURCE, streamOperator);
     } else if (stream instanceof DataStream || stream instanceof PythonDataStream) {
-      jobVertex = new JobVertex(vertexId, parallelism, VertexType.PROCESS, streamOperator);
+      jobVertex = new JobVertex(vertexId, parallelism, VertexType.TRANSFORMATION, streamOperator);
       Stream parentStream = stream.getInputStream();
       int inputVertexId = parentStream.getId();
       JobEdge jobEdge = new JobEdge(inputVertexId, vertexId, parentStream.getPartition());
