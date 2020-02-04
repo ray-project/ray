@@ -112,7 +112,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(task_execution_callback_ != nullptr);
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
-                                  std::placeholders::_2, std::placeholders::_3);
+                                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     auto exit = [this](bool intentional) {
       // Release the resources early in case draining takes a long time.
       RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
@@ -349,11 +349,11 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
-    const ObjectID &object_id, const TaskID &owner_id,
+    const ObjectID &object_id, const ObjectID &outer_object_id, const TaskID &owner_id,
     const rpc::Address &owner_address) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
-  reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
+  reference_counter_->AddBorrowedObject(outer_object_id, object_id, owner_id, owner_address);
 
   RAY_CHECK(!owner_id.IsNil());
   // We will ask the owner about the object until the object is
@@ -400,18 +400,24 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
-  RAY_RETURN_NOT_OK(Create(metadata, data_size, contained_object_ids, *object_id, data));
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Create(metadata, data_size, *object_id, data));
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
     reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
+    if (!contained_object_ids.empty()) {
+      reference_counter_->WrapObjectId(*object_id, contained_object_ids, absl::optional<rpc::WorkerAddress>());
+    }
   }
   return Status::OK();
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                           const std::vector<ObjectID> &contained_object_ids,
+                          const rpc::Address *owner_address,
                           const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
-  // TODO(edoakes,swang): add contained object IDs to the reference counter.
+  if (!contained_object_ids.empty() && owner_address) {
+    reference_counter_->WrapObjectId(object_id, contained_object_ids, rpc::WorkerAddress(*owner_address));
+  }
   return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
 
@@ -889,6 +895,8 @@ Status CoreWorker::AllocateReturnObjects(
   RAY_CHECK(object_ids.size() == data_sizes.size());
   return_objects->resize(object_ids.size(), nullptr);
 
+  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
+
   for (size_t i = 0; i < object_ids.size(); i++) {
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
@@ -900,7 +908,7 @@ Status CoreWorker::AllocateReturnObjects(
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], contained_object_ids[i],
-                                 object_ids[i], &data_buffer));
+                                 &owner_address, object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -917,7 +925,8 @@ Status CoreWorker::AllocateReturnObjects(
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
-                               std::vector<std::shared_ptr<RayObject>> *return_objects) {
+                               std::vector<std::shared_ptr<RayObject>> *return_objects,
+                               ReferenceCounter::ReferenceTable *borrower_refs) {
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -937,6 +946,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<std::shared_ptr<RayObject>> args;
   std::vector<ObjectID> arg_reference_ids;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
+  for (const auto &arg_id : arg_reference_ids) {
+    if (!arg_id.IsNil()) {
+      reference_counter_->AddLocalReference(arg_id);
+    }
+  }
 
   const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
                                   ? TaskTransportType::DIRECT
@@ -979,6 +993,13 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
       }
+    }
+  }
+
+  for (const auto &arg_id : arg_reference_ids) {
+    if (!arg_id.IsNil()) {
+      reference_counter_->PopBorrowerRefsPointer(arg_id, borrower_refs);
+      reference_counter_->RemoveLocalReference(arg_id, nullptr);
     }
   }
 

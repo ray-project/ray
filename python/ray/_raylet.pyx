@@ -667,6 +667,7 @@ cdef class CoreWorker:
                     with nogil:
                         check_status(self.core_worker.get().Create(
                                     metadata, data_size, contained_ids,
+                                    NULL,
                                     c_object_id[0], data))
                 break
             except ObjectStoreFullError as e:
@@ -931,15 +932,17 @@ cdef class CoreWorker:
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
-            self, const c_string &object_id_binary, const c_string
+            self, const c_string &object_id_binary, ObjectID outer_object_id, const c_string
             &owner_id_binary, const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
+            CObjectID c_outer_object_id = outer_object_id.native()
             CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
             CAddress c_owner_address = CAddress()
         c_owner_address.ParseFromString(serialized_owner_address)
         self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
                 c_object_id,
+                c_outer_object_id,
                 c_owner_id,
                 c_owner_address)
 

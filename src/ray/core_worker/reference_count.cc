@@ -264,14 +264,38 @@ ReferenceCounter::GetAllReferenceCounts() const {
 ReferenceCounter::ReferenceTable ReferenceCounter::PopBorrowerRefs(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrower_refs;
-  RAY_CHECK(PopBorrowerRefsInternal(object_id, &borrower_refs));
-  // Try to delete this node since its ref count may now be 0.
+  // TODO: make this nicer.
+  // Remove the sentinel reference for argument IDs.
   auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    it->second.local_ref_count--;
+  }
+
+  RAY_CHECK(PopBorrowerRefsInternal(object_id, &borrower_refs));
+
+  // Try to delete this node since its ref count may now be 0.
   if (it != object_id_refs_.end()) {
     DeleteReferenceInternal(it, nullptr);
   }
 
   return borrower_refs;
+}
+
+void ReferenceCounter::PopBorrowerRefsPointer(const ObjectID &object_id, ReferenceCounter::ReferenceTable *refs) {
+  absl::MutexLock lock(&mutex_);
+  // TODO: make this nicer.
+  // Remove the sentinel reference for argument IDs.
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    it->second.local_ref_count--;
+  }
+
+  RAY_CHECK(PopBorrowerRefsInternal(object_id, refs));
+
+  // Try to delete this node since its ref count may now be 0.
+  if (it != object_id_refs_.end()) {
+    DeleteReferenceInternal(it, nullptr);
+  }
 }
 
 bool ReferenceCounter::PopBorrowerRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs) {

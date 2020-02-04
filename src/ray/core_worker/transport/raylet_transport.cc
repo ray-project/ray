@@ -48,7 +48,8 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = task_handler_(task_spec, resource_ids, &results);
+  ReferenceCounter::ReferenceTable borrower_refs;
+  auto status = task_handler_(task_spec, resource_ids, &results, &borrower_refs);
   if (status.IsSystemExit()) {
     exit_handler_(status.IsIntentionalSystemExit());
     return;

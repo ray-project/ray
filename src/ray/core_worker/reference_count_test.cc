@@ -102,11 +102,6 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (!arg_id.IsNil()) {
       refs = rc_.PopBorrowerRefs(arg_id);
       // Remove the sentinel reference.
-      auto it = refs.find(arg_id);
-      if (it != refs.end()) {
-        RAY_CHECK(it->second.local_ref_count > 0);
-        it->second.local_ref_count--;
-      }
       rc_.RemoveLocalReference(arg_id, nullptr);
     }
     return refs;

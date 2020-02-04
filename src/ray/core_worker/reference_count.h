@@ -184,6 +184,7 @@ class ReferenceCounter {
 
 
   ReferenceTable PopBorrowerRefs(const ObjectID &object_id);
+  void PopBorrowerRefsPointer(const ObjectID &object_id, ReferenceCounter::ReferenceTable *refs);
 
   void WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids, const absl::optional<rpc::WorkerAddress> &owner_address) LOCKS_EXCLUDED(mutex_);
 

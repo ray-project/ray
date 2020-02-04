@@ -90,6 +90,7 @@ message PushTaskReply {
   repeated ReturnObject return_objects = 1;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 2;
+  repeated ObjectReferenceCount borrower_refs = 3;
 }
 
 message DirectActorCallArgWaitCompleteRequest {

@@ -126,7 +126,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                                 CTaskID *owner_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
-                const CObjectID &object_id, const CTaskID &owner_id, const
+                const CObjectID &object_id, const CObjectID &outer_object_id, const CTaskID &owner_id, const
                 CAddress &owner_address)
         void AddContainedObjectIDs(
             const CObjectID &object_id,
@@ -146,6 +146,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
                           const c_vector[CObjectID] &contained_object_ids,
+                          const CAddress *owner_address,
                           const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
         CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)

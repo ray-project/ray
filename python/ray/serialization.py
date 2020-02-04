@@ -177,14 +177,14 @@ class SerializationContext:
             # to 'self' here instead, but this function is itself pickled
             # somewhere, which causes an error.
             context = ray.worker.global_worker.get_serialization_context()
-            context.add_contained_object_id(deserialized_object_id)
             if owner_id:
                 worker = ray.worker.get_global_worker()
                 worker.check_connected()
                 # UniqueIDs are serialized as
                 # (class name, (unique bytes,)).
+                outer_id = context.get_outer_object_id()
                 worker.core_worker.deserialize_and_register_object_id(
-                    obj_id[1][0], owner_id[1][0], owner_address)
+                    obj_id[1][0], outer_id, owner_id[1][0], owner_address)
             return deserialized_object_id
 
         for id_type in ray._raylet._ID_TYPES:
@@ -205,6 +205,12 @@ class SerializationContext:
         # construct a reducer
         pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
 
+    def set_outer_object_id(self, outer_object_id):
+        self._thread_local.outer_object_id = outer_object_id
+
+    def get_outer_object_id(self):
+        return self._thread_local.outer_object_id
+
     def get_and_clear_contained_object_ids(self):
         if not hasattr(self._thread_local, "object_ids"):
             self._thread_local.object_ids = set()
@@ -221,6 +227,7 @@ class SerializationContext:
         self._thread_local.object_ids.add(object_id)
 
     def _deserialize_object(self, data, metadata, object_id):
+        self.set_outer_object_id(object_id)
         if metadata:
             if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
                 if not self.use_pickle:
@@ -236,18 +243,8 @@ class SerializationContext:
                 # cloudpickle does not provide error types
                 except pickle.pickle.PicklingError:
                     raise DeserializationError()
-
-                # Check that there are no ObjectIDs serialized in arguments
-                # that are inlined.
-                if object_id.is_nil():
-                    assert len(self.get_and_clear_contained_object_ids()) == 0
-                else:
-                    worker = ray.worker.global_worker
-                    worker.core_worker.add_contained_object_ids(
-                        object_id,
-                        self.get_and_clear_contained_object_ids(),
-                    )
                 return obj
+
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
