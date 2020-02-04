@@ -173,6 +173,11 @@ class SerializationContext:
             # that the ref count for the ObjectID is greater than 0 by the
             # time the core worker resolves the value of the object.
             deserialized_object_id = id_deserializer(obj_id)
+            # TODO(edoakes): we should be able to just capture a reference
+            # to 'self' here instead, but this function is itself pickled
+            # somewhere, which causes an error.
+            context = ray.worker.global_worker.get_serialization_context()
+            context.add_contained_object_id(deserialized_object_id)
             if owner_id:
                 worker = ray.worker.get_global_worker()
                 worker.check_connected()
@@ -225,12 +230,24 @@ class SerializationContext:
                 try:
                     in_band, buffers = unpack_pickle5_buffers(data)
                     if len(buffers) > 0:
-                        return pickle.loads(in_band, buffers=buffers)
+                        obj = pickle.loads(in_band, buffers=buffers)
                     else:
-                        return pickle.loads(in_band)
+                        obj = pickle.loads(in_band)
                 # cloudpickle does not provide error types
                 except pickle.pickle.PicklingError:
                     raise DeserializationError()
+
+                # Check that there are no ObjectIDs serialized in arguments
+                # that are inlined.
+                if object_id.is_nil():
+                    assert len(self.get_and_clear_contained_object_ids()) == 0
+                else:
+                    worker = ray.worker.global_worker
+                    worker.core_worker.add_contained_object_ids(
+                        object_id,
+                        self.get_and_clear_contained_object_ids(),
+                    )
+                return obj
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:

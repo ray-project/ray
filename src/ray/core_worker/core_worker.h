@@ -163,6 +163,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                              const TaskID &owner_id,
                                              const rpc::Address &owner_address);
 
+  /// Add metadata about the object IDs contained within another object ID.
+  /// This should be called during deserialization of the outer object ID.
+  ///
+  /// \param[in] object_id The object containing IDs.
+  /// \param[in] contained_object_ids The IDs contained in the object.
+  void AddContainedObjectIDs(const ObjectID &object_id,
+                             const std::vector<ObjectID> &contained_object_ids);
+
   ///
   /// Public methods related to storing and retrieving objects.
   ///
