@@ -1696,9 +1696,9 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                Language.PYTHON, function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls,
-                max_retries)
+                Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
+                memory, object_store_memory, resources, num_return_vals,
+                max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:

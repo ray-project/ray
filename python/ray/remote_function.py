@@ -3,7 +3,7 @@ from functools import wraps
 
 from ray import cloudpickle as pickle
 from ray import ray_constants
-from ray import FunctionDescriptor, PythonFunctionDescriptor
+from ray import PythonFunctionDescriptor
 from ray import cross_language
 import ray.signature
 
@@ -59,29 +59,20 @@ class RemoteFunction:
             different workers.
     """
 
-    def __init__(self, language, function_or_function_descriptor, num_cpus,
+    def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  num_return_vals, max_calls, max_retries):
         # We do not set self._is_cross_language if self._language !=
         # Language.PYTHON in order to test cross language feature by
         # cross calling PYTHON from PYTHON.
         self._language = language
-
-        if isinstance(function_or_function_descriptor, FunctionDescriptor):
-            self._function = lambda *args, **kwargs: None
-            self._function_name = str(function_or_function_descriptor)
-            self._function_signature = ray.signature.ANY_FUNCTION_SIGNATURE
-            self._function_descriptor = function_or_function_descriptor
-            self._is_cross_language = True
-        else:
-            self._function = function_or_function_descriptor
-            self._function_name = (
-                self._function.__module__ + "." + self._function.__name__)
-            self._function_signature = ray.signature.extract_signature(
-                self._function)
-            self._function_descriptor = None
-            self._is_cross_language = False
-
+        self._function = function
+        self._function_name = (
+            self._function.__module__ + "." + self._function.__name__)
+        self._function_signature = ray.signature.extract_signature(
+            self._function)
+        self._function_descriptor = function_descriptor
+        self._is_cross_language = function_descriptor is not None
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus

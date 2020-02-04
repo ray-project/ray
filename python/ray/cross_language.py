@@ -72,6 +72,7 @@ def java_function(class_name, function_name):
     from ray.remote_function import RemoteFunction
     return RemoteFunction(
         Language.JAVA,
+        lambda *args, **kwargs: None,
         JavaFunctionDescriptor(class_name, function_name, ""),
         None,  # num_cpus,
         None,  # num_gpus,
@@ -100,6 +101,7 @@ def python_function(module_name, function_name):
     from ray.remote_function import RemoteFunction
     return RemoteFunction(
         Language.PYTHON,
+        lambda *args, **kwargs: None,
         PythonFunctionDescriptor(module_name, function_name),
         None,  # num_cpus,
         None,  # num_gpus,
