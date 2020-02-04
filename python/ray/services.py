@@ -18,7 +18,6 @@ import pyarrow
 import ray
 import ray.ray_constants as ray_constants
 import ray.thirdparty_files.psutil as psutil
-import ray.thirdparty_files.setproctitle as setproctitle
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
