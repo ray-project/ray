@@ -2,15 +2,14 @@
 # https://github.com/ray-project/ray/issues/6928
 # https://github.com/ray-project/ray/issues/6732
 
-import numpy as np
-
-from ray.rllib.models import ModelCatalog
-from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
 from gym.spaces import Discrete, Box
+import numpy as np
 
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.rllib.examples.random_env import RandomEnv
+from ray.rllib.models import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf.recurrent_tf_modelv2 import RecurrentTFModelV2
 from ray.rllib.utils import try_import_tf
 from ray.rllib.utils.annotations import override
 
