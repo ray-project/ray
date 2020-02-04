@@ -1,6 +1,7 @@
 import inspect
 from functools import wraps
 from tempfile import mkstemp
+from multiprocessing import cpu_count
 
 import numpy as np
 
@@ -16,6 +17,7 @@ from ray.experimental.serve.utils import (block_until_http_ready,
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.backend_config import BackendConfig
 from ray.experimental.serve.policy import RoutePolicy
+from ray.experimental.serve.queues import Query
 global_state = None
 
 
@@ -64,7 +66,10 @@ def init(kv_store_connector=None,
          blocking=False,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         ray_init_kwargs={"object_store_memory": int(1e8)},
+         ray_init_kwargs={
+             "object_store_memory": int(1e8),
+             "num_cpus": max(cpu_count(), 8)
+         },
          gc_window_seconds=3600,
          queueing_policy=RoutePolicy.Random,
          policy_kwargs={}):
@@ -110,6 +115,10 @@ def init(kv_store_connector=None,
         return
     except ValueError:
         pass
+
+    # Register serialization context once
+    ray.register_custom_serializer(Query, Query.ray_serialize,
+                                   Query.ray_deserialize)
 
     if kv_store_path is None:
         _, kv_store_path = mkstemp()
@@ -403,8 +412,8 @@ def split(endpoint_name, traffic_policy_dictionary):
 
     global_state.policy_table.register_traffic_policy(
         endpoint_name, traffic_policy_dictionary)
-    global_state.init_or_get_router().set_traffic.remote(
-        endpoint_name, traffic_policy_dictionary)
+    ray.get(global_state.init_or_get_router().set_traffic.remote(
+        endpoint_name, traffic_policy_dictionary))
 
 
 @_ensure_connected
@@ -439,3 +448,16 @@ def stat(percentiles=[50, 90, 95],
     """
     return ray.get(global_state.init_or_get_metric_monitor().collect.remote(
         percentiles, agg_windows_seconds))
+
+
+class route:
+    def __init__(self, url_route):
+        self.route = url_route
+
+    def __call__(self, func_or_class):
+        name = func_or_class.__name__
+        backend_tag = "{}:v0".format(name)
+
+        create_backend(func_or_class, backend_tag)
+        create_endpoint(name, self.route)
+        link(name, backend_tag)

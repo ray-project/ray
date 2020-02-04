@@ -389,7 +389,8 @@ def postprocess_trajectory(policy,
             last_r,
             policy.config["gamma"],
             policy.config["lambda"],
-            use_gae=policy.config["use_gae"])
+            use_gae=policy.config["use_gae"],
+            use_critic=policy.config["use_critic"])
     else:
         batch = sample_batch
     del batch.data["new_obs"]  # not used, so save some bandwidth

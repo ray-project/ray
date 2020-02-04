@@ -61,8 +61,9 @@ def postprocess_advantages(policy,
                                sample_batch[SampleBatch.ACTIONS][-1],
                                sample_batch[SampleBatch.REWARDS][-1],
                                *next_state)
-    return compute_advantages(sample_batch, last_r, policy.config["gamma"],
-                              policy.config["lambda"])
+    return compute_advantages(
+        sample_batch, last_r, policy.config["gamma"], policy.config["lambda"],
+        policy.config["use_gae"], policy.config["use_critic"])
 
 
 def add_value_function_fetch(policy):

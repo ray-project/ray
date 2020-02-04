@@ -15,6 +15,8 @@ import uuid
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
 
+logger = logging.getLogger(__name__)
+
 
 def _random_string():
     id_hash = hashlib.sha1()
@@ -60,7 +62,7 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    worker.raylet_client.push_error(job_id, error_type, message, time.time())
+    worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
@@ -261,7 +263,8 @@ def get_cuda_visible_devices():
 
     Returns:
         if CUDA_VISIBLE_DEVICES is set, this returns a list of integers with
-            the IDs of the GPUs. If it is not set, this returns None.
+            the IDs of the GPUs. If it is not set or is set to NoDevFiles,
+            this returns None.
     """
     gpu_ids_str = os.environ.get("CUDA_VISIBLE_DEVICES", None)
 
@@ -269,6 +272,9 @@ def get_cuda_visible_devices():
         return None
 
     if gpu_ids_str == "":
+        return []
+
+    if gpu_ids_str == "NoDevFiles":
         return []
 
     return [int(i) for i in gpu_ids_str.split(",")]

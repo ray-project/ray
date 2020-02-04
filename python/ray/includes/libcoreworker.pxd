@@ -12,6 +12,8 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
+    CActorCheckpointID,
+    CClientID,
     CJobID,
     CTaskID,
     CObjectID,
@@ -31,7 +33,6 @@ from ray.includes.common cimport (
     CGcsClientOptions,
 )
 from ray.includes.task cimport CTaskSpec
-from ray.includes.libraylet cimport CRayletClient
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
@@ -105,11 +106,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &object_ids,
             const c_vector[size_t] &data_sizes,
             const c_vector[shared_ptr[CBuffer]] &metadatas,
+            const c_vector[c_vector[CObjectID]] &contained_object_ids,
             c_vector[shared_ptr[CRayObject]] *return_objects)
 
-        # TODO(edoakes): remove this once the raylet client is no longer used
-        # directly.
-        CRayletClient &GetRayletClient()
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
         const CActorID &GetActorId()
@@ -131,16 +130,22 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                 CAddress &owner_address)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
-        CRayStatus Put(const CRayObject &object, CObjectID *object_id)
-        CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
+        CRayStatus Put(const CRayObject &object,
+                       const c_vector[CObjectID] &contained_object_ids,
+                       CObjectID *object_id)
+        CRayStatus Put(const CRayObject &object,
+                       const c_vector[CObjectID] &contained_object_ids,
+                       const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
+                          const c_vector[CObjectID] &contained_object_ids,
                           CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size, const CObjectID &object_id,
+                          const size_t data_size,
+                          const c_vector[CObjectID] &contained_object_ids,
+                          const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id, c_bool owns_object,
-                        c_bool pin_object)
+        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
@@ -159,3 +164,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                       ray_callback_function successs_callback,
                       ray_callback_function fallback_callback,
                       void* python_future)
+
+        CRayStatus PushError(const CJobID &job_id, const c_string &type,
+                             const c_string &error_message, double timestamp)
+        CRayStatus PrepareActorCheckpoint(const CActorID &actor_id,
+                                          CActorCheckpointID *checkpoint_id)
+        CRayStatus NotifyActorResumedFromCheckpoint(
+            const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
+        CRayStatus SetResource(const c_string &resource_name,
+                               const double capacity,
+                               const CClientID &client_Id)

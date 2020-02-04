@@ -18,16 +18,16 @@ idle_timeout_minutes: 20
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-east-1
-    availability_zone: us-east-1e
+    region: us-west-1
+    availability_zone: us-west-1a
 
 # How Ray will authenticate with newly launched nodes.
 auth:
     ssh_user: ubuntu
 
 head_node:
-    InstanceType: g3.8xlarge
-    ImageId: ami-0757fc5a639fe7666
+    InstanceType: g4dn.xlarge
+    ImageId: ami-074c29e29c500f623 # latest_dlami on 01/28/20
     #    InstanceMarketOptions:
     #        MarketType: spot
     #        SpotOptions:
@@ -35,8 +35,8 @@ head_node:
 
 
 worker_nodes:
-    InstanceType: g3.8xlarge
-    ImageId: ami-0757fc5a639fe7666
+    InstanceType: g4dn.xlarge
+    ImageId: ami-074c29e29c500f623 # latest_dlami on 01/28/20
     # InstanceMarketOptions:
     #     MarketType: spot
         # SpotOptions:
@@ -47,13 +47,10 @@ worker_nodes:
     #         MarketType: spot
 
 setup_commands:
-    - conda install setuptools=41.0.1=py36_0 wrapt=1.11.2 --yes # workaround to fix wrapt error
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
-    - pip install -U ipdb ray[rllib]
-    - pip install tensorflow==2.0.0-rc0
-
-file_mounts: {
-}
+    - conda install setuptools=45.1.0=py36_0 wrapt=1.11.2 --yes # workaround to fix wrapt error
+    - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install -U ray[tune]
+    - pip install tensorflow-gpu==2.1.0
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []

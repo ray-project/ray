@@ -87,10 +87,12 @@ def get_async(object_id):
 
     if object_id.is_direct_call_type():
         inner_future = loop.create_future()
+        # We must add the done_callback before sending to in_memory_store_get
+        inner_future.add_done_callback(done_callback)
         core_worker.in_memory_store_get_async(object_id, inner_future)
     else:
         inner_future = as_future(object_id)
-    inner_future.add_done_callback(done_callback)
+        inner_future.add_done_callback(done_callback)
     # A hack to keep reference to inner_future so it doesn't get GC.
     user_future.inner_future = inner_future
     # A hack to keep a reference to the object ID for ref counting.

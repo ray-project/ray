@@ -12,7 +12,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.schedules import LinearSchedule
+from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.memory import ray_get_and_free
 
 logger = logging.getLogger(__name__)
@@ -65,12 +65,13 @@ class SyncReplayOptimizer(PolicyOptimizer):
         PolicyOptimizer.__init__(self, workers)
 
         self.replay_starts = learning_starts
-        # linearly annealing beta used in Rainbow paper
-        self.prioritized_replay_beta = LinearSchedule(
-            schedule_timesteps=int(
-                schedule_max_timesteps * beta_annealing_fraction),
-            initial_p=prioritized_replay_beta,
-            final_p=final_prioritized_replay_beta)
+        # Linearly annealing beta used in Rainbow paper, stopping at
+        # `final_prioritized_replay_beta`.
+        self.prioritized_replay_beta = PiecewiseSchedule(
+            endpoints=[(0, prioritized_replay_beta),
+                       (schedule_max_timesteps * beta_annealing_fraction,
+                        final_prioritized_replay_beta)],
+            outside_value=final_prioritized_replay_beta)
         self.prioritized_replay_eps = prioritized_replay_eps
         self.train_batch_size = train_batch_size
         self.before_learn_on_batch = before_learn_on_batch

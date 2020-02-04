@@ -817,8 +817,9 @@ class FunctionActorManager:
         if actor.should_checkpoint(checkpoint_context):
             try:
                 now = int(1000 * time.time())
-                checkpoint_id = (self._worker.raylet_client.
-                                 prepare_actor_checkpoint(actor_id))
+                checkpoint_id = (
+                    self._worker.core_worker.prepare_actor_checkpoint(actor_id)
+                )
                 checkpoint_info.checkpoint_ids.append(checkpoint_id)
                 actor.save_checkpoint(actor_id, checkpoint_id)
                 if (len(checkpoint_info.checkpoint_ids) >
@@ -865,7 +866,7 @@ class FunctionActorManager:
                                for checkpoint in checkpoints), msg
                     # Notify raylet that this actor has been resumed from
                     # a checkpoint.
-                    (self._worker.raylet_client.
+                    (self._worker.core_worker.
                      notify_actor_resumed_from_checkpoint(
                          actor_id, checkpoint_id))
         except Exception:
