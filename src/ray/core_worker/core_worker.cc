@@ -887,17 +887,16 @@ Status CoreWorker::AllocateReturnObjects(
   for (size_t i = 0; i < object_ids.size(); i++) {
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
-    if (data_sizes[i] > 0) {
-      if (worker_context_.CurrentTaskIsDirectCall() &&
-          static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_direct_call_object_size() &&
-          contained_object_ids[i].empty()) {
-        data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
-      } else {
-        RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], contained_object_ids[i],
-                                 object_ids[i], &data_buffer));
-        object_already_exists = !data_buffer;
-      }
+    // when data_sizes[i] == 0, we should Allocate an empty buffer
+    if (worker_context_.CurrentTaskIsDirectCall() &&
+        static_cast<int64_t>(data_sizes[i]) <
+            RayConfig::instance().max_direct_call_object_size() &&
+        contained_object_ids[i].empty()) {
+      data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
+    } else {
+      RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], contained_object_ids[i],
+                               object_ids[i], &data_buffer));
+      object_already_exists = !data_buffer;
     }
     // Leave the return object as a nullptr if there is no data or metadata.
     // This allows the caller to prevent the core worker from storing an output
