@@ -33,7 +33,7 @@ class Exploration:
                                model=None,
                                action_dist=None,
                                explore=True,
-                               time_step=None):
+                               timestep=None):
         """Returns an action for exploration purposes.
         
         Given the Model's output and action distribution, returns an exploration
@@ -45,7 +45,7 @@ class Exploration:
             action_dist: The ActionDistribution class.
             explore (bool): Whether to explore or not (this could be a tf
                 placeholder).
-            time_step (int): The current sampling time step. If None, the
+            timestep (int): The current sampling time step. If None, the
                 component should try to use an internal counter, which it
                 then increments by 1. If provided, will set the internal
                 counter to the given value.

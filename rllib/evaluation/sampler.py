@@ -538,7 +538,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 state_batches=rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
-                time_step=policy.global_timestep)
+                timestep=policy.global_timestep)
         else:
             eval_results[policy_id] = policy.compute_actions(
                 [t.obs for t in eval_data],
@@ -547,7 +547,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 info_batch=[t.info for t in eval_data],
                 episodes=[active_episodes[t.env_id] for t in eval_data],
-                time_step=policy.global_timestep)
+                timestep=policy.global_timestep)
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)

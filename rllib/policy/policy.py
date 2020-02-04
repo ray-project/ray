@@ -87,7 +87,7 @@ class Policy(metaclass=ABCMeta):
                         info_batch=None,
                         episodes=None,
                         explore=True,
-                        time_step=None,
+                        timestep=None,
                         **kwargs):
         """Computes actions for the current policy.
 
@@ -105,7 +105,7 @@ class Policy(metaclass=ABCMeta):
                 which may be useful for model-based or multiagent algorithms.
             explore (bool): Whether we should use exploration
                 (e.g. when training) or not (for inference/evaluation).
-            time_step (int): The current (sampling) time step.
+            timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -128,7 +128,7 @@ class Policy(metaclass=ABCMeta):
                               episode=None,
                               clip_actions=False,
                               explore=True,
-                              time_step=None,
+                              timestep=None,
                               **kwargs):
         """Unbatched version of compute_actions.
 
@@ -144,7 +144,7 @@ class Policy(metaclass=ABCMeta):
             clip_actions (bool): should the action be clipped
             explore (bool): Whether we should use exploration (i.e. when
                 training) or not (e.g. for inference/evaluation).
-            time_step (int): The current (sampling) time step.
+            timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -176,7 +176,7 @@ class Policy(metaclass=ABCMeta):
             info_batch=info_batch,
             episodes=episodes,
             explore=explore,
-            time_step=time_step)
+            timestep=timestep)
 
         if clip_actions:
             action = clip_action(action, self.action_space)

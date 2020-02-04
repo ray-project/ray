@@ -58,9 +58,9 @@ class EpsilonGreedy(Exploration):
             outside_value=final_epsilon,
             framework=self.framework)
 
-        # The current time_step value (tf-var or python int).
-        self.last_time_step = get_variable(
-            0, framework=framework, tf_name="time-step")
+        # The current timestep value (tf-var or python int).
+        self.last_timestep = get_variable(
+            0, framework=framework, tf_name="timestep")
 
     @override(Exploration)
     def get_exploration_action(self,
@@ -68,42 +68,18 @@ class EpsilonGreedy(Exploration):
                                model=None,
                                action_dist=None,
                                explore=True,
-                               time_step=None):
+                               timestep=None):
         # TODO(sven): This is hardcoded. Put a meaningful error, in case model
         # API is not as required.
         q_values = model.q_value_head(model._last_output)[0]
         if self.framework == "tf":
             return self._get_tf_exploration_action_op(action, explore,
-                                                      time_step, q_values)
-
-        # Set last time step or (if not given) increase by one.
-        self.last_time_step = time_step if time_step is not None else \
-            self.last_time_step + 1
-
-        if explore:
-            # Get the current epsilon.
-            epsilon = self.epsilon_schedule(self.last_time_step)
-
-            batch_size = q_values.size()[0]
-            # Mask out actions, whose Q-values are -inf, so that we don't
-            # even consider them for exploration.
-            random_valid_action_logits = torch.where(
-                q_values == float("-inf"),
-                torch.ones_like(q_values) * float("-inf"),
-                torch.ones_like(q_values))
-
-            random_actions = torch.squeeze(
-                torch.multinomial(random_valid_action_logits, 1), axis=1)
-
-            return torch.where(
-                torch.empty((batch_size, )).uniform_() < epsilon,
-                random_actions, action)
-
-        # Return the action.
+                                                      timestep, q_values)
         else:
-            return action
+            return self._get_torch_exploration_action(action, explore,
+                                                      timestep, q_values)
 
-    def _get_tf_exploration_action_op(self, action, explore, time_step,
+    def _get_tf_exploration_action_op(self, action, explore, timestep,
                                       q_values):
         """Tf method to produce the tf op for an epsilon exploration action.
 
@@ -115,8 +91,8 @@ class EpsilonGreedy(Exploration):
             tf.Tensor: The tf exploration-action op.
         """
         epsilon = tf.convert_to_tensor(
-            self.epsilon_schedule(time_step if time_step is not None else
-                                  self.last_time_step))
+            self.epsilon_schedule(timestep if timestep is not None else
+                                  self.last_timestep))
 
         batch_size = tf.shape(action)[0]
 
@@ -138,12 +114,51 @@ class EpsilonGreedy(Exploration):
             true_fn=lambda: tf.where(chose_random, random_actions, action),
             false_fn=lambda: action,
         )
-        # Increment `last_time_step` by 1 (or set to `time_step`).
+        # Increment `last_timestep` by 1 (or set to `timestep`).
         assign_op = \
-            tf.assign_add(self.last_time_step, 1) if time_step is None else \
-            tf.assign(self.last_time_step, time_step)
+            tf.assign_add(self.last_timestep, 1) if timestep is None else \
+            tf.assign(self.last_timestep, timestep)
         with tf.control_dependencies([assign_op]):
             return exploration_action
+
+    def _get_torch_exploration_action(self, action, explore, timestep,
+                                      q_values):
+        """Torch method to produce an epsilon exploration action.
+
+        Args:
+            action (torch.Tensor): The already sampled action (non-exploratory
+                case).
+
+        Returns:
+            torch.Tensor: The exploration-action.
+        """
+        # Set last time step or (if not given) increase by one.
+        self.last_timestep = timestep if timestep is not None else \
+            self.last_timestep + 1
+
+        if explore:
+            # Get the current epsilon.
+            epsilon = self.epsilon_schedule(self.last_timestep)
+
+            batch_size = q_values.size()[0]
+            # Mask out actions, whose Q-values are -inf, so that we don't
+            # even consider them for exploration.
+            random_valid_action_logits = torch.where(
+                q_values == float("-inf"),
+                torch.ones_like(q_values) * float("-inf"),
+                torch.ones_like(q_values))
+
+            random_actions = torch.squeeze(
+                torch.multinomial(random_valid_action_logits, 1), axis=1)
+
+            return torch.where(
+                torch.empty((batch_size, )).uniform_() < epsilon,
+                random_actions, action)
+
+        # Return the original action.
+        else:
+            return action
+
 
     @override(Exploration)
     def get_info(self):
@@ -152,19 +167,19 @@ class EpsilonGreedy(Exploration):
         Returns:
             Union[float,tf.Tensor[float]]: The current epsilon value.
         """
-        return [self.epsilon_schedule(self.last_time_step)]
+        return [self.epsilon_schedule(self.last_timestep)]
 
     @override(Exploration)
     def get_state(self):
-        return [self.last_time_step]
+        return [self.last_timestep]
 
     @override(Exploration)
     def set_state(self, state):
         if self.framework == "tf" and tf.executing_eagerly() is False:
-            update_op = tf.assign(self.last_time_step, state)
+            update_op = tf.assign(self.last_timestep, state)
             with tf.control_dependencies([update_op]):
                 return tf.no_op()
-        self.last_time_step = state
+        self.last_timestep = state
 
     @override(Exploration)
     def reset_state(self):
@@ -173,7 +188,7 @@ class EpsilonGreedy(Exploration):
     @classmethod
     @override(Exploration)
     def merge_states(cls, exploration_objects):
-        time_steps = [e.get_state() for e in exploration_objects]
+        timesteps = [e.get_state() for e in exploration_objects]
         if exploration_objects[0].framework == "tf":
-            return tf.reduce_sum(time_steps)
-        return np.sum(time_steps)
+            return tf.reduce_sum(timesteps)
+        return np.sum(timesteps)

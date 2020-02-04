@@ -16,6 +16,6 @@ class TestPolicy(Policy):
                         episodes=None,
                         deterministic=None,
                         explore=True,
-                        time_step=None,
+                        timestep=None,
                         **kwargs):
         return [random.choice([0, 1])] * len(obs_batch), [], {}

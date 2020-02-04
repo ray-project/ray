@@ -64,7 +64,7 @@ class TorchPolicy(Policy):
                         info_batch=None,
                         episodes=None,
                         explore=True,
-                        time_step=None,
+                        timestep=None,
                         **kwargs):
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
@@ -80,7 +80,7 @@ class TorchPolicy(Policy):
             # Try our Exploration, if any.
             if self.exploration:
                 actions = self.exploration.get_action(
-                    model_out, self.model, action_dist, explore, time_step)
+                    model_out, self.model, action_dist, explore, timestep)
             else:
                 actions = action_dist.sample()
 

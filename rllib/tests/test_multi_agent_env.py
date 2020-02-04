@@ -449,7 +449,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                                 prev_reward_batch=None,
                                 episodes=None,
                                 explore=True,
-                                time_step=None,
+                                timestep=None,
                                 **kwargs):
                 return [0] * len(obs_batch), [[h] * len(obs_batch)], {}
 
