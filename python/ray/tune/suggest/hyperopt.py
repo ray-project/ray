@@ -11,12 +11,12 @@ except ImportError:
     hpo = None
 
 from ray.tune.error import TuneError
-from ray.tune.suggest.suggestion import SuggestionAlgorithm
+from ray.tune.suggest import SearcherInterface
 
 logger = logging.getLogger(__name__)
 
 
-class HyperOptSearch(SuggestionAlgorithm):
+class HyperOptSearch(SearcherInterface):
     """A wrapper around HyperOpt to provide trial suggestions.
 
     Requires HyperOpt to be installed from source.
@@ -71,7 +71,6 @@ class HyperOptSearch(SuggestionAlgorithm):
     def __init__(self,
                  space,
                  max_concurrent=10,
-                 reward_attr=None,
                  metric="episode_reward_mean",
                  mode="max",
                  points_to_evaluate=None,
@@ -79,26 +78,16 @@ class HyperOptSearch(SuggestionAlgorithm):
                  random_state_seed=None,
                  gamma=0.25,
                  **kwargs):
-        assert hpo is not None, "HyperOpt must be installed!"
+        assert hpo is not None, (
+            "HyperOpt must be installed! Run `pip install hyperopt`.")
         from hyperopt.fmin import generate_trials_to_calculate
-        assert type(max_concurrent) is int and max_concurrent > 0
-        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
-
-        self._max_concurrent = max_concurrent
-        self._metric = metric
+        super(HyperOptSearch, self).__init__(**kwargs)
         # hyperopt internally minimizes, so "max" => -1
         if mode == "max":
-            self._metric_op = -1.
+            self.metric_op = -1.
         elif mode == "min":
-            self._metric_op = 1.
+            self.metric_op = 1.
+
         if n_initial_points is None:
             self.algo = hpo.tpe.suggest
         else:
@@ -122,12 +111,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         else:
             self.rstate = np.random.RandomState(random_state_seed)
 
-        super(HyperOptSearch, self).__init__(**kwargs)
-
-    def _suggest(self, trial_id):
-        if self._num_live_trials() >= self._max_concurrent:
-            return None
-
+    def suggest(self, trial_id):
         if self._points_to_evaluate > 0:
             new_trial = self._hpopt_trials.trials[self._points_to_evaluate - 1]
             self._points_to_evaluate -= 1
@@ -201,7 +185,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         self._hpopt_trials.refresh()
 
     def _to_hyperopt_result(self, result):
-        return {"loss": self._metric_op * result[self._metric], "status": "ok"}
+        return {"loss": self.metric_op * result[self.metric], "status": "ok"}
 
     def _get_hyperopt_trial(self, trial_id):
         if trial_id not in self._live_trial_mapping:
@@ -210,9 +194,6 @@ class HyperOptSearch(SuggestionAlgorithm):
         return [
             t for t in self._hpopt_trials.trials if t["tid"] == hyperopt_tid
         ][0]
-
-    def _num_live_trials(self):
-        return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
         trials_object = (self._hpopt_trials, self.rstate.get_state())
