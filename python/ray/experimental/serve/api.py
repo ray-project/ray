@@ -13,7 +13,7 @@ from ray.experimental.serve.global_state import (GlobalState,
 from ray.experimental.serve.kv_store_service import SQLiteKVStore
 from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.experimental.serve.utils import (block_until_http_ready,
-                                          get_random_letters, logger)
+                                          get_random_letters)
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.backend_config import BackendConfig
 from ray.experimental.serve.policy import RoutePolicy
