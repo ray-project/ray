@@ -32,8 +32,7 @@ class ActorNursery:
     """
 
     def __init__(self):
-        # Dict: Actor handles -> tag
-        self.actor_handles = dict()
+        self.tag_to_actor_handles = dict()
 
         self.bootstrap_state = dict()
 
@@ -44,10 +43,14 @@ class ActorNursery:
                     init_kwargs={},
                     is_asyncio=False):
         """Start an actor and add it to the nursery"""
+        # Avoid double initialization
+        if tag in self.tag_to_actor_handles.keys():
+            return [self.tag_to_actor_handles[tag]]
+
         max_concurrency = ASYNC_CONCURRENCY if is_asyncio else None
         handle = (actor_cls.options(max_concurrency=max_concurrency).remote(
             *init_args, **init_kwargs))
-        self.actor_handles[handle] = tag
+        self.tag_to_actor_handles[tag] = handle
         return [handle]
 
     def start_actor_with_creator(self, creator, kwargs, tag):
@@ -58,19 +61,18 @@ class ActorNursery:
                 The kwargs input is passed to `ActorCls_remote` method.
         """
         handle = creator(kwargs)
-        self.actor_handles[handle] = tag
+        self.tag_to_actor_handles[tag] = handle
         return [handle]
 
     def get_all_handles(self):
-        return {tag: handle for handle, tag in self.actor_handles.items()}
+        return self.tag_to_actor_handles
 
     def get_handle(self, actor_tag):
-        return [self.get_all_handles()[actor_tag]]
+        return [self.tag_to_actor_handles[actor_tag]]
 
     def remove_handle(self, actor_tag):
-        [handle] = self.get_handle(actor_tag)
-        self.actor_handles.pop(handle)
-        del handle
+        if actor_tag in self.tag_to_actor_handles.keys():
+            self.tag_to_actor_handles.pop(actor_tag)
 
     def store_bootstrap_state(self, key, value):
         self.bootstrap_state[key] = value

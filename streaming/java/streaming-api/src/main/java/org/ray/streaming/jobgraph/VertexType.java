@@ -6,6 +6,6 @@ package org.ray.streaming.jobgraph;
 public enum VertexType {
   MASTER,
   SOURCE,
-  PROCESS,
+  TRANSFORMATION,
   SINK,
 }

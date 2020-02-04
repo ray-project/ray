@@ -80,7 +80,11 @@ def postprocess_advantages(policy,
                                sample_batch[SampleBatch.REWARDS][-1],
                                *next_state)
     return compute_advantages(
-        sample_batch, last_r, policy.config["gamma"], use_gae=False)
+        sample_batch,
+        last_r,
+        policy.config["gamma"],
+        use_gae=False,
+        use_critic=False)
 
 
 class MARWILLoss(object):
