@@ -9,6 +9,7 @@ import string
 import sys
 import threading
 import time
+import pickle
 
 import numpy as np
 import pytest
@@ -352,8 +353,6 @@ def test_complex_serialization_with_pickle(shutdown_only):
 
 
 def test_function_descriptor():
-    import pickle
-
     python_descriptor = ray.PythonFunctionDescriptor(
         "module_name", "function_name", "class_name", "function_hash")
     python_descriptor2 = pickle.loads(pickle.dumps(python_descriptor))

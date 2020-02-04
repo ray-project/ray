@@ -150,19 +150,19 @@ class FunctionDescriptorBuilder {
  public:
   /// Build an EmptyFunctionDescriptor.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return a ray::EmptyFunctionDescriptor
   static FunctionDescriptor Empty();
 
   /// Build a JavaFunctionDescriptor.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return a ray::JavaFunctionDescriptor
   static FunctionDescriptor BuildJava(const std::string &class_name,
                                       const std::string &function_name,
                                       const std::string &signature);
 
   /// Build a PythonFunctionDescriptor.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return a ray::PythonFunctionDescriptor
   static FunctionDescriptor BuildPython(const std::string &module_name,
                                         const std::string &class_name,
                                         const std::string &function_name,
@@ -170,12 +170,12 @@ class FunctionDescriptorBuilder {
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return new ray::FunctionDescriptor
   static FunctionDescriptor FromProto(rpc::FunctionDescriptor message);
 
   /// Build a ray::FunctionDescriptor from serialized binary.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return new ray::FunctionDescriptor
   static FunctionDescriptor Deserialize(const std::string &serialized_binary);
 };
 }  // namespace ray

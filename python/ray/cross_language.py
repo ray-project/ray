@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray import Language
-from ray import PythonFunctionDescriptor, JavaFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor, JavaFunctionDescriptor
 import ray.signature
 
 __all__ = [

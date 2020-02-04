@@ -12,7 +12,7 @@ import ray._raylet
 import ray.signature as signature
 import ray.worker
 from ray import ActorID, ActorClassID, Language
-from ray import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 
 logger = logging.getLogger(__name__)

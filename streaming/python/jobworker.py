@@ -5,7 +5,7 @@ import threading
 import ray
 import ray.streaming._streaming as _streaming
 from ray.streaming.config import Config
-from ray import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor
 from ray.streaming.communication import DataInput, DataOutput
 
 logger = logging.getLogger(__name__)

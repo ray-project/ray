@@ -3,7 +3,7 @@ from functools import wraps
 
 from ray import cloudpickle as pickle
 from ray import ray_constants
-from ray import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language
 import ray.signature
 
