@@ -9,9 +9,9 @@ import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
  * <p>
  * Such as:
  * <ol>
- * <li>1) build execution graph from job graph</li>
- * <li>2) do modifications or operations on graph</li>
- * <li>3) query vertex info from graph</li>
+ * <li>Build execution graph from job graph.</li>
+ * <li>Do modifications or operations on graph.</li>
+ * <li>Query vertex info from graph.</li>
  * </ol>
  * </p>
  */
@@ -19,6 +19,7 @@ public interface GraphManager {
 
   /**
    * Build execution graph from job graph.
+   *
    * @param jobGraph logical plan of streaming job.
    * @return physical plan of streaming job.
    */

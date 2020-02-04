@@ -19,7 +19,7 @@ public class ExecutionVertex implements Serializable {
   private final int vertexId;
 
   /**
-   * Order index for execution vertex.
+   * Ordered index for execution vertex.
    */
   private final int vertexIndex;
 

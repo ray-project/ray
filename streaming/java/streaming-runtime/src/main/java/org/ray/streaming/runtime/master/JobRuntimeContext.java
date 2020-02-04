@@ -8,7 +8,8 @@ import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 
 /**
  * Runtime context for job master.
- * Including: graph, resource, checkpoint info, etc.
+ *
+ * <p>Including: graph, resource, checkpoint info, etc.
  */
 public class JobRuntimeContext implements Serializable {
 
