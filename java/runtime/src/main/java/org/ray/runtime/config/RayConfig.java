@@ -45,6 +45,7 @@ public class RayConfig {
   private String redisIp;
   private Integer redisPort;
   public final int headRedisPort;
+  public final int[] redisShardPorts;
   public final int numberRedisShards;
   public final String headRedisPassword;
   public final String redisPassword;
@@ -152,6 +153,10 @@ public class RayConfig {
       headRedisPort = NetworkUtil.getUnusedPort();
     }
     numberRedisShards = config.getInt("ray.redis.shard-number");
+    redisShardPorts = new int[numberRedisShards];
+    for (int i = 0; i < numberRedisShards; i++) {
+      redisShardPorts[i] = NetworkUtil.getUnusedPort();
+    }
     headRedisPassword = config.getString("ray.redis.head-password");
     redisPassword = config.getString("ray.redis.password");
 
