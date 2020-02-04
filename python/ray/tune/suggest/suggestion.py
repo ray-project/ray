@@ -140,8 +140,9 @@ class SearchGenerator(SearchAlgorithm):
     """
 
     def __init__(self, searcher):
-        assert issubclass(type(searcher), Searcher), (
-            "Searcher should be subclassing Searcher.")
+        assert issubclass(
+            type(searcher),
+            Searcher), ("Searcher should be subclassing Searcher.")
         self.searcher = searcher
         self.repeat = searcher.repeat
         self._max_concurrent = searcher.max_concurrent
