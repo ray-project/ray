@@ -174,8 +174,8 @@ def run(run_or_experiment,
             Ray will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 3.
-        restore (str): Path to checkpoint. Only makes sense to set if
-            running 1 trial. Defaults to None.
+        restore (str): Path to checkpoint. Used to initialize state for new trials.
+            Can be used with tune.choice() to initialize a population. Defaults to None.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to
             BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing

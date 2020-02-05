@@ -155,8 +155,7 @@ class Experiment:
             "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": os.path.abspath(os.path.expanduser(restore))
-            if restore else None
+            "restore": restore,
         }
         self.spec = spec
 
