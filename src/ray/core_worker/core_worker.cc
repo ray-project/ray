@@ -887,16 +887,17 @@ Status CoreWorker::AllocateReturnObjects(
   for (size_t i = 0; i < object_ids.size(); i++) {
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
-    // when data_sizes[i] == 0, we should Allocate an empty buffer
-    if (worker_context_.CurrentTaskIsDirectCall() &&
-        static_cast<int64_t>(data_sizes[i]) <
-            RayConfig::instance().max_direct_call_object_size() &&
-        contained_object_ids[i].empty()) {
-      data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
-    } else {
-      RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], contained_object_ids[i],
-                               object_ids[i], &data_buffer));
-      object_already_exists = !data_buffer;
+    if (data_sizes[i] > 0) {
+      if (worker_context_.CurrentTaskIsDirectCall() &&
+          static_cast<int64_t>(data_sizes[i]) <
+              RayConfig::instance().max_direct_call_object_size() &&
+          contained_object_ids[i].empty()) {
+        data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
+      } else {
+        RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], contained_object_ids[i],
+                                 object_ids[i], &data_buffer));
+        object_already_exists = !data_buffer;
+      }
     }
     // Leave the return object as a nullptr if there is no data or metadata.
     // This allows the caller to prevent the core worker from storing an output
@@ -958,12 +959,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                     task_spec.GetRequiredResources().GetResourceMap(),
                                     args, arg_reference_ids, return_ids, return_objects);
 
+  RAY_LOG(INFO) << "after task_execution_callback_";
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
     if (!return_objects->at(i)) {
       continue;
     }
-    if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
+    if (return_objects->at(i)->GetData() !=
+        nullptr && return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
       if (!Seal(return_ids[i], /*pin_object=*/false).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();

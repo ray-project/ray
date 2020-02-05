@@ -578,7 +578,7 @@ cdef write_serialized_object(
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
     if isinstance(serialized_object, RawSerializedObject):
-        if buf.get().Size() > 0:
+        if buf.get() != NULL and buf.get().Size() > 0:
             buffer = Buffer.make(buf)
             # `Buffer` has a nullptr buffer underlying if size is 0,
             # which will cause `pyarrow.py_buffer` crash
