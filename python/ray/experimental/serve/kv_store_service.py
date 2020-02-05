@@ -196,19 +196,17 @@ class RoutingTable:
         else:
             self.routing_table.put(route, service)
 
-    def list_service(self):
-        """Returns the routing table."""
-        table = self.routing_table.as_dict()
-        table[NO_ROUTE_KEY] = json.loads(table.get(NO_ROUTE_KEY, "[]"))
-        return table
-
-    def list_route_services(self):
-        """Returns the routing table consisting of services which have
-        http routes.
+    def list_service(self, include_headless=False):
+        """Returns the routing table.
+        Args:
+            include_headless: If True, returns a no route services (headless)
+                services with normal services. (Default: False)
         """
-        self.request_count += 1
         table = self.routing_table.as_dict()
-        table.pop(NO_ROUTE_KEY, None)
+        if include_headless:
+            table[NO_ROUTE_KEY] = json.loads(table.get(NO_ROUTE_KEY, "[]"))
+        else:
+            table.pop(NO_ROUTE_KEY, None)
         return table
 
     def get_request_count(self):

@@ -14,7 +14,7 @@ from ray.experimental.serve.global_state import (GlobalState,
 from ray.experimental.serve.kv_store_service import SQLiteKVStore
 from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.experimental.serve.utils import (block_until_http_ready,
-                                          get_random_letters)
+                                          get_random_letters, expand)
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.backend_config import BackendConfig
 from ray.experimental.serve.policy import RoutePolicy
@@ -22,10 +22,7 @@ from ray.experimental.serve.queues import Query
 global_state = None
 
 
-def _expand(l):
-    return list(
-        itertools.chain.from_iterable(
-            [x if isinstance(x, list) else [x] for x in l]))
+
 
 
 def _get_global_state():
@@ -407,8 +404,8 @@ def split(endpoint_name, traffic_policy_dictionary):
         traffic_policy_dictionary (dict): a dictionary maps backend names
             to their traffic weights. The weights must sum to 1.
     """
-    assert endpoint_name in _expand(
-        global_state.route_table.list_service().values())
+    assert endpoint_name in expand(
+        global_state.route_table.list_service(include_headless=True).values())
 
     assert isinstance(traffic_policy_dictionary,
                       dict), "Traffic policy must be dictionary"
@@ -438,8 +435,8 @@ def get_handle(endpoint_name):
     Returns:
         RayServeHandle
     """
-    assert endpoint_name in _expand(
-        global_state.route_table.list_service().values())
+    assert endpoint_name in expand(
+        global_state.route_table.list_service(include_headless=True).values())
 
     # Delay import due to it's dependency on global_state
     from ray.experimental.serve.handle import RayServeHandle
