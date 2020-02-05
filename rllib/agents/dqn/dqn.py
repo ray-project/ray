@@ -7,7 +7,7 @@ from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.explorations.epsilon_greedy import EpsilonGreedy
+from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +35,19 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Exploration Settings ===
+    # === Exploration Settings (Experimental) ===
     "exploration": {
-        "type": EpsilonGreedy,  # Exploration class.
-        # Config for the Exploration class' c'tor:
-        "initial_epsilon": 1.0,  # Initial epsilon value.
-        "final_epsilon": 0.02,  # Final epsilon value.
-        "epsilon_timesteps": 10000,  # Timesteps over which to anneal eps.
-        # Whether to use a distribution of per-worker fixed epsilons for
-        # exploration.
-        "fixed_per_worker_epsilon": False
+        # The Exploration class to use. In the simplest case, this is the name
+        # (str) of any class present in the `rllib.utils.exploration` package.
+        # You can also provide the python class directly or the full location
+        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+        # EpsilonGreedy").
+        "type": "EpsilonGreedy",
+        # Config for the Exploration class' constructor:
+        "initial_epsilon": 1.0,
+        "final_epsilon": 0.02,
+        "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
     },
-
     # TODO(sven): Make Exploration class for parameter noise.
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
@@ -72,11 +73,10 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     # Beta parameter for sampling from prioritized replay buffer.
     "prioritized_replay_beta": 0.4,
+    # Final value of beta (by default, we use constant beta=0.4).
+    "final_prioritized_replay_beta": 0.4,
     # Time steps over which the beta parameter is annealed.
     "prioritized_replay_beta_annealing_timesteps": 20000,
-
-    # Final value of beta
-    "final_prioritized_replay_beta": 0.4,
     # Epsilon to add to the TD errors when updating priorities.
     "prioritized_replay_eps": 1e-6,
     # Whether to LZ4 compress observations
@@ -125,7 +125,8 @@ DEFAULT_CONFIG = with_common_config({
 
 
 def make_policy_optimizer(workers, config):
-    """
+    """Create the single process DQN policy optimizer.
+
     Returns:
         SyncReplayOptimizer: Used for generic off-policy Trainers.
     """
@@ -146,8 +147,8 @@ def make_policy_optimizer(workers, config):
 
 
 def validate_config_and_setup_param_noise(config):
-    """
-    Checks and updates the config based on settings.
+    """Checks and updates the config based on settings.
+
     Rewrites sample_batch_size to take into account n_step truncation.
     """
     # PyTorch check.
@@ -159,7 +160,8 @@ def validate_config_and_setup_param_noise(config):
                               config.get("n_step", 1))
     config["sample_batch_size"] = adjusted_batch_size
 
-    # Backward compatibility of epsilon-exploration config AND beta-annealing
+    # TODO(sven): Remove at some point.
+    #  Backward compatibility of epsilon-exploration config AND beta-annealing
     # fraction settings (both based on schedule_max_timesteps, which is
     # deprecated).
     schedule_max_timesteps = None
@@ -173,8 +175,6 @@ def validate_config_and_setup_param_noise(config):
             config["exploration_final_eps"] > 0:
         deprecation_warning("exploration_final_eps",
                             "exploration.final_epsilon")
-        config["exploration"] = config.get("exploration",
-                                           {"type": EpsilonGreedy})
         if isinstance(config["exploration"], dict):
             config["exploration"]["final_epsilon"] = \
                 config.pop("exploration_final_eps")
@@ -182,8 +182,6 @@ def validate_config_and_setup_param_noise(config):
         assert schedule_max_timesteps is not None
         deprecation_warning("exploration_fraction",
                             "exploration.epsilon_timesteps")
-        config["exploration"] = config.get("exploration",
-                                           {"type": EpsilonGreedy})
         if isinstance(config["exploration"], dict):
             config["exploration"]["epsilon_timesteps"] = config.pop(
                 "exploration_fraction") * schedule_max_timesteps
@@ -197,12 +195,10 @@ def validate_config_and_setup_param_noise(config):
             "beta_annealing_fraction") * schedule_max_timesteps
     if "per_worker_exploration" in config and \
             config["per_worker_exploration"] != -1:
-        deprecation_warning(
-            "per_worker_exploration",
-            "exploration(must be type=EpsilonGreedy).fixed_per_worker_epsilon")
+        deprecation_warning("per_worker_exploration",
+                            "exploration.type=PerWorkerEpsilonGreedy")
         if isinstance(config["exploration"], dict):
-            config["exploration"]["fixed_per_worker_epsilon"] = config.pop(
-                "per_worker_exploration")
+            config["exploration"]["type"] = PerWorkerEpsilonGreedy
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):
@@ -250,10 +246,10 @@ def get_initial_state(config):
 
 
 # TODO(sven): Move this to generic Trainer/Policy. Every Algo should do this.
-def before_train_step(trainer):
-    """
-    Sets epsilon exploration values in all policies
-    to updated values (according to current time-step).
+def update_worker_exploration(trainer):
+    """Sets epsilon exploration values in all policies to updated values.
+
+    According to current time-step.
 
     Args:
         trainer (Trainer): The Trainer object for the DQN.
@@ -264,13 +260,11 @@ def before_train_step(trainer):
 
     # Get all current exploration-infos (from Policies, which cache this info).
     trainer.exploration_infos = trainer.workers.foreach_trainable_policy(
-        lambda p, _: p.last_exploration_info)
+        lambda p, _: p.get_exploration_info(global_timestep))
 
 
 def after_train_result(trainer, result):
-    """
-    Add some DQN specific metrics to results.
-    """
+    """Add some DQN specific metrics to results."""
     global_timestep = trainer.optimizer.num_steps_sampled
     result.update(
         timesteps_this_iter=global_timestep - trainer.train_start_timestep,
@@ -280,10 +274,8 @@ def after_train_result(trainer, result):
         }, **trainer.optimizer.stats()))
 
 
-def after_optimizer_step(trainer, fetches):
-    """
-    Update the target network in configured intervals.
-    """
+def update_target_if_needed(trainer, fetches):
+    """Update the target network in configured intervals."""
     global_timestep = trainer.optimizer.num_steps_sampled
     if global_timestep - trainer.state["last_target_update_ts"] > \
             trainer.config["target_network_update_freq"]:
@@ -300,8 +292,8 @@ GenericOffPolicyTrainer = build_trainer(
     validate_config=validate_config_and_setup_param_noise,
     get_initial_state=get_initial_state,
     make_policy_optimizer=make_policy_optimizer,
-    before_train_step=before_train_step,
-    after_optimizer_step=after_optimizer_step,
+    before_train_step=update_worker_exploration,
+    after_optimizer_step=update_target_if_needed,
     after_train_result=after_train_result)
 
 DQNTrainer = GenericOffPolicyTrainer.with_updates(

@@ -1,6 +1,7 @@
 from datetime import datetime
 import copy
 import logging
+import math
 import os
 import pickle
 import six
@@ -166,7 +167,7 @@ COMMON_CONFIG = {
 
     # === Exploration Settings ===
     # Provide a dict specifying the Exploration object's config.
-    # Set to False or None for no exploration behavior (e.g. for evaluation).
+    # Set to False or None for no exploration behavior (e.g., for evaluation).
     "exploration": False,
 
     # === Evaluation Settings ===
@@ -175,13 +176,30 @@ COMMON_CONFIG = {
     # Note that evaluation is currently not parallelized, and that for Ape-X
     # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
-    # Number of episodes to run per evaluation period.
+    # Number of episodes to run per evaluation period. If using multiple
+    # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
-    # Extra arguments to pass to evaluation workers.
-    # Typical usage is to pass extra args to evaluation env creator.
+    # Typical usage is to pass extra args to evaluation env creator
+    # and to disable exploration by computing deterministic actions
     "evaluation_config": {
+        # Example: overriding env_config, exploration, etc:
+        # "env_config": {...},
+        # "exploration_fraction": 0,
+        # "exploration_final_eps": 0,
         "exploration": False
     },
+    # Number of parallel workers to use for evaluation. Note that this is set
+    # to zero by default, which means evaluation will be run in the trainer
+    # process. If you increase this, it will increase the Ray resource usage
+    # of the trainer since evaluation workers are created separately from
+    # rollout workers.
+    "evaluation_num_workers": 0,
+    # Customize the evaluation method. This must be a function of signature
+    # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
+    # Trainer._evaluate() method to see the default implementation. The
+    # trainer guarantees all eval workers have the latest policy state before
+    # this function is called.
+    "custom_eval_function": None,
 
     # === Advanced Rollout Settings ===
     # Use a background thread for sampling (slightly off-policy, usually not
@@ -413,17 +431,18 @@ class Trainer(Trainable):
     def default_resource_request(cls, config):
         cf = dict(cls._default_config, **config)
         Trainer._validate_config(cf)
+        num_workers = cf["num_workers"] + cf["evaluation_num_workers"]
         # TODO(ekl): add custom resources here once tune supports them
         return Resources(
             cpu=cf["num_cpus_for_driver"],
             gpu=cf["num_gpus"],
             memory=cf["memory"],
             object_store_memory=cf["object_store_memory"],
-            extra_cpu=cf["num_cpus_per_worker"] * cf["num_workers"],
-            extra_gpu=cf["num_gpus_per_worker"] * cf["num_workers"],
-            extra_memory=cf["memory_per_worker"] * cf["num_workers"],
+            extra_cpu=cf["num_cpus_per_worker"] * num_workers,
+            extra_gpu=cf["num_gpus_per_worker"] * num_workers,
+            extra_memory=cf["memory_per_worker"] * num_workers,
             extra_object_store_memory=cf["object_store_memory_per_worker"] *
-            cf["num_workers"])
+            num_workers)
 
     @override(Trainable)
     @PublicAPI
@@ -441,7 +460,7 @@ class Trainer(Trainable):
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
-                result = super().train()
+                result = Trainer.train(self)
             except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(
@@ -461,28 +480,31 @@ class Trainer(Trainable):
         if result is None:
             raise RuntimeError("Failed to recover from worker crash")
 
-        if (self.config.get("observation_filter", "NoFilter") != "NoFilter"
-                and hasattr(self, "workers")
-                and isinstance(self.workers, WorkerSet)):
-            FilterManager.synchronize(
-                self.workers.local_worker().filters,
-                self.workers.remote_workers(),
-                update_remote=self.config["synchronize_filters"])
-            logger.debug("synchronized filters: {}".format(
-                self.workers.local_worker().filters))
+        if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
+            self._sync_filters_if_needed(self.workers)
 
         if self._has_policy_optimizer():
             result["num_healthy_workers"] = len(
                 self.optimizer.workers.remote_workers())
 
-        if self.config["evaluation_interval"]:
-            if self._iteration % self.config["evaluation_interval"] == 0:
-                evaluation_metrics = self._evaluate()
-                assert isinstance(evaluation_metrics, dict), \
-                    "_evaluate() needs to return a dict."
-                result.update(evaluation_metrics)
+        if self.config["evaluation_interval"] == 1 or (
+                self._iteration > 0 and self.config["evaluation_interval"]
+                and self._iteration % self.config["evaluation_interval"] == 0):
+            evaluation_metrics = self._evaluate()
+            assert isinstance(evaluation_metrics, dict), \
+                "_evaluate() needs to return a dict."
+            result.update(evaluation_metrics)
 
         return result
+
+    def _sync_filters_if_needed(self, workers):
+        if self.config.get("observation_filter", "NoFilter") != "NoFilter":
+            FilterManager.synchronize(
+                workers.local_worker().filters,
+                workers.remote_workers(),
+                update_remote=self.config["synchronize_filters"])
+            logger.debug("synchronized filters: {}".format(
+                workers.local_worker().filters))
 
     @override(Trainable)
     def _log_result(self, result):
@@ -521,7 +543,7 @@ class Trainer(Trainable):
             self.env_creator = (
                 lambda env_config: NormalizeActionWrapper(inner(env_config)))
 
-        self._validate_config(self.config)
+        Trainer._validate_config(self.config)
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -545,7 +567,7 @@ class Trainer(Trainable):
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "batch_steps": 1
+                    "batch_steps": 1,
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
@@ -554,8 +576,8 @@ class Trainer(Trainable):
                     self.env_creator,
                     self._policy,
                     merge_dicts(self.config, extra_config),
-                    num_workers=0)
-                self.evaluation_metrics = self._evaluate()
+                    num_workers=self.config["evaluation_num_workers"])
+                self.evaluation_metrics = {}
 
     @override(Trainable)
     def _stop(self):
@@ -578,8 +600,8 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(self, env_creator, policy, config, num_workers):
-        """
-        Default factory method for a WorkerSet running under this Trainer.
+        """Default factory method for a WorkerSet running under this Trainer.
+
         Override this method by passing a custom `make_workers` into
         `build_trainer`.
 
@@ -624,15 +646,46 @@ class Trainer(Trainable):
                 "overrides, since the results will be the "
                 "same as reported during normal policy evaluation.")
 
-        logger.info("Evaluating current policy for {} episodes".format(
-            self.config["evaluation_num_episodes"]))
         self._before_evaluate()
-        self.evaluation_workers.local_worker().restore(
-            self.workers.local_worker().save())
-        for _ in range(self.config["evaluation_num_episodes"]):
-            self.evaluation_workers.local_worker().sample()
 
-        metrics = collect_metrics(self.evaluation_workers.local_worker())
+        # Broadcast the new policy weights to all evaluation workers.
+        logger.info("Synchronizing weights to evaluation workers.")
+        weights = ray.put(self.workers.local_worker().save())
+        self.evaluation_workers.foreach_worker(
+            lambda w: w.restore(ray.get(weights)))
+        self._sync_filters_if_needed(self.evaluation_workers)
+
+        if self.config["custom_eval_function"]:
+            logger.info("Running custom eval function {}".format(
+                self.config["custom_eval_function"]))
+            metrics = self.config["custom_eval_function"](
+                self, self.evaluation_workers)
+            if not metrics or not isinstance(metrics, dict):
+                raise ValueError("Custom eval function must return "
+                                 "dict of metrics, got {}.".format(metrics))
+        else:
+            logger.info("Evaluating current policy for {} episodes.".format(
+                self.config["evaluation_num_episodes"]))
+            if self.config["evaluation_num_workers"] == 0:
+                for _ in range(self.config["evaluation_num_episodes"]):
+                    self.evaluation_workers.local_worker().sample()
+            else:
+                num_rounds = int(
+                    math.ceil(self.config["evaluation_num_episodes"] /
+                              self.config["evaluation_num_workers"]))
+                num_workers = len(self.evaluation_workers.remote_workers())
+                num_episodes = num_rounds * num_workers
+                for i in range(num_rounds):
+                    logger.info("Running round {} of parallel evaluation "
+                                "({}/{} episodes)".format(
+                                    i, (i + 1) * num_workers, num_episodes))
+                    ray.get([
+                        w.sample.remote()
+                        for w in self.evaluation_workers.remote_workers()
+                    ])
+
+            metrics = collect_metrics(self.evaluation_workers.local_worker(),
+                                      self.evaluation_workers.remote_workers())
         return {"evaluation": metrics}
 
     @DeveloperAPI
@@ -683,7 +736,7 @@ class Trainer(Trainable):
             preprocessed, update=False)
 
         # Figure out the current (sample) time step and pass it into Policy.
-        time_step = self.optimizer.num_steps_sampled \
+        timestep = self.optimizer.num_steps_sampled \
             if self._has_policy_optimizer() else None
 
         result = self.get_policy(policy_id).compute_single_action(
@@ -694,7 +747,7 @@ class Trainer(Trainable):
             info,
             clip_actions=self.config["clip_actions"],
             explore=explore,
-            time_step=time_step)
+            timestep=timestep)
 
         if state or full_fetch:
             return result
@@ -860,7 +913,8 @@ class Trainer(Trainable):
         self.optimizer.reset(healthy_workers)
 
     def _has_policy_optimizer(self):
-        """
+        """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
+
         Returns:
             bool: True if this Trainer holds a PolicyOptimizer object in
                 property `self.optimizer`.

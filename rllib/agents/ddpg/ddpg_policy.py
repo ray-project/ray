@@ -3,7 +3,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.dqn_policy import postprocess_fn
+from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog
@@ -48,7 +48,8 @@ class DDPGPostprocessing:
                 feed_dict={
                     self.cur_observations: states,
                     self.stochastic: False,
-                    self.noise_scale: .0,
+                    self.is_exploring: False,
+                    #self.noise_scale: .0,
                     self.pure_exploration_phase: False,
                 })
             distance_in_action_space = np.sqrt(
@@ -64,7 +65,7 @@ class DDPGPostprocessing:
             self.parameter_noise_sigma.load(
                 self.parameter_noise_sigma_val, session=self.sess)
 
-        return postprocess_fn(self, sample_batch)
+        return postprocess_nstep_and_prio(self, sample_batch)
 
 
 class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
@@ -99,7 +100,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
-        self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
+        #self.noise_scale = tf.placeholder(tf.float32, (), name="noise_scale")
         self.pure_exploration_phase = tf.placeholder(
             tf.bool, (), name="pure_exploration_phase")
         self.cur_observations = tf.placeholder(
@@ -119,10 +120,10 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             ])
 
         # Action outputs
-        with tf.variable_scope(ACTION_SCOPE):
-            self.output_actions = self._add_exploration_noise(
-                policy_out, self.stochastic, self.noise_scale,
-                self.pure_exploration_phase, action_space)
+        #with tf.variable_scope(ACTION_SCOPE):
+        #    self.output_actions = self._add_exploration_noise(
+        #        policy_out, self.stochastic, self.noise_scale,
+        #        self.pure_exploration_phase, action_space)
 
         if self.config["smooth_target_policy"]:
             self.reset_noise_op = tf.no_op()
@@ -370,7 +371,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             # FIXME: what about turning off exploration? Isn't that a good
             # idea?
             self.stochastic: True,
-            self.noise_scale: self.cur_noise_scale,
+            #self.noise_scale: self.cur_noise_scale,
             self.pure_exploration_phase: self.cur_pure_exploration_phase,
         }
 
@@ -469,16 +470,17 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         def compute_stochastic_actions():
             def make_noisy_actions():
                 # shape of deterministic_actions is [None, dim_action]
-                if noise_type == "gaussian":
-                    # add IID Gaussian noise for exploration, TD3-style
-                    normal_sample = noise_scale * tf.random_normal(
-                        tf.shape(deterministic_actions),
-                        stddev=self.config["exploration_gaussian_sigma"])
-                    stochastic_actions = tf.clip_by_value(
-                        deterministic_actions + normal_sample,
-                        action_low * tf.ones_like(deterministic_actions),
-                        action_high * tf.ones_like(deterministic_actions))
-                elif noise_type == "ou":
+                assert noise_type != "gaussian", "DEPRECATED!"
+                #if noise_type == "gaussian":
+                #    # add IID Gaussian noise for exploration, TD3-style
+                #    normal_sample = noise_scale * tf.random_normal(
+                #        tf.shape(deterministic_actions),
+                #        stddev=self.config["exploration_gaussian_sigma"])
+                #    stochastic_actions = tf.clip_by_value(
+                #        deterministic_actions + normal_sample,
+                #        action_low * tf.ones_like(deterministic_actions),
+                #        action_high * tf.ones_like(deterministic_actions))
+                if noise_type == "ou":
                     # add OU noise for exploration, DDPG-style
                     zero_acts = action_low.size * [.0]
                     exploration_sample = tf.get_variable(

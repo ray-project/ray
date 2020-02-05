@@ -781,10 +781,8 @@ class RolloutWorker(EvaluatorInterface):
                    conf) in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
             merged_conf = merge_dicts(policy_config, conf)
-            merged_conf["worker_info"] = {
-                "worker_index": self.worker_index,
-                "num_workers": self.num_workers
-            }
+            merged_conf["num_workers"] = self.num_workers
+            merged_conf["worker_index"] = self.worker_index
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))

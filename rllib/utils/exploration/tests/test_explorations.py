@@ -22,14 +22,14 @@ class TestExplorations(unittest.TestCase):
         config = {"action_space": Discrete(4), "initial_epsilon": 1.0,
                   "final_epsilon": 0.0, "epsilon_time_steps": 1}
 
-        model = Model()
-        epsilon_greedy = from_config(Exploration, config=config,
-                                     framework="tf")
+        #model = Model()
+        #epsilon_greedy = from_config(Exploration, config=config,
+        #                             framework="tf")
 
-        
+
         # Test eager as well.
-        with eager_mode():
-            constant = from_config(ConstantSchedule, config, framework="tf")
-            for t in ts:
-                out = constant(t)
-                check(out, value)
+        #with eager_mode():
+        #    constant = from_config(ConstantSchedule, config, framework="tf")
+        #    for t in ts:
+        #        out = constant(t)
+        #        check(out, value)

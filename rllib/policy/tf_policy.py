@@ -111,7 +111,7 @@ class TFPolicy(Policy):
         self._action = action_sampler
         self._is_training = self._get_is_training_placeholder()
         self._is_exploring = tf.placeholder_with_default(
-            True, (), name="is-exploring")
+            True, (), name="is_exploring")
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
                              if self._action_logp is not None else None)
@@ -123,7 +123,7 @@ class TFPolicy(Policy):
         self._update_ops = update_ops
         self._stats_fetches = {}
         self._loss_input_dict = None
-        self._time_step = tf.placeholder(tf.int32, (), name="time-step")
+        self._timestep = tf.placeholder(tf.int32, (), name="timestep")
 
         if loss is not None:
             self._initialize_loss(loss, loss_inputs)
@@ -146,15 +146,13 @@ class TFPolicy(Policy):
         # Apply the post-forward-pass exploration if applicable.
         # And store the `get_state` op.
         self._exploration_action = None
-        self._exploration_info = None
         if self.exploration:
             self._exploration_action = self.exploration.get_exploration_action(
                 self._action,
                 self.model,
                 action_dist=self.dist_class,
                 explore=self._is_exploring,
-                time_step=self._time_step)
-            self._exploration_info = self.exploration.get_info()
+                timestep=self._timestep)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -243,7 +241,7 @@ class TFPolicy(Policy):
                         info_batch=None,
                         episodes=None,
                         explore=True,
-                        time_step=None,
+                        timestep=None,
                         **kwargs):
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
@@ -253,12 +251,9 @@ class TFPolicy(Policy):
             prev_action_batch,
             prev_reward_batch,
             explore=explore,
-            time_step=time_step)
+            timestep=timestep)
         # Execute session run to get action (and other fetches).
         ret = builder.get(fetches)
-        # Extract last exploration info from fetches and return rest.
-        if len(ret) > 3:
-            self.last_exploration_info = ret[3]
         return ret[:3]
 
     @override(Policy)
@@ -281,6 +276,12 @@ class TFPolicy(Policy):
         builder = TFRunBuilder(self._sess, "learn_on_batch")
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         return builder.get(fetches)
+
+    @override(Policy)
+    def get_exploration_info(self):
+        if self.exploration is not None:
+            return self._sess.run(
+                self.exporation.get_info(self.global_timestep))
 
     @override(Policy)
     def get_weights(self):
@@ -387,7 +388,7 @@ class TFPolicy(Policy):
         """
         if not hasattr(self, "_is_training"):
             self._is_training = tf.placeholder_with_default(
-                False, (), name="is-training")
+                False, (), name="is_training")
         return self._is_training
 
     def _debug_vars(self):
@@ -463,7 +464,7 @@ class TFPolicy(Policy):
                                prev_reward_batch=None,
                                episodes=None,
                                explore=True,
-                               time_step=None):
+                               timestep=None):
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
@@ -482,22 +483,20 @@ class TFPolicy(Policy):
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
         builder.add_feed_dict({self._is_exploring: explore})
-        if time_step is not None:
-            builder.add_feed_dict({self._time_step: time_step})
+        if timestep is not None:
+            builder.add_feed_dict({self._timestep: timestep})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
         # Get an exploration action.
         if explore and self.exploration:
             fetches = builder.add_fetches(
                 [self._exploration_action] + self._state_outputs +
-                [self.extra_compute_action_fetches()] +
-                [self._exploration_info])
-            return fetches[0], fetches[1:-2], fetches[-2], fetches[-1]
+                [self.extra_compute_action_fetches()])
         # Do not explore.
         else:
             fetches = builder.add_fetches(
                 [self._action] + self._state_outputs +
                 [self.extra_compute_action_fetches()])
-            return fetches[0], fetches[1:-1], fetches[-1]
+        return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()

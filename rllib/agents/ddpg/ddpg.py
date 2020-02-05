@@ -54,37 +54,37 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Exploration ===
-    # Turns on annealing schedule for exploration noise. Exploration is
-    # annealed from 1.0 to exploration_final_eps over schedule_max_timesteps
-    # scaled by exploration_fraction. Original DDPG and TD3 papers do not
-    # anneal noise, so this is False by default.
-    "exploration_should_anneal": False,
-    # Max num timesteps for annealing schedules.
-    "schedule_max_timesteps": 100000,
+    # === Exploration API settings (Experimental) ===
+    "exploration": {
+        "type": "OrnsteinUhlenbeckNoise",
+        # OU-noise scale; this can be used to scale down magnitude of OU noise
+        # before adding to actions.
+        "noise_scale": 0.1,  # ?
+
+        "initial_scale": 1.0,  # ?
+        "final_scale": 0.02,  # ?
+
+        "theta": 0.15,
+        "sigma": 0.2,
+        "timesteps": 10000,
+    
+        # As an alternative to OU-noise, use Gaussian as follows:
+        # "type": "GaussianNoise",
+        # Initial stddev of action noise for exploration.
+        # "initial_stddev": 0.1,
+        # Final stddev of action noise for exploration (annealed linearly over
+        # `timesteps`).
+        # "final_stddev": 0.002,
+        # "timesteps": 10000,
+    },
+    
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-    # Fraction of entire training period over which the exploration rate is
-    # annealed
-    "exploration_fraction": 0.1,
-    # Final scaling multiplier for action noise (initial is 1.0)
-    "exploration_final_scale": 0.02,
-    # valid values: "ou" (time-correlated, like original DDPG paper),
-    # "gaussian" (IID, like TD3 paper)
-    "exploration_noise_type": "ou",
-    # OU-noise scale; this can be used to scale down magnitude of OU noise
-    # before adding to actions (requires "exploration_noise_type" to be "ou")
-    "exploration_ou_noise_scale": 0.1,
-    # theta for OU
-    "exploration_ou_theta": 0.15,
-    # sigma for OU
-    "exploration_ou_sigma": 0.2,
-    # gaussian stddev of act noise for exploration (requires
-    # "exploration_noise_type" to be "gaussian")
-    "exploration_gaussian_sigma": 0.1,
+    
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
+    # TODO(sven): Mix this with OU/Gaussian components.
     # Until this many timesteps have elapsed, the agent's policy will be
     # ignored & it will instead take uniform random actions. Can be used in
     # conjunction with learning_starts (which controls when the first
@@ -156,57 +156,96 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
+
+
+    # Deprecated exploration params.
+    # Turns on annealing schedule for exploration noise. Exploration is
+    # annealed from 1.0 to exploration_final_eps over schedule_max_timesteps
+    # scaled by exploration_fraction. Original DDPG and TD3 papers do not
+    # anneal noise, so this is False by default.
+    # "exploration_should_anneal": False,
+    # Max num timesteps for annealing schedules.
+    # "schedule_max_timesteps": 100000,
+    # Fraction of entire training period over which the exploration rate is
+    # annealed
+    # "exploration_fraction": 0.1,
+    # Final scaling multiplier for action noise (initial is 1.0)
+    # "exploration_final_scale": 0.02,
+    # valid values: "ou" (time-correlated, like original DDPG paper),
+    # "gaussian" (IID, like TD3 paper)
+    # "exploration_noise_type": "ou",
+    # OU-noise scale; this can be used to scale down magnitude of OU noise
+    # before adding to actions (requires "exploration_noise_type" to be "ou")
+    # "exploration_ou_noise_scale": 0.1,
+    # theta for OU
+    # "exploration_ou_theta": 0.15,
+    # sigma for OU
+    # "exploration_ou_sigma": 0.2,
+    # gaussian stddev of action noise for exploration (requires
+    # "exploration_noise_type" to be "gaussian")
+    # "exploration_gaussian_sigma": 0.1,
+    
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def make_exploration_schedule(config, worker_index):
+#def make_exploration_schedule(config, worker_index):
     # Modification of DQN's schedule to take into account
     # `exploration_ou_noise_scale`
-    if config["per_worker_exploration"]:
-        assert config["num_workers"] > 1, "This requires multiple workers"
-        if worker_index >= 0:
-            # FIXME: what do magic constants mean? (0.4, 7)
-            max_index = float(config["num_workers"] - 1)
-            exponent = 1 + worker_index / max_index * 7
-            return ConstantSchedule(0.4**exponent)
-        else:
-            # local ev should have zero exploration so that eval rollouts
-            # run properly
-            return ConstantSchedule(0.0)
-    elif config["exploration_should_anneal"]:
-        return LinearSchedule(
-            schedule_timesteps=int(config["exploration_fraction"] *
-                                   config["schedule_max_timesteps"]),
-            initial_p=1.0,
-            final_p=config["exploration_final_scale"])
-    else:
-        # *always* add exploration noise
-        return ConstantSchedule(1.0)
+    #if config["per_worker_exploration"]:
+    #    assert config["num_workers"] > 1, "This requires multiple workers"
+    #    if worker_index >= 0:
+    #        # FIXME: what do magic constants mean? (0.4, 7)
+    #        max_index = float(config["num_workers"] - 1)
+    #        exponent = 1 + worker_index / max_index * 7
+    #        return ConstantSchedule(0.4**exponent)
+    #    else:
+    #        # local ev should have zero exploration so that eval rollouts
+    #        # run properly
+    #        return ConstantSchedule(0.0)
+    #elif config["exploration_should_anneal"]:
+    #    return LinearSchedule(
+    #        schedule_timesteps=int(config["exploration_fraction"] *
+    #                               config["schedule_max_timesteps"]),
+    #        initial_p=1.0,
+    #        final_p=config["exploration_final_scale"])
+    #else:
+    #    # *always* add exploration noise
+    #    return ConstantSchedule(1.0)
 
 
-def setup_ddpg_exploration(trainer):
-    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
-    trainer.explorations = [
-        make_exploration_schedule(trainer.config, i)
-        for i in range(trainer.config["num_workers"])
-    ]
+#def setup_ddpg_exploration(trainer):
+#    trainer.exploration0 = make_exploration_schedule(trainer.config, -1)
+#    trainer.explorations = [
+#        make_exploration_schedule(trainer.config, i)
+#        for i in range(trainer.config["num_workers"])
+#    ]
 
 
 def update_worker_explorations(trainer):
+#    global_timestep = trainer.optimizer.num_steps_sampled
+#    exp_vals = [trainer.exploration0.value(global_timestep)]
+#    trainer.workers.local_worker().foreach_trainable_policy(
+#        lambda p, _: p.set_epsilon(exp_vals[0]))
+#    for i, e in enumerate(trainer.workers.remote_workers()):
+#        exp_val = trainer.explorations[i].value(global_timestep)
+#        e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
+#        exp_vals.append(exp_val)
+#    trainer.train_start_timestep = global_timestep
+#    trainer.cur_exp_vals = exp_vals
+
+    # Store some data for metrics after learning.
     global_timestep = trainer.optimizer.num_steps_sampled
-    exp_vals = [trainer.exploration0.value(global_timestep)]
-    trainer.workers.local_worker().foreach_trainable_policy(
-        lambda p, _: p.set_epsilon(exp_vals[0]))
-    for i, e in enumerate(trainer.workers.remote_workers()):
-        exp_val = trainer.explorations[i].value(global_timestep)
-        e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
-        exp_vals.append(exp_val)
     trainer.train_start_timestep = global_timestep
-    trainer.cur_exp_vals = exp_vals
+
+    # Get all current exploration-infos (from Policies, which cache this info).
+    trainer.exploration_infos = trainer.workers.foreach_trainable_policy(
+        lambda p, _: p.get_exploration_info(global_timestep))
 
 
+# TODO(sven): Separate this from ActionNoise components somehow (separate exploration)?
+# Should policy take a list of Exploration objects?
 def add_pure_exploration_phase(trainer):
     global_timestep = trainer.optimizer.num_steps_sampled
     pure_expl_steps = trainer.config["pure_exploration_steps"]
@@ -227,10 +266,58 @@ def validate_config(config):
         raise ValueError("DDPG does not support PyTorch yet! Use tf instead.")
 
 
+def validate_config_and_setup_param_noise(config):
+    """Checks and updates the config based on settings.
+
+    Rewrites sample_batch_size to take into account n_step truncation.
+    """
+    # PyTorch check.
+    if config["use_pytorch"]:
+        raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
+
+    # TODO(sven): Remove at some point.
+    # Backward compatibility of DDPG-specific exploration config
+    schedule_max_timesteps = None
+    if "schedule_max_timesteps" in config and \
+            config["schedule_max_timesteps"] > 0:
+        deprecation_warning(
+            "schedule_max_timesteps", "exploration.epsilon_timesteps OR "
+            "prioritized_replay_beta_annealing_timesteps")
+        schedule_max_timesteps = config["schedule_max_timesteps"]
+    if "exploration_final_eps" in config and \
+            config["exploration_final_eps"] > 0:
+        deprecation_warning("exploration_final_eps",
+                            "exploration.final_epsilon")
+        if isinstance(config["exploration"], dict):
+            config["exploration"]["final_epsilon"] = \
+                config.pop("exploration_final_eps")
+    if "exploration_fraction" in config and config["exploration_fraction"] > 0:
+        assert schedule_max_timesteps is not None
+        deprecation_warning("exploration_fraction",
+                            "exploration.epsilon_timesteps")
+        if isinstance(config["exploration"], dict):
+            config["exploration"]["epsilon_timesteps"] = config.pop(
+                "exploration_fraction") * schedule_max_timesteps
+    if "beta_annealing_fraction" in config and \
+            config["beta_annealing_fraction"] > 0:
+        assert schedule_max_timesteps is not None
+        deprecation_warning(
+            "beta_annealing_fraction (decimal)",
+            "prioritized_replay_beta_annealing_timesteps (int)")
+        config["prioritized_replay_beta_annealing_timesteps"] = config.pop(
+            "beta_annealing_fraction") * schedule_max_timesteps
+    if "per_worker_exploration" in config and \
+            config["per_worker_exploration"] != -1:
+        deprecation_warning("per_worker_exploration",
+                            "exploration.type=PerWorkerEpsilonGreedy")
+        if isinstance(config["exploration"], dict):
+            config["exploration"]["type"] = PerWorkerEpsilonGreedy
+
+
 DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     name="DDPG",
     default_config=DEFAULT_CONFIG,
     default_policy=DDPGTFPolicy,
     validate_config=validate_config,
-    before_init=setup_ddpg_exploration,
+    #before_init=setup_ddpg_exploration,
     before_train_step=add_pure_exploration_phase)

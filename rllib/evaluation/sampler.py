@@ -538,7 +538,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 state_batches=rnn_in_cols,
                 prev_action_batch=[t.prev_action for t in eval_data],
                 prev_reward_batch=[t.prev_reward for t in eval_data],
-                time_step=policy.global_timestep)
+                timestep=policy.global_timestep)
         else:
             eval_results[policy_id] = policy.compute_actions(
                 [t.obs for t in eval_data],
@@ -547,7 +547,7 @@ def _do_policy_eval(tf_sess, to_eval, policies, active_episodes):
                 prev_reward_batch=[t.prev_reward for t in eval_data],
                 info_batch=[t.info for t in eval_data],
                 episodes=[active_episodes[t.env_id] for t in eval_data],
-                time_step=policy.global_timestep)
+                timestep=policy.global_timestep)
     if builder:
         for k, v in pending_fetches.items():
             eval_results[k] = builder.get(v)
@@ -577,8 +577,7 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
 
     for policy_id, eval_data in to_eval.items():
         rnn_in_cols = _to_column_format([t.rnn_state for t in eval_data])
-        actions, rnn_out_cols, pi_info_cols, exploration_info = \
-            eval_results[policy_id]
+        actions, rnn_out_cols, pi_info_cols = eval_results[policy_id][:3]
         if len(rnn_in_cols) != len(rnn_out_cols):
             raise ValueError("Length of RNN in did not match RNN out, got: "
                              "{} vs {}".format(rnn_in_cols, rnn_out_cols))
@@ -609,8 +608,6 @@ def _process_policy_eval_results(to_eval, eval_results, active_episodes,
                                          off_policy_actions[env_id][agent_id])
             else:
                 episode._set_last_action(agent_id, action)
-        # Save exploration-info in policy.
-        policy.last_exploration_info = exploration_info
 
     return actions_to_send
 
@@ -652,7 +649,10 @@ def _to_column_format(rnn_state_rows):
 
 
 def _get_or_raise(mapping, policy_id):
-    """
+    """Returns a Policy object under key `policy_id` in `mapping`.
+
+    Throws an error if `policy_id` cannot be found.
+
     Returns:
         Policy: The found Policy object.
     """

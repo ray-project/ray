@@ -114,7 +114,7 @@ def traced_eager_policy(eager_policy_cls):
                             info_batch=None,
                             episodes=None,
                             explore=True,
-                            time_step=None,
+                            timestep=None,
                             **kwargs):
 
             obs_batch = tf.convert_to_tensor(obs_batch)
@@ -129,7 +129,7 @@ def traced_eager_policy(eager_policy_cls):
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, explore, time_step, **kwargs)
+                info_batch, episodes, explore, timestep, **kwargs)
 
         @override(Policy)
         @convert_eager_inputs
@@ -295,7 +295,7 @@ def build_eager_tf_policy(name,
                             info_batch=None,
                             episodes=None,
                             explore=True,
-                            time_step=None,
+                            timestep=None,
                             **kwargs):
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
@@ -339,8 +339,8 @@ def build_eager_tf_policy(name,
                     self.model,
                     action_dist=self.dist_class,
                     explore=True,
-                    time_step=time_step or self.global_timestep)
-                self.last_exploration_info = self.exploration.get_info()
+                    timestep=timestep or self.global_timestep)
+                logp = None
 
             extra_fetches = {}
             if logp is not None:
