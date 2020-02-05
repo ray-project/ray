@@ -73,7 +73,7 @@ class HTTPProxy:
                 return
 
             self.route_table_cache = (
-                self.serve_global_state.route_table.list_services())
+                self.serve_global_state.route_table.list_service())
 
             await asyncio.sleep(interval)
 
