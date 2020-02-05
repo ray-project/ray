@@ -12,7 +12,7 @@ from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.test_utils import (RayTestTimeoutException,
-                            wait_until_succeed_without_exception)
+                            wait_until_succeeded_without_exception)
 
 
 def test_worker_stats(shutdown_only):
@@ -270,8 +270,9 @@ def test_raylet_infeasible_tasks(shutdown_only):
         assert infeasible_actor_info["state"] == -1
         assert infeasible_actor_info["invalidStateType"] == "infeasibleActor"
 
-    assert (wait_until_succeed_without_exception(
+    assert (wait_until_succeeded_without_exception(
         test_infeasible_actor,
+        (AssertionError, requests.exceptions.ConnectionError),
         addresses,
         timeout_ms=30000,
         retry_interval_ms=1000) is True)
@@ -315,8 +316,9 @@ def test_raylet_pending_tasks(shutdown_only):
         # One actor should be in the pending state.
         assert pending_actor_detected == 1
 
-    assert (wait_until_succeed_without_exception(
+    assert (wait_until_succeeded_without_exception(
         test_pending_actor,
+        (AssertionError, requests.exceptions.ConnectionError),
         addresses,
         timeout_ms=30000,
         retry_interval_ms=1000) is True)
