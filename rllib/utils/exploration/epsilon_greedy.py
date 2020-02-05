@@ -2,7 +2,7 @@ import gym
 import numpy as np
 
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.explorations.exploration import Exploration
+from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable
 from ray.rllib.utils.schedules import PiecewiseSchedule
@@ -22,13 +22,14 @@ class EpsilonGreedy(Exploration):
     def __init__(self,
                  action_space,
                  initial_epsilon=1.0,
-                 final_epsilon=0.1,
+                 final_epsilon=0.05,
                  epsilon_timesteps=int(1e5),
                  num_workers=None,
                  worker_index=None,
                  epsilon_schedule=None,
                  framework="tf"):
         """
+
         Args:
             action_space (Space): The gym action space used by the environment.
             initial_epsilon (float): The initial epsilon value to use.
@@ -166,7 +167,7 @@ class EpsilonGreedy(Exploration):
         Returns:
             Union[float,tf.Tensor[float]]: The current epsilon value.
         """
-        return [self.epsilon_schedule(self.last_timestep)]
+        return self.epsilon_schedule(self.last_timestep)
 
     @override(Exploration)
     def get_state(self):

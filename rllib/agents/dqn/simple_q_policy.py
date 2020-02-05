@@ -87,8 +87,8 @@ def build_q_models(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def build_action_sampler(policy, q_model, input_dict, obs_space, action_space,
-                         config):
+def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
+                                 action_space, config):
 
     # Action Q network
     q_values = _compute_q_values(policy, q_model,
@@ -161,7 +161,7 @@ SimpleQPolicy = build_tf_policy(
     name="SimpleQPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
-    action_sampler_fn=build_action_sampler,
+    action_sampler_fn=sample_action_from_q_network,
     loss_fn=build_q_losses,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},

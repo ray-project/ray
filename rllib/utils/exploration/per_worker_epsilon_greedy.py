@@ -1,4 +1,4 @@
-from ray.rllib.utils.explorations.epsilon_greedy import EpsilonGreedy
+from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.schedules import ConstantSchedule
 
 

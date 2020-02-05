@@ -460,7 +460,7 @@ class Trainer(Trainable):
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
-                result = super().train()
+                result = Trainer.train(self)
             except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(
@@ -543,7 +543,7 @@ class Trainer(Trainable):
             self.env_creator = (
                 lambda env_config: NormalizeActionWrapper(inner(env_config)))
 
-        self._validate_config(self.config)
+        Trainer._validate_config(self.config)
         log_level = self.config.get("log_level")
         if log_level in ["WARN", "ERROR"]:
             logger.info("Current log_level is {}. For more information, "
@@ -567,7 +567,7 @@ class Trainer(Trainable):
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
                 extra_config.update({
                     "batch_mode": "complete_episodes",
-                    "batch_steps": 1
+                    "batch_steps": 1,
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
@@ -600,8 +600,8 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(self, env_creator, policy, config, num_workers):
-        """
-        Default factory method for a WorkerSet running under this Trainer.
+        """Default factory method for a WorkerSet running under this Trainer.
+        
         Override this method by passing a custom `make_workers` into
         `build_trainer`.
 
@@ -913,7 +913,8 @@ class Trainer(Trainable):
         self.optimizer.reset(healthy_workers)
 
     def _has_policy_optimizer(self):
-        """
+        """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
+
         Returns:
             bool: True if this Trainer holds a PolicyOptimizer object in
                 property `self.optimizer`.

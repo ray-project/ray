@@ -111,10 +111,7 @@ class ModelCatalog:
                         dist_type=None,
                         torch=None,
                         framework="tf"):
-        """
-
-        Returns an action distribution class and size for the given action
-        space.
+        """Returns a distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.

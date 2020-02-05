@@ -4,7 +4,7 @@ import gym
 import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.explorations.exploration import Exploration
+from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.from_config import from_config
 
 # By convention, metrics from optimizing the loss can be reported in the
@@ -72,7 +72,6 @@ class Policy(metaclass=ABCMeta):
             num_workers=self.config.get("num_workers"),
             worker_index=self.config.get("worker_index"),
             framework="torch" if self.config.get("use_pytorch") else "tf")
-        self.last_exploration_info = []
 
         # The default sampling behavior for actions if not explicitly given
         # in calls to `compute_actions`.
@@ -269,10 +268,22 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def get_exploration_state(self):
+    def get_exploration_info(self):
+        """Returns the current exploration information of this policy.
+
+        This information depends on the policy's Exploration object.
+
+        Returns:
+            any: Serializable information on the `self.exploration` object.
         """
-        Returns the current exploration state of this policy, which depends
-        on the policy's Exploration object.
+        if self.exploration is not None:
+            return self.exporation.get_info(self.global_timestep)
+
+    @DeveloperAPI
+    def get_exploration_state(self):
+        """Returns the current exploration state of this policy.
+        
+        This state depends on the policy's Exploration object.
 
         Returns:
             any: Serializable copy or view of the current exploration state.
@@ -293,17 +304,19 @@ class Policy(metaclass=ABCMeta):
 
     @DeveloperAPI
     def is_recurrent(self):
-        """
+        """Whether this Policy holds a recurrent Model.
+
         Returns:
-            int: The number of RNN hidden states kept by this Policy's Model.
+            bool: True if this Policy has-a RNN-based Model.
         """
         return 0
 
     @DeveloperAPI
     def num_state_tensors(self):
-        """
+        """The number of internal states needed by the RNN-Model of the Policy.
+
         Returns:
-            int: The number of RNN hidden states kept by this Policy's Model.
+            int: The number of RNN internal states kept by this Policy's Model.
         """
         return 0
 

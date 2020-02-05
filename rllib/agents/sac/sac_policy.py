@@ -6,7 +6,8 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel
-from ray.rllib.agents.dqn.dqn_policy import postprocess_fn, PRIO_WEIGHTS
+from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
+    PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy

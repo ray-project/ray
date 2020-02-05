@@ -146,7 +146,6 @@ class TFPolicy(Policy):
         # Apply the post-forward-pass exploration if applicable.
         # And store the `get_state` op.
         self._exploration_action = None
-        self._exploration_info = None
         if self.exploration:
             self._exploration_action = self.exploration.get_exploration_action(
                 self._action,
@@ -154,7 +153,6 @@ class TFPolicy(Policy):
                 action_dist=self.dist_class,
                 explore=self._is_exploring,
                 timestep=self._timestep)
-            self._exploration_info = self.exploration.get_info()
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -257,8 +255,8 @@ class TFPolicy(Policy):
         # Execute session run to get action (and other fetches).
         ret = builder.get(fetches)
         # Extract last exploration info from fetches and return rest.
-        if len(ret) > 3:
-            self.last_exploration_info = ret[3]
+        #if len(ret) > 3:
+        #    self.last_exploration_info = ret[3]
         return ret[:3]
 
     @override(Policy)
@@ -281,6 +279,12 @@ class TFPolicy(Policy):
         builder = TFRunBuilder(self._sess, "learn_on_batch")
         fetches = self._build_learn_on_batch(builder, postprocessed_batch)
         return builder.get(fetches)
+
+    @override(Policy)
+    def get_exploration_info(self):
+        if self.exploration is not None:
+            return self._sess.run(
+                self.exporation.get_info(self.global_timestep))
 
     @override(Policy)
     def get_weights(self):
@@ -489,15 +493,13 @@ class TFPolicy(Policy):
         if explore and self.exploration:
             fetches = builder.add_fetches(
                 [self._exploration_action] + self._state_outputs +
-                [self.extra_compute_action_fetches()] +
-                [self._exploration_info])
-            return fetches[0], fetches[1:-2], fetches[-2], fetches[-1]
+                [self.extra_compute_action_fetches()])
         # Do not explore.
         else:
             fetches = builder.add_fetches(
                 [self._action] + self._state_outputs +
                 [self.extra_compute_action_fetches()])
-            return fetches[0], fetches[1:-1], fetches[-1]
+        return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
         self._debug_vars()

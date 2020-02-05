@@ -202,8 +202,8 @@ def build_q_model(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def action_sampler_function(policy, q_model, input_dict, obs_space,
-                            action_space, config):
+def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
+                                 action_space, config):
     # Action Q network.
     q_values, q_logits, q_dist = _compute_q_values(
         policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
@@ -423,7 +423,7 @@ def _adjust_nstep(n_step, gamma, obs, actions, rewards, new_obs, dones):
                 rewards[i] += gamma**j * rewards[i + j]
 
 
-def postprocess_fn(policy, batch, other_agent=None, episode=None):
+def postprocess_nstep_and_prio(policy, batch, other_agent=None, episode=None):
     # N-step Q adjustments
     if policy.config["n_step"] > 1:
         _adjust_nstep(policy.config["n_step"], policy.config["gamma"],
@@ -451,10 +451,10 @@ DQNTFPolicy = build_tf_policy(
     name="DQNTFPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_model,
-    action_sampler_fn=action_sampler_function,
+    action_sampler_fn=sample_action_from_q_network,
     loss_fn=build_q_losses,
     stats_fn=build_q_stats,
-    postprocess_fn=postprocess_fn,
+    postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     gradients_fn=clip_gradients,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},

@@ -72,8 +72,7 @@ class WorkerSet:
         return self._remote_workers
 
     def add_workers(self, num_workers):
-        """
-        Creates and add a number of remote workers to this worker set.
+        """Creates and add a number of remote workers to this worker set.
 
         Args:
             num_workers (int): The number of remote Workers to add to this
@@ -128,8 +127,7 @@ class WorkerSet:
 
     @DeveloperAPI
     def foreach_policy(self, func):
-        """
-        Apply the given function to each worker's (policy, policy_id) tuple.
+        """Apply the given function to each worker's (policy, policy_id) tuple.
 
         Args:
             func (callable): A function - taking a Policy and its ID - that is
@@ -149,9 +147,7 @@ class WorkerSet:
 
     @DeveloperAPI
     def foreach_trainable_policy(self, func):
-        """
-        Applies the given function to each worker's (policy, policy_id) tuple,
-        if the policy can be found in `worker.policies_to_train`.
+        """Apply `func` to all workers' Policies iff in `policies_to_train`.
 
         Args:
             func (callable): A function - taking a Policy and its ID - that is

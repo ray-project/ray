@@ -7,7 +7,7 @@ from ray.rllib.agents.dqn.simple_q_policy import SimpleQPolicy
 from ray.rllib.optimizers import SyncReplayOptimizer
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.explorations import PerWorkerEpsilonGreedy
+from ray.rllib.utils.exploration import PerWorkerEpsilonGreedy
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +35,13 @@ DEFAULT_CONFIG = with_common_config({
     # N-step Q learning
     "n_step": 1,
 
-    # === Exploration Settings ===
+    # === Exploration Settings (Experimental) ===
     "exploration": {
         # The Exploration class to use.
-        "type": "ray.rllib.utils.explorations.epsilon_greedy.EpsilonGreedy",
-        # Config for the Exploration class' c'tor:
-        "initial_epsilon": 1.0,  # Initial epsilon value.
-        "final_epsilon": 0.02,  # Final epsilon value.
+        "type": "epsilon_greedy.EpsilonGreedy",
+        # Config for the Exploration class' constructor:
+        "initial_epsilon": 1.0,
+        "final_epsilon": 0.02,
         "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
     },
     # TODO(sven): Make Exploration class for parameter noise.
@@ -156,7 +156,8 @@ def validate_config_and_setup_param_noise(config):
                               config.get("n_step", 1))
     config["sample_batch_size"] = adjusted_batch_size
 
-    # Backward compatibility of epsilon-exploration config AND beta-annealing
+    # TODO(sven): Remove at some point.
+    #  Backward compatibility of epsilon-exploration config AND beta-annealing
     # fraction settings (both based on schedule_max_timesteps, which is
     # deprecated).
     schedule_max_timesteps = None
@@ -255,12 +256,11 @@ def update_worker_exploration(trainer):
 
     # Get all current exploration-infos (from Policies, which cache this info).
     trainer.exploration_infos = trainer.workers.foreach_trainable_policy(
-        lambda p, _: p.last_exploration_info)
+        lambda p, _: p.get_exploration_info(global_timestep))
 
 
 def after_train_result(trainer, result):
-    """Add some DQN specific metrics to results.
-    """
+    """Add some DQN specific metrics to results."""
     global_timestep = trainer.optimizer.num_steps_sampled
     result.update(
         timesteps_this_iter=global_timestep - trainer.train_start_timestep,
@@ -271,8 +271,7 @@ def after_train_result(trainer, result):
 
 
 def update_target_if_needed(trainer, fetches):
-    """Update the target network in configured intervals.
-    """
+    """Update the target network in configured intervals."""
     global_timestep = trainer.optimizer.num_steps_sampled
     if global_timestep - trainer.state["last_target_update_ts"] > \
             trainer.config["target_network_update_freq"]:
