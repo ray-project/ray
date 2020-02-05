@@ -42,6 +42,7 @@ if [ "${TRAVIS-}" = true ]; then
   # Use bazel disk cache if this script is running in Travis.
   mkdir -p "${HOME}/ray-bazel-cache"
   echo "build --disk_cache=${HOME}/ray-bazel-cache" >> "${HOME}/.bazelrc"
+  cat ${HOME}/.bazelrc
 fi
 if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
   # Use ray google cloud cache
@@ -76,4 +77,5 @@ if [ "${TRAVIS-}" = true ] || [ -n "${GITHUB_TOKEN-}" ]; then
     echo "Using remote build cache in read-only mode." 1>&2
     echo "build --remote_upload_local_results=false" >> "${HOME}/.bazelrc"
   fi
+  cat ${HOME}/.bazelrc
 fi
