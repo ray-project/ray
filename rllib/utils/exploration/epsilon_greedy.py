@@ -72,7 +72,9 @@ class EpsilonGreedy(Exploration):
                                timestep=None):
         # TODO(sven): This is hardcoded. Put a meaningful error, in case model
         # API is not as required.
-        q_values = model.q_value_head(model._last_output)[0]
+        q_values = model.q_value_head(model._last_output)
+        if isinstance(q_values, list):
+            q_values = q_values[0]
         if self.framework == "tf":
             return self._get_tf_exploration_action_op(action, explore,
                                                       timestep, q_values)
@@ -111,7 +113,8 @@ class EpsilonGreedy(Exploration):
             < epsilon
 
         exploration_action = tf.cond(
-            pred=explore,
+            pred=tf.constant(explore, dtype=tf.bool) if
+            isinstance(explore, bool) else explore,
             true_fn=lambda: tf.where(chose_random, random_actions, action),
             false_fn=lambda: action,
         )
