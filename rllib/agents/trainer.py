@@ -601,7 +601,7 @@ class Trainer(Trainable):
     @DeveloperAPI
     def _make_workers(self, env_creator, policy, config, num_workers):
         """Default factory method for a WorkerSet running under this Trainer.
-        
+
         Override this method by passing a custom `make_workers` into
         `build_trainer`.
 

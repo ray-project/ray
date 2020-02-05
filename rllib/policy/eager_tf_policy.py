@@ -341,7 +341,6 @@ def build_eager_tf_policy(name,
                     explore=True,
                     timestep=timestep or self.global_timestep)
                 logp = None
-                #self.last_exploration_info = self.exploration.get_info()
 
             extra_fetches = {}
             if logp is not None:

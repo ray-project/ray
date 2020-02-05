@@ -149,7 +149,7 @@ def postprocess_trajectory(policy,
         policy.parameter_noise_sigma.load(
             policy.parameter_noise_sigma_val, session=policy.get_session())
 
-    return postprocess_fn(policy, sample_batch)
+    return postprocess_nstep_and_prio(policy, sample_batch)
 
 
 def build_q_model(policy, obs_space, action_space, config):

@@ -282,7 +282,7 @@ class Policy(metaclass=ABCMeta):
     @DeveloperAPI
     def get_exploration_state(self):
         """Returns the current exploration state of this policy.
-        
+
         This state depends on the policy's Exploration object.
 
         Returns:

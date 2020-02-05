@@ -64,7 +64,7 @@ class DDPGPostprocessing:
             self.parameter_noise_sigma.load(
                 self.parameter_noise_sigma_val, session=self.sess)
 
-        return postprocess_fn(self, sample_batch)
+        return postprocess_nstep_and_prio(self, sample_batch)
 
 
 class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):

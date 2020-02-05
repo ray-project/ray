@@ -59,16 +59,17 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
 
         # Test recognizing default module path.
         component = from_config(
-            DummyComponent,
-            '{"type": "NonAbstractChildOfDummyComponent", '
+            DummyComponent, '{"type": "NonAbstractChildOfDummyComponent", '
             '"prop_a": "A", "prop_b": -1.0, "prop_c": "non-default"}')
         check(component.prop_a, "A")
         check(component.prop_d, 4)  # default
         check(component.add(-1.1).numpy(), -2.1)  # prop_b == -1.0
 
         # Test recognizing default package path.
-        component = from_config(Exploration, {"type": "EpsilonGreedy",
-                                              "action_space": Discrete(2)})
+        component = from_config(Exploration, {
+            "type": "EpsilonGreedy",
+            "action_space": Discrete(2)
+        })
         check(component.epsilon_schedule.outside_value, 0.05)  # default
 
         # Create torch Component from yaml-string.
@@ -83,7 +84,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
 
 class DummyComponent:
     """A simple class that can be used for testing framework-agnostic logic.
-    
+
     Implements a simple `add()` method for adding a value to
     `self.prop_b`.
     """

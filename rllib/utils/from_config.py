@@ -161,7 +161,6 @@ def from_config(cls, config=None, **kwargs):
                         package_name = importlib.import_module(
                             cls.__module__).__package__
                         module = __import__(package_name, fromlist=[type_])
-                        #package = importlib.import_module(package_name)
                         constructor = getattr(module, type_)
                     except (ModuleNotFoundError, ImportError, AttributeError):
                         pass
@@ -169,8 +168,8 @@ def from_config(cls, config=None, **kwargs):
                 raise ValueError(
                     "String specifier ({}) in `from_config` must be a "
                     "filename, a module+class, a class within '{}', or a key "
-                    "into {}.__type_registry__!".
-                        format(type_, cls.__module__, cls.__name__))
+                    "into {}.__type_registry__!".format(
+                        type_, cls.__module__, cls.__name__))
 
     if not constructor:
         raise TypeError(

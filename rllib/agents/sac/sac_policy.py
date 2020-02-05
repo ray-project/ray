@@ -83,7 +83,7 @@ def postprocess_trajectory(policy,
                            sample_batch,
                            other_agent_batches=None,
                            episode=None):
-    return postprocess_fn(policy, sample_batch)
+    return postprocess_nstep_and_prio(policy, sample_batch)
 
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,

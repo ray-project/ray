@@ -14,7 +14,6 @@ from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.timer import TimerStat
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.memory import ray_get_and_free
-from ray.rllib.utils.deprecation import deprecation_warning
 
 logger = logging.getLogger(__name__)
 

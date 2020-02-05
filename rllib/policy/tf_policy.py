@@ -254,9 +254,6 @@ class TFPolicy(Policy):
             timestep=timestep)
         # Execute session run to get action (and other fetches).
         ret = builder.get(fetches)
-        # Extract last exploration info from fetches and return rest.
-        #if len(ret) > 3:
-        #    self.last_exploration_info = ret[3]
         return ret[:3]
 
     @override(Policy)
