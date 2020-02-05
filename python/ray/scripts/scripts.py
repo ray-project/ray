@@ -647,8 +647,15 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def rsync_up(cluster_config_file, source, target, cluster_name):
-    rsync(cluster_config_file, source, target, cluster_name, down=False)
+@click.option(
+    "--sync-workers",
+    "-sw",
+    is_flag=True,
+    required=False,
+    help="Upload to workers as well as the head node.")
+def rsync_up(cluster_config_file, source, target, cluster_name, sync_workers):
+    rsync(cluster_config_file, source, target, cluster_name, down=False,
+        sync_workers=sync_workers)
 
 
 @cli.command(context_settings={"ignore_unknown_options": True})
