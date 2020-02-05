@@ -115,6 +115,10 @@ if [[ "$PYTHON_VERSION" == "3.5" || "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSI
   popd
 fi
 
+
+"$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+        --target="$ROOT_DIR/python/ray/thirdparty_files"
+
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 

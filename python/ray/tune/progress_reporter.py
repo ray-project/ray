@@ -215,6 +215,7 @@ class CLIReporter(TuneReporterBase):
 
 def memory_debug_str():
     try:
+        import ray  # noqa F401
         import psutil
         total_gb = psutil.virtual_memory().total / (1024**3)
         used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
