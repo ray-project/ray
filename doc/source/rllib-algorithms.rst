@@ -192,7 +192,7 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
     Consider using `Ape-X <#distributed-prioritized-experience-replay-ape-x>`__ for faster training with similar timestep efficiency.
 
 .. hint::
-    For a cmplete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,
+    For a complete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,
     make the following changes to the default DQN config:
     ``"n_step": [int > 1 and << 10],
     "batch_mode": "complete_episodes",
