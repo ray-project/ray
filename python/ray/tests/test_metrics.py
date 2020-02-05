@@ -250,7 +250,7 @@ def test_raylet_infeasible_tasks(shutdown_only):
     but a ray cluster only has 3 GPUs. As a result,
     the new actor should be an infeasible actor.
     """
-    addresses = ray.init(include_webui=True, num_gpus=3)
+    addresses = ray.init(num_gpus=3)
 
     @ray.remote(num_gpus=5)
     class ActorRequiringGPU:
@@ -278,7 +278,9 @@ def test_raylet_infeasible_tasks(shutdown_only):
 
 
 def test_raylet_pending_tasks(shutdown_only):
-    addresses = ray.init(include_webui=True, num_gpus=3, num_cpus=4)
+    # Make sure to specify num_cpus. Otherwise, the test can be broken
+    # when the number of cores is less than the number of spawned actors.
+    addresses = ray.init(num_gpus=3, num_cpus=4)
 
     @ray.remote(num_gpus=1)
     class ActorRequiringGPU:
