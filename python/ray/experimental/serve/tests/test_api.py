@@ -17,7 +17,7 @@ def test_e2e(serve_instance):
     timeout_sleep = 0.5
     while True:
         try:
-            resp = requests.get("http://127.0.0.1:8000/").json()
+            resp = requests.get("http://127.0.0.1:8000/", timeout=0.5).json()
             assert resp == result
             break
         except Exception:
