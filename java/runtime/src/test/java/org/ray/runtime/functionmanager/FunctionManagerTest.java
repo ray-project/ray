@@ -37,6 +37,14 @@ public class FunctionManagerTest {
     public Object bar() {
       return null;
     }
+
+    public Object overloadFunction(int i) {
+      return null;
+    }
+
+    public Object overloadFunction(double d) {
+      return null;
+    }
   }
 
   private static RayFunc0<Object> fooFunc;
@@ -45,6 +53,8 @@ public class FunctionManagerTest {
   private static JavaFunctionDescriptor fooDescriptor;
   private static JavaFunctionDescriptor barDescriptor;
   private static JavaFunctionDescriptor barConstructorDescriptor;
+  private static JavaFunctionDescriptor overloadFunctionDescriptorInt;
+  private static JavaFunctionDescriptor overloadFunctionDescriptorDouble;
 
   @BeforeClass
   public static void beforeClass() {
@@ -58,6 +68,10 @@ public class FunctionManagerTest {
     barConstructorDescriptor = new JavaFunctionDescriptor(Bar.class.getName(),
         FunctionManager.CONSTRUCTOR_NAME,
         "()V");
+    overloadFunctionDescriptorInt = new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
+        "overloadFunction", "(I)Ljava/lang/Object;");
+    overloadFunctionDescriptorDouble = new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
+        "overloadFunction", "(D)Ljava/lang/Object;");
   }
 
   @Test
@@ -102,6 +116,16 @@ public class FunctionManagerTest {
     Assert.assertTrue(func.isConstructor());
     Assert.assertEquals(func.getFunctionDescriptor(), barConstructorDescriptor);
     Assert.assertNotNull(func.getRayRemoteAnnotation());
+
+    // Test raise overload exception
+    boolean thrown = false;
+    try {
+      func = functionManager.getFunction(JobId.NIL, new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
+              "overloadFunction", ""));
+    } catch (RuntimeException ex) {
+      thrown = true;
+    }
+    Assert.assertTrue(thrown);
   }
 
   @Test
@@ -114,7 +138,7 @@ public class FunctionManagerTest {
     //   2, the constructor without signature
     //   3, bar with signature
     //   4, bar without signature
-    Assert.assertEquals(res.size(), 4);
+    Assert.assertEquals(res.size(), 7);
     Assert.assertTrue(res.containsKey(
         ImmutablePair.of(barDescriptor.name, barDescriptor.typeDescriptor)));
     Assert.assertTrue(res.containsKey(
@@ -123,6 +147,15 @@ public class FunctionManagerTest {
             ImmutablePair.of(barDescriptor.name, "")));
     Assert.assertTrue(res.containsKey(
             ImmutablePair.of(barConstructorDescriptor.name, "")));
+    Assert.assertTrue(res.containsKey(
+            ImmutablePair.of(overloadFunctionDescriptorInt.name, overloadFunctionDescriptorInt.typeDescriptor)));
+    Assert.assertTrue(res.containsKey(
+            ImmutablePair.of(overloadFunctionDescriptorDouble.name, overloadFunctionDescriptorDouble.typeDescriptor)));
+    Assert.assertTrue(res.containsKey(
+            ImmutablePair.of(overloadFunctionDescriptorInt.name, "")));
+    RayFunction func = res.get(ImmutablePair.of(overloadFunctionDescriptorInt.name, ""));
+    // The function is overloaded.
+    Assert.assertEquals(func, null);
   }
 
   @Test

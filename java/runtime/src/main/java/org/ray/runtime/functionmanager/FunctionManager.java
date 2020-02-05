@@ -167,13 +167,19 @@ public class FunctionManager {
           }
         }
       }
-      return classFunctions.get(ImmutablePair.of(descriptor.name, descriptor.typeDescriptor));
+      RayFunction func = classFunctions.get(ImmutablePair.of(descriptor.name, descriptor.typeDescriptor));
+      if (func == null) {
+        throw new RuntimeException(String.format("RayFunction %s is overloaded, the signature can't be empty.",
+            descriptor.toString()));
+      }
+      return func;
     }
 
     /**
      * Load all functions from a class.
      */
     Map<Pair<String, String>, RayFunction> loadFunctionsForClass(String className) {
+      // If RayFunction is null, the function is overloaded.
       Map<Pair<String, String>, RayFunction> map = new HashMap<>();
       try {
         Class clazz = Class.forName(className, true, classLoader);
@@ -193,7 +199,9 @@ public class FunctionManager {
           map.put(ImmutablePair.of(methodName, typeDescriptor), rayFunction);
           // For cross language call java function without signature
           final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");
-          if (!map.containsKey(emptyDescriptor)) {
+          if (map.containsKey(emptyDescriptor)) {
+            map.put(emptyDescriptor, null); // Mark this function as overloaded.
+          } else {
             map.put(emptyDescriptor, rayFunction);
           }
         }
