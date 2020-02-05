@@ -221,11 +221,11 @@ class RayletClient : public WorkerLeaseInterface {
 
   /// Request raylet backend to prepare a checkpoint for an actor.
   ///
-  /// \param actor_id ID of the actor.
-  /// \param checkpoint_id ID of the new checkpoint (output parameter).
+  /// \param[in] actor_id ID of the actor.
+  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
   /// \return ray::Status.
   ray::Status PrepareActorCheckpoint(const ActorID &actor_id,
-                                     ActorCheckpointID &checkpoint_id);
+                                     ActorCheckpointID *checkpoint_id);
 
   /// Notify raylet backend that an actor was resumed from a checkpoint.
   ///
@@ -242,11 +242,6 @@ class RayletClient : public WorkerLeaseInterface {
   /// \return ray::Status
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
-
-  /// Notifies the raylet of the object IDs currently in use on this worker.
-  /// \param object_ids The set of object IDs currently in use.
-  /// \return ray::Status
-  ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
 
   /// Implements WorkerLeaseInterface.
   ray::Status RequestWorkerLease(

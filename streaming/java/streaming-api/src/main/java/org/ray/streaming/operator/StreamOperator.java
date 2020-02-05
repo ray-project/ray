@@ -14,7 +14,6 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   protected List<Collector> collectorList;
   protected RuntimeContext runtimeContext;
 
-
   public StreamOperator(F function) {
     this.name = getClass().getSimpleName();
     this.function = function;

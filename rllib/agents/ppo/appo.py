@@ -11,6 +11,9 @@ DEFAULT_CONFIG = with_base_config(impala.DEFAULT_CONFIG, {
     "vtrace": False,
 
     # == These two options only apply if vtrace: False ==
+    # Should use a critic as a baseline (otherwise don't use value baseline;
+    # required for using GAE).
+    "use_critic": True,
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,

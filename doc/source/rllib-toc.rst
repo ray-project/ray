@@ -4,6 +4,9 @@ RLlib Table of Contents
 Training APIs
 -------------
 *  `Command-line <rllib-training.html>`__
+
+   -  `Evaluating Trained Policies <rllib-training.html#evaluating-trained-policies>`__
+
 *  `Configuration <rllib-training.html#configuration>`__
 
    -  `Specifying Parameters <rllib-training.html#specifying-parameters>`__
@@ -14,9 +17,7 @@ Training APIs
 
    -  `Tuned Examples <rllib-training.html#tuned-examples>`__
 
-*  `Python API <rllib-training.html#python-api>`__
-
-   -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
+*  `Basic Python API <rllib-training.html#basic-python-api>`__
 
    -  `Computing Actions <rllib-training.html#computing-actions>`__
 
@@ -24,9 +25,15 @@ Training APIs
 
    -  `Accessing Model State <rllib-training.html#accessing-model-state>`__
 
+*  `Advanced Python APIs <rllib-training.html#advanced-python-apis>`__
+
+   -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
+
    -  `Global Coordination <rllib-training.html#global-coordination>`__
 
    -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
+
+   -  `Customized Evaluation During Training <rllib-training.html#customized-evaluation-during-training>`__
 
    -  `Rewriting Trajectories <rllib-training.html#rewriting-trajectories>`__
 
@@ -64,6 +71,7 @@ Models, Preprocessors, and Action Distributions
 * `Custom Preprocessors <rllib-models.html#custom-preprocessors>`__
 * `Custom Action Distributions <rllib-models.html#custom-action-distributions>`__
 * `Supervised Model Losses <rllib-models.html#supervised-model-losses>`__
+* `Self-Supervised Model Losses <rllib-models.html#self-supervised-model-losses>`__
 * `Variable-length / Parametric Action Spaces <rllib-models.html#variable-length-parametric-action-spaces>`__
 * `Autoregressive Action Distributions <rllib-models.html#autoregressive-action-distributions>`__
 
