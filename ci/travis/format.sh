@@ -81,6 +81,7 @@ YAPF_EXCLUDES=(
     '--exclude' 'python/build/*'
     '--exclude' 'python/ray/pyarrow_files/*'
     '--exclude' 'python/ray/core/src/ray/gcs/*'
+    '--exclude' 'python/ray/thirdparty_files/*'
 )
 
 # Format specified files
