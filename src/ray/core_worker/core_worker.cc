@@ -959,14 +959,13 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                     task_spec.GetRequiredResources().GetResourceMap(),
                                     args, arg_reference_ids, return_ids, return_objects);
 
-  RAY_LOG(INFO) << "after task_execution_callback_";
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
     if (!return_objects->at(i)) {
       continue;
     }
-    if (return_objects->at(i)->GetData() !=
-        nullptr && return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
+    if (return_objects->at(i)->GetData() != nullptr &&
+        return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
       if (!Seal(return_ids[i], /*pin_object=*/false).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
