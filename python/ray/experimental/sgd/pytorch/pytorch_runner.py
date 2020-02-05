@@ -11,6 +11,13 @@ import ray
 from ray.experimental.sgd.pytorch import utils as pytorch_utils
 from ray.experimental.sgd import utils
 
+amp = None
+
+try:
+    from apex import amp
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,7 +33,9 @@ class PyTorchRunner:
                  validation_function=None,
                  config=None,
                  dataloader_config=None,
-                 batch_size=16):
+                 batch_size=16,
+                 use_apex=False,
+                 apex_args=None):
         """Initializes the runner.
 
         Args:
@@ -71,6 +80,12 @@ class PyTorchRunner:
         self.criterion = None
         self.train_loader = None
         self.validation_loader = None
+        self.apex_args = apex_args or {}
+        if use_apex and not amp:
+            raise ImportError(
+                "Please install apex from "
+                "https://www.github.com/nvidia/apex to use fp16 training.")
+        self.use_apex = use_apex and amp
 
     def _validate_datasets(self, dataset):
         assert dataset, "Datasets need to be returned in data_creator."
@@ -91,6 +106,18 @@ class PyTorchRunner:
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
+    def _setup_apex_if_available(self):
+        if len(self.models) > 1:
+            raise ValueError("apex only supported for single models.")
+
+        model, optimizer = amp.initialize(
+            self.given_models,
+            self.given_optimizers,
+            **self.apex_args)
+
+        self.models = [model]
+        self.optimizers = [optimizer]
+
     def setup(self):
         """Initializes the model."""
         logger.debug("Creating model")
@@ -106,6 +133,7 @@ class PyTorchRunner:
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
 
+        self._setup_apex_if_available()
         self._create_loss()
 
         logger.debug("Creating dataset")
@@ -177,12 +205,16 @@ class PyTorchRunner:
             for k, v in state_dict.items():
                 state_dict[k] = v.cpu()
             cpu_state_dicts += [state_dict]
-        return {
+
+        state = {
             "epoch": self.epoch,
             "models": cpu_state_dicts,
             "optimizers": [opt.state_dict() for opt in self.optimizers],
             "stats": self.stats()
         }
+        if self.fp16:
+            state.update({"amp": amp.state_dict()})
+        return state
 
     def set_state(self, state):
         """Sets the state of the model."""
@@ -191,6 +223,9 @@ class PyTorchRunner:
             model.load_state_dict(state_dict)
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
+
+        if self.fp16 and "amp" in state:
+            amp.load_state_dict(checkpoint['amp'])
         self.epoch = state["stats"]["epoch"]
 
     def apply_fn(self, fn):
