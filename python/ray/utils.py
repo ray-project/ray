@@ -401,7 +401,7 @@ def get_system_memory():
     psutil_memory_in_bytes = None
     try:
         # TODO: Replace this entire method with just the docker check and
-        # psutil once it becomes a required dependency
+        # psutil once it becomes a required dependency.
         import psutil
         psutil_memory_in_bytes = psutil.virtual_memory().total
     except ImportError:
@@ -456,7 +456,7 @@ def get_used_memory():
     psutil_memory_in_bytes = None
     try:
         # TODO: Replace this entire method with just the docker check and
-        # psutil once it becomes a required dependency
+        # psutil once it becomes a required dependency.
         import psutil
         psutil_memory_in_bytes = psutil.virtual_memory().used
     except ImportError:
