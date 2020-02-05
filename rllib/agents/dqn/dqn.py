@@ -37,8 +37,12 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Exploration Settings (Experimental) ===
     "exploration": {
-        # The Exploration class to use.
-        "type": "epsilon_greedy.EpsilonGreedy",
+        # The Exploration class to use. In the simplest case, this is the name
+        # (str) of any class present in the `rllib.utils.exploration` package.
+        # You can also provide the python class directly or the full location
+        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+        # EpsilonGreedy").
+        "type": "EpsilonGreedy",
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
         "final_epsilon": 0.02,
