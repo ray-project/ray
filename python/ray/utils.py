@@ -6,7 +6,6 @@ import logging
 import numpy as np
 import os
 import six
-import subprocess
 import sys
 import threading
 import time
