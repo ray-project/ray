@@ -281,7 +281,7 @@ class TFPolicy(Policy):
     def get_exploration_info(self):
         if self.exploration is not None:
             return self._sess.run(
-                self.exporation.get_info(self.global_timestep))
+                self.exporation.get_info())
 
     @override(Policy)
     def get_weights(self):
