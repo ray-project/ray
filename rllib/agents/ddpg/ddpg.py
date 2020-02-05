@@ -1,7 +1,8 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.ddpg.ddpg_policy import DDPGTFPolicy
-from ray.rllib.utils.schedules import ConstantSchedule, LinearSchedule
+from ray.rllib.utils.deprecation import deprecation_warning
+
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -157,7 +158,6 @@ DEFAULT_CONFIG = with_common_config({
     # Prevent iterations from going lower than this time span
     "min_iter_time_s": 1,
 
-
     # Deprecated exploration params.
     # Turns on annealing schedule for exploration noise. Exploration is
     # annealed from 1.0 to exploration_final_eps over schedule_max_timesteps
@@ -185,6 +185,16 @@ DEFAULT_CONFIG = with_common_config({
     # "exploration_noise_type" to be "gaussian")
     # "exploration_gaussian_sigma": 0.1,
     
+    # Deprecated exploration params.
+    "exploration_should_anneal": -1,
+    "schedule_max_timesteps": -1,
+    "exploration_fraction": -1,
+    "exploration_final_scale": -1,
+    "exploration_noise_type": -1,
+    "exploration_ou_noise_scale": -1,
+    "exploration_ou_theta": -1,
+    "exploration_ou_sigma": -1,
+    "exploration_gaussian_sigma": -1,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -244,20 +254,21 @@ def update_worker_explorations(trainer):
         lambda p, _: p.get_exploration_info(global_timestep))
 
 
-# TODO(sven): Separate this from ActionNoise components somehow (separate exploration)?
-# Should policy take a list of Exploration objects?
-def add_pure_exploration_phase(trainer):
-    global_timestep = trainer.optimizer.num_steps_sampled
-    pure_expl_steps = trainer.config["pure_exploration_steps"]
-    if pure_expl_steps:
-        # tell workers whether they should do pure exploration
-        only_explore = global_timestep < pure_expl_steps
-        trainer.workers.local_worker().foreach_trainable_policy(
-            lambda p, _: p.set_pure_exploration_phase(only_explore))
-        for e in trainer.workers.remote_workers():
-            e.foreach_trainable_policy.remote(
-                lambda p, _: p.set_pure_exploration_phase(only_explore))
-    update_worker_explorations(trainer)
+# TODO(sven):
+#  Separate this from ActionNoise components somehow (separate exploration)?
+#  Should policy take a list of Exploration objects?
+#def add_pure_exploration_phase(trainer):
+#    global_timestep = trainer.optimizer.num_steps_sampled
+#    pure_expl_steps = trainer.config["pure_exploration_steps"]
+#    if pure_expl_steps:
+#        # tell workers whether they should do pure exploration
+#        only_explore = global_timestep < pure_expl_steps
+#        trainer.workers.local_worker().foreach_trainable_policy(
+#            lambda p, _: p.set_pure_exploration_phase(only_explore))
+#        for e in trainer.workers.remote_workers():
+#            e.foreach_trainable_policy.remote(
+#                lambda p, _: p.set_pure_exploration_phase(only_explore))
+#    update_worker_explorations(trainer)
 
 
 def validate_config(config):
@@ -276,13 +287,20 @@ def validate_config_and_setup_param_noise(config):
         raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
 
     # TODO(sven): Remove at some point.
-    # Backward compatibility of DDPG-specific exploration config
+    # Backward compatibility of DDPG-specific exploration config.
     schedule_max_timesteps = None
+    if "exploration_should_anneal" in config and \
+            config["exploration_should_anneal"] != -1:
+        raise ValueError(
+            "`exploration_should_anneal` has been deprecated. "
+            "Use `eploration`: { "
+            "type: [Gaussian|OrnsteinUhlenbeck]ActionNoise, "
+            "initial_[stddev|scale]: 1.0, final_[scale]: ..."
+            "}")
     if "schedule_max_timesteps" in config and \
             config["schedule_max_timesteps"] > 0:
         deprecation_warning(
-            "schedule_max_timesteps", "exploration.epsilon_timesteps OR "
-            "prioritized_replay_beta_annealing_timesteps")
+            "schedule_max_timesteps", "exploration.timesteps")
         schedule_max_timesteps = config["schedule_max_timesteps"]
     if "exploration_final_eps" in config and \
             config["exploration_final_eps"] > 0:

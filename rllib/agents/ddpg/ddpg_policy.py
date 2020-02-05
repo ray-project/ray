@@ -49,7 +49,7 @@ class DDPGPostprocessing:
                     self.cur_observations: states,
                     self.stochastic: False,
                     self.is_exploring: False,
-                    #self.noise_scale: .0,
+                    self.noise_scale: .0,
                     self.pure_exploration_phase: False,
                 })
             distance_in_action_space = np.sqrt(
@@ -82,7 +82,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
                 "Consider reshaping this into a single dimension, "
                 "using a Tuple action space, or the multi-agent API.")
 
-        self.config = config
+        #self.config = config
         self.cur_noise_scale = 1.0
         self.cur_pure_exploration_phase = False
         self.dim_actions = action_space.shape[0]
@@ -94,9 +94,9 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         # use separate optimizers for actor & critic
         self._actor_optimizer = tf.train.AdamOptimizer(
-            learning_rate=self.config["actor_lr"])
+            learning_rate=config["actor_lr"])
         self._critic_optimizer = tf.train.AdamOptimizer(
-            learning_rate=self.config["critic_lr"])
+            learning_rate=config["critic_lr"])
 
         # Action inputs
         self.stochastic = tf.placeholder(tf.bool, (), name="stochastic")
@@ -114,18 +114,19 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             self.policy_vars = scope_vars(scope.name)
 
         # Noise vars for P network except for layer normalization vars
-        if self.config["parameter_noise"]:
+        if config["parameter_noise"]:
             self._build_parameter_noise([
                 var for var in self.policy_vars if "LayerNorm" not in var.name
             ])
 
         # Action outputs
+        self.output_actions = policy_out
         #with tf.variable_scope(ACTION_SCOPE):
         #    self.output_actions = self._add_exploration_noise(
         #        policy_out, self.stochastic, self.noise_scale,
         #        self.pure_exploration_phase, action_space)
 
-        if self.config["smooth_target_policy"]:
+        if config["smooth_target_policy"]:
             self.reset_noise_op = tf.no_op()
         else:
             with tf.variable_scope(ACTION_SCOPE, reuse=True):
@@ -165,11 +166,11 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # Action outputs
         with tf.variable_scope(ACTION_SCOPE, reuse=True):
             if config["smooth_target_policy"]:
-                target_noise_clip = self.config["target_noise_clip"]
+                target_noise_clip = config["target_noise_clip"]
                 clipped_normal_sample = tf.clip_by_value(
                     tf.random_normal(
                         tf.shape(policy_tp1),
-                        stddev=self.config["target_noise"]),
+                        stddev=config["target_noise"]),
                     -target_noise_clip, target_noise_clip)
                 policy_tp1_smoothed = tf.clip_by_value(
                     policy_tp1 + clipped_normal_sample,
@@ -195,7 +196,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             # Q-values for current policy (no noise) in given current state
             q_t_det_policy, _ = self._build_q_network(
                 self.obs_t, observation_space, action_space, self.policy_t)
-        if self.config["twin_q"]:
+        if config["twin_q"]:
             with tf.variable_scope(TWIN_Q_SCOPE) as scope:
                 twin_q_t, self.twin_q_model = self._build_q_network(
                     self.obs_t, observation_space, action_space, self.act_t)
@@ -208,14 +209,14 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             q_tp1, _ = self._build_q_network(self.obs_tp1, observation_space,
                                              action_space, policy_tp1_smoothed)
             target_q_func_vars = scope_vars(scope.name)
-        if self.config["twin_q"]:
+        if config["twin_q"]:
             with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
                 twin_q_tp1, _ = self._build_q_network(
                     self.obs_tp1, observation_space, action_space,
                     policy_tp1_smoothed)
                 twin_target_q_func_vars = scope_vars(scope.name)
 
-        if self.config["twin_q"]:
+        if config["twin_q"]:
             self.critic_loss, self.actor_loss, self.td_error \
                 = self._build_actor_critic_loss(
                     q_t, q_tp1, q_t_det_policy, twin_q_t=twin_q_t,
@@ -232,7 +233,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             for var in self.q_func_vars:
                 if "bias" not in var.name:
                     self.critic_loss += (config["l2_reg"] * tf.nn.l2_loss(var))
-            if self.config["twin_q"]:
+            if config["twin_q"]:
                 for var in self.twin_q_func_vars:
                     if "bias" not in var.name:
                         self.critic_loss += (
@@ -249,7 +250,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             update_target_expr.append(
                 var_target.assign(self.tau * var +
                                   (1.0 - self.tau) * var_target))
-        if self.config["twin_q"]:
+        if config["twin_q"]:
             for var, var_target in zip(
                     sorted(self.twin_q_func_vars, key=lambda v: v.name),
                     sorted(twin_target_q_func_vars, key=lambda v: v.name)):
@@ -275,21 +276,20 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         ]
         input_dict = dict(self.loss_inputs)
 
-        if self.config["use_state_preprocessor"]:
+        if config["use_state_preprocessor"]:
             # Model self-supervised losses
             self.actor_loss = self.policy_model.custom_loss(
                 self.actor_loss, input_dict)
             self.critic_loss = self.q_model.custom_loss(
                 self.critic_loss, input_dict)
-            if self.config["twin_q"]:
+            if config["twin_q"]:
                 self.critic_loss = self.twin_q_model.custom_loss(
                     self.critic_loss, input_dict)
 
-        TFPolicy.__init__(
-            self,
+        super().__init__(
             observation_space,
             action_space,
-            self.config,
+            config,
             self.sess,
             obs_input=self.cur_observations,
             action_sampler=self.output_actions,
