@@ -242,7 +242,7 @@ The default idle timeout is 5 minutes. This is to prevent excessive node churn w
 Monitoring cluster status
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The autoscaler also comes with an online dashboard. To access the dashboard, which is located on the ray head node on port ``8265``. To access it locally, you'll need to forward the port to your local machine. You can also use the built-in ``ray dashboard`` to do this automatically.
+The ray also comes with an online dashboard. The dashboard is accessible via HTTP on the head node (by default it listens on ``localhost:8265``). To access it locally, you'll need to forward the port to your local machine. You can also use the built-in ``ray dashboard`` to do this automatically.
 
 You can monitor cluster usage and auto-scaling status by tailing the autoscaling
 logs in ``/tmp/ray/session_*/logs/monitor*``.

@@ -51,8 +51,8 @@ class KubernetesCommandRunner:
             port_forward=None):
         if cmd and port_forward:
             raise Exception(
-                "exec with Kubernetes only can't forward ports and execute"
-                "commands together")
+                "exec with Kubernetes can't forward ports and execute"
+                "commands together.")
 
         if port_forward:
             if not isinstance(port_forward, list):
