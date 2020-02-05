@@ -155,6 +155,7 @@ filegroup(
     srcs = [
         ":cp_plasma_store_server",
         "//:core_worker_library_java",
+        "//:gcs_server",
         "//:libray_redis_module.so",
         "//:raylet",
         "//:redis-server",
