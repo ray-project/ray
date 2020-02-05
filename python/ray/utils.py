@@ -12,8 +12,10 @@ import threading
 import time
 import uuid
 
+import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -398,44 +400,14 @@ def get_system_memory():
             docker_limit = int(f.read())
 
     # Use psutil if it is available.
-    psutil_memory_in_bytes = None
-    try:
-        # TODO: Replace this entire method with just the docker check and
-        # psutil once it becomes a required dependency.
-        import psutil
-        psutil_memory_in_bytes = psutil.virtual_memory().total
-    except ImportError:
-        pass
-
-    if psutil_memory_in_bytes is not None:
-        memory_in_bytes = psutil_memory_in_bytes
-    else:
-        try:
-            if sys.platform == "linux" or sys.platform == "linux2":
-                # Handle Linux.
-                bytes_in_kilobyte = 1024
-
-                out = subprocess.check_output(["vmstat", "-s"])
-                stat = "total memory"
-                for line in out.split(b"\n"):
-                    line = line.strip()
-                    if stat in line:
-                        memory_in_bytes = int(line.split(b" ")[0])
-                memory_in_bytes *= bytes_in_kilobyte
-            else:
-                # Handle MacOS.
-                out = subprocess.check_output(["sysctl", "hw.memsize"])
-                result = out.split(b" ")[1]
-                memory_in_bytes = int(result)
-        except Exception:
-            raise Exception("Could not find total ram on the system.")
+    psutil_memory_in_bytes = psutil.virtual_memory().total
 
     if docker_limit is not None:
-        if memory_in_bytes < docker_limit:
+        if docker_limit > psutil_memory_in_bytes:
             logger.warn("Container memory is larger than system memory.")
-        return min(docker_limit, memory_in_bytes)
+        return min(docker_limit, psutil_memory_in_bytes)
     else:
-        return memory_in_bytes
+        return psutil_memory_in_bytes
 
 
 def get_used_memory():
@@ -453,53 +425,15 @@ def get_used_memory():
             docker_usage = int(f.read())
 
     # Use psutil if it is available.
-    psutil_memory_in_bytes = None
-    try:
-        # TODO: Replace this entire method with just the docker check and
-        # psutil once it becomes a required dependency.
-        import psutil
-        psutil_memory_in_bytes = psutil.virtual_memory().used
-    except ImportError:
-        pass
-
-    if psutil_memory_in_bytes is not None:
-        memory_in_bytes = psutil_memory_in_bytes
-    else:
-        try:
-            if sys.platform == "linux" or sys.platform == "linux2":
-                # Handle Linux.
-                bytes_in_kilobyte = 1024
-                out = subprocess.check_output(["vmstat", "-s"])
-                stat = "used memory"
-                for line in out.split(b"\n"):
-                    line = line.strip()
-                    if stat in line:
-                        memory_in_bytes = int(line.split(b" ")[0])
-                memory_in_bytes *= bytes_in_kilobyte
-            else:
-                # Handle MacOS.
-                system_memory = get_system_memory()
-
-                out = subprocess.check_output(["vmstat"])
-                stat = stat.encode("ascii")
-                for line in out.split(b"\n"):
-                    line = line.strip()
-                    if stat in line:
-                        pages = int(float(line.split(b" ")[-1]))
-                        free_memory = pages
-                free_memory *= ray_constants.MACH_PAGE_SIZE_BYTES
-
-                memory_in_bytes = system_memory - free_memory
-        except Exception:
-            raise Exception("Cannot find ram usage on the system")
+    psutil_memory_in_bytes = psutil.virtual_memory().used
 
     if docker_usage is not None:
-        if docker_usage > memory_in_bytes:
+        if docker_usage > psutil_memory_in_bytes:
             logger.warn("Container is reporting more memory usage than the"
                         "system.")
-        return min(docker_usage, memory_in_bytes)
+        return min(docker_usage, psutil_memory_in_bytes)
     else:
-        return memory_in_bytes
+        return psutil_memory_in_bytes
 
 
 def estimate_available_memory():

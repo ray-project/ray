@@ -27,6 +27,8 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
+import ray
+import setproctitle
 import ray.signature
 import ray.state
 
@@ -62,11 +64,6 @@ ERROR_KEY_PREFIX = b"Error:"
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
 
 # Whether we should warn about slow put performance.
 if os.environ.get("OMP_NUM_THREADS") == "1":
@@ -293,13 +290,9 @@ class Worker:
                 should_warn_of_slow_puts = False
         return result
 
-    def deserialize_objects(self,
-                            data_metadata_pairs,
-                            object_ids,
-                            error_timeout=10):
+    def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_ids,
-                                           error_timeout)
+        return context.deserialize_objects(data_metadata_pairs, object_ids)
 
     def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.

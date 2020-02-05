@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import time
+import threading
 
 import pyarrow.plasma as plasma
 
@@ -34,8 +35,9 @@ class DeserializationError(Exception):
 
 
 class SerializedObject:
-    def __init__(self, metadata):
+    def __init__(self, metadata, contained_object_ids=None):
         self._metadata = metadata
+        self._contained_object_ids = contained_object_ids or []
 
     @property
     def total_bytes(self):
@@ -45,11 +47,15 @@ class SerializedObject:
     def metadata(self):
         return self._metadata
 
+    @property
+    def contained_object_ids(self):
+        return self._contained_object_ids
+
 
 class Pickle5SerializedObject(SerializedObject):
-    def __init__(self, inband, writer):
-        super(Pickle5SerializedObject,
-              self).__init__(ray_constants.PICKLE5_BUFFER_METADATA)
+    def __init__(self, inband, writer, contained_object_ids):
+        super(Pickle5SerializedObject, self).__init__(
+            ray_constants.PICKLE5_BUFFER_METADATA, contained_object_ids)
         self.inband = inband
         self.writer = writer
         # cached total bytes
@@ -126,6 +132,7 @@ class SerializationContext:
         self.worker = worker
         assert worker.use_pickle
         self.use_pickle = worker.use_pickle
+        self._thread_local = threading.local()
 
         def actor_handle_serializer(obj):
             return obj._serialization_helper(True)
@@ -147,6 +154,7 @@ class SerializationContext:
             return serialized_obj[0](*serialized_obj[1])
 
         def object_id_serializer(obj):
+            self.add_contained_object_id(obj)
             owner_id = ""
             owner_address = ""
             if obj.is_direct_call_type():
@@ -165,6 +173,11 @@ class SerializationContext:
             # that the ref count for the ObjectID is greater than 0 by the
             # time the core worker resolves the value of the object.
             deserialized_object_id = id_deserializer(obj_id)
+            # TODO(edoakes): we should be able to just capture a reference
+            # to 'self' here instead, but this function is itself pickled
+            # somewhere, which causes an error.
+            context = ray.worker.global_worker.get_serialization_context()
+            context.add_contained_object_id(deserialized_object_id)
             if owner_id:
                 worker = ray.worker.get_global_worker()
                 worker.check_connected()
@@ -192,6 +205,21 @@ class SerializationContext:
         # construct a reducer
         pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
 
+    def get_and_clear_contained_object_ids(self):
+        if not hasattr(self._thread_local, "object_ids"):
+            self._thread_local.object_ids = set()
+            return set()
+
+        object_ids = self._thread_local.object_ids
+        self._thread_local.object_ids = set()
+        return object_ids
+
+    def add_contained_object_id(self, object_id):
+        if not hasattr(self._thread_local, "object_ids"):
+            self._thread_local.object_ids = set()
+
+        self._thread_local.object_ids.add(object_id)
+
     def _deserialize_object(self, data, metadata, object_id):
         if metadata:
             if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
@@ -202,12 +230,24 @@ class SerializationContext:
                 try:
                     in_band, buffers = unpack_pickle5_buffers(data)
                     if len(buffers) > 0:
-                        return pickle.loads(in_band, buffers=buffers)
+                        obj = pickle.loads(in_band, buffers=buffers)
                     else:
-                        return pickle.loads(in_band)
+                        obj = pickle.loads(in_band)
                 # cloudpickle does not provide error types
                 except pickle.pickle.PicklingError:
                     raise DeserializationError()
+
+                # Check that there are no ObjectIDs serialized in arguments
+                # that are inlined.
+                if object_id.is_nil():
+                    assert len(self.get_and_clear_contained_object_ids()) == 0
+                else:
+                    worker = ray.worker.global_worker
+                    worker.core_worker.add_contained_object_ids(
+                        object_id,
+                        self.get_and_clear_contained_object_ids(),
+                    )
+                return obj
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -291,7 +331,8 @@ class SerializationContext:
         writer = Pickle5Writer()
         inband = pickle.dumps(
             value, protocol=5, buffer_callback=writer.buffer_callback)
-        return Pickle5SerializedObject(inband, writer)
+        return Pickle5SerializedObject(
+            inband, writer, self.get_and_clear_contained_object_ids())
 
     def register_custom_serializer(self,
                                    cls,

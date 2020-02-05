@@ -25,13 +25,17 @@ Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
-  rllib train --run=PPO --env=CartPole-v0  # --eager [--trace] for eager execution
+  rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
+                                           # --eager [--trace] for eager execution,
+                                           # --torch to use PyTorch
 
 .. code-block:: python
 
   from ray import tune
   from ray.rllib.agents.ppo import PPOTrainer
-  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "eager": True for eager execution
+  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
+                                                       # "eager": True for eager execution,
+                                                       # "torch": True for PyTorch
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 
