@@ -441,7 +441,11 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
             port_forward=port_forward)
 
 
-def rsync(config_file, source, target, override_cluster_name, down,
+def rsync(config_file,
+          source,
+          target,
+          override_cluster_name,
+          down,
           sync_workers=False):
     """Rsyncs files.
 
@@ -465,13 +469,18 @@ def rsync(config_file, source, target, override_cluster_name, down,
     try:
         nodes = []
         if sync_workers:
-            # technically we re-open the provider for no reason in get_worker_nodes
-            # but it's cleaner this way and _get_head_node does this too
+            # technically we re-open the provider for no reason
+            # in get_worker_nodes but it's cleaner this way
+            # and _get_head_node does this too
             nodes = _get_worker_nodes(config, override_cluster_name)
 
-        nodes += [_get_head_node(
-            config, config_file, override_cluster_name,
-            create_if_needed=False)]
+        nodes += [
+            _get_head_node(
+                config,
+                config_file,
+                override_cluster_name,
+                create_if_needed=False)
+        ]
 
         for node_id in nodes:
             updater = NodeUpdaterThread(
@@ -539,6 +548,7 @@ def get_worker_node_ips(config_file, override_cluster_name):
             return [provider.external_ip(node) for node in nodes]
     finally:
         provider.cleanup()
+
 
 def _get_worker_nodes(config, override_cluster_name):
     """Returns worker node ids for given configuration."""

@@ -654,7 +654,12 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     required=False,
     help="Upload to workers as well as the head node.")
 def rsync_up(cluster_config_file, source, target, cluster_name, sync_workers):
-    rsync(cluster_config_file, source, target, cluster_name, down=False,
+    rsync(
+        cluster_config_file,
+        source,
+        target,
+        cluster_name,
+        down=False,
         sync_workers=sync_workers)
 
 
