@@ -194,7 +194,7 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
 .. hint::
     For a complete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,
     make the following changes to the default DQN config:
-    ``"n_step": [int > 1 and << 10],
+    ``"n_step": [between 1 and 10],
     "batch_mode": "complete_episodes",
     "noisy": True,
     "num_atoms": [>1],
