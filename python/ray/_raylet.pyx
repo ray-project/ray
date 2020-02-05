@@ -580,7 +580,8 @@ cdef write_serialized_object(
     if isinstance(serialized_object, RawSerializedObject):
         if buf.get().Size() > 0:
             buffer = Buffer.make(buf)
-            # `pyarrow.py_buffer` will crash when underlying buffer is a null_ptr
+            # `Buffer` has a nullptr buffer underlying if size is 0,
+            # which will cause `pyarrow.py_buffer` crash
             stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
             stream.set_memcopy_threads(MEMCOPY_THREADS)
             stream.write(pyarrow.py_buffer(serialized_object.value))
