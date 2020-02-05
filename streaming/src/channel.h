@@ -72,7 +72,7 @@ class ProducerChannel {
 
  protected:
   std::shared_ptr<Config> transfer_config_;
-  ProducerChannelInfo &channel_info;
+  ProducerChannelInfo &channel_info_;
 };
 
 class ConsumerChannel {
@@ -92,7 +92,7 @@ class ConsumerChannel {
 
  protected:
   std::shared_ptr<Config> transfer_config_;
-  ConsumerChannelInfo &channel_info;
+  ConsumerChannelInfo &channel_info_;
 };
 
 class StreamingQueueProducer : public ProducerChannel {
