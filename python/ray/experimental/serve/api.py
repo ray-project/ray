@@ -22,9 +22,6 @@ from ray.experimental.serve.queues import Query
 global_state = None
 
 
-
-
-
 def _get_global_state():
     """Used for internal purpose. Because just import serve.global_state
     will always reference the original None object

@@ -12,6 +12,7 @@ from ray.experimental.serve.context import FakeFlaskRequest, TaskContext
 from ray.experimental.serve.http_util import build_flask_request
 import itertools
 
+
 def expand(l):
     """
     Implements a nested flattening of a list.
@@ -21,6 +22,7 @@ def expand(l):
     return list(
         itertools.chain.from_iterable(
             [x if isinstance(x, list) else [x] for x in l]))
+
 
 def parse_request_item(request_item):
     if request_item.request_context == TaskContext.Web:
