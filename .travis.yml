@@ -48,6 +48,24 @@ matrix:
         - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
 
     - os: linux
+      env:
+        - TESTSUITE=gcs_service
+        - JDK='Oracle JDK 8'
+        - RAY_GCS_SERVICE_ENABLED=true
+        - RAY_INSTALL_JAVA=1
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
+      install:
+        - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
+      script:
+        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+        - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
+
+    - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
