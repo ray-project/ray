@@ -23,7 +23,7 @@ namespace streaming {
 /// processing functions ordered by its priority.
 
 /// The event queue inherits from the universal ring queue. It mainly divides
-/// time into two different levels: normal event and urgent event, and the
+/// event into two different levels: normal event and urgent event, and the
 /// total size of the queue is the sum of them.
 template <class T>
 class EventQueue : public AbstractRingBufferImpl<T> {
@@ -52,7 +52,7 @@ class EventQueue : public AbstractRingBufferImpl<T> {
                              << " buffer size:" << buffer_.size()
                              << " urgent_buffer size:" << urgent_buffer_.size();
       full_cv_.wait(lock);
-      STREAMING_LOG(WARNING) << "event_server's full_sleep be notifyed";
+      STREAMING_LOG(WARNING) << "Event server is full_sleep be notified";
     }
     if (!is_started_) {
       return;
@@ -191,7 +191,7 @@ class EventServer {
   /// User-define event handle for different types.
   typedef std::function<bool(ProducerChannelInfo *info)> Handle;
 
-  EventServer();
+  EventServer(uint32_t event_size = kEventQueueCapacity);
 
   ~EventServer();
 
@@ -206,7 +206,7 @@ class EventServer {
   /// A single thread should be invoked to run this loop function, so that
   /// event server can poll and execute registered callback function event
   /// one by one.
-  void LoopThd();
+  void LoopThreadHandler();
 
   inline size_t EventNums() { return event_queue_->Size(); }
 
@@ -219,6 +219,8 @@ class EventServer {
   std::unordered_map<EventType, Handle, EnumTypeHash> event_handle_map_;
   std::shared_ptr<EventQueue<Event> > event_queue_;
   std::shared_ptr<std::thread> loop_thread_;
+
+  static constexpr int kEventQueueCapacity = 1000;
 
   bool stop_flag_;
 };

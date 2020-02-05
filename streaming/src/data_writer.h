@@ -117,8 +117,9 @@ class DataWriter {
   std::vector<ObjectID> output_queue_ids_;
 
  protected:
-  // ProducerTransfer is middle broker for data transporting.
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
+  /// ProducerChannel is middle broker for data transporting and all downstream
+  /// producer channels will be channel_map_.
   std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> channel_map_;
   std::shared_ptr<Config> transfer_config_;
   std::shared_ptr<RuntimeContext> runtime_context_;

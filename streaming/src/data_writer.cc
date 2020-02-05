@@ -363,10 +363,10 @@ bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
     } else if (StreamingStatus::FullChannel == write_status ||
                StreamingStatus::OutOfMemory == write_status) {
       ++channel_info.queue_full_cnt;
-      STREAMING_LOG(DEBUG) << "FullChannel after try write to channel, queue_full_cnt:"
+      STREAMING_LOG(DEBUG) << "FullChannel after writing to channel, queue_full_cnt:"
                            << channel_info.queue_full_cnt;
       // TODO(lingxuan.zlx): we should notify consumed to channel, but skip it
-      // now becase flow control is unimported.
+      // since flow control is unsupported currently.
     } else if (StreamingStatus::EmptyRingBuffer != write_status) {
       STREAMING_LOG(INFO) << channel_info.channel_id
                           << ":something wrong when WriteToQueue "

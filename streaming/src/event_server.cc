@@ -3,11 +3,11 @@
 #include "event_server.h"
 namespace ray {
 namespace streaming {
-EventServer::EventServer()
-    : event_queue_(std::make_shared<EventQueue<Event> >(1000)), stop_flag_(false) {}
+EventServer::EventServer(uint32_t event_size)
+    : event_queue_(std::make_shared<EventQueue<Event> >(event_size)), stop_flag_(false) {}
 EventServer::~EventServer() {
   stop_flag_ = true;
-  // Do do join if loop thread has never been created.
+  // No need to join if loop thread has never been created.
   if (loop_thread_ && loop_thread_->joinable()) {
     STREAMING_LOG(WARNING) << "Loop Thread Stopped";
     loop_thread_->join();
@@ -17,7 +17,7 @@ EventServer::~EventServer() {
 void EventServer::Run() {
   stop_flag_ = false;
   event_queue_->Run();
-  loop_thread_ = std::make_shared<std::thread>(&EventServer::LoopThd, this);
+  loop_thread_ = std::make_shared<std::thread>(&EventServer::LoopThreadHandler, this);
   STREAMING_LOG(WARNING) << "event_server run";
 }
 
@@ -48,7 +48,7 @@ void EventServer::Push(const Event &event) {
 
 void EventServer::Execute(Event &event) {
   if (event_handle_map_.find(event.type_) == event_handle_map_.end()) {
-    STREAMING_LOG(WARNING) << "Handle is't Registered, type => "
+    STREAMING_LOG(WARNING) << "Handle has never been registered yet, type => "
                            << static_cast<int>(event.type_);
     return;
   }
@@ -58,7 +58,7 @@ void EventServer::Execute(Event &event) {
   }
 }
 
-void EventServer::LoopThd() {
+void EventServer::LoopThreadHandler() {
   while (true) {
     if (stop_flag_) {
       break;

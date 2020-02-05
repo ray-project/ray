@@ -30,8 +30,8 @@ struct ProducerChannelInfo {
   int64_t message_pass_by_ts;
   ActorID actor_id;
 
-  /// The following parameters are prepared for Event-Driven to
-  /// record different input events.
+  /// The following parameters are used for event driven to record different
+  /// input events.
   uint64_t sent_empty_cnt = 0;
   uint64_t flow_control_cnt = 0;
   uint64_t user_event_cnt = 0;
