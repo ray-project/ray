@@ -42,14 +42,14 @@ jobs:
       shell: bash
       run: ./ci/travis/install-dependencies.sh
     - name: Build MacOS Wheels
-      if: matrix.name == "macOS"
+      if: matrix.name == 'macOS'
       shell: bash
       env:
         TRAVIS: true
         TRAVIS_PULL_REQUEST: true
       run: ./python/buid-wheel-macos.sh
     - name: Build Linux Wheels
-      if: matrix.name == "linux"
+      if: matrix.name == 'linux'
       shell: bash
       env:
         MOUNT_BAZEL_CACHE: "-e TRAVIS=true -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST"
