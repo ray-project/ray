@@ -382,46 +382,6 @@ def setup_logger(logging_level, logging_format):
     logger.propagate = False
 
 
-# This function is copied and modified from
-# https://github.com/giampaolo/psutil/blob/5bd44f8afcecbfb0db479ce230c790fc2c56569a/psutil/tests/test_linux.py#L132-L138  # noqa: E501
-def vmstat(stat):
-    """Run vmstat and get a particular statistic.
-
-    Args:
-        stat: The statistic that we are interested in retrieving.
-
-    Returns:
-        The parsed output.
-    """
-    out = subprocess.check_output(["vmstat", "-s"])
-    stat = stat.encode("ascii")
-    for line in out.split(b"\n"):
-        line = line.strip()
-        if stat in line:
-            return int(line.split(b" ")[0])
-    raise ValueError("Can't find {} in 'vmstat' output.".format(stat))
-
-
-# This function is modeled after vmstat, but for OS X. Note vmstat != vm_stat
-def vm_stat(stat):
-    """Run vm_stat and get a particular statistic.
-
-    Args:
-        stat: The statistic that we are interested in retrieving.
-
-    Returns:
-        The parsed output converted to units of bytes
-    """
-    out = subprocess.check_output(["vmstat"])
-    stat = stat.encode("ascii")
-    for line in out.split(b"\n"):
-        line = line.strip()
-        if stat in line:
-            pages = int(float(line.split(b" ")[-1]))
-            return pages * ray_constants.MACH_PAGE_SIZE_BYTES
-    raise ValueError("Can't find {} in 'vmstat' output.".format(stat))
-
-
 def get_system_memory():
     """Return the total amount of system memory in bytes.
 
@@ -440,6 +400,8 @@ def get_system_memory():
     # Use psutil if it is available.
     psutil_memory_in_bytes = None
     try:
+        # TODO: Replace this entire method with just the docker check and
+        # psutil once it becomes a required dependency
         import psutil
         psutil_memory_in_bytes = psutil.virtual_memory().total
     except ImportError:
@@ -493,6 +455,8 @@ def get_used_memory():
     # Use psutil if it is available.
     psutil_memory_in_bytes = None
     try:
+        # TODO: Replace this entire method with just the docker check and
+        # psutil once it becomes a required dependency
         import psutil
         psutil_memory_in_bytes = psutil.virtual_memory().used
     except ImportError:
