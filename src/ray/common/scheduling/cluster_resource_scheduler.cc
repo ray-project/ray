@@ -50,7 +50,7 @@ std::string NodeResources::DebugString() {
   return buffer.str();
 }
 
-std::string Vector2String(std::vector<double> &vector) {
+std::string VectorToString(std::vector<double> &vector) {
   std::stringstream buffer;
 
   buffer << "[";
@@ -100,16 +100,16 @@ std::string NodeResourceInstances::DebugString() {
   std::stringstream buffer;
   buffer << "  node predefined resources {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    buffer << "(" << Vector2String(predefined_resources[i].total) << ":"
-           << Vector2String(this->predefined_resources[i].available) << ") ";
+    buffer << "(" << VectorToString(predefined_resources[i].total) << ":"
+           << VectorToString(this->predefined_resources[i].available) << ") ";
   }
   buffer << "}" << std::endl;
 
   buffer << "  node custom resources {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":(" << Vector2String(it->second.total) << ":"
-           << Vector2String(it->second.available) << ") ";
+    buffer << it->first << ":(" << VectorToString(it->second.total) << ":"
+           << VectorToString(it->second.available) << ") ";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -154,14 +154,14 @@ std::string TaskResourceInstances::DebugString() {
   std::stringstream buffer;
   buffer << std::endl << "  task allocation: P {";
   for (size_t i = 0; i < this->predefined_resources.size(); i++) {
-    buffer << Vector2String(this->predefined_resources[i]);
+    buffer << VectorToString(this->predefined_resources[i]);
   }
   buffer << "}";
 
   buffer << "  C {";
   for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
        ++it) {
-    buffer << it->first << ":" << Vector2String(it->second) << ", ";
+    buffer << it->first << ":" << VectorToString(it->second) << ", ";
   }
 
   buffer << "}" << std::endl;
