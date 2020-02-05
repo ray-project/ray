@@ -10,7 +10,7 @@ import requests
 from pygments import formatters, highlight, lexers
 from ray.experimental.serve.context import FakeFlaskRequest, TaskContext
 from ray.experimental.serve.http_util import build_flask_request
-
+import itertools
 
 def expand(l):
     """

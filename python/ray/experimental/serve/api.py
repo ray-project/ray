@@ -1,7 +1,7 @@
 import inspect
 from functools import wraps
 from tempfile import mkstemp
-import itertools
+
 from multiprocessing import cpu_count
 
 import numpy as np
