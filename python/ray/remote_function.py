@@ -66,8 +66,6 @@ class RemoteFunction:
         self._function = function
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
-        self._function_signature = ray.signature.extract_signature(
-            self._function)
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -85,13 +83,15 @@ class RemoteFunction:
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
                              if max_retries is None else max_retries)
-        self._decorator = getattr(self._function,
-                                  "__ray_invocation_decorator__", None)
+        self._decorator = getattr(function, "__ray_invocation_decorator__",
+                                  None)
+        self._function_signature = ray.signature.extract_signature(
+            self._function)
 
         self._last_export_session_and_job = None
 
         # Override task.remote's signature and docstring
-        @wraps(self._function)
+        @wraps(function)
         def _remote_proxy(*args, **kwargs):
             return self._remote(args=args, kwargs=kwargs)
 

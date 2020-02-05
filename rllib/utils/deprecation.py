@@ -1,5 +1,6 @@
 import logging
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -11,9 +12,11 @@ def deprecation_warning(old, new=None):
         old (str): A description of the "thing" that is to be deprecated.
         new (Optional[str]): A description of the new "thing" that replaces it.
     """
-    logger.warning("DeprecationWarning: `{}` has been deprecated.{}".format(
-        old, (" Use `{}` instead.".format(new) if new else "")) +
-                   " This will raise an error in the future!")
+    logger.warning(
+        "DeprecationWarning: `{}` has been deprecated.{}".
+        format(old, (" Use `{}` instead.".format(new) if new else "")) +
+        " This will raise an error in the future!"
+    )
 
 
 def renamed_class(cls, old_name):
@@ -61,6 +64,6 @@ def renamed_function(func, old_name):
 
 def moved_function(func):
     new_location = func.__module__
-    deprecation_warning("import {}".format(func.__name__),
-                        "import {}".format(new_location))
+    deprecation_warning("import {}".format(func.__name__), "import {}".
+                        format(new_location))
     return func

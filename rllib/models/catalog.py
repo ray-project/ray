@@ -106,11 +106,10 @@ class ModelCatalog:
 
     @staticmethod
     @DeveloperAPI
-    def get_action_dist(action_space,
-                        config,
-                        dist_type=None,
-                        torch=None,
-                        framework="tf"):
+    def get_action_dist(
+        action_space, config, dist_type=None, torch=None,
+        framework="tf"
+    ):
         """
         Returns action distribution class and size for the given action space.
 
@@ -157,7 +156,8 @@ class ModelCatalog:
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
-                    "Tuple action spaces not supported for Pytorch.")
+                    "Tuple action spaces not supported for Pytorch."
+                )
             child_dist = []
             input_lens = []
             for action in action_space.spaces:
@@ -174,23 +174,27 @@ class ModelCatalog:
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
-                    "Simplex action spaces not supported for Pytorch.")
+                    "Simplex action spaces not supported for Pytorch."
+                )
             dist = Dirichlet
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
-                    "MultiDiscrete action spaces not supported for Pytorch.")
+                    "MultiDiscrete action spaces not supported for Pytorch."
+                )
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
         elif isinstance(action_space, gym.spaces.Dict):
             # TODO(sven): implement
             raise NotImplementedError(
                 "Dict action spaces are not supported, consider using "
-                "gym.spaces.Tuple instead")
+                "gym.spaces.Tuple instead"
+            )
         else:
-            raise NotImplementedError("Unsupported args: {} {}".format(
-                action_space, dist_type))
+            raise NotImplementedError(
+                "Unsupported args: {} {}".format(action_space, dist_type)
+            )
 
         return dist, dist.required_model_output_shape(action_space, config)
 

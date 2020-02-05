@@ -171,7 +171,8 @@ class ESTrainer(Trainer):
         # PyTorch check.
         if config["use_pytorch"]:
             raise ValueError(
-                "ES does not support PyTorch yet! Use tf instead.")
+                "ES does not support PyTorch yet! Use tf instead."
+            )
 
         policy_params = {"action_noise_std": 0.01}
 

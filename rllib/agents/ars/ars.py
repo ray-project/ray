@@ -165,7 +165,8 @@ class ARSTrainer(Trainer):
         # PyTorch check.
         if config["use_pytorch"]:
             raise ValueError(
-                "ARS does not support PyTorch yet! Use tf instead.")
+                "ARS does not support PyTorch yet! Use tf instead."
+            )
 
         env = env_creator(config["env_config"])
         from ray.rllib import models
