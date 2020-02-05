@@ -578,10 +578,12 @@ cdef write_serialized_object(
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
     if isinstance(serialized_object, RawSerializedObject):
-        buffer = Buffer.make(buf)
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
-        stream.set_memcopy_threads(MEMCOPY_THREADS)
-        stream.write(pyarrow.py_buffer(serialized_object.value))
+        if buf.get().Size() > 0:
+            buffer = Buffer.make(buf)
+            # `pyarrow.py_buffer` will crash when underlying buffer is a null_ptr
+            stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
+            stream.set_memcopy_threads(MEMCOPY_THREADS)
+            stream.write(pyarrow.py_buffer(serialized_object.value))
     elif isinstance(serialized_object, Pickle5SerializedObject):
         (<Pickle5Writer>serialized_object.writer).write_to(
             serialized_object.inband, buf, MEMCOPY_THREADS)

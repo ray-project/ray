@@ -67,10 +67,9 @@ class LocalMemoryBuffer : public Buffer {
 
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
   LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
-    // ensure data_ won't be null_ptr when size == 0
-    buffer_.resize(std::max<size_t>(1, size), 0);
+    buffer_.resize(size, 0);
     data_ = buffer_.data();
-    size_ = size;
+    size_ = buffer_.size();
   }
 
   uint8_t *Data() const override { return data_; }
