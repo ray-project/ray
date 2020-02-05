@@ -156,9 +156,11 @@ class RayServeMixin:
 
             serve_context.web = context_flags.pop()
             serve_context.batch_size = batch_size
-            start_timestamp = time.time()
+            # Flask requests are passed to __call__ as a list
+            arg_list = [arg_list]
 
-            result_list = self.__call__(*args, **kwargs_list)
+            start_timestamp = time.time()
+            result_list = self.__call__(*arg_list, **kwargs_list)
 
             self._serve_metric_latency_list.append(time.time() -
                                                    start_timestamp)
