@@ -30,8 +30,6 @@ jobs:
       with:
         # Version range or exact version of a Python version to use, using semvers version range syntax.
         python-version: 3.6 # optional, default is 3.x
-        # The target architecture (x86, x64) of the Python interpreter.
-        architecture: x86 # optional, default is x64
     - name: Setup Bazel
       shell: bash
       env:
