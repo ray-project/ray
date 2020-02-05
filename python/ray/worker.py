@@ -27,7 +27,8 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
-import ray.thirdparty_files.setproctitle as setproctitle
+import ray
+import setproctitle
 import ray.signature
 import ray.state
 

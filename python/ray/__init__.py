@@ -25,6 +25,11 @@ pickle5_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
 sys.path.insert(0, pickle5_path)
 
+# Importing psutil & setproctitle. Must be before ray._raylet is initialized.
+thirdparty_files = os.path.join(
+    os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
+sys.path.insert(0, thirdparty_files)
+
 # Expose ray ABI symbols which may be dependent by other shared
 # libraries such as _streaming.so. See BUILD.bazel:_raylet
 so_path = os.path.join(dirname(__file__), "_raylet.so")
@@ -50,11 +55,6 @@ if "pyarrow" in sys.modules:
 pyarrow_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "pyarrow_files")
 sys.path.insert(0, pyarrow_path)
-
-psutil_path = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "thirdparty_files")
-if psutil_path not in sys.path:
-    sys.path.insert(0, psutil_path)
 
 # See https://github.com/ray-project/ray/issues/131.
 helpful_message = """

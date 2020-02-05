@@ -2,9 +2,8 @@ import os
 
 import colorama
 
-import ray.thirdparty_files.setproctitle as setproctitle
-
 import ray
+import setproctitle
 
 
 class RayError(Exception):
