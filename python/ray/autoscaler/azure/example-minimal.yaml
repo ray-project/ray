@@ -7,9 +7,8 @@ max_workers: 1
 
 # Cloud-provider specific configuration.
 provider:
-    type: aws
-    region: us-west-2
-    availability_zone: us-west-2a
+    type: azure
+    region: uswest2
 
 # How Ray will authenticate with newly launched nodes.
 auth:
