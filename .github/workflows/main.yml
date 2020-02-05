@@ -6,7 +6,65 @@ env:
 on: [push, pull_request]
 
 jobs:
-  build:
+  wheels-build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        name:
+          - macOS
+          - linux
+        include:
+          - name: macOS
+            os: macOS-latest
+          - name: linux
+            os: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
+    - name: Setup Python environment
+      uses: actions/setup-python@v1.1.1
+      with:
+        # Version range or exact version of a Python version to use, using semvers version range syntax.
+        python-version: 3.6 # optional, default is 3.x
+        # The target architecture (x86, x64) of the Python interpreter.
+        architecture: x86 # optional, default is x64
+    - name: Setup Bazel
+      shell: bash
+      env:
+        BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./ci/travis/install-bazel.sh
+    - name: Install Python Dependencies
+      shell: bash
+      run: ./ci/travis/install-dependencies.sh
+    - name: Build MacOS Wheels
+      if: matrix.name == "macOS"
+      shell: bash
+      env:
+        TRAVIS: true
+        TRAVIS_PULL_REQUEST: true
+      run: ./python/buid-wheel-macos.sh
+    - name: Build Linux Wheels
+      if: matrix.name == "linux"
+      shell: bash
+      env:
+        MOUNT_BAZEL_CACHE: "-e TRAVIS=true -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST"
+      run: docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+    - name: Test Wheels
+      shell: bash
+      run: ./ci/travis/test-wheels.sh
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        # Artifact name
+        name: Wheels
+        # Directory containing files to upload
+        path: .whl
+  windows-build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -14,9 +72,8 @@ jobs:
       matrix:
         # Github Actions requires a single row to be added to the build matrix.
         # See https://help.github.com/en/articles/workflow-syntax-for-github-actions.
-        name: [
-          windows-clang-cl,
-        ]
+        name: 
+          - windows-clang-cl
         include:
           - name: windows-clang-cl
             os: windows-latest
