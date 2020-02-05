@@ -146,7 +146,7 @@ class build_ext(_build_ext.build_ext):
         if not os.path.exists(parent_directory):
             os.makedirs(parent_directory)
         if not os.path.exists(destination):
-            print("Copying {} to {}.".format(source, destination))
+            # print("Copying {} to {}.".format(source, destination))
             shutil.copy(source, destination, follow_symlinks=True)
 
 
