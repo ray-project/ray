@@ -20,7 +20,7 @@ void BuildCommonTaskSpec(
     const std::vector<ray::TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
+    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids, const std::vector<ObjectID> &inlined_ids) {
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
@@ -35,6 +35,8 @@ void BuildCommonTaskSpec(
       builder.AddByValueArg(arg.GetValue());
     }
   }
+
+  builder.AddInlinedIds(inlined_ids);
 
   // Compute return IDs.
   return_ids->resize(num_returns);
@@ -679,7 +681,9 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
-                              std::vector<ObjectID> *return_ids, int max_retries) {
+                              std::vector<ObjectID> *return_ids,
+                              const std::vector<ObjectID> &inlined_ids,
+                              int max_retries) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -694,7 +698,8 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       function, args, task_options.num_returns, task_options.resources,
       required_resources,
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
-      return_ids);
+      return_ids,
+      inlined_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
@@ -722,7 +727,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.placement_resources,
                       actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
                                                             : TaskTransportType::RAYLET,
-                      &return_ids);
+                      // TODO
+                      &return_ids, {});
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
@@ -772,7 +778,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, transport_type, return_ids);
+                      // TODO
+                      required_resources, transport_type, return_ids, {});
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);
@@ -950,9 +957,17 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<std::shared_ptr<RayObject>> args;
   std::vector<ObjectID> arg_reference_ids;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
-  for (const auto &arg_id : arg_reference_ids) {
-    if (!arg_id.IsNil()) {
-      reference_counter_->AddLocalReference(arg_id);
+
+  std::vector<ObjectID> pinned_ids(arg_reference_ids);
+  for (const auto &inlined_id_str : task_spec.GetMessage().inlined_ids()) {
+    const auto inlined_id = ObjectID::FromBinary(inlined_id_str);
+    if (!reference_counter_->HasReference(inlined_id)) {
+      pinned_ids.push_back(inlined_id);
+    }
+  }
+  for (const auto &pinned_id : pinned_ids) {
+    if (!pinned_id.IsNil()) {
+      reference_counter_->AddLocalReference(pinned_id);
     }
   }
 
@@ -1000,9 +1015,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
-  for (const auto &arg_id : arg_reference_ids) {
+  for (const auto &arg_id : pinned_ids) {
     if (!arg_id.IsNil()) {
       reference_counter_->PopBorrowerRefsPointer(arg_id, borrower_refs);
+      RAY_LOG(DEBUG) << " REMOVE x";
       reference_counter_->RemoveLocalReference(arg_id, nullptr);
     }
   }
@@ -1036,21 +1052,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   absl::flat_hash_map<ObjectID, int> by_ref_indices;
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
-    int count = task.ArgIdCount(i);
-    if (count > 0) {
-      // pass by reference.
-      RAY_CHECK(count == 1);
-      // Direct call type objects that weren't inlined have been promoted to plasma.
-      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
-      // properly redirects to the plasma store.
-      if (task.ArgId(i, 0).IsDirectCallType()) {
-        RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
-                                        task.ArgId(i, 0)));
-      }
-      by_ref_ids.insert(task.ArgId(i, 0));
-      by_ref_indices.emplace(task.ArgId(i, 0), i);
-      arg_reference_ids->at(i) = task.ArgId(i, 0);
-    } else {
+    if (task.ArgDataSize(i)) {
       // pass by value.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
       if (task.ArgDataSize(i)) {
@@ -1063,7 +1065,27 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
       args->at(i) = std::make_shared<RayObject>(data, metadata, /*copy_data*/ true);
-      arg_reference_ids->at(i) = ObjectID::Nil();
+      int count = task.ArgIdCount(i);
+      if (count == 1) {
+        arg_reference_ids->at(i) = task.ArgId(i, 0);
+      } else {
+        RAY_CHECK(count == 0);
+        arg_reference_ids->at(i) = ObjectID::Nil();
+      }
+    } else {
+      // pass by reference.
+      int count = task.ArgIdCount(i);
+      RAY_CHECK(count == 1);
+      // Direct call type objects that weren't inlined have been promoted to plasma.
+      // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
+      // properly redirects to the plasma store.
+      if (task.ArgId(i, 0).IsDirectCallType()) {
+        RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
+                                        task.ArgId(i, 0)));
+      }
+      by_ref_ids.insert(task.ArgId(i, 0));
+      by_ref_indices.emplace(task.ArgId(i, 0), i);
+      arg_reference_ids->at(i) = task.ArgId(i, 0);
     }
   }
 

@@ -270,12 +270,14 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
         out.push_back(s)
     return out
 
-cdef void prepare_args(
+cdef c_vector[CObjectID] prepare_args(
         CoreWorker core_worker, list args, c_vector[CTaskArg] *args_vector):
     cdef:
         size_t size
         int64_t put_threshold
         shared_ptr[CBuffer] arg_data
+        c_vector[CObjectID] inlined_ids
+        ObjectID obj_id
 
     worker = ray.worker.global_worker
     put_threshold = RayConfig.instance().max_direct_call_object_size()
@@ -292,19 +294,23 @@ cdef void prepare_args(
             # plasma here. This is inefficient for small objects, but inlined
             # arguments aren't associated ObjectIDs right now so this is a
             # simple fix for reference counting purposes.
-            if (<int64_t>size <= put_threshold and
-                    len(serialized_arg.contained_object_ids) == 0):
+            if <int64_t>size <= put_threshold:
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
                         arg_data, string_to_buffer(serialized_arg.metadata))))
+                for obj_id in serialized_arg.contained_object_ids:
+                    inlined_ids.push_back(obj_id.native())
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference(
                         (CObjectID.FromBinary(core_worker.put_serialized_cobject(
                             serialized_arg)))))
+    # The core worker must pin the inlined IDs until the task replies to notify
+    # us whether it is borrowing them or not.
+    return inlined_ids
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -792,11 +798,12 @@ cdef class CoreWorker:
                 num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(self, args, &args_vector)
+            inlined_ids = prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
+                    inlined_ids,
                     max_retries))
 
             return VectorToObjectIDs(return_ids)

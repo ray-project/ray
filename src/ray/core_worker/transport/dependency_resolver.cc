@@ -29,9 +29,10 @@ void InlineDependencies(
       if (it != dependencies.end()) {
         RAY_CHECK(it->second);
         auto *mutable_arg = msg.mutable_args(i);
-        mutable_arg->clear_object_ids();
+        //mutable_arg->clear_object_ids();
         if (it->second->IsInPlasmaError()) {
           // Promote the object id to plasma.
+          mutable_arg->clear_object_ids();
           mutable_arg->add_object_ids(it->first.Binary());
         } else {
           // Inline the object value.

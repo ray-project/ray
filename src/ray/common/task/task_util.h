@@ -50,6 +50,13 @@ class TaskSpecBuilder {
     return *this;
   }
 
+  TaskSpecBuilder &AddInlinedIds(const std::vector<ObjectID> &inlined_ids) {
+    for (const auto &inlined_id : inlined_ids) {
+      message_->add_inlined_ids(inlined_id.Binary());
+    }
+    return *this;
+  }
+
   /// Add a by-reference argument to the task.
   ///
   /// \param arg_id Id of the argument.

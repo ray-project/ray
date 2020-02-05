@@ -342,6 +342,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if task submission fails, likely due to raylet failure.
   Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
                     const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
+                              const std::vector<ObjectID> &inlined_ids,
                     int max_retries);
 
   /// Create an actor.

@@ -27,6 +27,9 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       }
     }
   }
+  for (const auto &inlined_id : spec.GetMessage().inlined_ids()) {
+    task_deps.push_back(ObjectID::FromBinary(inlined_id));
+  }
   reference_counter_->AddSubmittedTaskReferences(task_deps);
 
   // Add new owned objects for the return values of the task.
