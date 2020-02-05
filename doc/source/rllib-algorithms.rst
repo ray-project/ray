@@ -197,7 +197,7 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
     ``"n_step": [between 1 and 10],
     "batch_mode": "complete_episodes",
     "noisy": True,
-    "num_atoms": [>1],
+    "num_atoms": [more than 1],
     "v_min": -10.0,
     "v_max": 10.0``
     (set ``v_min`` and ``v_max`` according to your expected range of returns).
