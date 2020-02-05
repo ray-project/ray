@@ -235,7 +235,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
                           [&resources, &promise](const Status &status,
                                                  const rpc::GetResourcesReply &reply) {
                             RAY_CHECK_OK(status);
-                            for (auto resource : reply.resources()) {
+                            for (auto &resource : reply.resources()) {
                               resources[resource.first] = resource.second;
                             }
                             promise.set_value(true);
@@ -553,7 +553,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   delete_resources_request.add_resource_name_list(resource_name);
   ASSERT_TRUE(DeleteResources(delete_resources_request));
   resources = GetResources(node_id.Binary());
-  ASSERT_TRUE(resources.size() == 0);
+  ASSERT_TRUE(resources.empty());
 }
 
 TEST_F(GcsServerTest, TestObjectInfo) {
