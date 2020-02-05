@@ -405,8 +405,8 @@ def get_system_memory():
         if docker_limit > psutil_memory_in_bytes:
             logger.warn("Container memory is larger than system memory.")
         return min(docker_limit, psutil_memory_in_bytes)
-    else:
-        return psutil_memory_in_bytes
+
+    return psutil_memory_in_bytes
 
 
 def get_used_memory():
@@ -431,8 +431,8 @@ def get_used_memory():
             logger.warn("Container is reporting more memory usage than the"
                         "system.")
         return min(docker_usage, psutil_memory_in_bytes)
-    else:
-        return psutil_memory_in_bytes
+
+    return psutil_memory_in_bytes
 
 
 def estimate_available_memory():
