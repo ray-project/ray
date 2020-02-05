@@ -84,6 +84,11 @@ StreamingStatus StreamingQueueProducer::ClearTransferCheckpoint(
   return StreamingStatus::OK;
 }
 
+StreamingStatus StreamingQueueProducer::RefreshChannelInfo() {
+  channel_info.queue_info.consumed_seq_id = queue_->GetMinConsumedSeqID();
+  return StreamingStatus::OK;
+}
+
 StreamingStatus StreamingQueueProducer::NotifyChannelConsumed(uint64_t channel_offset) {
   queue_->SetQueueEvictionLimit(channel_offset);
   return StreamingStatus::OK;
@@ -165,6 +170,10 @@ StreamingStatus StreamingQueueConsumer::DestroyTransferChannel() {
 StreamingStatus StreamingQueueConsumer::ClearTransferCheckpoint(
     uint64_t checkpoint_id, uint64_t checkpoint_offset) {
   return StreamingStatus::OK;
+}
+
+StreamingStatus StreamingQueueConsumer::RefreshChannelInfo() {
+  channel_info.queue_info.last_seq_id = queue_->GetLastRecvSeqId();
 }
 
 StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(uint64_t &offset_id,
