@@ -166,13 +166,13 @@ class SSHCommandRunner:
             ("ControlMaster", "auto"),
             ("ControlPath", "{}/%C".format(self.ssh_control_path)),
             ("ControlPersist", "10s"),
-            # Try less extraneous key pairs
+            # Try fewer extraneous key pairs.
             ("IdentitiesOnly", "yes"),
             # Abort if port forwarding fails (instead of just printing to
-            # stderr)
+            # stderr).
             ("ExitOnForwardFailure", "yes"),
             # Quickly kill the connection if network connection breaks (as
-            # opposed to hanging/blocking)
+            # opposed to hanging/blocking).
             ("ServerAliveInterval", 5),
             ("ServerAliveCountMax", 3),
         ]
@@ -255,7 +255,7 @@ class SSHCommandRunner:
             final_cmd += with_interactive(cmd)
         else:
             # We do this because `-o ControlMaster` causes the `-N` flag to
-            # still create an interactive shell in some ssh versions
+            # still create an interactive shell in some ssh versions.
             final_cmd.append("while true; do sleep 86400; done")
         try:
             self.process_runner.check_call(final_cmd)
