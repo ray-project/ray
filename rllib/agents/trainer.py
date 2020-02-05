@@ -460,7 +460,7 @@ class Trainer(Trainable):
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             try:
-                result = Trainer.train(self)
+                result = Trainable.train(self)
             except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(
