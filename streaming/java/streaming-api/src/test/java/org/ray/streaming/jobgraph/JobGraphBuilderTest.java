@@ -8,7 +8,6 @@ import org.ray.streaming.api.partition.impl.RoundRobinPartition;
 import org.ray.streaming.api.stream.DataStream;
 import org.ray.streaming.api.stream.DataStreamSource;
 import org.ray.streaming.api.stream.StreamSink;
-import org.ray.streaming.api.stream.StreamSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -62,7 +61,7 @@ public class JobGraphBuilderTest {
     JobVertex sink = jobVertexList.get(2);
 
     Assert.assertEquals(source.getVertexType(), VertexType.SOURCE);
-    Assert.assertEquals(map.getVertexType(), VertexType.PROCESS);
+    Assert.assertEquals(map.getVertexType(), VertexType.TRANSFORMATION);
     Assert.assertEquals(sink.getVertexType(), VertexType.SINK);
 
     JobEdge keyBy2Sink = jobEdgeList.get(0);
