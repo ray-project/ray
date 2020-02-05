@@ -222,6 +222,3 @@ def _convert_to_parameter_kind(value):
         return Parameter.KEYWORD_ONLY
     if value == 4:
         return Parameter.VAR_KEYWORD
-
-
-ANY_FUNCTION_SIGNATURE = extract_signature(lambda *args, **kwargs: None)

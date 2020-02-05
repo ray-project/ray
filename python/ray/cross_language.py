@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from ray import Language
 from ray._raylet import PythonFunctionDescriptor, JavaFunctionDescriptor
-import ray.signature
 
 __all__ = [
     "java_function",
@@ -12,13 +11,11 @@ __all__ = [
 ]
 
 
-def format_args(worker, language, function_signature, args, kwargs):
+def format_args(worker, args, kwargs):
     """Format args for various languages.
 
     Args:
         worker: The global worker instance.
-        language: Target language.
-        function_signature: The function signature for cross language.
         args: The arguments for cross language.
         kwargs: The keyword arguments for cross language.
 
@@ -28,16 +25,10 @@ def format_args(worker, language, function_signature, args, kwargs):
     if not worker.load_code_from_local:
         raise Exception("Cross language feature needs "
                         "--load-code-from-local to be set.")
-    if language == Language.PYTHON:
-        # When cross language calling Python,
-        # the args and kwargs needs to be compatible with
-        # ray.signature.recover_args.
-        return ray.signature.flatten_args(function_signature, args, kwargs)
-    else:
-        if kwargs:
-            raise Exception("Cross language remote functions "
-                            "does not support kwargs.")
-        return args
+    if kwargs:
+        raise Exception("Cross language remote functions "
+                        "does not support kwargs.")
+    return args
 
 
 def get_function_descriptor_for_actor_method(

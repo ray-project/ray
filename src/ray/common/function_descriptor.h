@@ -173,6 +173,12 @@ class FunctionDescriptorBuilder {
   /// \return new ray::FunctionDescriptor
   static FunctionDescriptor FromProto(rpc::FunctionDescriptor message);
 
+  /// Build a ray::FunctionDescriptor from language and vector.
+  ///
+  /// \return new ray::FunctionDescriptor
+  static FunctionDescriptor FromVector(
+      rpc::Language language, const std::vector<std::string> &function_descriptor_list);
+
   /// Build a ray::FunctionDescriptor from serialized binary.
   ///
   /// \return new ray::FunctionDescriptor

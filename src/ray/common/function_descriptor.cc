@@ -46,6 +46,29 @@ FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor 
   return FunctionDescriptorBuilder::Empty();
 }
 
+FunctionDescriptor FunctionDescriptorBuilder::FromVector(
+    rpc::Language language, const std::vector<std::string> &function_descriptor_list) {
+  if (language == rpc::Language::JAVA) {
+    RAY_CHECK(function_descriptor_list.size() == 3);
+    return FunctionDescriptorBuilder::BuildJava(
+        function_descriptor_list[0],  // class name
+        function_descriptor_list[1],  // function name
+        function_descriptor_list[2]   // signature
+    );
+  } else if (language == rpc::Language::PYTHON) {
+    RAY_CHECK(function_descriptor_list.size() == 4);
+    return FunctionDescriptorBuilder::BuildPython(
+        function_descriptor_list[0],  // module name
+        function_descriptor_list[1],  // class name
+        function_descriptor_list[2],  // function name
+        function_descriptor_list[3]   // function hash
+    );
+  } else {
+    RAY_LOG(FATAL) << "Unspported language " << language;
+    return FunctionDescriptorBuilder::Empty();
+  }
+}
+
 FunctionDescriptor FunctionDescriptorBuilder::Deserialize(
     const std::string &serialized_binary) {
   rpc::FunctionDescriptor descriptor;
