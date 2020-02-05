@@ -128,7 +128,7 @@ class WorkerSet:
 
     @DeveloperAPI
     def foreach_policy(self, func):
-        """
+        """Apply the given function to each worker's (policy, policy_id) tuple.
         Apply the given function to each worker's (policy, policy_id) tuple.
 
         Args:
