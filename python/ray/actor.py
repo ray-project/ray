@@ -179,9 +179,6 @@ class ActorClassMetadata:
                  actor_creation_function_descriptor, class_id,
                  max_reconstructions, num_cpus, num_gpus, memory,
                  object_store_memory, resources):
-        # We do not set self.is_cross_language if self.language !=
-        # Language.PYTHON in order to test cross language feature by
-        # cross calling PYTHON from PYTHON.
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \

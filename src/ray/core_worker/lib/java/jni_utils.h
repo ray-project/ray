@@ -345,6 +345,7 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   return java_obj;
 }
 
+// TODO(po): Convert C++ ray::FunctionDescriptor to Java FunctionDescriptor
 inline jobject NativeRayFunctionDescriptorToJavaStringList(
     JNIEnv *env, const ray::FunctionDescriptor &function_descriptor) {
   if (function_descriptor->Type() ==

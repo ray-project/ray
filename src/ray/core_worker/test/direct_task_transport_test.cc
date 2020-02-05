@@ -244,9 +244,9 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                                 const ray::FunctionDescriptor &function_descriptor) {
   TaskSpecBuilder builder;
   rpc::Address empty_address;
-  builder.SetCommonTaskSpec(TaskType::NORMAL_TASK, TaskID::Nil(), Language::PYTHON,
-                            function_descriptor, JobID::Nil(), TaskID::Nil(), 0,
-                            TaskID::Nil(), empty_address, 1, true, resources, resources);
+  builder.SetCommonTaskSpec(TaskID::Nil(), Language::PYTHON, function_descriptor,
+                            JobID::Nil(), TaskID::Nil(), 0, TaskID::Nil(), empty_address,
+                            1, true, resources, resources);
   return builder.Build();
 }
 
