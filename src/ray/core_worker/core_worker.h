@@ -470,6 +470,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
+  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest&request,
+                                   rpc::WaitForRefRemovedReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
 

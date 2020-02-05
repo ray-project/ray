@@ -270,14 +270,22 @@ def test_basic_serialized_reference(one_worker_100MiB):
     def pending(ref, dep):
         ray.get(ref[0])
 
-    array_oid = ray.put(n_MiB_array(40))
+    @ray.remote
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+
+    array_oid = put.remote()
+    print("ARRAY", array_oid)
     random_oid = ray.ObjectID.from_random()
+    print("RANDOM", random_oid)
     oid = pending.remote([array_oid], random_oid)
+    print("RETURN ID", oid)
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
     del array_oid
 
+    print("here xxx")
     # Check that the remote reference pins the object.
     _fill_object_store_and_get(array_oid_bytes)
 
@@ -285,6 +293,7 @@ def test_basic_serialized_reference(one_worker_100MiB):
     ray.worker.global_worker.put_object(None, object_id=random_oid)
     ray.get(oid)
 
+    print("here yyy")
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
@@ -301,10 +310,17 @@ def test_recursive_serialized_reference(one_worker_100MiB):
         else:
             return recursive.remote(ref, dep, max_depth, depth + 1)
 
+    @ray.remote
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+
     max_depth = 5
-    array_oid = ray.put(n_MiB_array(40))
+    array_oid = put.remote()
+    print("ARRAY", array_oid)
     random_oid = ray.ObjectID.from_random()
+    print("RANDOM", random_oid)
     head_oid = recursive.remote([array_oid], [random_oid], max_depth)
+    print("RETURN ID", head_oid)
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()

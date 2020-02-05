@@ -148,7 +148,7 @@ class ReferenceCounter {
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
   /// TODO: Add the outer object ID that this ID came from.
-  void AddBorrowedObject(const ObjectID &outer_id, const ObjectID &object_id, const TaskID &owner_id,
+  bool AddBorrowedObject(const ObjectID &outer_id, const ObjectID &object_id, const TaskID &owner_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner ID and address of the given object.

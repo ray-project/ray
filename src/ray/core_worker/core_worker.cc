@@ -80,7 +80,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      reference_counter_(std::make_shared<ReferenceCounter>()),
+      reference_counter_(std::make_shared<ReferenceCounter>([this](const std::string ip_address, int port) {
+    return std::shared_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
+  })),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -346,6 +349,7 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
+  RAY_LOG(DEBUG) << "Serializing object " << object_id << " owned by " << *owner_id;
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
@@ -1148,9 +1152,11 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
                               [send_reply_callback](std::shared_ptr<RayObject> obj) {
                                 send_reply_callback(Status::OK(), nullptr, nullptr);
                               });
+      RAY_LOG(DEBUG) << " REMOVE y";
       RemoveLocalReference(object_id);
     } else {
       // We lost the race, the task is done.
+      RAY_LOG(DEBUG) << " REMOVE z";
       RemoveLocalReference(object_id);
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
@@ -1182,6 +1188,12 @@ void CoreWorker::HandleWaitForObjectEviction(
     RAY_LOG(DEBUG) << "ObjectID reference already gone for " << object_id;
     respond(object_id);
   }
+}
+
+void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest&request,
+                                 rpc::WaitForRefRemovedReply *reply,
+                                 rpc::SendReplyCallback send_reply_callback) {
+  reference_counter_->HandleWaitForRefRemoved(request, reply, send_reply_callback);
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
