@@ -15,7 +15,7 @@ class TFActionDistribution(ActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model):
-        super(TFActionDistribution, self).__init__(inputs, model)
+        super().__init__(inputs, model)
         self.sample_op = self._build_sample_op()
 
     @DeveloperAPI
@@ -43,7 +43,7 @@ class Categorical(TFActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model=None):
-        super(Categorical, self).__init__(inputs, model)
+        super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -88,7 +88,7 @@ class MultiCategorical(TFActionDistribution):
 
     def __init__(self, inputs, model, input_lens):
         # skip TFActionDistribution init
-        super().__init__(self, inputs, model)
+        ActionDistribution.__init__(self, inputs, model)
         self.cats = [
             Categorical(input_, model)
             for input_ in tf.split(inputs, input_lens, axis=1)
@@ -138,7 +138,7 @@ class DiagGaussian(TFActionDistribution):
     """
 
     def __init__(self, inputs, model):
-        super().__init__(self, inputs, model)
+        super().__init__(inputs, model)
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.log_std = log_std
@@ -206,7 +206,7 @@ class MultiActionDistribution(TFActionDistribution):
     def __init__(self, inputs, model, action_space, child_distributions,
                  input_lens):
         # skip TFActionDistribution init
-        super().__init__(self, inputs, model)
+        ActionDistribution.__init__(self, inputs, model)
         self.input_lens = input_lens
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
@@ -281,7 +281,7 @@ class Dirichlet(TFActionDistribution):
             validate_args=True,
             allow_nan_stats=False,
         )
-        super().__init__(self, concentration, model)
+        super().__init__(concentration, model)
 
     @override(ActionDistribution)
     def logp(self, x):

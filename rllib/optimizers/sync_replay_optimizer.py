@@ -35,8 +35,6 @@ class SyncReplayOptimizer(PolicyOptimizer):
             prioritized_replay_alpha=0.6,
             prioritized_replay_beta=0.4,
             prioritized_replay_eps=1e-6,
-            schedule_max_timesteps=None,  # DEPRECATED
-            beta_annealing_fraction=None,  # DEPRECATED
             final_prioritized_replay_beta=0.4,
             train_batch_size=32,
             before_learn_on_batch=None,
@@ -54,10 +52,6 @@ class SyncReplayOptimizer(PolicyOptimizer):
             prioritized_replay_alpha (float): replay alpha hyperparameter
             prioritized_replay_beta (float): replay beta hyperparameter
             prioritized_replay_eps (float): replay eps hyperparameter
-            schedule_max_timesteps (int): DEPRECATED: number of timesteps in
-                the schedule to anneal PR-beta.
-            beta_annealing_fraction (float): DEPRECATED: Fraction of schedule
-                to anneal PR-beta over.
             final_prioritized_replay_beta (float): Final value of beta.
             train_batch_size (int): size of batches to learn on
             before_learn_on_batch (function): callback to run before passing
@@ -70,18 +64,6 @@ class SyncReplayOptimizer(PolicyOptimizer):
         PolicyOptimizer.__init__(self, workers)
 
         self.replay_starts = learning_starts
-
-        # Deprecated parameters.
-        if prioritized_replay_beta_annealing_timesteps is None:
-            assert schedule_max_timesteps and beta_annealing_fraction
-            prioritized_replay_beta_annealing_timesteps = \
-                schedule_max_timesteps * beta_annealing_fraction
-        if schedule_max_timesteps is not None:
-            deprecation_warning("schedule_max_timesteps",
-                                "prioritized_replay_beta_annealing_timesteps")
-        if beta_annealing_fraction is not None:
-            deprecation_warning("beta_annealing_fraction",
-                                "prioritized_replay_beta_annealing_timesteps")
 
         # Linearly annealing beta used in Rainbow paper, stopping at
         # `final_prioritized_replay_beta`.
