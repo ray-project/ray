@@ -67,7 +67,7 @@ class PPOLoss:
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
-
+"""
         def reduce_mean_valid(t):
             return torch.mean(t * valid_mask)
 
@@ -103,6 +103,7 @@ class PPOLoss:
                                      cur_kl_coeff * action_kl -
                                      entropy_coeff * curr_entropy)
         self.loss = loss
+"""
 
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
@@ -117,7 +118,45 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
         mask = torch.ones_like(
             train_batch[Postprocessing.ADVANTAGES], dtype=torch.bool)
 
-    policy.loss_obj = PPOLoss(
+    def reduce_mean_valid(t):
+        return torch.mean(t * mask)
+
+    prev_dist = dist_class(train_batch[BEHAVIOUR_LOGITS], model)
+    # Make loss functions.
+    logp_ratio = torch.exp(
+        action_dist.logp(train_batch[SampleBatch.ACTIONS]) - train_batch[ACTION_LOGP])
+    action_kl = prev_dist.kl(action_dist)
+    #mean_kl = reduce_mean_valid(action_kl)
+
+    curr_entropy = action_dist.entropy()
+    #mean_entropy = reduce_mean_valid(curr_entropy)
+
+    surrogate_loss = torch.min(
+        train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
+        train_batch[Postprocessing.ADVANTAGES] * torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
+                                 1 + policy.config["clip_param"]))
+    #mean_policy_loss = reduce_mean_valid(-surrogate_loss)
+
+
+    if policy.config["use_gae"]:
+        value_fn = model.value_function()
+        vf_loss1 = torch.pow(value_fn - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_clipped = train_batch[SampleBatch.VF_PREDS] + torch.clamp(value_fn - train_batch[SampleBatch.VF_PREDS],
+                                            -policy.config["vf_clip_param"], policy.config["vf_clip_param"])
+        vf_loss2 = torch.pow(vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_loss = torch.max(vf_loss1, vf_loss2)
+        #mean_vf_loss = reduce_mean_valid(vf_loss)
+        loss = reduce_mean_valid(
+            -surrogate_loss + policy.kl_coeff * action_kl +
+            policy.config["vf_loss_coeff"] * vf_loss - policy.entropy_coeff * curr_entropy)
+    else:
+        #mean_vf_loss = 0.0
+        loss = reduce_mean_valid(-surrogate_loss +
+                                 policy.kl_coeff * action_kl -
+                                 policy.entropy_coeff * curr_entropy)
+    return loss
+
+    """policy.loss_obj = PPOLoss(
         dist_class,
         model,
         train_batch[Postprocessing.VALUE_TARGETS],
@@ -138,7 +177,7 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     )
 
     return policy.loss_obj.loss
-
+    """
 
 def kl_and_loss_stats(policy, train_batch):
     #return {
