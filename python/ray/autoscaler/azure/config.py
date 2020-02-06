@@ -7,7 +7,7 @@ import string
 import time
 import uuid
 
-from azure.common.exceptions import CloudError
+from azure.common.exceptions import CloudError, AuthenticationError
 from azure.common.client_factory import get_client_from_cli_profile, get_client_from_auth_file
 from azure.graphrbac import GraphRbacManagementClient
 from azure.mgmt.authorization import AuthorizationManagementClient
@@ -188,13 +188,19 @@ def _configure_nic(config):
     auth_path = config['provider']['auth_path']
     network_client = get_client_from_auth_file(NetworkManagementClient, auth_path=auth_path)
 
-    # create VNet
-    logger.info('Creating VNet: %s', VNET_NAME)
-    vnet_params = dict(location=location,
-                       address_space=dict(address_prefixes=['10.0.0.0/16']))
-    network_client.virtual_networks.create_or_update(resource_group_name=resource_group,
-                                                     virtual_network_name=VNET_NAME,
-                                                     parameters=vnet_params).wait()
+    for _ in range(RETRIES):
+        try:
+            # create VNet
+            logger.info('Creating VNet: %s', VNET_NAME)
+            vnet_params = dict(location=location,
+                               address_space=dict(address_prefixes=['10.0.0.0/16']))
+            network_client.virtual_networks.create_or_update(resource_group_name=resource_group,
+                                                             virtual_network_name=VNET_NAME,
+                                                             parameters=vnet_params).wait()
+            break
+        except AuthenticationError:
+            # wait for service principal authorization to populate
+            time.sleep(1)
 
     # create Subnet
     logger.info('Creating Subnet: %s', SUBNET_NAME)
@@ -207,7 +213,7 @@ def _configure_nic(config):
     # create NIC
     logger.info('Creating NIC: %s', NIC_NAME)
     nic_params = dict(location=location,
-                      ip_configuration=[dict(name=IP_CONFIG_NAME, subnet=dict(id=subnet.id))])
+                      ip_configurations=[dict(name=IP_CONFIG_NAME, subnet=dict(id=subnet.id))])
     nic = network_client.network_interfaces.create_or_update(resource_group_name=resource_group,
                                                              network_interface_name=NIC_NAME,
                                                              parameters=nic_params).result()
