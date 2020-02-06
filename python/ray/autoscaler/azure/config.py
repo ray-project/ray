@@ -4,8 +4,10 @@ import logging
 import os
 import secrets
 import string
+import time
 import uuid
 
+from azure.common.exceptions import CloudError
 from azure.common.client_factory import get_client_from_cli_profile, get_client_from_auth_file
 from azure.graphrbac import GraphRbacManagementClient
 from azure.mgmt.authorization import AuthorizationManagementClient
@@ -13,12 +15,14 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 import paramiko
 
+
 # TODO: add asserts on validity of names for all resources
 RAY = "ray-autoscaler"
 INSTANCE_NAME_MAX_LEN = 64
 INSTANCE_NAME_UUID_LEN = 8
 PASSWORD_MIN_LENGTH = 16
 SSH_KEYS_MAX_COUNT = 10
+RETRIES = 10
 IP_CONFIG_NAME = 'ray-ip-config'
 SUBNET_NAME = 'ray-subnet'
 NIC_NAME = 'ray-nic'
@@ -118,11 +122,17 @@ def _configure_service_principal(config):
         sp_params = dict(app_id=app.app_id)
         sp = graph_client.service_principals.create(parameters=sp_params)
 
-    # set contributor role for service principal on new resource group
-    rg_id = resource_client.resource_groups.get(resource_group).id
-    role = auth_client.role_definitions.list(rg_id, filter="roleName eq 'Contributor'").next()
-    role_params = dict(role_definition_id=role.id, principal_id=sp.object_id)
-    auth_client.role_assignments.create(rg_id, uuid.uuid4(), role_params)
+    # TODO: check if sp already has correct role / scope
+    for _ in range(RETRIES):
+        try:
+            # set contributor role for service principal on new resource group
+            rg_id = resource_client.resource_groups.get(resource_group).id
+            role = auth_client.role_definitions.list(rg_id, filter="roleName eq 'Contributor'").next()
+            role_params = dict(role_definition_id=role.id, principal_id=sp.object_id)
+            auth_client.role_assignments.create(scope=rg_id, role_assignment_name=uuid.uuid4(), parameters=role_params)
+            break
+        except CloudError:
+            time.sleep(1)
 
     if new_auth:
         credentials = dict(clientSecret=password,
