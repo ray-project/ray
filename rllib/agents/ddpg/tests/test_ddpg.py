@@ -11,7 +11,13 @@ class TestDDPG(unittest.TestCase):
         """Test whether a DDPGTrainer can be built with both frameworks."""
         config = ddpg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        config["eager"] = True
+        #config["eager"] = True
+        config["exploration"] = {
+            "type": "GaussianActionNoise",
+            "initial_stddev": 0.1,
+            "final_stddev": 0.02,
+            "timesteps": 10000,
+        }
 
         # tf.
         trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")

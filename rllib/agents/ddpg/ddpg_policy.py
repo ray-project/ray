@@ -110,7 +110,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
 
         with tf.variable_scope(POLICY_SCOPE) as scope:
             policy_out, self.policy_model = self._build_policy_network(
-                self.cur_observations, observation_space, action_space)
+                self.cur_observations, observation_space, action_space, config)
             self.policy_vars = scope_vars(scope.name)
 
         # Noise vars for P network except for layer normalization vars
@@ -126,13 +126,13 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         #        policy_out, self.stochastic, self.noise_scale,
         #        self.pure_exploration_phase, action_space)
 
-        if config["smooth_target_policy"]:
-            self.reset_noise_op = tf.no_op()
-        else:
-            with tf.variable_scope(ACTION_SCOPE, reuse=True):
-                exploration_sample = tf.get_variable(name="ornstein_uhlenbeck")
-                self.reset_noise_op = tf.assign(exploration_sample,
-                                                self.dim_actions * [.0])
+        #if config["smooth_target_policy"]:
+        #    self.reset_noise_op = tf.no_op()
+        #else:
+        #    with tf.variable_scope(ACTION_SCOPE, reuse=True):
+        #        exploration_sample = tf.get_variable(name="ornstein_uhlenbeck")
+        #        self.reset_noise_op = tf.assign(exploration_sample,
+        #                                        self.dim_actions * [.0])
 
         # Replay inputs
         self.obs_t = tf.placeholder(
@@ -152,7 +152,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         with tf.variable_scope(POLICY_SCOPE, reuse=True) as scope:
             prev_update_ops = set(tf.get_collection(tf.GraphKeys.UPDATE_OPS))
             self.policy_t, _ = self._build_policy_network(
-                self.obs_t, observation_space, action_space)
+                self.obs_t, observation_space, action_space, config)
             policy_batchnorm_update_ops = list(
                 set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) -
                 prev_update_ops)
@@ -160,7 +160,7 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         # target policy network evaluation
         with tf.variable_scope(POLICY_TARGET_SCOPE) as scope:
             policy_tp1, _ = self._build_policy_network(
-                self.obs_tp1, observation_space, action_space)
+                self.obs_tp1, observation_space, action_space, config)
             target_policy_vars = scope_vars(scope.name)
 
         # Action outputs
@@ -185,7 +185,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         with tf.variable_scope(Q_SCOPE) as scope:
             # Q-values for given actions & observations in given current
             q_t, self.q_model = self._build_q_network(
-                self.obs_t, observation_space, action_space, self.act_t)
+                self.obs_t, observation_space, action_space, 
+                self.act_t, config)
             self.q_func_vars = scope_vars(scope.name)
         self.stats = {
             "mean_q": tf.reduce_mean(q_t),
@@ -195,36 +196,40 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         with tf.variable_scope(Q_SCOPE, reuse=True):
             # Q-values for current policy (no noise) in given current state
             q_t_det_policy, _ = self._build_q_network(
-                self.obs_t, observation_space, action_space, self.policy_t)
+                self.obs_t, observation_space, action_space, 
+                self.policy_t, config)
         if config["twin_q"]:
             with tf.variable_scope(TWIN_Q_SCOPE) as scope:
                 twin_q_t, self.twin_q_model = self._build_q_network(
-                    self.obs_t, observation_space, action_space, self.act_t)
+                    self.obs_t, observation_space, action_space, 
+                    self.act_t, config)
                 self.twin_q_func_vars = scope_vars(scope.name)
         q_batchnorm_update_ops = list(
             set(tf.get_collection(tf.GraphKeys.UPDATE_OPS)) - prev_update_ops)
 
         # target q network evaluation
         with tf.variable_scope(Q_TARGET_SCOPE) as scope:
-            q_tp1, _ = self._build_q_network(self.obs_tp1, observation_space,
-                                             action_space, policy_tp1_smoothed)
+            q_tp1, _ = self._build_q_network(
+                self.obs_tp1, observation_space,
+                action_space, policy_tp1_smoothed, config)
             target_q_func_vars = scope_vars(scope.name)
         if config["twin_q"]:
             with tf.variable_scope(TWIN_Q_TARGET_SCOPE) as scope:
                 twin_q_tp1, _ = self._build_q_network(
                     self.obs_tp1, observation_space, action_space,
-                    policy_tp1_smoothed)
+                    policy_tp1_smoothed, config)
                 twin_target_q_func_vars = scope_vars(scope.name)
 
         if config["twin_q"]:
             self.critic_loss, self.actor_loss, self.td_error \
                 = self._build_actor_critic_loss(
+                    config,
                     q_t, q_tp1, q_t_det_policy, twin_q_t=twin_q_t,
                     twin_q_tp1=twin_q_tp1)
         else:
             self.critic_loss, self.actor_loss, self.td_error \
                 = self._build_actor_critic_loss(
-                    q_t, q_tp1, q_t_det_policy)
+                    config, q_t, q_tp1, q_t_det_policy)
 
         if config["l2_reg"] is not None:
             for var in self.policy_vars:
@@ -403,38 +408,38 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         self.set_epsilon(state[1])
         self.set_pure_exploration_phase(state[2])
 
-    def _build_q_network(self, obs, obs_space, action_space, actions):
-        if self.config["use_state_preprocessor"]:
+    def _build_q_network(self, obs, obs_space, action_space, actions, config):
+        if config["use_state_preprocessor"]:
             q_model = ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
-            }, obs_space, action_space, 1, self.config["model"])
+            }, obs_space, action_space, 1, config["model"])
             q_out = tf.concat([q_model.last_layer, actions], axis=1)
         else:
             q_model = None
             q_out = tf.concat([obs, actions], axis=1)
 
-        activation = getattr(tf.nn, self.config["critic_hidden_activation"])
-        for hidden in self.config["critic_hiddens"]:
+        activation = getattr(tf.nn, config["critic_hidden_activation"])
+        for hidden in config["critic_hiddens"]:
             q_out = tf.layers.dense(q_out, units=hidden, activation=activation)
         q_values = tf.layers.dense(q_out, units=1, activation=None)
 
         return q_values, q_model
 
-    def _build_policy_network(self, obs, obs_space, action_space):
-        if self.config["use_state_preprocessor"]:
+    def _build_policy_network(self, obs, obs_space, action_space, config):
+        if config["use_state_preprocessor"]:
             model = ModelCatalog.get_model({
                 "obs": obs,
                 "is_training": self._get_is_training_placeholder(),
-            }, obs_space, action_space, 1, self.config["model"])
+            }, obs_space, action_space, 1, config["model"])
             action_out = model.last_layer
         else:
             model = None
             action_out = obs
 
-        activation = getattr(tf.nn, self.config["actor_hidden_activation"])
-        for hidden in self.config["actor_hiddens"]:
-            if self.config["parameter_noise"]:
+        activation = getattr(tf.nn, config["actor_hidden_activation"])
+        for hidden in config["actor_hiddens"]:
+            if config["parameter_noise"]:
                 import tensorflow.contrib.layers as layers
                 action_out = layers.fully_connected(
                     action_out,
@@ -536,16 +541,17 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
         return actions
 
     def _build_actor_critic_loss(self,
+                                 config,
                                  q_t,
                                  q_tp1,
                                  q_t_det_policy,
                                  twin_q_t=None,
                                  twin_q_tp1=None):
-        twin_q = self.config["twin_q"]
-        gamma = self.config["gamma"]
-        n_step = self.config["n_step"]
-        use_huber = self.config["use_huber"]
-        huber_threshold = self.config["huber_threshold"]
+        twin_q = config["twin_q"]
+        gamma = config["gamma"]
+        n_step = config["n_step"]
+        use_huber = config["use_huber"]
+        huber_threshold = config["huber_threshold"]
 
         q_t_selected = tf.squeeze(q_t, axis=len(q_t.shape) - 1)
         if twin_q:
@@ -632,8 +638,8 @@ class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
             })
         return td_err
 
-    def reset_noise(self, sess):
-        sess.run(self.reset_noise_op)
+    #def reset_noise(self, sess):
+    #    sess.run(self.reset_noise_op)
 
     def add_parameter_noise(self):
         if self.config["parameter_noise"]:
