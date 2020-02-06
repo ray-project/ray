@@ -504,7 +504,7 @@ void ReferenceCounter::HandleWaitForRefRemoved(
     }
     // RAY_CHECK(object_id_refs_.count(object_id) == 0);
     *reply = ReferenceTableToWaitForRefRemovedReply(borrower_refs);
-    RAY_LOG(DEBUG) << "reply has " << reply->borrower_refs().size();
+    RAY_LOG(DEBUG) << "Replying to WaitForRefRemoved, reply has " << reply->borrower_refs().size();
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
 

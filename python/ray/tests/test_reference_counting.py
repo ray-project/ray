@@ -417,28 +417,22 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
 # the worker a duplicate reference to the same object ID.
 def test_worker_holding_serialized_reference(one_worker_100MiB):
     @ray.remote
-    def set_global_ref1(ref):
-        global global_ref1
-        global_ref1 = ref
+    def child(dep1, dep2):
+        return
 
     @ray.remote
-    def set_global_ref2(ref):
-        global global_ref1
-        global_ref1 = ref
+    def launch_pending_task(refs):
+        ref, dep = refs
+        return child.remote(ref, dep)
 
     @ray.remote
-    def delete_ref1():
-        global global_ref1
-        del global_ref1
-
-    @ray.remote
-    def delete_ref2():
-        global global_ref2
-        del global_ref2
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
     # Test that the reference held by the actor isn't evicted.
-    array_oid = ray.put(n_MiB_array(40))
-    ray.get(set_global_ref1.remote([array_oid]))
+    array_oid = put.remote()
+    random_oid = ray.ObjectID.from_random()
+    child_return_id = ray.get(launch_pending_task.remote([array_oid, random_oid]))
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -447,16 +441,10 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
     # Test that the reference prevents the object from being evicted.
     _fill_object_store_and_get(array_oid_bytes)
 
-    # Test that giving the same worker a duplicate reference works.
-    ray.get(set_global_ref2.remote([ray.ObjectID(array_oid_bytes)]))
-    _fill_object_store_and_get(array_oid_bytes)
+    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(child_return_id)
+    del child_return_id
 
-    # Test that deleting only the first reference doesn't unpin the object.
-    ray.get(delete_ref1.remote())
-    _fill_object_store_and_get(array_oid_bytes)
-
-    # Test that deleting the second reference unpins the object.
-    ray.get(delete_ref2.remote())
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
 
 
