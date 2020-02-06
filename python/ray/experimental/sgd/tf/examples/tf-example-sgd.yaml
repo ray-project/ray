@@ -51,6 +51,8 @@ setup_commands:
     - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     - pip install -U ray[tune]
     - pip install tensorflow-gpu==2.1.0
+    - sudo rm /usr/local/cuda
+    - sudo ln -s /usr/local/cuda-10.1 /usr/local/cuda
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
