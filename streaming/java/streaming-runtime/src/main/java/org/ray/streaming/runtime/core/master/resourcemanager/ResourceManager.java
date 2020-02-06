@@ -3,6 +3,8 @@ package org.ray.streaming.runtime.core.master.resourcemanager;
 import java.util.List;
 import java.util.Map;
 
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
+import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.Resources;
 
@@ -35,12 +37,6 @@ public interface ResourceManager {
    * @return Current slot-assign strategy.
    */
   SlotAssignStrategy getSlotAssignStrategy();
-
-  /**
-   * Update resources content, for `failover`.
-   * @param resources The specified resources content.
-   */
-  void setResources(Resources resources);
 
   /**
    * Get resources from manager.

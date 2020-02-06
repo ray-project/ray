@@ -5,7 +5,10 @@ import java.util.List;
 import java.util.Map;
 
 import com.google.common.base.Preconditions;
-import org.ray.streaming.runtime.core.graph.ExecutionGraph;
+import org.ray.streaming.runtime.config.types.SlotAssignStrategyType;
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionJobVertex;
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.ContainerID;
@@ -70,7 +73,7 @@ public class PipelineFirstStrategy implements SlotAssignStrategy {
     Map<Integer, ExecutionJobVertex> vertices = executionGraph.getExecutionJobVertexMap();
     Map<Integer, Integer> vertexRemainingNum = new HashMap<>();
     vertices.forEach((k, v) -> {
-      int size = v.getExecutionVertexList().size();
+      int size = v.getExecutionVertices().size();
       vertexRemainingNum.put(k, size);
     });
     int totalExecutionVerticesNum = vertexRemainingNum.values().stream()
@@ -86,7 +89,7 @@ public class PipelineFirstStrategy implements SlotAssignStrategy {
 
     for (int i = 0; i < maxParallelism; i++) {
       for (ExecutionJobVertex executionJobVertex : vertices.values()) {
-        List<ExecutionVertex> exeVertices = executionJobVertex.getExecutionVertexList();
+        List<ExecutionVertex> exeVertices = executionJobVertex.getExecutionVertices();
         // current job vertex assign finished
         if (exeVertices.size() <= i) {
           continue;

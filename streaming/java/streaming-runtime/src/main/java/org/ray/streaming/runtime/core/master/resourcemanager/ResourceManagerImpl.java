@@ -13,9 +13,13 @@ import org.ray.api.Ray;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.streaming.runtime.config.StreamingMasterConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
+import org.ray.streaming.runtime.config.types.SlotAssignStrategyType;
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
+import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategyFactory;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.Resources;
+import org.ray.streaming.runtime.master.JobRuntimeContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,38 +30,37 @@ public class ResourceManagerImpl implements ResourceManager {
   //Container used tag
   private static final String CONTAINER_ENGAGED_KEY = "CONTAINER_ENGAGED_KEY";
 
+  private JobRuntimeContext runtimeContext;
   private ResourceConfig resourceConfig;
   private SlotAssignStrategy slotAssignStrategy;
 
-  private final JobMaster jobMaster;
+
   private final Resources resources;
 
   private final ScheduledExecutorService scheduledExecutorService;
 
-  public ResourceManagerImpl(JobMaster jobMaster) {
-    this.jobMaster = jobMaster;
-    StreamingMasterConfig masterConfig = jobMaster.getRuntimeContext().getConf().masterConfig;
+  public ResourceManagerImpl(JobRuntimeContext runtimeContext) {
+    this.runtimeContext = runtimeContext;
+    StreamingMasterConfig masterConfig = runtimeContext.getConf().masterConfig;
 
     this.resourceConfig = masterConfig.resourceConfig;
     this.resources = new Resources(resourceConfig);
     LOG.info("ResourceManagerImpl begin init, conf is {}, resources are {}.",
         resourceConfig, resources);
 
-    SlotAssignStrategyType slotAssignStrategyType =
-        SlotAssignStrategyType.valueOf(jobMaster.getRuntimeContext().getConf().masterConfig.schedulerConfig.slotAssignStrategy().toUpperCase());
+    SlotAssignStrategyType slotAssignStrategyType = SlotAssignStrategyType.PIPELINE_FIRST_STRATEGY;
+
     this.slotAssignStrategy = SlotAssignStrategyFactory.getStrategy(slotAssignStrategyType);
     this.slotAssignStrategy.updateResources(resources);
     LOG.info("Slot assign strategy: {}.", slotAssignStrategy.getName());
 
-    this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
-
     checkAndUpdateResources();
 
-    if (!TestHelper.isUTPattern()) {
-      long intervalSecond = resourceConfig.resourceCheckIntervalSecond();
-      this.scheduledExecutorService.scheduleAtFixedRate(Ray.wrapRunnable(this::checkAndUpdateResources),
-          0, intervalSecond, TimeUnit.SECONDS);
-    }
+    this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
+    long intervalSecond = resourceConfig.resourceCheckIntervalSecond();
+    this.scheduledExecutorService.scheduleAtFixedRate(Ray.wrapRunnable(this::checkAndUpdateResources),
+        0, intervalSecond, TimeUnit.SECONDS);
+
     LOG.info("ResourceManagerImpl init success.");
   }
 
@@ -97,18 +100,13 @@ public class ResourceManagerImpl implements ResourceManager {
   }
 
   @Override
-  public void setResources(Resources resources) {
-    this.jobMaster.getRuntimeContext().setResources(resources);
-  }
-
-  @Override
   public Resources getResources() {
     return this.resources;
   }
 
   private void checkAndUpdateResources() {
-    // get add&del nodes
-    List<NodeInfo> latestNodeInfos = RayUtils.getNodeInfoList();
+    // get all started nodes
+    List<NodeInfo> latestNodeInfos = Ray.getRuntimeContext().getAllNodeInfo();
 
     List<NodeInfo> addNodes = latestNodeInfos.stream().filter(nodeInfo -> {
       for (Container container : resources.getRegisterContainers()) {

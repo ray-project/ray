@@ -3,7 +3,7 @@ package org.ray.streaming.runtime.core.master.scheduler.strategy;
 import java.util.List;
 import java.util.Map;
 
-import org.ray.streaming.runtime.core.graph.ExecutionGraph;
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.ContainerID;
 import org.ray.streaming.runtime.core.resource.Resources;
