@@ -407,6 +407,25 @@ The checkpoint will be saved at a path that looks like ``local_dir/exp_name/tria
         config={"env": "CartPole-v0"},
     )
 
+Additionally, Tune sampling operators (``tune.choice``, ``tune.grid_search``) can be used. For initialization-sensitive problems, you can use this to *warmstart* one or more trials from an existing, favorably-initialized population.
+
+.. code-block:: python
+
+    # Paths to checkpoints that have favorable training dynamics
+    known_good_checkpoints = [
+        "~/ray_results/Original/PG_<xxx>/checkpoint_15/checkpoint-15",
+        "~/ray_results/Original/PG_<yyy>/checkpoint_5/checkpoint-5",
+        "~/ray_results/Original/PG_<zzz>/checkpoint_10/checkpoint-10",
+    ]
+    tune.run(
+        "PG",
+        num_samples=64, # train a population
+        name="SomeDifficultProblem",
+        stop={"training_iteration": 20},
+        restore=tune.choice(known_good_checkpoints), # sample randomly
+        config={"env": "CartPole-v0"},
+    )
+
 Fault Tolerance
 ---------------
 
