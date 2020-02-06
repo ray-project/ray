@@ -2,6 +2,7 @@ import logging
 import json
 import os
 import numpy as np
+import threading
 
 import ray
 import ray.services
@@ -15,12 +16,48 @@ def _try_import_strategy():
     import tensorflow as tf
     return tf.distribute.experimental.MultiWorkerMirroredStrategy
 
+def _noop():
+    pass
+
+def _load_proper_LambdaCallback():
+    # default TF2 LambdaCallback does not support the new callback naming
+
+    import tensorflow as tf
+    class LambdaCallback(tf.keras.callbacks.LambdaCallback):
+        def __init__(self, on_batch_begin=_noop, on_batch_end=_noop):
+            super().__init__()
+
+            def noop(self, batch, logs):
+                pass
+
+            self.batch_begin = on_batch_begin
+            self.batch_end = on_batch_end
+
+        def on_predict_batch_begin(self, batch, logs):
+            self.batch_begin(batch, logs)
+
+        def on_train_batch_begin(self, batch, logs):
+            self.batch_begin(batch, logs)
+
+        def on_test_batch_begin(self, batch, logs):
+            self.batch_begin(batch, logs)
+
+        def on_predict_batch_end(self, batch, logs):
+            self.batch_end(batch, logs)
+
+        def on_train_batch_end(self, batch, logs):
+            self.batch_end(batch, logs)
+
+        def on_test_batch_end(self, batch, logs):
+            self.batch_end(batch, logs)
+
+    return LambdaCallback
 
 class TFRunner:
     """Manages a TensorFlow model for training."""
 
-    def __init__(self, model_creator, data_creator, config=None,
-                 verbose=False):
+    def __init__(self, model_creator, data_creator, init_hook=None,
+                 config=None, verbose=False):
         """Initializes the runner.
 
         Args:
@@ -35,14 +72,29 @@ class TFRunner:
         self.config = {} if config is None else config
         self.epoch = 0
         self.verbose = verbose
+        self.init_hook = init_hook
+
+        self._model_thread = None
+        self._recorded_all_results = threading.Event()
+        self._ready_to_continue = threading.Barrier(2) # main + model
+        self._step_counter = 0
+        self._step_limit = 1
+
+        self._LambdaCallback = None
 
     def setup(self):
         """Initializes the model."""
+        if self.init_hook is not None:
+            self.init_hook()
+
         logger.debug("Creating dataset")
         self.train_dataset, self.test_dataset = self.data_creator(self.config)
 
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
+
+        self._LambdaCallback = _load_proper_LambdaCallback()
+
 
     def setup_distributed(self, urls, world_rank, world_size):
         """Sets up TensorFLow distributed environment and initializes the model.
@@ -53,6 +105,10 @@ class TFRunner:
             world_size (int): the total number of runners.
         """
         assert len(urls) == world_size
+
+        if self.init_hook is not None:
+            self.init_hook()
+
         tf_config = {
             "cluster": {
                 "worker": urls
@@ -83,48 +139,127 @@ class TFRunner:
         with self.strategy.scope():
             self.model = self.model_creator(self.config)
 
-        # For use in model.evaluate()
-        self.local_model = None
+        self._LambdaCallback = _load_proper_LambdaCallback()
 
-    def step(self):
-        """Runs a training epoch and updates the model parameters."""
-        fit_default_config = {"verbose": self.verbose}
-        fit_default_config.update(self.config.get("fit_config", {}))
+    # runs on another thread
+    def _record_progress(self, batchN, logs):
+        self._step_counter += 1
+        self._logs = logs
 
-        history = self.model.fit(self.train_dataset, **fit_default_config)
-        if history is None:
-            stats = {}
-        else:
-            stats = {"train_" + k: v[-1] for k, v in history.history.items()}
+    # runs on another thread
+    def _has_next_batch(self, batchN, logs):
+        if batchN != 0:
+            # always gate the first batch so the model doesn't immediately run
+            if self._step_counter < self._step_limit:
+                return
 
+            self._recorded_all_results.set()
+
+        # there is a choice here of whether to run
+        # the model thread while waiting for the next step call
+        # solved by moving the barrier to _record_logs to stop
+        # training after it ends rather than before it begins
+        self._ready_to_continue.wait()
+        self._step_counter = 0
+
+    def _generic_step(self, number_of_steps, config_key, action_fn, res_fn):
+        if self._model_thread is None or not self._model_thread.is_alive():
+            self._recorded_all_results.clear()
+            self._ready_to_continue.reset()
+
+            self._model_thread = None
+
+        if self._model_thread is None:
+            # new epoch --- new history
+            self._history = None
+
+
+            config = {}
+            config.update(self.config.get(config_key, {}))
+            config["verbose"] = 0 # we are using our own logging
+            config["callbacks"] = (
+                # todo: only create this callback once
+                config.get("callbacks", []) + [
+                    self._LambdaCallback(
+                        on_batch_begin=self._has_next_batch,
+                        on_batch_end=self._record_progress)
+                ]
+            )
+
+            logger.debug("Starting a new model thread")
+            def f():
+                logger.debug("Model thread is running")
+                self._history = action_fn(config)
+
+                # no reason to lock here, this should only happen once
+                self._recorded_all_results.set()
+
+            self._model_thread = threading.Thread(target=f)
+            self._model_thread.start()
+
+        # allow the thread to run for n steps
+        self._step_limit = number_of_steps
+        self._ready_to_continue.wait()
+
+        self._recorded_all_results.wait()
+        self._recorded_all_results.clear()
+
+        if self._history is not None:
+            # wait for the thread to finish now
+            logger.debug("Joining the training thread")
+            self._model_thread.join()
+
+            stats = res_fn()
+            return ('end', stats)
+
+        return ('batch', self._logs)
+
+
+    def _fit_action(self, config):
+        return self.model.fit(self.train_dataset, **config)
+
+    def _fit_get_results(self):
         self.epoch += 1
-        return stats
 
-    def validate(self):
-        """Evaluates the model on the validation data set."""
-        stats = {}
-        evaluate_config = {"verbose": self.verbose}
-        evaluate_config.update(self.config.get("evaluate_config", {}))
+        return ({
+            "train_" + k: v[-1]
+            for k, v in self._history.history.items()})
 
-        results = self.model.evaluate(self.test_dataset, **evaluate_config)
-        if results is None:
-            # Using local Model since model.evaluate() returns None
-            # for MultiWorkerMirroredStrategy
-            logger.warning("Running a local model to get validation score.")
-            self.local_model = self.model_creator(self.config)
-            self.local_model.set_weights(self.model.get_weights())
-            results = self.local_model.evaluate(self.test_dataset,
-                                                **evaluate_config)
+    def fit_step(self, number_of_steps=1):
+        """
+        Run number_of_steps training steps, then report the most recent logs.
+        """
+        return self._generic_step(
+            number_of_steps,
+            "fit_config",
+            self._fit_action,
+            self._fit_get_results)
 
-        if isinstance(results, list):
-            stats = {
+
+    def _validate_action(self, config):
+        return self.model.evaluate(self.test_dataset, **config)
+
+    def _validate_get_results(self):
+        if isinstance(self._history, list):
+            res = {
                 "validation_" + k: v
-                for k, v in zip(self.model.metrics_names, results)
+                for k, v in zip(self.model.metrics_names, self._history)
             }
         else:
-            stats = {"loss": results}
+            res = {"loss": self._history}
 
-        return stats
+        return res
+
+    # todo: technically you can interleave validate_step and fit_step
+    # and cause trouble for yourself
+    def validate_step(self, number_of_steps=1):
+        """Evaluates the model on the validation data set."""
+        return self._generic_step(
+            number_of_steps,
+            "evaluate_config",
+            self._validate_action,
+            self._validate_get_results)
+
 
     def get_state(self):
         """Returns the state of the runner."""

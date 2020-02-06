@@ -2,6 +2,7 @@ import numpy as np
 import os
 import logging
 import pickle
+import sys
 
 import ray
 
@@ -16,6 +17,7 @@ class TFTrainer:
     def __init__(self,
                  model_creator,
                  data_creator,
+                 init_hook=None,
                  config=None,
                  num_replicas=1,
                  use_gpu=False,
@@ -59,6 +61,7 @@ class TFTrainer:
                 Runner.remote(
                     model_creator,
                     data_creator,
+                    init_hook,
                     config=self.config,
                     verbose=self.verbose)
             ]
@@ -70,6 +73,7 @@ class TFTrainer:
                 Runner.remote(
                     model_creator,
                     data_creator,
+                    init_hook,
                     config=self.config,
                     verbose=self.verbose and i == 0)
                 for i in range(num_replicas)
@@ -92,24 +96,70 @@ class TFTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self):
+        import tensorflow as tf
+        self._Progbar = tf.keras.utils.Progbar
+
+    def _generic_model_driver(self, request_step, steps, metrics_prefix):
         """Runs a training epoch."""
+        progbar = self._Progbar(steps)
+
+        worker_stats = [None] * len(self.workers)
+        done = False
+        while not done:
+            reqs = [
+                request_step(w)
+                for w in self.workers
+            ]
+            for workerN, (type, logs) in enumerate(ray.get(reqs)):
+                if type == "batch":
+                    if workerN == 0:
+                        metrics = [(k, logs[k]) for k in ["loss", "accuracy"]]
+
+                        # see ./tf_runner.py:setup_distributed
+                        # for an explanation of only taking
+                        # the first worker's data
+                        progbar.update(logs["batch"], metrics)
+                elif type == "end":
+                    if workerN == 0:
+                        metrics = [
+                            ("loss", logs[metrics_prefix+"loss"]),
+                            ("accuracy", logs[metrics_prefix+"accuracy"])]
+
+                        progbar.update(steps, metrics)
+
+                    worker_stats[workerN] = logs
+
+                    # all workers do the same amount of work
+                    done = True
 
         # see ./tf_runner.py:setup_distributed
         # for an explanation of only taking the first worker's data
-        worker_stats = ray.get([w.step.remote() for w in self.workers])
         stats = worker_stats[0].copy()
+
         return stats
 
-    def validate(self):
+    def train(self, progress_report_interval=1):
+        """Runs a training epoch."""
+
+        # todo: this will only work in an explicit steps case
+        fit_config = self.config.get("fit_config", {})
+
+        return self._generic_model_driver(
+            lambda w: w.fit_step.remote(progress_report_interval),
+            fit_config.get("steps_per_epoch", None),
+            "train_")
+
+    def validate(self, progress_report_interval=1):
         """Evaluates the model on the validation data set."""
         logger.info("Starting validation step.")
 
-        # see ./tf_runner.py:setup_distributed
-        # for an explanation of only taking the first worker's data
-        stats = ray.get([w.validate.remote() for w in self.workers])
-        stats = stats[0].copy()
-        return stats
+        # todo: this will only work in an explicit steps case
+        evaluate_config = self.config.get("evaluate_config", {})
+
+        return self._generic_model_driver(
+            lambda w: w.validate_step.remote(progress_report_interval),
+            evaluate_config.get("steps", None),
+            "validation_")
 
     def get_model(self):
         """Returns the learned model."""
