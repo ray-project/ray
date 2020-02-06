@@ -66,9 +66,8 @@ def _configure_service_principal(config):
     else:
         app_name = sp_name.split('://', 1)[-1]
 
-    location = config['provider']['location']
     resource_group = config['provider']['resource_group']
-    auth_name = "azure_credentials_{}_{}_{}.json".format(RAY, location, resource_group)
+    auth_name = "azure_credentials_{}.json".format(app_name)
     auth_path = os.path.expanduser("~/.azure/{}".format(auth_name))
 
     new_auth = False
@@ -88,7 +87,6 @@ def _configure_service_principal(config):
                 any(c.isdigit() for c in password) and
                 any(not c.isalnum() for c in password)):
                 break
-        credentials = dict(clientSecret=password)
 
     try:
         # find existing application
@@ -96,6 +94,7 @@ def _configure_service_principal(config):
         logger.info("Found Application: %s", app_name)
     except StopIteration:
         # create new application
+        new_auth = True
         logger.info("Creating Application: %s", app_name)
         app_start_date = datetime.datetime.now(datetime.timezone.utc)
         app_end_date = app_start_date.replace(year=app_start_date.year + 1)
@@ -121,14 +120,15 @@ def _configure_service_principal(config):
 
     # set contributor role for service principal on new resource group
     rg_id = resource_client.resource_groups.get(resource_group).id
-    role = auth_client.role_definitions.list(rg_id, filter="roleName eq '{}'".format('Contributor')).next()
-    role_params = dict(role_definition_id=role.id, principal_id=sp.id)
+    role = auth_client.role_definitions.list(rg_id, filter="roleName eq 'Contributor'").next()
+    role_params = dict(role_definition_id=role.id, principal_id=sp.object_id)
     auth_client.role_assignments.create(rg_id, uuid.uuid4(), role_params)
 
     if new_auth:
-        credentials['clientId'] = sp.app_id
-        credentials['subscriptionId'] = config['provider']['subscription_id']
-        credentials['tenantId'] = graph_client.config.tenant_id
+        credentials = dict(clientSecret=password,
+                           clientId=app.app_id,
+                           subscriptionId=config['provider']['subscription_id'],
+                           tenantId=graph_client.config.tenant_id)
         store_azure_auth_file(credentials=credentials, auth_path=auth_path)
 
     config['provider']['auth_path'] = auth_path
