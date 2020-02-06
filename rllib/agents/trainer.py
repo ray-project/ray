@@ -530,8 +530,16 @@ class Trainer(Trainable):
         else:
             self.env_creator = lambda env_config: None
 
-        # Merge the supplied config with the class default
+        # Merge the supplied config with the class default.
         merged_config = copy.deepcopy(self._default_config)
+        # Handle special case for Explorations.
+        # TODO(sven): Maybe move this into `deep_update()`?
+        if isinstance(merged_config["exploration"], dict) and \
+                "type" in merged_config["explorations"] and \
+                isinstance(config["explorations"], dict) and \
+                "type" in config["explorations"] and \
+                merged_config["type"] != config["type"]:
+            merged_config["exploration"] = config["exploration"]
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)

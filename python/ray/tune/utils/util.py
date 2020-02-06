@@ -146,7 +146,8 @@ def merge_dicts(d1, d2):
     return merged
 
 
-def deep_update(original, new_dict, new_keys_allowed, whitelist):
+def deep_update(original, new_dict, new_keys_allowed, whitelist, 
+                overwrite_list=None):
     """Updates original dict with values from new_dict recursively.
     If new key is introduced in new_dict, then if new_keys_allowed is not
     True, an error will be thrown. Further, for sub-dicts, if the key is
@@ -159,6 +160,7 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
         whitelist (list): List of keys that correspond to dict values
             where new subkeys can be introduced. This is only at
             the top level.
+        overwrite_list (Optional[list]): An optional list of keys where 
     """
     for k, value in new_dict.items():
         if k not in original:
