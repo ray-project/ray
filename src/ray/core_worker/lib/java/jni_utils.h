@@ -363,6 +363,7 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
         typed_descriptor->FunctionName(), typed_descriptor->FunctionHash()};
     return NativeStringVectorToJavaStringList(env, function_descriptor_list);
   }
+  RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
 

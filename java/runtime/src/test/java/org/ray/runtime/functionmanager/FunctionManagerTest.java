@@ -140,17 +140,17 @@ public class FunctionManagerTest {
     //   4, bar without signature
     Assert.assertEquals(res.size(), 7);
     Assert.assertTrue(res.containsKey(
-        ImmutablePair.of(barDescriptor.name, barDescriptor.typeDescriptor)));
+        ImmutablePair.of(barDescriptor.name, barDescriptor.signature)));
     Assert.assertTrue(res.containsKey(
-        ImmutablePair.of(barConstructorDescriptor.name, barConstructorDescriptor.typeDescriptor)));
+        ImmutablePair.of(barConstructorDescriptor.name, barConstructorDescriptor.signature)));
     Assert.assertTrue(res.containsKey(
             ImmutablePair.of(barDescriptor.name, "")));
     Assert.assertTrue(res.containsKey(
             ImmutablePair.of(barConstructorDescriptor.name, "")));
     Assert.assertTrue(res.containsKey(
-            ImmutablePair.of(overloadFunctionDescriptorInt.name, overloadFunctionDescriptorInt.typeDescriptor)));
+            ImmutablePair.of(overloadFunctionDescriptorInt.name, overloadFunctionDescriptorInt.signature)));
     Assert.assertTrue(res.containsKey(
-            ImmutablePair.of(overloadFunctionDescriptorDouble.name, overloadFunctionDescriptorDouble.typeDescriptor)));
+            ImmutablePair.of(overloadFunctionDescriptorDouble.name, overloadFunctionDescriptorDouble.signature)));
     Assert.assertTrue(res.containsKey(
             ImmutablePair.of(overloadFunctionDescriptorInt.name, "")));
     RayFunction func = res.get(ImmutablePair.of(overloadFunctionDescriptorInt.name, ""));

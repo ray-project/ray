@@ -155,6 +155,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     byte[] taskIdBytes = new byte[TaskId.LENGTH];
     new Random().nextBytes(taskIdBytes);
     List<String> functionDescriptorList = functionDescriptor.toList();
+    Preconditions.checkState(functionDescriptorList.size() >= 3);
     return TaskSpec.newBuilder()
         .setType(taskType)
         .setLanguage(Language.JAVA)

@@ -84,8 +84,8 @@ public class FunctionManager {
       SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(func);
       final String className = serializedLambda.getImplClass().replace('/', '.');
       final String methodName = serializedLambda.getImplMethodName();
-      final String typeDescriptor = serializedLambda.getImplMethodSignature();
-      functionDescriptor = new JavaFunctionDescriptor(className, methodName, typeDescriptor);
+      final String signature = serializedLambda.getImplMethodSignature();
+      functionDescriptor = new JavaFunctionDescriptor(className, methodName, signature);
       RAY_FUNC_CACHE.get().put(func.getClass(), functionDescriptor);
     }
     return getFunction(jobId, functionDescriptor);
@@ -168,7 +168,7 @@ public class FunctionManager {
         }
       }
       RayFunction func = classFunctions.get(
-          ImmutablePair.of(descriptor.name, descriptor.typeDescriptor));
+          ImmutablePair.of(descriptor.name, descriptor.signature));
       if (func == null) {
         throw new RuntimeException(
             String.format("RayFunction %s is overloaded, the signature can't be empty.",
@@ -195,10 +195,10 @@ public class FunctionManager {
           final String methodName = e instanceof Method ? e.getName() : CONSTRUCTOR_NAME;
           final Type type =
               e instanceof Method ? Type.getType((Method) e) : Type.getType((Constructor) e);
-          final String typeDescriptor = type.getDescriptor();
+          final String signature = type.getDescriptor();
           RayFunction rayFunction = new RayFunction(e, classLoader,
-              new JavaFunctionDescriptor(className, methodName, typeDescriptor));
-          map.put(ImmutablePair.of(methodName, typeDescriptor), rayFunction);
+              new JavaFunctionDescriptor(className, methodName, signature));
+          map.put(ImmutablePair.of(methodName, signature), rayFunction);
           // For cross language call java function without signature
           final Pair<String, String> emptyDescriptor = ImmutablePair.of(methodName, "");
           if (map.containsKey(emptyDescriptor)) {
