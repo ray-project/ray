@@ -39,15 +39,14 @@ def test_e2e(serve_instance):
 
 
 def test_no_route(serve_instance):
-    serve.init()  # so we have access to global state
     serve.create_endpoint("noroute-endpoint", blocking=True)
-
     global_state = serve.api._get_global_state()
+
     result = global_state.route_table.list_service(include_headless=True)
     assert result[NO_ROUTE_KEY] == ["noroute-endpoint"]
 
     without_headless_result = global_state.route_table.list_service()
-    assert without_headless_result == {}
+    assert NO_ROUTE_KEY not in without_headless_result
 
     def func(_, i=1):
         return 1
