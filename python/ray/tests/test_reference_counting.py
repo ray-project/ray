@@ -37,8 +37,12 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
     if succeed:
         ray.get(oid)
     else:
-        with pytest.raises(ray.exceptions.UnreconstructableError):
-            ray.get(oid)
+        if oid.is_direct_call_type():
+            with pytest.raises(ray.exceptions.RayTimeoutError):
+                ray.get(oid, timeout=0.1)
+        else:
+            with pytest.raises(ray.exceptions.UnreconstructableError):
+                ray.get(oid)
 
 
 def _check_refcounts(expected):
@@ -269,6 +273,7 @@ def test_basic_serialized_reference(one_worker_100MiB):
     @ray.remote
     def pending(ref, dep):
         ray.get(ref[0])
+        # print(ray.worker.global_worker.core_worker.get_all_reference_counts())
 
     @ray.remote
     def put():
@@ -276,6 +281,7 @@ def test_basic_serialized_reference(one_worker_100MiB):
 
     array_oid = put.remote()
     print("ARRAY", array_oid)
+    print(array_oid.is_direct_call_type())
     random_oid = ray.ObjectID.from_random()
     print("RANDOM", random_oid)
     oid = pending.remote([array_oid], random_oid)
@@ -285,17 +291,22 @@ def test_basic_serialized_reference(one_worker_100MiB):
     array_oid_bytes = array_oid.binary()
     del array_oid
 
-    print("here xxx")
     # Check that the remote reference pins the object.
+    print("GET1")
     _fill_object_store_and_get(array_oid_bytes)
+    print("GET1 DONE")
 
     # Fulfill the dependency, causing the task to finish.
+    print("GET2")
     ray.worker.global_worker.put_object(None, object_id=random_oid)
     ray.get(oid)
+    print("GET2 DONE")
 
-    print("here yyy")
     # Reference should be gone, check that array gets evicted.
+    print("GET3")
+    print(ray.ObjectID(array_oid_bytes).is_direct_call_type())
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
+    print("GET3 DONE")
 
 
 # Call a recursive chain of tasks that pass a serialized reference to the end
