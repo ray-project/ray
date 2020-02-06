@@ -50,6 +50,7 @@ def test_no_route(serve_instance):
 
     def func(_, i=1):
         return 1
+
     serve.create_backend(func, "backend:1")
     serve.link("noroute-endpoint", "backend:1")
     service_handle = serve.get_handle("noroute-endpoint")
