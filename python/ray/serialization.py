@@ -238,6 +238,7 @@ class SerializationContext:
                     raise ValueError("Receiving pickle5 serialized objects "
                                      "while the serialization context is "
                                      "using pyarrow as the backend.")
+                self.set_outer_object_id(object_id)
                 try:
                     in_band, buffers = unpack_pickle5_buffers(data)
                     if len(buffers) > 0:
@@ -247,6 +248,9 @@ class SerializationContext:
                 # cloudpickle does not provide error types
                 except pickle.pickle.PicklingError:
                     raise DeserializationError()
+                finally:
+                    # Must clear ObjectID to not hold a reference.
+                    self.set_outer_object_id(None)
                 return obj
 
             # Check if the object should be returned as raw bytes.
