@@ -286,6 +286,8 @@ cc_binary(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        "//:core_worker_lib",
+        "//:ray_util",
         ":streaming_lib",
     ],
 )
