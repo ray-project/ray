@@ -217,8 +217,8 @@ def memory_debug_str():
     try:
         import ray  # noqa F401
         import psutil
-        total_gb = psutil.virtual_memory().total / (1024**3)
-        used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
+        total_gb = psutil.virtual_memory().total  # / (1024**3)
+        used_gb = total_gb - psutil.virtual_memory().available   # / (1024**3)
         if used_gb > total_gb * 0.9:
             warn = (": ***LOW MEMORY*** less than 10% of the memory on "
                     "this node is available for use. This can cause "
