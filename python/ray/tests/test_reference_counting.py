@@ -358,7 +358,10 @@ def test_recursive_serialized_reference(one_worker_100MiB):
 def test_actor_holding_serialized_reference(one_worker_100MiB):
     @ray.remote
     class GreedyActor(object):
-        def __init__(self, ref):
+        def __init__(self):
+            pass
+
+        def set_ref1(self, ref):
             self.ref1 = ref
 
         def add_ref2(self, new_ref):
@@ -368,24 +371,37 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
             del self.ref1
 
         def delete_ref2(self):
+            print("delete1")
             del self.ref2
+            print("delete2")
+
+    @ray.remote
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
 
     # Test that the reference held by the actor isn't evicted.
-    array_oid = ray.put(n_MiB_array(40))
-    actor = GreedyActor.remote([array_oid])
+    array_oid = put.remote()
+    actor = GreedyActor.remote()
+    actor.set_ref1.remote([array_oid])
 
     # Remove the local reference.
+    print("DELETE REF")
     array_oid_bytes = array_oid.binary()
     del array_oid
+    print("DELETE REF DONE")
 
     # Test that the remote reference still pins the object.
+    print("GET1")
     _fill_object_store_and_get(array_oid_bytes)
+    print("GET1 DONE")
 
     # Test that giving the same actor a duplicate reference works.
+    print("GET2")
     ray.get(actor.add_ref2.remote([ray.ObjectID(array_oid_bytes)]))
     _fill_object_store_and_get(array_oid_bytes)
+    print("GET2 DONE")
 
-    # Test that removing only the first reference doesn't upin the object.
+    # Test that removing only the first reference doesn't unpin the object.
     ray.get(actor.delete_ref1.remote())
     _fill_object_store_and_get(array_oid_bytes)
 

@@ -152,13 +152,14 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
   auto it = worker_ids_.find(actor_id);
   RAY_CHECK(it != worker_ids_.end()) << "Actor worker id not found " << actor_id.Hex();
   request->set_intended_worker_id(it->second);
+  rpc::Address addr = client.Addr();
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
-      [this, task_id](Status status, const rpc::PushTaskReply &reply) {
+      [this, addr, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
           task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply, nullptr);
+          task_finisher_->CompletePendingTask(task_id, reply, &addr);
         }
       }));
 }

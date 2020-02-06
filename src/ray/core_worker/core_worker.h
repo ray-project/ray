@@ -356,6 +356,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if actor creation fails, likely due to raylet failure.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
+                               const std::vector<ObjectID> &inlined_ids,
                      ActorID *actor_id);
 
   /// Submit an actor task.
@@ -365,6 +366,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
+  /// //TODO
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status error if the task is invalid or if the task submission
   /// failed. Tasks can be invalid for direct actor calls because not all tasks
@@ -372,6 +374,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
                          const std::vector<TaskArg> &args,
                          const TaskOptions &task_options,
+                               const std::vector<ObjectID> &inlined_ids,
                          std::vector<ObjectID> *return_ids);
 
   /// Tell an actor to exit immediately, without completing outstanding work.

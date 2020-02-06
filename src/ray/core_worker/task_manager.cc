@@ -203,6 +203,7 @@ void TaskManager::RemoveSubmittedTaskReferences(
   }
   std::vector<ObjectID> deleted;
   // TODO: Fill in the borrower address.
+  RAY_LOG(DEBUG) << "RemoveSubmittedTaskReferences got refs: " << refs.size();
   reference_counter_->RemoveSubmittedTaskReferences(object_ids, addr, refs, &deleted);
   in_memory_store_->Delete(deleted);
 }

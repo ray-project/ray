@@ -457,6 +457,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   auto start_time = current_time_ms();
 
   if (!memory_object_ids.empty()) {
+    RAY_LOG(ERROR) << "IN-MEMORY GET";
     RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
                                          &result_map, &got_exception));
   }
@@ -477,6 +478,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
+    RAY_LOG(ERROR) << "PLASMA GET";
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, local_timeout_ms,
                                                   worker_context_, &result_map,
                                                   &got_exception));
@@ -718,6 +720,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
+                               const std::vector<ObjectID> &inlined_ids,
                                ActorID *return_actor_id) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
@@ -733,8 +736,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.placement_resources,
                       actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
                                                             : TaskTransportType::RAYLET,
-                      // TODO
-                      &return_ids, {});
+                      &return_ids, inlined_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
@@ -763,6 +765,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
                                    const std::vector<TaskArg> &args,
                                    const TaskOptions &task_options,
+                               const std::vector<ObjectID> &inlined_ids,
                                    std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
@@ -784,8 +787,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      // TODO
-                      required_resources, transport_type, return_ids, {});
+                      required_resources, transport_type, return_ids, inlined_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);

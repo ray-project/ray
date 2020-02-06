@@ -81,6 +81,8 @@ typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const std::stri
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
  public:
+
+  virtual const rpc::Address &Addr() { return Status::NotImplemented(""); } ;
   /// This is called by the Raylet to assign a task to the worker.
   ///
   /// \param[in] request The request message.
@@ -166,9 +168,15 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   CoreWorkerClient(const std::string &address, const int port,
                    ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
+    addr_.set_ip_address(address);
+    addr_.set_port(port);
     grpc_client_ = std::unique_ptr<GrpcClient<CoreWorkerService>>(
         new GrpcClient<CoreWorkerService>(address, port, client_call_manager));
   };
+
+  const rpc::Address &Addr() const {
+	  return addr_;
+  }
 
   RPC_CLIENT_METHOD(CoreWorkerService, AssignTask, grpc_client_, override)
 
@@ -253,6 +261,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
  private:
   /// Protects against unsafe concurrent access from the callback thread.
   std::mutex mutex_;
+
+  /// Address of the remote worker.
+  rpc::Address addr_;
 
   /// The RPC client.
   std::unique_ptr<GrpcClient<CoreWorkerService>> grpc_client_;

@@ -538,6 +538,8 @@ cdef CRayStatus task_execution_handler(
                 # it does, that indicates that there was an internal error.
                 execute_task(task_type, ray_function, c_resources, c_args,
                              c_arg_reference_ids, c_return_ids, returns)
+                import gc;gc.collect()
+                print("after callback", ray.worker.global_worker.core_worker.get_all_reference_counts())
             except Exception:
                 traceback_str = traceback.format_exc() + (
                     "An unexpected internal error occurred while the worker "
@@ -834,7 +836,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(self, args, &args_vector)
+            inlined_ids = prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
@@ -843,7 +845,7 @@ cdef class CoreWorker:
                         max_reconstructions, is_direct_call, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
-                    &c_actor_id))
+                    inlined_ids, &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
 
@@ -868,13 +870,13 @@ cdef class CoreWorker:
             task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            prepare_args(self, args, &args_vector)
+            inlined_ids = prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitActorTask(
                       c_actor_id,
                       ray_function,
-                      args_vector, task_options, &return_ids))
+                      args_vector, task_options, inlined_ids, &return_ids))
 
             return VectorToObjectIDs(return_ids)
 
@@ -929,11 +931,14 @@ cdef class CoreWorker:
 
     def add_object_id_reference(self, ObjectID object_id):
         # Note: faster to not release GIL for short-running op.
+        if object_id.hex() == "45b95b1c8bd3a9c4ffffffff010000c801000000":
+            print("ADD REF", object_id)
         self.core_worker.get().AddLocalReference(object_id.native())
 
     def remove_object_id_reference(self, ObjectID object_id):
         # Note: faster to not release GIL for short-running op.
-        print("REMOVE a", object_id)
+        if object_id.hex() == "45b95b1c8bd3a9c4ffffffff010000c801000000":
+            print("REMOVE REF", object_id)
         self.core_worker.get().RemoveLocalReference(object_id.native())
 
     def serialize_and_promote_object_id(self, ObjectID object_id):
