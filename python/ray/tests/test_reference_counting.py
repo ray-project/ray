@@ -195,17 +195,13 @@ def test_pending_task_dependency_pinning(shutdown_only):
     def pending(input1, input2):
         return
 
-    @ray.remote
-    def slow(dep):
-        pass
-
     # The object that is ray.put here will go out of scope immediately, so if
     # pending task dependencies aren't considered, it will be evicted before
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
     np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
     random_id = ray.ObjectID.from_random()
-    oid = pending.remote(np_array, slow.remote(random_id))
+    oid = pending.remote(np_array, random_id)
 
     for _ in range(2):
         ray.put(np_array)
