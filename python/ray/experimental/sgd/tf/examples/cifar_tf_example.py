@@ -7,6 +7,7 @@ It gets to 75% validation accuracy in 25 epochs, and 79% after 50 epochs.
 import argparse
 import time
 
+from tensorflow.keras.callbacks import LambdaCallback
 from tensorflow.keras.datasets import cifar10
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.models import Sequential
@@ -37,15 +38,11 @@ def fetch_keras_data():
     x_test /= 255
     return (x_train, y_train), (x_test, y_test)
 
-
-(x_train, y_train), (x_test, y_test) = fetch_keras_data()
-input_shape = x_train.shape[1:]
-
-
 def create_model(config):
     import tensorflow as tf
     model = Sequential()
-    model.add(Conv2D(32, (3, 3), padding="same", input_shape=input_shape))
+    model.add(
+        Conv2D(32, (3, 3), padding="same", input_shape=config["input_shape"]))
     model.add(Activation("relu"))
     model.add(Conv2D(32, (3, 3)))
     model.add(Activation("relu"))
@@ -83,8 +80,8 @@ def data_creator(config):
     test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
 
     # Repeat is needed to avoid
-    train_dataset = train_dataset.repeat().shuffle(
-        len(x_train)).batch(batch_size)
+    train_dataset = train_dataset.repeat().shuffle(len(x_train)
+        ).batch(batch_size)
     test_dataset = test_dataset.repeat().batch(batch_size)
     return train_dataset, test_dataset
 
@@ -171,6 +168,12 @@ if __name__ == "__main__":
         default=False,
         help="Sets data augmentation.")
     parser.add_argument(
+        "--time-only",
+        action="store_true",
+        default=False,
+        help=("Skip augmented training and" +
+              " run 1 epoch to compare remote and local training"))
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
@@ -182,46 +185,131 @@ if __name__ == "__main__":
     test_size = 10000
     batch_size = args.batch_size
 
-    num_train_steps = 10 if args.smoke_test else data_size // batch_size
-    num_eval_steps = 10 if args.smoke_test else test_size // batch_size
+    num_train_steps = (
+        10 if args.smoke_test
+        else data_size // batch_size
+    )
+    num_eval_steps = (
+        10 if args.smoke_test
+        else test_size // batch_size
+    )
+
+    def init_hook():
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        os.environ['TF_CPP_MIN_VLOG_LEVEL'] = '3'
+
+        import tensorflow as tf
+
+        gpus = tf.config.experimental.list_physical_devices('GPU')
+        if len(gpus) == 0:
+            if args.use_gpu:
+                raise 'No GPUs found!'
+
+        import logging
+        tf.get_logger().setLevel(logging.ERROR)
+
+        if not args.use_gpu:
+            tf.keras.backend.set_image_data_format('channels_last')
+        else:
+            tf.keras.backend.set_image_data_format('channels_first')
+
+    init_hook()
+    (x_train, y_train), (x_test, y_test) = fetch_keras_data()
+
+    config = {
+        "batch_size": batch_size,
+        "fit_config": {
+            "steps_per_epoch": num_train_steps,
+        },
+        "evaluate_config": {
+            "steps": num_eval_steps,
+        },
+        "input_shape": x_train.shape[1:]
+    }
 
     trainer = TFTrainer(
         model_creator=create_model,
         data_creator=(data_augmentation_creator
                       if args.augment_data else data_creator),
+        init_hook=init_hook,
         num_replicas=args.num_replicas,
         use_gpu=args.use_gpu,
         verbose=True,
-        config={
-            "batch_size": batch_size,
-            "fit_config": {
-                "steps_per_epoch": num_train_steps,
-            },
-            "evaluate_config": {
-                "steps": num_eval_steps,
-            }
-        })
+        config=config)
 
-    training_start = time.time()
-    for i in range(3):
-        # Trains num epochs
-        train_stats1 = trainer.train()
-        train_stats1.update(trainer.validate())
-        print("iter {}:".format(i), train_stats1)
+    if args.time_only:
+        training_start = time.time()
 
-    dt = (time.time() - training_start) / 3
-    print(f"Training on workers takes: {dt:.3f} seconds/epoch")
+        progress_report_interval = 100 if args.use_gpu else 10
 
-    model = trainer.get_model()
-    trainer.shutdown()
-    dataset, test_dataset = data_augmentation_creator(
-        dict(batch_size=batch_size))
+        remote_train_stats = trainer.train(progress_report_interval)
+        remote_training_time = time.time() - training_start
 
-    training_start = time.time()
-    model.fit(dataset, steps_per_epoch=num_train_steps, epochs=1)
-    dt = (time.time() - training_start)
-    print(f"Training on workers takes: {dt:.3f} seconds/epoch")
+        remote_train_stats.update(trainer.validate(progress_report_interval))
+        trainer.shutdown()
 
-    scores = model.evaluate(test_dataset, steps=num_eval_steps)
-    print("Test loss:", scores[0])
-    print("Test accuracy:", scores[1])
+
+        import tensorflow as tf
+        # make sure we only use CPU so it's fair to the workers
+        # will break on tf==2.1.0
+        # use tf.config.set_visible_devices([], 'GPU')
+        if not args.use_gpu:
+            tf.config.experimental.set_visible_devices([], 'GPU')
+
+        # if you want to verify that only the CPU is used,
+        # enable this:
+        # tf.debugging.set_log_device_placement(True)
+
+        # patch batch_size so that the local model consumes as much data
+        # as all the workers together
+        config["batch_size"] *= args.num_replicas
+        train_data, test_data = data_creator(config)
+        model = create_model(config)
+
+        training_start = time.time()
+
+        # workers do the same # of updates
+        # but see num_replicas as much data
+        local_train_stats = model.fit(
+            train_data,
+            steps_per_epoch=config["fit_config"]["steps_per_epoch"],
+            verbose=True)
+
+        local_training_time = time.time() - training_start
+
+        local_eval_stats = model.evaluate(
+            test_data,
+            steps=config["evaluate_config"]["steps"],
+            verbose=True)
+
+
+        print(f"Remote results: {remote_train_stats}:")
+        print(
+            f"Local results. Train: {local_train_stats.history}" +
+            f" Eval: {local_eval_stats}")
+
+        print(
+            f"Training on {args.num_replicas} " +
+            f"workers takes: {remote_training_time:.3f} seconds/epoch"
+        )
+        print(f"Training locally takes: {local_training_time:.3f} seconds/epoch")
+    else:
+        for i in range(3):
+            # Trains num epochs
+            train_stats1 = trainer.train()
+            train_stats1.update(trainer.validate())
+            print("iter {}:".format(i), train_stats1)
+
+        model = trainer.get_model()
+        trainer.shutdown()
+        dataset, test_dataset = data_augmentation_creator(
+            dict(batch_size=batch_size))
+
+        model.fit(
+            dataset,
+            steps_per_epoch=num_train_steps*args.num_replicas,
+            epochs=1)
+
+        scores = model.evaluate(test_dataset, steps=num_eval_steps)
+        print("Test loss:", scores[0])
+        print("Test accuracy:", scores[1])
