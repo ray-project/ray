@@ -303,8 +303,8 @@ cdef void prepare_args(
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference(
-                        (<ObjectID>core_worker.put_serialized_object(
-                            serialized_arg)).native()))
+                        (CObjectID.FromBinary(core_worker.put_serialized_cobject(
+                            serialized_arg)))))
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -689,6 +689,11 @@ cdef class CoreWorker:
     def put_serialized_object(self, serialized_object,
                               ObjectID object_id=None,
                               c_bool pin_object=True):
+        return ObjectID(self.put_serialized_cobject(serialized_object, object_id, pin_object))
+
+    def put_serialized_cobject(self, serialized_object,
+                              ObjectID object_id=None,
+                              c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -710,7 +715,7 @@ cdef class CoreWorker:
                     self.core_worker.get().Seal(
                         c_object_id, pin_object and object_id is None))
 
-        return ObjectID(c_object_id.Binary())
+        return c_object_id.Binary()
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
              TaskID current_task_id):
