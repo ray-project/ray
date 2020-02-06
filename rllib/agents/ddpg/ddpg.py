@@ -204,7 +204,7 @@ def update_worker_explorations(trainer):
         e.foreach_trainable_policy.remote(lambda p, _: p.set_epsilon(exp_val))
         exp_vals.append(exp_val)
     trainer.train_start_timestep = global_timestep
-    trainer.cur_exp_vals = exp_vals
+    trainer.exploration_infos = exp_vals
 
 
 def add_pure_exploration_phase(trainer):
