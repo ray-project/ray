@@ -80,7 +80,8 @@ class TorchPolicy(Policy):
             # Try our Exploration, if any.
             if self.exploration:
                 actions = self.exploration.get_action(
-                    model_out, self.model, action_dist, explore, timestep)
+                    model_out, self.model, action_dist, explore,
+                    timestep if timestep is not None else self.global_timestep)
             else:
                 actions = action_dist.sample()
 

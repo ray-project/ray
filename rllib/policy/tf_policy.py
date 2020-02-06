@@ -251,7 +251,8 @@ class TFPolicy(Policy):
             prev_action_batch,
             prev_reward_batch,
             explore=explore,
-            timestep=timestep)
+            timestep=timestep if timestep is not None else
+            self.global_timestep)
         # Execute session run to get action (and other fetches).
         ret = builder.get(fetches)
         return ret[:3]

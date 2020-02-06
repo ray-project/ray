@@ -535,10 +535,11 @@ class Trainer(Trainable):
         # Handle special case for Explorations.
         # TODO(sven): Maybe move this into `deep_update()`?
         if isinstance(merged_config["exploration"], dict) and \
-                "type" in merged_config["explorations"] and \
-                isinstance(config["explorations"], dict) and \
-                "type" in config["explorations"] and \
-                merged_config["type"] != config["type"]:
+                "type" in merged_config["exploration"] and \
+                isinstance(config["exploration"], dict) and \
+                "type" in config["exploration"] and \
+                merged_config["exploration"]["type"] != \
+                config["exploration"]["type"]:
             merged_config["exploration"] = config["exploration"]
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,

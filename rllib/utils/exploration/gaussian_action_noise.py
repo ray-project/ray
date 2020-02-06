@@ -38,9 +38,8 @@ class GaussianActionNoise(Exploration):
                 Exploration.
             framework (Optional[str]): One of None, "tf", "torch".
         """
-        # For now, require Discrete action space (may loosen this restriction
-        # in the future).
-        assert isinstance(action_space, gym.spaces.Discrete)
+        assert isinstance(action_space, gym.spaces.Box) and \
+            action_space.dtype in [np.float32, np.float64]
         assert framework is not None
         super().__init__(
             action_space=action_space,
