@@ -1027,7 +1027,7 @@ FLATC_ARGS = [
 
 flatbuffer_cc_library(
     name = "common_fbs",
-    srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
+    srcs = ["@plasma//:cpp/src/plasma/common.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "src/ray/common/",
 )
