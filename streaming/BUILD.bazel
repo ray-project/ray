@@ -266,6 +266,20 @@ genrule(
     }),
     outs = ["jni_md.h"],
     cmd = "cp -f $< $@",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "jni",
+    hdrs = [
+        ":jni.h",
+        ":jni_md.h",
+    ],
+    copts = COPTS,
+    includes = [
+        ".",  # needed for `include <jni.h>`
+    ],
+    visibility = ["//visibility:public"],
 )
 
 cc_binary(
@@ -273,21 +287,18 @@ cc_binary(
     srcs = glob([
         "src/lib/java/*.cc",
         "src/lib/java/*.h",
-    ]) + [
-        ":jni.h",  # needed for `include "jni.h"`
-        ":jni_md.h",
-    ],
+    ]),
     copts = COPTS,
     includes = [
-        ".",  # needed for `include <jni.h>`
         "src",
     ],
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        ":jni",
+        ":streaming_lib",
         "//:core_worker_lib",
         "//:ray_util",
-        ":streaming_lib",
     ],
 )

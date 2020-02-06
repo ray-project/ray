@@ -1140,6 +1140,7 @@ cc_binary(
         "//:core_worker_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
+        "//streaming:jni",
     ],
 )
 
