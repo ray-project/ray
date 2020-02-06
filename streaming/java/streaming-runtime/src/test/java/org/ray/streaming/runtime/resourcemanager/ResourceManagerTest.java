@@ -7,15 +7,29 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.aeonbits.owner.util.Collections;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.id.UniqueId;
 import org.ray.api.runtimecontext.NodeInfo;
+import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.runtime.TestHelper;
+import org.ray.streaming.runtime.config.StreamingConfig;
 import org.ray.streaming.runtime.config.global.CommonConfig;
+import org.ray.streaming.runtime.config.master.ResourceConfig;
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
+import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.master.resourcemanager.ResourceManager;
 import org.ray.streaming.runtime.core.master.resourcemanager.ResourceManagerImpl;
+import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
+import org.ray.streaming.runtime.core.master.scheduler.strategy.impl.PipelineFirstStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
+import org.ray.streaming.runtime.core.resource.ContainerID;
+import org.ray.streaming.runtime.core.resource.Slot;
+import org.ray.streaming.runtime.graph.ExecutionGraphTest;
+import org.ray.streaming.runtime.master.JobRuntimeContext;
+import org.ray.streaming.runtime.master.graphmanager.GraphManager;
+import org.ray.streaming.runtime.master.graphmanager.GraphManagerImpl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -33,7 +47,6 @@ public class ResourceManagerTest {
 
     // ray init
     Ray.init();
-    rayAsyncContext = Ray.getAsyncContext();
 
     TestHelper.setUTFlag();
   }
@@ -46,130 +59,51 @@ public class ResourceManagerTest {
 
   @Test
   public void testApi() {
-    Ray.setAsyncContext(rayAsyncContext);
     Map<String, String> conf = new HashMap<String, String>();
     conf.put(CommonConfig.JOB_NAME, "testApi");
-    conf.put(QueueConfig.QUEUE_TYPE, QueueType.MEMORY_QUEUE.getName());
-    ResourceManager resourceManager = new ResourceManagerImpl(
-        new JobMaster(conf));
-    List<Container> containers = resourceManager.getRegisteredContainers();
-    assert containers.size() == 5;
+    conf.put(ResourceConfig.TASK_RESOURCE_CPU_LIMIT_ENABLE, "true");
+    conf.put(ResourceConfig.TASK_RESOURCE_MEM_LIMIT_ENABLE, "true");
+    conf.put(ResourceConfig.TASK_RESOURCE_MEM, "10");
+    conf.put(ResourceConfig.TASK_RESOURCE_CPU, "2");
+    StreamingConfig config = new StreamingConfig(conf);
+    JobRuntimeContext jobRuntimeContext = new JobRuntimeContext(config);
+    ResourceManager resourceManager = new ResourceManagerImpl(jobRuntimeContext);
 
-    Container container = containers.get(0);
+    SlotAssignStrategy slotAssignStrategy = resourceManager.getSlotAssignStrategy();
+    Assert.assertTrue(slotAssignStrategy instanceof PipelineFirstStrategy);
 
-    assert resourceManager.allocateContainer(new ContainerSpec(), 1) == null;
-    resourceManager.releaseContainer(Arrays.asList(container));
+    Map<String, Double> containerResource = new HashMap<>();
+    containerResource.put(ResourceConfig.TASK_RESOURCE_CPU, 16.0);
+    containerResource.put(ResourceConfig.TASK_RESOURCE_MEM, 128.0);
+    Container container1 = new Container(null, "testAddress1", "testHostName1");
+    container1.setAvailableResource(containerResource);
+    Container container2 = new Container(null, "testAddress2", "testHostName2");
+    container2.setAvailableResource(containerResource);
+    List<Container> containers = Collections.list(container1, container2);
+    resourceManager.getResources().getRegisterContainers().addAll(containers);
+    Assert.assertEquals(resourceManager.getRegisteredContainers().size(), 2);
 
-    Configuration configuration = new Configuration();
-    JobVertex jobVertex = new JobVertex("1-jobvertex");
-    jobVertex.setProcessor(new OneInputProcessor(null));
-    ExecutionGraph graph = new ExecutionGraph();
-    Map<String, String> jobConf = new HashMap<>();
-    ExecutionJobVertex exeJobVertex = new ExecutionJobVertex(jobVertex,
-        graph, jobConf);
-    ExecutionVertex exeVertex = new ExecutionVertex("taskname", 0, 0,
-        exeJobVertex);
-    Map<String, Object> config = new HashMap<>();
-    config.put("key", "value");
-    exeVertex.withConfig(config);
-    RayActor actor = resourceManager.allocateActor(container, LanguageType.JAVA,
-        configuration, exeVertex);
-    Assert.assertNotNull(actor);
-    resourceManager.deallocateActor(actor);
+    //build ExecutionGraph
+    GraphManager graphManager = new GraphManagerImpl(new JobRuntimeContext(null));
+    JobGraph jobGraph = ExecutionGraphTest.buildJobGraph();
+    ExecutionGraph executionGraph = ExecutionGraphTest.buildExecutionGraph(graphManager, jobGraph);
 
-    // TODO(qwang): Ray doesn't support `createPyActor()` in SINGLE_PROCESS mode.
-//    actor = resourceManager.allocateActor(container, LanguageType.PYTHON,
-//        configuration, exeVertex);
-//    Assert.assertNotNull(actor);
+    int slotNumPerContainer = slotAssignStrategy.getSlotNumPerContainer(containers, executionGraph
+    .getMaxParallelism());
+    Assert.assertEquals(slotNumPerContainer, 1);
+
+    slotAssignStrategy.allocateSlot(containers, slotNumPerContainer);
+
+    Map<ContainerID, List<Slot>> allocatingMap = slotAssignStrategy.assignSlot(executionGraph);
+    Assert.assertEquals(allocatingMap.size(), 2);
+
+    executionGraph.getAllAddedExecutionVertices().forEach(vertex -> {
+      Map<String, Double> resource = resourceManager.allocateResource(vertex);
+      Assert.assertNotNull(resource);
+    });
+    Assert.assertEquals(container1.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_CPU), 14.0);
+    Assert.assertEquals(container2.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_CPU), 14.0);
+    Assert.assertEquals(container1.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_MEM), 118.0);
+    Assert.assertEquals(container2.getAvailableResource().get(ResourceConfig.TASK_RESOURCE_MEM), 118.0);
   }
-
-  @Test
-  public void testUnregisterContainer() {
-    Ray.setAsyncContext(rayAsyncContext);
-    boolean autoScalingEnable = false;
-    Map<String, String> conf = new HashMap();
-    conf.put("streaming.scheduler.strategy.slot-assign", "colocate_strategy");
-    conf.put(CommonConfig.JOB_NAME, "testUnregisterContainer");
-    conf.put(QueueConfig.QUEUE_TYPE, QueueType.MEMORY_QUEUE.getName());
-    ResourceManager resourceManager = new ResourceManagerImpl(
-        new JobMaster(conf));
-    ResourceManagerImpl spy = (ResourceManagerImpl) Mockito.spy(resourceManager);
-    List<NodeInfo> nodeInfos = new ArrayList<>();
-
-    String addr1 = "localhost1";
-    String addr2 = "localhost2";
-    String addr3 = "localhost3";
-    UniqueId nodeId1 = createNodeId(1);
-    UniqueId nodeId2 = createNodeId(2);
-    UniqueId nodeId3 = createNodeId(3);
-
-    NodeInfo nodeInfo1 = new NodeInfo(nodeId1, addr1, addr1, true, null, null);
-    NodeInfo nodeInfo2 = new NodeInfo(nodeId2, addr2, addr2, true, null, null);
-    nodeInfos.add(nodeInfo1);
-    spy.checkAndUpdateResource();
-    Assert.assertEquals(spy.getRegisteredContainers().size(), 5);
-    nodeInfos.add(nodeInfo2);
-    spy.checkAndUpdateResource();
-    Assert.assertEquals(spy.getRegisteredContainers().size(), 5);
-    nodeInfos.remove(nodeInfo1);
-    nodeInfo1 = new NodeInfo(nodeId1, addr1, addr1, false,
-        null, null);
-    nodeInfos.add(nodeInfo1);
-    spy.checkAndUpdateResource();
-    Assert.assertEquals(spy.getRegisteredContainers().size(), 5);
-    NodeInfo nodeInfo3 = new NodeInfo(nodeId3, addr3, addr3, true,
-        null, null);
-    nodeInfos.add(nodeInfo3);
-    spy.checkAndUpdateResource();
-    List<Container> containers = spy.getRegisteredContainers();
-    Assert.assertEquals(containers.size(), 5);
-    List<String> addrs = containers.stream().map(Container::getAddress)
-        .collect(Collectors.toList());
-    assert addrs.contains(addr2);
-    assert addrs.contains(addr3);
-  }
-
-  @Test
-  public void testJvmOption() {
-    Ray.setAsyncContext(rayAsyncContext);
-    boolean autoScalingEnable = false;
-    Map<String, String> conf = new HashMap();
-    conf.put(CommonConfig.JOB_NAME, "testUnregisterContainer");
-    conf.put(QueueConfig.QUEUE_TYPE, QueueType.MEMORY_QUEUE.getName());
-    ResourceManager resourceManager = new ResourceManagerImpl(
-        new JobMaster(conf));
-    List<Container> containers = resourceManager.getRegisteredContainers();
-    assert containers.size() == 5;
-
-    Container container = containers.get(0);
-
-    assert resourceManager.allocateContainer(new ContainerSpec(), 1) == null;
-    resourceManager.releaseContainer(Arrays.asList(container));
-
-    JobVertex jobVertex = new JobVertex("1-jobvertex");
-    jobVertex.setProcessor(new OneInputProcessor(null));
-    ExecutionGraph graph = new ExecutionGraph();
-    Map<String, String> jobConf = new HashMap<>();
-    ExecutionJobVertex exeJobVertex = new ExecutionJobVertex(jobVertex, graph, jobConf);
-    Map<String, Double> resource = new HashMap<>();
-    resource.put("Xms", 1024.0);
-    resource.put("Xmx", 1024.0);
-    exeJobVertex.getJobVertex().setResources(resource);
-    ExecutionVertex exeVertex = new ExecutionVertex("taskname", 0, 0,
-        exeJobVertex);
-    Map<String, Object> config = new HashMap<>();
-    config.put("JVM_OPTIONS", " -Xms=1g -Xmx=1g ");
-    exeVertex.withConfig(config);
-    RayActor actor = resourceManager.allocateActor(container, LanguageType.JAVA,
-        exeVertex.getExecutionConfig().getConfiguration(), exeVertex);
-    Assert.assertNotNull(actor);
-    resourceManager.deallocateActor(actor);
-  }
-
-  private UniqueId createNodeId(int id) {
-    byte[] nodeIdBytes = new byte[UniqueId.LENGTH];
-    for (int byteIndex = 0; byteIndex < UniqueId.LENGTH; ++byteIndex) {
-      nodeIdBytes[byteIndex] = String.valueOf(id).getBytes()[0];
-    }
-    return new UniqueId(nodeIdBytes);
-  }
+}

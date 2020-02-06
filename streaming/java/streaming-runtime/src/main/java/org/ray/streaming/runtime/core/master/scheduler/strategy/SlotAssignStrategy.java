@@ -42,8 +42,8 @@ public interface SlotAssignStrategy {
   String getName();
 
   /**
-   * Update resources.
+   * Set resources.
    * @param resources the specified resources
    */
-  void updateResources(Resources resources);
+  void setResources(Resources resources);
 }
