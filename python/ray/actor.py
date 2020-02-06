@@ -584,7 +584,7 @@ class ActorHandle:
             this handle goes out of scope.
         _ray_is_cross_language: Whether this actor is cross language.
         _ray_actor_creation_function_descriptor: The function descriptor
-            created this actor.
+            of the actor creation task.
     """
 
     def __init__(self,
