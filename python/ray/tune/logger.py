@@ -350,6 +350,7 @@ class TBXLogger(Logger):
         flat_result = flatten_dict(tmp, delimiter="/")
         path = ["ray", "tune"]
         valid_result = {}
+
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
             if type(value) in VALID_SUMMARY_TYPES:
