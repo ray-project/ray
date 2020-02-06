@@ -1,6 +1,7 @@
 import inspect
 from functools import wraps
 from tempfile import mkstemp
+from multiprocessing import cpu_count
 
 import numpy as np
 
@@ -65,7 +66,10 @@ def init(kv_store_connector=None,
          blocking=False,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         ray_init_kwargs={"object_store_memory": int(1e8)},
+         ray_init_kwargs={
+             "object_store_memory": int(1e8),
+             "num_cpus": max(cpu_count(), 8)
+         },
          gc_window_seconds=3600,
          queueing_policy=RoutePolicy.Random,
          policy_kwargs={}):
@@ -408,8 +412,8 @@ def split(endpoint_name, traffic_policy_dictionary):
 
     global_state.policy_table.register_traffic_policy(
         endpoint_name, traffic_policy_dictionary)
-    global_state.init_or_get_router().set_traffic.remote(
-        endpoint_name, traffic_policy_dictionary)
+    ray.get(global_state.init_or_get_router().set_traffic.remote(
+        endpoint_name, traffic_policy_dictionary))
 
 
 @_ensure_connected

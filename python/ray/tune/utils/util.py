@@ -7,13 +7,9 @@ from threading import Thread
 
 import numpy as np
 import ray
+import psutil
 
 logger = logging.getLogger(__name__)
-
-try:
-    import psutil
-except ImportError:
-    psutil = None
 
 try:
     import GPUtil

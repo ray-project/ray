@@ -106,6 +106,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &object_ids,
             const c_vector[size_t] &data_sizes,
             const c_vector[shared_ptr[CBuffer]] &metadatas,
+            const c_vector[c_vector[CObjectID]] &contained_object_ids,
             c_vector[shared_ptr[CRayObject]] *return_objects)
 
         CJobID GetCurrentJobId()
@@ -127,18 +128,27 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id, const CTaskID &owner_id, const
                 CAddress &owner_address)
+        void AddContainedObjectIDs(
+            const CObjectID &object_id,
+            const c_vector[CObjectID] &contained_object_ids)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
-        CRayStatus Put(const CRayObject &object, CObjectID *object_id)
-        CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
+        CRayStatus Put(const CRayObject &object,
+                       const c_vector[CObjectID] &contained_object_ids,
+                       CObjectID *object_id)
+        CRayStatus Put(const CRayObject &object,
+                       const c_vector[CObjectID] &contained_object_ids,
+                       const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
+                          const c_vector[CObjectID] &contained_object_ids,
                           CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size, const CObjectID &object_id,
+                          const size_t data_size,
+                          const c_vector[CObjectID] &contained_object_ids,
+                          const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id, c_bool owns_object,
-                        c_bool pin_object)
+        CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)
         CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
                        c_vector[shared_ptr[CRayObject]] *results)
         CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
