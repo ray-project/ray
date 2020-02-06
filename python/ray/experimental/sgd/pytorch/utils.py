@@ -4,8 +4,23 @@ import torch
 
 from ray.experimental.sgd.utils import TimerStat
 
+amp = None
 
-def train(model, train_iterator, criterion, optimizer, config):
+try:
+    from apex import amp
+except ImportError:
+    pass
+
+USE_APEX = "use_apex"
+
+SCHEDULER_STEP = "scheduler_step"
+SCHEDULER_STEP_BATCH = "batch"
+SCHEDULER_STEP_EPOCH = "epoch"
+
+VALID_SCHEDULER_STEP = set([SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH])
+
+
+def train(model, train_iterator, criterion, optimizer, scheduler, config):
     """Runs 1 training epoch"""
     if isinstance(model, collections.Iterable) or isinstance(
             optimizer, collections.Iterable):
@@ -45,15 +60,26 @@ def train(model, train_iterator, criterion, optimizer, config):
         with timers["grad"]:
             # compute gradients in a backward pass
             optimizer.zero_grad()
-            loss.backward()
+
+            if config.get(USE_APEX):
+                with amp.scale_loss(loss, optimizer) as scaled_loss:
+                    scaled_loss.backward()
+            else:
+                loss.backward()
 
         with timers["apply"]:
             # Call step of optimizer to update model params
             optimizer.step()
 
+        if scheduler and config.get(SCHEDULER_STEP) == SCHEDULER_STEP_BATCH:
+            scheduler.step()
+
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
+
+    if config.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+        scheduler.step()
 
     stats = {
         "batch_time": batch_time.avg,

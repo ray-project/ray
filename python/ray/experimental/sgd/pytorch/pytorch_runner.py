@@ -11,46 +11,49 @@ import ray
 from ray.experimental.sgd.pytorch import utils as pytorch_utils
 from ray.experimental.sgd import utils
 
+logger = logging.getLogger(__name__)
 amp = None
 
 try:
     from apex import amp
 except ImportError:
+    logger.debug("apex is not installed.")
     pass
-
-logger = logging.getLogger(__name__)
 
 
 class PyTorchRunner:
-    """Manages a PyTorch model for training."""
+    """Manages a PyTorch model for training.
+
+    Args:
+        model_creator (dict -> *): see pytorch_trainer.py
+        data_creator (dict -> Dataset, Dataset): see pytorch_trainer.py.
+        optimizer_creator (models, dict -> optimizers): see pytorch_trainer.py.
+        loss_creator (dict -> loss | Loss class): see pytorch_trainer.py.
+        scheduler_creator (optimizers, dict -> schedulers): see
+            pytorch_trainer.py.
+        train_function: see pytorch_trainer.py
+        validation_function: see pytorch_trainer.py
+        config (dict): see pytorch_trainer.py.
+        dataloader_config (dict): See pytorch_trainer.py.
+        batch_size (int): see pytorch_trainer.py.
+        use_apex (bool): see pytorch_trainer.py.
+        apex_args (dict|None): see pytorch_trainer.py.
+    """
 
     def __init__(self,
                  model_creator,
                  data_creator,
                  optimizer_creator,
                  loss_creator,
+                 scheduler_creator=None,
                  train_function=None,
                  validation_function=None,
                  config=None,
                  dataloader_config=None,
                  batch_size=16,
                  use_apex=False,
-                 apex_args=None):
-        """Initializes the runner.
-
-        Args:
-            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py
-            data_creator (int, dict -> Dataset, Dataset): see
-                pytorch_trainer.py.
-            optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
-                see pytorch_trainer.py.
-            loss_creator (dict -> loss | Loss class): see pytorch_trainer.py.
-            train_function: see pytorch_trainer.py
-            validation_function: see pytorch_trainer.py
-            config (dict): see pytorch_trainer.py.
-            dataloader_config (dict): See pytorch_trainer.py.
-            batch_size (int): see pytorch_trainer.py.
-        """
+                 apex_args=None,
+                 scheduler_step_freq="batch"):
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.optimizer_creator = optimizer_creator
@@ -78,14 +81,20 @@ class PyTorchRunner:
         self.models = None
         self.optimizers = None
         self.criterion = None
+        self.schedulers = None
         self.train_loader = None
         self.validation_loader = None
+        self.use_apex = use_apex
         self.apex_args = apex_args or {}
         if use_apex and not amp:
             raise ImportError(
                 "Please install apex from "
                 "https://www.github.com/nvidia/apex to use fp16 training.")
-        self.use_apex = use_apex and amp
+        if scheduler_step_freq not in pytorch_utils.VALID_SCHEDULER_STEP:
+            raise ValueError(
+                "Scheduler step freq must be in {}. Got {}".format(
+                    pytorch_utils.VALID_SCHEDULER_STEP, scheduler_step_freq))
+        self.scheduler_step_freq = scheduler_step_freq
 
     def _validate_datasets(self, dataset):
         assert dataset, "Datasets need to be returned in data_creator."
@@ -106,17 +115,26 @@ class PyTorchRunner:
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
+    def _create_schedulers_if_available(self):
+        if not self.scheduler_creator:
+            return
+        if inspect.isclass(self.scheduler_creator) and issubclass(
+                self.scheduler_creator, torch.optim.lr_scheduler._LRScheduler):
+            self.schedulers = self.scheduler_creator(self.given_optimizers)
+        else:
+            self.schedulers = self.scheduler_creator(self.given_optimizers,
+                                                     self.config)
+
+        if not isinstance(self.schedulers, collections.Iterable):
+            self.schedulers = [self.schedulers]
+
     def _setup_apex_if_available(self):
+        """Sets up the model for fp16 training via apex if available."""
         if len(self.models) > 1:
             raise ValueError("apex only supported for single models.")
 
-        model, optimizer = amp.initialize(
-            self.given_models,
-            self.given_optimizers,
-            **self.apex_args)
-
-        self.models = [model]
-        self.optimizers = [optimizer]
+        self.models, self.optimizers = amp.initialize(
+            self.models, self.optimizers, **self.apex_args)
 
     def setup(self):
         """Initializes the model."""
@@ -132,7 +150,7 @@ class PyTorchRunner:
                                                  self.config)
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
-
+        self._create_schedulers_if_available()
         self._setup_apex_if_available()
         self._create_loss()
 
@@ -162,10 +180,15 @@ class PyTorchRunner:
     def step(self):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
+        training_config = self.config.copy()
+        training_config.update({
+            pytorch_utils.USE_APEX: self.use_apex,
+            pytorch_utils.SCHEDULER_STEP: self.scheduler_step_freq
+        })
         with self._timers["training"]:
             train_stats = self.train_function(
                 self.given_models, self.train_loader, self.criterion,
-                self.given_optimizers, self.config)
+                self.given_optimizers, self.given_schedulers, training_config)
             train_stats["epoch"] = self.epoch
 
         self.epoch += 1
@@ -194,8 +217,7 @@ class PyTorchRunner:
             t.reset()
         return stats
 
-    def get_state(self):
-        """Returns the state of the runner."""
+    def _get_model_state_dicts(self):
         # This is so that we create a duplicate of weights into CPU rather than
         # move the model weights entirely out of the GPU, so that we can
         # resume training while saving intermediate checkpoints.
@@ -205,27 +227,42 @@ class PyTorchRunner:
             for k, v in state_dict.items():
                 state_dict[k] = v.cpu()
             cpu_state_dicts += [state_dict]
+        return cpu_state_dicts
+
+    def _set_model_state_dicts(self, models_state_dicts):
+        for model, state_dict in zip(self.models, models_state_dicts):
+            model.load_state_dict(state_dict)
+
+    def get_state(self):
+        """Returns the state of the runner."""
 
         state = {
             "epoch": self.epoch,
-            "models": cpu_state_dicts,
+            "models": self._get_model_state_dicts(),
             "optimizers": [opt.state_dict() for opt in self.optimizers],
             "stats": self.stats()
         }
-        if self.fp16:
+        if self.schedulers:
+            state.update({
+                "schedulers": [
+                    scheduler.state_dict() for scheduler in self.schedulers
+                ]
+            })
+        if self.fp16 and amp:
             state.update({"amp": amp.state_dict()})
         return state
 
     def set_state(self, state):
         """Sets the state of the model."""
         # TODO: restore timer stats
-        for model, state_dict in zip(self.models, state["models"]):
-            model.load_state_dict(state_dict)
+        self._set_model_state_dicts(state["models"])
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
+        for scheduler, state_dict in zip(self.schedulers, state["schedulers"]):
+            scheduler.load_state_dict(state_dict)
 
-        if self.fp16 and "amp" in state:
-            amp.load_state_dict(checkpoint['amp'])
+        if self.fp16 and "amp" in state and amp:
+            amp.load_state_dict(state["amp"])
         self.epoch = state["stats"]["epoch"]
 
     def apply_fn(self, fn):
@@ -242,6 +279,13 @@ class PyTorchRunner:
             torch.cuda.empty_cache()
 
     @property
+    def given_models(self):
+        if len(self.models) > 1:
+            return self.models
+        else:
+            return self.models[0]
+
+    @property
     def given_optimizers(self):
         if len(self.optimizers) > 1:
             return self.optimizers
@@ -249,8 +293,10 @@ class PyTorchRunner:
             return self.optimizers[0]
 
     @property
-    def given_models(self):
-        if len(self.models) > 1:
-            return self.models
+    def given_schedulers(self):
+        if not self.schedulers:
+            return self.schedulers
+        if len(self.schedulers) > 1:
+            return self.schedulers
         else:
-            return self.models[0]
+            return self.schedulers[0]

@@ -26,35 +26,33 @@ class PyTorchTrainer:
     Launches a set of actors which connect via distributed PyTorch and
     coordinate gradient updates to train the provided model.
 
-        .. code-block:: python
+    .. code-block:: python
 
-            def model_creator(config):
-                return nn.Linear(1, 1)
-
-
-            def optimizer_creator(model, config):
-                return torch.optim.SGD(
-                    model.parameters(), lr=config.get("lr", 1e-4))
+        def model_creator(config):
+            return nn.Linear(1, 1)
 
 
-            def data_creator(config):
-                return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+        def optimizer_creator(model, config):
+            return torch.optim.SGD(
+                model.parameters(), lr=config.get("lr", 1e-4))
 
-            trainer = PyTorchTrainer(
-                model_creator,
-                data_creator,
-                optimizer_creator,
-                loss_creator=nn.MSELoss,
-                use_gpu=True
-            )
-            trainer.train()
+
+        def data_creator(config):
+            return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+
+        trainer = PyTorchTrainer(
+            model_creator,
+            data_creator,
+            optimizer_creator,
+            loss_creator=nn.MSELoss,
+            use_gpu=True
+        )
+        trainer.train()
 
     Args:
         model_creator (dict -> *): Constructor function that takes in
             config and returns the model(s) to be optimized. These must be
-            ``torch.nn.Module`` objects. Note that if multiple models
-            are returned, the same number of optimizers must be returned
-            by the optimizer_creator. If multiple models are returned,
+            ``torch.nn.Module`` objects. If multiple models are returned,
             a ``train_function`` must be specified. You do not need to
             handle GPU/devices in this function;
             RaySGD will do that under the hood.
@@ -67,8 +65,7 @@ class PyTorchTrainer:
         optimizer_creator (models, dict -> optimizers): Constructor
             function that takes in the return values from
             ``model_creator`` and the passed config and returns One or
-            more Torch optimizer objects. You must return as many
-            optimizers as you have models. You do not need to handle
+            more Torch optimizer objects. You do not need to handle
             GPU/devices in this function; ``RaySGD`` will do that for you.
         loss_creator (dict -> loss or torch.nn.*Loss): A constructor function
             for the training loss. This can be either a function that
@@ -104,6 +101,15 @@ class PyTorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
+        use_apex (bool): Enables mixed precision training via apex if apex
+            is installed. This is automatically done after the model and
+            optimizers are constructed and will work for multi-model training.
+            Please see https://github.com/NVIDIA/apex for more details.
+        apex_args (dict|None): Dict containing keyword args for amp.initialize.
+            See https://nvidia.github.io/apex/amp.html#module-apex.amp. By
+            default, the models and optimizers are passed in. Consider using
+            "num_losses" if operating over multiple models and optimizers.
+
     """
 
     def __init__(self,
@@ -111,6 +117,7 @@ class PyTorchTrainer:
                  data_creator,
                  optimizer_creator,
                  loss_creator,
+                 scheduler_creator=None,
                  train_function=None,
                  validation_function=None,
                  initialization_hook=None,
@@ -119,7 +126,9 @@ class PyTorchTrainer:
                  num_replicas=1,
                  use_gpu=False,
                  batch_size=16,
-                 backend="auto"):
+                 backend="auto",
+                 use_apex=False,
+                 apex_args=None):
         # TODO: add support for mixed precision
         if num_replicas > 1 and not dist.is_available():
             raise ValueError(
@@ -133,6 +142,7 @@ class PyTorchTrainer:
         self.train_function = train_function
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
+        self.scheduler_creator = scheduler_creator
         self.validation_function = validation_function
         self.initialization_hook = initialization_hook
         self.config = {} if config is None else config
@@ -147,6 +157,9 @@ class PyTorchTrainer:
         self.use_gpu = use_gpu
         self.batch_size = batch_size
         self.max_replicas = num_replicas
+
+        self.use_apex = use_apex
+        self.apex_args = apex_args
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._last_resize = float("-inf")
@@ -169,7 +182,9 @@ class PyTorchTrainer:
                     validation_function=self.validation_function,
                     config=self.config,
                     dataloader_config=self.dataloader_config,
-                    batch_size=self.batch_size)
+                    batch_size=self.batch_size,
+                    use_apex=self.use_apex,
+                    apex_args=self.apex_args)
             ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
@@ -203,8 +218,9 @@ class PyTorchTrainer:
                     validation_function=self.validation_function,
                     config=self.config,
                     dataloader_config=self.dataloader_config,
-                    batch_size=batch_size_per_replica)
-                for i in range(num_replicas)
+                    batch_size=batch_size_per_replica,
+                    use_apex=self.use_apex,
+                    apex_args=self.apex_args) for i in range(num_replicas)
             ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
