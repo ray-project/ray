@@ -48,11 +48,11 @@ public abstract class TaskExecutor {
 
     List<NativeRayObject> returnObjects = new ArrayList<>();
     ClassLoader oldLoader = Thread.currentThread().getContextClassLoader();
+    JavaFunctionDescriptor functionDescriptor = parseFunctionDescriptor(rayFunctionInfo);
     RayFunction rayFunction = null;
     try {
       // Find the executable object.
-      rayFunction = runtime.getFunctionManager()
-          .getFunction(jobId, parseFunctionDescriptor(rayFunctionInfo));
+      rayFunction = runtime.getFunctionManager().getFunction(jobId, functionDescriptor);
       Thread.currentThread().setContextClassLoader(rayFunction.classLoader);
       runtime.getWorkerContext().setCurrentClassLoader(rayFunction.classLoader);
 
@@ -91,7 +91,8 @@ public abstract class TaskExecutor {
     } catch (Exception e) {
       LOGGER.error("Error executing task " + taskId, e);
       if (taskType != TaskType.ACTOR_CREATION_TASK) {
-        if (rayFunction != null && rayFunction.hasReturn()) {
+        if ((rayFunction != null && rayFunction.hasReturn()) || // Java function with return values
+            (rayFunction == null && functionDescriptor.signature.equals(""))) { // Cross language overloaded function
           returnObjects.add(ObjectSerializer
               .serialize(new RayTaskException("Error executing task " + taskId, e)));
         }

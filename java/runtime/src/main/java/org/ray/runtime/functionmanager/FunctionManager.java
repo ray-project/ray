@@ -167,12 +167,17 @@ public class FunctionManager {
           }
         }
       }
-      RayFunction func = classFunctions.get(
-          ImmutablePair.of(descriptor.name, descriptor.signature));
+      final Pair<String, String> key = ImmutablePair.of(descriptor.name, descriptor.signature);
+      RayFunction func = classFunctions.get(key);
       if (func == null) {
-        throw new RuntimeException(
-            String.format("RayFunction %s is overloaded, the signature can't be empty.",
-                descriptor.toString()));
+        if (classFunctions.containsKey(key)) {
+          throw new RuntimeException(
+                  String.format("RayFunction %s is overloaded, the signature can't be empty.",
+                          descriptor.toString()));
+        } else {
+          throw new RuntimeException(
+                  String.format("RayFunction %s not found", descriptor.toString()));
+        }
       }
       return func;
     }

@@ -153,9 +153,11 @@ public class FunctionManagerTest {
             ImmutablePair.of(overloadFunctionDescriptorDouble.name, overloadFunctionDescriptorDouble.signature)));
     Assert.assertTrue(res.containsKey(
             ImmutablePair.of(overloadFunctionDescriptorInt.name, "")));
-    RayFunction func = res.get(ImmutablePair.of(overloadFunctionDescriptorInt.name, ""));
+    Pair<String, String> overloadKey = ImmutablePair.of(overloadFunctionDescriptorInt.name, "");
+    RayFunction func = res.get(overloadKey);
     // The function is overloaded.
-    Assert.assertEquals(func, null);
+    Assert.assertTrue(res.containsKey(overloadKey));
+    Assert.assertNull(func);
   }
 
   @Test
