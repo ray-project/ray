@@ -12,8 +12,10 @@ import threading
 import time
 import uuid
 
+import ray
 import ray.gcs_utils
 import ray.ray_constants as ray_constants
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -438,12 +440,7 @@ def get_system_memory():
             docker_limit = int(f.read())
 
     # Use psutil if it is available.
-    psutil_memory_in_bytes = None
-    try:
-        import psutil
-        psutil_memory_in_bytes = psutil.virtual_memory().total
-    except ImportError:
-        pass
+    psutil_memory_in_bytes = psutil.virtual_memory().total
 
     if psutil_memory_in_bytes is not None:
         memory_in_bytes = psutil_memory_in_bytes
@@ -468,22 +465,7 @@ def estimate_available_memory():
         The total amount of available memory in bytes. It may be an
         overestimate if psutil is not installed.
     """
-
-    # Use psutil if it is available.
-    try:
-        import psutil
-        return psutil.virtual_memory().available
-    except ImportError:
-        pass
-
-    # Handle Linux.
-    if sys.platform == "linux" or sys.platform == "linux2":
-        bytes_in_kilobyte = 1024
-        return (
-            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
-
-    # Give up
-    return get_system_memory()
+    return psutil.virtual_memory().available
 
 
 def get_shared_memory_bytes():

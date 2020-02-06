@@ -350,6 +350,7 @@ class TBXLogger(Logger):
         flat_result = flatten_dict(tmp, delimiter="/")
         path = ["ray", "tune"]
         valid_result = {}
+
         for attr, value in flat_result.items():
             full_attr = "/".join(path + [attr])
             if type(value) in VALID_SUMMARY_TYPES:
@@ -358,8 +359,16 @@ class TBXLogger(Logger):
                     full_attr, value, global_step=step)
             elif type(value) is list and len(value) > 0:
                 valid_result[full_attr] = value
-                self._file_writer.add_histogram(
-                    full_attr, value, global_step=step)
+                try:
+                    self._file_writer.add_histogram(
+                        full_attr, value, global_step=step)
+                # In case TensorboardX still doesn't think it's a valid value
+                # (e.g. `[[]]`), warn and move on.
+                except ValueError:
+                    logger.warning(
+                        "You are trying to log an invalid value ({}={}) "
+                        "via {}!".format(full_attr, value,
+                                         type(self).__name__))
 
         self.last_result = valid_result
         self._file_writer.flush()
