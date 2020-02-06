@@ -231,7 +231,7 @@ class TFPolicy(Policy):
                     summarize(self._loss_input_dict)))
 
         self._sess.run(tf.global_variables_initializer())
-
+        
     @override(Policy)
     def compute_actions(self,
                         obs_batch,
