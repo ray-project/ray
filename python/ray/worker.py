@@ -27,6 +27,8 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
+import ray
+import setproctitle
 import ray.signature
 import ray.state
 
@@ -62,11 +64,6 @@ ERROR_KEY_PREFIX = b"Error:"
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
 
 # Whether we should warn about slow put performance.
 if os.environ.get("OMP_NUM_THREADS") == "1":

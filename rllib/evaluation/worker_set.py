@@ -141,7 +141,7 @@ class WorkerSet:
         remote_results = []
         for worker in self.remote_workers():
             res = ray_get_and_free(
-                [worker.apply.remote(lambda w: w.foreach_policy(func))])
+                worker.apply.remote(lambda w: w.foreach_policy(func)))
             remote_results.extend(res)
         return local_results + remote_results
 
@@ -160,9 +160,9 @@ class WorkerSet:
         local_results = self.local_worker().foreach_trainable_policy(func)
         remote_results = []
         for worker in self.remote_workers():
-            res = ray_get_and_free([
+            res = ray_get_and_free(
                 worker.apply.remote(lambda w: w.foreach_trainable_policy(func))
-            ])
+            )
             remote_results.extend(res)
         return local_results + remote_results
 

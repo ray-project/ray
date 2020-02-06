@@ -2,7 +2,6 @@
 import glob
 import logging
 import os
-import setproctitle
 import shutil
 import json
 import sys
@@ -20,6 +19,7 @@ from ray import signature
 import ray.ray_constants as ray_constants
 import ray.cluster_utils
 import ray.test_utils
+import setproctitle
 
 from ray.test_utils import RayTestTimeoutException
 

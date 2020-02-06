@@ -277,7 +277,7 @@ class Policy(metaclass=ABCMeta):
             any: Serializable information on the `self.exploration` object.
         """
         if self.exploration is not None:
-            return self.exporation.get_info(self.global_timestep)
+            return self.exploration.get_info()
 
     @DeveloperAPI
     def get_exploration_state(self):
