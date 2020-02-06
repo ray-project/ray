@@ -170,6 +170,9 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
     if "resources_per_trial" in spec:
         trial_kwargs["resources"] = json_to_resources(
             spec["resources_per_trial"])
+    restore_path = spec.get("restore")
+    if restore_path:
+        restore_path = os.path.abspath(os.path.expanduser(restore))
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.
@@ -187,7 +190,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         checkpoint_score_attr=args.checkpoint_score_attr,
         export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
-        restore_path=spec.get("restore"),
+        restore_path=restore_path,
         trial_name_creator=spec.get("trial_name_creator"),
         loggers=spec.get("loggers"),
         # str(None) doesn't create None
