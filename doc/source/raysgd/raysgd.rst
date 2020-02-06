@@ -53,7 +53,7 @@ You can start a ``PyTorchTrainer`` with the following:
         model_creator,
         data_creator,
         optimizer_creator,
-        loss_creator,
+        loss_creator=nn.MSELoss,
         num_replicas=2,
         use_gpu=True,
         batch_size=512,

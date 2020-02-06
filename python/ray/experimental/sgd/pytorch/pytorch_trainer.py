@@ -109,7 +109,7 @@ class PyTorchTrainer:
             support "nccl", "gloo", and "auto". If "auto", RaySGD will
             automatically use "nccl" if `use_gpu` is True, and "gloo"
             otherwise.
-        use_apex (bool): Enables mixed precision training via apex if apex
+        use_fp16 (bool): Enables mixed precision training via apex if apex
             is installed. This is automatically done after the model and
             optimizers are constructed and will work for multi-model training.
             Please see https://github.com/NVIDIA/apex for more details.
@@ -137,7 +137,7 @@ class PyTorchTrainer:
                  use_gpu=False,
                  batch_size=16,
                  backend="auto",
-                 use_apex=False,
+                 use_fp16=False,
                  apex_args=None,
                  scheduler_step_freq="batch"):
         if num_replicas > 1 and not dist.is_available():
@@ -168,7 +168,7 @@ class PyTorchTrainer:
         self.batch_size = batch_size
         self.max_replicas = num_replicas
 
-        self.use_apex = use_apex
+        self.use_fp16 = use_fp16
         self.apex_args = apex_args
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
@@ -200,7 +200,7 @@ class PyTorchTrainer:
                     config=self.config,
                     dataloader_config=self.dataloader_config,
                     batch_size=self.batch_size,
-                    use_apex=self.use_apex,
+                    use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
                 )
             ]
@@ -238,7 +238,7 @@ class PyTorchTrainer:
                     config=self.config,
                     dataloader_config=self.dataloader_config,
                     batch_size=batch_size_per_replica,
-                    use_apex=self.use_apex,
+                    use_fp16=self.use_fp16,
                     apex_args=self.apex_args) for i in range(num_replicas)
             ]
             if self.initialization_hook:

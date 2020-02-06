@@ -34,11 +34,11 @@ For example:
     from ray.experimental.sgd import PyTorchTrainer
     from ray.experimental.sgd.examples.train_example import LinearDataset
 
+
     def model_creator(config):
         """Constructor function for the model(s) to be optimized.
 
-        Note that if multiple models are returned, the same number of optimizers
-        must be returned. You will also need to provide a custom training
+        You will also need to provide a custom training
         function to specify the optimization procedure for multiple models.
 
         Args:
@@ -59,8 +59,7 @@ For example:
             config (dict): Configuration dictionary passed into ``PyTorchTrainer``.
 
         Returns:
-            One or more Torch optimizer objects. You must return as many optimizers
-            as you have models.
+            One or more Torch optimizer objects.
         """
       return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 
@@ -80,6 +79,7 @@ For example:
         """
         return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
 
+
     def loss_creator(config):
         """Constructs the Torch Loss object.
 
@@ -88,6 +88,18 @@ For example:
 
         Returns:
             Torch Loss object.
+        """
+        return torch.nn.BCELoss()
+
+
+    def scheduler_creator(optimizer, config):
+        """Constructs the Torch Scheduler object.
+
+        Note that optionally, you can pass in a Torch Scheduler constructor directly
+        into the PyTorchTrainer (i.e., ``PyTorchTrainer(loss_creator=nn.BCELoss, ...))``).
+
+        Returns:
+            One or more Torch scheduler objects.
         """
         return torch.nn.BCELoss()
 

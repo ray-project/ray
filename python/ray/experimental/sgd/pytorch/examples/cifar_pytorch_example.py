@@ -95,14 +95,20 @@ def optimizer_creator(model, config):
     """Returns optimizer"""
     return torch.optim.SGD(model.parameters(), lr=config.get("lr", 0.1))
 
+def scheduler_creator(optimizer, config):
+    return torch.optim.lr_scheduler.MultiStepLR(
+        optimizer, milestones=[150, 250, 350], gamma=0.1)
 
-def train_example(num_replicas=1, use_gpu=False, test_mode=False):
+
+def train_example(
+        num_replicas=1, use_gpu=False, use_fp16=False, test_mode=False):
     config = {"test_mode": test_mode}
     trainer1 = PyTorchTrainer(
         ResNet18,
         cifar_creator,
         optimizer_creator,
         nn.CrossEntropyLoss,
+        scheduler_creator=scheduler_creator,
         initialization_hook=initialization_hook,
         train_function=train,
         validation_function=validate,
@@ -110,7 +116,10 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         config=config,
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
-        backend="nccl" if use_gpu else "gloo")
+        backend="nccl" if use_gpu else "gloo",
+        scheduler_step_freq="epoch",
+        use_fp16=use_fp16
+    )
     for i in range(5):
         stats = trainer1.train()
         print(stats)

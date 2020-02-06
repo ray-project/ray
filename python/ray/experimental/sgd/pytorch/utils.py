@@ -11,7 +11,7 @@ try:
 except ImportError:
     pass
 
-USE_APEX = "use_apex"
+USE_FP16 = "use_fp16"
 
 SCHEDULER_STEP = "scheduler_step"
 SCHEDULER_STEP_BATCH = "batch"
@@ -61,7 +61,7 @@ def train(model, train_iterator, criterion, optimizer, scheduler, config):
             # compute gradients in a backward pass
             optimizer.zero_grad()
 
-            if config.get(USE_APEX):
+            if config.get(USE_FP16):
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
             else:
