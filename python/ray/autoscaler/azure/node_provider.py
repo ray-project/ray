@@ -2,7 +2,7 @@ import logging
 from threading import RLock
 from uuid import uuid4
 
-from azure.common.credentials import ServicePrincipalCredentials
+from azure.common.client_factory import get_client_from_auth_file
 from azure.mgmt.compute import ComputeManagementClient
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
@@ -32,11 +32,8 @@ class AzureNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        credentials = ServicePrincipalCredentials(client_id=provider_config['client_id'],
-                                                  secret=provider_config['secret'],
-                                                  tenant=provider_config['tenant'])
-        self.client = ComputeManagementClient(credentials=credentials,
-                                              subscription_id=provider_config['subscription_id'])
+        # TODO: does this run locally or on the head node? switch to msi if the latter ?
+        self.client = get_client_from_auth_file(ComputeManagementClient, auth_path=provider_config['auth_path'])
         self.lock = RLock()
 
         # cache of node objects from the last nodes() call to avoid repeating expensive queries
@@ -79,26 +76,31 @@ class AzureNodeProvider(NodeProvider):
     @synchronized
     def is_running(self, node_id):
         """Return whether the specified node is running."""
+        # FIXME: use correct key and status value
         return self._get_cached_node(node_id=node_id)["status"] == "RUNNING"
 
     @synchronized
     def is_terminated(self, node_id):
         """Return whether the specified node is terminated."""
+        # FIXME: use correct key and status values
         return self._get_cached_node(node_id=node_id)["status"] not in {"PROVISIONING", "STAGING", "RUNNING"}
 
     @synchronized
     def node_tags(self, node_id):
         """Returns the tags of the given node (string dict)."""
+        # FIXME: use correct key
         return self._get_cached_node(node_id=node_id)["tags"]
 
     @synchronized
     def external_ip(self, node_id):
         """Returns the external ip of the given node."""
+        # FIXME: use correct key
         return self._get_cached_node(node_id=node_id)["external_ip"]
 
     @synchronized
     def internal_ip(self, node_id):
         """Returns the internal ip (Ray ip) of the given node."""
+        # FIXME: use correct key
         return self._get_cached_node(node_id=node_id)["internal_ip"]
 
     @synchronized
@@ -118,17 +120,14 @@ class AzureNodeProvider(NodeProvider):
         config["tags"].update(config_tags)
 
         config["location"] = self.provider_config["location"]
-        ssh_config = {"os_profile":
-                          {"linux_configuration":
-                               {"disable_password_authentication": True,
-                                "ssh": {
-                                    {"public_keys": [
-                                        {"key_data": self.provider_config['ssh_public_key_data'],
-                                         "path": self.provider_config['ssh_public_key_path']}
-                                    ]}
-                                }}
-                           }
-                      }
+
+        # build nested ssh config parameters
+        public_keys = [dict(key_data=self.provider_config['ssh_public_key_data'],
+                            path=self.provider_config['ssh_public_key_path'])]
+        ssh = dict(public_keys=public_keys)
+        linux_configuration = dict(disable_password_authentication=True, ssh=ssh)
+        os_profile = dict(linux_configuration=linux_configuration)
+        ssh_config = dict(os_profile=os_profile)
         config.update(ssh_config)
 
         operations = [
