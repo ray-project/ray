@@ -220,6 +220,10 @@ class ReferenceCounter {
                          const rpc::WorkerAddress &addr,
                          const ObjectID &contained_in_id = ObjectID::Nil())
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool AddBorrowedObjectInternal(const ObjectID &outer_id, const ObjectID &object_id,
+                                 const TaskID &owner_id,
+                                 const rpc::Address &owner_address)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the

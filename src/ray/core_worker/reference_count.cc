@@ -46,6 +46,13 @@ bool ReferenceCounter::AddBorrowedObject(const ObjectID &outer_id,
                                          const TaskID &owner_id,
                                          const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
+  return AddBorrowedObjectInternal(outer_id, object_id, owner_id, owner_address);
+}
+
+bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &outer_id,
+                                                 const ObjectID &object_id,
+                                                 const TaskID &owner_id,
+                                                 const rpc::Address &owner_address) {
   auto it = object_id_refs_.find(object_id);
   RAY_CHECK(it != object_id_refs_.end());
 
@@ -415,7 +422,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                    << " for object " << object_id;
   }
 
-  it->second->WaitForRefRemoved(
+  RAY_CHECK_OK(it->second->WaitForRefRemoved(
       request, [this, object_id, addr](const Status &status,
                                        const rpc::WaitForRefRemovedReply &reply) {
         RAY_LOG(DEBUG) << "Received reply from borrower " << addr.ip_address << ":"
@@ -430,7 +437,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         MergeBorrowerRefs(object_id, addr, new_borrower_refs);
         RAY_LOG(DEBUG) << "ddd";
         DeleteReferenceInternal(it, nullptr);
-      });
+      }));
 }
 
 void ReferenceCounter::WrapObjectId(
@@ -477,9 +484,11 @@ void ReferenceCounter::WrapObjectId(
 void ReferenceCounter::HandleWaitForRefRemoved(
     const rpc::WaitForRefRemovedRequest &request, rpc::WaitForRefRemovedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&mutex_);
   const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
   RAY_LOG(DEBUG) << "Received WaitForRefRemoved " << object_id;
   auto ref_removed_callback = [this, object_id, reply, send_reply_callback]() {
+    absl::MutexLock lock(&mutex_);
     ReferenceTable borrower_refs;
     RAY_UNUSED(PopBorrowerRefsInternal(object_id, &borrower_refs));
     for (const auto &pair : borrower_refs) {
@@ -510,9 +519,9 @@ void ReferenceCounter::HandleWaitForRefRemoved(
       if (it == object_id_refs_.end()) {
         it = object_id_refs_.emplace(object_id, Reference()).first;
       }
-      AddBorrowedObject(contained_in_id, object_id,
-                        TaskID::FromBinary(request.reference().owner_id()),
-                        request.reference().owner_address());
+      AddBorrowedObjectInternal(contained_in_id, object_id,
+                                TaskID::FromBinary(request.reference().owner_id()),
+                                request.reference().owner_address());
     }
   }
 
