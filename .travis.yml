@@ -64,6 +64,7 @@ matrix:
       script:
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
         - ./java/test.sh
+        - cat /tmp/ray/session_latest/logs/*
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
