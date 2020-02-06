@@ -933,12 +933,16 @@ cdef class CoreWorker:
         # Note: faster to not release GIL for short-running op.
         if object_id.hex() == "45b95b1c8bd3a9c4ffffffff010000c801000000":
             print("ADD REF", object_id)
+            #import traceback
+            #print("\n".join(traceback.format_list(traceback.extract_stack())))
         self.core_worker.get().AddLocalReference(object_id.native())
 
     def remove_object_id_reference(self, ObjectID object_id):
         # Note: faster to not release GIL for short-running op.
         if object_id.hex() == "45b95b1c8bd3a9c4ffffffff010000c801000000":
             print("REMOVE REF", object_id)
+            #import traceback
+            #print("\n".join(traceback.format_list(traceback.extract_stack())))
         self.core_worker.get().RemoveLocalReference(object_id.native())
 
     def serialize_and_promote_object_id(self, ObjectID object_id):
