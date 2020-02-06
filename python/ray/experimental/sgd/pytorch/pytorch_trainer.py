@@ -15,6 +15,7 @@ from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
 from ray.experimental.sgd import utils
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.experimental.sgd.pytorch import utils as pytorch_utils
 
 logger = logging.getLogger(__name__)
 RESIZE_COOLDOWN_S = 10
@@ -50,28 +51,35 @@ class PyTorchTrainer:
         trainer.train()
 
     Args:
-        model_creator (dict -> *): Constructor function that takes in
+        model_creator (dict -> Model(s)): Constructor function that takes in
             config and returns the model(s) to be optimized. These must be
             ``torch.nn.Module`` objects. If multiple models are returned,
             a ``train_function`` must be specified. You do not need to
             handle GPU/devices in this function;
             RaySGD will do that under the hood.
-        data_creator (dict -> Dataset, Dataset): Constructor function
+        data_creator (dict -> Dataset(s)): Constructor function
             that takes in the passed config and returns one or
             two ``torch.utils.data.Dataset`` objects.
             Note that even though two Dataset objects can be returned,
             only one dataset will be used for training. RaySGD
             will automatically wrap the objects with a ``DataLoader``.
-        optimizer_creator (models, dict -> optimizers): Constructor
+        optimizer_creator ((models, dict) -> optimizers): Constructor
             function that takes in the return values from
             ``model_creator`` and the passed config and returns One or
             more Torch optimizer objects. You do not need to handle
             GPU/devices in this function; ``RaySGD`` will do that for you.
-        loss_creator (dict -> loss or torch.nn.*Loss): A constructor function
-            for the training loss. This can be either a function that
+        loss_creator (torch.nn.*Loss class | dict -> loss): A constructor
+            function for the training loss. This can be either a function that
             takes in the provided config for customization or a subclass
             of ``torch.nn.modules.loss._Loss``, which is most Pytorch
             loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
+        scheduler_creator (torch.optim.*scheduler | optimizer, dict -> loss):
+            A constructor function for the scheduler loss. This can be either
+            a function that takes in the generated optimizers (from
+            ``optimizer_creator``) provided config for customization
+             or a subclass of ``torch.optim.lr_scheduler._LRScheduler``,
+            which is most Pytorch learning rate schedulers.
+            For example, ``scheduler_creator=torch.optim.lr_scheduler.StepLR``.
         train_function: Custom function for training. This function
             will be executed in parallel across all workers at once. The
             function needs to take in (models, train_dataloader, criterion,
@@ -109,6 +117,8 @@ class PyTorchTrainer:
             See https://nvidia.github.io/apex/amp.html#module-apex.amp. By
             default, the models and optimizers are passed in. Consider using
             "num_losses" if operating over multiple models and optimizers.
+        scheduler_step_freq (str): One of "batch" or "epoch". This will
+            determine when ``scheduler.step`` is called.
 
     """
 
@@ -128,8 +138,8 @@ class PyTorchTrainer:
                  batch_size=16,
                  backend="auto",
                  use_apex=False,
-                 apex_args=None):
-        # TODO: add support for mixed precision
+                 apex_args=None,
+                 scheduler_step_freq="batch"):
         if num_replicas > 1 and not dist.is_available():
             raise ValueError(
                 ("Distributed PyTorch is not supported on macOS. "
@@ -163,6 +173,12 @@ class PyTorchTrainer:
         self.temp_dir = tempfile.mkdtemp(prefix="raysgd")
         self._num_failures = 0
         self._last_resize = float("-inf")
+
+        if scheduler_step_freq not in pytorch_utils.VALID_SCHEDULER_STEP:
+            raise ValueError(
+                "Scheduler step freq must be in {}. Got {}".format(
+                    pytorch_utils.VALID_SCHEDULER_STEP, scheduler_step_freq))
+
         self._start_workers(self.max_replicas)
 
     def _start_workers(self, num_replicas):
@@ -178,13 +194,15 @@ class PyTorchTrainer:
                     self.data_creator,
                     self.optimizer_creator,
                     self.loss_creator,
+                    self.scheduler_creator,
                     train_function=self.train_function,
                     validation_function=self.validation_function,
                     config=self.config,
                     dataloader_config=self.dataloader_config,
                     batch_size=self.batch_size,
                     use_apex=self.use_apex,
-                    apex_args=self.apex_args)
+                    apex_args=self.apex_args,
+                )
             ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)
@@ -213,6 +231,7 @@ class PyTorchTrainer:
                     self.data_creator,
                     self.optimizer_creator,
                     self.loss_creator,
+                    self.scheduler_creator,
                     backend=self.backend,
                     train_function=self.train_function,
                     validation_function=self.validation_function,
@@ -235,7 +254,7 @@ class PyTorchTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-    def train(self, max_retries=10, checkpoint="auto"):
+    def train(self, max_retries=0, checkpoint="auto"):
         """Runs a training epoch.
 
         Runs an average over all values returned from workers. Set

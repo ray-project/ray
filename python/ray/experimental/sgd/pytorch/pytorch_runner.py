@@ -38,6 +38,7 @@ class PyTorchRunner:
         batch_size (int): see pytorch_trainer.py.
         use_apex (bool): see pytorch_trainer.py.
         apex_args (dict|None): see pytorch_trainer.py.
+        scheduler_step_freq (str): see pytorch_trainer.py.
     """
 
     def __init__(self,
@@ -58,6 +59,7 @@ class PyTorchRunner:
         self.data_creator = data_creator
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
+        self.scheduler_creator = scheduler_creator
         self.config = {} if config is None else config
         self.dataloader_config = {
             "num_workers": 2,
@@ -90,10 +92,6 @@ class PyTorchRunner:
             raise ImportError(
                 "Please install apex from "
                 "https://www.github.com/nvidia/apex to use fp16 training.")
-        if scheduler_step_freq not in pytorch_utils.VALID_SCHEDULER_STEP:
-            raise ValueError(
-                "Scheduler step freq must be in {}. Got {}".format(
-                    pytorch_utils.VALID_SCHEDULER_STEP, scheduler_step_freq))
         self.scheduler_step_freq = scheduler_step_freq
 
     def _validate_datasets(self, dataset):
