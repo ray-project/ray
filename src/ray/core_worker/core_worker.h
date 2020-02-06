@@ -160,7 +160,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[out] owner_id The ID of the object's owner.
   /// \param[out] owner_address The address of the object's owner.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
-      const ObjectID &outer_object_id,
+                                             const ObjectID &outer_object_id,
                                              const TaskID &owner_id,
                                              const rpc::Address &owner_address);
 
@@ -229,8 +229,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                 const std::vector<ObjectID> &contained_object_ids,
-                const rpc::Address *owner_address,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+                const rpc::Address *owner_address, const ObjectID &object_id,
+                std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.
@@ -342,8 +342,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if task submission fails, likely due to raylet failure.
   Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
                     const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                              const std::vector<ObjectID> &inlined_ids,
-                    int max_retries);
+                    const std::vector<ObjectID> &inlined_ids, int max_retries);
 
   /// Create an actor.
   ///
@@ -471,9 +470,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                    rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest&request,
-                                   rpc::WaitForRefRemovedReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
+                               rpc::WaitForRefRemovedReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
   void HandleKillActor(const rpc::KillActorRequest &request, rpc::KillActorReply *reply,

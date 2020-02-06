@@ -7,8 +7,8 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/grpc_server.h"
+#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -26,16 +26,17 @@ class ReferenceCounter {
         : owned_by_us(true), owner({owner_id, owner_address}) {}
 
     size_t RefCount() const {
-      return local_ref_count + submitted_task_ref_count + contained_in_owned.size() + contained_in_borrowed_id.has_value() ? 1 : 0;
+      return local_ref_count + submitted_task_ref_count + contained_in_owned.size() +
+                     contained_in_borrowed_id.has_value()
+                 ? 1
+                 : 0;
     }
 
     bool IsBorrower() const {
       return local_ref_count + submitted_task_ref_count + contained_in_owned.size() > 0;
     }
 
-    size_t NumBorrowers() const {
-      return borrowers.size();
-    }
+    size_t NumBorrowers() const { return borrowers.size(); }
 
     rpc::ObjectReferenceCount ToProto() const {
       rpc::ObjectReferenceCount ref;
@@ -87,7 +88,8 @@ class ReferenceCounter {
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
-  ReferenceCounter(rpc::ClientFactoryFn client_factory = nullptr) : client_factory_(client_factory) {}
+  ReferenceCounter(rpc::ClientFactoryFn client_factory = nullptr)
+      : client_factory_(client_factory) {}
 
   ~ReferenceCounter() {}
 
@@ -119,9 +121,9 @@ class ReferenceCounter {
   /// \param[in] object_ids The object IDs to remove references for.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
   void RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids,
-    const rpc::Address &borrower,
-    const ReferenceTable &borrower_refs,
-    std::vector<ObjectID> *deleted)
+                                     const rpc::Address &borrower,
+                                     const ReferenceTable &borrower_refs,
+                                     std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -148,8 +150,9 @@ class ReferenceCounter {
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
   /// TODO: Add the outer object ID that this ID came from.
-  bool AddBorrowedObject(const ObjectID &outer_id, const ObjectID &object_id, const TaskID &owner_id,
-                         const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+  bool AddBorrowedObject(const ObjectID &outer_id, const ObjectID &object_id,
+                         const TaskID &owner_id, const rpc::Address &owner_address)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner ID and address of the given object.
   ///
@@ -182,15 +185,19 @@ class ReferenceCounter {
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const
       LOCKS_EXCLUDED(mutex_);
 
-
   ReferenceTable PopBorrowerRefs(const ObjectID &object_id);
-  void PopBorrowerRefsPointer(const ObjectID &object_id, ReferenceCounter::ReferenceTable *refs);
+  void PopBorrowerRefsPointer(const ObjectID &object_id,
+                              ReferenceCounter::ReferenceTable *refs);
 
-  void WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids, const absl::optional<rpc::WorkerAddress> &owner_address) LOCKS_EXCLUDED(mutex_);
+  void WrapObjectId(const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
+                    const absl::optional<rpc::WorkerAddress> &owner_address)
+      LOCKS_EXCLUDED(mutex_);
 
   // Handler for when a borrower's ref count goes to 0.
-  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request, rpc::WaitForRefRemovedReply *reply,
-    rpc::SendReplyCallback send_reply_callback) LOCKS_EXCLUDED(mutex_);
+  void HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
+                               rpc::WaitForRefRemovedReply *reply,
+                               rpc::SendReplyCallback send_reply_callback)
+      LOCKS_EXCLUDED(mutex_);
 
   const Reference &GetReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_) {
     const auto it = object_id_refs_.find(object_id);
@@ -204,9 +211,15 @@ class ReferenceCounter {
   }
 
  private:
-  bool PopBorrowerRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void MergeBorrowerRefs(const ObjectID &object_id, const rpc::WorkerAddress &borrower, const ReferenceTable &borrower_refs) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void WaitForRefRemoved(const ReferenceTable::iterator &ref_it, const rpc::WorkerAddress &addr, const ObjectID &contained_in_id = ObjectID::Nil()) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool PopBorrowerRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void MergeBorrowerRefs(const ObjectID &object_id, const rpc::WorkerAddress &borrower,
+                         const ReferenceTable &borrower_refs)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
+                         const rpc::WorkerAddress &addr,
+                         const ObjectID &contained_in_id = ObjectID::Nil())
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
   /// callbacks. Assumes that the entry is in object_id_refs_ and invalidates the
@@ -221,8 +234,7 @@ class ReferenceCounter {
   /// Map from worker address to core worker client. The owner of an object
   /// uses this client to request a notification from borrowers once the
   /// borrower's ref count for the ID goes to 0.
-  absl::flat_hash_map<rpc::WorkerAddress,
-                      std::shared_ptr<rpc::CoreWorkerClientInterface>>
+  absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
       borrower_cache_ GUARDED_BY(mutex_);
 
   /// Protects access to the reference counting state.

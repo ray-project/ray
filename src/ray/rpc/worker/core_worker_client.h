@@ -41,10 +41,10 @@ class CoreWorkerClientInterface;
 class WorkerAddress {
  public:
   WorkerAddress(const rpc::Address &address)
-    : ip_address(address.ip_address()),
-      port(address.port()),
-      worker_id(WorkerID::FromBinary(address.worker_id())),
-      raylet_id(ClientID::FromBinary(address.raylet_id())) {}
+      : ip_address(address.ip_address()),
+        port(address.port()),
+        worker_id(WorkerID::FromBinary(address.worker_id())),
+        raylet_id(ClientID::FromBinary(address.raylet_id())) {}
   template <typename H>
   friend H AbslHashValue(H h, const WorkerAddress &w) {
     return H::combine(std::move(h), w.ip_address, w.port, w.worker_id, w.raylet_id);

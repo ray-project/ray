@@ -77,12 +77,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ReferenceCounter::ReferenceTable new_borrower_refs;
   for (const auto &ref : reply.borrower_refs()) {
     ray::ReferenceCounter::Reference reference;
-    reference.owner = {ray::TaskID::FromBinary(ref.reference().owner_id()), ref.reference().owner_address()};
+    reference.owner = {ray::TaskID::FromBinary(ref.reference().owner_id()),
+                       ref.reference().owner_address()};
     reference.local_ref_count = ref.has_local_ref() ? 1 : 0;
     for (const auto &borrower : ref.borrowers()) {
       reference.borrowers.insert(ray::rpc::WorkerAddress(borrower));
     }
-    const auto contained_in_borrowed_id = ray::ObjectID::FromBinary(ref.contained_in_borrowed_id());
+    const auto contained_in_borrowed_id =
+        ray::ObjectID::FromBinary(ref.contained_in_borrowed_id());
     if (!contained_in_borrowed_id.IsNil()) {
       reference.contained_in_borrowed_id = contained_in_borrowed_id;
     }
@@ -190,7 +192,9 @@ void TaskManager::ShutdownIfNeeded() {
   }
 }
 
-void TaskManager::RemoveSubmittedTaskReferences(const std::vector<ObjectID> &object_ids, const rpc::Address *borrower_addr, const ReferenceCounter::ReferenceTable *borrower_refs) {
+void TaskManager::RemoveSubmittedTaskReferences(
+    const std::vector<ObjectID> &object_ids, const rpc::Address *borrower_addr,
+    const ReferenceCounter::ReferenceTable *borrower_refs) {
   ReferenceCounter::ReferenceTable refs;
   rpc::Address addr;
   if (borrower_refs && borrower_addr) {
@@ -199,18 +203,17 @@ void TaskManager::RemoveSubmittedTaskReferences(const std::vector<ObjectID> &obj
   }
   std::vector<ObjectID> deleted;
   // TODO: Fill in the borrower address.
-  reference_counter_->RemoveSubmittedTaskReferences(object_ids,
-      addr,
-      refs,
-      &deleted);
+  reference_counter_->RemoveSubmittedTaskReferences(object_ids, addr, refs, &deleted);
   in_memory_store_->Delete(deleted);
 }
 
 void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) {
-  //RemoveSubmittedTaskReferences(object_ids, nullptr);
+  // RemoveSubmittedTaskReferences(object_ids, nullptr);
 }
 
-void TaskManager::RemovePlasmaSubmittedTaskReferences(TaskSpecification &spec, const rpc::Address *borrower_addr, const ReferenceCounter::ReferenceTable *borrower_refs) {
+void TaskManager::RemovePlasmaSubmittedTaskReferences(
+    TaskSpecification &spec, const rpc::Address *borrower_addr,
+    const ReferenceCounter::ReferenceTable *borrower_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     auto count = spec.ArgIdCount(i);

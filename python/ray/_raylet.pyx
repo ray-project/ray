@@ -306,8 +306,9 @@ cdef c_vector[CObjectID] prepare_args(
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference(
-                        (CObjectID.FromBinary(core_worker.put_serialized_cobject(
-                            serialized_arg)))))
+                        (CObjectID.FromBinary(
+                            core_worker.put_serialized_cobject(
+                                serialized_arg)))))
     # The core worker must pin the inlined IDs until the task replies to notify
     # us whether it is borrowing them or not.
     return inlined_ids
@@ -696,11 +697,13 @@ cdef class CoreWorker:
     def put_serialized_object(self, serialized_object,
                               ObjectID object_id=None,
                               c_bool pin_object=True):
-        return ObjectID(self.put_serialized_cobject(serialized_object, object_id, pin_object))
+        return ObjectID(
+            self.put_serialized_cobject(
+                serialized_object, object_id, pin_object))
 
     def put_serialized_cobject(self, serialized_object,
-                              ObjectID object_id=None,
-                              c_bool pin_object=True):
+                               ObjectID object_id=None,
+                               c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -945,8 +948,9 @@ cdef class CoreWorker:
                 c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
-            self, const c_string &object_id_binary, ObjectID outer_object_id, const c_string
-            &owner_id_binary, const c_string &serialized_owner_address):
+            self, const c_string &object_id_binary, ObjectID outer_object_id,
+            const c_string &owner_id_binary,
+            const c_string &serialized_owner_address):
         cdef:
             CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
             CObjectID c_outer_object_id = outer_object_id.native()

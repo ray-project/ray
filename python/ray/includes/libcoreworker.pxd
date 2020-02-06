@@ -127,8 +127,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                                 CTaskID *owner_id,
                                                 CAddress *owner_address)
         void RegisterOwnershipInfoAndResolveFuture(
-                const CObjectID &object_id, const CObjectID &outer_object_id, const CTaskID &owner_id, const
-                CAddress &owner_address)
+                const CObjectID &object_id,
+                const CObjectID &outer_object_id,
+                const CTaskID &owner_id,
+                const CAddress &owner_address)
         void AddContainedObjectIDs(
             const CObjectID &object_id,
             const c_vector[CObjectID] &contained_object_ids)

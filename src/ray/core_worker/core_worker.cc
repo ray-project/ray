@@ -20,7 +20,8 @@ void BuildCommonTaskSpec(
     const std::vector<ray::TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids, const std::vector<ObjectID> &inlined_ids) {
+    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids,
+    const std::vector<ObjectID> &inlined_ids) {
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
@@ -82,10 +83,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      reference_counter_(std::make_shared<ReferenceCounter>([this](const std::string ip_address, int port) {
-    return std::shared_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
-  })),
+      reference_counter_(std::make_shared<ReferenceCounter>(
+          [this](const std::string ip_address, int port) {
+            return std::shared_ptr<rpc::CoreWorkerClient>(
+                new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
+          })),
       task_queue_length_(0),
       num_executed_tasks_(0),
       task_execution_service_work_(task_execution_service_),
@@ -116,8 +118,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Initialize task receivers.
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(task_execution_callback_ != nullptr);
-    auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
-                                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    auto execute_task =
+        std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     auto exit = [this](bool intentional) {
       // Release the resources early in case draining takes a long time.
       RAY_CHECK_OK(local_raylet_client_->NotifyDirectCallTaskBlocked());
@@ -359,7 +362,8 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const rpc::Address &owner_address) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
-  reference_counter_->AddBorrowedObject(outer_object_id, object_id, owner_id, owner_address);
+  reference_counter_->AddBorrowedObject(outer_object_id, object_id, owner_id,
+                                        owner_address);
 
   RAY_CHECK(!owner_id.IsNil());
   // We will ask the owner about the object until the object is
@@ -406,12 +410,14 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Create(metadata, data_size, *object_id, data));
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->Create(metadata, data_size, *object_id, data));
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
     reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
     if (!contained_object_ids.empty()) {
-      reference_counter_->WrapObjectId(*object_id, contained_object_ids, absl::optional<rpc::WorkerAddress>());
+      reference_counter_->WrapObjectId(*object_id, contained_object_ids,
+                                       absl::optional<rpc::WorkerAddress>());
     }
   }
   return Status::OK();
@@ -419,10 +425,11 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                           const std::vector<ObjectID> &contained_object_ids,
-                          const rpc::Address *owner_address,
-                          const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
+                          const rpc::Address *owner_address, const ObjectID &object_id,
+                          std::shared_ptr<Buffer> *data) {
   if (!contained_object_ids.empty() && owner_address) {
-    reference_counter_->WrapObjectId(object_id, contained_object_ids, rpc::WorkerAddress(*owner_address));
+    reference_counter_->WrapObjectId(object_id, contained_object_ids,
+                                     rpc::WorkerAddress(*owner_address));
   }
   return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
@@ -682,8 +689,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
                               std::vector<ObjectID> *return_ids,
-                              const std::vector<ObjectID> &inlined_ids,
-                              int max_retries) {
+                              const std::vector<ObjectID> &inlined_ids, int max_retries) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -698,8 +704,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       function, args, task_options.num_returns, task_options.resources,
       required_resources,
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
-      return_ids,
-      inlined_ids);
+      return_ids, inlined_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
@@ -1212,9 +1217,9 @@ void CoreWorker::HandleWaitForObjectEviction(
   }
 }
 
-void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest&request,
-                                 rpc::WaitForRefRemovedReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
+                                         rpc::WaitForRefRemovedReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
   reference_counter_->HandleWaitForRefRemoved(request, reply, send_reply_callback);
 }
 
