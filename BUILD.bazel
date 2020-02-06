@@ -1114,6 +1114,7 @@ cc_binary(
         "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
     }),
+    copts = COPTS,
     includes = [
         "src",
         "external/bazel_tools/tools/jdk/include",
