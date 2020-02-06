@@ -49,9 +49,9 @@ def _check_refcounts(expected):
     actual = ray.worker.global_worker.core_worker.get_all_reference_counts()
     assert len(expected) == len(actual)
     for object_id, (local, submitted) in expected.items():
-        assert object_id in actual
-        assert local == actual[object_id]["local"]
-        assert submitted == actual[object_id]["submitted"]
+        assert object_id.hex() in actual
+        assert local == actual[object_id.hex()]["local"]
+        assert submitted == actual[object_id.hex()]["submitted"]
 
 
 def check_refcounts(expected, timeout=10):

@@ -1065,7 +1065,7 @@ cdef class CoreWorker:
 
         ref_counts = {}
         while it != c_ref_counts.end():
-            object_id = ObjectID(dereference(it).first.Binary())
+            object_id = dereference(it).first.Hex()
             ref_counts[object_id] = {
                 "local": dereference(it).second.first,
                 "submitted": dereference(it).second.second}
