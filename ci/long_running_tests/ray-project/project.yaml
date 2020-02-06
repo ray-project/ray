@@ -18,7 +18,7 @@ commands:
         default: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
       - name: workload
         help: "Name of the workload to run."
-        choices: ["actor_deaths", "apex", "impala", "many_actor_tasks", "many_drivers", "many_tasks", "node_failures", "pbt"]
+        choices: ["actor_deaths", "apex", "impala", "many_actor_tasks", "many_drivers", "many_tasks", "node_failures", "pbt", "serve"]
     config:
       tmux: true
 
