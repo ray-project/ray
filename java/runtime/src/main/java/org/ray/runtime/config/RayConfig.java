@@ -11,6 +11,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
 import org.ray.api.id.JobId;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.util.NetworkUtil;
@@ -44,6 +45,7 @@ public class RayConfig {
   private String redisIp;
   private Integer redisPort;
   public final int headRedisPort;
+  public final int[] redisShardPorts;
   public final int numberRedisShards;
   public final String headRedisPassword;
   public final String redisPassword;
@@ -144,8 +146,17 @@ public class RayConfig {
     } else {
       this.redisAddress = null;
     }
-    headRedisPort = config.getInt("ray.redis.head-port");
+
+    if (config.hasPath("ray.redis.head-port")) {
+      headRedisPort = config.getInt("ray.redis.head-port");
+    } else {
+      headRedisPort = NetworkUtil.getUnusedPort();
+    }
     numberRedisShards = config.getInt("ray.redis.shard-number");
+    redisShardPorts = new int[numberRedisShards];
+    for (int i = 0; i < numberRedisShards; i++) {
+      redisShardPorts[i] = NetworkUtil.getUnusedPort();
+    }
     headRedisPassword = config.getString("ray.redis.head-password");
     redisPassword = config.getString("ray.redis.password");
 

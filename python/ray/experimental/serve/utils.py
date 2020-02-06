@@ -4,6 +4,7 @@ import random
 import string
 import time
 import io
+import os
 
 import requests
 from pygments import formatters, highlight, lexers
@@ -23,14 +24,16 @@ def parse_request_item(request_item):
         args = (FakeFlaskRequest(), )
         kwargs = request_item.request_kwargs
 
-    result_object_id = request_item.result_object_id
-    return args, kwargs, is_web_context, result_object_id
+    return args, kwargs, is_web_context
 
 
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    logger.setLevel(logging.INFO)
+    if os.environ.get("SERVE_LOG_DEBUG"):
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     return logger
 
 
