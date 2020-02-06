@@ -51,7 +51,7 @@ public class ResourceManagerImpl implements ResourceManager {
     SlotAssignStrategyType slotAssignStrategyType = SlotAssignStrategyType.PIPELINE_FIRST_STRATEGY;
 
     this.slotAssignStrategy = SlotAssignStrategyFactory.getStrategy(slotAssignStrategyType);
-    this.slotAssignStrategy.updateResources(resources);
+    this.slotAssignStrategy.setResources(resources);
     LOG.info("Slot assign strategy: {}.", slotAssignStrategy.getName());
 
     checkAndUpdateResources();
@@ -75,6 +75,15 @@ public class ResourceManagerImpl implements ResourceManager {
     Map<String, Double> resources = new HashMap<>();
     resources.put(container.getName(), 1.0);
 
+    Map<String, Double> containResource = container.getAvailableResource();
+    for (Map.Entry<String, Double> entry : containResource.entrySet()) {
+      Map<String, Double> requireResource = executionVertex.getResources();
+      if (requireResource.containsKey(entry.getKey())) {
+        double availableResource = entry.getValue() - requireResource.get(entry.getKey());
+        entry.setValue(availableResource);
+      }
+    }
+
     LOG.info("Allocate resource to actor [vertexId={}] succeeded with container {}.",
         executionVertex.getVertexId(), container);
     return resources;
@@ -83,8 +92,17 @@ public class ResourceManagerImpl implements ResourceManager {
   @Override
   public void deallocateResource(final ExecutionVertex executionVertex) {
     LOG.info("Start deallocate resource for actor {}.", executionVertex.getWorkerActorId());
+    Container container = resources.getRegisterContainerByContainerId(
+        executionVertex.getSlot().getContainerID());
 
-    // TODO: decrease container allocated actor num
+    Map<String, Double> containResource = container.getAvailableResource();
+    for (Map.Entry<String, Double> entry : containResource.entrySet()) {
+      Map<String, Double> requireResource = executionVertex.getResources();
+      if (requireResource.containsKey(entry.getKey())) {
+        double availableResource = entry.getValue() + requireResource.get(entry.getKey());
+        entry.setValue(availableResource);
+      }
+    }
 
     LOG.info("Deallocate resource for actor {} success.", executionVertex.getWorkerActorId());
   }

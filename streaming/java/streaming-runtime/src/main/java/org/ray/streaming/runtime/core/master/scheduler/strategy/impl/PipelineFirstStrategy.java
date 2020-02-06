@@ -201,7 +201,7 @@ public class PipelineFirstStrategy implements SlotAssignStrategy {
   }
 
   @Override
-  public void updateResources(Resources resources) {
+  public void setResources(Resources resources) {
     this.resources = resources;
   }
 }
