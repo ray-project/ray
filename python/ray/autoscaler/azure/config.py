@@ -8,6 +8,7 @@ import uuid
 
 from azure.common.client_factory import get_client_from_cli_profile, get_client_from_auth_file
 from azure.graphrbac import GraphRbacManagementClient
+from azure.mgmt.authorization import AuthorizationManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 import paramiko
@@ -55,6 +56,8 @@ def _configure_resource_group(config):
 #  https://github.com/Azure/azure-cli/blob/dev/src/azure-cli/azure/cli/command_modules/role/custom.py
 def _configure_service_principal(config):
     graph_client = get_client_from_cli_profile(GraphRbacManagementClient)
+    resource_client = get_client_from_cli_profile(ResourceManagementClient)
+    auth_client = get_client_from_cli_profile(AuthorizationManagementClient)
 
     sp_name = config['provider']['service_principal']
     if '://' not in sp_name:
@@ -76,6 +79,7 @@ def _configure_service_principal(config):
     else:
         new_auth = True
         logger.info('AZURE_CLIENT_SECRET environment variable not set, generating new password')
+        # TODO: seems like uuid4 is possible? revisit simplifying password
         alphabet = ''.join([string.ascii_lowercase, string.ascii_uppercase, string.digits, string.punctuation])
         while True:
             password = ''.join(secrets.choice(alphabet) for _ in range(PASSWORD_MIN_LENGTH))
@@ -115,7 +119,11 @@ def _configure_service_principal(config):
         sp_params = dict(app_id=app.app_id)
         sp = graph_client.service_principals.create(parameters=sp_params)
 
-        # TODO: set role / scope for service principal
+    # set contributor role for service principal on new resource group
+    rg_id = resource_client.resource_groups.get(resource_group).id
+    role = auth_client.role_definitions.list(rg_id, filter="roleName eq '{}'".format('Contributor')).next()
+    role_params = dict(role_definition_id=role.id, principal_id=sp.id)
+    auth_client.role_assignments.create(rg_id, uuid.uuid4(), role_params)
 
     if new_auth:
         credentials['clientId'] = sp.app_id
