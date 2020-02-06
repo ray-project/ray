@@ -51,7 +51,7 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: azure
-    location: uswest2
+    location: westus2
     service_principal: http://ray-service
     # set AZURE_CLIENT_SECRET environment variable to use an existing service principal
     resource_group: ray-cluster
