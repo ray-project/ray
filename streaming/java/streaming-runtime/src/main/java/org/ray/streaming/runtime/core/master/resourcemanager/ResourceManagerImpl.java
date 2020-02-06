@@ -13,6 +13,7 @@ import org.ray.api.Ray;
 import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.streaming.runtime.config.StreamingMasterConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
+import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
 import org.ray.streaming.runtime.core.resource.Container;
 import org.ray.streaming.runtime.core.resource.Resources;
 import org.slf4j.Logger;
