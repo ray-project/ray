@@ -37,23 +37,23 @@ public class ExecutionJobVertex {
   private List<ExecutionJobEdge> inputEdges = new ArrayList<>();
   private List<ExecutionJobEdge> outputEdges = new ArrayList<>();
 
-  public ExecutionJobVertex(JobVertex jobVertex) {
+  public ExecutionJobVertex(JobVertex jobVertex, Map<String, String> jobConfig) {
     this.jobVertexId = jobVertex.getVertexId();
     this.jobVertexName = generateVertexName(jobVertexId, jobVertex.getStreamOperator());
     this.streamOperator = jobVertex.getStreamOperator();
     this.vertexType = jobVertex.getVertexType();
     this.parallelism = jobVertex.getParallelism();
-    this.executionVertices = createExecutionVertics();
+    this.executionVertices = createExecutionVertics(jobConfig);
   }
 
   private String generateVertexName(int vertexId, StreamOperator streamOperator) {
     return vertexId + "-" + streamOperator.getName();
   }
 
-  private List<ExecutionVertex> createExecutionVertics() {
+  private List<ExecutionVertex> createExecutionVertics(Map<String, String> jobConfig) {
     List<ExecutionVertex> executionVertices = new ArrayList<>();
     for (int index = 1; index <= parallelism; index++) {
-      executionVertices.add(new ExecutionVertex(jobVertexId, index, this));
+      executionVertices.add(new ExecutionVertex(jobVertexId, index, this, jobConfig));
     }
     return executionVertices;
   }
