@@ -260,7 +260,7 @@ def update_worker_exploration(trainer):
 
     # Get all current exploration-infos (from Policies, which cache this info).
     trainer.exploration_infos = trainer.workers.foreach_trainable_policy(
-        lambda p, _: p.get_exploration_info(global_timestep))
+        lambda p, _: p.get_exploration_info())
 
 
 def after_train_result(trainer, result):

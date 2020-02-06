@@ -78,10 +78,10 @@ DEFAULT_CONFIG = with_common_config({
         # "final_stddev": 0.002,
         # "timesteps": 10000,
     },
-    
+
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 1000,
-    
+
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
     "parameter_noise": False,
@@ -337,5 +337,6 @@ DDPGTrainer = GenericOffPolicyTrainer.with_updates(
     default_config=DEFAULT_CONFIG,
     default_policy=DDPGTFPolicy,
     validate_config=validate_config,
+)
     #before_init=setup_ddpg_exploration,
-    before_train_step=add_pure_exploration_phase)
+    #before_train_step=add_pure_exploration_phase)
