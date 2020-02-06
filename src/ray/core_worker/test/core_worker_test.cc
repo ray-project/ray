@@ -29,6 +29,7 @@ std::string raylet_executable;
 int node_manager_port = 0;
 std::string raylet_monitor_executable;
 std::string mock_worker_executable;
+std::string gcs_server_executable;
 
 }  // namespace
 
@@ -91,6 +92,11 @@ class CoreWorkerTest : public ::testing::Test {
     // receive the heartbeat from another. So starting raylet monitor is required here.
     raylet_monitor_pid_ = StartRayletMonitor("127.0.0.1");
 
+    // start gcs server
+    if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+      gcs_server_pid_ = StartGcsServer("127.0.0.1");
+    }
+
     // start raylet on each node. Assign each node with different resources so that
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
@@ -111,6 +117,10 @@ class CoreWorkerTest : public ::testing::Test {
 
     if (!raylet_monitor_pid_.empty()) {
       StopRayletMonitor(raylet_monitor_pid_);
+    }
+
+    if (!gcs_server_pid_.empty()) {
+      StopGcsServer(gcs_server_pid_);
     }
   }
 
@@ -192,6 +202,30 @@ class CoreWorkerTest : public ::testing::Test {
     std::string kill_9 = "kill -9 `cat " + raylet_monitor_pid + "`";
     RAY_LOG(DEBUG) << kill_9;
     ASSERT_TRUE(system(kill_9.c_str()) == 0);
+    ASSERT_TRUE(system(("rm -f " + raylet_monitor_pid).c_str()) == 0);
+  }
+
+  std::string StartGcsServer(std::string redis_address) {
+    std::string gcs_server_pid =
+        "/tmp/gcs_server" + ObjectID::FromRandom().Hex() + ".pid";
+    std::string gcs_server_start_cmd = gcs_server_executable;
+    gcs_server_start_cmd.append(" --redis_address=" + redis_address)
+        .append(" --redis_port=6379")
+        .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
+        .append(" & echo $! > " + gcs_server_pid);
+
+    RAY_LOG(DEBUG) << "Starting GCS server, command: " << gcs_server_start_cmd;
+    RAY_CHECK(system(gcs_server_start_cmd.c_str()) == 0);
+    usleep(200 * 1000);
+    RAY_LOG(INFO) << "GCS server started.";
+    return gcs_server_pid;
+  }
+
+  void StopGcsServer(std::string gcs_server_pid) {
+    std::string kill_9 = "kill -9 `cat " + gcs_server_pid + "`";
+    RAY_LOG(DEBUG) << kill_9;
+    ASSERT_TRUE(system(kill_9.c_str()) == 0);
+    ASSERT_TRUE(system(("rm -f " + gcs_server_pid).c_str()) == 0);
   }
 
   void SetUp() {}
@@ -230,6 +264,7 @@ class CoreWorkerTest : public ::testing::Test {
   std::vector<std::string> raylet_store_socket_names_;
   std::string raylet_monitor_pid_;
   gcs::GcsClientOptions gcs_options_;
+  std::string gcs_server_pid_;
 };
 
 bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
@@ -1020,11 +1055,12 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 6);
+  RAY_CHECK(argc == 7);
   store_executable = std::string(argv[1]);
   raylet_executable = std::string(argv[2]);
   node_manager_port = std::stoi(std::string(argv[3]));
   raylet_monitor_executable = std::string(argv[4]);
   mock_worker_executable = std::string(argv[5]);
+  gcs_server_executable = std::string(argv[6]);
   return RUN_ALL_TESTS();
 }

@@ -17,6 +17,7 @@ import pyarrow
 # Ray modules
 import ray
 import ray.ray_constants as ray_constants
+import psutil
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -91,11 +92,6 @@ def include_java_from_redis(redis_client):
 
 
 def find_redis_address_or_die():
-    try:
-        import psutil
-    except ImportError:
-        raise ImportError(
-            "Please install `psutil` to automatically detect the Ray cluster.")
     pids = psutil.pids()
     redis_addresses = set()
     for pid in pids:
@@ -998,13 +994,6 @@ def start_reporter(redis_address,
     if redis_password:
         command += ["--redis-password", redis_password]
 
-    try:
-        import psutil  # noqa: F401
-    except ImportError:
-        logger.warning("Failed to start the reporter. The reporter requires "
-                       "'pip install psutil'.")
-        return None
-
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_REPORTER,
@@ -1066,8 +1055,6 @@ def start_dashboard(require_webui,
     webui_dependencies_present = True
     try:
         import aiohttp  # noqa: F401
-        import psutil  # noqa: F401
-        import setproctitle  # noqa: F401
         import grpc  # noqa: F401
     except ImportError:
         webui_dependencies_present = False
