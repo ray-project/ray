@@ -16,13 +16,16 @@ def _try_import_strategy():
     import tensorflow as tf
     return tf.distribute.experimental.MultiWorkerMirroredStrategy
 
+
 def _noop():
     pass
+
 
 def _load_proper_LambdaCallback():
     # default TF2 LambdaCallback does not support the new callback naming
 
     import tensorflow as tf
+
     class LambdaCallback(tf.keras.callbacks.LambdaCallback):
         def __init__(self, on_batch_begin=_noop, on_batch_end=_noop):
             super().__init__()
@@ -53,11 +56,16 @@ def _load_proper_LambdaCallback():
 
     return LambdaCallback
 
+
 class TFRunner:
     """Manages a TensorFlow model for training."""
 
-    def __init__(self, model_creator, data_creator, init_hook=None,
-                 config=None, verbose=False):
+    def __init__(self,
+                 model_creator,
+                 data_creator,
+                 init_hook=None,
+                 config=None,
+                 verbose=False):
         """Initializes the runner.
 
         Args:
@@ -76,7 +84,7 @@ class TFRunner:
 
         self._model_thread = None
         self._recorded_all_results = threading.Event()
-        self._ready_to_continue = threading.Barrier(2) # main + model
+        self._ready_to_continue = threading.Barrier(2)  # main + model
         self._step_counter = 0
         self._step_limit = 1
 
@@ -94,7 +102,6 @@ class TFRunner:
         self.model = self.model_creator(self.config)
 
         self._LambdaCallback = _load_proper_LambdaCallback()
-
 
     def setup_distributed(self, urls, world_rank, world_size):
         """Sets up TensorFLow distributed environment and initializes the model.
@@ -173,20 +180,19 @@ class TFRunner:
             # new epoch --- new history
             self._history = None
 
-
             config = {}
             config.update(self.config.get(config_key, {}))
-            config["verbose"] = 0 # we are using our own logging
+            config["verbose"] = 0  # we are using our own logging
             config["callbacks"] = (
                 # todo: only create this callback once
                 config.get("callbacks", []) + [
                     self._LambdaCallback(
                         on_batch_begin=self._has_next_batch,
                         on_batch_end=self._record_progress)
-                ]
-            )
+                ])
 
             logger.debug("Starting a new model thread")
+
             def f():
                 logger.debug("Model thread is running")
                 self._history = action_fn(config)
@@ -210,10 +216,9 @@ class TFRunner:
             self._model_thread.join()
 
             stats = res_fn()
-            return ('end', stats)
+            return ("end", stats)
 
-        return ('batch', self._logs)
-
+        return ("batch", self._logs)
 
     def _fit_action(self, config):
         return self.model.fit(self.train_dataset, **config)
@@ -223,18 +228,15 @@ class TFRunner:
 
         return ({
             "train_" + k: v[-1]
-            for k, v in self._history.history.items()})
+            for k, v in self._history.history.items()
+        })
 
     def fit_step(self, number_of_steps=1):
         """
         Run number_of_steps training steps, then report the most recent logs.
         """
-        return self._generic_step(
-            number_of_steps,
-            "fit_config",
-            self._fit_action,
-            self._fit_get_results)
-
+        return self._generic_step(number_of_steps, "fit_config",
+                                  self._fit_action, self._fit_get_results)
 
     def _validate_action(self, config):
         return self.model.evaluate(self.test_dataset, **config)
@@ -254,12 +256,9 @@ class TFRunner:
     # and cause trouble for yourself
     def validate_step(self, number_of_steps=1):
         """Evaluates the model on the validation data set."""
-        return self._generic_step(
-            number_of_steps,
-            "evaluate_config",
-            self._validate_action,
-            self._validate_get_results)
-
+        return self._generic_step(number_of_steps, "evaluate_config",
+                                  self._validate_action,
+                                  self._validate_get_results)
 
     def get_state(self):
         """Returns the state of the runner."""

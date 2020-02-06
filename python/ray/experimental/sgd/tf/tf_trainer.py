@@ -2,7 +2,6 @@ import numpy as np
 import os
 import logging
 import pickle
-import sys
 
 import ray
 
@@ -106,10 +105,7 @@ class TFTrainer:
         worker_stats = [None] * len(self.workers)
         done = False
         while not done:
-            reqs = [
-                request_step(w)
-                for w in self.workers
-            ]
+            reqs = [request_step(w) for w in self.workers]
             for workerN, (type, logs) in enumerate(ray.get(reqs)):
                 if type == "batch":
                     if workerN == 0:
@@ -121,9 +117,9 @@ class TFTrainer:
                         progbar.update(logs["batch"], metrics)
                 elif type == "end":
                     if workerN == 0:
-                        metrics = [
-                            ("loss", logs[metrics_prefix+"loss"]),
-                            ("accuracy", logs[metrics_prefix+"accuracy"])]
+                        metrics = [("loss", logs[metrics_prefix + "loss"]),
+                                   ("accuracy",
+                                    logs[metrics_prefix + "accuracy"])]
 
                         progbar.update(steps, metrics)
 
@@ -146,8 +142,7 @@ class TFTrainer:
 
         return self._generic_model_driver(
             lambda w: w.fit_step.remote(progress_report_interval),
-            fit_config.get("steps_per_epoch", None),
-            "train_")
+            fit_config.get("steps_per_epoch", None), "train_")
 
     def validate(self, progress_report_interval=1):
         """Evaluates the model on the validation data set."""
@@ -158,8 +153,7 @@ class TFTrainer:
 
         return self._generic_model_driver(
             lambda w: w.validate_step.remote(progress_report_interval),
-            evaluate_config.get("steps", None),
-            "validation_")
+            evaluate_config.get("steps", None), "validation_")
 
     def get_model(self):
         """Returns the learned model."""
