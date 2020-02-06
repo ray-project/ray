@@ -148,7 +148,7 @@ class ActorClassMetadata:
         modified_class: The original class that was decorated (with some
             additional methods added like __ray_terminate__).
         actor_creation_function_descriptor: The function descriptor for
-            actor creation.
+            the actor creation task.
         class_id: The ID of this actor class.
         class_name: The name of this class.
         num_cpus: The default number of CPUs required by the actor creation
