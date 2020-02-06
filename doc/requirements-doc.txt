@@ -8,14 +8,15 @@ funcsigs
 jsonschema
 mock
 numpy
-# opencv-python-headless
+opencv-python-headless
 pandas
-# pyarrow
+pyarrow
 pygments
+psutil
 pyyaml
 recommonmark
 redis
-# setproctitle
+setproctitle
 sphinx
 sphinx-click
 sphinx-copybutton
