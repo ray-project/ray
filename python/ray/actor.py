@@ -183,8 +183,7 @@ class ActorClassMetadata:
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
             actor_creation_function_descriptor
-        self.class_name = str(modified_class and modified_class.__name__
-                              or actor_creation_function_descriptor)
+        self.class_name = actor_creation_function_descriptor.class_name
         self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
         self.max_reconstructions = max_reconstructions
@@ -496,9 +495,8 @@ class ActorClass:
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
-            if meta.is_cross_language:
-                raise Exception(
-                    "Cross language ActorClass cannot be executed locally.")
+            assert not meta.is_cross_language, \
+                "Cross language ActorClass cannot be executed locally."
             actor_id = ActorID.from_random()
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
@@ -571,8 +569,8 @@ class ActorHandle:
     cloudpickle).
 
     Attributes:
+        _ray_actor_language: The actor language.
         _ray_actor_id: Actor ID.
-        _ray_actor_method_names: The names of the actor methods.
         _ray_method_decorators: Optional decorators for the function
             invocation. This can be used to change the behavior on the
             invocation side, whereas a regular decorator can be used to change
@@ -584,6 +582,9 @@ class ActorHandle:
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
             this handle goes out of scope.
+        _ray_is_cross_language: Whether this actor is cross language.
+        _ray_actor_creation_function_descriptor: The function descriptor
+            created this actor.
     """
 
     def __init__(self,
@@ -670,9 +671,9 @@ class ActorHandle:
             function_descriptor = self._ray_function_descriptor[method_name]
 
         if worker.mode == ray.LOCAL_MODE:
-            if self._ray_is_cross_language:
-                raise Exception("Cross language remote actor method "
-                                "cannot be executed locally.")
+            assert not self._ray_is_cross_language,\
+                "Cross language remote actor method " \
+                "cannot be executed locally."
             function = getattr(worker.actors[self._actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
                 function, method_name, args, kwargs, num_return_vals)
@@ -705,7 +706,7 @@ class ActorHandle:
 
     # Make tab completion work.
     def __dir__(self):
-        return self._ray_actor_method_names
+        return self._ray_method_signatures.keys()
 
     def __repr__(self):
         return "Actor({}, {})".format(

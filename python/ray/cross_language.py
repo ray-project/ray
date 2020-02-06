@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray import Language
-from ray._raylet import PythonFunctionDescriptor, JavaFunctionDescriptor
+from ray._raylet import JavaFunctionDescriptor
 
 __all__ = [
     "java_function",
@@ -44,11 +44,7 @@ def get_function_descriptor_for_actor_method(
     Returns:
         Function descriptor for cross language actor method call.
     """
-    if language == Language.PYTHON:
-        return PythonFunctionDescriptor(
-            actor_creation_function_descriptor.module_name, method_name,
-            actor_creation_function_descriptor.class_name)
-    elif language == Language.JAVA:
+    if language == Language.JAVA:
         return JavaFunctionDescriptor(
             actor_creation_function_descriptor.class_name,
             method_name,
