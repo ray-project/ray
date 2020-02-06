@@ -488,7 +488,6 @@ void ReferenceCounter::HandleWaitForRefRemoved(
   const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
   RAY_LOG(DEBUG) << "Received WaitForRefRemoved " << object_id;
   auto ref_removed_callback = [this, object_id, reply, send_reply_callback]() {
-    absl::MutexLock lock(&mutex_);
     ReferenceTable borrower_refs;
     RAY_UNUSED(PopBorrowerRefsInternal(object_id, &borrower_refs));
     for (const auto &pair : borrower_refs) {
