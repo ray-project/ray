@@ -43,7 +43,7 @@ class TestPPO(unittest.TestCase):
         #config["model"]["conv_filters"] =
         # Torch.
         config["use_pytorch"] = True
-        #trainer = ppo.PPOTrainer(config=config, env="SpaceInvadersNoFrameskip-v4")
+        trainer = ppo.PPOTrainer(config=config, env="SpaceInvadersNoFrameskip-v4")
         #trainer = ppo.PPOTrainer(config=config,
         #                         env=RandomEnv)
         #for i in range(num_iterations):
@@ -133,16 +133,16 @@ class TestPPO(unittest.TestCase):
                 policy.model._last_output,
                 policy.model.value_function().detach().numpy()
             )
-        #check(kl, policy.loss_obj.mean_kl.detach().numpy())
-        #check(entropy, policy.loss_obj.mean_entropy.detach().numpy())
-        #check(
-        #    np.mean(-pg_loss),
-        #    policy.loss_obj.mean_policy_loss.detach().numpy())
-        #check(
-        #    np.mean(vf_loss),
-        #    policy.loss_obj.mean_vf_loss.detach().numpy(),
-        #    decimals=4)
-        #check(policy.loss_obj.loss.detach().numpy(), overall_loss, decimals=4)
+        check(kl, policy.loss_obj.mean_kl.detach().numpy())
+        check(entropy, policy.loss_obj.mean_entropy.detach().numpy())
+        check(
+            np.mean(-pg_loss),
+            policy.loss_obj.mean_policy_loss.detach().numpy())
+        check(
+            np.mean(vf_loss),
+            policy.loss_obj.mean_vf_loss.detach().numpy(),
+            decimals=4)
+        check(policy.loss_obj.loss.detach().numpy(), overall_loss, decimals=4)
 
     def _ppo_loss_helper(self, policy, model, dist_class, train_batch, logits,
                          vf_outs):
