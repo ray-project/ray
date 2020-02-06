@@ -47,7 +47,7 @@ struct ResourceRequestWithId : ResourceRequest {
 };
 
 class TaskRequest {
-public:  
+ public:
   /// List of predefined resources required by the task.
   std::vector<ResourceRequest> predefined_resources;
   /// List of custom resources required by the tasl.
@@ -63,7 +63,7 @@ public:
 
 // Task request specifying instances for each resource.
 class TaskResourceInstances {
-public:  
+ public:
   /// The list of instances of each predifined resource allocated to a task.
   std::vector<std::vector<double>> predefined_resources;
   /// The list of instances of each custom resource allocated to a task.
@@ -77,7 +77,7 @@ public:
 
 /// Total and available capacities of each resource of a node.
 class NodeResources {
-public:  
+ public:
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the
@@ -92,7 +92,7 @@ public:
 /// Total and available capacities of each resource instance.
 /// This is used to describe the resources of the local node.
 class NodeResourceInstances {
-public:  
+ public:
   /// Available and total capacities for each instance of a predefined resource.
   std::vector<ResourceInstanceCapacities> predefined_resources;
   /// Map containing custom resources. The key of each entry represents the
@@ -295,21 +295,21 @@ class ClusterResourceScheduler {
   ///
   /// 1) If the constraint is hard, allocate full unit-capacity instances until
   /// demand becomes fractional, and then satisfy the fractional deman using the
-  /// instance with the smallest available capacity that can satisfy the fractional 
+  /// instance with the smallest available capacity that can satisfy the fractional
   /// demand. For example, assume a resource conisting of 4 instances, with available
-  /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full 
+  /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
   /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
-  /// with the smalest available capacity that can satisfy the remaining demand of 0.2). 
-  /// As a result remaining available capacities will be (0., 1., .7, .2). 
-  /// Thus, if the constraint is hard, we will allocate at most a fractional resource.     
+  /// with the smalest available capacity that can satisfy the remaining demand of 0.2).
+  /// As a result remaining available capacities will be (0., 1., .7, .2).
+  /// Thus, if the constraint is hard, we will allocate at most a fractional resource.
   ///
   /// 2) If the constraint is soft, we can allocate multiple fractional resources,
   /// and even overallocate the resource. For example, in the previous case, if we
   /// have a demand of 1.8, we can allocate one full instance, the 0.5 instance, and
   /// 0.1 from the 0.7 instance. Furthermore, if the demand is 3.5, then we allocate
   /// all instances, and return success (true), despite the fact that the total
-  /// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less 
-  /// than the demand, 3.5. 
+  /// available capacity of the rwsource is 3.2 (= 1. + 1. + .7 + .5), which is less
+  /// than the demand, 3.5.
   ///
   /// \param demand: The resource amount to be allocated.
   /// \param soft: Specifies whether this demand has soft or hard constraints.
@@ -353,12 +353,12 @@ class ClusterResourceScheduler {
   void SubtractAvailableResourceInstances(std::vector<double> free,
                                           ResourceInstanceCapacities *resource_instances);
 
-  /// Increase the available CPU instances of this node. 
+  /// Increase the available CPU instances of this node.
   ///
   /// \param cpu_instances CPU instances to be added to available cpus.
   void AddCPUResourceInstances(std::vector<double> &cpu_instances);
 
-  /// Decrease the available cpu instances of this node. 
+  /// Decrease the available cpu instances of this node.
   ///
   /// \param cpu_instances Cpu instances to be removed from available cpus.
   void SubtractCPUResourceInstances(std::vector<double> &cpu_instances);

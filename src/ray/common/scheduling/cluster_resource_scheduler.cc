@@ -123,7 +123,6 @@ TaskResourceInstances NodeResourceInstances::GetAvailableResourceInstances() {
     task_resources.predefined_resources[i] = this->predefined_resources[i].available;
   }
 
-  
   for (const auto it : this->custom_resources) {
     task_resources.custom_resources.emplace(it.first, it.second.available);
   }
@@ -708,16 +707,16 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
   }
 
   // If resources has multiple instances, each instance has total capacity of 1.
-  // 
-  // If this resource constraint is hard, as long as remaining_demand is greater than 1., 
-  // allocate full unit-capacity instances until the remaining_demand becomes fractional. 
+  //
+  // If this resource constraint is hard, as long as remaining_demand is greater than 1.,
+  // allocate full unit-capacity instances until the remaining_demand becomes fractional.
   // Then try to find the best fit for the fractional remaining_resources. Best fist means
   // allocating the resource instance with the smallest available capacity greater than
   // remaining_demand
-  // 
-  // If resource constraint is soft, allocate as many full unit-capacity resources and then
-  // distribute remaining_demand across remaining instances. Note that in case we can 
-  // overallocate this resource. 
+  //
+  // If resource constraint is soft, allocate as many full unit-capacity resources and
+  // then distribute remaining_demand across remaining instances. Note that in case we can
+  // overallocate this resource.
   if (remaining_demand >= 1.) {
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] == 1.) {
@@ -759,7 +758,8 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
     double available_best_fit = 1.;
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] >= remaining_demand) {
-        if (idx_best_fit == -1 || (available[i] - remaining_demand < available_best_fit)) {
+        if (idx_best_fit == -1 ||
+            (available[i] - remaining_demand < available_best_fit)) {
           available_best_fit = available[i] - remaining_demand;
           idx_best_fit = i;
         }
@@ -843,12 +843,14 @@ void ClusterResourceScheduler::FreeTaskResourceInstances(
   }
 }
 
-void ClusterResourceScheduler::AddCPUResourceInstances(std::vector<double> &cpu_instances) {
+void ClusterResourceScheduler::AddCPUResourceInstances(
+    std::vector<double> &cpu_instances) {
   AddAvailableResourceInstances(cpu_instances,
                                 &local_resources_.predefined_resources[CPU]);
 }
 
-void ClusterResourceScheduler::SubtractCPUResourceInstances(std::vector<double> &cpu_instances) {
+void ClusterResourceScheduler::SubtractCPUResourceInstances(
+    std::vector<double> &cpu_instances) {
   SubtractAvailableResourceInstances(cpu_instances,
                                      &local_resources_.predefined_resources[CPU]);
 }
