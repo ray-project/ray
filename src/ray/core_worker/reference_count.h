@@ -223,7 +223,7 @@ class ReferenceCounter {
   /// borrower's ref count for the ID goes to 0.
   absl::flat_hash_map<rpc::WorkerAddress,
                       std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      borrower_cache_ GUARDED_BY(mu_);
+      borrower_cache_ GUARDED_BY(mutex_);
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;
