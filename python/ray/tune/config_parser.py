@@ -172,7 +172,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
             spec["resources_per_trial"])
     restore_path = spec.get("restore")
     if restore_path:
-        restore_path = os.path.abspath(os.path.expanduser(restore))
+        restore_path = os.path.abspath(os.path.expanduser(restore_path))
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
         # convert to string in a straightforward manner.
