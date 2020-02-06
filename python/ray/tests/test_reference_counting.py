@@ -368,12 +368,14 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
             self.ref2 = new_ref
 
         def delete_ref1(self):
-            del self.ref1
+            print("delete ref1")
+            self.ref1 = None
+            print("delete ref1 DONE")
 
         def delete_ref2(self):
-            print("delete1")
-            del self.ref2
-            print("delete2")
+            print("delete ref2")
+            self.ref2 = None
+            print("delete ref2 DONE")
 
     @ray.remote
     def put():

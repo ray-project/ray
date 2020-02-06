@@ -82,7 +82,7 @@ typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const std::stri
 class CoreWorkerClientInterface {
  public:
 
-  virtual const rpc::Address &Addr() { return Status::NotImplemented(""); } ;
+  virtual const rpc::Address &Addr() const { return rpc::Address(); }
   /// This is called by the Raylet to assign a task to the worker.
   ///
   /// \param[in] request The request message.
@@ -174,7 +174,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         new GrpcClient<CoreWorkerService>(address, port, client_call_manager));
   };
 
-  const rpc::Address &Addr() const {
+  const rpc::Address &Addr() const override {
 	  return addr_;
   }
 
