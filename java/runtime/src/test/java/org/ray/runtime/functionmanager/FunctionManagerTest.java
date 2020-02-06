@@ -118,14 +118,11 @@ public class FunctionManagerTest {
     Assert.assertNotNull(func.getRayRemoteAnnotation());
 
     // Test raise overload exception
-    boolean thrown = false;
-    try {
-      func = functionManager.getFunction(JobId.NIL, new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
+    Assert.expectThrows(RuntimeException.class, () -> {
+      functionManager.getFunction(JobId.NIL,
+          new JavaFunctionDescriptor(FunctionManagerTest.class.getName(),
               "overloadFunction", ""));
-    } catch (RuntimeException ex) {
-      thrown = true;
-    }
-    Assert.assertTrue(thrown);
+    });
   }
 
   @Test
