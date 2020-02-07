@@ -18,7 +18,18 @@ commands:
         default: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
       - name: workload
         help: "Name of the workload to run."
-        choices: ["actor_deaths", "apex", "impala", "many_actor_tasks", "many_drivers", "many_tasks", "node_failures", "pbt", "serve"]
+        choices:
+          [
+            "actor_deaths",
+            "apex",
+            "impala",
+            "many_actor_tasks",
+            "many_drivers",
+            "many_tasks",
+            "node_failures",
+            "pbt",
+            "serve",
+          ]
     config:
       tmux: true
 
@@ -35,8 +46,7 @@ commands:
 # directory or absolute. Generally, this should be files
 # that were created by an active session, such as
 # application checkpoints and logs.
-output_files: [
-  # For example, uncomment this to save the logs from the
-  # last ray job.
-  # "/tmp/ray/session_latest",
-]
+output_files: []
+# For example, uncomment this to save the logs from the
+# last ray job.
+# "/tmp/ray/session_latest",
