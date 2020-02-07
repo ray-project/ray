@@ -554,7 +554,7 @@ class RayTrialExecutor(TrialExecutor):
         self._update_avail_resources()
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
-        """Saves the trial's state to a checkpoint.
+        """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
             trial (Trial): The trial to be saved.

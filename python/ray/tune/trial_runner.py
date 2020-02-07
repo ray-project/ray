@@ -24,6 +24,7 @@ from ray.utils import binary_to_hex, hex_to_binary
 MAX_DEBUG_TRIALS = 20
 
 logger = logging.getLogger(__name__)
+logger.setLevel("DEBUG")
 
 
 def _find_newest_ckpt(ckpt_dir):
@@ -120,6 +121,8 @@ class TrialRunner:
             server_port (int): Port number for launching TuneServer.
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
+            checkpoint_period (int): Trial runner checkpoint periodicity in
+                seconds. Defaults to 10.
             trial_executor (TrialExecutor): Defaults to RayTrialExecutor.
         """
         self._search_alg = search_alg or BasicVariantGenerator()
@@ -140,6 +143,7 @@ class TrialRunner:
             self._server = TuneServer(self, self._server_port)
 
         self._trials = []
+        self._cached_trial_decisions = {}
         self._stop_queue = []
         self._local_checkpoint_dir = local_checkpoint_dir
 
@@ -427,7 +431,11 @@ class TrialRunner:
                     self._process_trial(trial)
 
     def _process_trial(self, trial):
-        """Processes a trial result."""
+        """Processes a trial result.
+
+        Args:
+            trial (Trial): Trial to which result belongs.
+        """
         try:
             result = self.trial_executor.fetch_result(trial)
 
@@ -476,7 +484,7 @@ class TrialRunner:
 
             if trial.is_saving:
                 # Cache decision to execute on after save.
-                trial.post_save_decision = decision
+                self._cached_trial_decisions[str(trial)] = decision
             else:
                 self._execute_action(trial, decision)
         except Exception:
@@ -484,28 +492,39 @@ class TrialRunner:
             self._process_trial_failure(trial, traceback.format_exc())
 
     def _process_trial_save(self, trial):
+        """Processes a trial save.
+
+        Args:
+            trial (Trial): Trial being saved.
+        """
         logger.debug("Trial %s: Processing trial save.", trial)
+        checkpoint_value = None
+
         try:
             checkpoint_value = self.trial_executor.fetch_result(trial)
         except Exception:
             logger.exception("Trial %s: Error processing result.", trial)
             self._process_trial_failure(trial, traceback.format_exc())
-            return
 
-        try:
-            trial.saving_to.value = checkpoint_value
-            trial.on_checkpoint(trial.saving_to)
-            trial.saving_to = None
-            self._execute_action(trial, trial.post_save_decision)
-        except Exception:
-            logger.exception("Trial %s: Error handling checkpoint %s", trial,
-                             checkpoint_value)
+        if checkpoint_value:
+            try:
+                trial.saving_to.value = checkpoint_value
+                trial.on_checkpoint(trial.saving_to)
+                self.trial_executor.try_checkpoint_metadata(trial)
+            except Exception:
+                logger.exception("Trial %s: Error handling checkpoint %s",
+                                 trial, checkpoint_value)
+
+        trial.saving_to = None
+        decision = self._cached_trial_decisions.pop(str(trial), None)
+        if decision and checkpoint_value:
+            self._execute_action(trial, decision)
 
     def _process_trial_restore(self, trial):
         """Processes a trial restore.
 
         Args:
-            trial: Trial being restored.
+            trial (Trial): Trial being restored.
         """
         logger.debug("Trial %s: Processing trial restore.", trial)
         try:
@@ -537,7 +556,12 @@ class TrialRunner:
                     trial, error=True, error_msg=error_msg)
 
     def _execute_action(self, trial, decision):
-        """Executes action based on decision."""
+        """Executes action based on decision.
+
+        Args:
+            trial (Trial): Trial to act on.
+            decision (str): Scheduling decision to undertake.
+        """
         if decision == TrialScheduler.CONTINUE:
             self.trial_executor.continue_training(trial)
         elif decision == TrialScheduler.PAUSE:
@@ -546,7 +570,7 @@ class TrialRunner:
             self.trial_executor.export_trial_if_needed(trial)
             self.trial_executor.stop_trial(trial)
         else:
-            assert False, "Invalid scheduling decision: {}".format(decision)
+            raise ValueError("Invalid decision: {}".format(decision))
 
     def _checkpoint_trial_if_needed(self, trial, force=False):
         """Checkpoints trial based off trial.last_result."""
@@ -554,7 +578,6 @@ class TrialRunner:
             # Save trial runtime if possible.
             if trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.PERSISTENT)
-            self.trial_executor.try_checkpoint_metadata(trial)
 
     def _try_recover(self, trial, error_msg):
         """Tries to recover trial.

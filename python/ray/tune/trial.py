@@ -503,6 +503,9 @@ class Trial:
 
         state["runner"] = None
         state["result_logger"] = None
+        # Avoid waiting for events that will never occur on resume.
+        state["resuming_from"] = None
+        state["saving_to"] = None
         if self.result_logger:
             self.result_logger.flush(sync_down=False)
             state["__logger_started__"] = True
