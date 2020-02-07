@@ -3,6 +3,7 @@ package org.ray.api.test;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -18,7 +19,7 @@ public class StressTest extends BaseTest {
   }
 
   @Test
-  public void testSubmittingTasks() {
+  public void testSubmittingTasks() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
     for (int numIterations : ImmutableList.of(1, 10, 100, 1000)) {
       int numTasks = 1000 / numIterations;
@@ -27,6 +28,9 @@ public class StressTest extends BaseTest {
         for (int j = 0; j < numTasks; j++) {
           resultIds.add(Ray.call(StressTest::echo, 1).getId());
         }
+        TimeUnit.MILLISECONDS.sleep(10000);
+        System.exit(-1);
+
         for (Integer result : Ray.<Integer>get(resultIds)) {
           Assert.assertEquals(result, Integer.valueOf(1));
         }
