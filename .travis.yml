@@ -52,6 +52,7 @@ matrix:
         - TESTSUITE=gcs_service
         - JDK='Oracle JDK 8'
         - RAY_GCS_SERVICE_ENABLED=true
+        - RAY_BACKEND_LOG_LEVEL=debug
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:

@@ -44,6 +44,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
   public void testCallingPythonFunction() {
     RayObject res = Ray.callPy(PYTHON_MODULE, "py_func", "hello".getBytes());
     Assert.assertEquals(res.get(), "Response from Python: hello".getBytes());
+    System.exit(-1);
   }
 
   @Test(groups = {"directCall"})
@@ -53,5 +54,6 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
     Assert.assertEquals(res.get(), "2".getBytes());
+    System.exit(-1);
   }
 }
