@@ -24,7 +24,6 @@ from ray.utils import binary_to_hex, hex_to_binary
 MAX_DEBUG_TRIALS = 20
 
 logger = logging.getLogger(__name__)
-logger.setLevel("DEBUG")
 
 
 def _find_newest_ckpt(ckpt_dir):

@@ -144,11 +144,9 @@ class TrialRunnerTest2(unittest.TestCase):
 
         with patch("ray.cluster_resources") as resource_mock:
             resource_mock.return_value = {"CPU": 1, "GPU": 1}
-            print("0")
             runner.step()  # Start trial
             self.assertEqual(trials[0].status, Trial.RUNNING)
 
-            print("1")
             runner.step()  # Process result, dispatch save
             runner.step()  # Process save
             self.assertEqual(trials[0].status, Trial.RUNNING)

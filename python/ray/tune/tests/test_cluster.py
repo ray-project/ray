@@ -245,7 +245,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     cluster.remove_node(node)
     cluster.wait_for_nodes()
     # TODO(ujvl): Node failure does not propagate until a step after it
-    #  actually should.
+    #  actually should. This is possibly a problem with `Cluster`.
     runner.step()
     runner.step()  # Recovery step
 
@@ -333,7 +333,8 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     cluster.wait_for_nodes()
     runner.step()  # Process result, dispatch save
     runner.step()  # Process save (detect error), requeue trial
-    assert all(t.status == Trial.PENDING for t in trials), runner.debug_string()
+    assert all(
+        t.status == Trial.PENDING for t in trials), runner.debug_string()
 
     with pytest.raises(TuneError):
         runner.step()
