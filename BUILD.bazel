@@ -845,7 +845,7 @@ filegroup(
     srcs = [
         # TODO: Replace our file with the built-in copy once this issue is resolved:
         #   https://github.com/bazelbuild/bazel/issues/8738
-        "src/ray/protobuf/extra_actions_base.proto",
+        "thirdparty/protobuf/extra_actions_base.proto",
         #"@bazel_tools//src/main/protobuf:extra_actions_base.proto",
     ],
 )
