@@ -1,28 +1,160 @@
 # Ray Full pipeline
-# This pipeline is intended to be a replica of travis build
-# in the upstream repo.
+# This pipeline is intended to be a full fledge pipeline that could
+# consolidate the legacy travis and jenkings pipelines in upstream.
 # 
-# 
-# For more details check: https://docs.microsoft.com/azure/devops/pipelines/languages/python
+# The main reason that forced the Ray team to have Jenkings is
+# the travis limitation of two cores per environment.
 
 name: $(BuildDefinitionName)_$(SourceBranchName)_$(Date:yyyyMMdd)$(Rev:.r)
 stages:
   - stage: Build
     jobs:
-      - job: TravisJob_1_2
+      # - job: Ubuntu
+      #   timeoutInMinutes: 120
+      #   cancelTimeoutInMinutes: 5
+      #   strategy:
+      #     matrix:
+      #       python36:
+      #         # poolName: Socrates-E2E-32-core
+      #         imageName: 'ubuntu-16.04'
+      #         python.version: '3.5'
+      #         TRAVIS_OS_NAME: 'linux'
+      #   displayName: Ubuntu
+      #   pool:
+      #     # name: $(poolName)
+      #     vmImage: $(imageName)
+      #   steps:
+      #     # TODO: [CI] uncomment step after adding a condition in 
+      #     # ci/travis/install-dependencies.sh that check first if 
+      #     # node is already installed before install it
+      #     # - task: NodeTool@0
+      #     #   inputs:
+      #     #     versionSpec: '>=7.x'
+      #     #     checkLatest: true
+      #     #   displayName: 'Install latest Node.js'
+      #     # Template containing the installation of steps of python 3.6
+      #     - template: templates/python.yml
+      #     # Template containing the install phase of travis.yml
+      #     - template: templates/install.yml
+      #     # Template containing the script phase of travis.yml
+      #     - template: templates/script.yml
+      # - job: MacOS
+      #   timeoutInMinutes: 120
+      #   cancelTimeoutInMinutes: 5
+      #   strategy:
+      #     matrix:
+      #       python36:
+      #         imageName: 'macos-10.14'
+      #         python.version: '3.5'
+      #         TRAVIS_OS_NAME: 'osx'
+      #   displayName: MacOS
+      #   pool:
+      #     vmImage: $(imageName)
+      #   steps:
+      #     # TODO: [CI] uncomment step after adding a condition in 
+      #     # ci/travis/install-dependencies.sh that check first if 
+      #     # node is already installed before install it
+      #     # - task: NodeTool@0
+      #     #   inputs:
+      #     #     versionSpec: '>=7.x'
+      #     #     checkLatest: true
+      #     #   displayName: 'Install latest Node.js'
+      #     # Template containing the installation of steps of python 3.6
+      #     - template: templates/python.yml
+      #     # Template containing the install phase of travis.yml
+      #     - template: templates/install.yml
+      #     # Template containing the script phase of travis.yml
+      #     - template: templates/script.yml
+      - job: UbuntuWheels
         timeoutInMinutes: 120
         cancelTimeoutInMinutes: 5
         strategy:
           matrix:
-            linux_python35:
+            python36:
+              # poolName: Socrates-E2E-32-core
               imageName: 'ubuntu-16.04'
               python.version: '3.5'
               TRAVIS_OS_NAME: 'linux'
-            mac_python35:
+        displayName: Ubuntu Wheels
+        pool:
+          # name: $(poolName)
+          vmImage: $(imageName)
+        steps:
+          # TODO: [CI] uncomment step after adding a condition in 
+          # ci/travis/install-dependencies.sh that check first if 
+          # node is already installed before install it
+          # - task: NodeTool@0
+          #   inputs:
+          #     versionSpec: '>=7.x'
+          #     checkLatest: true
+          #   displayName: 'Install latest Node.js'
+          # Template containing the installation of steps of python 3.6
+          - template: templates/python.yml
+          # Install phase of the travis MacOS wheels build
+          - bash: |
+              echo Running install phase of the original travis.yml
+
+              # Set some variables to make the system looks like Travis
+              source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+              # Start Original script
+              eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+              if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
+              # Originally with ./ci/suppress_output 
+              ./ci/travis/install-dependencies.sh
+
+              # Mount bazel cache dir to the docker container.
+              # For the linux wheel build, we use a shared cache between all
+              # wheels, but not between different travis runs, because that
+              # caused timeouts in the past. See the "cache: false" line below.
+              export MOUNT_BAZEL_CACHE="-v $HOME/ray-bazel-cache:/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST -e encrypted_1c30b31fe1ee_key=$encrypted_1c30b31fe1ee_key -e encrypted_1c30b31fe1ee_iv=$encrypted_1c30b31fe1ee_iv"
+
+              # This command should be kept in sync with ray/python/README-building-wheels.md,
+              # except the `$MOUNT_BAZEL_CACHE` part.
+
+              # Originally with ./ci/suppress_output 
+              docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+            env:
+              PYTHONWARNINGS: 'ignore'
+              TRAVIS: 'true'
+              MAC_WHEELS: 1
+              RAY_INSTALL_JAVA: 1
+            displayName: 'Run original travis install phase'
+          # Script phase of the travis MacOS wheels build
+          - bash: |
+              ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+              # Set some variables to make the system looks like Travis
+              source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+              # TODO: [CI] remove this after finish debugging
+              set +e
+
+              # Start Original script
+              if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+              ./ci/travis/test-wheels.sh
+              # End Original script
+
+              exit 0
+            env:
+              PYTHONWARNINGS: 'ignore'
+              TRAVIS: 'true'
+              MAC_WHEELS: 1
+              RAY_INSTALL_JAVA: 1
+            displayName: 'Run original script phase'
+          # Upload packages
+          - template: templates/python-upload.yml
+      - job: MacOSWheels
+        timeoutInMinutes: 120
+        cancelTimeoutInMinutes: 5
+        strategy:
+          matrix:
+            python36:
               imageName: 'macos-10.14'
               python.version: '3.5'
               TRAVIS_OS_NAME: 'osx'
-        displayName: Travis Jobs 1 and 2
+        displayName: MacOS Wheels
         pool:
           vmImage: $(imageName)
         steps:
@@ -36,10 +168,66 @@ stages:
           #   displayName: 'Install latest Node.js'
           # Template containing the installation of steps of python 3.6
           - template: templates/python.yml
-          # Template containing the install phase of travis.yml
-          - template: templates/install.yml
-          # Template containing the script phase of travis.yml
-          - template: templates/script.yml
+          # Install phase of the travis MacOS wheels build
+          - bash: |
+              echo Running install phase of the original travis.yml
+
+              # Set some variables to make the system looks like Travis
+              source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+              # Change the default deployment target
+              export MACOSX_DEPLOYMENT_TARGET="10.6"
+              export PYTHON_CONFIGURE_OPTS="--enable-universalsdk=/ --with-universal-archs=intel"
+
+              # Start Original script
+              eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+              if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+              # Originally with ./ci/suppress_output 
+              ./ci/travis/install-dependencies.sh
+              # This command should be kept in sync with ray/python/README-building-wheels.md.
+              # Originally with ./ci/suppress_output 
+              ./python/build-wheel-macos.sh
+            env:
+              PYTHONWARNINGS: 'ignore'
+              TRAVIS: 'true'
+              MAC_WHEELS: 1
+              RAY_INSTALL_JAVA: 1
+            displayName: 'Run original travis install phase'
+          # Script phase of the travis MacOS wheels build
+          - bash: |
+              ls -l "$BUILD_SOURCESDIRECTORY/.whl/"
+
+              echo "MACOSX_DEPLOYMENT_TARGET: $MACOSX_DEPLOYMENT_TARGET"
+              echo "PYTHON_CONFIGURE_OPTS: $PYTHON_CONFIGURE_OPTS"
+
+              # Set some variables to make the system looks like Travis
+              source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+              # Duplicate the wheel packages for the architecture of the agent
+              for f in $BUILD_SOURCESDIRECTORY/.whl/*.whl; do mv "$f" "$(echo "$f" | sed s/macosx_10_15_intel/macosx_10_13_x86_64/)"; done
+
+              # TODO: [CI] remove this after finish debugging
+              set +e
+
+              # Start Original script
+              if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+              ./ci/travis/test-wheels.sh
+              # End Original script
+
+              # Duplicate the wheel packages for the architecture of the agent
+              for f in $BUILD_SOURCESDIRECTORY/.whl/*.whl; do cp "$f" "$(echo "$f" | sed s/macosx_10_13_x86_64/macosx_10_15_intel/)"; done
+
+              exit 0
+            env:
+              PYTHONWARNINGS: 'ignore'
+              TRAVIS: 'true'
+              MAC_WHEELS: 1
+              RAY_INSTALL_JAVA: 1
+            displayName: 'Run original script phase'
+          # Upload packages
+          - template: templates/python-upload.yml
 
 
 trigger:

@@ -1,0 +1,38 @@
+# Ray legacy pipeline
+# This pipeline is intended to be a replica of travis build
+# in the upstream repo.
+# 
+# 
+
+name: $(BuildDefinitionName)_$(SourceBranchName)_$(Date:yyyyMMdd)$(Rev:.r)
+stages:
+  - stage: Build
+    jobs:
+      - job: TravisJob_1_2
+        timeoutInMinutes: 120
+        cancelTimeoutInMinutes: 5
+        strategy:
+          matrix:
+            linux_python35:
+              imageName: 'ubuntu-16.04'
+              python.version: '3.5'
+              TRAVIS_OS_NAME: 'linux'
+            mac_python35:
+              imageName: 'macos-10.14'
+              python.version: '3.5'
+              TRAVIS_OS_NAME: 'osx'
+        displayName: Travis Jobs 1 and 2
+        pool:
+          vmImage: $(imageName)
+        steps:
+          # Template containing the installation of steps of python 3.6
+          - template: templates/python.yml
+          # Template containing the install phase of travis.yml
+          - template: templates/travis-legacy/install.yml
+          # Template containing the script phase of travis.yml
+          - template: templates/travis-legacy/script.yml
+
+
+trigger:
+  - master
+  - ms/*
