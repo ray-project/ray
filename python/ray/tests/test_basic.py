@@ -1232,7 +1232,8 @@ def test_get_with_timeout(ray_start_regular):
 
     obj_id = f.remote(3)
     with pytest.raises(RayTimeoutError):
-        ray.get(obj_id, timeout=2)
+        obj = ray.get(obj_id, timeout=2)
+        print(obj)
     assert ray.get(obj_id, timeout=2) == 3
 
 
