@@ -331,10 +331,10 @@ class FunctionActorManager:
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
-    def export_actor_class(self, Class, actor_method_names):
+    def export_actor_class(self, Class, actor_creation_function_descriptor,
+                           actor_method_names):
         if self._worker.load_code_from_local:
             return
-        function_descriptor = PythonFunctionDescriptor.from_class(Class)
         # `current_job_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
         # 2) And a previous task started a background thread, which didn't
@@ -345,10 +345,10 @@ class FunctionActorManager:
             "please make sure the thread finishes before the task finishes.")
         job_id = self._worker.current_job_id
         key = (b"ActorClass:" + job_id.binary() + b":" +
-               function_descriptor.function_id.binary())
+               actor_creation_function_descriptor.function_id.binary())
         actor_class_info = {
-            "class_name": Class.__name__,
-            "module": Class.__module__,
+            "class_name": actor_creation_function_descriptor.class_name,
+            "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
             "collision_identifier": self.compute_collision_identifier(Class),
