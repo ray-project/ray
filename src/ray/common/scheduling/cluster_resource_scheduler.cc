@@ -34,7 +34,7 @@ bool NodeResources::operator==(const NodeResources &other) {
 std::string NodeResources::DebugString() {
   std::stringstream buffer;
   buffer << "  node predefined resources {";
-  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+  for (size_t i = 0; i < static_cast<size_t>(this->predefined_resources.size()); i++) {
     buffer << "(" << this->predefined_resources[i].total << ":"
            << this->predefined_resources[i].available << ") ";
   }
@@ -754,14 +754,14 @@ bool ClusterResourceScheduler::AllocateResourceInstances(
 
   // Remaining demand is fractional. Find the best fit, if exists.
   if (remaining_demand > 0.) {
-    size_t idx_best_fit = -1;
+    int64_t idx_best_fit = -1;
     double available_best_fit = 1.;
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] >= remaining_demand) {
         if (idx_best_fit == -1 ||
             (available[i] - remaining_demand < available_best_fit)) {
           available_best_fit = available[i] - remaining_demand;
-          idx_best_fit = i;
+          idx_best_fit = static_cast<int64_t>(i);
         }
       }
     }
