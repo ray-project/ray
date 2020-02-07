@@ -432,6 +432,11 @@ void NodeManager::ClientRemoved(const ClientTableDataT &client_data) {
   // Notify the object directory that the client has been removed so that it
   // can remove it from any cached locations.
   object_directory_->HandleClientRemoved(client_id);
+
+  // Flush all uncommitted tasks from the local lineage cache. This is to
+  // guarantee that all tasks get flushed eventually, in case one of the tasks
+  // in our local cache was supposed to be flushed by the node that died.
+  lineage_cache_.FlushAllUncommittedTasks();
 }
 
 void NodeManager::HeartbeatAdded(const ClientID &client_id,

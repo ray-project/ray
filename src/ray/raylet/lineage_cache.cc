@@ -220,6 +220,20 @@ bool LineageCache::CommitTask(const Task &task) {
   }
 }
 
+void LineageCache::FlushAllUncommittedTasks() {
+  size_t num_flushed = 0;
+  for (const auto &entry : lineage_.GetEntries()) {
+    // Flush all tasks that have not yet committed.
+    if (entry.second.GetStatus() == GcsStatus::UNCOMMITTED) {
+      RAY_CHECK(UnsubscribeTask(entry.first));
+      FlushTask(entry.first);
+      num_flushed++;
+    }
+  }
+
+  RAY_LOG(DEBUG) << "Flushed " << num_flushed << " uncommitted tasks";
+}
+
 void LineageCache::MarkTaskAsForwarded(const TaskID &task_id, const ClientID &node_id) {
   RAY_CHECK(!node_id.is_nil());
   auto entry = lineage_.GetEntryMutable(task_id);

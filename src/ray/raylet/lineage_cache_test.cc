@@ -26,8 +26,22 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
              std::shared_ptr<protocol::TaskT> &task_data,
              const gcs::TableInterface<TaskID, protocol::Task>::WriteCallback &done) {
     task_table_[task_id] = task_data;
+    auto callback = done;
+    // If we requested notifications for this task ID, send the notification as
+    // part of the callback.
+    if (subscribed_tasks_.count(task_id) == 1) {
+      callback = [this, done](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
+                              const protocol::TaskT &data) {
+        done(client, task_id, data);
+        // If we're subscribed to the task to be added, also send a
+        // subscription notification.
+        notification_callback_(client, task_id, data);
+      };
+    }
+
     callbacks_.push_back(
-        std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>(done, task_id));
+        std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>(callback, task_id));
+    num_task_adds_++;
     return ray::Status::OK();
   }
 
@@ -78,28 +92,34 @@ class MockGcs : public gcs::TableInterface<TaskID, protocol::Task>,
 
   const int NumRequestedNotifications() const { return num_requested_notifications_; }
 
+  const int NumTaskAdds() const { return num_task_adds_; }
+
  private:
   std::unordered_map<TaskID, std::shared_ptr<protocol::TaskT>> task_table_;
   std::vector<std::pair<gcs::raylet::TaskTable::WriteCallback, TaskID>> callbacks_;
   gcs::raylet::TaskTable::WriteCallback notification_callback_;
   std::unordered_set<TaskID> subscribed_tasks_;
   int num_requested_notifications_ = 0;
+  int num_task_adds_ = 0;
 };
 
 class LineageCacheTest : public ::testing::Test {
  public:
   LineageCacheTest()
       : max_lineage_size_(10),
+        num_notifications_(0),
         mock_gcs_(),
         lineage_cache_(ClientID::from_random(), mock_gcs_, mock_gcs_, max_lineage_size_) {
     mock_gcs_.Subscribe([this](ray::gcs::AsyncGcsClient *client, const TaskID &task_id,
                                const ray::protocol::TaskT &data) {
       lineage_cache_.HandleEntryCommitted(task_id);
+      num_notifications_++;
     });
   }
 
  protected:
   uint64_t max_lineage_size_;
+  uint64_t num_notifications_;
   MockGcs mock_gcs_;
   LineageCache lineage_cache_;
 };
@@ -596,6 +616,39 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   // now evicted.
   ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 0);
   ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
+}
+
+TEST_F(LineageCacheTest, TestFlushAllUncommittedTasks) {
+  // Insert a chain of tasks.
+  std::vector<Task> tasks;
+  auto return_values =
+      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+  std::vector<TaskID> task_ids;
+  for (const auto &task : tasks) {
+    task_ids.push_back(task.GetTaskSpecification().TaskId());
+  }
+  // Check that we subscribed to each of the uncommitted tasks.
+  ASSERT_EQ(mock_gcs_.NumRequestedNotifications(), task_ids.size());
+
+  // Flush all uncommitted tasks and make sure we add all tasks to
+  // the task table.
+  lineage_cache_.FlushAllUncommittedTasks();
+  ASSERT_EQ(mock_gcs_.NumTaskAdds(), tasks.size());
+  // Flush again and make sure there are no new tasks added to the
+  // task table.
+  lineage_cache_.FlushAllUncommittedTasks();
+  ASSERT_EQ(mock_gcs_.NumTaskAdds(), tasks.size());
+
+  // Flush all GCS notifications.
+  mock_gcs_.Flush();
+  // Make sure that we unsubscribed to the uncommitted tasks before
+  // we flushed them.
+  ASSERT_EQ(num_notifications_, 0);
+
+  // Flush again and make sure there are no new tasks added to the
+  // task table.
+  lineage_cache_.FlushAllUncommittedTasks();
+  ASSERT_EQ(mock_gcs_.NumTaskAdds(), tasks.size());
 }
 
 }  // namespace raylet
