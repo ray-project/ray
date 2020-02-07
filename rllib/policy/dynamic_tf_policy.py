@@ -109,6 +109,9 @@ class DynamicTFPolicy(TFPolicy):
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
 
+        deterministic_actions = tf.placeholder_with_default(
+            False, (), name="deterministic_actions")
+
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
             SampleBatch.PREV_ACTIONS: prev_actions,
@@ -161,11 +164,14 @@ class DynamicTFPolicy(TFPolicy):
         if action_sampler_fn:
             action_sampler, action_logp = action_sampler_fn(
                 self, self.model, self._input_dict, obs_space, action_space,
-                config)
-        # Default action sampler.
+                deterministic_actions, config)
+        # Create a default action sampler.
         else:
             action_dist = self.dist_class(model_out, self.model)
-            action_sampler = action_dist.sample()
+            action_sampler = tf.cond(
+                deterministic_actions,
+                true_fn=action_dist.sample_deterministic(),
+                false_fn=action_dist.sample())
             action_logp = action_dist.sampled_action_logp()
 
         # Phase 1 init
@@ -182,6 +188,7 @@ class DynamicTFPolicy(TFPolicy):
             sess,
             obs_input=obs,
             action_sampler=action_sampler,
+            deterministic_actions=deterministic_actions,
             action_logp=action_logp,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],

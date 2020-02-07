@@ -294,12 +294,17 @@ def build_eager_tf_policy(name,
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
+                            deterministic=None,
                             explore=True,
                             timestep=None,
                             **kwargs):
+
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
             self._state_in = state_batches
+
+            deterministic = deterministic if deterministic is not None else \
+                self.config["model"]["deterministic_action_sampling"]
 
             if tf.executing_eagerly():
                 n = len(obs_batch)
@@ -325,12 +330,15 @@ def build_eager_tf_policy(name,
 
             if self.dist_class:
                 action_dist = self.dist_class(model_out, self.model)
-                action = action_dist.sample()
+                if deterministic:
+                    action = action_dist.deterministic_sample()
+                else:
+                    action = action_dist.sample()
                 logp = action_dist.sampled_action_logp()
             else:
                 action, logp = action_sampler_fn(
                     self, self.model, input_dict, self.observation_space,
-                    self.action_space, self.config)
+                    self.action_space, deterministic, self.config)
 
             # Override `action` with exploration action.
             if explore and self.exploration:

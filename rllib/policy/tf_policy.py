@@ -66,7 +66,8 @@ class TFPolicy(Policy):
                  seq_lens=None,
                  max_seq_len=20,
                  batch_divisibility_req=1,
-                 update_ops=None):
+                 update_ops=None,
+                 deterministic_actions=None):
         """Initialize the policy.
 
         Arguments:
@@ -102,6 +103,9 @@ class TFPolicy(Policy):
             update_ops (list): override the batchnorm update ops to run when
                 applying gradients. Otherwise we run all update ops found in
                 the current variable scope.
+            deterministic_actions (Tensor): Placeholder for deciding, whether
+                to draw an action from the Model's distribution
+                deterministically or not.
         """
         super().__init__(observation_space, action_space, config)
         self.model = model
@@ -122,6 +126,9 @@ class TFPolicy(Policy):
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
+        self._deterministic_actions = deterministic_actions if \
+            deterministic_actions is not None else tf.placeholder_with_default(
+            False, (), name="deterministic_actions")
         self._stats_fetches = {}
         self._loss_input_dict = None
         self._timestep = tf.placeholder(tf.int32, (), name="timestep")
@@ -241,6 +248,7 @@ class TFPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        deterministic=None,
                         explore=True,
                         timestep=None,
                         **kwargs):
@@ -251,6 +259,7 @@ class TFPolicy(Policy):
             state_batches,
             prev_action_batch,
             prev_reward_batch,
+            deterministic=deterministic,
             explore=explore,
             timestep=timestep
             if timestep is not None else self.global_timestep)
@@ -464,8 +473,12 @@ class TFPolicy(Policy):
                                prev_action_batch=None,
                                prev_reward_batch=None,
                                episodes=None,
+                               deterministic=None,
                                explore=True,
                                timestep=None):
+
+        deterministic = deterministic if deterministic is not None else \
+            self.config["model"]["deterministic_action_sampling"]
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
@@ -483,6 +496,7 @@ class TFPolicy(Policy):
            prev_reward_batch is not None:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
+        builder.add_feed_dict({self._deterministic_actions: deterministic})
         builder.add_feed_dict({self._is_exploring: explore})
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})

@@ -86,6 +86,7 @@ class Policy(metaclass=ABCMeta):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        deterministic=None,
                         explore=True,
                         timestep=None,
                         **kwargs):
@@ -103,6 +104,9 @@ class Policy(metaclass=ABCMeta):
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
+            deterministic (Optional[bool]): Whether to sample the action from
+                its distribution deterministically or not. If None, should use
+                the policy Model's `deterministic_action_sampling` config.
             explore (bool): Whether we should use exploration
                 (e.g. when training) or not (for inference/evaluation).
             timestep (int): The current (sampling) time step.
@@ -127,6 +131,7 @@ class Policy(metaclass=ABCMeta):
                               info=None,
                               episode=None,
                               clip_actions=False,
+                              deterministic=None,
                               explore=True,
                               timestep=None,
                               **kwargs):
@@ -142,6 +147,9 @@ class Policy(metaclass=ABCMeta):
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
             clip_actions (bool): should the action be clipped
+            deterministic (Optional[bool]): Whether to sample the action from
+                its distribution deterministically or not. If None, uses
+                the policy Model's `deterministic_action_sampling` config.
             explore (bool): Whether we should use exploration (i.e. when
                 training) or not (e.g. for inference/evaluation).
             timestep (int): The current (sampling) time step.
@@ -175,6 +183,7 @@ class Policy(metaclass=ABCMeta):
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
             episodes=episodes,
+            deterministic=deterministic,
             explore=explore,
             timestep=timestep)
 

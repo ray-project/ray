@@ -1,18 +1,17 @@
-import unittest
-import traceback
-
 import gym
 from gym.spaces import Box, Discrete, Tuple, Dict, MultiDiscrete
 from gym.envs.registration import EnvSpec
 import numpy as np
 import sys
+import unittest
+import traceback
 
 import ray
 from ray.rllib.agents.registry import get_agent_class
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
-from ray.rllib.tests.test_multi_agent_env import (MultiCartpole,
-                                                  MultiMountainCar)
+from ray.rllib.tests.test_multi_agent_env import MultiCartpole, \
+    MultiMountainCar
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 
@@ -41,6 +40,7 @@ OBSERVATION_SPACES_TO_TEST = {
     "dict": Dict({
         "task": Discrete(10),
         "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+        "nested_crap": Dict({"a": Discrete(2), "b": Discrete(2)})
     }),
 }
 
@@ -191,6 +191,9 @@ class ModelSupportedSpaces(unittest.TestCase):
             },
             stats,
             check_bounds=True)
+
+        # TODO(sven): SAC missing here.
+
         num_unexpected_errors = 0
         for (alg, a_name, o_name), stat in sorted(stats.items()):
             if stat not in ["ok", "unsupported", "skip"]:

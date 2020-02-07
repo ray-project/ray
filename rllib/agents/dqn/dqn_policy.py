@@ -203,7 +203,7 @@ def build_q_model(policy, obs_space, action_space, config):
 
 
 def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-                                 action_space, config):
+                                 action_space, deterministic, config):
     # Action Q network.
     q_values, q_logits, q_dist = _compute_q_values(
         policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
@@ -218,17 +218,23 @@ def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
             [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
         policy.action_probs = tf.nn.softmax(policy.q_values)
 
-    # TODO(sven): Move soft_q logic to different Exploration child-component.
-    action_log_prob = None
-    if config["soft_q"]:
-        action_dist = Categorical(q_values / config["softmax_temp"])
-        policy.output_actions = action_dist.sample()
-        action_log_prob = action_dist.sampled_action_logp()
-        policy.action_prob = tf.exp(action_log_prob)
-    else:
-        policy.output_actions = tf.argmax(q_values, axis=1)
-        policy.action_prob = None
-    return policy.output_actions, action_log_prob
+    policy.action_prob = None
+
+    # Soft-Q.
+    def soft_q():
+        action_dist = Categorical(q_values / config["softmax_temperature"])
+        a = action_dist.sample()
+        return a, tf.exp(action_dist.sampled_action_logp())
+
+    # Normal (argmax) Q policy (p=1.0).
+    def normal_q():
+        actions = tf.argmax(q_values, axis=1)
+        return actions, tf.ones_like(actions, dtype=tf.float32)
+
+    policy.output_actions, policy.action_prob = tf.cond(
+        deterministic, true_fn=normal_q, false_fn=soft_q)
+
+    return policy.output_actions, policy.action_prob
 
 
 def _build_parameter_noise(policy, pnet_params):

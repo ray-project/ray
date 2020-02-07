@@ -702,6 +702,7 @@ class Trainer(Trainable):
                        info=None,
                        policy_id=DEFAULT_POLICY_ID,
                        full_fetch=False,
+                       deterministic=None,
                        explore=True):
         """Computes an action for the specified policy on the local Worker.
 
@@ -721,6 +722,10 @@ class Trainer(Trainable):
             policy_id (str): Policy to query (only applies to multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
+            deterministic (Optional[bool]): Whether the action should be
+                sampled deterministically from the policy Model's distribution.
+                If None, use value from Model config's
+                `deterministic_action_sampling`.
             explore (bool): Whether to pick an action using exploration or not.
 
         Returns:
@@ -746,6 +751,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
+            deterministic=deterministic,
             explore=explore,
             timestep=timestep)
 

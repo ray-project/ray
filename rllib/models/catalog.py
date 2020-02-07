@@ -77,8 +77,14 @@ MODEL_DEFAULTS = {
     # === Options for custom models ===
     # Name of a custom model to use
     "custom_model": None,
-    # Name of a custom action distribution to use
+    # Name of a custom action distribution to use.
+    # "NoDist" will result in no added distribution.
     "custom_action_dist": None,
+    # Whether to draw actions stochastically (default) or deterministically
+    # from the parameterized distribution. If distribution is "NoDist", the raw
+    # Model output will be used.
+    "deterministic_action_sampling": False,
+
     # Extra options to pass to the custom classes
     "custom_options": {},
     # Custom preprocessors are deprecated. Please use a wrapper class around
@@ -173,7 +179,7 @@ class ModelCatalog:
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
-                    "Simplex action spaces not supported for torch.")
+                    "Simplex action spaces not supported for Pytorch.")
             dist = Dirichlet
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             if framework == "torch":

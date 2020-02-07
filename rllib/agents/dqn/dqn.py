@@ -48,6 +48,13 @@ DEFAULT_CONFIG = with_common_config({
         "final_epsilon": 0.02,
         "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
     },
+
+    # Use softmax for sampling actions. Required for off policy estimation.
+    "soft_q": False,
+    # Softmax temperature. Q values are divided by this value prior to softmax.
+    # Softmax approaches argmax as the temperature drops to zero.
+    "softmax_temperature": 1.0,
+
     # TODO(sven): Make Exploration class for parameter noise.
     # If True parameter space noise will be used for exploration
     # See https://blog.openai.com/better-exploration-with-parameter-noise/
@@ -58,11 +65,6 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 1000,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 500,
-    # Use softmax for sampling actions. Required for off policy estimation.
-    "soft_q": False,
-    # Softmax temperature. Q values are divided by this value prior to softmax.
-    # Softmax approaches argmax as the temperature drops to zero.
-    "softmax_temp": 1.0,
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
@@ -119,6 +121,7 @@ DEFAULT_CONFIG = with_common_config({
     "exploration_fraction": -1,
     "beta_annealing_fraction": -1,
     "per_worker_exploration": -1,
+    "softmax_temp": -1,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -154,11 +157,6 @@ def validate_config_and_setup_param_noise(config):
     # PyTorch check.
     if config["use_pytorch"]:
         raise ValueError("DQN does not support PyTorch yet! Use tf instead.")
-
-    # Update effective batch size to include n-step
-    adjusted_batch_size = max(config["sample_batch_size"],
-                              config.get("n_step", 1))
-    config["sample_batch_size"] = adjusted_batch_size
 
     # TODO(sven): Remove at some point.
     #  Backward compatibility of epsilon-exploration config AND beta-annealing
@@ -199,6 +197,20 @@ def validate_config_and_setup_param_noise(config):
                             "exploration.type=PerWorkerEpsilonGreedy")
         if isinstance(config["exploration"], dict):
             config["exploration"]["type"] = PerWorkerEpsilonGreedy
+    if "softmax_temp" in config and config["softmax_temp"] != -1:
+        deprecation_warning("softmax_temp", "softmax_temperature")
+        config["softmax_temperature"] = config["softmax_temp"]
+
+    # Update effective batch size to include n-step
+    adjusted_batch_size = max(config["sample_batch_size"],
+                              config.get("n_step", 1))
+    config["sample_batch_size"] = adjusted_batch_size
+
+    # Setup soft-Q learning via Model/distribution config.
+    if config["soft_q"]:
+        config["model"]["deterministic_action_sampling"] = False
+    else:
+        config["model"]["deterministic_action_sampling"] = True
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):
