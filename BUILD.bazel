@@ -852,20 +852,19 @@ filegroup(
 
 action_listener(
     name = "iwyu_cpp",
-    mnemonics = ["CppCompile"],
     extra_actions = [":iwyu_action"],
+    mnemonics = ["CppCompile"],
 )
 
 extra_action(
     name = "iwyu_action",
+    cmd = "$(location :iwyu_sh) $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE)",
     tools = [
-        ":iwyu_sh",
         ":extra_actions_base_proto",
+        ":iwyu_sh",
         "@com_google_protobuf//:protoc",
     ],
-    cmd = "$(location :iwyu_sh) $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE)",
 )
-
 
 cc_library(
     name = "sha256",
