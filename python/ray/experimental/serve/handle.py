@@ -27,14 +27,17 @@ class RayServeHandle:
        # raises RayTaskError Exception
     """
 
-    def __init__(self, router_handle, endpoint_name, relative_slo_ms=None,
+    def __init__(self,
+                 router_handle,
+                 endpoint_name,
+                 relative_slo_ms=None,
                  absolute_slo_ms=None):
         self.router_handle = router_handle
         self.endpoint_name = endpoint_name
-        assert (relative_slo_ms is None or
-                absolute_slo_ms is None), ("Can't specify both "
-                                           "relative and absolute "
-                                           "slo's together!")
+        assert (relative_slo_ms is None
+                or absolute_slo_ms is None), ("Can't specify both "
+                                              "relative and absolute "
+                                              "slo's together!")
         self.relative_slo_ms = self._check_slo_ms(relative_slo_ms)
         self.absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
 
@@ -58,16 +61,16 @@ class RayServeHandle:
 
         # create RequestMetadata instance
         request_in_object = RequestMetadata(
-            self.endpoint_name, TaskContext.Python,
-            self.relative_slo_ms, self.absolute_slo_ms)
+            self.endpoint_name, TaskContext.Python, self.relative_slo_ms,
+            self.absolute_slo_ms)
         return self.router_handle.enqueue_request.remote(
             request_in_object, **kwargs)
 
     def options(self, relative_slo_ms=None, absolute_slo_ms=None):
-        assert (relative_slo_ms is None or
-                absolute_slo_ms is None), ("Can't specify both "
-                                           "relative and absolute "
-                                           "slo's together!")
+        assert (relative_slo_ms is None
+                or absolute_slo_ms is None), ("Can't specify both "
+                                              "relative and absolute "
+                                              "slo's together!")
         return RayServeHandle(self.router_handle, self.endpoint_name,
                               relative_slo_ms, absolute_slo_ms)
 

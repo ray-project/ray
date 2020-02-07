@@ -165,8 +165,10 @@ class HTTPProxy:
         # TODO(alind):  remove list enclosing after issue is fixed
         args = (scope, [http_body_bytes])
         request_in_object = RequestMetadata(
-            endpoint_name, TaskContext.Web,
-            relative_slo_ms=relative_slo_ms, absolute_slo_ms=absolute_slo_ms)
+            endpoint_name,
+            TaskContext.Web,
+            relative_slo_ms=relative_slo_ms,
+            absolute_slo_ms=absolute_slo_ms)
 
         actual_result = await (self.serve_global_state.init_or_get_router()
                                .enqueue_request.remote(request_in_object,

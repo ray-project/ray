@@ -37,12 +37,14 @@ slo_ms = 10.0
 abs_slo_ms = 11.9
 print("> [HTTP] Pinging http://127.0.0.1:8000/"
       "echo?relative_slo_ms={}".format(slo_ms))
-print(requests.get("http://127.0.0.1:8000/"
-                   "echo?relative_slo_ms={}".format(slo_ms)).json())
+print(
+    requests.get("http://127.0.0.1:8000/"
+                 "echo?relative_slo_ms={}".format(slo_ms)).json())
 print("> [HTTP] Pinging http://127.0.0.1:8000/"
       "echo?absolute_slo_ms={}".format(abs_slo_ms))
-print(requests.get("http://127.0.0.1:8000/"
-                   "echo?absolute_slo_ms={}".format(abs_slo_ms)).json())
+print(
+    requests.get("http://127.0.0.1:8000/"
+                 "echo?absolute_slo_ms={}".format(abs_slo_ms)).json())
 
 # get the handle of the endpoint
 handle = serve.get_handle("my_endpoint")
