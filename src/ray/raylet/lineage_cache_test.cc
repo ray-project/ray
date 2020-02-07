@@ -122,15 +122,22 @@ static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
   return task;
 }
 
+/// Helper method to create a Lineage object with a single task.
+Lineage CreateSingletonLineage(const Task &task) {
+  Lineage singleton_lineage;
+  singleton_lineage.SetEntry(task, GcsStatus::UNCOMMITTED);
+  return singleton_lineage;
+}
+
 std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
                                       std::vector<Task> &inserted_tasks, int chain_size,
                                       const std::vector<ObjectID> &initial_arguments,
                                       int64_t num_returns) {
-  Lineage empty_lineage;
   std::vector<ObjectID> arguments = initial_arguments;
   for (int i = 0; i < chain_size; i++) {
     auto task = ExampleTask(arguments, num_returns);
-    RAY_CHECK(lineage_cache.AddWaitingTask(task, empty_lineage));
+    Lineage lineage = CreateSingletonLineage(task);
+    lineage_cache.AddUncommittedLineage(task.GetTaskSpecification().TaskId(), lineage);
     inserted_tasks.push_back(task);
     arguments.clear();
     for (int j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
@@ -190,6 +197,34 @@ TEST_F(LineageCacheTest, TestGetUncommittedLineageOrDie) {
   }
 }
 
+TEST_F(LineageCacheTest, TestDuplicateUncommittedLineage) {
+  // Insert a chain of tasks.
+  std::vector<Task> tasks;
+  auto return_values =
+      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
+  std::vector<TaskID> task_ids;
+  for (const auto &task : tasks) {
+    task_ids.push_back(task.GetTaskSpecification().TaskId());
+  }
+  // Check that we subscribed to each of the uncommitted tasks.
+  ASSERT_EQ(mock_gcs_.NumRequestedNotifications(), task_ids.size());
+
+  // Check that if we add the same tasks as UNCOMMITTED again, we do not issue
+  // duplicate subscribe requests.
+  Lineage duplicate_lineage;
+  for (const auto &task : tasks) {
+    duplicate_lineage.SetEntry(task, GcsStatus::UNCOMMITTED);
+  }
+  lineage_cache_.AddUncommittedLineage(task_ids.back(), duplicate_lineage);
+  ASSERT_EQ(mock_gcs_.NumRequestedNotifications(), task_ids.size());
+
+  // Check that if we commit one of the tasks, we still do not issue any
+  // duplicate subscribe requests.
+  lineage_cache_.CommitTask(tasks.front());
+  lineage_cache_.AddUncommittedLineage(task_ids.back(), duplicate_lineage);
+  ASSERT_EQ(mock_gcs_.NumRequestedNotifications(), task_ids.size());
+}
+
 TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
   // Insert chain of tasks.
   std::vector<Task> tasks;
@@ -222,7 +257,7 @@ TEST_F(LineageCacheTest, TestMarkTaskAsForwarded) {
   ASSERT_EQ(1, uncommitted_lineage_forwarded.GetEntries().size());
 }
 
-TEST_F(LineageCacheTest, TestWritebackNoneReady) {
+TEST_F(LineageCacheTest, TestWritebackReady) {
   // Insert a chain of dependent tasks.
   size_t num_tasks_flushed = 0;
   std::vector<Task> tasks;
@@ -231,16 +266,9 @@ TEST_F(LineageCacheTest, TestWritebackNoneReady) {
   // Check that when no tasks have been marked as ready, we do not flush any
   // entries.
   ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
-}
-
-TEST_F(LineageCacheTest, TestWritebackReady) {
-  // Insert a chain of dependent tasks.
-  size_t num_tasks_flushed = 0;
-  std::vector<Task> tasks;
-  InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
 
   // Check that after marking the first task as ready, we flush only that task.
-  ASSERT_TRUE(lineage_cache_.AddReadyTask(tasks.front()));
+  ASSERT_TRUE(lineage_cache_.CommitTask(tasks.front()));
   num_tasks_flushed++;
   ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
 }
@@ -253,7 +281,7 @@ TEST_F(LineageCacheTest, TestWritebackOrder) {
 
   // Mark all tasks as ready. All tasks should be flushed.
   for (const auto &task : tasks) {
-    ASSERT_TRUE(lineage_cache_.AddReadyTask(task));
+    ASSERT_TRUE(lineage_cache_.CommitTask(task));
   }
 
   ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
@@ -272,12 +300,13 @@ TEST_F(LineageCacheTest, TestEvictChain) {
 
   Lineage uncommitted_lineage;
   for (const auto &task : tasks) {
-    uncommitted_lineage.SetEntry(task, GcsStatus::UNCOMMITTED_REMOTE);
+    uncommitted_lineage.SetEntry(task, GcsStatus::UNCOMMITTED);
   }
   // Mark the last task as ready to flush.
-  ASSERT_TRUE(lineage_cache_.AddWaitingTask(tasks.back(), uncommitted_lineage));
+  lineage_cache_.AddUncommittedLineage(tasks.back().GetTaskSpecification().TaskId(),
+                                       uncommitted_lineage);
   ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), tasks.size());
-  ASSERT_TRUE(lineage_cache_.AddReadyTask(tasks.back()));
+  ASSERT_TRUE(lineage_cache_.CommitTask(tasks.back()));
   num_tasks_flushed++;
   ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
   // Flush acknowledgements. The lineage cache should receive the commit for
@@ -320,17 +349,20 @@ TEST_F(LineageCacheTest, TestEvictManyParents) {
     auto task = ExampleTask({}, 1);
     parent_tasks.push_back(task);
     arguments.push_back(task.GetTaskSpecification().ReturnId(0));
-    ASSERT_TRUE(lineage_cache_.AddWaitingTask(task, Lineage()));
+    auto lineage = CreateSingletonLineage(task);
+    lineage_cache_.AddUncommittedLineage(task.GetTaskSpecification().TaskId(), lineage);
   }
   // Create a child task that is dependent on all of the previous tasks.
   auto child_task = ExampleTask(arguments, 1);
-  ASSERT_TRUE(lineage_cache_.AddWaitingTask(child_task, Lineage()));
+  auto lineage = CreateSingletonLineage(child_task);
+  lineage_cache_.AddUncommittedLineage(child_task.GetTaskSpecification().TaskId(),
+                                       lineage);
 
   // Flush the child task. Make sure that it remains in the cache, since none
   // of its parents have been committed yet, and that the uncommitted lineage
   // still includes all of the parent tasks.
   size_t total_tasks = parent_tasks.size() + 1;
-  lineage_cache_.AddReadyTask(child_task);
+  lineage_cache_.CommitTask(child_task);
   mock_gcs_.Flush();
   ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), total_tasks);
   ASSERT_EQ(lineage_cache_
@@ -342,7 +374,7 @@ TEST_F(LineageCacheTest, TestEvictManyParents) {
 
   // Flush each parent task and check for eviction safety.
   for (const auto &parent_task : parent_tasks) {
-    lineage_cache_.AddReadyTask(parent_task);
+    lineage_cache_.CommitTask(parent_task);
     mock_gcs_.Flush();
     total_tasks--;
     if (total_tasks > 1) {
@@ -440,12 +472,6 @@ TEST_F(LineageCacheTest, TestEviction) {
   std::vector<Task> tasks;
   InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
 
-  // Simulate forwarding the chain of tasks to a remote node.
-  for (const auto &task : tasks) {
-    auto task_id = task.GetTaskSpecification().TaskId();
-    ASSERT_TRUE(lineage_cache_.RemoveWaitingTask(task_id));
-  }
-
   // Check that the last task in the chain still has all tasks in its
   // uncommitted lineage.
   const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
@@ -500,12 +526,6 @@ TEST_F(LineageCacheTest, TestOutOfOrderEviction) {
   std::vector<Task> tasks;
   InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
 
-  // Simulate forwarding the chain of tasks to a remote node.
-  for (const auto &task : tasks) {
-    auto task_id = task.GetTaskSpecification().TaskId();
-    ASSERT_TRUE(lineage_cache_.RemoveWaitingTask(task_id));
-  }
-
   // Check that the last task in the chain still has all tasks in its
   // uncommitted lineage.
   const auto last_task_id = tasks.back().GetTaskSpecification().TaskId();
@@ -545,19 +565,15 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   std::vector<Task> tasks;
   InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
 
-  // Simulate forwarding the chain of tasks to a remote node.
-  for (const auto &task : tasks) {
-    auto task_id = task.GetTaskSpecification().TaskId();
-    ASSERT_TRUE(lineage_cache_.RemoveWaitingTask(task_id));
-  }
-
   // Add more tasks to the lineage cache that will remain local. Each of these
   // tasks is dependent one of the tasks that was forwarded above.
   for (const auto &task : tasks) {
     auto return_id = task.GetTaskSpecification().ReturnId(0);
     auto dependent_task = ExampleTask({return_id}, 1);
-    ASSERT_TRUE(lineage_cache_.AddWaitingTask(dependent_task, Lineage()));
-    ASSERT_TRUE(lineage_cache_.AddReadyTask(dependent_task));
+    auto lineage = CreateSingletonLineage(dependent_task);
+    lineage_cache_.AddUncommittedLineage(dependent_task.GetTaskSpecification().TaskId(),
+                                         lineage);
+    ASSERT_TRUE(lineage_cache_.CommitTask(dependent_task));
     // Once the forwarded tasks are evicted from the lineage cache, we expect
     // each of these dependent tasks to be flushed, since all of their
     // dependencies have been committed.

@@ -564,11 +564,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // known.
     auto created_actor_methods = local_queues_.RemoveTasks(created_actor_method_ids);
     for (const auto &method : created_actor_methods) {
-      if (!lineage_cache_.RemoveWaitingTask(method.GetTaskSpecification().TaskId())) {
-        RAY_LOG(WARNING) << "Task " << method.GetTaskSpecification().TaskId()
-                         << " already removed from the lineage cache. This is most "
-                            "likely due to reconstruction.";
-      }
       // Maintain the invariant that if a task is in the
       // MethodsWaitingForActorCreation queue, then it is subscribed to its
       // respective actor creation task. Since the actor location is now known,
@@ -1275,10 +1270,6 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
           current_time_ms()));
     }
   }
-  // A task failing is equivalent to assigning and finishing the task, so clean
-  // up any leftover state as for any task dispatched and removed from the
-  // local queue.
-  lineage_cache_.AddReadyTask(task);
   task_dependency_manager_.TaskCanceled(spec.TaskId());
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
@@ -1347,10 +1338,14 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 
   // Add the task and its uncommitted lineage to the lineage cache.
-  if (!lineage_cache_.AddWaitingTask(task, uncommitted_lineage)) {
-    RAY_LOG(WARNING)
-        << "Task " << task_id
-        << " already in lineage cache. This is most likely due to reconstruction.";
+  if (forwarded) {
+    lineage_cache_.AddUncommittedLineage(task_id, uncommitted_lineage);
+  } else {
+    if (!lineage_cache_.CommitTask(task)) {
+      RAY_LOG(WARNING)
+          << "Task " << task_id
+          << " already committed to the GCS. This is most likely due to reconstruction.";
+    }
   }
 
   if (spec.IsActorTask()) {
@@ -1680,32 +1675,14 @@ bool NodeManager::AssignTask(const Task &task) {
               actor_entry->second.AddHandle(new_handle_id, execution_dependency);
             }
 
-            // If the task was an actor task, then record this execution to
-            // guarantee consistency in the case of reconstruction.
-            auto execution_dependency = actor_entry->second.GetExecutionDependency();
-            // The execution dependency is initialized to the actor creation task's
-            // return value, and is subsequently updated to the assigned tasks'
-            // return values, so it should never be nil.
-            RAY_CHECK(!execution_dependency.is_nil());
-            // Update the task's execution dependencies to reflect the actual
-            // execution order, to support deterministic reconstruction.
-            // NOTE(swang): The update of an actor task's execution dependencies is
-            // performed asynchronously. This means that if this node manager dies,
-            // we may lose updates that are in flight to the task table. We only
-            // guarantee deterministic reconstruction ordering for tasks whose
-            // updates are reflected in the task table.
-            // (SetExecutionDependencies takes a non-const so copy task in a
-            //  on-const variable.)
-            assigned_task.SetExecutionDependencies({execution_dependency});
+            // TODO(swang): For actors with multiple actor handles, to
+            // guarantee that tasks are replayed in the same order after a
+            // failure, we must update the task's execution dependency to be
+            // the actor's current execution dependency.
           } else {
             RAY_CHECK(spec.NewActorHandles().empty());
           }
 
-          // We started running the task, so the task is ready to write to GCS.
-          if (!lineage_cache_.AddReadyTask(assigned_task)) {
-            RAY_LOG(WARNING) << "Task " << spec.TaskId() << " already in lineage cache."
-                             << " This is most likely due to reconstruction.";
-          }
           // Mark the task as running.
           // (See design_docs/task_states.rst for the state transition diagram.)
           local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
@@ -2031,9 +2008,9 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
   // Attempt to forward the task.
   ForwardTask(task, node_manager_id, [this, task, node_manager_id](ray::Status error) {
     const TaskID task_id = task.GetTaskSpecification().TaskId();
-
     RAY_LOG(INFO) << "Failed to forward task " << task_id << " to node manager "
                   << node_manager_id;
+
     // Mark the failed task as pending to let other raylets know that we still
     // have the task. TaskDependencyManager::TaskPending() is assumed to be
     // idempotent.
@@ -2052,17 +2029,22 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
           RayConfig::instance().node_manager_forward_task_retry_timeout_milliseconds());
       retry_timer->expires_from_now(retry_duration);
       retry_timer->async_wait(
-          [this, task, task_id, retry_timer](const boost::system::error_code &error) {
+          [this, task_id, retry_timer](const boost::system::error_code &error) {
             // Timer killing will receive the boost::asio::error::operation_aborted,
             // we only handle the timeout event.
             RAY_CHECK(!error);
             RAY_LOG(INFO) << "Resubmitting task " << task_id
                           << " because ForwardTask failed.";
+            // Remove the RESUBMITTED task from the SWAP queue.
+            TaskState state;
+            const auto task = local_queues_.RemoveTask(task_id, &state);
+            RAY_CHECK(state == TaskState::SWAP);
+            // Submit the task again.
             SubmitTask(task, Lineage());
           });
-      // Remove the task from the lineage cache. The task will get added back
-      // once it is resubmitted.
-      lineage_cache_.RemoveWaitingTask(task_id);
+      // Temporarily move the RESUBMITTED task to the SWAP queue while the
+      // timer is active.
+      local_queues_.QueueTasks({task}, TaskState::SWAP);
     } else {
       // The task is not for an actor and may therefore be placed on another
       // node immediately. Send it to the scheduling policy to be placed again.
@@ -2114,20 +2096,12 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   auto &server_conn = it->second;
   server_conn->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
-      fbb.GetBufferPointer(),
-      [this, on_error, task_id, node_id, spec](ray::Status status) {
+      fbb.GetBufferPointer(), [this, on_error, task_id, node_id](ray::Status status) {
         if (status.ok()) {
-          // If we were able to forward the task, remove the forwarded task from the
-          // lineage cache since the receiving node is now responsible for writing
-          // the task to the GCS.
-          if (!lineage_cache_.RemoveWaitingTask(task_id)) {
-            RAY_LOG(WARNING) << "Task " << task_id << " already removed from the lineage"
-                             << " cache. This is most likely due to reconstruction.";
-          } else {
-            // Mark as forwarded so that the task and its lineage is not
-            // re-forwarded in the future to the receiving node.
-            lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
-          }
+          const auto &spec = task.GetTaskSpecification();
+          // Mark as forwarded so that the task and its lineage are not
+          // re-forwarded in the future to the receiving node.
+          lineage_cache_.MarkTaskAsForwarded(task_id, node_id);
 
           // Notify the task dependency manager that we are no longer responsible
           // for executing this task.
