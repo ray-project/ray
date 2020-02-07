@@ -57,14 +57,17 @@ class OffPolicyEstimator:
             if k.startswith("state_in_"):
                 num_state_inputs += 1
         state_keys = ["state_in_{}".format(i) for i in range(num_state_inputs)]
+
+        # TODO(sven): This is wrong. The info["action_prob"] needs to refer
+        #  to the old action (from the batch). It might be the action-prob of
+        #  a different action (as the policy has changed).
         _, _, info = self.policy.compute_actions(
             obs_batch=batch["obs"],
             state_batches=[batch[k] for k in state_keys],
             prev_action_batch=batch.data.get("prev_action"),
             prev_reward_batch=batch.data.get("prev_reward"),
             info_batch=batch.data.get("info"),
-            explore=True,
-            timestep=TODO(sven))
+            explore=False)
         if "action_prob" not in info:
             raise ValueError(
                 "Off-policy estimation is not possible unless the policy "

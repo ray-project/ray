@@ -200,6 +200,15 @@ def validate_config_and_setup_param_noise(config):
     if "softmax_temp" in config and config["softmax_temp"] != -1:
         deprecation_warning("softmax_temp", "softmax_temperature")
         config["softmax_temperature"] = config["softmax_temp"]
+    if config["softmax_temperature"] < 0.00001:
+        logger.warning("softmax temp very low: Clipped it to 0.00001.")
+        config["softmax_temperature"] = 0.00001
+    if config["soft_q"]:
+        if config["exploration"]:
+            logger.warning(
+                "Soft-q activated, switched off `exploration` automatically "
+                "(doesn't make sense to have both).")
+        config["exploration"] = False
 
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["sample_batch_size"],

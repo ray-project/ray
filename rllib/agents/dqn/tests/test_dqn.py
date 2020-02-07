@@ -1,8 +1,10 @@
+import numpy as np
 import unittest
 
 import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.test_utils import check
 
 tf = try_import_tf()
 
@@ -29,16 +31,32 @@ class TestDQN(unittest.TestCase):
         config = dqn.DEFAULT_CONFIG.copy()
         config["eager"] = True
         config["num_workers"] = 0  # Run locally.
-        #config["evaluation_num_workers"] = 1  # Evaluate locally.
-        config["soft_q"] = True
-        config["softmax_temperature"] = 0.0   # almost argmax
+        config["soft_q"] = True  # This will automatically disable exploration.
         config["evaluation_num_episodes"] = 100
         config["evaluation_interval"] = 1
-        config["env_config"] = {"render": True, "is_slippery": False, "map_name": "4x4"}
+        config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
 
-        # tf.
+        # Low softmax temperature.
+        config["softmax_temperature"] = 0.0  # Like argmax.
         trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
-        metrics = trainer._evaluate()
+        # Assert that exploration has been switched off.
+        check(trainer.config["exploration"], False)
+        # Due to the low temp, always expect the same action.
+        a_ = trainer.compute_action(observation=np.array(0))
+        for _ in range(50):
+            a = trainer.compute_action(observation=np.array(0))
+            check(a, a_)
+        # trainer._evaluate()
+
+        # Higher softmax temperature.
+        config["softmax_temperature"] = 1.0
+        trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+        # Due to the higher temp, expect different actions avg'ing around 1.5.
+        actions = []
+        for _ in range(300):
+            actions.append(trainer.compute_action(observation=np.array(0)))
+        check(np.mean(actions), 1.5, atol=0.2)
+        # metrics = trainer._evaluate()
 
         num_iterations = 2
         for i in range(num_iterations):

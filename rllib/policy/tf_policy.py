@@ -128,7 +128,7 @@ class TFPolicy(Policy):
         self._update_ops = update_ops
         self._deterministic_actions = deterministic_actions if \
             deterministic_actions is not None else tf.placeholder_with_default(
-            False, (), name="deterministic_actions")
+                False, (), name="deterministic_actions")
         self._stats_fetches = {}
         self._loss_input_dict = None
         self._timestep = tf.placeholder(tf.int32, (), name="timestep")
