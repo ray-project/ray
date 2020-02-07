@@ -12,7 +12,11 @@ namespace raylet {
 ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map)
-    : resource_capacity_(resource_map) {}
+    : resource_capacity_(resource_map) {
+  for (auto const &resource_pair : resource_map) {
+    RAY_CHECK(resource_pair.second > 0);
+  }
+}
 
 ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
@@ -83,7 +87,8 @@ bool ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
     const std::string &resource_label = resource_pair.first;
     const double &resource_capacity = resource_pair.second;
     RAY_CHECK(resource_capacity_.count(resource_label) == 1)
-        << "Attempt to acquire unknown resource: " << resource_label;
+        << "Attempt to acquire unknown resource: " << resource_label << " capacity "
+        << resource_capacity.ToDouble();
     resource_capacity_[resource_label] -= resource_capacity;
     if (resource_capacity_[resource_label] < 0) {
       oversubscribed = true;
