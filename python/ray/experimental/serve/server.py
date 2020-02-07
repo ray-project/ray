@@ -108,17 +108,17 @@ class HTTPProxy:
     def _check_slo_ms(self, request_slo_ms):
         if request_slo_ms is not None:
             if len(request_slo_ms) != 1:
-                    raise ValueError(
-                        "Multiple SLO specified, please specific only one.")
-                request_slo_ms = request_slo_ms[0]
-                request_slo_ms = float(request_slo_ms)
-                if request_slo_ms < 0:
-                    raise ValueError(
-                        "Request SLO must be positive, it is {}".format(
-                            request_slo_ms))
-                return request_slo_ms
+                raise ValueError(
+                    "Multiple SLO specified, please specific only one.")
+            request_slo_ms = request_slo_ms[0]
+            request_slo_ms = float(request_slo_ms)
+            if request_slo_ms < 0:
+                raise ValueError(
+                    "Request SLO must be positive, it is {}".format(
+                        request_slo_ms))
+            return request_slo_ms
         return None
-            
+
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
         #       https://asgi.readthedocs.io/en/latest/specs/index.html
@@ -168,7 +168,7 @@ class HTTPProxy:
             relative_slo_ms=relative_slo_ms, absolute_slo_ms=absolute_slo_ms)
 
         actual_result = await (self.serve_global_state.init_or_get_router()
-                               .enqueue_request.remote(request_in_object, 
+                               .enqueue_request.remote(request_in_object,
                                                        *args))
         result = actual_result
 
