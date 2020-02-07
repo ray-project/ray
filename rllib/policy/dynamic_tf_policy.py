@@ -170,8 +170,8 @@ class DynamicTFPolicy(TFPolicy):
             action_dist = self.dist_class(model_out, self.model)
             action_sampler = tf.cond(
                 deterministic_actions,
-                true_fn=action_dist.sample_deterministic(),
-                false_fn=action_dist.sample())
+                true_fn=lambda: action_dist.deterministic_sample(),
+                false_fn=lambda: action_dist.sample())
             action_logp = action_dist.sampled_action_logp()
 
         # Phase 1 init

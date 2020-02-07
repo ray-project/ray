@@ -5,10 +5,9 @@ from scipy.stats import entropy
 import ray
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin, \
-    ParameterNoiseMixin
+    ParameterNoiseMixin, simple_sample_action_from_q_network
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
-from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -204,12 +203,11 @@ def build_q_model(policy, obs_space, action_space, config):
 
 def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
                                  action_space, deterministic, config):
-    # Action Q network.
-    q_values, q_logits, q_dist = _compute_q_values(
-        policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
-        action_space)
-    policy.q_values = q_values
-    policy.q_func_vars = q_model.variables()
+
+    policy.output_actions, policy.action_prob = \
+        simple_sample_action_from_q_network(
+            policy, q_model, input_dict, obs_space,
+            action_space, deterministic, config, _compute_q_values)
 
     # Noise vars for Q network except for layer normalization vars
     if config["parameter_noise"]:
@@ -217,22 +215,6 @@ def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
             policy,
             [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
         policy.action_probs = tf.nn.softmax(policy.q_values)
-
-    policy.action_prob = None
-
-    # Soft-Q.
-    def soft_q():
-        action_dist = Categorical(q_values / config["softmax_temperature"])
-        a = action_dist.sample()
-        return a, tf.exp(action_dist.sampled_action_logp())
-
-    # Normal (argmax) Q policy (p=1.0).
-    def normal_q():
-        actions = tf.argmax(q_values, axis=1)
-        return actions, tf.ones_like(actions, dtype=tf.float32)
-
-    policy.output_actions, policy.action_prob = tf.cond(
-        deterministic, true_fn=normal_q, false_fn=soft_q)
 
     return policy.output_actions, policy.action_prob
 

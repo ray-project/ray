@@ -200,6 +200,9 @@ def validate_config_and_setup_param_noise(config):
     if "softmax_temp" in config and config["softmax_temp"] != -1:
         deprecation_warning("softmax_temp", "softmax_temperature")
         config["softmax_temperature"] = config["softmax_temp"]
+    if config.get("softmax_temperature", 1.0) < 0.00001:
+        logger.warning("softmax temp very low: Clipped it to 0.00001.")
+        config["softmax_temperature"] = 0.00001
 
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["sample_batch_size"],
@@ -207,10 +210,8 @@ def validate_config_and_setup_param_noise(config):
     config["sample_batch_size"] = adjusted_batch_size
 
     # Setup soft-Q learning via Model/distribution config.
-    if config["soft_q"]:
-        config["model"]["deterministic_action_sampling"] = False
-    else:
-        config["model"]["deterministic_action_sampling"] = True
+    if "soft_q" in config:
+        config["model"]["deterministic_action_sampling"] = not config["soft_q"]
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):

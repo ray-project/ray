@@ -7,6 +7,7 @@ import ray
 from ray.rllib.agents.dqn.simple_q_model import SimpleQModel
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import TFPolicy
@@ -87,18 +88,36 @@ def build_q_models(policy, obs_space, action_space, config):
     return policy.q_model
 
 
-def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-                                 action_space, config):
-
-    # Action Q network
-    q_values = _compute_q_values(policy, q_model,
-                                 input_dict[SampleBatch.CUR_OBS], obs_space,
-                                 action_space)
-    policy.q_values = q_values
+def simple_sample_action_from_q_network(policy,
+                                        q_model,
+                                        input_dict,
+                                        obs_space,
+                                        action_space,
+                                        deterministic,
+                                        config,
+                                        q_values_func=None):
+    # Action Q network.
+    policy.q_values, q_logits, q_dist = (q_values_func or _compute_q_values)(
+        policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
+        action_space)
     policy.q_func_vars = q_model.variables()
 
-    # Action outputs.
-    return tf.argmax(q_values, axis=1), None
+    # Soft-Q.
+    def soft_q():
+        action_dist = Categorical(
+            policy.q_values / config.get("softmax_temperature", 1.0))
+        a = action_dist.sample()
+        return a, tf.exp(action_dist.sampled_action_logp())
+
+    # Normal (argmax) Q policy (p=1.0).
+    def normal_q():
+        actions = tf.argmax(policy.q_values, axis=1)
+        return actions, tf.ones_like(actions, dtype=tf.float32)
+
+    policy.output_actions, policy.action_prob = tf.cond(
+        deterministic, true_fn=normal_q, false_fn=soft_q)
+
+    return policy.output_actions, policy.action_prob
 
 
 def build_q_losses(policy, model, dist_class, train_batch):
@@ -161,7 +180,7 @@ SimpleQPolicy = build_tf_policy(
     name="SimpleQPolicy",
     get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
     make_model=build_q_models,
-    action_sampler_fn=sample_action_from_q_network,
+    action_sampler_fn=simple_sample_action_from_q_network,
     loss_fn=build_q_losses,
     extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},

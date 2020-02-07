@@ -46,13 +46,14 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_num_episodes": 1,
     # Extra configuration that disables exploration.
     "evaluation_config": {
-        "exploration_enabled": False,
+        "model": {
+            "deterministic_action_sampling": True,
+        }
     },
 
     # === Exploration ===
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 100,
-    "exploration_enabled": True,
 
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
