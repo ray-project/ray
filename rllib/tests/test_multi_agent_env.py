@@ -607,9 +607,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         workers = WorkerSet._from_existing(worker, remote_workers)
         optimizer = optimizer_cls(workers)
         for i in range(200):
-            worker.foreach_policy(lambda p, _: p.set_epsilon(
-                max(0.02, 1 - i * .02))
-                              if isinstance(p, DQNTFPolicy) else None)
             optimizer.step()
             result = collect_metrics(worker, remote_workers)
             if i % 20 == 0:
