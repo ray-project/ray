@@ -28,6 +28,26 @@ def echo_v4(_, relay1="", relay2=""):
     return f"echo_v4({relay1} , {relay2})"
 
 
+"""
+The pipeline created is as follows -
+            "my_endpoint1"
+                  /\
+                 /  \
+                /    \
+               /      \
+              /        \
+             /          \
+  "my_endpoint2"     "my_endpoint3"
+            \            /
+             \          /
+              \        /
+               \      /
+                \    /
+                 \  /
+                  \/
+            "my_endpoint4"
+"""
+
 # an endpoint is associated with an http URL.
 serve.create_endpoint("my_endpoint1", "/echo1")
 serve.create_endpoint("my_endpoint2", "/echo2")

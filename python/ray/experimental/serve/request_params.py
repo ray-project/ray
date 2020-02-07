@@ -1,7 +1,9 @@
 import inspect
+import time
+from ray.experimental.serve.constants import DEFAULT_LATENCY_SLO_MS
 
 
-class RequestInObject:
+class RequestMetadata:
     """
     Request Arguments required for enqueuing a request to the service
     queue.
@@ -17,24 +19,20 @@ class RequestInObject:
     def __init__(self,
                  service,
                  request_context,
-                 request_slo_ms=None,
-                 is_wall_clock_time=False):
+                 relative_slo_ms=None,
+                 absolute_slo_ms=None):
 
         self.service = service
         self.request_context = request_context
-        self.request_slo_ms = request_slo_ms
-        self.is_wall_clock_time = is_wall_clock_time
-        if request_slo_ms is None:
-            self.is_wall_clock_time = False
+        self.relative_slo_ms = relative_slo_ms
+        self.absolute_slo_ms = absolute_slo_ms
 
-    @classmethod
-    def get_kwargs(cls):
-        signature = inspect.signature(cls)
-        params = signature.parameters
-        kwargs_keys = [
-            k for k in params.keys()
-            if params[k].default is not inspect.Parameter.empty
-        ]
-        kwargs_keys.pop(kwargs_keys.index("request_slo_ms"))
-        kwargs_keys.append("slo_ms")
-        return kwargs_keys
+    def adjust_relative_slo_ms(self) -> float:
+        """Normalize the input latency objective to absoluate timestamp.
+
+        """
+        slo_ms = self.relative_slo_ms
+        if slo_ms is None:
+            slo_ms = DEFAULT_LATENCY_SLO_MS
+        current_time_ms = time.time() * 1000
+        return current_time_ms + slo_ms

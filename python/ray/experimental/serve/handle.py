@@ -2,7 +2,7 @@ from ray.experimental import serve
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.exceptions import RayServeException
 from ray.experimental.serve.constants import DEFAULT_HTTP_ADDRESS
-from ray.experimental.serve.request_params import RequestInObject
+from ray.experimental.serve.request_params import RequestMetadata
 
 
 class RayServeHandle:
@@ -27,40 +27,49 @@ class RayServeHandle:
        # raises RayTaskError Exception
     """
 
-    def __init__(self, router_handle, endpoint_name):
+    def __init__(self, router_handle, endpoint_name, relative_slo_ms=None,
+                 absolute_slo_ms=None):
         self.router_handle = router_handle
         self.endpoint_name = endpoint_name
+        assert (relative_slo_ms is None or
+                absolute_slo_ms is None), ("Can't specify both "
+                                           "relative and absolute "
+                                           "slo's together!")
+        self.relative_slo_ms = self._check_slo_ms(relative_slo_ms)
+        self.absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
+
+    def _check_slo_ms(self, slo_value):
+        if slo_value is not None:
+            try:
+                slo_value = float(slo_value)
+                if slo_value < 0:
+                    raise ValueError(
+                        "Request SLO must be positive, it is {}".format(
+                            slo_value))
+                return slo_value
+            except ValueError as e:
+                raise RayServeException(str(e))
+        return None
 
     def remote(self, *args, **kwargs):
         if len(args) != 0:
             raise RayServeException(
                 "handle.remote must be invoked with keyword arguments.")
 
-        # get slo_ms before enqueuing the query
-        request_slo_ms = kwargs.pop("slo_ms", None)
-        if request_slo_ms is not None:
-            try:
-                request_slo_ms = float(request_slo_ms)
-                if request_slo_ms < 0:
-                    raise ValueError(
-                        "Request SLO must be positive, it is {}".format(
-                            request_slo_ms))
-            except ValueError as e:
-                raise RayServeException(str(e))
-
-        # create kwargs for RequestInObject
-        in_object_kwargs = dict()
-        if request_slo_ms is not None:
-            in_object_kwargs["request_slo_ms"] = request_slo_ms
-        for kwargs_key in RequestInObject.get_kwargs():
-            if kwargs_key in kwargs:
-                in_object_kwargs[kwargs_key] = kwargs.pop(kwargs_key)
-
-        # create RequestInObject instance
-        request_in_object = RequestInObject(
-            self.endpoint_name, TaskContext.Python, **in_object_kwargs)
+        # create RequestMetadata instance
+        request_in_object = RequestMetadata(
+            self.endpoint_name, TaskContext.Python,
+            self.relative_slo_ms, self.absolute_slo_ms)
         return self.router_handle.enqueue_request.remote(
-            request_in_object, *args, **kwargs)
+            request_in_object, **kwargs)
+
+    def options(self, relative_slo_ms=None, absolute_slo_ms=None):
+        assert (relative_slo_ms is None or
+                absolute_slo_ms is None), ("Can't specify both "
+                                           "relative and absolute "
+                                           "slo's together!")
+        return RayServeHandle(self.router_handle, self.endpoint_name,
+                              relative_slo_ms, absolute_slo_ms)
 
     def get_traffic_policy(self):
         # TODO(simon): This method is implemented via checking global state

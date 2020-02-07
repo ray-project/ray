@@ -1,7 +1,6 @@
 import asyncio
 import copy
 from collections import defaultdict
-import time
 from typing import DefaultDict, Union, List
 import pickle
 
@@ -15,7 +14,6 @@ import blist
 
 import ray
 from ray.experimental.serve.utils import logger
-from ray.experimental.serve.constants import DEFAULT_LATENCY_SLO_MS
 
 
 class Query:
@@ -54,20 +52,6 @@ class Query:
     def __repr__(self):
         return "<Query args={} kwargs={}>".format(self.request_args,
                                                   self.request_kwargs)
-
-
-def _adjust_latency_slo(slo_ms: Union[float, int, None]) -> float:
-    """Normalize the input latency objective to absoluate timestamp.
-
-    Input:
-        slo_ms(float, int, None): If value is None, then we use a high default
-           value so other queries can be prioritize and put in front of these
-           queries.
-    """
-    if slo_ms is None:
-        slo_ms = DEFAULT_LATENCY_SLO_MS
-    current_time_ms = time.time() * 1000
-    return current_time_ms + slo_ms
 
 
 def _make_future_unwrapper(client_futures: List[asyncio.Future],
@@ -186,11 +170,10 @@ class CentralizedQueues:
 
         # check if the slo specified is directly the
         # wall clock time
-        if request_in_object.is_wall_clock_time:
-            request_slo_ms = request_in_object.request_slo_ms
+        if request_in_object.absolute_slo_ms is not None:
+            request_slo_ms = request_in_object.absolute_slo_ms
         else:
-            request_slo_ms = _adjust_latency_slo(
-                request_in_object.request_slo_ms)
+            request_slo_ms = request_in_object.adjust_relative_slo_ms()
         request_context = request_in_object.request_context
         query = Query(request_args, request_kwargs, request_context,
                       request_slo_ms)

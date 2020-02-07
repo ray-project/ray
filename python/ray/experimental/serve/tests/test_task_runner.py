@@ -5,7 +5,7 @@ import ray.experimental.serve.context as context
 from ray.experimental.serve.policy import RoundRobinPolicyQueueActor
 from ray.experimental.serve.task_runner import (
     RayServeMixin, TaskRunner, TaskRunnerActor, wrap_to_ray_error)
-from ray.experimental.serve.request_params import RequestInObject
+from ray.experimental.serve.request_params import RequestMetadata
 
 pytestmark = pytest.mark.asyncio
 
@@ -39,7 +39,7 @@ async def test_runner_actor(serve_instance):
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
     for query in [333, 444, 555]:
-        query_param = RequestInObject(PRODUCER_NAME,
+        query_param = RequestMetadata(PRODUCER_NAME,
                                       context.TaskContext.Python)
         result = await q.enqueue_request.remote(query_param, i=query)
         assert result == query
@@ -70,7 +70,7 @@ async def test_ray_serve_mixin(serve_instance):
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
 
     for query in [333, 444, 555]:
-        query_param = RequestInObject(PRODUCER_NAME,
+        query_param = RequestMetadata(PRODUCER_NAME,
                                       context.TaskContext.Python)
         result = await q.enqueue_request.remote(query_param, i=query)
         assert result == query + 3
@@ -92,7 +92,7 @@ async def test_task_runner_check_context(serve_instance):
     runner._ray_serve_fetch.remote()
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
-    query_param = RequestInObject(PRODUCER_NAME, context.TaskContext.Python)
+    query_param = RequestMetadata(PRODUCER_NAME, context.TaskContext.Python)
     result_oid = q.enqueue_request.remote(query_param, i=42)
 
     with pytest.raises(ray.exceptions.RayTaskError):
