@@ -1224,13 +1224,20 @@ def test_get_dict(ray_start_regular):
 
 def test_get_with_timeout(ray_start_regular):
     @ray.remote
-    def f(a):
-        time.sleep(a)
-        return a
+    class Actor:
+        # We define this function inside an actor class to make sure the worker
+        # is running when we are about to test the timeout mechanism.
+        def f(self, a):
+            time.sleep(a)
+            return a
 
-    assert ray.get(f.remote(3), timeout=10) == 3
+    a = Actor.remote()
+    # submit an actor task and wait for the result
+    assert ray.get(a.f.remote(0)) == 0
+    # now the actor is alive
+    assert ray.get(a.f.remote(3), timeout=10) == 3
 
-    obj_id = f.remote(3)
+    obj_id = a.f.remote(3)
     with pytest.raises(RayTimeoutError):
         ray.get(obj_id, timeout=2)
     assert ray.get(obj_id, timeout=2) == 3
