@@ -14,6 +14,10 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
+  // The first access to plasma is slow, but don't want users to experience it so put a
+  // small object in plasma to warm it up.
+  RAY_CHECK_OK(
+      Put(RayObject(rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE), ObjectID::FromRandom()));
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
