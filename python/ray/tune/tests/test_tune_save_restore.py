@@ -13,6 +13,7 @@ from ray.tune import Trainable
 
 class WarmStartTest(unittest.TestCase):
     local_mode = True
+    prefix = "Warmstart"
 
     class MockTrainable(Trainable):
         _name = "MockTrainable"
@@ -21,7 +22,7 @@ class WarmStartTest(unittest.TestCase):
             self.state = {"hi": 1}
 
         def _train(self):
-            return {"timesteps_this_iter": 1, "done": True}
+            return {"done": True}
 
         def _save(self, checkpoint_dir):
             checkpoint_path = os.path.join(
@@ -45,11 +46,7 @@ class WarmStartTest(unittest.TestCase):
         # Without this line, test_tune_server.testAddTrial would fail.
         _register_all()
 
-    def _train(self,
-               exp_name,
-               local_dir,
-               absolute_local_dir,
-               num_samples=1,
+    def _train(self, exp_name, absolute_local_dir, num_samples=1,
                restore=None):
         trials = tune.run(
             self.MockTrainable,
@@ -60,7 +57,7 @@ class WarmStartTest(unittest.TestCase):
                 "training_iteration": 1
             },
             checkpoint_freq=1,
-            local_dir=local_dir,
+            local_dir=absolute_local_dir,
             config={
                 "env": "CartPole-v0",
                 "log_level": "DEBUG"
@@ -83,49 +80,49 @@ class WarmStartTest(unittest.TestCase):
     def testSimpleRestore(self):
         # test base functionality of restore=<path_to_checkpoint>
         exp_name = self.prefix + "SimpleRestore"
-        local_dir = "./test_simple_restore"
-        absolute_local_dir = os.path.abspath(local_dir)
+        local_dir = "test_simple_restore"
+        absolute_local_dir = os.path.abspath(
+            os.path.join(tempfile.gettempdir(), local_dir))
+        self.absolute_local_dir = absolute_local_dir
         self.assertFalse(os.path.exists(absolute_local_dir))
         trials, paths_to_checkpoints = self._train(
-            exp_name,
-            local_dir=local_dir,
-            absolute_local_dir=absolute_local_dir)
+            exp_name, absolute_local_dir=absolute_local_dir)
         new_trials, new_paths_to_checkpoints = self._train(
             exp_name,
-            local_dir=local_dir,
             absolute_local_dir=absolute_local_dir,
             restore=paths_to_checkpoints[0])
         # ensure the restored trial was given a new ID
         self.assertNotEqual(trials[0].trial_id, new_trials[0].trial_id)
         # the new trial's name should have restore=<reference_to_restored_trial>
-        self.assertTrue('restore=' in new_paths_to_checkpoints[0])
+        self.assertTrue("restore=" in new_paths_to_checkpoints[0])
         self.assertTrue(trials[0].trial_id in new_paths_to_checkpoints[0])
 
     def testWarmStartGridSearch(self):
         exp_name = self.prefix + "WarmStartGridSearch"
-        local_dir = "./warm_start_grid_search"
-        absolute_local_dir = os.path.abspath(local_dir)
+        local_dir = "warm_start_grid_search"
+        absolute_local_dir = os.path.abspath(
+            os.path.join(tempfile.gettempdir(), local_dir))
+        self.absolute_local_dir = absolute_local_dir
         self.assertFalse(os.path.exists(absolute_local_dir))
         # train a small number of trials
         trials, paths_to_checkpoints = self._train(
-            exp_name,
-            local_dir=local_dir,
-            absolute_local_dir=absolute_local_dir,
-            num_samples=4)
+            exp_name, absolute_local_dir=absolute_local_dir, num_samples=4)
         # start a new set of trials using the checkpoints
         # as a starting point
         new_trials, new_checkpoints = self._train(
-            exp_name, restore=tune.grid_search(paths_to_checkpoints))
+            exp_name,
+            absolute_local_dir=absolute_local_dir,
+            restore=tune.grid_search(paths_to_checkpoints))
         for old_trial, old_checkpoint in zip(trials, paths_to_checkpoints):
             used = False
             for new_trial, new_checkpoint in zip(new_trials, new_checkpoints):
                 self.assertNotEqual(old_trial.trial_id, new_trial.trial_id)
-                self.assertTrue('restore=' in new_checkpoint)
+                self.assertTrue("restore=" in new_checkpoint)
                 if old_trial.trial_id in new_checkpoint:
                     used = True
                     break
             self.assertTrue(
-                used, 'checkpoint {} not used in grid_search' % old_checkpoint)
+                used, "checkpoint {} not used in grid_search" % old_checkpoint)
 
 
 class SerialTuneRelativeLocalDirTest(unittest.TestCase):
