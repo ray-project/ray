@@ -8,6 +8,12 @@ steps:
     artifactFeed: ray-feed
 # Use command line script to 'twine upload', use -r to pass the repository name and --config-file to pass the environment variable set by the authenticate task.
 - bash: |
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # Show explicitly which commands are currently running.
+    set -x
+
     echo $PYPIRC_PATH
     cat $PYPIRC_PATH
     sed -i -e 's+repository=.*+repository=https://bizair.pkgs.visualstudio.com/ccf3fa37-3b57-498c-8b43-231e00d92672/_packaging/ray-feed/pypi/upload+g' $PYPIRC_PATH

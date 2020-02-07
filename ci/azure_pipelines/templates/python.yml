@@ -3,6 +3,16 @@
 # of python to use is expected in the environment
 # variable python.version
 steps:
+- script: |
+    echo "User: $(whoami)"
+    echo "AGENT_TOOLSDIRECTORY: ${AGENT_TOOLSDIRECTORY=}"
+    echo "Default $(python --version)"
+    if [[ $AGENT_OS == "Linux" ]]; then 
+      echo "$(docker --version)"
+      echo "Test docker connection:"
+      docker ps -a
+    fi
+  displayName: 'Docker system info'
 - task: UsePythonVersion@0
   inputs:
     versionSpec: '$(python.version)'

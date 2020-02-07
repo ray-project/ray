@@ -42,7 +42,7 @@ Steps for Mac and Ubuntu:
 - Set a GitHub Personal Access Token with rights to download:
     - Set Key Pair name: `GITHUB_FEED_TOKEN_NAME="raygithubfeedtoken"`
     - Upload your PAT to the vault (replace your token in the command):`az keyvault secret set --name $GITHUB_FEED_TOKEN_NAME --vault-name $KEY_VAULT_NAME --value "{GitHub Token}"`
-    - Get PAT from the Vault: `GITHUB_FEED_TOKEN=$(az keyvault secret show --name $GITHUB_FEED_TOKEN_NAME --vault-name $KEY_VAULT_NAME)`
+    - Get PAT from the Vault: `GITHUB_FEED_TOKEN=$(az keyvault secret show --name $GITHUB_FEED_TOKEN_NAME --vault-name $KEY_VAULT_NAME --query 'value' --output tsv)`
 - Create the Managed Disk image:
     - Create a packer variables file: 
     ```
@@ -70,7 +70,7 @@ For more details (Check the following doc in the virtual environment repo)[https
 
 #### 1. Create the Virtual Machine Scale Set (VMSS)
 
-Creation of the VMSS is done using the Azure Resource Manager (ARM) template, `agentpool.json`. The following are important fixed parameters that could be changed:
+Creation of the VMSS is done using the Azure Resource Manager (ARM) template, `image/agentpool.json`. The following are important fixed parameters that could be changed:
 
 | Parameter         | Description                                                                |
 | -------------     | -------------                                                              |
@@ -108,7 +108,7 @@ Steps for Mac and Ubuntu:
     - Get Reader role definition: `ROLE_DEFINITION_ID=$(az role definition list --subscription $SUBSCRIPTION_ID --query "([?roleName=='Reader'].id)[0]" --output tsv)`
     - Set the source image VHD NAME (assuming the latest): `SOURCE_IMAGE_VHD_NAME="$(az storage blob list --subscription $SUBSCRIPTION_ID --account-name $STORAGE_ACCOUNT_NAME -c images --prefix pkr --query 'sort_by([], &properties.creationTime)[-1].name' --output tsv)"`
     - Set the source image VHD URI: `SOURCE_IMAGE_VHD_URI="https://${STORAGE_ACCOUNT_NAME}.blob.core.windows.net/images/${SOURCE_IMAGE_VHD_NAME}"`
-    - Create the VM scale set: `az group deployment create --resource-group $RESOURCE_GROUP_NAME --template-file agentpool.json --parameters "vmssName=$VMSS_NAME" --parameters "instanceCount=$INSTANCE_COUNT" --parameters "sourceImageVhdUri=$SOURCE_IMAGE_VHD_URI" --parameters "sshPublicKey=$SSH_KEY_PUB" --parameters "location=$AZURE_LOCATION" --parameters "subnetId=$SUBNET_ID" --parameters "keyVaultName=$KEY_VAULT_NAME" --parameters "tenantId=$TENANT_ID" --parameters "roleDefinitionId=$ROLE_DEFINITION_ID" --name $VMSS_NAME`
+    - Create the VM scale set: `az group deployment create --resource-group $RESOURCE_GROUP_NAME --template-file image/agentpool.json --parameters "vmssName=$VMSS_NAME" --parameters "instanceCount=$INSTANCE_COUNT" --parameters "sourceImageVhdUri=$SOURCE_IMAGE_VHD_URI" --parameters "sshPublicKey=$SSH_KEY_PUB" --parameters "location=$AZURE_LOCATION" --parameters "subnetId=$SUBNET_ID" --parameters "keyVaultName=$KEY_VAULT_NAME" --parameters "tenantId=$TENANT_ID" --parameters "roleDefinitionId=$ROLE_DEFINITION_ID" --name $VMSS_NAME`
 
 #### 2. Create the Agent Pool in Azure DevOps
 
@@ -121,19 +121,56 @@ Make sure your admin is added as the administrator in ADO in 2 places:
 #### 3. Connect VMs to pool
 
 Steps for Mac and Ubuntu:
+- Copy some files to fix some errors in the generation of the agent image:
+    - The error is due to a issue with the packer script. It's not downloading a postgresql installation script. In order to check if the image was not fully build run this: `INSTALLER_SCRIPT_FOLDER="/imagegeneration/installers" source /imagegeneration/installers/test-toolcache.sh`. If you don't get any error message, skip the following 3 steps.
+    - Tar the image folder: `tar -zcvf image.tar.gz image`
+    - Copy to each of your machines in the Scale set: `scp -o "IdentitiesOnly=yes" -i $SSH_KEY_PAIR_PATH ./image.tar.gz agentadmin@{IP}:/home/agentadmin`
+    - Delete the tar: `rm image.tar.gz `
 - Connect using ssh: 
     - Set Key Pair name: `SSH_KEY_PAIR_NAME="rayagentadminrsa"`
     - Set SSH key pair file path: `SSH_KEY_PAIR_PATH="$HOME/.ssh/$SSH_KEY_PAIR_NAME"`
     - Sun ssh: `ssh -o "IdentitiesOnly=yes" -i $SSH_KEY_PAIR_PATH agentadmin@{ PUBLIC IP}`
+- Fix the image: 
+    - Untar the image file: `tar zxvf ./image.tar.gz`
+    - Switch to root: `sudo -s`
+    - In your machine get PAT from the Vault: `az keyvault secret show --name $GITHUB_FEED_TOKEN_NAME --vault-name $KEY_VAULT_NAME --query 'value' --output tsv`
+    - Set the PAT in your ssh session: `export GITHUB_FEED_TOKEN={ GitHub Token }`
+    - `sudo gpasswd -a agentadmin root`
+    - Install missing part: `source ./image/fix-image.sh`
+    - Set the system up:
+    ```
+    export GITHUB_FEED_TOKEN={ GitHub Token }
+    export DEBIAN_FRONTEND=noninteractive
+    export METADATA_FILE="/imagegeneration/metadatafile"
+    export HELPER_SCRIPTS="/imagegeneration/helpers"
+    export INSTALLER_SCRIPT_FOLDER="/imagegeneration/installers"
+    export BOOST_VERSIONS="1.69.0"
+    export BOOST_DEFAULT="1.69.0"
+    export AGENT_TOOLSDIRECTORY=/opt/hostedtoolcache
+    mkdir -p $INSTALLER_SCRIPT_FOLDER/node_modules
+    sudo chmod --recursive a+rwx $INSTALLER_SCRIPT_FOLDER/node_modules
+    sudo chown -R agentadmin:root $INSTALLER_SCRIPT_FOLDER/node_modules
+    source $INSTALLER_SCRIPT_FOLDER/hosted-tool-cache.sh
+    source $INSTALLER_SCRIPT_FOLDER/test-toolcache.sh
+    chown -R agentadmin:root $AGENT_TOOLSDIRECTORY
+    echo 'export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+    [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+    AGENT_TOOLSDIRECTORY="/opt/hostedtoolcache/"' >> ~/.bashrc
+    ```
 - Go to the [New Agent] option in the pool and follow the instructions for linux agents:
     - Download the agent: `wget https://vstsagentpackage.azureedge.net/agent/2.164.7/vsts-agent-linux-x64-2.164.7.tar.gz`
     - Create and move to a directory for the agent: `mkdir myagent && cd myagent`
     - Untar the agent: `tar zxvf ../vsts-agent-linux-x64-2.164.7.tar.gz`
     - Configure the agent: `./config.sh`
-        - Enter the agent pool's name, which must match the value you provided VMSS_NAME (see steps above) 
+        - Accept the license.
+        - Enter your organization URL.
+        - Enter your ADO PAT.
         - Set a Personal Access Token:
             - Set Key Pair name: `ADO_TOKEN_NAME="rayagentadotoken"`
             - Upload your PAT to the vault (replace your token in the command):`az keyvault secret set --name $ADO_TOKEN_NAME --vault-name $KEY_VAULT_NAME --value "{ADO Token}"`
+        - Enter the agent pool's name, which must match the value you provided VMSS_NAME (see steps above) 
+        - Enter or accept agent name.
     - Install the ADO Agent as a service and start it:
         - `sudo ./svc.sh install`
         - `sudo ./svc.sh start`
@@ -141,9 +178,13 @@ Steps for Mac and Ubuntu:
     - Allow agent user to access Docker:
         - `VM_ADMIN_USER="agentadmin"`
         - `sudo gpasswd -a "${VM_ADMIN_USER}" docker`
-        - `sudo chmod g+rw /var/run/docker.sock`
-        - Update group permissions so docker is available without logging out and back in
-            - `newgrp - docker`
+        - `sudo chmod ga+rw /var/run/docker.sock`
+        - Update group permissions so docker is available without logging out and back in: `newgrp - docker`
+        - Test docker: `docker run hello-world`
+        - `VM_ADMIN_USER="agentadmin"`
+        - If `/home/"$VM_ADMIN_USER"/.docker` exist:
+            - `sudo chown "$VM_ADMIN_USER":docker /home/"$VM_ADMIN_USER"/.docker -R`
+            - `sudo chmod ga+rwx "$HOME/.docker" -R`
 
 ### Deleting an Agent Pool
 

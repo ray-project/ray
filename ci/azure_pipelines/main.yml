@@ -5,79 +5,25 @@
 # The main reason that forced the Ray team to have Jenkings is
 # the travis limitation of two cores per environment.
 
-name: $(BuildDefinitionName)_$(SourceBranchName)_$(Date:yyyyMMdd)$(Rev:.r)
+name: $(BuildDefinitionName)_$(SourceBranchName)_$(BuildID)
 stages:
   - stage: Build
     jobs:
-      # - job: Ubuntu
-      #   timeoutInMinutes: 120
-      #   cancelTimeoutInMinutes: 5
-      #   strategy:
-      #     matrix:
-      #       python36:
-      #         # poolName: Socrates-E2E-32-core
-      #         imageName: 'ubuntu-16.04'
-      #         python.version: '3.5'
-      #         TRAVIS_OS_NAME: 'linux'
-      #   displayName: Ubuntu
-      #   pool:
-      #     # name: $(poolName)
-      #     vmImage: $(imageName)
-      #   steps:
-      #     # TODO: [CI] uncomment step after adding a condition in 
-      #     # ci/travis/install-dependencies.sh that check first if 
-      #     # node is already installed before install it
-      #     # - task: NodeTool@0
-      #     #   inputs:
-      #     #     versionSpec: '>=7.x'
-      #     #     checkLatest: true
-      #     #   displayName: 'Install latest Node.js'
-      #     # Template containing the installation of steps of python 3.6
-      #     - template: templates/python.yml
-      #     # Template containing the install phase of travis.yml
-      #     - template: templates/install.yml
-      #     # Template containing the script phase of travis.yml
-      #     - template: templates/script.yml
-      # - job: MacOS
-      #   timeoutInMinutes: 120
-      #   cancelTimeoutInMinutes: 5
-      #   strategy:
-      #     matrix:
-      #       python36:
-      #         imageName: 'macos-10.14'
-      #         python.version: '3.5'
-      #         TRAVIS_OS_NAME: 'osx'
-      #   displayName: MacOS
-      #   pool:
-      #     vmImage: $(imageName)
-      #   steps:
-      #     # TODO: [CI] uncomment step after adding a condition in 
-      #     # ci/travis/install-dependencies.sh that check first if 
-      #     # node is already installed before install it
-      #     # - task: NodeTool@0
-      #     #   inputs:
-      #     #     versionSpec: '>=7.x'
-      #     #     checkLatest: true
-      #     #   displayName: 'Install latest Node.js'
-      #     # Template containing the installation of steps of python 3.6
-      #     - template: templates/python.yml
-      #     # Template containing the install phase of travis.yml
-      #     - template: templates/install.yml
-      #     # Template containing the script phase of travis.yml
-      #     - template: templates/script.yml
-      - job: UbuntuWheels
+      - job: RayTests
         timeoutInMinutes: 120
         cancelTimeoutInMinutes: 5
         strategy:
           matrix:
-            python36:
-              # poolName: Socrates-E2E-32-core
+            linux_python35:
               imageName: 'ubuntu-16.04'
               python.version: '3.5'
               TRAVIS_OS_NAME: 'linux'
-        displayName: Ubuntu Wheels
+            mac_python35:
+              imageName: 'macos-10.14'
+              python.version: '3.5'
+              TRAVIS_OS_NAME: 'osx'
+        displayName: Ray Tests
         pool:
-          # name: $(poolName)
           vmImage: $(imageName)
         steps:
           # TODO: [CI] uncomment step after adding a condition in 
@@ -88,7 +34,131 @@ stages:
           #     versionSpec: '>=7.x'
           #     checkLatest: true
           #   displayName: 'Install latest Node.js'
-          # Template containing the installation of steps of python 3.6
+          # Template containing the installation of steps of python
+          - template: templates/python.yml
+          # Template containing the install phase of travis.yml
+          - template: templates/install.yml
+          # Template containing the script phase of travis.yml
+          - template: templates/script.yml
+      - job: RLlibTestsTuneTestsDocExamples
+        timeoutInMinutes: 600
+        cancelTimeoutInMinutes: 5
+        strategy:
+          matrix:
+            linux_python35:
+              poolName: RayPipelineAgentPoolStandardF16sv2
+              python.version: '3.5'
+              TRAVIS_OS_NAME: 'linux'
+              AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache/
+        displayName: RLlib tests - Tune tests - Doc Examples
+        pool:
+          name: $(poolName)
+        steps:
+          # Template containing the installation of steps of python
+          - template: templates/python.yml
+          # Jenkins pipeline equivalent
+          - bash: |
+              echo Running install phase of the original travis.yml
+
+              # Set some variables to make the system looks like Travis
+              source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
+
+              # Start Original script
+
+              # Cause the script to exit if a single command fails.
+              set -e
+
+              # Show explicitly which commands are currently running.
+              set -x
+
+              MEMORY_SIZE="20G"
+              SHM_SIZE="20G"
+
+              ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
+
+              DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
+              SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
+              echo "Using Docker image" $DOCKER_SHA
+
+              ######################## RLLIB TESTS #################################
+
+              source $ROOT_DIR/run_rllib_tests.sh
+
+              ######################## TUNE TESTS #################################
+
+              bash $ROOT_DIR/run_tune_tests.sh ${MEMORY_SIZE} ${SHM_SIZE} $DOCKER_SHA
+
+              ######################## SGD TESTS #################################
+
+              # Originally with ./ci/suppress_output
+               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                  python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
+                      --batch-size=1 --strategy=simple
+
+              # Originally with ./ci/suppress_output
+               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                  python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
+                      --batch-size=1 --strategy=ps
+
+              # Originally with ./ci/suppress_output
+               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                  python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
+                      --batch-size=1 --strategy=simple
+
+              # Originally with ./ci/suppress_output
+               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                  python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
+                      --batch-size=1 --strategy=ps
+
+              # Originally with ./ci/suppress_output
+               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                  python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+                      --num-workers=1 --devices-per-worker=1 --strategy=ps
+
+              # Originally with ./ci/suppress_output
+               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                  python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+                      --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
+
+              ######################## RAY BACKEND TESTS #################################
+
+              # Originally with ./ci/suppress_output
+               docker run --rm --shm-size=60G --memory=60G $DOCKER_SHA \
+                  python /ray/ci/jenkins_tests/miscellaneous/large_memory_test.py
+
+              # End Original script
+
+              exit 0
+            env:
+              PYTHONWARNINGS: 'ignore'
+              TRAVIS: 'true'
+              MAC_WHEELS: 1
+              RAY_INSTALL_JAVA: 1
+            displayName: 'Run original Jenkins multi-node tests'
+      - job: UbuntuWheels
+        # dependsOn: RayTests
+        timeoutInMinutes: 120
+        cancelTimeoutInMinutes: 5
+        strategy:
+          matrix:
+            python35:
+              imageName: 'ubuntu-16.04'
+              python.version: '3.5'
+              TRAVIS_OS_NAME: 'linux'
+              AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache/
+        displayName: Ubuntu Wheels
+        pool:
+          vmImage: $(imageName)
+        steps:
+          # TODO: [CI] uncomment step after adding a condition in 
+          # ci/travis/install-dependencies.sh that check first if 
+          # node is already installed before install it
+          # - task: NodeTool@0
+          #   inputs:
+          #     versionSpec: '>=7.x'
+          #     checkLatest: true
+          #   displayName: 'Install latest Node.js'
+          # Template containing the installation of steps of python
           - template: templates/python.yml
           # Install phase of the travis MacOS wheels build
           - bash: |
@@ -114,6 +184,9 @@ stages:
 
               # Originally with ./ci/suppress_output 
               docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+              # End Original script
+
+              exit 0
             env:
               PYTHONWARNINGS: 'ignore'
               TRAVIS: 'true'
@@ -146,14 +219,16 @@ stages:
           # Upload packages
           - template: templates/python-upload.yml
       - job: MacOSWheels
+        dependsOn: RLlibTestsTuneTestsDocExamples
         timeoutInMinutes: 120
         cancelTimeoutInMinutes: 5
         strategy:
           matrix:
-            python36:
+            python35:
               imageName: 'macos-10.14'
               python.version: '3.5'
               TRAVIS_OS_NAME: 'osx'
+              AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache/
         displayName: MacOS Wheels
         pool:
           vmImage: $(imageName)
@@ -166,7 +241,7 @@ stages:
           #     versionSpec: '>=7.x'
           #     checkLatest: true
           #   displayName: 'Install latest Node.js'
-          # Template containing the installation of steps of python 3.6
+          # Template containing the installation of steps of python
           - template: templates/python.yml
           # Install phase of the travis MacOS wheels build
           - bash: |
@@ -183,11 +258,13 @@ stages:
               eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
               if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
-              # Originally with ./ci/suppress_output 
+              # Originally with ./ci/suppress_output
               ./ci/travis/install-dependencies.sh
               # This command should be kept in sync with ray/python/README-building-wheels.md.
-              # Originally with ./ci/suppress_output 
               ./python/build-wheel-macos.sh
+              # End Original script
+
+              exit 0
             env:
               PYTHONWARNINGS: 'ignore'
               TRAVIS: 'true'

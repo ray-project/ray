@@ -12,18 +12,32 @@ steps:
 
     # Start Original script
     eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-    if [ $RAY_CI_SERVE_AFFECTED != "1" ] && [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+    if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
 
-    ./ci/travis/install-bazel.sh
-    # Originally with ./ci/suppress_output 
-    ./ci/travis/install-dependencies.sh
+    # Originally with ./ci/suppress_output
+     ./ci/travis/install-bazel.sh
+    # Originally with ./ci/suppress_output
+     ./ci/travis/install-dependencies.sh
     export PATH="$HOME/miniconda/bin:$PATH"
-    # Originally with ./ci/suppress_output 
-    ./ci/travis/install-ray.sh
-    # Originally with ./ci/suppress_output 
-    ./ci/travis/install-cython-examples.sh
+    # Originally with ./ci/suppress_output
+     ./ci/travis/install-ray.sh
+    # Originally with ./ci/suppress_output
+     ./ci/travis/install-cython-examples.sh
 
-    eval "$(curl -sL https://raw.githubusercontent.com/travis-ci/gimme/master/gimme | GIMME_GO_VERSION=master bash)"
+    # Originally with ./ci/suppress_output
+     bash src/ray/test/run_gcs_tests.sh
+    # stats test.
+    # Originally with ./ci/suppress_output
+     bazel build //:stats_test -c opt
+    ./bazel-bin/stats_test
+
+    # Raylet tests.
+    # Originally with ./ci/suppress_output
+     bash src/ray/test/run_object_manager_tests.sh
+    # Originally with ./ci/suppress_output
+     bazel test --build_tests_only --test_lang_filters=cc //:all
+    # Shutdown bazel to release the memory held by bazel.
+    bazel shutdown
     # End Original script
 
     exit 0
