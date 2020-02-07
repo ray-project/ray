@@ -434,7 +434,7 @@ class TrialRunner:
         """Processes a trial result.
 
         Args:
-            trial (Trial): Trial to which result belongs.
+            trial (Trial): Trial with a result ready to be processed.
         """
         try:
             result = self.trial_executor.fetch_result(trial)
