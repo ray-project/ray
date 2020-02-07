@@ -81,13 +81,15 @@ git_repository(
 )
 
 # OpenCensus depends on jupp0r/prometheus-cpp
-http_archive(
+git_repository(
     name = "com_github_jupp0r_prometheus_cpp",
-    strip_prefix = "prometheus-cpp-master",
-
-    # TODO(qwang): We should use the repository of `jupp0r` here when this PR
-    # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
-    urls = ["https://github.com/jovany-wang/prometheus-cpp/archive/master.zip"],
+    commit = "60eaa4ea47b16751a8e8740b05fe70914c68a480",
+    remote = "https://github.com/jupp0r/prometheus-cpp",
+    patches = [
+        # https://github.com/jupp0r/prometheus-cpp/pull/225
+        "//thirdparty/patches:prometheus-windows-zlib.patch",
+        "//thirdparty/patches:prometheus-windows-pollfd.patch",
+    ]
 )
 
 load("@com_github_jupp0r_prometheus_cpp//:repositories.bzl", "prometheus_cpp_repositories")
