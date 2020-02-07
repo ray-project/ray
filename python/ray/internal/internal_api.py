@@ -30,6 +30,9 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
     """
     worker = ray.worker.get_global_worker()
 
+    if ray.worker._mode() == ray.worker.LOCAL_MODE:
+        return
+
     if isinstance(object_ids, ray.ObjectID):
         object_ids = [object_ids]
 

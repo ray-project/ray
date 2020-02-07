@@ -24,6 +24,7 @@ from ray.rllib.evaluation.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils import FilterManager, deep_update, merge_dicts
+from ray.rllib.utils.memory import ray_get_and_free
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Resources, ExportFormat
@@ -668,7 +669,7 @@ class Trainer(Trainable):
         for i, obj_id in enumerate(checks):
             ev = self.optimizer.remote_evaluators[i]
             try:
-                ray.get(obj_id)
+                ray_get_and_free(obj_id)
                 healthy_evaluators.append(ev)
                 logger.info("Worker {} looks healthy".format(i + 1))
             except RayError:

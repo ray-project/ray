@@ -7,6 +7,7 @@ from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils.memory import ray_get_and_free
 
 
 class AsyncGradientsOptimizer(PolicyOptimizer):
@@ -49,7 +50,7 @@ class AsyncGradientsOptimizer(PolicyOptimizer):
                 ready_list = wait_results[0]
                 future = ready_list[0]
 
-                gradient, info = ray.get(future)
+                gradient, info = ray_get_and_free(future)
                 e = pending_gradients.pop(future)
                 self.learner_stats = get_learner_stats(info)
 
