@@ -12,6 +12,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import log_once, summarize
+from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.schedules import ConstantSchedule, PiecewiseSchedule
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils import try_import_tf
@@ -251,8 +252,8 @@ class TFPolicy(Policy):
             prev_action_batch,
             prev_reward_batch,
             explore=explore,
-            timestep=timestep if timestep is not None else
-            self.global_timestep)
+            timestep=timestep
+            if timestep is not None else self.global_timestep)
         # Execute session run to get action (and other fetches).
         ret = builder.get(fetches)
         return ret[:3]
@@ -280,9 +281,8 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def get_exploration_info(self):
-        if self.exploration is not None:
-            return self._sess.run(
-                self.exploration.get_info())
+        if isinstance(self.exploration, Exploration):
+            return self._sess.run(self.exploration.get_info())
 
     @override(Policy)
     def get_weights(self):

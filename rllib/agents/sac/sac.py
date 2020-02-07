@@ -64,7 +64,7 @@ DEFAULT_CONFIG = with_common_config({
     "prioritized_replay_alpha": 0.6,
     "prioritized_replay_beta": 0.4,
     "prioritized_replay_eps": 1e-6,
-    "beta_annealing_fraction": 0.2,
+    "prioritized_replay_beta_annealing_timesteps": 20000,
     "final_prioritized_replay_beta": 0.4,
     "compress_observations": False,
 
@@ -107,7 +107,7 @@ DEFAULT_CONFIG = with_common_config({
     # TODO(ekl) these are unused; remove them from sac config
     "per_worker_exploration": False,
     "exploration_fraction": 0.1,
-    "schedule_max_timesteps": 100000,
+    "schedule_max_timesteps": -1,
     "exploration_initial_eps": 1.0,
     "exploration_final_eps": 0.02,
 })

@@ -113,8 +113,8 @@ class EpsilonGreedy(Exploration):
             < epsilon
 
         exploration_action = tf.cond(
-            pred=tf.constant(explore, dtype=tf.bool) if
-            isinstance(explore, bool) else explore,
+            pred=tf.constant(explore, dtype=tf.bool)
+            if isinstance(explore, bool) else explore,
             true_fn=lambda: tf.where(chose_random, random_actions, action),
             false_fn=lambda: action,
         )

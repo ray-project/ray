@@ -276,7 +276,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             any: Serializable information on the `self.exploration` object.
         """
-        if self.exploration is not None:
+        if isinstance(self.exploration, Exploration):
             return self.exploration.get_info()
 
     @DeveloperAPI
@@ -288,7 +288,7 @@ class Policy(metaclass=ABCMeta):
         Returns:
             any: Serializable copy or view of the current exploration state.
         """
-        if self.exploration is not None:
+        if isinstance(self.exploration, Exploration):
             raise NotImplementedError
 
     @DeveloperAPI
@@ -299,7 +299,7 @@ class Policy(metaclass=ABCMeta):
             exploration_state (any): Serializable copy or view of the new
                 exploration state.
         """
-        if self.exploration is not None:
+        if isinstance(self.exploration, Exploration):
             raise NotImplementedError
 
     @DeveloperAPI
