@@ -524,7 +524,7 @@ class Node:
             redis_password=self._ray_params.redis_password,
             config=self._config)
         assert (
-                ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
+            ray_constants.PROCESS_TYPE_GCS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info
         ]
