@@ -8,6 +8,7 @@ except ImportError:
 import argparse
 import copy
 import datetime
+import enum
 import json
 import logging
 import os
@@ -32,6 +33,8 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
+from ray.core.generated import dashboard_pb2
+from ray.core.generated import dashboard_pb2_grpc
 import ray.ray_constants as ray_constants
 
 # Logger for this module. It should be configured at the entry point
@@ -88,6 +91,15 @@ def b64_decode(reply):
     return b64decode(reply).decode("utf-8")
 
 
+class MetricsType(enum.Enum):
+    NODE_INFO = 1
+    RAYLET_INFO = 2
+    LOG = 3
+    ERROR = 4
+    PROFILING_STATUS = 5
+    PROFILING_INFO = 6
+
+
 class Dashboard(object):
     """A dashboard process for monitoring Ray nodes.
 
@@ -96,7 +108,18 @@ class Dashboard(object):
         which polls said API for display purposes.
 
     Attributes:
-        redis_client: A client used to communicate with the Redis server.
+        host(str): Host address of dashboard aiohttp server.
+        port(str): Port number of dashboard aiohttp server.
+        redis_address(str): GCS address of a Ray cluster
+        temp_dir (str): The temporary directory used for log files and
+            information for this Ray session.
+        redis_passord(str): Redis password to access GCS
+        hosted_dashboard_mode(str): "local" | "client" | "server"
+            "local"  mode works as a local dashboard.
+            "client" mode dashboard sends metrics to hosted server
+            "server" mode dahsboard is run inside hosted cluster.
+        NodeStats(NodeStats): For a dependency injection.
+        RayletStats(RayletStats): For a dependency injection.
     """
 
     def __init__(self,
@@ -104,8 +127,11 @@ class Dashboard(object):
                  port,
                  redis_address,
                  temp_dir,
-                 redis_password=None):
-        """Initialize the dashboard object."""
+                 redis_password=None,
+                 hosted_dashboard_mode="client",
+                 update_frequency=1.0,
+                 NodeStatsClass=NodeStats,
+                 RayletStatsClass=RayletStats):
         self.host = host
         self.port = port
         self.redis_client = ray.services.create_redis_client(
@@ -113,7 +139,10 @@ class Dashboard(object):
         self.temp_dir = temp_dir
 
         self.node_stats = NodeStats(redis_address, redis_password)
-        self.raylet_stats = RayletStats(redis_address, redis_password)
+        self.raylet_stats = RayletStats(redis_address, update_frequency, redis_password)
+
+        self.hosted_dashboard_mode = hosted_dashboard_mode
+        self.client = Client() if self.hosted_dashboard_mode == "client" else None
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -130,6 +159,10 @@ class Dashboard(object):
 
         def get_forbidden(_) -> aiohttp.web.Response:
             return forbidden()
+
+        def _export_if_client_mode(data, metrics_type=None):
+            if self.hosted_dashboard_mode == "client":
+                self.client.export(data, metrics_type)
 
         async def get_index(req) -> aiohttp.web.Response:
             return aiohttp.web.FileResponse(
@@ -191,69 +224,18 @@ class Dashboard(object):
         async def node_info(req) -> aiohttp.web.Response:
             now = datetime.datetime.utcnow()
             D = self.node_stats.get_node_stats()
+            _export_if_client_mode(D, metrics_type=MetricsType.NODE_INFO)
             return await json_response(result=D, ts=now)
 
         async def raylet_info(req) -> aiohttp.web.Response:
-            D = self.raylet_stats.get_raylet_stats()
-            workers_info_by_node = {
-                data["nodeId"]: data.get("workersStats")
-                for data in D.values()
-            }
-            infeasible_tasks = sum(
-                (data.get("infeasibleTasks", []) for data in D.values()), [])
-            actor_tree = self.node_stats.get_actor_tree(
-                workers_info_by_node, infeasible_tasks)
-            for address, data in D.items():
-                # process view data
-                measures_dicts = {}
-                for view_data in data["viewData"]:
-                    view_name = view_data["viewName"]
-                    if view_name in ("local_available_resource",
-                                     "local_total_resource",
-                                     "object_manager_stats"):
-                        measures_dicts[view_name] = measures_to_dict(
-                            view_data["measures"])
-                # process resources info
-                extra_info_strings = []
-                prefix = "ResourceName:"
-                for resource_name, total_resource in measures_dicts[
-                        "local_total_resource"].items():
-                    available_resource = measures_dicts[
-                        "local_available_resource"].get(resource_name, .0)
-                    resource_name = resource_name[len(prefix):]
-                    extra_info_strings.append("{}: {} / {}".format(
-                        resource_name,
-                        format_resource(resource_name,
-                                        total_resource - available_resource),
-                        format_resource(resource_name, total_resource)))
-                data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
-                if os.environ.get("RAY_DASHBOARD_DEBUG"):
-                    # process object store info
-                    extra_info_strings = []
-                    prefix = "ValueType:"
-                    for stats_name in [
-                            "used_object_store_memory", "num_local_objects"
-                    ]:
-                        stats_value = measures_dicts[
-                            "object_manager_stats"].get(
-                                prefix + stats_name, .0)
-                        extra_info_strings.append("{}: {}".format(
-                            stats_name, stats_value))
-                    data["extraInfo"] += ", ".join(extra_info_strings)
-                    # process actor info
-                    actor_tree_str = json.dumps(
-                        actor_tree, indent=2, sort_keys=True)
-                    lines = actor_tree_str.split("\n")
-                    max_line_length = max(map(len, lines))
-                    to_print = []
-                    for line in lines:
-                        to_print.append(line +
-                                        (max_line_length - len(line)) * " ")
-                    data["extraInfo"] += "\n" + "\n".join(to_print)
-            result = {"nodes": D, "actors": actor_tree}
+            result = self.construct_raylet_info()
+            _export_if_client_mode(result, metrics_type=MetricsType.RAYLET_INFO)
             return await json_response(result=result)
 
         async def launch_profiling(req) -> aiohttp.web.Response:
+            if self.hosted_dashboard_mode == "server":
+                return get_forbidden()
+
             node_id = req.query.get("node_id")
             pid = int(req.query.get("pid"))
             duration = int(req.query.get("duration"))
@@ -263,15 +245,19 @@ class Dashboard(object):
 
         async def check_profiling_status(req) -> aiohttp.web.Response:
             profiling_id = req.query.get("profiling_id")
-            return await json_response(
-                self.raylet_stats.check_profiling_status(profiling_id))
+            profiling_status = self.raylet_stats.check_profiling_status(profiling_id)
+            _export_if_client_mode(profiling_status, metrics_type=MetricsType.PROFILING_STATUS)
+            return await json_response(result=profiling_status)
 
         async def get_profiling_info(req) -> aiohttp.web.Response:
             profiling_id = req.query.get("profiling_id")
-            return aiohttp.web.json_response(
-                self.raylet_stats.get_profiling_info(profiling_id))
+            profiling_info = self.raylet_stats.get_profiling_info(profiling_id)
+            _export_if_client_mode(profiling_info, metrics_type=MetricsType.PROFILING_INFO)
+            return aiohttp.web.json_response(profiling_info)
 
         async def kill_actor(req) -> aiohttp.web.Response:
+            if self.hosted_dashboard_mode == "server":
+                return get_forbidden()
             actor_id = req.query.get("actor_id")
             ip_address = req.query.get("ip_address")
             port = req.query.get("port")
@@ -282,12 +268,14 @@ class Dashboard(object):
             hostname = req.query.get("hostname")
             pid = req.query.get("pid")
             result = self.node_stats.get_logs(hostname, pid)
+            _export_if_client_mode(result, metrics_type=MetricsType.LOG)
             return await json_response(result=result)
 
         async def errors(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
             pid = req.query.get("pid")
             result = self.node_stats.get_errors(hostname, pid)
+            _export_if_client_mode(result, metrics_type=MetricsType.ERROR)
             return await json_response(result=result)
 
         self.app.router.add_get("/", get_index)
@@ -327,6 +315,65 @@ class Dashboard(object):
         with open(os.path.join(self.temp_dir, "dashboard_url"), "w") as f:
             f.write(url)
         logger.info("Dashboard running on {}".format(url))
+
+    def construct_raylet_info(self):
+        D = self.raylet_stats.get_raylet_stats()
+        workers_info_by_node = {
+            data["nodeId"]: data.get("workersStats")
+            for data in D.values()
+        }
+        infeasible_tasks = sum(
+            (data.get("infeasibleTasks", []) for data in D.values()), [])
+        actor_tree = self.node_stats.get_actor_tree(
+            workers_info_by_node, infeasible_tasks)
+        for address, data in D.items():
+            # process view data
+            measures_dicts = {}
+            for view_data in data["viewData"]:
+                view_name = view_data["viewName"]
+                if view_name in ("local_available_resource",
+                                    "local_total_resource",
+                                    "object_manager_stats"):
+                    measures_dicts[view_name] = measures_to_dict(
+                        view_data["measures"])
+            # process resources info
+            extra_info_strings = []
+            prefix = "ResourceName:"
+            for resource_name, total_resource in measures_dicts[
+                    "local_total_resource"].items():
+                available_resource = measures_dicts[
+                    "local_available_resource"].get(resource_name, .0)
+                resource_name = resource_name[len(prefix):]
+                extra_info_strings.append("{}: {} / {}".format(
+                    resource_name,
+                    format_resource(resource_name,
+                                    total_resource - available_resource),
+                    format_resource(resource_name, total_resource)))
+            data["extraInfo"] = ", ".join(extra_info_strings) + "\n"
+            if os.environ.get("RAY_DASHBOARD_DEBUG"):
+                # process object store info
+                extra_info_strings = []
+                prefix = "ValueType:"
+                for stats_name in [
+                        "used_object_store_memory", "num_local_objects"
+                ]:
+                    stats_value = measures_dicts[
+                        "object_manager_stats"].get(
+                            prefix + stats_name, .0)
+                    extra_info_strings.append("{}: {}".format(
+                        stats_name, stats_value))
+                data["extraInfo"] += ", ".join(extra_info_strings)
+                # process actor info
+                actor_tree_str = json.dumps(
+                    actor_tree, indent=2, sort_keys=True)
+                lines = actor_tree_str.split("\n")
+                max_line_length = max(map(len, lines))
+                to_print = []
+                for line in lines:
+                    to_print.append(line +
+                                    (max_line_length - len(line)) * " ")
+                data["extraInfo"] += "\n" + "\n".join(to_print)
+        return {"nodes": D, "actors": actor_tree}
 
     def run(self):
         self.log_dashboard_url()
@@ -375,7 +422,7 @@ class NodeStats(threading.Thread):
 
         super().__init__()
 
-    def calculate_log_counts(self):
+    def _calculate_log_counts(self):
         return {
             ip: {
                 pid: len(logs_for_pid)
@@ -384,7 +431,7 @@ class NodeStats(threading.Thread):
             for ip, logs_for_ip in self._logs.items()
         }
 
-    def calculate_error_counts(self):
+    def _calculate_error_counts(self):
         return {
             ip: {
                 pid: len(errors_for_pid)
@@ -393,7 +440,7 @@ class NodeStats(threading.Thread):
             for ip, errors_for_ip in self._errors.items()
         }
 
-    def purge_outdated_stats(self):
+    def _purge_outdated_stats(self):
         def current(then, now):
             if (now - then) > 5:
                 return False
@@ -408,14 +455,14 @@ class NodeStats(threading.Thread):
 
     def get_node_stats(self) -> Dict:
         with self._node_stats_lock:
-            self.purge_outdated_stats()
+            self._purge_outdated_stats()
             node_stats = sorted(
                 (v for v in self._node_stats.values()),
                 key=itemgetter("boot_time"))
             return {
                 "clients": node_stats,
-                "log_counts": self.calculate_log_counts(),
-                "error_counts": self.calculate_error_counts(),
+                "log_counts": self._calculate_log_counts(),
+                "error_counts": self._calculate_error_counts(),
             }
 
     def get_actor_tree(self, workers_info_by_node, infeasible_tasks) -> Dict:
@@ -561,17 +608,19 @@ class NodeStats(threading.Thread):
                     else:
                         data = json.loads(ray.utils.decode(data))
                         self._node_stats[data["hostname"]] = data
+
             except Exception:
                 logger.exception(traceback.format_exc())
                 continue
 
 
 class RayletStats(threading.Thread):
-    def __init__(self, redis_address, redis_password=None):
+    def __init__(self, redis_address, update_frequency, redis_password=None):
         self.nodes_lock = threading.Lock()
         self.nodes = []
         self.stubs = {}
         self.reporter_stubs = {}
+        self.update_frequency = update_frequency
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
 
@@ -579,11 +628,11 @@ class RayletStats(threading.Thread):
         self._raylet_stats = {}
         self._profiling_stats = {}
 
-        self.update_nodes()
+        self._update_nodes()
 
         super().__init__()
 
-    def update_nodes(self):
+    def _update_nodes(self):
         with self.nodes_lock:
             self.nodes = ray.nodes()
             node_ids = [node["NodeID"] for node in self.nodes]
@@ -643,14 +692,15 @@ class RayletStats(threading.Thread):
     def check_profiling_status(self, profiling_id):
         with self._raylet_stats_lock:
             is_present = profiling_id in self._profiling_stats
-        if is_present:
-            reply = self._profiling_stats[profiling_id]
-            if reply.stderr:
-                return {"status": "error", "error": reply.stderr}
-            else:
-                return {"status": "finished"}
-        else:
+        if not is_present:
             return {"status": "pending"}
+
+        reply = self._profiling_stats[profiling_id]
+        if reply.stderr:
+            return {"status": "error", "error": reply.stderr}
+        else:
+            return {"status": "finished"}
+
 
     def get_profiling_info(self, profiling_id):
         with self._raylet_stats_lock:
@@ -674,7 +724,7 @@ class RayletStats(threading.Thread):
     def run(self):
         counter = 0
         while True:
-            time.sleep(1.0)
+            time.sleep(self.update_frequency)
             replies = {}
             for node in self.nodes:
                 node_id = node["NodeID"]
@@ -691,72 +741,73 @@ class RayletStats(threading.Thread):
             # From time to time, check if new nodes have joined the cluster
             # and update self.nodes
             if counter % 10:
-                self.update_nodes()
+                self._update_nodes()
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description=("Parse Redis server for the "
-                     "dashboard to connect to."))
-    parser.add_argument(
-        "--host",
-        required=True,
-        type=str,
-        help="The host to use for the HTTP server.")
-    parser.add_argument(
-        "--port",
-        required=True,
-        type=int,
-        help="The port to use for the HTTP server.")
-    parser.add_argument(
-        "--redis-address",
-        required=True,
-        type=str,
-        help="The address to use for Redis.")
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="the password to use for Redis")
-    parser.add_argument(
-        "--logging-level",
-        required=False,
-        type=str,
-        default=ray_constants.LOGGER_LEVEL,
-        choices=ray_constants.LOGGER_LEVEL_CHOICES,
-        help=ray_constants.LOGGER_LEVEL_HELP)
-    parser.add_argument(
-        "--logging-format",
-        required=False,
-        type=str,
-        default=ray_constants.LOGGER_FORMAT,
-        help=ray_constants.LOGGER_FORMAT_HELP)
-    parser.add_argument(
-        "--temp-dir",
-        required=False,
-        type=str,
-        default=None,
-        help="Specify the path of the temporary directory use by Ray process.")
-    args = parser.parse_args()
-    ray.utils.setup_logger(args.logging_level, args.logging_format)
+class Client:
+    """Handle the communication with hosted ray cluster"""
 
-    try:
-        dashboard = Dashboard(
-            args.host,
-            args.port,
-            args.redis_address,
-            args.temp_dir,
-            redis_password=args.redis_password,
-        )
-        dashboard.run()
-    except Exception as e:
-        # Something went wrong, so push an error to all drivers.
-        redis_client = ray.services.create_redis_client(
-            args.redis_address, password=args.redis_password)
-        traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
-        ray.utils.push_error_to_driver_through_redis(
-            redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
-        raise e
+    def __init__(self, to="127.0.0.1:50051"):
+        self.exporter = Exporter()
+
+    def export(self, data, metrics_type):
+        self.exporter.export(data, metrics_type)
+
+    def authenticate(self):
+        pass
+
+    def get_dashboard_url(self):
+        pass
+
+
+class Exporter:
+    def __init__(self, to="127.0.0.1:50051"):
+        self.to = to
+        self.channel = grpc.insecure_channel('localhost:50051')
+        self.stub = dashboard_pb2_grpc.DashboardServiceStub(self.channel)
+
+    def export(self, data: dict, metrics_type: MetricsType):
+        # TODO(sang): Think about failure scenarios. 
+        # Ex) What if user internet connection is weak for a long time? 
+        # Are we losing user data? Or should we store locally?
+        if type(data) != dict:
+            raise TypeError("Wrong data type is given: {}".format(type(data)))
+        if type(metrics_type) is None or not isinstance(metrics_type, MetricsType):
+            raise TypeError("Wrong Metrics type {}. It should be: {}".format(metrics_type, list(MetricsType)))
+    
+        if metrics_type == MetricsType.NODE_INFO:
+            self._export_node_info(data)
+        elif metrics_type == MetricsType.RAYLET_INFO:
+            self._export_raylet_info(data)
+        elif metrics_type == MetricsType.LOG:
+            self._export_log_file(data)
+        elif metrics_type == MetricsType.ERROR:
+            self._export_error_info(data)
+        elif metrics_type == MetricsType.PROFILING_STATUS:
+            self._export_profiling_status(data)
+        elif metrics_type == MetricsType.PROFILING_INFO:
+            self._export_raylet_info(data)
+
+    def _export_node_info(self, data):
+        request = dashboard_pb2.NodeInfoEventRequest(json_data=json.dumps(data).encode('utf-8'))
+        self.stub.NodeInfoEvent.future(request)
+
+    def _export_raylet_info(self, data):
+        request = dashboard_pb2.RayletInfoEventRequest(json_data=json.dumps(data).encode('utf-8'))
+        self.stub.RayletInfoEvent.future(request)
+
+    def _export_log_file(self, data):
+        request = dashboard_pb2.LogFileEventRequest(json_data=json.dumps(data).encode('utf-8'))
+        self.stub.LogFileEvent.future(request)
+
+    def _export_error_info(self, data):
+        request = dashboard_pb2.ErrorInfoEventRequest(json_data=json.dumps(data).encode('utf-8'))
+        self.stub.ErrorInfoEvent.future(request)
+
+    def _export_profiling_status(self, data):
+        request = dashboard_pb2.ProfilingStatusEventRequest(json_data=json.dumps(data).encode('utf-8'))
+        self.stub.ProfilingStatusEvent.future(request)
+
+    def _export_profiling_info(self, data):
+        request = dashboard_pb2.ProfilingInfoEventRequest(json_data=json.dumps(data).encode('utf-8'))
+        self.stub.ProfilingInfoEvent.future(request)

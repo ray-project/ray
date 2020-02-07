@@ -1041,7 +1041,7 @@ def start_dashboard(require_webui,
             port += 1
 
     dashboard_filepath = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
+        os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard_main.py")
     command = [
         sys.executable,
         "-u",
