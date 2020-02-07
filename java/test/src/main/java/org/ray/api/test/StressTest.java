@@ -39,12 +39,16 @@ public class StressTest extends BaseTest {
   }
 
   @Test
-  public void testDependency() {
+  public void testDependency() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
     RayObject<Integer> x = Ray.call(StressTest::echo, 1);
     for (int i = 0; i < 1000; i++) {
       x = Ray.call(StressTest::echo, x);
     }
+
+    TimeUnit.MILLISECONDS.sleep(10000);
+    System.exit(-1);
+
     Assert.assertEquals(x.get(), Integer.valueOf(1));
   }
 
@@ -77,7 +81,7 @@ public class StressTest extends BaseTest {
   }
 
   @Test(groups = {"directCall"})
-  public void testSubmittingManyTasksToOneActor() {
+  public void testSubmittingManyTasksToOneActor() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<Actor> actor = Ray.createActor(Actor::new);
     List<ObjectId> objectIds = new ArrayList<>();
@@ -85,19 +89,27 @@ public class StressTest extends BaseTest {
       RayActor<Worker> worker = Ray.createActor(Worker::new, actor);
       objectIds.add(Ray.call(Worker::ping, worker, 100).getId());
     }
+
+    TimeUnit.MILLISECONDS.sleep(10000);
+    System.exit(-1);
+
     for (Integer result : Ray.<Integer>get(objectIds)) {
       Assert.assertEquals(result, Integer.valueOf(100));
     }
   }
 
   @Test
-  public void testPuttingAndGettingManyObjects() {
+  public void testPuttingAndGettingManyObjects() throws Exception {
     TestUtils.skipTestUnderSingleProcess();
     Integer objectToPut = 1;
     List<RayObject<Integer>> objects = new ArrayList<>();
     for (int i = 0; i < 100_000; i++) {
       objects.add(Ray.put(objectToPut));
     }
+
+    TimeUnit.MILLISECONDS.sleep(10000);
+    System.exit(-1);
+
     for (RayObject<Integer> object : objects) {
       Assert.assertEquals(object.get(), objectToPut);
     }
