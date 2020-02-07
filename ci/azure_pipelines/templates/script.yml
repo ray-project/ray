@@ -1,0 +1,63 @@
+# This template includes the steps of the general script phase
+# that is specified in the .travis.yml of the upstream repo.
+# This is the default script phase that is reused by some of the
+# parallel jobs in the build matrix of the .travis.yml file.
+# Tips:
+# - TRAVIS_BUILD_DIR got replaced by BUILD_SOURCESDIRECTORY
+steps:
+- bash: |
+    echo Running script phase of the original travis.yml
+
+    # Cause the script to exit if a single command fails.
+    set -e
+
+    # TODO: [CI] remove after CI get stable
+    set -x
+
+    # Initialize travis script expected variables.
+    export PYTHON=$PYTHON_VERSION
+    echo "Determined PYTHON variable: $PYTHON"
+
+    # Make bazel available
+    export PATH="$HOME/bin:$PATH"
+    source /home/vsts/.bazel/bin/bazel-complete.bash
+
+    # Start Original script
+    export PATH="$HOME/miniconda/bin:$PATH"
+
+    # raylet integration tests
+    # Originally with ./ci/suppress_output 
+    bash src/ray/test/run_core_worker_tests.sh
+    # Originally with ./ci/suppress_output 
+    bash src/ray/test/run_object_manager_tests.sh
+
+    # cc bazel tests
+    # Originally with ./ci/suppress_output 
+    bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
+
+    # ray serve tests TODO(ekl): these should be moved to bazel
+    if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
+    if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
+
+    # ray operator tests
+    cd ./deploy/ray-operator/
+    go build
+    go test ./...
+    cd ../..
+
+    # random python tests TODO(ekl): these should be moved to bazel
+    if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
+    if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
+
+    # bazel python tests. This should be run last to keep its logs at the end of travis logs.
+    if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...; fi
+    if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
+    # NO MORE TESTS BELOW, keep them above.
+    # End Original script
+
+    exit 0
+  env:
+    PYTHONWARNINGS: 'ignore'
+    TRAVIS: 'true'
+  displayName: 'Run original script phase'
+  timeoutInMinutes: 60

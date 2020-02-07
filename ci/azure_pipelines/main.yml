@@ -1,0 +1,47 @@
+# Ray Full pipeline
+# This pipeline is intended to be a replica of travis build
+# in the upstream repo.
+# 
+# 
+# For more details check: https://docs.microsoft.com/azure/devops/pipelines/languages/python
+
+name: $(BuildDefinitionName)_$(SourceBranchName)_$(Date:yyyyMMdd)$(Rev:.r)
+stages:
+  - stage: Build
+    jobs:
+      - job: TravisJob_1_2
+        timeoutInMinutes: 120
+        cancelTimeoutInMinutes: 5
+        strategy:
+          matrix:
+            linux_python35:
+              imageName: 'ubuntu-16.04'
+              python.version: '3.5'
+              TRAVIS_OS_NAME: 'linux'
+            mac_python35:
+              imageName: 'macos-10.14'
+              python.version: '3.5'
+              TRAVIS_OS_NAME: 'osx'
+        displayName: Travis Jobs 1 and 2
+        pool:
+          vmImage: $(imageName)
+        steps:
+          # TODO: [CI] uncomment step after adding a condition in 
+          # ci/travis/install-dependencies.sh that check first if 
+          # node is already installed before install it
+          # - task: NodeTool@0
+          #   inputs:
+          #     versionSpec: '>=7.x'
+          #     checkLatest: true
+          #   displayName: 'Install latest Node.js'
+          # Template containing the installation of steps of python 3.6
+          - template: templates/python.yml
+          # Template containing the install phase of travis.yml
+          - template: templates/install.yml
+          # Template containing the script phase of travis.yml
+          - template: templates/script.yml
+
+
+trigger:
+  - master
+  - ms/*
