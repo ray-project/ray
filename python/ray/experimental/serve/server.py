@@ -160,8 +160,9 @@ class HTTPProxy:
             return
 
         # create objects necessary for enqueue
-        # enclosing http_body_bytes due to
+        # enclosing http_body_bytes to list due to
         # https://github.com/ray-project/ray/issues/6944
+        # TODO(alind):  remove list enclosing after issue is fixed
         args = (scope, [http_body_bytes])
         request_in_object = RequestMetadata(
             endpoint_name, TaskContext.Web,
