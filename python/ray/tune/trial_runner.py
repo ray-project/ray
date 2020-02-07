@@ -424,8 +424,9 @@ class TrialRunner:
                     logger.warning(
                         "Consider turning off forced head-worker trial "
                         "checkpoint syncs by setting sync_on_checkpoint=False"
-                        ". Note that this might result in faulty trial "
-                        "restoration for some worker failure modes.")
+                        ". Note that this may result in faulty trial "
+                        "restoration if a failure occurs while the checkpoint "
+                        "is being synced from the worker to the head node.")
             else:
                 with warn_if_slow("process_trial"):
                     self._process_trial(trial)
