@@ -155,6 +155,9 @@ class HTTPProxy:
         try:
             relative_slo_ms = self._check_slo_ms(relative_slo_ms)
             absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
+            if relative_slo_ms is not None and absolute_slo_ms is not None:
+                raise ValueError("Both relative and absolute slo's"
+                                 "cannot be specified.")
         except ValueError as e:
             await JSONResponse({"error": str(e)})(scope, receive, send)
             return
