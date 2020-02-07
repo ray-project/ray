@@ -521,7 +521,7 @@ def test_pass_returned_object_id(one_worker_100MiB):
     # Check that the task finishing unpins the object.
     ray.worker.global_worker.put_object(None, object_id=random_oid)
     ray.get(pending_oid)
-    _fill_object_store_and_get(inner_oid_binary, succeed=False)  # XXX
+    _fill_object_store_and_get(inner_oid_binary, succeed=False) # XXX
 
 
 # Call a recursive chain of tasks that pass a serialized reference that was
@@ -566,7 +566,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     ray.get(tail_oid)
 
     # Reference should be gone, check that returned ID gets evicted.
-    _fill_object_store_and_get(inner_oid_bytes, succeed=False)  # XXX
+    _fill_object_store_and_get(inner_oid_bytes, succeed=False) # XXX
 
 
 if __name__ == "__main__":
