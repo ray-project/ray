@@ -72,7 +72,7 @@ class EpsilonGreedy(Exploration):
                                timestep=None):
         # TODO(sven): This is hardcoded. Put a meaningful error, in case model
         # API is not as required.
-        q_values = model.q_value_head(model._last_output)
+        q_values = model.q_value_head(model.last_output())
         if isinstance(q_values, list):
             q_values = q_values[0]
         if self.framework == "tf":

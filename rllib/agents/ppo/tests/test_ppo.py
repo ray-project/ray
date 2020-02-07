@@ -120,7 +120,7 @@ class TestPPO(unittest.TestCase):
         kl, entropy, pg_loss, vf_loss, overall_loss = \
             self._ppo_loss_helper(
                 policy, policy.model, TorchCategorical, train_batch,
-                policy.model._last_output,
+                policy.model.last_output(),
                 policy.model.value_function().detach().numpy()
             )
         check(kl, policy.loss_obj.mean_kl.detach().numpy())
