@@ -481,13 +481,8 @@ void ReferenceCounter::WrapObjectId(
   }
 }
 
-void ReferenceCounter::HandleWaitForRefRemoved(
-    const rpc::WaitForRefRemovedRequest &request, rpc::WaitForRefRemovedReply *reply,
+void ReferenceCounter::OnRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  absl::MutexLock lock(&mutex_);
-  const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
-  RAY_LOG(DEBUG) << "Received WaitForRefRemoved " << object_id;
-  auto ref_removed_callback = [this, object_id, reply, send_reply_callback]() {
     ReferenceTable borrower_refs;
     RAY_UNUSED(PopBorrowerRefsInternal(object_id, &borrower_refs));
     for (const auto &pair : borrower_refs) {
@@ -506,7 +501,15 @@ void ReferenceCounter::HandleWaitForRefRemoved(
     *reply = ReferenceTableToWaitForRefRemovedReply(borrower_refs);
     RAY_LOG(DEBUG) << "Replying to WaitForRefRemoved, reply has " << reply->borrower_refs().size();
     send_reply_callback(Status::OK(), nullptr, nullptr);
-  };
+}
+
+void ReferenceCounter::HandleWaitForRefRemoved(
+    const rpc::WaitForRefRemovedRequest &request, rpc::WaitForRefRemovedReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  absl::MutexLock lock(&mutex_);
+  const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
+  RAY_LOG(DEBUG) << "Received WaitForRefRemoved " << object_id;
+  auto ref_removed_callback = boost::bind(&ReferenceCounter::OnRefRemoved, this, object_id, reply, send_reply_callback);
 
   auto it = object_id_refs_.find(object_id);
 

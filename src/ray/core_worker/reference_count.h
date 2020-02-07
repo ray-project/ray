@@ -11,6 +11,8 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/logging.h"
 
+#include <boost/bind.hpp>
+
 namespace ray {
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
@@ -223,6 +225,9 @@ class ReferenceCounter {
   bool AddBorrowedObjectInternal(const ObjectID &outer_id, const ObjectID &object_id,
                                  const TaskID &owner_id,
                                  const rpc::Address &owner_address)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+void OnRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply, rpc::SendReplyCallback send_reply_callback)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary

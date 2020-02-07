@@ -22,14 +22,10 @@ def one_worker_100MiB(request):
     ray.shutdown()
 
 
-def n_MiB_array(n):
-    return np.zeros(n * 1024 * 1024, dtype=np.uint8)
-
-
 def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
                                num_objects=5):
     for _ in range(num_objects):
-        ray.put(n_MiB_array(object_MiB))
+        ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
 
     if type(oid) is bytes:
         oid = ray.ObjectID(oid)
@@ -49,7 +45,7 @@ def _check_refcounts(expected):
     actual = ray.worker.global_worker.core_worker.get_all_reference_counts()
     assert len(expected) == len(actual)
     for object_id, (local, submitted) in expected.items():
-        hex_id = object_id.hex().encode('ascii')
+        hex_id = object_id.hex().encode("ascii")
         assert hex_id in actual
         assert local == actual[hex_id]["local"]
         assert submitted == actual[hex_id]["submitted"]
@@ -195,7 +191,8 @@ def test_basic_pinning(one_worker_100MiB):
             # Hold a long-lived reference to a ray.put object's ID. The object
             # should not be garbage collected while the actor is alive because
             # the object is pinned by the raylet.
-            self.large_object = ray.put(n_MiB_array(25))
+            self.large_object = ray.put(
+                np.zeros(25 * 1024 * 1024, dtype=np.uint8))
 
         def get_large_object(self):
             return ray.get(self.large_object)
@@ -206,7 +203,8 @@ def test_basic_pinning(one_worker_100MiB):
     # evicted before the long-lived object whose reference is held by
     # the actor.
     for batch in range(10):
-        intermediate_result = f.remote(n_MiB_array(10))
+        intermediate_result = f.remote(
+            np.zeros(10 * 1024 * 1024, dtype=np.uint8))
         ray.get(intermediate_result)
 
     # The ray.get below would fail with only LRU eviction, as the object
@@ -228,10 +226,11 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
     random_oid = ray.ObjectID.from_random()
-    oid = pending.remote(n_MiB_array(40), slow.remote(random_oid))
+    oid = pending.remote(
+        np.zeros(40 * 1024 * 1024, dtype=np.uint8), slow.remote(random_oid))
 
     for _ in range(2):
-        ray.put(n_MiB_array(40))
+        ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
 
     ray.worker.global_worker.put_object(None, object_id=random_oid)
     ray.get(oid)
@@ -251,7 +250,8 @@ def test_feature_flag(shutdown_only):
     @ray.remote
     class Actor(object):
         def __init__(self):
-            self.large_object = ray.put(n_MiB_array(25))
+            self.large_object = ray.put(
+                np.zeros(25 * 1024 * 1024, dtype=np.uint8))
 
         def wait_for_actor_to_start(self):
             pass
@@ -433,7 +433,8 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
     # Test that the reference held by the actor isn't evicted.
     array_oid = put.remote()
     random_oid = ray.ObjectID.from_random()
-    child_return_id = ray.get(launch_pending_task.remote([array_oid, random_oid]))
+    child_return_id = ray.get(
+        launch_pending_task.remote([array_oid, random_oid]))
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -451,7 +452,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
 
 # Test that an object containing object IDs within it pins the inner IDs.
 def test_basic_nested_ids(one_worker_100MiB):
-    inner_oid = ray.put(n_MiB_array(40))
+    inner_oid = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
 
     # Remove the local reference to the inner object.
@@ -471,7 +472,7 @@ def test_basic_nested_ids(one_worker_100MiB):
 def test_return_object_id(one_worker_100MiB):
     @ray.remote
     def return_an_id():
-        return [ray.put(n_MiB_array(40))]
+        return [ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))]
 
     outer_oid = return_an_id.remote()
     inner_oid_binary = ray.get(outer_oid)[0].binary()
