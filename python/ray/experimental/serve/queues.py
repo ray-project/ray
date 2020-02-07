@@ -1,7 +1,7 @@
 import asyncio
 import copy
 from collections import defaultdict
-from typing import DefaultDict, Union, List
+from typing import DefaultDict, List
 import pickle
 
 # Note on choosing blist instead of stdlib heapq

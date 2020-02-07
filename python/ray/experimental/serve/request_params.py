@@ -1,4 +1,3 @@
-import inspect
 import time
 from ray.experimental.serve.constants import DEFAULT_LATENCY_SLO_MS
 
