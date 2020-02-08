@@ -32,7 +32,7 @@ public class RunManager {
   private static final Logger LOGGER = LoggerFactory.getLogger(RunManager.class);
 
   private static final DateTimeFormatter DATE_TIME_FORMATTER =
-      DateTimeFormatter.ofPattern("Y-M-d_H-m-s");
+      DateTimeFormatter.ofPattern("YYYY-MM-dd_HH-mm-ss");
 
   private static final String WORKER_CLASS = "org.ray.runtime.runner.worker.DefaultWorker";
 
@@ -139,9 +139,9 @@ public class RunManager {
       LOGGER.error("Failed to start process " + name, e);
       throw new RuntimeException("Failed to start process " + name, e);
     }
-    // Wait 200ms and check whether the process is alive.
+    // Wait 1000 ms and check whether the process is alive.
     try {
-      TimeUnit.MILLISECONDS.sleep(200);
+      TimeUnit.MILLISECONDS.sleep(1000);
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
@@ -201,7 +201,7 @@ public class RunManager {
       // start redis shards
       for (int i = 0; i < rayConfig.numberRedisShards; i++) {
         String shard = startRedisInstance(rayConfig.nodeIp,
-            rayConfig.headRedisPort + i + 1, rayConfig.headRedisPassword, i);
+            rayConfig.redisShardPorts[i], rayConfig.headRedisPassword, i);
         client.rpush("RedisShards", shard);
       }
     }

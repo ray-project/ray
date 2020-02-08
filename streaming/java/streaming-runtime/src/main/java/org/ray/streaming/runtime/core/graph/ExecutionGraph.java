@@ -11,6 +11,10 @@ import org.ray.streaming.runtime.worker.JobWorker;
 
 /**
  * Physical execution graph.
+ *
+ * <p>Notice: Temporary implementation for now to keep functional. This will be changed to
+ * {@link org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph} later when
+ * new stream task implementation is ready.
  */
 public class ExecutionGraph implements Serializable {
   private long buildTime;
