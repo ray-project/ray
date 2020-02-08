@@ -1,16 +1,16 @@
 from ray.rllib.agents.ppo import ppo
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.optimizers import TorchDistributedDataParallelOptimizer
-"""Distributed Decentralized PPO implementation.
+"""Decentralized Distributed PPO implementation.
 
 Unlike APPO or PPO, learning is no longer done centralized in the trainer
 process. Instead, gradients are computed remotely on each rollout worker and
 all-reduced to sync them at each mini-batch. This allows each worker's GPU
 to be used both for sampling and for training.
 
-DD_PPO should be used if you have envs that require GPUs to function, or have
+DDPPO should be used if you have envs that require GPUs to function, or have
 a very large model that cannot be effectively optimized with the GPUs available
-on a single machine (DD_PPO allows scaling to arbitrary numbers of GPUs across
+on a single machine (DDPPO allows scaling to arbitrary numbers of GPUs across
 multiple nodes, unlike PPO/APPO which is limited to GPUs on a single node).
 
 Paper reference: https://arxiv.org/abs/1911.00357
@@ -31,13 +31,13 @@ DEFAULT_CONFIG = with_base_config(ppo.DEFAULT_CONFIG, {
     # Number of SGD epochs per optimization round.
     "num_sgd_iter": 10,
 
-    # *** WARNING: configs below are DD_PPO overrides from PPO; you
+    # *** WARNING: configs below are DDPPO overrides over PPO; you
     #     shouldn't need to adjust them. ***
-    "use_pytorch": True,  # DD_PPO requires PyTorch distributed.
+    "use_pytorch": True,  # DDPPO requires PyTorch distributed.
     "num_gpus": 0,  # No GPUs are used in the learner.
     "num_gpus_per_worker": 1,  # Each rollout worker gets a GPU.
     "truncate_episodes": True,  # Require evenly sized batches.
-    "train_batch_size": -1,  # Set sample batch size only for DD_PPO.
+    "train_batch_size": -1,  # This is auto set based on sample batch size.
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -50,7 +50,7 @@ def validate_config(config):
             config["sample_batch_size"] * config["num_envs_per_worker"])
     else:
         raise ValueError(
-            "Set sample_batch_size instead of train_batch_size for DD_PPO.")
+            "Set sample_batch_size instead of train_batch_size for DDPPO.")
     ppo.validate_config(config)
 
 
@@ -79,7 +79,7 @@ def make_distributed_allreduce_optimizer(workers, config):
 
 
 DDPPOTrainer = ppo.PPOTrainer.with_updates(
-    name="DD_PPO",
+    name="DDPPO",
     default_config=DEFAULT_CONFIG,
     make_policy_optimizer=make_distributed_allreduce_optimizer,
     validate_config=validate_config)

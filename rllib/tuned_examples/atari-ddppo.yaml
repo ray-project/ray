@@ -1,11 +1,11 @@
-# Basically the same as atari-ppo, but adapted for DD_PPO. Note that DD_PPO
+# Basically the same as atari-ppo, but adapted for DDPPO. Note that DDPPO
 # isn't actually any more efficient on Atari, since the network size is
 # relatively small and the env doesn't require a GPU.
 atari-ddppo:
     env:
         grid_search:
             - BreakoutNoFrameskip-v4
-    run: DD_PPO
+    run: DDPPO
     config:
         # Worker config: 10 workers, each of which requires a GPU.
         num_workers: 10

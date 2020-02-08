@@ -118,7 +118,7 @@ ALGORITHMS = {
     "QMIX": _import_qmix,
     "APEX_QMIX": _import_apex_qmix,
     "APPO": _import_appo,
-    "DD_PPO": _import_ddppo,
+    "DDPPO": _import_ddppo,
     "MARWIL": _import_marwil,
 }
 

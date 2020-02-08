@@ -1,6 +1,6 @@
 cartpole-ddppo:
     env: CartPole-v0
-    run: DD_PPO
+    run: DDPPO
     stop:
         episode_reward_mean: 100
         timesteps_total: 100000
