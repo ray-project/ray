@@ -8,7 +8,7 @@ from collections import defaultdict
 import queue
 
 import ray
-from ray.experimental.multiprocessing import Pool, TimeoutError
+from ray.util.multiprocessing import Pool, TimeoutError
 
 
 @pytest.fixture
