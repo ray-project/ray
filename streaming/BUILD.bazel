@@ -234,14 +234,14 @@ genrule(
     cmd = """
         set -e
         set -x
-        WORK_DIR=$$(pwd)
+        WORK_DIR="$$(pwd)"
         # Copy generated files.
-        GENERATED_DIR=$$WORK_DIR/streaming/python/generated
-        rm -rf $$GENERATED_DIR
-        mkdir -p $$GENERATED_DIR
-        touch $$GENERATED_DIR/__init__.py
+        GENERATED_DIR="$$WORK_DIR/streaming/python/generated"
+        rm -rf "$$GENERATED_DIR"
+        mkdir -p "$$GENERATED_DIR"
+        touch "$$GENERATED_DIR/__init__.py"
         for f in $(locations //streaming:streaming_py_proto); do
-            cp $$f $$GENERATED_DIR
+            cp "$$f" "$$GENERATED_DIR"
         done
         date > $@
     """,

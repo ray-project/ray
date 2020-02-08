@@ -1290,7 +1290,7 @@ genrule(
     outs = ["ray_pkg.out"],
     cmd = """
         set -x &&
-        WORK_DIR=$$(pwd) &&
+        WORK_DIR="$$(pwd)" &&
         cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
