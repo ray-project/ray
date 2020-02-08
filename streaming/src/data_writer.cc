@@ -99,7 +99,7 @@ void DataWriter::Run() {
   event_server_->Run();
   // Enable empty message timer after writer running.
   empty_message_thread_ =
-      std::make_shared<std::thread>(&DataWriter::EmptyMessageTimer, this);
+      std::make_shared<std::thread>(&DataWriter::EmptyMessageTimerCallback, this);
 }
 
 /// Since every memory ring buffer's size is limited, when the writing buffer is
@@ -130,11 +130,11 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
       data, data_size, write_message_id, message_type));
 
   if (ring_buffer_ptr->Size() == 1) {
-    if (channel_info.in_event_queue_) {
+    if (channel_info.in_event_queue) {
       ++channel_info.in_event_queue_cnt;
       STREAMING_LOG(DEBUG) << "user_event had been in event_queue";
-    } else if (!channel_info.flow_control_) {
-      channel_info.in_event_queue_ = true;
+    } else if (!channel_info.flow_control) {
+      channel_info.in_event_queue = true;
       Event event{&channel_info, EventType::UserEvent, false};
       event_server_->Push(event);
       ++channel_info.user_event_cnt;
@@ -219,8 +219,11 @@ DataWriter::~DataWriter() {
       STREAMING_LOG(INFO) << "Empty message thread waiting for join";
       empty_message_thread_->join();
     }
-    int user_event_count = 0, empty_event_count = 0, flow_control_event_count = 0,
-        in_event_queue_cnt = 0, queue_full_cnt = 0;
+    int user_event_count = 0;
+    int empty_event_count = 0;
+    int flow_control_event_count = 0;
+    int in_event_queue_cnt = 0;
+    int queue_full_cnt = 0;
     for (auto &output_queue : output_queue_ids_) {
       ProducerChannelInfo &channel_info = channel_info_map_[output_queue];
       user_event_count += channel_info.user_event_cnt;
@@ -229,11 +232,11 @@ DataWriter::~DataWriter() {
       in_event_queue_cnt += channel_info.in_event_queue_cnt;
       queue_full_cnt += channel_info.queue_full_cnt;
     }
-    STREAMING_LOG(WARNING) << "user event nums: " << user_event_count;
-    STREAMING_LOG(WARNING) << "empty event nums: " << empty_event_count;
-    STREAMING_LOG(WARNING) << "flow control event nums: " << flow_control_event_count;
-    STREAMING_LOG(WARNING) << "queue full nums: " << queue_full_cnt;
-    STREAMING_LOG(WARNING) << "in event queue: " << in_event_queue_cnt;
+    STREAMING_LOG(WARNING) << "User event nums: " << user_event_count
+                           << ", empty event nums: " << empty_event_count
+                           << ", flow control event nums: " << flow_control_event_count
+                           << ", queue full nums: " << queue_full_cnt
+                           << ", in event queue: " << in_event_queue_cnt;
   }
   STREAMING_LOG(INFO) << "Writer client queue disconnect.";
 }
@@ -350,7 +353,7 @@ void DataWriter::Stop() {
 
 bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
   ProducerChannelInfo &channel_info = *info;
-  channel_info.in_event_queue_ = false;
+  channel_info.in_event_queue = false;
   while (true) {
     if (RuntimeStatus::Running != runtime_context_->GetRuntimeStatus()) {
       return false;
@@ -365,8 +368,8 @@ bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
       ++channel_info.queue_full_cnt;
       STREAMING_LOG(DEBUG) << "FullChannel after writing to channel, queue_full_cnt:"
                            << channel_info.queue_full_cnt;
-      // TODO(lingxuan.zlx): we should notify consumed to channel, but skip it
-      // since flow control is unsupported currently.
+      // TODO(lingxuan.zlx): we should notify consumed status to channel when
+      // flow control is supported.
     } else if (StreamingStatus::EmptyRingBuffer != write_status) {
       STREAMING_LOG(INFO) << channel_info.channel_id
                           << ":something wrong when WriteToQueue "
@@ -387,7 +390,7 @@ bool DataWriter::SendEmptyToChannel(ProducerChannelInfo *channel_info) {
   return true;
 }
 
-void DataWriter::EmptyMessageTimer() {
+void DataWriter::EmptyMessageTimerCallback() {
   while (true) {
     if (RuntimeStatus::Running != runtime_context_->GetRuntimeStatus()) {
       return;
@@ -401,7 +404,7 @@ void DataWriter::EmptyMessageTimer() {
         return;
       }
       ProducerChannelInfo &channel_info = channel_info_map_[output_queue];
-      if (channel_info.flow_control_ || channel_info.writer_ring_buffer->Size() ||
+      if (channel_info.flow_control || channel_info.writer_ring_buffer->Size() ||
           current_ts < channel_info.message_pass_by_ts) {
         continue;
       }
@@ -429,8 +432,8 @@ void DataWriter::EmptyMessageTimer() {
                            << channel_info.writer_ring_buffer->Size()
                            << " transient_buffer size:"
                            << channel_info.writer_ring_buffer->GetTransientBufferSize()
-                           << " in_event_queue:" << channel_info.in_event_queue_
-                           << " flow_control:" << channel_info.flow_control_
+                           << " in_event_queue:" << channel_info.in_event_queue
+                           << " flow_control:" << channel_info.flow_control
                            << " user_event_cnt:" << channel_info.user_event_cnt
                            << " flow_control_event:" << channel_info.flow_control_cnt
                            << " empty_event_cnt:" << channel_info.sent_empty_cnt

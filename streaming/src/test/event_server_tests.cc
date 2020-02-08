@@ -3,8 +3,11 @@
 #include "gtest/gtest.h"
 
 using namespace ray::streaming;
+
+/// Mock function for send empty message.
 bool SendEmptyToChannel(ProducerChannelInfo *info) { return true; }
 
+/// Mock function for write all messages to channel.
 bool WriteAllToChannel(ProducerChannelInfo *info) { return true; }
 
 bool stop = false;

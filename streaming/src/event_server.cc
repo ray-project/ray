@@ -4,7 +4,7 @@
 namespace ray {
 namespace streaming {
 EventServer::EventServer(uint32_t event_size)
-    : event_queue_(std::make_shared<EventQueue<Event> >(event_size)), stop_flag_(false) {}
+    : event_queue_(std::make_shared<EventQueue>(event_size)), stop_flag_(false) {}
 EventServer::~EventServer() {
   stop_flag_ = true;
   // No need to join if loop thread has never been created.
@@ -38,22 +38,16 @@ bool EventServer::Register(const EventType &type, const Handle &handle) {
   return true;
 }
 
-void EventServer::Push(const Event &event) {
-  if (event.urgent_) {
-    event_queue_->PushToUrgent(event);
-  } else {
-    event_queue_->Push(event);
-  }
-}
+void EventServer::Push(const Event &event) { event_queue_->Push(event); }
 
 void EventServer::Execute(Event &event) {
-  if (event_handle_map_.find(event.type_) == event_handle_map_.end()) {
+  if (event_handle_map_.find(event.type) == event_handle_map_.end()) {
     STREAMING_LOG(WARNING) << "Handle has never been registered yet, type => "
-                           << static_cast<int>(event.type_);
+                           << static_cast<int>(event.type);
     return;
   }
-  Handle &handle = event_handle_map_[event.type_];
-  if (handle(event.channel_info_)) {
+  Handle &handle = event_handle_map_[event.type];
+  if (handle(event.channel_info)) {
     event_queue_->Pop();
   }
 }
@@ -82,14 +76,12 @@ void EventServer::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &remov
   event_queue_->Run();
   for (size_t i = 0; i < total_event_nums; ++i) {
     Event event;
-    if (!event_queue_->Get(event) || !event.channel_info_) {
+    if (!event_queue_->Get(event) || !event.channel_info) {
       STREAMING_LOG(WARNING) << "Fail to get event or channel_info is null, i = " << i;
       continue;
     }
-    if (removed_set.find(event.channel_info_->channel_id) != removed_set.end()) {
+    if (removed_set.find(event.channel_info->channel_id) != removed_set.end()) {
       removed_related_num++;
-    } else if (event.urgent_) {
-      event_queue_->PushToUrgent(event);
     } else {
       event_queue_->Push(event);
     }

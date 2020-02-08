@@ -13,6 +13,27 @@
 namespace ray {
 namespace streaming {
 
+enum class EventType : uint8_t {
+  UserEvent = 0,
+  FlowEvent = 1,
+  EmptyEvent = 2,
+  FullChannel = 3,
+  Reload = 4,
+};
+
+struct EnumTypeHash {
+  template <typename T>
+  std::size_t operator()(const T &t) const {
+    return static_cast<std::size_t>(t);
+  }
+};
+
+struct Event {
+  ProducerChannelInfo *channel_info;
+  EventType type;
+  bool urgent;
+};
+
 /// Data writer utilizes what's called an event-driven programming model instead
 /// loop forward polling driven that's employed in first simple version.
 /// Event driven model includes two important components: event server and event
@@ -25,10 +46,9 @@ namespace streaming {
 /// The event queue inherits from the universal ring queue. It mainly divides
 /// event into two different levels: normal event and urgent event, and the
 /// total size of the queue is the sum of them.
-template <class T>
-class EventQueue : public AbstractRingBufferImpl<T> {
+class EventQueue : public AbstractRingBuffer<Event> {
  public:
-  EventQueue(size_t size) : capacity_(size), is_started_(true) {}
+  EventQueue(size_t size) : urgent_(false), capacity_(size), is_started_(true) {}
 
   virtual ~EventQueue() {
     is_started_ = false;
@@ -44,7 +64,7 @@ class EventQueue : public AbstractRingBufferImpl<T> {
     full_cv_.notify_all();
   }
 
-  void Push(const T &t) {
+  void Push(const Event &t) {
     std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
     while (Size() >= capacity_ && is_started_) {
       STREAMING_LOG(WARNING) << " EventQueue is full, its size:" << Size()
@@ -57,27 +77,12 @@ class EventQueue : public AbstractRingBufferImpl<T> {
     if (!is_started_) {
       return;
     }
-    buffer_.push(t);
+    if (t.urgent) {
+      buffer_.push(t);
+    } else {
+      urgent_buffer_.push(t);
+    }
     if (1 == Size()) {
-      empty_cv_.notify_one();
-    }
-  }
-
-  void PushToUrgent(const T &t) {
-    std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
-    while (Size() >= capacity_ && is_started_) {
-      STREAMING_LOG(WARNING) << " EventQueue is full, its size:" << Size()
-                             << " all_size:" << Size() << " capacity:" << capacity_
-                             << " buffer size:" << buffer_.size()
-                             << " urgent_buffer size:" << urgent_buffer_.size();
-      full_cv_.wait(lock);
-      STREAMING_LOG(WARNING) << "event_server's full_sleep be notifyed";
-    }
-    if (!is_started_) {
-      return;
-    }
-    urgent_buffer_.push(t);
-    if (Size() == 1) {
       empty_cv_.notify_one();
     }
   }
@@ -96,7 +101,7 @@ class EventQueue : public AbstractRingBufferImpl<T> {
     full_cv_.notify_all();
   }
 
-  bool Get(T &evt) {
+  bool Get(Event &evt) {
     std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
     while (Empty() && is_started_) {
       empty_cv_.wait(lock);
@@ -114,29 +119,29 @@ class EventQueue : public AbstractRingBufferImpl<T> {
     return true;
   }
 
-  T PopAndGet() {
+  Event PopAndGet() {
     std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
     while (Empty() && is_started_) {
       empty_cv_.wait(lock);
     }
     if (!is_started_) {
-      return T();
+      return Event();
     }
     if (!urgent_buffer_.empty()) {
-      T res = urgent_buffer_.front();
+      Event res = urgent_buffer_.front();
       urgent_buffer_.pop();
       if (Full()) {
         full_cv_.notify_one();
       }
       return res;
     }
-    T res = buffer_.front();
+    Event res = buffer_.front();
     buffer_.pop();
     if (Size() + 1 == capacity_) full_cv_.notify_one();
     return res;
   }
 
-  T &Front() {
+  Event &Front() {
     std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
     if (urgent_buffer_.size()) {
       return urgent_buffer_.front();
@@ -144,46 +149,28 @@ class EventQueue : public AbstractRingBufferImpl<T> {
     return buffer_.front();
   }
 
-  inline bool Empty() { return buffer_.empty() && urgent_buffer_.empty(); }
+  inline bool Empty() const { return buffer_.empty() && urgent_buffer_.empty(); }
 
-  inline bool Full() { return buffer_.size() + urgent_buffer_.size() == capacity_; }
+  inline bool Full() const { return buffer_.size() + urgent_buffer_.size() == capacity_; }
 
-  inline size_t Size() { return buffer_.size() + urgent_buffer_.size(); }
+  inline size_t Size() const { return buffer_.size() + urgent_buffer_.size(); }
 
-  inline size_t UrgentBufferSize() { return urgent_buffer_.size(); }
+  inline size_t UrgentBufferSize() const { return urgent_buffer_.size(); }
 
-  inline size_t Capacity() { return capacity_; }
+  inline size_t Capacity() const { return capacity_; }
 
  private:
   std::mutex ring_buffer_mutex_;
   std::condition_variable empty_cv_;
   std::condition_variable full_cv_;
-  std::queue<T> buffer_;
-  std::queue<T> urgent_buffer_;
-  bool urgent_ = false;
+  // Normal events wil be pushed into buffer_.
+  std::queue<Event> buffer_;
+  // This field urgent_buffer_ is used for serving urgent event.
+  std::queue<Event> urgent_buffer_;
+  // Urgent event will be poped out first if urgent_ flag is true.
+  bool urgent_;
   size_t capacity_;
   bool is_started_;
-};
-
-enum class EventType : uint8_t {
-  UserEvent = 0,
-  FlowEvent = 1,
-  EmptyEvent = 2,
-  FullChannel = 3,
-  Reload = 4,
-};
-
-struct EnumTypeHash {
-  template <typename T>
-  std::size_t operator()(const T &t) const {
-    return static_cast<std::size_t>(t);
-  }
-};
-
-struct Event {
-  ProducerChannelInfo *channel_info_;
-  EventType type_;
-  bool urgent_;
 };
 
 class EventServer {
@@ -208,7 +195,7 @@ class EventServer {
   /// one by one.
   void LoopThreadHandler();
 
-  inline size_t EventNums() { return event_queue_->Size(); }
+  inline size_t EventNums() const { return event_queue_->Size(); }
 
   void RemoveDestroyedChannelEvent(const std::vector<ObjectID> &removed_ids);
 
@@ -217,7 +204,7 @@ class EventServer {
 
  private:
   std::unordered_map<EventType, Handle, EnumTypeHash> event_handle_map_;
-  std::shared_ptr<EventQueue<Event> > event_queue_;
+  std::shared_ptr<EventQueue> event_queue_;
   std::shared_ptr<std::thread> loop_thread_;
 
   static constexpr int kEventQueueCapacity = 1000;

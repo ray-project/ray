@@ -38,8 +38,8 @@ struct ProducerChannelInfo {
   uint64_t rb_full_cnt = 0;
   uint64_t queue_full_cnt = 0;
   uint64_t in_event_queue_cnt = 0;
-  bool in_event_queue_ = false;
-  bool flow_control_ = false;
+  bool in_event_queue = false;
+  bool flow_control = false;
 };
 
 struct ConsumerChannelInfo {

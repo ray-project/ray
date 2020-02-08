@@ -77,7 +77,7 @@ class DataWriter {
   /// \param channel_info
   bool SendEmptyToChannel(ProducerChannelInfo *channel_info);
 
-  void EmptyMessageTimer();
+  void EmptyMessageTimerCallback();
 
  public:
   explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
