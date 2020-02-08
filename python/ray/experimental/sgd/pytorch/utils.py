@@ -123,11 +123,39 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
     return stats
 
 
-def validate(config, model, val_iterator, criterion, **kwargs):
-    if isinstance(model, collections.Iterable):
+def validate(config, model, val_iterator, criterion, scheduler):
+    """Runs one standard validation pass over the val_iterator.
+
+    This function automatically measures timing for various operations such
+    as host to device transfer and processing time for the batch.
+
+    It also automatically detects and places the data on the given GPU device
+    if available.
+
+    Raises:
+        ValueError if multiple models/schedulers are provided. You
+            are expected to have a custom training function if you wish
+            to use multiple models/schedulers.
+
+    Args:
+        config: (dict): A user configuration provided into the Trainer
+            constructor.
+        model: The model as created by the model_creator.
+        train_iterator: An iterator created from the DataLoader which
+            wraps the provided Dataset.
+        criterion: The loss object created by the loss_creator.
+        scheduler (optional): The torch.optim.lr_scheduler object
+            as created by the scheduler_creator.
+
+    Returns:
+        A dict of metrics from the evaluation.
+    """
+
+    if isinstance(model, collections.Iterable) or isinstance(
+            scheduler, collections.Iterable):
         raise ValueError(
             "Need to provide custom validation function if using multi-model "
-            "training.")
+            "or multi-scheduler training.")
     batch_time = AverageMeter()
     losses = AverageMeter()
 

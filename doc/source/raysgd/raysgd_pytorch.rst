@@ -404,22 +404,34 @@ Custom Training and Validation Functions
 
 ``PyTorchTrainer`` allows you to run a custom training and validation step in parallel on each worker, providing a flexibility similar to using PyTorch natively. This is done via the ``train_function`` and ``validation_function`` parameters.
 
-Note that this is needed if the model creator returns multiple models.
+Note that this is needed if the model creator returns multiple models, optimizers, or schedulers.
 
 .. code-block:: python
 
-    def train(models, dataloader, criterion, optimizers, config):
-        """A custom training function.
+    # An example custom training function.
+
+    def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
+        """Runs one standard training pass over the train_iterator.
+
+        Raises:
+            ValueError if multiple models/optimizers/schedulers are provided. You
+                are expected to have a custom training function if you wish
+                to use multiple models/optimizers/schedulers.
 
         Args:
-            models: Output of the model_creator passed into PyTorchTrainer.
-            data_loader: A dataloader wrapping the training dataset created by the ``data_creator`` passed into PyTorchTrainer.
-            criterion: The instantiation of the ``loss_creator``.
-            optimizers: Output of the optimizer_creator passed into PyTorchTrainer.
-            config: The configuration dictionary passed into PyTorchTrainer.
+            config: (dict): A user configuration provided into the Trainer
+                constructor.
+            model: The model(s) as created by the model_creator.
+            train_iterator: An iterator created from the DataLoader which
+                wraps the provided Dataset.
+            criterion: The loss object created by the loss_creator.
+            optimizer: The torch.optim.Optimizer(s) object
+                as created by the optimizer_creator.
+            scheduler (optional): The torch.optim.lr_scheduler(s) object
+                as created by the scheduler_creator.
 
         Returns:
-            A dictionary of values/metrics.
+            A dict of metrics from training.
         """
 
         netD, netG = models
@@ -462,11 +474,32 @@ Note that this is needed if the model creator returns multiple models.
         }
 
 
+    def custom_validate(config, model, val_iterator, criterion, scheduler):
+        """Runs one standard validation pass over the val_iterator.
+
+        Args:
+            config: (dict): A user configuration provided into the Trainer
+                constructor.
+            model: The model(s) as created by the model_creator.
+            train_iterator: An iterator created from the DataLoader which
+                wraps the provided Dataset.
+            criterion: The loss object created by the loss_creator.
+            scheduler (optional): The torch.optim.lr_scheduler object(s)
+                as created by the scheduler_creator.
+
+        Returns:
+            A dict of metrics from the evaluation.
+        """
+        ...
+        return {...}
+
+
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
         nn.BCELoss,
         train_function=train,
+        validation_function=custom_validate,
         ...
     )
