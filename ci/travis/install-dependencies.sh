@@ -62,5 +62,5 @@ if [[ "$PYTHON" == "3.5" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
   nvm install node
 fi
 
-pip install -q \
+pip install -q psutil setproctitle \
         --target="$ROOT_DIR/../../python/ray/thirdparty_files"
