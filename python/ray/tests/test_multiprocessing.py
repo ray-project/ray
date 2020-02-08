@@ -484,3 +484,8 @@ def test_maxtasksperchild(cleanup_only):
 
     pool = Pool(5, maxtasksperchild=1)
     assert len(set(pool.map(f, range(20)))) == 20
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))
