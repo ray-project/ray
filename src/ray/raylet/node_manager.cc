@@ -2102,7 +2102,7 @@ void NodeManager::ForwardTask(const Task &task, const ClientID &node_id,
   auto &server_conn = it->second;
   server_conn->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::ForwardTaskRequest), fbb.GetSize(),
-      fbb.GetBufferPointer(), [this, on_error, task_id, node_id](ray::Status status) {
+      fbb.GetBufferPointer(), [this, on_error, task, task_id, node_id](ray::Status status) {
         if (status.ok()) {
           const auto &spec = task.GetTaskSpecification();
           // Mark as forwarded so that the task and its lineage are not

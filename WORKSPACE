@@ -66,25 +66,25 @@ load("@//bazel:python_configure.bzl", "python_configure")
 
 python_configure(name = "local_config_python")
 
-http_archive(
+git_repository(
     name = "io_opencensus_cpp",
-    strip_prefix = "opencensus-cpp-0.3.0",
-    urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/v0.3.0.zip"],
+    commit = "3aa11f20dd610cb8d2f7c62e58d1e69196aadf11",
+    remote = "https://github.com/census-instrumentation/opencensus-cpp",
 )
 
 # OpenCensus depends on Abseil so we have to explicitly pull it in.
 # This is how diamond dependencies are prevented.
 git_repository(
     name = "com_google_absl",
-    commit = "88a152ae747c3c42dc9167d46c590929b048d436",
-    remote = "https://github.com/abseil/abseil-cpp.git",
+    commit = "aa844899c937bde5d2b24f276b59997e5b668bde",
+    remote = "https://github.com/abseil/abseil-cpp",
 )
 
 # OpenCensus depends on jupp0r/prometheus-cpp
 git_repository(
     name = "com_github_jupp0r_prometheus_cpp",
     commit = "60eaa4ea47b16751a8e8740b05fe70914c68a480",
-    remote = "https://github.com/jupp0r/prometheus-cpp",
+    remote = "https://github.com/jupp0r/prometheus-cpp.git",
     patches = [
         # https://github.com/jupp0r/prometheus-cpp/pull/225
         "//thirdparty/patches:prometheus-windows-zlib.patch",
@@ -92,6 +92,6 @@ git_repository(
     ]
 )
 
-load("@com_github_jupp0r_prometheus_cpp//:repositories.bzl", "prometheus_cpp_repositories")
+load("@com_github_jupp0r_prometheus_cpp//bazel:repositories.bzl", "prometheus_cpp_repositories")
 
 prometheus_cpp_repositories()

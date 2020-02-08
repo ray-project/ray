@@ -88,7 +88,7 @@ bool ResourceSet::SubtractResourcesStrict(const ResourceSet &other) {
     const double &resource_capacity = resource_pair.second;
     RAY_CHECK(resource_capacity_.count(resource_label) == 1)
         << "Attempt to acquire unknown resource: " << resource_label << " capacity "
-        << resource_capacity.ToDouble();
+        << resource_capacity;
     resource_capacity_[resource_label] -= resource_capacity;
     if (resource_capacity_[resource_label] < 0) {
       oversubscribed = true;

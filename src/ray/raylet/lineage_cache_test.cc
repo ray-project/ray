@@ -416,75 +416,6 @@ TEST_F(LineageCacheTest, TestEvictManyParents) {
   ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
 }
 
-TEST_F(LineageCacheTest, TestForwardTasksRoundTrip) {
-  // Insert a chain of dependent tasks.
-  uint64_t lineage_size = max_lineage_size_ + 1;
-  std::vector<Task> tasks;
-  InsertTaskChain(lineage_cache_, tasks, lineage_size, std::vector<ObjectID>(), 1);
-
-  // Simulate removing each task, forwarding it to another node, then
-  // receiving the task back again.
-  for (auto it = tasks.begin(); it != tasks.end(); it++) {
-    const auto task_id = it->GetTaskSpecification().TaskId();
-    // Simulate removing the task and forwarding it to another node.
-    auto uncommitted_lineage =
-        lineage_cache_.GetUncommittedLineageOrDie(task_id, ClientID::nil());
-    ASSERT_TRUE(lineage_cache_.RemoveWaitingTask(task_id));
-    // Simulate receiving the task again. Make sure we can add the task back.
-    flatbuffers::FlatBufferBuilder fbb;
-    auto uncommitted_lineage_message = uncommitted_lineage.ToFlatbuffer(fbb, task_id);
-    fbb.Finish(uncommitted_lineage_message);
-    uncommitted_lineage = Lineage(
-        *flatbuffers::GetRoot<protocol::ForwardTaskRequest>(fbb.GetBufferPointer()));
-    ASSERT_TRUE(lineage_cache_.AddWaitingTask(*it, uncommitted_lineage));
-  }
-}
-
-TEST_F(LineageCacheTest, TestForwardTask) {
-  // Insert a chain of dependent tasks.
-  size_t num_tasks_flushed = 0;
-  std::vector<Task> tasks;
-  InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
-
-  // Simulate removing the task and forwarding it to another node.
-  auto it = tasks.begin() + 1;
-  auto forwarded_task = *it;
-  tasks.erase(it);
-  auto task_id_to_remove = forwarded_task.GetTaskSpecification().TaskId();
-  auto uncommitted_lineage =
-      lineage_cache_.GetUncommittedLineageOrDie(task_id_to_remove, ClientID::nil());
-  ASSERT_TRUE(lineage_cache_.RemoveWaitingTask(task_id_to_remove));
-  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 3);
-
-  // Simulate executing the remaining tasks.
-  for (const auto &task : tasks) {
-    ASSERT_TRUE(lineage_cache_.AddReadyTask(task));
-    num_tasks_flushed++;
-  }
-  // Check that the first task, which has no dependencies can be flushed. The
-  // last task cannot be flushed since one of its dependencies has not been
-  // added by the remote node yet.
-  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
-  mock_gcs_.Flush();
-  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 2);
-
-  // Simulate executing the task on a remote node and adding it to the GCS.
-  auto task_data = std::make_shared<protocol::TaskT>();
-  RAY_CHECK_OK(
-      mock_gcs_.RemoteAdd(forwarded_task.GetTaskSpecification().TaskId(), task_data));
-  // Check that the remote task is flushed.
-  num_tasks_flushed++;
-  ASSERT_EQ(mock_gcs_.TaskTable().size(), num_tasks_flushed);
-  ASSERT_EQ(mock_gcs_.SubscribedTasks().size(), 1);
-
-  // Check that once we receive the callback for the remote task, we can now
-  // flush the last task.
-  mock_gcs_.Flush();
-  ASSERT_EQ(mock_gcs_.SubscribedTasks().size(), 0);
-  ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 0);
-  ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
-}
-
 TEST_F(LineageCacheTest, TestEviction) {
   // Insert a chain of dependent tasks.
   uint64_t lineage_size = max_lineage_size_ + 1;
@@ -616,39 +547,6 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   // now evicted.
   ASSERT_EQ(lineage_cache_.GetLineage().GetEntries().size(), 0);
   ASSERT_EQ(lineage_cache_.GetLineage().GetChildrenSize(), 0);
-}
-
-TEST_F(LineageCacheTest, TestFlushAllUncommittedTasks) {
-  // Insert a chain of tasks.
-  std::vector<Task> tasks;
-  auto return_values =
-      InsertTaskChain(lineage_cache_, tasks, 3, std::vector<ObjectID>(), 1);
-  std::vector<TaskID> task_ids;
-  for (const auto &task : tasks) {
-    task_ids.push_back(task.GetTaskSpecification().TaskId());
-  }
-  // Check that we subscribed to each of the uncommitted tasks.
-  ASSERT_EQ(mock_gcs_.NumRequestedNotifications(), task_ids.size());
-
-  // Flush all uncommitted tasks and make sure we add all tasks to
-  // the task table.
-  lineage_cache_.FlushAllUncommittedTasks();
-  ASSERT_EQ(mock_gcs_.NumTaskAdds(), tasks.size());
-  // Flush again and make sure there are no new tasks added to the
-  // task table.
-  lineage_cache_.FlushAllUncommittedTasks();
-  ASSERT_EQ(mock_gcs_.NumTaskAdds(), tasks.size());
-
-  // Flush all GCS notifications.
-  mock_gcs_.Flush();
-  // Make sure that we unsubscribed to the uncommitted tasks before
-  // we flushed them.
-  ASSERT_EQ(num_notifications_, 0);
-
-  // Flush again and make sure there are no new tasks added to the
-  // task table.
-  lineage_cache_.FlushAllUncommittedTasks();
-  ASSERT_EQ(mock_gcs_.NumTaskAdds(), tasks.size());
 }
 
 }  // namespace raylet

@@ -17,7 +17,7 @@ steps:
     # Originally with ./ci/suppress_output
     ./ci/travis/install-bazel.sh
     # Originally with ./ci/suppress_output
-     ./ci/travis/install-dependencies.sh
+    ./ci/travis/install-dependencies.sh
     export PATH="$HOME/miniconda/bin:$PATH"
     # Originally with ./ci/suppress_output
     ./ci/travis/install-ray.sh
