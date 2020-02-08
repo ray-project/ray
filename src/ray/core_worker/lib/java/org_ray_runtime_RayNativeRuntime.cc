@@ -44,8 +44,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
         RAY_CHECK(env);
         RAY_CHECK(local_java_task_executor);
         // convert RayFunction
-        jobject ray_function_array_list =
-            NativeStringVectorToJavaStringList(env, ray_function.GetFunctionDescriptor());
+        jobject ray_function_array_list = NativeRayFunctionDescriptorToJavaStringList(
+            env, ray_function.GetFunctionDescriptor());
         // convert args
         // TODO (kfstorm): Avoid copying binary data from Java to C++
         jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
