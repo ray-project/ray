@@ -114,8 +114,13 @@ def simple_sample_action_from_q_network(policy,
         actions = tf.argmax(policy.q_values, axis=1)
         return actions, tf.ones_like(actions, dtype=tf.float32)
 
-    policy.output_actions, policy.action_prob = tf.cond(
-        deterministic, true_fn=normal_q, false_fn=soft_q)
+    if deterministic is True:
+        policy.output_actions, policy.action_prob = normal_q()
+    elif deterministic is False:
+        policy.output_actions, policy.action_prob = soft_q()
+    else:
+        policy.output_actions, policy.action_prob = tf.cond(
+            deterministic, true_fn=normal_q, false_fn=soft_q)
 
     return policy.output_actions, policy.action_prob
 

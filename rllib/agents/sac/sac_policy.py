@@ -116,15 +116,20 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
         "normalize_actions"] else unsquash_actions(
             squashed_deterministic_actions)
 
-    actions = tf.cond(
-        deterministic,
-        true_fn=lambda: deterministic_actions,
-        false_fn=lambda: stochastic_actions)
-
-    action_probabilities = tf.cond(
-        deterministic,
-        true_fn=lambda: tf.zeros_like(log_pis),
-        false_fn=lambda: log_pis)
+    if deterministic is True:
+        actions = deterministic_actions
+    elif deterministic is False:
+        actions = stochastic_actions
+    else:
+        actions = tf.cond(
+            deterministic,
+            true_fn=lambda: deterministic_actions,
+            false_fn=lambda: stochastic_actions)
+    
+        action_probabilities = tf.cond(
+            deterministic,
+            true_fn=lambda: tf.zeros_like(log_pis),
+            false_fn=lambda: log_pis)
 
     policy.output_actions = actions
     return actions, action_probabilities

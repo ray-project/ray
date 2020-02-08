@@ -341,12 +341,12 @@ def build_eager_tf_policy(name,
                     self.action_space, deterministic, self.config)
 
             # Override `action` with exploration action.
-            if explore and self.exploration:
+            if self.exploration:
                 action = self.exploration.get_exploration_action(
                     action,
                     self.model,
                     action_dist=self.dist_class,
-                    explore=True,
+                    explore=explore,
                     timestep=timestep
                     if timestep is not None else self.global_timestep)
                 logp = None
