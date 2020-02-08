@@ -97,7 +97,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   void SetActorId(const ActorID &actor_id);
 
-  void SetWebuiDisplay(const std::string &message);
+  void SetWebuiDisplay(const std::string &key, const std::string &message);
 
   void SetActorTitle(const std::string &title);
 
@@ -163,6 +163,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                              const TaskID &owner_id,
                                              const rpc::Address &owner_address);
 
+  /// Add metadata about the object IDs contained within another object ID.
+  /// This should be called during deserialization of the outer object ID.
+  ///
+  /// \param[in] object_id The object containing IDs.
+  /// \param[in] contained_object_ids The IDs contained in the object.
+  void AddContainedObjectIDs(const ObjectID &object_id,
+                             const std::vector<ObjectID> &contained_object_ids);
+
   ///
   /// Public methods related to storing and retrieving objects.
   ///
@@ -177,16 +185,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Generated ID of the object.
   /// \return Status.
-  Status Put(const RayObject &object, ObjectID *object_id);
+  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
+             ObjectID *object_id);
 
   /// Put an object with specified ID into object store.
   ///
   /// \param[in] object The ray object.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
   /// \return Status.
-  Status Put(const RayObject &object, const ObjectID &object_id);
+  Status Put(const RayObject &object, const std::vector<ObjectID> &contained_object_ids,
+             const ObjectID &object_id);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -195,11 +207,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[out] object_id Object ID generated for the put.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                ObjectID *object_id, std::shared_ptr<Buffer> *data);
+                const std::vector<ObjectID> &contained_object_ids, ObjectID *object_id,
+                std::shared_ptr<Buffer> *data);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
@@ -208,24 +222,21 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
+  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                const std::vector<ObjectID> &contained_object_ids,
                 const ObjectID &object_id, std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.
   ///
   /// \param[in] object_id Object ID corresponding to the object.
-  /// \param[in] owns_object Whether or not this worker owns the object. If true,
-  ///            the object will be added as owned to the reference counter as an
-  ///            owned object and this worker will be responsible for managing its
-  ///            lifetime.
-  /// \param[in] pin_object Whether or not to pin the object at the local raylet. This
-  ///            only applies when owns_object is true.
+  /// \param[in] pin_object Whether or not to pin the object at the local raylet.
   /// \return Status.
-  Status Seal(const ObjectID &object_id, bool owns_object, bool pin_object);
+  Status Seal(const ObjectID &object_id, bool pin_object);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -285,6 +296,40 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// IDs have the same type, we embed the actor ID in a TaskID with the rest
   /// of the bytes zeroed out.
   TaskID GetCallerId() const;
+
+  /// Push an error to the relevant driver.
+  ///
+  /// \param[in] The ID of the job_id that the error is for.
+  /// \param[in] The type of the error.
+  /// \param[in] The error message.
+  /// \param[in] The timestamp of the error.
+  /// \return Status.
+  Status PushError(const JobID &job_id, const std::string &type,
+                   const std::string &error_message, double timestamp);
+
+  /// Request raylet backend to prepare a checkpoint for an actor.
+  ///
+  /// \param[in] actor_id ID of the actor.
+  /// \param[out] checkpoint_id ID of the new checkpoint (output parameter).
+  /// \return Status.
+  Status PrepareActorCheckpoint(const ActorID &actor_id,
+                                ActorCheckpointID *checkpoint_id);
+
+  /// Notify raylet backend that an actor was resumed from a checkpoint.
+  ///
+  /// \param[in] actor_id ID of the actor.
+  /// \param[in] checkpoint_id ID of the checkpoint from which the actor was resumed.
+  /// \return Status.
+  Status NotifyActorResumedFromCheckpoint(const ActorID &actor_id,
+                                          const ActorCheckpointID &checkpoint_id);
+
+  /// Sets a resource with the specified capacity and client id
+  /// \param[in] resource_name Name of the resource to be set.
+  /// \param[in] capacity Capacity of the resource.
+  /// \param[in] client_Id ClientID where the resource is to be set.
+  /// \return Status
+  Status SetResource(const std::string &resource_name, const double capacity,
+                     const ClientID &client_id);
 
   /// Submit a normal task.
   ///
@@ -375,12 +420,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids Object IDs of the return values.
   /// \param[in] data_sizes Sizes of the return values.
   /// \param[in] metadatas Metadata buffers of the return values.
+  /// \param[in] contained_object_ids IDs serialized within each return object.
   /// \param[out] return_objects RayObjects containing buffers to write results into.
   /// \return Status.
-  Status AllocateReturnObjects(const std::vector<ObjectID> &object_ids,
-                               const std::vector<size_t> &data_sizes,
-                               const std::vector<std::shared_ptr<Buffer>> &metadatas,
-                               std::vector<std::shared_ptr<RayObject>> *return_objects);
+  Status AllocateReturnObjects(
+      const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
+      const std::vector<std::shared_ptr<Buffer>> &metadatas,
+      const std::vector<std::vector<ObjectID>> &contained_object_ids,
+      std::vector<std::shared_ptr<RayObject>> *return_objects);
 
   /// Get a handle to an actor.
   ///
@@ -459,8 +506,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return void.
   void Shutdown();
 
-  /// Send the list of active object IDs to the raylet.
-  void ReportActiveObjectIDs();
+  /// Check if the raylet has failed. If so, shutdown.
+  void CheckForRayletFailure();
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
@@ -574,9 +621,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
-  /// Timer used to periodically send heartbeat containing active object IDs to the
-  /// raylet.
-  boost::asio::steady_timer heartbeat_timer_;
+  /// Timer used to periodically check if the raylet has died.
+  boost::asio::steady_timer death_check_timer_;
 
   /// Timer for internal book-keeping.
   boost::asio::steady_timer internal_timer_;
@@ -656,8 +702,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
   TaskSpecification current_task_ GUARDED_BY(mutex_);
 
-  /// String to be displayed on Web UI.
-  std::string webui_display_ GUARDED_BY(mutex_);
+  /// Key value pairs to be displayed on Web UI.
+  std::unordered_map<std::string, std::string> webui_display_ GUARDED_BY(mutex_);
 
   /// Actor title that consists of class name, args, kwargs for actor construction.
   std::string actor_title_ GUARDED_BY(mutex_);

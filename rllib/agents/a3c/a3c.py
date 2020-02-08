@@ -6,6 +6,13 @@ from ray.rllib.optimizers import AsyncGradientsOptimizer
 # yapf: disable
 # __sphinx_doc_begin__
 DEFAULT_CONFIG = with_common_config({
+    # Should use a critic as a baseline (otherwise don't use value baseline;
+    # required for using GAE).
+    "use_critic": True,
+    # If true, use the Generalized Advantage Estimator (GAE)
+    # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+    "use_gae": True,
+
     # Size of rollout batch
     "sample_batch_size": 10,
     # GAE(gamma) parameter

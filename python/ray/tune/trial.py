@@ -270,7 +270,8 @@ class Trial:
         """Init logger."""
         if not self.result_logger:
             if not self.logdir:
-                self.logdir = Trial.create_logdir(str(self), self.local_dir)
+                self.logdir = Trial.create_logdir(
+                    str(self) + "_" + self.experiment_tag, self.local_dir)
             else:
                 os.makedirs(self.logdir, exist_ok=True)
 
@@ -328,9 +329,6 @@ class Trial:
         """Whether the given result meets this trial's stopping criteria."""
         if result.get(DONE):
             return True
-
-        if callable(self.stopping_criterion):
-            return self.stopping_criterion(self.trial_id, result)
 
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:

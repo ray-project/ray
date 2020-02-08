@@ -120,7 +120,7 @@ export interface RayletInfoResponse {
           usedResources: { [key: string]: number };
           currentTaskDesc?: string;
           numPendingTasks?: number;
-          webuiDisplay?: string;
+          webuiDisplay?: Record<string, string>;
         }
       | {
           actorId: string;
@@ -150,3 +150,42 @@ export interface LogsResponse {
 
 export const getLogs = (hostname: string, pid: string | undefined) =>
   get<LogsResponse>("/api/logs", { hostname, pid: pid || "" });
+
+export type LaunchProfilingResponse = string;
+
+export const launchProfiling = (
+  nodeId: string,
+  pid: number,
+  duration: number
+) =>
+  get<LaunchProfilingResponse>("/api/launch_profiling", {
+    node_id: nodeId,
+    pid: pid,
+    duration: duration
+  });
+
+export type CheckProfilingStatusResponse =
+  | { status: "pending" }
+  | { status: "finished" }
+  | { status: "error"; error: string };
+
+export const checkProfilingStatus = (profilingId: string) =>
+  get<CheckProfilingStatusResponse>("/api/check_profiling_status", {
+    profiling_id: profilingId
+  });
+
+export const getProfilingResultURL = (profilingId: string) =>
+  `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
+    `${base}/api/get_profiling_info?profiling_id=${profilingId}`
+  )}`;
+
+export const launchKillActor = (
+  actorId: string,
+  actorIpAddress: string,
+  actorPort: number
+) =>
+  get<string>("/api/kill_actor", {
+    actor_id: actorId,
+    ip_address: actorIpAddress,
+    port: actorPort
+  });

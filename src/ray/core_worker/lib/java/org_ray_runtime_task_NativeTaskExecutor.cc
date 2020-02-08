@@ -20,8 +20,7 @@ Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
   const auto &task_spec = core_worker.GetWorkerContext().GetCurrentTask();
   RAY_CHECK(task_spec->IsActorTask());
   ActorCheckpointID checkpoint_id;
-  auto status =
-      core_worker.GetRayletClient().PrepareActorCheckpoint(actor_id, checkpoint_id);
+  auto status = core_worker.PrepareActorCheckpoint(actor_id, &checkpoint_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   jbyteArray result = env->NewByteArray(checkpoint_id.Size());
   env->SetByteArrayRegion(result, 0, checkpoint_id.Size(),
@@ -35,8 +34,7 @@ Java_org_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpo
   auto &core_worker = *reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
   const auto &actor_id = core_worker.GetWorkerContext().GetCurrentActorID();
   const auto checkpoint_id = JavaByteArrayToId<ActorCheckpointID>(env, checkpointId);
-  auto status = core_worker.GetRayletClient().NotifyActorResumedFromCheckpoint(
-      actor_id, checkpoint_id);
+  auto status = core_worker.NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 

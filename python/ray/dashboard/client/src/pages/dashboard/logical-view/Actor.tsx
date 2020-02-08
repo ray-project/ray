@@ -1,9 +1,16 @@
-import Typography from "@material-ui/core/Typography";
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
+import Typography from "@material-ui/core/Typography";
 import React from "react";
-import { RayletInfoResponse } from "../../../api";
+import {
+  checkProfilingStatus,
+  CheckProfilingStatusResponse,
+  getProfilingResultURL,
+  launchProfiling,
+  RayletInfoResponse,
+  launchKillActor
+} from "../../../api";
 import Actors from "./Actors";
 import Collapse from "@material-ui/core/Collapse";
 
@@ -20,6 +27,13 @@ const styles = (theme: Theme) =>
       color: theme.palette.text.secondary,
       fontSize: "0.75rem"
     },
+    action: {
+      color: theme.palette.primary.main,
+      textDecoration: "none",
+      "&:hover": {
+        cursor: "pointer"
+      }
+    },
     infeasible: {
       color: theme.palette.error.main
     },
@@ -34,11 +48,9 @@ const styles = (theme: Theme) =>
     webuiDisplay: {
       fontSize: "0.875rem"
     },
-    expandCollapseButton: {
-      color: theme.palette.primary.main,
-      "&:hover": {
-        cursor: "pointer"
-      }
+    inlineHTML: {
+      fontSize: "0.875rem",
+      display: "inline"
     }
   });
 
@@ -48,71 +60,111 @@ interface Props {
 
 interface State {
   expanded: boolean;
+  profiling: {
+    [profilingId: string]: {
+      startTime: number;
+      latestResponse: CheckProfilingStatusResponse | null;
+    };
+  };
 }
 
 class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
-    expanded: true
+    expanded: true,
+    profiling: {}
   };
 
   setExpanded = (expanded: boolean) => () => {
     this.setState({ expanded });
   };
 
+  handleProfilingClick = (duration: number) => async () => {
+    const actor = this.props.actor;
+    if (actor.state !== -1) {
+      const profilingId = await launchProfiling(
+        actor.nodeId,
+        actor.pid,
+        duration
+      );
+      this.setState(state => ({
+        profiling: {
+          ...state.profiling,
+          [profilingId]: { startTime: Date.now(), latestResponse: null }
+        }
+      }));
+      const checkProfilingStatusLoop = async () => {
+        const response = await checkProfilingStatus(profilingId);
+        this.setState(state => ({
+          profiling: {
+            ...state.profiling,
+            [profilingId]: {
+              ...state.profiling[profilingId],
+              latestResponse: response
+            }
+          }
+        }));
+        if (response.status === "pending") {
+          setTimeout(checkProfilingStatusLoop, 1000);
+        }
+      };
+      await checkProfilingStatusLoop();
+    }
+  };
+
+  killActor = () => {
+    const actor = this.props.actor;
+    if (actor.state === 0) {
+      launchKillActor(actor.actorId, actor.ipAddress, actor.port);
+    }
+  };
+
   render() {
     const { classes, actor } = this.props;
-    const { expanded } = this.state;
+    const { expanded, profiling } = this.state;
 
     const information =
       actor.state !== -1
         ? [
             {
               label: "ActorTitle",
-              value:
-                actor.actorTitle
+              value: actor.actorTitle
             },
             {
               label: "State",
-              value:
-                actor.state.toLocaleString()
+              value: actor.state.toLocaleString()
             },
             {
               label: "Resources",
               value:
                 Object.entries(actor.usedResources).length > 0 &&
                 Object.entries(actor.usedResources)
+                  .sort((a, b) => a[0].localeCompare(b[0]))
                   .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                   .join(", ")
             },
             {
               label: "Pending",
-              value:
-                actor.taskQueueLength.toLocaleString()
+              value: actor.taskQueueLength.toLocaleString()
             },
             {
               label: "Executed",
-              value:
-                actor.numExecutedTasks.toLocaleString()
+              value: actor.numExecutedTasks.toLocaleString()
             },
             {
               label: "NumObjectIdsInScope",
-              value:
-                actor.numObjectIdsInScope.toLocaleString()
+              value: actor.numObjectIdsInScope.toLocaleString()
             },
             {
               label: "NumLocalObjects",
-              value:
-                actor.numLocalObjects.toLocaleString()
+              value: actor.numLocalObjects.toLocaleString()
             },
             {
               label: "UsedLocalObjectMemory",
-              value:
-                actor.usedObjectStoreMemory.toLocaleString()
+              value: actor.usedObjectStoreMemory.toLocaleString()
             },
             {
               label: "Task",
-              value:
-                actor.currentTaskFuncDesc.join(".")
+              value: actor.currentTaskFuncDesc.join(".")
             }
           ]
         : [
@@ -125,10 +177,47 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
               value:
                 Object.entries(actor.requiredResources).length > 0 &&
                 Object.entries(actor.requiredResources)
+                  .sort((a, b) => a[0].localeCompare(b[0]))
                   .map(([key, value]) => `${value.toLocaleString()} ${key}`)
                   .join(", ")
             }
           ];
+
+    // Construct the custom message from the actor.
+    let actorCustomDisplay: JSX.Element[] = [];
+    if (actor.state !== -1 && actor.webuiDisplay) {
+      actorCustomDisplay = Object.keys(actor.webuiDisplay)
+        .sort()
+        .map((key, _, __) => {
+          // Construct the value from actor.
+          // Please refer to worker.py::show_in_webui for schema.
+          const valueEncoded = actor.webuiDisplay![key];
+          const valueParsed = JSON.parse(valueEncoded);
+          let valueRendered = valueParsed["message"];
+          if (valueParsed["dtype"] === "html") {
+            valueRendered = (
+              <div
+                className={classes.inlineHTML}
+                dangerouslySetInnerHTML={{ __html: valueRendered }}
+              ></div>
+            );
+          }
+
+          if (key === "") {
+            return (
+              <Typography className={classes.webuiDisplay}>
+                &nbsp; &nbsp; {valueRendered}
+              </Typography>
+            );
+          } else {
+            return (
+              <Typography className={classes.webuiDisplay}>
+                &nbsp; &nbsp; {key}: {valueRendered}
+              </Typography>
+            );
+          }
+        });
+    }
 
     return (
       <div className={classes.root}>
@@ -140,13 +229,60 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 <React.Fragment>
                   (
                   <span
-                    className={classes.expandCollapseButton}
+                    className={classes.action}
                     onClick={this.setExpanded(!expanded)}
                   >
                     {expanded ? "Collapse" : "Expand"}
                   </span>
                   )
                 </React.Fragment>
+              )}{" "}
+              (Profile for
+              {[10, 30, 60].map(duration => (
+                <React.Fragment>
+                  {" "}
+                  <span
+                    className={classes.action}
+                    onClick={this.handleProfilingClick(duration)}
+                  >
+                    {duration}s
+                  </span>
+                </React.Fragment>
+              ))}
+              ){" "}
+              {actor.state === 0 ? (
+                <span className={classes.action} onClick={this.killActor}>
+                  Kill Actor
+                </span>
+              ) : (
+                ""
+              )}
+              {Object.entries(profiling).map(
+                ([profilingId, { startTime, latestResponse }]) =>
+                  latestResponse !== null && (
+                    <React.Fragment>
+                      (
+                      {latestResponse.status === "pending" ? (
+                        `Profiling for ${Math.round(
+                          (Date.now() - startTime) / 1000
+                        )}s...`
+                      ) : latestResponse.status === "finished" ? (
+                        <a
+                          className={classes.action}
+                          href={getProfilingResultURL(profilingId)}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          Profiling result
+                        </a>
+                      ) : latestResponse.status === "error" ? (
+                        `Profiling error: ${latestResponse.error.trim()}`
+                      ) : (
+                        undefined
+                      )}
+                      ){" "}
+                    </React.Fragment>
+                  )
               )}
             </React.Fragment>
           ) : (
@@ -168,11 +304,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
         </Typography>
         {actor.state !== -1 && (
           <React.Fragment>
-            {actor.webuiDisplay && (
-              <Typography className={classes.webuiDisplay}>
-                {actor.webuiDisplay}
-              </Typography>
+            {actorCustomDisplay.length > 0 && (
+              <React.Fragment>{actorCustomDisplay}</React.Fragment>
             )}
+
             <Collapse in={expanded}>
               <Actors actors={actor.children} />
             </Collapse>
