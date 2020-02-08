@@ -157,7 +157,7 @@ def model_creator(config):
     return netD, netG
 
 
-def train(models, dataloader, criterion, optimizers, config):
+def train(config, models, dataloader, criterion, optimizers, **kwargs):
     netD, netG = models
     optimD, optimG = optimizers
     real_label = 1

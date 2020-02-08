@@ -79,7 +79,6 @@ class PyTorchRunner:
                 "validation", "training"
             ]
         }
-
         self.models = None
         self.optimizers = None
         self.criterion = None
@@ -185,8 +184,12 @@ class PyTorchRunner:
         })
         with self._timers["training"]:
             train_stats = self.train_function(
-                self.given_models, self.train_loader, self.criterion,
-                self.given_optimizers, self.given_schedulers, training_config)
+                training_config,
+                self.given_models,
+                self.train_loader,
+                self.criterion,
+                self.given_optimizers,
+                schedulers=self.given_schedulers)
             train_stats["epoch"] = self.epoch
 
         self.epoch += 1
@@ -200,8 +203,11 @@ class PyTorchRunner:
             raise ValueError("No validation dataloader provided.")
         with self._timers["validation"]:
             validation_stats = self.validation_function(
-                self.given_models, self.validation_loader, self.criterion,
-                self.config)
+                self.config,
+                self.given_models,
+                self.validation_loader,
+                self.criterion,
+                schedulers=self.given_schedulers)
 
         validation_stats.update(self.stats())
         return validation_stats

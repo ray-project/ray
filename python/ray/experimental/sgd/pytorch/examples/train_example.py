@@ -44,6 +44,7 @@ def scheduler_creator(optimizer, config):
     """Returns optimizer."""
     return torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
 
+
 def data_creator(config):
     """Returns training dataloader, validation dataloader."""
     return LinearDataset(2, 5),  LinearDataset(2, 5, size=400)

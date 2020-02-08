@@ -44,11 +44,12 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
 def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
-    def custom_train(models, dataloader, criterion, optimizers, config):
+    def custom_train(config, models, dataloader, criterion, optimizers,
+                     **kwargs):
         result = {}
         for i, (model, optimizer) in enumerate(zip(models, optimizers)):
-            result["model_{}".format(i)] = train(model, dataloader, criterion,
-                                                 optimizer, config)
+            result["model_{}".format(i)] = train(config, model, dataloader,
+                                                 criterion, optimizer)
         return result
 
     def multi_model_creator(config):
@@ -99,6 +100,61 @@ def test_multi_model(ray_start_2_cpus, num_replicas):  # noqa: F811
             assert torch.equal(model1_state_dict[k], model2_state_dict[k])
 
     trainer2.shutdown()
+
+
+@pytest.mark.parametrize("num_replicas", [1, 2]
+                         if dist.is_available() else [1])
+def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
+    def custom_train(config, models, dataloader, criterion, optimizers,
+                     schedulers):
+        if config.get("models", 1) > 1:
+            assert len(models) == config["models"]
+
+        if config.get("optimizers", 1) > 1:
+            assert len(optimizers) == config["optimizers"]
+
+        if config.get("schedulers", 1) > 1:
+            assert len(schedulers) == config["schedulers"]
+        return {"done": 1}
+
+    def multi_model_creator(config):
+        models = []
+        for i in range(config.get("models", 1)):
+            models += [nn.Linear(1, 1)]
+        return models[0] if len(models) == 1 else models
+
+    def multi_optimizer_creator(models, config):
+        optimizers = []
+        for i in range(config.get("optimizers", 1)):
+            optimizers += [torch.optim.SGD(models[0].parameters(), lr=0.0001)]
+        return optimizers[0] if len(optimizers) == 1 else optimizers
+
+    def multi_scheduler_creator(optimizer, config):
+        schedulers = []
+        for i in range(config.get("schedulers", 1)):
+            schedulers += [
+                torch.optim.lr_scheduler.StepLR(
+                    optimizer[0], step_size=30, gamma=0.1)
+            ]
+        return schedulers[0] if len(schedulers) == 1 else schedulers
+
+    for model_count in range(1, 3):
+        for optimizer_count in range(1, 3):
+            for scheduler_count in range(1, 3):
+                trainer = PyTorchTrainer(
+                    multi_model_creator,
+                    data_creator,
+                    multi_optimizer_creator,
+                    loss_creator=nn.MSELoss,
+                    train_function=custom_train,
+                    num_replicas=num_replicas,
+                    config={
+                        "models": model_count,
+                        "optimizers": optimizer_count,
+                        "schedulers": scheduler_count
+                    })
+                trainer.train()
+                trainer.shutdown()
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]

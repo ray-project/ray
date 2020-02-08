@@ -20,7 +20,7 @@ SCHEDULER_STEP_EPOCH = "epoch"
 VALID_SCHEDULER_STEP = set([SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH])
 
 
-def train(model, train_iterator, criterion, optimizer, scheduler, config):
+def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
     """Runs one standard training pass over the train_iterator.
 
     This function automatically measures timing for various operations such
@@ -39,23 +39,23 @@ def train(model, train_iterator, criterion, optimizer, scheduler, config):
             to use multiple models/optimizers/schedulers.
 
     Args:
+        config: (dict): A user configuration provided into the Trainer
+            constructor.
         model: The model as created by the model_creator.
         train_iterator: An iterator created from the DataLoader which
             wraps the provided Dataset.
         criterion: The loss object created by the loss_creator.
         optimizer: The torch.optim.Optimizer object
             as created by the optimizer_creator
-        scheduler: The torch.optim.lr_scheduler object
+        scheduler (optional): The torch.optim.lr_scheduler object
             as created by the scheduler_creator.
-        config: (dict): A user configuration provided into the Trainer
-            constructor.
 
     Returns:
         A dict of metrics from training.
     """
     if isinstance(model, collections.Iterable) or isinstance(
             optimizer, collections.Iterable) or isinstance(
-            scheduler, collections.Iterable):
+                scheduler, collections.Iterable):
         raise ValueError(
             "Need to provide custom training function if using multi-model "
             "or multi-scheduler or multi-optimizer training.")
@@ -123,7 +123,7 @@ def train(model, train_iterator, criterion, optimizer, scheduler, config):
     return stats
 
 
-def validate(model, val_iterator, criterion, config):
+def validate(config, model, val_iterator, criterion, **kwargs):
     if isinstance(model, collections.Iterable):
         raise ValueError(
             "Need to provide custom validation function if using multi-model "
