@@ -418,6 +418,10 @@ def get_handle(endpoint_name, relative_slo_ms=None, absolute_slo_ms=None):
 
     Args:
         endpoint_name (str): A registered service endpoint.
+        relative_slo_ms(float): Specify relative deadline in milliseconds for
+            queries fired using this handle. (Default: None)
+        absolute_slo_ms(float): Specify absolute deadline in milliseconds for
+            queries fired using this handle. (Default: None)
 
     Returns:
         RayServeHandle

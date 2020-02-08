@@ -67,6 +67,9 @@ class RayServeHandle:
             request_in_object, **kwargs)
 
     def options(self, relative_slo_ms=None, absolute_slo_ms=None):
+        # If both the slo's are None then then we use a high default
+        # value so other queries can be prioritize and put in front of these
+        # queries.
         assert (relative_slo_ms is None
                 or absolute_slo_ms is None), ("Can't specify both "
                                               "relative and absolute "

@@ -12,18 +12,22 @@ serve.init(blocking=True)
 
 # a backend can be a function or class.
 # it can be made to be invoked from web as well as python.
+@serve.route("/echo_v1")
 def echo_v1(_, response="hello from python!"):
     return f"echo_v1({response})"
 
 
+@serve.route("/echo_v2")
 def echo_v2(_, relay=""):
     return f"echo_v2({relay})"
 
 
+@serve.route("/echo_v3")
 def echo_v3(_, relay=""):
     return f"echo_v3({relay})"
 
 
+@serve.route("/echo_v4")
 def echo_v4(_, relay1="", relay2=""):
     return f"echo_v4({relay1} , {relay2})"
 
@@ -48,29 +52,11 @@ The pipeline created is as follows -
             "my_endpoint4"
 """
 
-# an endpoint is associated with an http URL.
-serve.create_endpoint("my_endpoint1", "/echo1")
-serve.create_endpoint("my_endpoint2", "/echo2")
-serve.create_endpoint("my_endpoint3", "/echo3")
-serve.create_endpoint("my_endpoint4", "/echo4")
-
-# create backends
-serve.create_backend(echo_v1, "echo:v1")
-serve.create_backend(echo_v2, "echo:v2")
-serve.create_backend(echo_v3, "echo:v3")
-serve.create_backend(echo_v4, "echo:v4")
-
-# link service to backends
-serve.link("my_endpoint1", "echo:v1")
-serve.link("my_endpoint2", "echo:v2")
-serve.link("my_endpoint3", "echo:v3")
-serve.link("my_endpoint4", "echo:v4")
-
 # get the handle of the endpoints
-handle1 = serve.get_handle("my_endpoint1")
-handle2 = serve.get_handle("my_endpoint2")
-handle3 = serve.get_handle("my_endpoint3")
-handle4 = serve.get_handle("my_endpoint4")
+handle1 = serve.get_handle("echo_v1")
+handle2 = serve.get_handle("echo_v2")
+handle3 = serve.get_handle("echo_v3")
+handle4 = serve.get_handle("echo_v4")
 
 start = time.time()
 print("Start firing to the pipeline: {} s".format(time.time()))

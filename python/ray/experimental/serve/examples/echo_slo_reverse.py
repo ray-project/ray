@@ -58,7 +58,10 @@ for r in range(10):
     response = "hello from request: {} slo: {}".format(r, slo_ms)
     print("> [REMOTE] Pinging handle.remote(response='{}',slo_ms={})".format(
         response, slo_ms))
-    # slo can be specified via remote function
+
+    # overriding slo for each query.
+    # Generally slo is specified for a service handle but it can
+    # be overrided using options for query specific demands
     f = handle.options(relative_slo_ms=slo_ms).remote(response=response)
     future_list.append(f)
 
