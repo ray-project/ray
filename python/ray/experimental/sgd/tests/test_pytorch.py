@@ -12,11 +12,26 @@ import ray
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
-from ray.experimental.sgd.pytorch.utils import train
+from ray.experimental.sgd.pytorch.utils import train, BATCH_COUNT, TEST_MODE
 from ray.experimental.sgd.utils import check_for_failure
 
 from ray.experimental.sgd.pytorch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
+
+
+def test_test_mode(ray_start_2_cpus):  # noqa: F811
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        config={TEST_MODE: True},
+        num_replicas=1)
+    metrics = trainer.train()
+    assert metrics[BATCH_COUNT] == 1
+
+    val_metrics = trainer.validate()
+    assert val_metrics[BATCH_COUNT] == 1
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]

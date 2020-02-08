@@ -41,7 +41,7 @@ def optimizer_creator(models, config):
     Returns:
         One or more Torch optimizer objects.
     """
-  return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
+    return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 # __torch_optimizer_end__
 
 

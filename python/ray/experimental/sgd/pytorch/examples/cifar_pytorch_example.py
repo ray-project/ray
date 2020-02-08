@@ -10,6 +10,7 @@ import torchvision.transforms as transforms
 import ray
 from ray.experimental.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable)
 from ray.experimental.sgd.pytorch.resnet import ResNet18
+from ray.experimental.sgd.pytorch.utils import TEST_MODE
 
 
 def initialization_hook(runner):
@@ -18,55 +19,6 @@ def initialization_hook(runner):
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ["NCCL_LL_THRESHOLD"] = "0"
     os.environ["NCCL_DEBUG"] = "INFO"
-
-
-def train(config, model, train_iterator, criterion, optimizer, **kwargs):
-    model.train()
-    train_loss, total_num, correct = 0, 0, 0
-    for batch_idx, (data, target) in enumerate(train_iterator):
-        if config.get("test_mode") and batch_idx > 0:
-            break
-        # get small model update
-        if torch.cuda.is_available():
-            data, target = data.cuda(), target.cuda()
-        output = model(data)
-        loss = criterion(output, target)
-        loss.backward()
-        train_loss += loss.item() * target.size(0)
-        total_num += target.size(0)
-        _, predicted = output.max(1)
-        correct += predicted.eq(target).sum().item()
-        optimizer.step()
-        optimizer.zero_grad()
-    stats = {
-        "train_loss": train_loss / total_num,
-        "train_acc": correct / total_num
-    }
-    return stats
-
-
-def validate(config, model, val_iterator, criterion, **kwargs):
-    # switch to evaluate mode
-    model.eval()
-    correct = 0
-    total = 0
-    total_loss = 0
-    with torch.no_grad():
-        for batch_idx, (features, target) in enumerate(val_iterator):
-            if config.get("test_mode") and batch_idx > 10:
-                break
-            if torch.cuda.is_available():
-                features = features.cuda(non_blocking=True)
-                target = target.cuda(non_blocking=True)
-            # compute output
-            output = model(features)
-            loss = criterion(output, target)
-            total_loss += loss.item() * target.size(0)
-            _, predicted = torch.max(output.data, 1)
-            total += target.size(0)
-            correct += (predicted == target).sum().item()
-    stats = {"mean_accuracy": correct / total, "mean_loss": total_loss / total}
-    return stats
 
 
 def cifar_creator(config):
@@ -105,7 +57,7 @@ def train_example(num_replicas=1,
                   use_gpu=False,
                   use_fp16=False,
                   test_mode=False):
-    config = {"test_mode": test_mode}
+    config = {TEST_MODE: test_mode}
     trainer1 = PyTorchTrainer(
         ResNet18,
         cifar_creator,
@@ -113,8 +65,6 @@ def train_example(num_replicas=1,
         nn.CrossEntropyLoss,
         scheduler_creator=scheduler_creator,
         initialization_hook=initialization_hook,
-        train_function=train,
-        validation_function=validate,
         num_replicas=num_replicas,
         config=config,
         use_gpu=use_gpu,
@@ -137,8 +87,6 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
         "data_creator": cifar_creator,
         "optimizer_creator": optimizer_creator,
         "loss_creator": lambda config: nn.CrossEntropyLoss(),
-        "train_function": train,
-        "validation_function": validate,
         "num_replicas": num_replicas,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,

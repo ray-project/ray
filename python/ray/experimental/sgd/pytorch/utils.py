@@ -12,7 +12,8 @@ except ImportError:
     pass
 
 USE_FP16 = "use_fp16"
-
+TEST_MODE = "__test_mode__"
+BATCH_COUNT = "batch_processed"
 SCHEDULER_STEP = "scheduler_step"
 SCHEDULER_STEP_BATCH = "batch"
 SCHEDULER_STEP_EPOCH = "epoch"
@@ -47,8 +48,8 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
         train_iterator: An iterator created from the DataLoader which
             wraps the provided Dataset.
         criterion: The loss object created by the loss_creator.
-        optimizer: The torch.optim.Optimizer object
-            as created by the optimizer_creator
+        optimizer: The torch.optim.Optimizer object as created by the
+            optimizer_creator.
         scheduler (optional): The torch.optim.lr_scheduler object
             as created by the scheduler_creator. Be sure to set
             ``scheduler_step_freq`` in ``PyTorchTrainer``
@@ -75,7 +76,9 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
 
     end = time.time()
 
-    for i, (features, target) in enumerate(train_iterator):
+    for batch_idx, (features, target) in enumerate(train_iterator):
+        if config.get(TEST_MODE) and batch_idx > 0:
+            break
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -119,7 +122,7 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
 
     stats = {
         "batch_time": batch_time.avg,
-        "batch_processed": losses.count,
+        BATCH_COUNT: losses.count,
         "train_loss": losses.avg,
         "data_time": data_time.avg,
     }
@@ -167,9 +170,12 @@ def validate(config, model, val_iterator, criterion, scheduler):
     model.eval()
     correct = 0
     total = 0
+    batch_idx = 0
     with torch.no_grad():
         end = time.time()
-        for i, (features, target) in enumerate(val_iterator):
+        for batch_idx, (features, target) in enumerate(val_iterator):
+            if config.get(TEST_MODE) and batch_idx > 0:
+                break
 
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=True)
@@ -189,8 +195,12 @@ def validate(config, model, val_iterator, criterion, scheduler):
             batch_time.update(time.time() - end)
             end = time.time()
 
-    stats = {"batch_time": batch_time.avg, "validation_loss": losses.avg}
-    stats.update(mean_accuracy=correct / total)
+    stats = {
+        BATCH_COUNT: losses.count,
+        "batch_time": batch_time.avg,
+        "validation_loss": losses.avg
+    }
+    stats.update(mean_accuracy=correct / total, mean_loss=losses.sum / total)
     return stats
 
 
