@@ -50,13 +50,14 @@ class PyTorchTrainer:
         )
         trainer.train()
 
+
     Args:
         model_creator (dict -> Model(s)): Constructor function that takes in
             config and returns the model(s) to be optimized. These must be
             ``torch.nn.Module`` objects. If multiple models are returned,
             a ``train_function`` must be specified. You do not need to
-            handle GPU/devices in this function;
-            RaySGD will do that under the hood.
+            handle GPU/devices in this function; RaySGD will do that under
+            the hood.
         data_creator (dict -> Dataset(s)): Constructor function
             that takes in the passed config and returns one or
             two ``torch.utils.data.Dataset`` objects.
@@ -73,13 +74,13 @@ class PyTorchTrainer:
             takes in the provided config for customization or a subclass
             of ``torch.nn.modules.loss._Loss``, which is most Pytorch
             loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
-        scheduler_creator (torch.optim.*scheduler | optimizer, dict -> loss):
+        scheduler_creator (torch.optim.*scheduler | optimizers, dict -> loss):
             A constructor function for the scheduler loss. This can be either
             a function that takes in the generated optimizers (from
             ``optimizer_creator``) provided config for customization
-             or a subclass of ``torch.optim.lr_scheduler._LRScheduler``,
-            which is most Pytorch learning rate schedulers.
-            For example, ``scheduler_creator=torch.optim.lr_scheduler.StepLR``.
+            or a subclass of ``torch.optim.lr_scheduler._LRScheduler``,
+            which is most Pytorch learning rate schedulers. Be sure to set
+            ``scheduler_step_freq`` to increment the scheduler correctly.
         train_function: Custom function for training. This function
             will be executed in parallel across all workers at once. The
             function needs to take in (models, train_dataloader, criterion,

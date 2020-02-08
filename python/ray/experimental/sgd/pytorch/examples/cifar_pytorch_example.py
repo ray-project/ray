@@ -179,6 +179,11 @@ if __name__ == "__main__":
         default=False,
         help="Enables GPU training")
     parser.add_argument(
+        "--fp16",
+        action="store_true",
+        default=False,
+        help="Enables FP16 training with apex. Requires `use-gpu`.")
+    parser.add_argument(
         "--smoke-test",
         action="store_true",
         default=False,
@@ -199,4 +204,5 @@ if __name__ == "__main__":
         train_example(
             num_replicas=args.num_replicas,
             use_gpu=args.use_gpu,
+            use_fp16=args.fp16,
             test_mode=args.smoke_test)

@@ -30,7 +30,9 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
     if available.
 
     The scheduler will only be called at a batch or epoch frequency, depending
-    on the user parameter. If using a scheduler that depends on validation
+    on the user parameter. Be sure to set ``scheduler_step_freq`` in
+    ``PyTorchTrainer`` to either "batch" or "epoch" to increment the scheduler
+    correctly. If using a scheduler that depends on validation
     loss, you must provide a custom training function.
 
     Raises:
@@ -48,7 +50,9 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
         optimizer: The torch.optim.Optimizer object
             as created by the optimizer_creator
         scheduler (optional): The torch.optim.lr_scheduler object
-            as created by the scheduler_creator.
+            as created by the scheduler_creator. Be sure to set
+            ``scheduler_step_freq`` in ``PyTorchTrainer``
+             to increment the scheduler correctly.
 
     Returns:
         A dict of metrics from training.

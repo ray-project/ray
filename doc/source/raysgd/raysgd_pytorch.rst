@@ -1,10 +1,6 @@
 RaySGD Pytorch
 ==============
 
-.. warning:: This is still an experimental API and is subject to change in the near future.
-
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
-
 .. image:: raysgd-pytorch.svg
     :align: center
 
@@ -13,137 +9,107 @@ The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch.
 Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
 
 .. image:: raysgd-actors.svg
+    :scale: 20%
     :align: center
 
+
+.. tip:: We need your feedback! RaySGD is currently early in its development, and we're hoping to get feedback from people using or considering it. We'd love `to get in touch <https://forms.gle/26EMwdahdgm7Lscy9>`_!
+
+.. warning:: This is still an experimental API and is subject to change in the near future.
 
 
 Setting up training
 -------------------
 
-The ``PyTorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it needs constructors for the Model, Data, Optimizer, and Loss to create replicated copies across different devices and machines.
+The ``PyTorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it needs constructors for the Model, Data, Optimizer, Loss, and ``lr_scheduler`` to create replicated copies across different devices and machines.
 
-For example:
+.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __torch_trainer_start__
+   :end-before: __torch_trainer_end__
 
-.. code-block:: python
+The below section covers the expected signatures of creator functions. Jump to :ref:`starting-pytorch-trainer`.
 
-    import numpy as np
-    import torch
-    import torch.nn as nn
-    from torch import distributed
+Model Creator
+~~~~~~~~~~~~~
 
-    from ray.experimental.sgd import PyTorchTrainer
-    from ray.experimental.sgd.examples.train_example import LinearDataset
+This is the signature needed for ``PyTorchTrainer(model_creator=...)``.
 
-
-    def model_creator(config):
-        """Constructor function for the model(s) to be optimized.
-
-        You will also need to provide a custom training
-        function to specify the optimization procedure for multiple models.
-
-        Args:
-            config (dict): Configuration dictionary passed into ``PyTorchTrainer``.
-
-        Returns:
-            One or more torch.nn.Module objects.
-        """
-        return nn.Linear(1, 1)
+.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __torch_model_start__
+   :end-before: __torch_model_end__
 
 
-    def optimizer_creator(models, config):
-        """Constructor of one or more Torch optimizers.
+Optimizer Creator
+~~~~~~~~~~~~~~~~~
 
-        Args:
-            models: The return values from ``model_creator``. This can be one
-                or more torch nn modules.
-            config (dict): Configuration dictionary passed into ``PyTorchTrainer``.
+This is the signature needed for ``PyTorchTrainer(optimizer_creator=...)``.
 
-        Returns:
-            One or more Torch optimizer objects.
-        """
-      return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
+.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __torch_optimizer_start__
+   :end-before: __torch_optimizer_end__
 
 
-    def data_creator(config):
-        """Constructs torch.utils.data.Dataset objects.
 
-        Note that even though two Dataset objects can be returned,
-        only one dataset will be used for training.
+Data Creator
+~~~~~~~~~~~~
 
-        Args:
-            config: Configuration dictionary passed into ``PyTorchTrainer``
+This is the signature needed for ``PyTorchTrainer(data_creator=...)``.
 
-        Returns:
-            One or Two Dataset objects. If only one Dataset object is provided,
-            ``trainer.validate()`` will throw a ValueError.
-        """
-        return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
+.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __torch_data_start__
+   :end-before: __torch_data_end__
 
 
-    def loss_creator(config):
-        """Constructs the Torch Loss object.
 
-        Note that optionally, you can pass in a Torch Loss constructor directly
-        into the PyTorchTrainer (i.e., ``PyTorchTrainer(loss_creator=nn.BCELoss, ...)``).
+Loss Creator
+~~~~~~~~~~~~
 
-        Args:
-            config: Configuration dictionary passed into ``PyTorchTrainer``
+This is the signature needed for ``PyTorchTrainer(loss_creator=...)``.
 
-        Returns:
-            Torch Loss object.
-        """
-        return torch.nn.BCELoss()
+.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __torch_loss_start__
+   :end-before: __torch_loss_end__
 
 
-    def scheduler_creator(optimizers, config):
-        """Constructor of one or more Torch optimizer schedulers.
+Scheduler Creator
+~~~~~~~~~~~~~~~~~
 
-        Note that optionally, you can pass in a Torch Scheduler constructor directly
-        into the PyTorchTrainer. For example:
+Optionally, you can provide a creator function for the learning rate scheduler. This is the signature needed
+for ``PyTorchTrainer(scheduler_creator=...)``.
 
-        .. code-block:: python
+.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __torch_scheduler_start__
+   :end-before: __torch_scheduler_end__
 
-            PyTorchTrainer(
-                scheduler_creator=torch.optim.lr_scheduler.ReduceLROnPlateau,
-                ...)``.
+.. _starting-pytorch-trainer:
 
-        Args:
-            optimizers: The return values from ``optimizer_creator``. This can be one
-                or more torch optimizer objects.
-            config: Configuration dictionary passed into ``PyTorchTrainer``
-
-        Returns:
-            One or more Torch scheduler objects.
-        """
-        return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
-
-
+Putting things together
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Before instantiating the trainer, you'll have to start or connect to a Ray cluster:
 
-.. code-block:: python
-
-    ray.init()
-    # or ray.init(address="auto") if a cluster has been started.
+.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __torch_ray_start__
+   :end-before: __torch_ray_end__
 
 Instantiate the trainer object:
 
-.. code-block:: python
-
-    from ray.experimental.sgd import PyTorchTrainer
-
-    trainer = PyTorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
-        loss_creator=nn.MSELoss,
-        scheduler_creator=scheduler_creator,
-        config={"lr": 0.001})
-
+.. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
+   :language: python
+   :start-after: __torch_trainer_start__
+   :end-before: __torch_trainer_end__
 
 You can also set the number of workers and whether the workers will use GPUs:
 
 .. code-block:: python
+    :emphasize-lines: 8,9
 
     trainer = PyTorchTrainer(
         model_creator,
@@ -155,9 +121,7 @@ You can also set the number of workers and whether the workers will use GPUs:
         num_replicas=100,
         use_gpu=True)
 
-
-See the documentation on the PyTorchTrainer here: :ref:`ref-pytorch-trainer`.
-We'll look at the training APIs next.
+See the documentation on the PyTorchTrainer here: :ref:`ref-pytorch-trainer`. We'll look at the training APIs next.
 
 Training APIs
 -------------
@@ -223,14 +187,6 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
 
 .. code-block::
 
-    trainer_1 = PyTorchTrainer(
-        model_creator,
-        data_creator,
-        optimizer_creator,
-        loss_creator=nn.MSELoss,
-        num_replicas=num_replicas)
-    trainer_1.train()
-
     checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
     trainer_1.save(checkpoint_path)
 
@@ -251,7 +207,7 @@ The trained torch model can be extracted for use within the same Python program 
 .. code-block::
 
     trainer.train()
-    model = trainer.get_model()
+    model = trainer.get_model()  # will return multiple models if the model_creator does so.
 
 Mixed Precision (FP16) Training
 -------------------------------
@@ -259,6 +215,7 @@ Mixed Precision (FP16) Training
 You can enable mixed precision training for PyTorch by the ``use_fp16`` flag. This automatically converts the model(s) and optimizer(s) to train using mixed-precision. This requires NVIDIA ``Apex``, which can be installed from `the NVIDIA/Apex repository <https://github.com/NVIDIA/apex#quick-start>`_:
 
 .. code-block::
+    :emphasize-lines: 7
 
     trainer = PyTorchTrainer(
         model_creator,
@@ -274,6 +231,7 @@ You can enable mixed precision training for PyTorch by the ``use_fp16`` flag. Th
 To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field for the PyTorchTrainer constructor, as follows:
 
 .. code-block::
+    :emphasize-lines: 7-12
 
     trainer = PyTorchTrainer(
         model_creator,
@@ -354,12 +312,12 @@ Advanced: Hyperparameter Tuning
    :start-after: __torch_tune_example__
 
 
-Simultaneous Multi-model training
+Simultaneous Multi-model Training
 ---------------------------------
 
-In certain scenarios such as training GANs, you may want to use multiple models in the training loop. You can do this in the ``PyTorchTrainer`` by allowing the ``model_creator`` and the ``optimizer_creator`` to return multiple values.
+In certain scenarios such as training GANs, you may want to use multiple models in the training loop. You can do this in the ``PyTorchTrainer`` by allowing the ``model_creator``, ``optimizer_creator``, and ``scheduler_creator`` to return multiple values.
 
-If multiple models are returned, you will need to provide a custom training function (and custom validation function if you plan to call ``validate``).
+If multiple models, optimizers, or schedulers are returned, you will need to provide a custom training function (and custom validation function if you plan to call ``validate``).
 
 You can see the `DCGAN script <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/dcgan.py>`_ for an end-to-end example.
 
@@ -503,3 +461,8 @@ Note that this is needed if the model creator returns multiple models, optimizer
         validation_function=custom_validate,
         ...
     )
+
+Feature Requests
+----------------
+
+Have features that you'd really like to see in RaySGD? Feel free to `open an issue <https://github.com/ray-project/ray>`_.
