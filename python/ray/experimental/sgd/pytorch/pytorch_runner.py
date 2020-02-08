@@ -36,7 +36,7 @@ class PyTorchRunner:
         config (dict): see pytorch_trainer.py.
         dataloader_config (dict): See pytorch_trainer.py.
         batch_size (int): see pytorch_trainer.py.
-        use_apex (bool): see pytorch_trainer.py.
+        use_fp16 (bool): see pytorch_trainer.py.
         apex_args (dict|None): see pytorch_trainer.py.
         scheduler_step_freq (str): see pytorch_trainer.py.
     """
@@ -52,7 +52,7 @@ class PyTorchRunner:
                  config=None,
                  dataloader_config=None,
                  batch_size=16,
-                 use_apex=False,
+                 use_fp16=False,
                  apex_args=None,
                  scheduler_step_freq="batch"):
         self.model_creator = model_creator
@@ -86,9 +86,9 @@ class PyTorchRunner:
         self.schedulers = None
         self.train_loader = None
         self.validation_loader = None
-        self.use_apex = use_apex
+        self.use_fp16 = use_fp16
         self.apex_args = apex_args or {}
-        if use_apex and not amp:
+        if use_fp16 and not amp:
             raise ImportError(
                 "Please install apex from "
                 "https://www.github.com/nvidia/apex to use fp16 training.")
@@ -180,7 +180,7 @@ class PyTorchRunner:
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         training_config = self.config.copy()
         training_config.update({
-            pytorch_utils.USE_APEX: self.use_apex,
+            pytorch_utils.USE_APEX: self.use_fp16,
             pytorch_utils.SCHEDULER_STEP: self.scheduler_step_freq
         })
         with self._timers["training"]:

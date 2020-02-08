@@ -51,7 +51,7 @@ For example:
 
 
     def optimizer_creator(models, config):
-        """Constructor of the optimizers.
+        """Constructor of one or more Torch optimizers.
 
         Args:
             models: The return values from ``model_creator``. This can be one
@@ -84,7 +84,10 @@ For example:
         """Constructs the Torch Loss object.
 
         Note that optionally, you can pass in a Torch Loss constructor directly
-        into the PyTorchTrainer (i.e., ``PyTorchTrainer(loss_creator=nn.BCELoss, ...))``).
+        into the PyTorchTrainer (i.e., ``PyTorchTrainer(loss_creator=nn.BCELoss, ...)``).
+
+        Args:
+            config: Configuration dictionary passed into ``PyTorchTrainer``
 
         Returns:
             Torch Loss object.
@@ -92,16 +95,27 @@ For example:
         return torch.nn.BCELoss()
 
 
-    def scheduler_creator(optimizer, config):
-        """Constructs the Torch Scheduler object.
+    def scheduler_creator(optimizers, config):
+        """Constructor of one or more Torch optimizer schedulers.
 
         Note that optionally, you can pass in a Torch Scheduler constructor directly
-        into the PyTorchTrainer (i.e., ``PyTorchTrainer(loss_creator=nn.BCELoss, ...))``).
+        into the PyTorchTrainer. For example:
+
+        .. code-block:: python
+
+            PyTorchTrainer(
+                scheduler_creator=torch.optim.lr_scheduler.ReduceLROnPlateau,
+                ...)``.
+
+        Args:
+            optimizers: The return values from ``optimizer_creator``. This can be one
+                or more torch optimizer objects.
+            config: Configuration dictionary passed into ``PyTorchTrainer``
 
         Returns:
             One or more Torch scheduler objects.
         """
-        return torch.nn.BCELoss()
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
 
 
 
@@ -123,6 +137,7 @@ Instantiate the trainer object:
         data_creator,
         optimizer_creator,
         loss_creator=nn.MSELoss,
+        scheduler_creator=scheduler_creator,
         config={"lr": 0.001})
 
 
@@ -135,6 +150,7 @@ You can also set the number of workers and whether the workers will use GPUs:
         data_creator,
         optimizer_creator,
         loss_creator=nn.MSELoss,
+        scheduler_creator=scheduler_creator,
         config={"lr": 0.001},
         num_replicas=100,
         use_gpu=True)
@@ -166,13 +182,13 @@ You can customize the exact function that is called by using a customized traini
 Shutting down training
 ----------------------
 
-After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the trainer:
+After training, you may want to reappropriate the Ray cluster. To release Ray resources obtained by the Trainer:
 
 .. code-block:: python
 
     trainer.shutdown()
 
-.. note:: Be sure to call ``save`` or ``get_model`` before shutting down.
+.. note:: Be sure to call ``trainer.save()`` or ``trainer.get_model()`` before shutting down.
 
 Initialization Functions
 ------------------------
@@ -222,7 +238,7 @@ and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load``
         model_creator,
         data_creator,
         optimizer_creator,
-        loss_creator=lambda config: nn.MSELoss(),
+        loss_creator=nn.MSELoss,
         num_replicas=num_replicas)
     trainer_2.restore(checkpoint_path)
 
@@ -237,6 +253,44 @@ The trained torch model can be extracted for use within the same Python program 
     trainer.train()
     model = trainer.get_model()
 
+Mixed Precision (FP16) Training
+-------------------------------
+
+You can enable mixed precision training for PyTorch by the ``use_fp16`` flag. This automatically converts the model(s) and optimizer(s) to train using mixed-precision. This requires NVIDIA ``Apex``, which can be installed from `the NVIDIA/Apex repository <https://github.com/NVIDIA/apex#quick-start>`_:
+
+.. code-block::
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=nn.MSELoss,
+        num_replicas=4,
+        use_fp16=True
+    )
+
+``Apex`` is a Pytorch extension with NVIDIA-maintained utilities to streamline mixed precision and distributed training. When using ``use_fp16``, you should not manually cast their model or data to .half(). The flag informs the Trainer to call ``amp.initialize`` on the provided models and optimizers underneath the hood, along with using the scaled loss: ``amp.scale_loss(loss, optimizer)``.
+
+To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field for the PyTorchTrainer constructor, as follows:
+
+.. code-block::
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=nn.MSELoss,
+        num_replicas=4,
+        use_fp16=True,
+        apex_args={
+            opt_level="O3",
+            num_losses=2,
+            verbosity=0
+        }
+    )
+
+Note that if using a custom training function, you will need to manage loss scaling manually.
+
 
 Distributed Multi-node Training
 -------------------------------
@@ -248,9 +302,9 @@ You can start a Ray cluster `via the Ray cluster launcher <autoscaling.html>`_ o
 .. code-block:: bash
 
     ray up CLUSTER.yaml
-    python train.py --address="auto"
+    ray submit train.py --args="--address='auto'"
 
-Then, you'll be able to scale up the number of workers seamlessly across multiple nodes:
+Then, within ``train.py`` you'll be able to scale up the number of workers seamlessly across multiple nodes:
 
 .. code-block:: python
 
@@ -258,7 +312,7 @@ Then, you'll be able to scale up the number of workers seamlessly across multipl
         model_creator,
         data_creator,
         optimizer_creator,
-        loss_creator=lambda config: nn.MSELoss(),
+        loss_creator=nn.MSELoss,
         num_replicas=100)
 
 
