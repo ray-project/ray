@@ -174,7 +174,8 @@ class PyTorchTrainer:
         self._num_failures = 0
         self._last_resize = float("-inf")
 
-        if scheduler_step_freq not in pytorch_utils.VALID_SCHEDULER_STEP:
+        if scheduler_step_freq and (
+                scheduler_step_freq not in pytorch_utils.VALID_SCHEDULER_STEP):
             raise ValueError(
                 "Scheduler step freq must be in {}. Got {}".format(
                     pytorch_utils.VALID_SCHEDULER_STEP, scheduler_step_freq))

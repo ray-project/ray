@@ -21,18 +21,50 @@ VALID_SCHEDULER_STEP = set([SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH])
 
 
 def train(model, train_iterator, criterion, optimizer, scheduler, config):
-    """Runs 1 training epoch"""
+    """Runs one standard training pass over the train_iterator.
+
+    This function automatically measures timing for various operations such
+    as host to device transfer, gradient calculation, and gradient application.
+
+    It also automatically detects and places the data on the given GPU device
+    if available.
+
+    The scheduler will only be called at a batch or epoch frequency, depending
+    on the user parameter. If using a scheduler that depends on validation
+    loss, you must provide a custom training function.
+
+    Raises:
+        ValueError if multiple models/optimizers/schedulers are provided. You
+            are expected to have a custom training function if you wish
+            to use multiple models/optimizers/schedulers.
+
+    Args:
+        model: The model as created by the model_creator.
+        train_iterator: An iterator created from the DataLoader which
+            wraps the provided Dataset.
+        criterion: The loss object created by the loss_creator.
+        optimizer: The torch.optim.Optimizer object
+            as created by the optimizer_creator
+        scheduler: The torch.optim.lr_scheduler object
+            as created by the scheduler_creator.
+        config: (dict): A user configuration provided into the Trainer
+            constructor.
+
+    Returns:
+        A dict of metrics from training.
+    """
     if isinstance(model, collections.Iterable) or isinstance(
-            optimizer, collections.Iterable):
+            optimizer, collections.Iterable) or isinstance(
+            scheduler, collections.Iterable):
         raise ValueError(
             "Need to provide custom training function if using multi-model "
-            "or multi-optimizer training.")
+            "or multi-scheduler or multi-optimizer training.")
 
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
 
-    timers = {k: TimerStat() for k in ["d2h", "fwd", "grad", "apply"]}
+    timers = {k: TimerStat() for k in ["h2d", "fwd", "grad", "apply"]}
 
     # switch to train mode
     model.train()
@@ -44,7 +76,7 @@ def train(model, train_iterator, criterion, optimizer, scheduler, config):
         data_time.update(time.time() - end)
 
         # Create non_blocking tensors for distributed training
-        with timers["d2h"]:
+        with timers["h2d"]:
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
