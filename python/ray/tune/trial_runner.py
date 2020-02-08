@@ -433,6 +433,12 @@ class TrialRunner:
     def _process_trial(self, trial):
         """Processes a trial result.
 
+        Fetches the trial's latest result and makes a scheduling decision
+        regarding its next action. If a checkpoint is taken, the decided
+        action is cached and acted on only after the checkpoint is later
+        processed (see `_process_trial_save`). Otherwise the decision is
+        acted on immediately.
+
         Args:
             trial (Trial): Trial with a result ready to be processed.
         """
@@ -483,8 +489,10 @@ class TrialRunner:
                 trial, force=result.get(SHOULD_CHECKPOINT, False))
 
             if trial.is_saving:
-                # Cache decision to execute on after save.
-                self._cached_trial_decisions[str(trial)] = decision
+                # Cache decision to execute on after the save is processed.
+                # This prevents changing the trial's state or kicking off
+                # another training step prematurely.
+                self._cached_trial_decisions[trial.trial_id] = decision
             else:
                 self._execute_action(trial, decision)
         except Exception:
@@ -493,6 +501,8 @@ class TrialRunner:
 
     def _process_trial_save(self, trial):
         """Processes a trial save.
+
+        Acts on the decision cached during the last `_process_trial` call.
 
         Args:
             trial (Trial): Trial being saved.
@@ -516,7 +526,7 @@ class TrialRunner:
                                  trial, checkpoint_value)
 
         trial.saving_to = None
-        decision = self._cached_trial_decisions.pop(str(trial), None)
+        decision = self._cached_trial_decisions.pop(trial.trial_id, None)
         if decision and checkpoint_value:
             self._execute_action(trial, decision)
 

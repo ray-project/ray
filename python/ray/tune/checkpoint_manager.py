@@ -30,12 +30,13 @@ class Checkpoint:
         """Creates a checkpoint from a Python object."""
         return Checkpoint(Checkpoint.MEMORY, value)
 
-    def is_resolved(self):
-        """Returns whether or not the checkpoint has been resolved.
+    @property
+    def is_ready(self):
+        """Returns whether the checkpoint is ready to be used for restoration.
 
-        PERSISTENT checkpoints are considered resolved if the value is a str.
-        MEMORY checkpoints are always considered resolved since they are
-        transient.
+        A PERSISTENT checkpoint is considered ready once its value is resolved
+        to an actual path. MEMORY checkpoints are always considered ready since
+        they are transient.
         """
         if self.storage == Checkpoint.PERSISTENT:
             return isinstance(self.value, str)
