@@ -222,7 +222,6 @@ cc_test(
     deps = test_common_deps,
 )
 
-
 python_proto_compile(
     name = "streaming_py_proto",
     deps = ["//streaming:streaming_proto"],
