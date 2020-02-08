@@ -52,23 +52,18 @@ matrix:
         - TESTSUITE=gcs_service
         - JDK='Oracle JDK 8'
         - RAY_GCS_SERVICE_ENABLED=true
-        - RAY_BACKEND_LOG_LEVEL=debug
         - PYTHON=3.5 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
+        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+        - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
         - ./java/test.sh
-#        - cat /tmp/ray/session_latest/logs/raylet*
-#        - cat /tmp/ray/session_latest/logs/gcs_server*
-#        - cat /tmp/ray/logs/raylet*
-#        - cat /tmp/ray/logs/gcs_server*
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
