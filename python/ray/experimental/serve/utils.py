@@ -18,6 +18,9 @@ def expand(l):
     Implements a nested flattening of a list.
     Example:
     >>> serve.utils.expand([1,2,[3,4,5],6])
+    [1,2,3,4,5,6]
+    >>> serve.utils.expand(["a", ["b", "c"], "d", ["e", "f"]])
+    ["a", "b", "c", "d", "e", "f"]
     """
     return list(
         itertools.chain.from_iterable(
