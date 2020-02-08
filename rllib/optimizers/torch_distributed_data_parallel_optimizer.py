@@ -13,8 +13,8 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
 
     def __init__(self,
                  workers,
+                 expected_batch_size,
                  num_sgd_iter=1,
-                 train_batch_size=1,
                  sgd_minibatch_size=0,
                  standardize_fields=frozenset([]),
                  keep_local_weights_in_sync=True,
@@ -22,7 +22,7 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
         PolicyOptimizer.__init__(self, workers)
         self.learner_stats = {}
         self.num_sgd_iter = num_sgd_iter
-        self.train_batch_size = train_batch_size
+        self.expected_batch_size = expected_batch_size
         self.sgd_minibatch_size = sgd_minibatch_size
         self.standardize_fields = standardize_fields
         self.keep_local_weights_in_sync = keep_local_weights_in_sync
@@ -60,7 +60,7 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
         with self.learn_timer:
             results = ray.get([
                 w.sample_and_learn.remote(
-                    self.train_batch_size, self.num_sgd_iter,
+                    self.expected_batch_size, self.num_sgd_iter,
                     self.sgd_minibatch_size, self.standardize_fields)
                 for w in self.workers.remote_workers()
             ])
