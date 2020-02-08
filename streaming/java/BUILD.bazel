@@ -162,7 +162,7 @@ genrule(
         WORK_DIR=$$(pwd)
         cp -f $(location //streaming/java:org_ray_ray_streaming-api_pom) $$WORK_DIR/streaming/java/streaming-api/pom.xml
         cp -f $(location //streaming/java:org_ray_ray_streaming-runtime_pom) $$WORK_DIR/streaming/java/streaming-runtime/pom.xml
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -185,7 +185,7 @@ genrule(
         for f in $(locations //streaming/java:all_java_proto); do
             unzip $$f -x META-INF/MANIFEST.MF -d $$WORK_DIR/streaming/java/streaming-runtime/src/main/java
         done
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -210,7 +210,7 @@ genrule(
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
         done
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],

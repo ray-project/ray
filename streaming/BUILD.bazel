@@ -243,7 +243,7 @@ genrule(
         for f in $(locations //streaming:streaming_py_proto); do
             cp $$f $$GENERATED_DIR
         done
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     visibility = ["//visibility:public"],

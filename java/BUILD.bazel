@@ -187,7 +187,7 @@ genrule(
             chmod +w $$f
             cp $$f $$NATIVE_DEPS_DIR
         done
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -207,7 +207,7 @@ genrule(
         cp -f $(location //java:org_ray_ray_runtime_pom) $$WORK_DIR/java/runtime/pom.xml
         cp -f $(location //java:org_ray_ray_tutorial_pom) $$WORK_DIR/java/tutorial/pom.xml
         cp -f $(location //java:org_ray_ray_test_pom) $$WORK_DIR/java/test/pom.xml
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
@@ -237,7 +237,7 @@ genrule(
         WORK_DIR=$$(pwd)
         rm -rf $$WORK_DIR/python/ray/jars && mkdir -p $$WORK_DIR/python/ray/jars
         cp -f $(location //java:ray_dist_deploy.jar) $$WORK_DIR/python/ray/jars/ray_dist.jar
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     tags = ["no-cache"],
