@@ -642,7 +642,8 @@ class RolloutWorker(EvaluatorInterface):
             ("Batch size possibly out of sync between workers, expected:",
              expected_batch_size, "got:", batch.count)
         logger.info("Executing distributed minibatch SGD "
-                    "with epoch size {}, minibatch size".format(batch.count, sgd_minibatch_size))
+                    "with epoch size {}, minibatch size".format(
+                        batch.count, sgd_minibatch_size))
         info = do_minibatch_sgd(batch, self.policy_map, self, num_sgd_iter,
                                 sgd_minibatch_size, standardize_fields)
         return info, batch.count

@@ -1,7 +1,6 @@
 from ray.rllib.agents.ppo import ppo
 from ray.rllib.agents.trainer import with_base_config
 from ray.rllib.optimizers import TorchDistributedDataParallelOptimizer
-
 """Distributed Decentralized PPO implementation.
 
 Unlike APPO or PPO, learning is no longer done centralized in the trainer
@@ -72,8 +71,8 @@ def make_distributed_allreduce_optimizer(workers, config):
 
     return TorchDistributedDataParallelOptimizer(
         workers,
-        expected_batch_size=
-            config["sample_batch_size"] * config["num_envs_per_worker"],
+        expected_batch_size=config["sample_batch_size"] *
+        config["num_envs_per_worker"],
         num_sgd_iter=config["num_sgd_iter"],
         sgd_minibatch_size=config["sgd_minibatch_size"],
         standardize_fields=["advantages"])
