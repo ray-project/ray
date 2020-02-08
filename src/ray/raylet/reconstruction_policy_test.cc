@@ -66,10 +66,6 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   std::string DebugString() const override { return ""; }
 
   MOCK_METHOD0(GetLocalClientID, ray::ClientID());
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Winconsistent-missing-override"
-#endif
   MOCK_CONST_METHOD1(LookupRemoteConnectionInfo, void(RemoteConnectionInfo &));
   MOCK_CONST_METHOD0(LookupAllRemoteConnections, std::vector<RemoteConnectionInfo>());
   MOCK_METHOD3(SubscribeObjectLocations,
@@ -83,9 +79,6 @@ class MockObjectDirectory : public ObjectDirectoryInterface {
   MOCK_METHOD3(ReportObjectRemoved,
                ray::Status(const ObjectID &, const ClientID &,
                            const object_manager::protocol::ObjectInfoT &));
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif
 
  private:
   std::vector<std::pair<ObjectID, OnLocationsFound>> callbacks_;
