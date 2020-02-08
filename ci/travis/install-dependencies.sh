@@ -24,7 +24,7 @@ if [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q scipy tensorflow tensorflow-probability cython==0.29.0 \
+  pip install -q scipy tensorflow==2.1 tensorflow-probability cython==0.29.0 \
     gym gym[atari] atari_py \
     opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml \
     openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil \
