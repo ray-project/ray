@@ -17,8 +17,8 @@ import ray
 from ray import profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
+from ray._raylet import PythonFunctionDescriptor
 from ray.utils import (
-    binary_to_hex,
     is_function_or_method,
     is_class_method,
     is_static_method,
@@ -34,226 +34,6 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 """FunctionExecutionInfo: A named tuple storing remote function information."""
 
 logger = logging.getLogger(__name__)
-
-
-class FunctionDescriptor:
-    """A class used to describe a python function.
-
-    Attributes:
-        module_name: the module name that the function belongs to.
-        class_name: the class name that the function belongs to if exists.
-            It could be empty is the function is not a class method.
-        function_name: the function name of the function.
-        function_hash: the hash code of the function source code if the
-            function code is available.
-        function_id: the function id calculated from this descriptor.
-        is_for_driver_task: whether this descriptor is for driver task.
-    """
-
-    def __init__(self,
-                 module_name,
-                 function_name,
-                 class_name="",
-                 function_source_hash=b""):
-        self._module_name = module_name
-        self._class_name = class_name
-        self._function_name = function_name
-        self._function_source_hash = function_source_hash
-        self._function_id = self._get_function_id()
-
-    def __repr__(self):
-        return ("FunctionDescriptor:" + self._module_name + "." +
-                self._class_name + "." + self._function_name + "." +
-                binary_to_hex(self._function_source_hash))
-
-    @classmethod
-    def from_bytes_list(cls, function_descriptor_list):
-        """Create a FunctionDescriptor instance from list of bytes.
-
-        This function is used to create the function descriptor from
-        backend data.
-
-        Args:
-            cls: Current class which is required argument for classmethod.
-            function_descriptor_list: list of bytes to represent the
-                function descriptor.
-
-        Returns:
-            The FunctionDescriptor instance created from the bytes list.
-        """
-        assert isinstance(function_descriptor_list, list)
-        if len(function_descriptor_list) == 0:
-            # This is a function descriptor of driver task.
-            return FunctionDescriptor.for_driver_task()
-        elif (len(function_descriptor_list) == 3
-              or len(function_descriptor_list) == 4):
-            module_name = ensure_str(function_descriptor_list[0])
-            class_name = ensure_str(function_descriptor_list[1])
-            function_name = ensure_str(function_descriptor_list[2])
-            if len(function_descriptor_list) == 4:
-                return cls(module_name, function_name, class_name,
-                           function_descriptor_list[3])
-            else:
-                return cls(module_name, function_name, class_name)
-        else:
-            raise Exception(
-                "Invalid input for FunctionDescriptor.from_bytes_list")
-
-    @classmethod
-    def from_function(cls, function, pickled_function):
-        """Create a FunctionDescriptor from a function instance.
-
-        This function is used to create the function descriptor from
-        a python function. If a function is a class function, it should
-        not be used by this function.
-
-        Args:
-            cls: Current class which is required argument for classmethod.
-            function: the python function used to create the function
-                descriptor.
-            pickled_function: This is factored in to ensure that any
-                modifications to the function result in a different function
-                descriptor.
-
-        Returns:
-            The FunctionDescriptor instance created according to the function.
-        """
-        module_name = function.__module__
-        function_name = function.__name__
-        class_name = ""
-
-        pickled_function_hash = hashlib.sha1(pickled_function).digest()
-
-        return cls(module_name, function_name, class_name,
-                   pickled_function_hash)
-
-    @classmethod
-    def from_class(cls, target_class):
-        """Create a FunctionDescriptor from a class.
-
-        Args:
-            cls: Current class which is required argument for classmethod.
-            target_class: the python class used to create the function
-                descriptor.
-
-        Returns:
-            The FunctionDescriptor instance created according to the class.
-        """
-        module_name = target_class.__module__
-        class_name = target_class.__name__
-        return cls(module_name, "__init__", class_name)
-
-    @classmethod
-    def for_driver_task(cls):
-        """Create a FunctionDescriptor instance for a driver task."""
-        return cls("", "", "", b"")
-
-    @property
-    def is_for_driver_task(self):
-        """See whether this function descriptor is for a driver or not.
-
-        Returns:
-            True if this function descriptor is for driver tasks.
-        """
-        return all(
-            len(x) == 0
-            for x in [self.module_name, self.class_name, self.function_name])
-
-    @property
-    def module_name(self):
-        """Get the module name of current function descriptor.
-
-        Returns:
-            The module name of the function descriptor.
-        """
-        return self._module_name
-
-    @property
-    def class_name(self):
-        """Get the class name of current function descriptor.
-
-        Returns:
-            The class name of the function descriptor. It could be
-                empty if the function is not a class method.
-        """
-        return self._class_name
-
-    @property
-    def function_name(self):
-        """Get the function name of current function descriptor.
-
-        Returns:
-            The function name of the function descriptor.
-        """
-        return self._function_name
-
-    @property
-    def function_hash(self):
-        """Get the hash code of the function source code.
-
-        Returns:
-            The bytes with length of ray_constants.ID_SIZE if the source
-                code is available. Otherwise, the bytes length will be 0.
-        """
-        return self._function_source_hash
-
-    @property
-    def function_id(self):
-        """Get the function id calculated from this descriptor.
-
-        Returns:
-            The value of ray.ObjectID that represents the function id.
-        """
-        return self._function_id
-
-    def _get_function_id(self):
-        """Calculate the function id of current function descriptor.
-
-        This function id is calculated from all the fields of function
-        descriptor.
-
-        Returns:
-            ray.ObjectID to represent the function descriptor.
-        """
-        if self.is_for_driver_task:
-            return ray.FunctionID.nil()
-        function_id_hash = hashlib.sha1()
-        # Include the function module and name in the hash.
-        function_id_hash.update(self.module_name.encode("ascii"))
-        function_id_hash.update(self.function_name.encode("ascii"))
-        function_id_hash.update(self.class_name.encode("ascii"))
-        function_id_hash.update(self._function_source_hash)
-        # Compute the function ID.
-        function_id = function_id_hash.digest()
-        return ray.FunctionID(function_id)
-
-    def get_function_descriptor_list(self):
-        """Return a list of bytes representing the function descriptor.
-
-        This function is used to pass this function descriptor to backend.
-
-        Returns:
-            A list of bytes.
-        """
-        descriptor_list = []
-        if self.is_for_driver_task:
-            # Driver task returns an empty list.
-            return descriptor_list
-        else:
-            descriptor_list.append(self.module_name.encode("ascii"))
-            descriptor_list.append(self.class_name.encode("ascii"))
-            descriptor_list.append(self.function_name.encode("ascii"))
-            if len(self._function_source_hash) != 0:
-                descriptor_list.append(self._function_source_hash)
-            return descriptor_list
-
-    def is_actor_method(self):
-        """Wether this function descriptor is an actor method.
-
-        Returns:
-            True if it's an actor method, False if it's a normal function.
-        """
-        return len(self._class_name) > 0
 
 
 class FunctionActorManager:
@@ -488,7 +268,7 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
         except Exception:
             logger.exception(
-                "Failed to load function %s.".format(function_name))
+                "Failed to load function {}.".format(function_name))
             raise Exception(
                 "Function {} failed to be loaded from local code.".format(
                     function_descriptor))
@@ -551,10 +331,10 @@ class FunctionActorManager:
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
-    def export_actor_class(self, Class, actor_method_names):
+    def export_actor_class(self, Class, actor_creation_function_descriptor,
+                           actor_method_names):
         if self._worker.load_code_from_local:
             return
-        function_descriptor = FunctionDescriptor.from_class(Class)
         # `current_job_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
         # 2) And a previous task started a background thread, which didn't
@@ -565,10 +345,10 @@ class FunctionActorManager:
             "please make sure the thread finishes before the task finishes.")
         job_id = self._worker.current_job_id
         key = (b"ActorClass:" + job_id.binary() + b":" +
-               function_descriptor.function_id.binary())
+               actor_creation_function_descriptor.function_id.binary())
         actor_class_info = {
-            "class_name": Class.__name__,
-            "module": Class.__module__,
+            "class_name": actor_creation_function_descriptor.class_name,
+            "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
             "collision_identifier": self.compute_collision_identifier(Class),
@@ -617,7 +397,7 @@ class FunctionActorManager:
             actor_methods = inspect.getmembers(
                 actor_class, predicate=is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
-                method_descriptor = FunctionDescriptor(
+                method_descriptor = PythonFunctionDescriptor(
                     module_name, actor_method_name, actor_class_name)
                 method_id = method_descriptor.function_id
                 executor = self._make_actor_method_executor(
