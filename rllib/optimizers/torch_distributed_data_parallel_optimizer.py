@@ -26,7 +26,8 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
         self.sgd_minibatch_size = sgd_minibatch_size
         self.standardize_fields = standardize_fields
         self.keep_local_weights_in_sync = keep_local_weights_in_sync
-        self.update_weights_timer = TimerStat()
+        self.sync_down_timer = TimerStat()
+        self.sync_up_timer = TimerStat()
         self.learn_timer = TimerStat()
 
         # Setup the distributed processes.
@@ -52,7 +53,7 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
         # add too much overhead and handles the case where the user manually
         # updates the local weights.
         if self.keep_local_weights_in_sync:
-            with self.update_weights_timer:
+            with self.sync_up_timer:
                 weights = ray.put(self.workers.local_worker().get_weights())
                 for e in self.workers.remote_workers():
                     e.set_weights.remote(weights)
@@ -87,8 +88,10 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
         # Sync down the weights. As with the sync up, this is not really
         # needed unless the user is reading the local weights.
         if self.keep_local_weights_in_sync:
-            self.workers.local_worker().set_weights(
-                ray.get(self.workers.remote_workers()[0].get_weights.remote()))
+            with self.sync_down_timer:
+                self.workers.local_worker().set_weights(
+                    ray.get(
+                        self.workers.remote_workers()[0].get_weights.remote()))
 
         return self.learner_stats
 
@@ -96,8 +99,10 @@ class TorchDistributedDataParallelOptimizer(PolicyOptimizer):
     def stats(self):
         return dict(
             PolicyOptimizer.stats(self), **{
-                "update_weights_time_ms": round(
-                    1000 * self.update_weights_timer.mean, 3),
+                "sync_weights_up_time": round(1000 * self.sync_up_timer.mean,
+                                              3),
+                "sync_weights_down_time": round(
+                    1000 * self.sync_down_timer.mean, 3),
                 "learn_time_ms": round(1000 * self.learn_timer.mean, 3),
                 "learner": self.learner_stats,
             })
