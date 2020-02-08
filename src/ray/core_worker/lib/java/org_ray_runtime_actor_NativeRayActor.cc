@@ -33,7 +33,7 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDesc
                     .GetActorHandle(actor_id, &native_actor_handle);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
-  return NativeStringVectorToJavaStringList(env, function_descriptor);
+  return NativeRayFunctionDescriptorToJavaStringList(env, function_descriptor);
 }
 
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(

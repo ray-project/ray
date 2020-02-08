@@ -63,6 +63,19 @@ sys.modules["tensorflow"].VERSION = "9.9.9"
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath("../../python/"))
 
+import ray
+
+
+# Avoid @ray.remote run when doc generating
+def fake_remote(*args, **kwargs):
+    def _inner_wrapper(cls_or_func):
+        return cls_or_func
+
+    return _inner_wrapper
+
+
+ray.remote = fake_remote
+
 # -- General configuration ------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
