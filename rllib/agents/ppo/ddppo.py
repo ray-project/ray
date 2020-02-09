@@ -8,9 +8,9 @@ process. Instead, gradients are computed remotely on each rollout worker and
 all-reduced to sync them at each mini-batch. This allows each worker's GPU
 to be used both for sampling and for training.
 
-DDPPO should be used if you have envs that require GPUs to function, or have
+DD-PPO should be used if you have envs that require GPUs to function, or have
 a very large model that cannot be effectively optimized with the GPUs available
-on a single machine (DDPPO allows scaling to arbitrary numbers of GPUs across
+on a single machine (DD-PPO allows scaling to arbitrary numbers of GPUs across
 multiple nodes, unlike PPO/APPO which is limited to GPUs on a single node).
 
 Paper reference: https://arxiv.org/abs/1911.00357

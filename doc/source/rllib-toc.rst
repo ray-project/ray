@@ -86,7 +86,7 @@ Algorithms
 
    -  |tensorflow| `Asynchronous Proximal Policy Optimization (APPO) <rllib-algorithms.html#asynchronous-proximal-policy-optimization-appo>`__
 
-   -  |pytorch| `Decentralized Distributed Proximal Policy Optimization (DDPPO) <rllib-algorithms.html#decentralized-distributed-proximal-policy-optimization-ddppo>`__
+   -  |pytorch| `Decentralized Distributed Proximal Policy Optimization (DD-PPO) <rllib-algorithms.html#decentralized-distributed-proximal-policy-optimization-dd-ppo>`__
 
    -  |pytorch| `Single-Player AlphaZero (contrib/AlphaZero) <rllib-algorithms.html#single-player-alpha-zero-contrib-alphazero>`__
 

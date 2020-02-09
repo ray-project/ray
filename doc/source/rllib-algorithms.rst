@@ -121,20 +121,20 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-Decentralized Distributed Proximal Policy Optimization (DDPPO)
---------------------------------------------------------------
+Decentralized Distributed Proximal Policy Optimization (DD-PPO)
+---------------------------------------------------------------
 |pytorch|
 `[paper] <https://arxiv.org/abs/1911.00357>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ddppo.py>`__
-Unlike APPO or PPO, with DDPPO policy improvement is no longer done centralized in the trainer process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
+Unlike APPO or PPO, with DD-PPO policy improvement is no longer done centralized in the trainer process. Instead, gradients are computed remotely on each rollout worker and all-reduced at each mini-batch using `torch distributed <https://pytorch.org/docs/stable/distributed.html>`__. This allows each worker's GPU to be used both for sampling and for training.
 
 .. tip::
 
-    DDPPO is best for envs that require GPUs to function, or if you need to scale out SGD to multiple nodes. If you don't meet these requirements, `standard PPO <#proximal-policy-optimization-ppo>`__ will be more efficient.
+    DD-PPO is best for envs that require GPUs to function, or if you need to scale out SGD to multiple nodes. If you don't meet these requirements, `standard PPO <#proximal-policy-optimization-ppo>`__ will be more efficient.
 
 .. figure:: ddppo-arch.svg
 
-    DDPPO architecture (both sampling and learning are done on worker GPUs)
+    DD-PPO architecture (both sampling and learning are done on worker GPUs)
 
 Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/regression_tests/cartpole-ddppo.yaml>`__, `BreakoutNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/atari-ddppo.yaml>`__
 
@@ -271,7 +271,7 @@ PPO's clipped objective supports multiple SGD passes over the same batch of expe
 
 .. tip::
 
-    If you need to scale out with GPUs on multiple nodes, consider using `decentralized PPO <#decentralized-distributed-proximal-policy-optimization-ddppo>`__.
+    If you need to scale out with GPUs on multiple nodes, consider using `decentralized PPO <#decentralized-distributed-proximal-policy-optimization-dd-ppo>`__.
 
 .. figure:: ppo-arch.svg
 
