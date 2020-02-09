@@ -1,3 +1,4 @@
+
 Fault Tolerance
 ===============
 
@@ -88,3 +89,84 @@ You can experiment with this behavior by running the following code.
             print(counter)
         except ray.exceptions.RayActorError:
             print('FAILURE')
+
+Actor Checkpointing
+~~~~~~~~~~~~~~~~~~~
+
+It's often important to be able to checkpoint the state of an actor in order to
+recover that state in the event of a failure. This can be done by having the
+actor inherit from the ``ray.actor.Checkpointable`` interface.
+
+Several things are left to the application and are not done by Ray. The reason
+for this is that applications will want to handle checkpointing in many
+different ways.
+- When to create checkpoints. The ``should_checkpoint`` method should determine
+  this.
+- What to checkpoint, how to serialize it, and where to store the checkpoint.
+  The ``save_checkpoint`` method handles this.
+- How to restore the actor state from a given checkpoint. The
+  ``load_checkpoint`` method takes care of this.
+
+Here is an example in which we checkpoint the actor state every other iteration.
+
+.. code-block:: python
+
+    import os
+    import pickle
+    import ray
+    import time
+
+    ray.init(ignore_reinit_error=True)
+
+    @ray.remote(max_reconstructions=5)
+    class Actor(ray.actor.Checkpointable):
+        def __init__(self):
+            self.counter = 0
+
+        def increment(self):
+            self.counter += 1
+
+        def get_counter(self):
+            return self.counter
+
+        def should_checkpoint(self, checkpoint_context):
+            # If the counter is even, then we will save a checkpoint.
+            return self.counter % 5 == 0
+
+        def save_checkpoint(self, actor_id, checkpoint_id):
+            # Write the counter state to a local file.
+            print('Saving a checkpoint at counter={}.'.format(self.counter))
+            with open('actor_checkpoint-' + checkpoint_id.hex(), 'wb') as f:
+                # The application must determine how to serialize the actor
+                # state. Here we use pickle.
+                f.write(pickle.dumps(self.counter))
+
+        def load_checkpoint(self, actor_id, available_checkpoints):
+            latest_checkpoint_id = available_checkpoints[0].checkpoint_id
+            filename = 'actor_checkpoint-' + latest_checkpoint_id.hex()
+            with open(filename, 'rb') as f:
+                # Load the actor state using pickle.
+                self.counter = pickle.load(f)
+            print('Loading checkpoint with counter={}.'.format(self.counter))
+
+        def checkpoint_expired(self, actor_id, checkpoint_id):
+            print('The checkpoint {} has expired'.format(checkpoint_id))
+
+    actor = Actor.remote()
+
+    num_iterations = 27
+    for _ in range(num_iterations):
+        ray.get(actor.increment.remote())
+
+    # Kill the actor. It will restart from the most recent checkpoint (which
+    # should be a multiple of 5).
+    actor.__ray_kill__()
+
+    while True:
+        # Loop until the actor has restarted.
+        try:
+            counter = ray.get(actor.get_counter.remote())
+            break
+        except ray.exceptions.RayActorError:
+            continue
+    assert counter == (num_iterations // 5) * 5
