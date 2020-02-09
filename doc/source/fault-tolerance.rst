@@ -108,6 +108,9 @@ different ways.
   ``load_checkpoint`` method takes care of this.
 
 Here is an example in which we checkpoint the actor state every other iteration.
+In this example, we save the checkpoints in a local file. To make this work in
+the multi-node setting, we would need to write to a distributed file system or
+some globally accessible storage.
 
 .. code-block:: python
 
