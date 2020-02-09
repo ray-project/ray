@@ -1,5 +1,5 @@
-multiprocessing.Pool API (Experimental)
-=======================================
+Distributed multiprocessing.Pool
+================================
 
 .. warning::
 

@@ -1,5 +1,5 @@
-sklearn Ray Backend API (Experimental)
-=======================================
+Distributed Scikit-learn / Joblib
+=================================
 
 .. warning::
 

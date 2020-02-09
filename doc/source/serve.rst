@@ -1,5 +1,5 @@
-Ray Serve (Experimental)
-========================
+Ray Serve
+=========
 
 Ray Serve is a serving library that exposes python function/classes to HTTP.
 It has built-in support for flexible traffic policy. This means you can easy

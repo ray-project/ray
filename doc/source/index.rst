@@ -276,14 +276,14 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: Utilities
+   :caption: Distributed Libraries
 
-   pandas_on_ray.rst
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
    iter.rst
    multiprocessing.rst
    joblib.rst
+   pandas_on_ray.rst
    serve.rst
 
 .. toctree::

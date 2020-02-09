@@ -1,5 +1,5 @@
-Parallel Iterator API (Experimental)
-====================================
+Distributed Iterators
+=====================
 
 ``ray.experimental.iter`` provides a parallel iterator API for simple data ingest
 and processing. It can be thought of as syntactic sugar around Ray actors and ``ray.wait`` loops.
