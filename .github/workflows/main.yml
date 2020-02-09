@@ -2,10 +2,71 @@ name: CI
 
 env:
   LLVM_VERSION_WINDOWS: 9.0.0
+  DEBIAN_FRONTEND: noninteractive
 
 on: [push, pull_request]
 
 jobs:
+  iwyu:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [
+          ubuntu-clang-iwyu,
+        ]
+        include:
+          - name: ubuntu-clang-iwyu
+            os: ubuntu-latest
+            compiler: clang
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
+    - name: Setup Bazel
+      shell: bash
+      env:
+        BAZEL_CACHE_CREDENTIAL_B64: ${{ secrets.BAZEL_CACHE_CREDENTIAL_B64 }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: ./ci/travis/install-bazel.sh
+    - name: Setup Clang Include-What-You-Use
+      shell: bash
+      run: |
+        sudo apt-get install iwyu
+    - name: Perform build
+      continue-on-error: true
+      shell: bash
+      env:
+        CC: ${{ matrix.compiler }}
+      run: |
+        # TODO(mehrdadn): Replace this with the same build script as below, once we factor that out
+        set -euo pipefail
+        PATH="${HOME}/bin:${PATH}"
+        main() {
+          local startflags=()
+          startflags+=(--batch)
+          startflags+=(--nodeep_execroot)
+          local cmdflags=()
+          cmdflags+=(--attempt_to_print_relative_paths)
+          cmdflags+=(--color=yes)
+          cmdflags+=(--experimental_repository_cache_hardlinks)
+          cmdflags+=(--experimental_ui_deduplicate)
+          cmdflags+=(--incompatible_strict_action_env)
+          cmdflags+=(--keep_going)
+          cmdflags+=(--per_file_copt='-\.(asm|S)$@-fansi-escape-codes')
+          cmdflags+=(--per_file_copt='-\.(asm|S)$@-fcolor-diagnostics')
+          cmdflags+=(--show_progress_rate_limit=5)
+          cmdflags+=(--show_task_finish)
+          cmdflags+=(--show_timestamps)
+          cmdflags+=(--symlink_prefix=/)
+          cmdflags+=(--verbose_failures)
+          local packages=()
+          packages+=("//:ray_pkg")
+          bazel "${startflags[@]}" build "${cmdflags[@]}" "${packages[@]}" "$@"
+        }
+        main --compilation_mode=fastbuild --config=iwyu "$@"
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -98,8 +159,8 @@ jobs:
           cmdflags+=(--experimental_ui_deduplicate)
           cmdflags+=(--incompatible_strict_action_env)
           cmdflags+=(--keep_going)
-          cmdflags+=(--per_file_copt="-\\.(asm|S)$@-fansi-escape-codes")
-          cmdflags+=(--per_file_copt="-\\.(asm|S)$@-fcolor-diagnostics")
+          cmdflags+=(--per_file_copt='-\.(asm|S)$@-fansi-escape-codes')
+          cmdflags+=(--per_file_copt='-\.(asm|S)$@-fcolor-diagnostics')
           cmdflags+=(--show_progress_rate_limit=5)
           cmdflags+=(--show_task_finish)
           cmdflags+=(--show_timestamps)

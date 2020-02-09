@@ -447,12 +447,6 @@ class NodeStats(threading.Thread):
                         if addr in self._addr_to_actor_id:
                             actor_info = flattened_tree[self._addr_to_actor_id[
                                 addr]]
-                            if "currentTaskFuncDesc" in core_worker_stats:
-                                core_worker_stats[
-                                    "currentTaskFuncDesc"] = list(
-                                        map(
-                                            b64_decode, core_worker_stats[
-                                                "currentTaskFuncDesc"]))
                             format_reply_id(core_worker_stats)
                             actor_info.update(core_worker_stats)
                             actor_info["averageTaskExecutionSpeed"] = round(

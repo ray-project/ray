@@ -146,8 +146,12 @@ public class RunManager {
       e.printStackTrace();
     }
     if (!p.isAlive()) {
-      throw new RuntimeException(
-          String.format("Failed to start %s. Exit code: %d.", name, p.exitValue()));
+      String message = String.format("Failed to start %s. Exit code: %d.",
+          name, p.exitValue());
+      if (rayConfig.redirectOutput) {
+        message += String.format(" Logs are redirected to %s and %s.", stdout, stderr);
+      }
+      throw new RuntimeException(message);
     }
     processes.add(Pair.of(name, p));
     if (LOGGER.isInfoEnabled()) {
