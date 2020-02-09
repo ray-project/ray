@@ -52,8 +52,8 @@ For any custom remote method or actor, you can try setting requirements as follo
       object_store_memory=200 * 1024 * 1024)
 
 
-Overview
---------
+Concept Overview
+----------------
 
 There are several ways that Ray applications use memory:
 
