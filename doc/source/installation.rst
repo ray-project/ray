@@ -13,6 +13,9 @@ You can install the latest stable version of Ray as follows.
 
   pip install -U ray  # also recommended: ray[debug]
 
+
+.. _install-nightlies:
+
 Latest Snapshots (Nightlies)
 ----------------------------
 

@@ -1,3 +1,5 @@
+.. _ref-automatic-cluster:
+
 Automatic Cluster Setup
 =======================
 
