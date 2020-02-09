@@ -230,6 +230,7 @@ Getting Involved
    :caption: Installation
 
    installation.rst
+   cluster-index.rst
 
 .. toctree::
    :maxdepth: -1
@@ -237,10 +238,19 @@ Getting Involved
 
    using-ray.rst
    configure.rst
-   cluster-index.rst
    Tutorials <https://github.com/ray-project/tutorial>
    Examples <auto_examples/overview.rst>
-   package-ref.rst
+
+.. toctree::
+   :maxdepth: -1
+   :caption: Distributed Libraries
+
+   raysgd/raysgd_pytorch.rst
+   raysgd/raysgd_tensorflow.rst
+   iter.rst
+   multiprocessing.rst
+   joblib.rst
+   pandas_on_ray.rst
 
 .. toctree::
    :maxdepth: -1
@@ -253,7 +263,6 @@ Getting Involved
    tune-distributed.rst
    tune-schedulers.rst
    tune-searchalg.rst
-   tune-package-ref.rst
    tune-design.rst
    tune-examples.rst
    tune-contrib.rst
@@ -272,19 +281,6 @@ Getting Involved
    rllib-concepts.rst
    rllib-examples.rst
    rllib-dev.rst
-   rllib-package-ref.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Distributed Libraries
-
-   raysgd/raysgd_pytorch.rst
-   raysgd/raysgd_tensorflow.rst
-   iter.rst
-   multiprocessing.rst
-   joblib.rst
-   pandas_on_ray.rst
-   serve.rst
 
 .. toctree::
    :maxdepth: -1
