@@ -37,7 +37,8 @@ DEFAULT_CONFIG = with_base_config(ppo.DEFAULT_CONFIG, {
     "num_gpus": 0,  # Learning is no longer done on the driver process, so
                     # giving GPUs to the driver does not make sense!
     "num_gpus_per_worker": 1,  # Each rollout worker gets a GPU.
-    "truncate_episodes": True,  # Require evenly sized batches.
+    "truncate_episodes": True,  # Require evenly sized batches. Otherwise,
+                                # collective allreduce could fail.
     "train_batch_size": -1,  # This is auto set based on sample batch size.
 })
 # __sphinx_doc_end__
