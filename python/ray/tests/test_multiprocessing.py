@@ -131,7 +131,7 @@ def test_initializer(cleanup_only):
 
 
 # TODO(eoakes): fix this
-#def test_close(pool_4_processes):
+# def test_close(pool_4_processes):
 #    def f(object_id):
 #        return ray.get(object_id)
 #
@@ -151,7 +151,7 @@ def test_initializer(cleanup_only):
 #    assert result.get() == ["hello"] * 4
 
 # TODO(eoakes): fix this
-#def test_terminate(pool_4_processes):
+# def test_terminate(pool_4_processes):
 #    def f(object_id):
 #        return ray.get(object_id)
 #
