@@ -276,27 +276,15 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: RaySGD
-
-   raysgd/raysgd.rst
-   raysgd/raysgd_pytorch.rst
-   raysgd/raysgd_pytorch_examples.rst
-   raysgd/raysgd_tensorflow.rst
-   raysgd/raysgd_ref.rst
-
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Experimental
+   :caption: Utilities
 
    pandas_on_ray.rst
-   projects.rst
-   signals.rst
-   async_api.rst
-   serve.rst
+   raysgd/raysgd_pytorch.rst
+   raysgd/raysgd_tensorflow.rst
    iter.rst
    multiprocessing.rst
    joblib.rst
+   serve.rst
 
 .. toctree::
    :maxdepth: -1

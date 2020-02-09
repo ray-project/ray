@@ -1,24 +1,36 @@
 RaySGD Pytorch
 ==============
 
-.. warning:: This is still an experimental API and is subject to change in the near future.
+RaySGD is a lightweight library for distributed deep learning, providing thin wrappers around PyTorch and TensorFlow native modules for data parallel training.
 
-.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
-
-.. image:: raysgd-pytorch.svg
-    :align: center
-
-The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python. For end to end examples, see :ref:`raysgd-pytorch-example`.
+The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python. For end to end examples, see :ref:`raysgd-pytorch-example`.
 
 Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
 
 .. image:: raysgd-actors.svg
     :align: center
 
+PyTorchTrainer Examples
+-----------------------
 
+Here are some examples of using RaySGD for training PyTorch models. If you'd like
+to contribute an example, feel free to create a `pull request here <https://github.com/ray-project/ray/pull/>`_.
+
+- `PyTorch training example <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/train_example.py>`__:
+   Simple example of using Ray's PyTorchTrainer.
+
+- `CIFAR10 example <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/cifar_pytorch_example.py>`__:
+   Training a ResNet18 model on CIFAR10. It uses a custom training
+   function, a custom validation function, and custom initialization code for each worker.
+
+- `DCGAN example <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/dcgan.py>`__:
+   Training a Deep Convolutional GAN on MNIST. It constructs
+   two models and two optimizers and uses a custom training and validation function.
 
 Setting up training
 -------------------
+
+.. tip:: Get in touch with us if you're using or considering using `RaySGD <https://forms.gle/26EMwdahdgm7Lscy9>`_!
 
 The ``PyTorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it needs constructors for the Model, Data, Optimizer, and Loss to create replicated copies across different devices and machines.
 
