@@ -5,7 +5,7 @@ import threading
 import ray
 import ray.streaming._streaming as _streaming
 from ray.streaming.config import Config
-from ray.function_manager import FunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor
 from ray.streaming.communication import DataInput, DataOutput
 
 logger = logging.getLogger(__name__)
@@ -47,18 +47,18 @@ class JobWorker:
 
         if env.config.channel_type == Config.NATIVE_CHANNEL:
             core_worker = ray.worker.global_worker.core_worker
-            reader_async_func = FunctionDescriptor(
+            reader_async_func = PythonFunctionDescriptor(
                 __name__, self.on_reader_message.__name__,
                 self.__class__.__name__)
-            reader_sync_func = FunctionDescriptor(
+            reader_sync_func = PythonFunctionDescriptor(
                 __name__, self.on_reader_message_sync.__name__,
                 self.__class__.__name__)
             self.reader_client = _streaming.ReaderClient(
                 core_worker, reader_async_func, reader_sync_func)
-            writer_async_func = FunctionDescriptor(
+            writer_async_func = PythonFunctionDescriptor(
                 __name__, self.on_writer_message.__name__,
                 self.__class__.__name__)
-            writer_sync_func = FunctionDescriptor(
+            writer_sync_func = PythonFunctionDescriptor(
                 __name__, self.on_writer_message_sync.__name__,
                 self.__class__.__name__)
             self.writer_client = _streaming.WriterClient(

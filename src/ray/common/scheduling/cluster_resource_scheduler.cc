@@ -625,7 +625,7 @@ void ClusterResourceScheduler::InitResourceInstances(
     double total, bool unit_instances,
     ResourceInstanceCapacities *instance_list /* return */) {
   if (unit_instances) {
-    int64_t num_instances = static_cast<int64_t>(total);
+    size_t num_instances = static_cast<size_t>(total);
     instance_list->total.resize(num_instances);
     instance_list->available.resize(num_instances);
     for (size_t i = 0; i < num_instances; i++) {

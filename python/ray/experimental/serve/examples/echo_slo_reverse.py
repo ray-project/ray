@@ -31,11 +31,20 @@ serve.link("my_endpoint", "echo:v1")
 # wait for routing table to get populated
 time.sleep(2)
 
-# slo (10 milliseconds deadline) can be specified via http
+# relative slo (10 ms deadline) can be specified via http
 slo_ms = 10.0
-print("> [HTTP] Pinging http://127.0.0.1:8000/echo?slo_ms={}".format(slo_ms))
+# absolute slo (10 ms deadline) can be specified via http
+abs_slo_ms = 11.9
+print("> [HTTP] Pinging http://127.0.0.1:8000/"
+      "echo?relative_slo_ms={}".format(slo_ms))
 print(
-    requests.get("http://127.0.0.1:8000/echo?slo_ms={}".format(slo_ms)).json())
+    requests.get("http://127.0.0.1:8000/"
+                 "echo?relative_slo_ms={}".format(slo_ms)).json())
+print("> [HTTP] Pinging http://127.0.0.1:8000/"
+      "echo?absolute_slo_ms={}".format(abs_slo_ms))
+print(
+    requests.get("http://127.0.0.1:8000/"
+                 "echo?absolute_slo_ms={}".format(abs_slo_ms)).json())
 
 # get the handle of the endpoint
 handle = serve.get_handle("my_endpoint")
@@ -49,8 +58,11 @@ for r in range(10):
     response = "hello from request: {} slo: {}".format(r, slo_ms)
     print("> [REMOTE] Pinging handle.remote(response='{}',slo_ms={})".format(
         response, slo_ms))
-    # slo can be specified via remote function
-    f = handle.remote(response=response, slo_ms=slo_ms)
+
+    # overriding slo for each query.
+    # Generally slo is specified for a service handle but it can
+    # be overrided using options for query specific demands
+    f = handle.options(relative_slo_ms=slo_ms).remote(response=response)
     future_list.append(f)
 
 # get results of queries as they complete
