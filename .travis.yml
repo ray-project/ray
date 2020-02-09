@@ -148,7 +148,7 @@ matrix:
         #- if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-rllib-dependencies.sh
-        #- export PATH="$HOME/miniconda/bin:$PATH"
+        - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         #- if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
@@ -163,7 +163,7 @@ matrix:
         #- if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-rllib-dependencies.sh
-        #- export PATH="$HOME/miniconda/bin:$PATH"
+        - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         #- if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
@@ -178,7 +178,7 @@ matrix:
         #- if [ RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-rllib-dependencies.sh
-        #- export PATH="$HOME/miniconda/bin:$PATH"
+        - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         #- if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
