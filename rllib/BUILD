@@ -897,6 +897,7 @@ py_test(
 
 py_test(
     name = "examples/custom_eval", main = "examples/custom_eval.py",
+    tags = ["examples"],
     size = "small",
     args = ["--custom-eval"],
     srcs = ["examples/custom_eval.py"]
@@ -904,6 +905,7 @@ py_test(
 
 py_test(
     name = "examples/custom_keras_model_a2c", main="examples/custom_keras_model.py",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_keras_model.py"],
     args = ["--run=A2C", "--stop=50"]
@@ -911,6 +913,7 @@ py_test(
 
 py_test(
     name = "examples/custom_keras_model_ppo", main="examples/custom_keras_model.py",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_keras_model.py"],
     args = ["--run=PPO", "--stop=50"]
@@ -918,6 +921,7 @@ py_test(
 
 py_test(
     name = "examples/custom_keras_model_dqn", main="examples/custom_keras_model.py",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_keras_model.py"],
     args = ["--run=DQN", "--stop=50"]
@@ -925,6 +929,7 @@ py_test(
 
 py_test(
     name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
+    tags = ["examples"],
     size = "medium",
     srcs = ["examples/parametric_action_cartpole.py"],
     args = ["--run=PG", "--stop=50"]
@@ -932,6 +937,7 @@ py_test(
 
 py_test(
     name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_action_cartpole.py",
+    tags = ["examples"],
     size = "medium",
     srcs = ["examples/parametric_action_cartpole.py"],
     args = ["--run=PPO", "--stop=50"]
@@ -939,6 +945,7 @@ py_test(
 
 py_test(
     name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_action_cartpole.py",
+    tags = ["examples"],
     size = "medium",
     srcs = ["examples/parametric_action_cartpole.py"],
     args = ["--run=DQN", "--stop=50"]
@@ -946,6 +953,7 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_ppo", main="examples/batch_norm_model.py",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=PPO", "--num-iters=1"]
@@ -953,6 +961,7 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_pg", main="examples/batch_norm_model.py",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=PG", "--num-iters=1"]
@@ -960,6 +969,7 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_dqn", main="examples/batch_norm_model.py",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DQN", "--num-iters=1"]
@@ -967,6 +977,7 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_ddpg", main="examples/batch_norm_model.py",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--num-iters=1"]
@@ -974,6 +985,7 @@ py_test(
 
 py_test(
     name = "examples/multiagent_cartpole",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/multiagent_cartpole.py"],
     args = ["--num-iters=2"]
@@ -981,6 +993,7 @@ py_test(
 
 py_test(
     name = "examples/multiagent_two_trainers",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/multiagent_two_trainers.py"],
     args = ["--num-iters=2"]
@@ -988,6 +1001,7 @@ py_test(
 
 py_test(
     name = "examples/cartpole_lstm_ppo", main="examples/cartpole_lstm.py",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=PPO", "--stop=200"]
@@ -995,6 +1009,7 @@ py_test(
 
 py_test(
     name = "examples/cartpole_lstm_impala", main="examples/cartpole_lstm.py",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=IMPALA", "--stop=100"]
@@ -1002,6 +1017,7 @@ py_test(
 
 py_test(
     name = "examples/cartpole_lstm_ppo_with_prev_a_and_r", main="examples/cartpole_lstm.py",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=PPO", "--stop=200", "--use-prev-action-reward"]
@@ -1009,6 +1025,7 @@ py_test(
 
 py_test(
     name = "examples/custom_loss",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_loss.py"],
     args = ["--iters=2"]
@@ -1016,6 +1033,7 @@ py_test(
 
 py_test(
     name = "examples/eager_execution",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/eager_execution.py"],
     args = ["--iters=2"]
@@ -1023,6 +1041,7 @@ py_test(
 
 py_test(
     name = "examples/custom_tf_policy",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_tf_policy.py"],
     args = ["--iters=2"]
@@ -1030,6 +1049,7 @@ py_test(
 
 py_test(
     name = "examples/custom_torch_policy",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_torch_policy.py"],
     args = ["--iters=2"]
@@ -1037,12 +1057,14 @@ py_test(
 
 py_test(
     name = "examples/rollout_worker_custom_workflow",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/rollout_worker_custom_workflow.py"]
 )
 
 py_test(
     name = "examples/custom_metrics_and_callbacks",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_metrics_and_callbacks.py"],
     args = ["--num-iters=2"]
@@ -1050,6 +1072,7 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/centralized_critic.py"],
     args = ["--stop=2000"]
@@ -1057,6 +1080,7 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic_2",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--stop=2000"]
@@ -1064,6 +1088,7 @@ py_test(
 
 py_test(
     name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=contrib/MADDPG"]
@@ -1071,38 +1096,39 @@ py_test(
 
 py_test(
     name = "examples/twostep_game_pg", main = "examples/twostep_game.py",
+    tags = ["examples"],
     size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=PG"]
 )
 
 py_test(
-    name = "examples/twostep_game_qmix",
-    main = "examples/twostep_game.py",
+    name = "examples/twostep_game_qmix", main = "examples/twostep_game.py",
+    tags = ["examples"],
     size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=QMIX"]
 )
 
 py_test(
-    name = "examples/twostep_game_apex_qmix",
-    main = "examples/twostep_game.py",
+    name = "examples/twostep_game_apex_qmix", main = "examples/twostep_game.py",
+    tags = ["examples"],
     size = "medium",
     srcs = ["examples/twostep_game.py"],
     args = ["--stop=2000", "--run=APEX_QMIX"]
 )
 
 py_test(
-    name = "autoregressive_action_dist",
-    main = "examples/autoregressive_action_dist.py",
+    name = "autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
+    tags = ["examples"],
     size = "large",
     srcs = ["examples/autoregressive_action_dist.py"],
     args = ["--stop=150"]
 )
 
 py_test(
-    name = "examples/custom_keras_rnn_model_repeat_after_me",
-    main = "examples/custom_keras_rnn_model.py",
+    name = "examples/custom_keras_rnn_model_repeat_after_me", main = "examples/custom_keras_rnn_model.py",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_keras_rnn_model.py"],
     args = ["--run=PPO", "--stop=50", "--env=RepeatAfterMeEnv"]
@@ -1111,6 +1137,7 @@ py_test(
 py_test(
     name = "examples/custom_keras_rnn_model_repeat_initial",
     main = "examples/custom_keras_rnn_model.py",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/custom_keras_rnn_model.py"],
     args = ["--run=PPO", "--stop=50", "--env=RepeatInitialEnv"]
@@ -1118,6 +1145,7 @@ py_test(
 
 py_test(
     name = "examples/random_env", main = "examples/random_env.py",
+    tags = ["examples"],
     size = "small",
     srcs = ["examples/random_env.py"]
 )
