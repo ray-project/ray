@@ -34,7 +34,8 @@ DEFAULT_CONFIG = with_base_config(ppo.DEFAULT_CONFIG, {
     # *** WARNING: configs below are DDPPO overrides over PPO; you
     #     shouldn't need to adjust them. ***
     "use_pytorch": True,  # DDPPO requires PyTorch distributed.
-    "num_gpus": 0,  # No GPUs are used in the learner.
+    "num_gpus": 0,  # Learning is no longer done on the learner so setting GPUs
+                    # does not make sense here!
     "num_gpus_per_worker": 1,  # Each rollout worker gets a GPU.
     "truncate_episodes": True,  # Require evenly sized batches.
     "train_batch_size": -1,  # This is auto set based on sample batch size.
