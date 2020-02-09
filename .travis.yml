@@ -4,122 +4,140 @@ dist: xenial
 
 matrix:
   include:
-    #- os: linux
-    #  env: PYTHON=3.5 PYTHONWARNINGS=ignore
+    - os: linux
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
-    #- os: osx
-    #  osx_image: xcode7
-    #  env: PYTHON=3.5 PYTHONWARNINGS=ignore
+    - os: osx
+      osx_image: xcode7
+      env: PYTHON=3.5 PYTHONWARNINGS=ignore
 
-    #- os: linux
-    #  env:
-    #    - JDK='Oracle JDK 8'
-    #    - PYTHON=3.5 PYTHONWARNINGS=ignore
-    #    - RAY_INSTALL_JAVA=1
-    #  install:
-    #    - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-    #    - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
-    #    - ./ci/travis/install-bazel.sh
-    #    - ./ci/suppress_output ./ci/travis/install-dependencies.sh
-    #    - export PATH="$HOME/miniconda/bin:$PATH"
-    #    - ./ci/suppress_output ./ci/travis/install-ray.sh
-    #  script:
-    #    - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
-    #    - ./java/test.sh
+    - os: linux
+      env:
+        - JDK='Oracle JDK 8'
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
+      install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
+        - ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
+      script:
+        - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
+        - ./java/test.sh
 
-    #- os: linux
-    #  env:
-    #    - TESTSUITE=streaming
-    #    - JDK='Oracle JDK 8'
-    #    - RAY_INSTALL_JAVA=1
-    #    - PYTHON=3.5 PYTHONWARNINGS=ignore
-    #  install:
-    #    - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
-    #    - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-    #    - if [[ $RAY_CI_STREAMING_PYTHON_AFFECTED != "1" && $RAY_CI_STREAMING_JAVA_AFFECTED != "1" ]]; then exit; fi
-    #    - ./ci/travis/install-bazel.sh
-    #    - ./ci/suppress_output ./ci/travis/install-dependencies.sh
-    #    - export PATH="$HOME/miniconda/bin:$PATH"
-    #    - ./ci/suppress_output ./ci/travis/install-ray.sh
-    #  script:
-    #    # Streaming cpp test.
-    #    - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then ./ci/suppress_output bazel test //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
-    #    - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
-    #    - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
+    - os: linux
+      env:
+        - TESTSUITE=streaming
+        - JDK='Oracle JDK 8'
+        - RAY_INSTALL_JAVA=1
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
+      install:
+        - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [[ $RAY_CI_STREAMING_PYTHON_AFFECTED != "1" && $RAY_CI_STREAMING_JAVA_AFFECTED != "1" ]]; then exit; fi
+        - ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
+      script:
+        # Streaming cpp test.
+        - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then ./ci/suppress_output bazel test //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
+        - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
+        - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
 
-    #- os: linux
-    #  env: LINT=1 PYTHONWARNINGS=ignore
-    #  before_install:
-    #    - sudo apt-get update -qq
-    #  install: []
-    #  script:
-    #    - ./ci/travis/check-git-clang-format-output.sh
-    #    # Try generating Sphinx documentation. To do this, we need to install
-    #    # Ray first.
-    #    - ./ci/travis/install-dependencies.sh
-    #    - export PATH="$HOME/miniconda/bin:$PATH"
-    #    - cd doc
-    #    - pip install -q -r requirements-doc.txt
-    #    - pip install -q yapf==0.23.0
-    #    - sphinx-build -W -b html -d _build/doctrees source _build/html
-    #    - cd ..
-    #    # Run Python linting, ignore dict vs {} (C408), others are defaults
-    #    - flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
-    #    - ./ci/travis/format.sh --all
-    #    # Make sure that the README is formatted properly.
-    #    - cd python
-    #    - python setup.py check --restructuredtext --strict --metadata
-    #    - cd ..
-    #    # Run Bazel linter Buildifier.
-    #    - wget https://dl.google.com/go/go1.11.linux-amd64.tar.gz
-    #    - tar -xf go1.11.linux-amd64.tar.gz
-    #    - mkdir $HOME/go_dir
-    #    - export GOROOT=`pwd`/go
-    #    - export GOPATH="$HOME/go_dir"
-    #    - export PATH="$GOROOT/bin:$GOPATH/bin:$PATH"
-    #    - go get github.com/bazelbuild/buildtools/buildifier
-    #    - ./ci/travis/bazel-format.sh
+    - os: linux
+      env:
+        - TESTSUITE=gcs_service
+        - JDK='Oracle JDK 8'
+        - RAY_GCS_SERVICE_ENABLED=true
+        - RAY_INSTALL_JAVA=1
+        - PYTHON=3.5 PYTHONWARNINGS=ignore
+      install:
+        - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
+      script:
+        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+        - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
 
-    ## Build Linux wheels.
-    #- os: linux
-    #  env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
-    #  install:
-    #    - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-    #    - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
-    #    - ./ci/suppress_output ./ci/travis/install-dependencies.sh
-    #
-    #    # Mount bazel cache dir to the docker container.
-    #    # For the linux wheel build, we use a shared cache between all
-    #    # wheels, but not between different travis runs, because that
-    #    # caused timeouts in the past. See the "cache: false" line below.
-    #    - export MOUNT_BAZEL_CACHE="-v $HOME/ray-bazel-cache:/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST -e encrypted_1c30b31fe1ee_key=$encrypted_1c30b31fe1ee_key -e encrypted_1c30b31fe1ee_iv=$encrypted_1c30b31fe1ee_iv"
-    #
-    #    # This command should be kept in sync with ray/python/README-building-wheels.md,
-    #    # except the `$MOUNT_BAZEL_CACHE` part.
-    #
-    #    - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
-    #
-    #  script:
-    #    - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
-    #
-    #    - ./ci/travis/test-wheels.sh
-    #  cache: false
-    #
-    ## Build MacOS wheels.
-    #- os: osx
-    #  osx_image: xcode7
-    #  env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
-    #  install:
-    #    - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-    #    - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
-    #
-    #    - ./ci/suppress_output ./ci/travis/install-dependencies.sh
-    #    # This command should be kept in sync with ray/python/README-building-wheels.md.
-    #    - ./ci/suppress_output ./python/build-wheel-macos.sh
-    #  script:
-    #    - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
-    #
-    #    - ./ci/travis/test-wheels.sh
+    - os: linux
+      env: LINT=1 PYTHONWARNINGS=ignore
+      before_install:
+        - sudo apt-get update -qq
+      install: []
+      script:
+        - ./ci/travis/check-git-clang-format-output.sh
+        # Try generating Sphinx documentation. To do this, we need to install
+        # Ray first.
+        - ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - cd doc
+        - pip install -q -r requirements-doc.txt
+        - pip install -q yapf==0.23.0
+        - sphinx-build -W -b html -d _build/doctrees source _build/html
+        - cd ..
+        # Run Python linting, ignore dict vs {} (C408), others are defaults
+        - flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+        - ./ci/travis/format.sh --all
+        # Make sure that the README is formatted properly.
+        - cd python
+        - python setup.py check --restructuredtext --strict --metadata
+        - cd ..
+        # Run Bazel linter Buildifier.
+        - wget https://dl.google.com/go/go1.11.linux-amd64.tar.gz
+        - tar -xf go1.11.linux-amd64.tar.gz
+        - mkdir $HOME/go_dir
+        - export GOROOT=`pwd`/go
+        - export GOPATH="$HOME/go_dir"
+        - export PATH="$GOROOT/bin:$GOPATH/bin:$PATH"
+        - go get github.com/bazelbuild/buildtools/buildifier
+        - ./ci/travis/bazel-format.sh
+
+    # Build Linux wheels.
+    - os: linux
+      env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
+      install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+
+        # Mount bazel cache dir to the docker container.
+        # For the linux wheel build, we use a shared cache between all
+        # wheels, but not between different travis runs, because that
+        # caused timeouts in the past. See the "cache: false" line below.
+        - export MOUNT_BAZEL_CACHE="-v $HOME/ray-bazel-cache:/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST -e encrypted_1c30b31fe1ee_key=$encrypted_1c30b31fe1ee_key -e encrypted_1c30b31fe1ee_iv=$encrypted_1c30b31fe1ee_iv"
+
+        # This command should be kept in sync with ray/python/README-building-wheels.md,
+        # except the `$MOUNT_BAZEL_CACHE` part.
+
+        - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+
+      script:
+        - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+        - ./ci/travis/test-wheels.sh
+      cache: false
+
+    # Build MacOS wheels.
+    - os: osx
+      osx_image: xcode7
+      env: MAC_WHEELS=1 PYTHONWARNINGS=ignore RAY_INSTALL_JAVA=1
+      install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        # This command should be kept in sync with ray/python/README-building-wheels.md.
+        - ./ci/suppress_output ./python/build-wheel-macos.sh
+      script:
+        - if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
+
+        - ./ci/travis/test-wheels.sh
 
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
@@ -134,7 +152,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         #- if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
-        - travis_wait 30 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - travis_wait 60 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no learning).
     - os: linux
@@ -149,7 +167,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         #- if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
-        - travis_wait 60 bazel test --build_tests_only --test_tag_filters=quick_train --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - travis_wait 30 bazel test --build_tests_only --test_tag_filters=quick_train --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
     # RLlib: Everything else.
     - os: linux
@@ -164,7 +182,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         #- if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
-        - travis_wait 30 bazel test --build_tests_only --test_tag_filters=-learning_tests,-quick_train --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - travis_wait 60 bazel test --build_tests_only --test_tag_filters=-learning_tests,-quick_train --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
@@ -188,9 +206,8 @@ script:
   # cc bazel tests (w/o RLlib)
   - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all -rllib/...
 
-  # ray serve tests TODO(ekl): these should be moved to bazel
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
-  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/experimental/serve/examples/echo_full.py; fi
+  # ray serve tests
+  - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/experimental/serve/...; fi
 
   # ray operator tests
   - cd ./deploy/ray-operator/
@@ -200,7 +217,6 @@ script:
 
   # random python tests TODO(ekl): these should be moved to bazel
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then RAY_FORCE_DIRECT=0 python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
 
   # bazel python tests. This should be run last to keep its logs at the end of travis logs.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...; fi
@@ -249,8 +265,6 @@ deploy:
       all_branches: true
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
-
 cache:
   directories:
     - $HOME/ray-bazel-cache
-

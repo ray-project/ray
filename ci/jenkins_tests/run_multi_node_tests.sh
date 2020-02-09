@@ -17,7 +17,7 @@ echo "Using Docker image" $DOCKER_SHA
 
 ######################## RLLIB TESTS #################################
 
-# OBSOLETED: All RLlib tests have been moved to /ray/rllib/BUILD
+# DEPRECATED: All RLlib tests have been moved to /ray/rllib/BUILD
 # source $ROOT_DIR/run_rllib_tests.sh
 
 ######################## TUNE TESTS #################################

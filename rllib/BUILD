@@ -92,6 +92,7 @@ py_test(
 py_test(
     name = "test_a3c_torch_pendulum_v0",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--torch",
@@ -175,6 +176,7 @@ py_test(
 py_test(
     name = "test_ppo_tf_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--env", "FrozenLake-v0",
@@ -187,6 +189,7 @@ py_test(
 py_test(
     name = "test_ppo_torch_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--torch",
@@ -212,6 +215,7 @@ py_test(
 py_test(
     name = "test_ppo_torch_cartpole_v1",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--torch",
@@ -369,6 +373,7 @@ py_test(
 py_test(
     name = "test_dqn_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--env", "FrozenLake-v0",
@@ -380,6 +385,7 @@ py_test(
 py_test(
     name = "test_dqn_cartpole_v0_no_dueling",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
@@ -459,6 +465,7 @@ py_test(
 py_test(
     name = "test_pg_torch_frozenlake_v0",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--torch",
@@ -472,6 +479,7 @@ py_test(
 py_test(
     name = "test_pg_tf_cartpole_v0",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
@@ -509,6 +517,7 @@ py_test(
 py_test(
     name = "test_pg_tf_cartpole_v0_multi_envs_per_worker",
     main = "train.py", srcs = ["train.py"],
+    size = "small",
     tags = ["quick_train"],
     args = [
         "--env", "CartPole-v0",
