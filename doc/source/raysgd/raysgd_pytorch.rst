@@ -1,5 +1,5 @@
-RaySGD Pytorch
-==============
+RaySGD: Pytorch
+===============
 
 RaySGD is a lightweight library for distributed deep learning, providing thin wrappers around PyTorch and TensorFlow native modules for data parallel training.
 
