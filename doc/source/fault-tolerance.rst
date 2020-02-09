@@ -1,4 +1,3 @@
-
 Fault Tolerance
 ===============
 
