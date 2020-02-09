@@ -712,10 +712,10 @@ class Trainer(Trainable):
         Arguments:
             observation (obj): observation from the environment.
             state (list): RNN hidden state, if any. If state is not None,
-                          then all of compute_single_action(...) is returned
-                          (computed action, rnn state(s), logits dictionary).
-                          Otherwise compute_single_action(...)[0] is
-                          returned (computed action).
+                then all of compute_single_action(...) is returned
+                (computed action, rnn state(s), logits dictionary).
+                Otherwise compute_single_action(...)[0] is returned
+                (computed action).
             prev_action (obj): previous action value, if any
             prev_reward (int): previous reward, if any
             info (dict): info object, if any

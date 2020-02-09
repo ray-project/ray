@@ -91,7 +91,7 @@ class TestPG(unittest.TestCase):
             policy.model,
             dist_class=TorchCategorical,
             train_batch=train_batch)
-        expected_logits = policy.model._last_output
+        expected_logits = policy.model.last_output()
         expected_logp = TorchCategorical(expected_logits, policy.model).logp(
             train_batch[SampleBatch.ACTIONS])
         expected_loss = -np.mean(

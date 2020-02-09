@@ -118,14 +118,15 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
 
     if deterministic is True:
         actions = deterministic_actions
+        action_probabilities = tf.zeros_like(log_pis)
     elif deterministic is False:
         actions = stochastic_actions
+        action_probabilities = log_pis
     else:
         actions = tf.cond(
             deterministic,
             true_fn=lambda: deterministic_actions,
             false_fn=lambda: stochastic_actions)
-    
         action_probabilities = tf.cond(
             deterministic,
             true_fn=lambda: tf.zeros_like(log_pis),

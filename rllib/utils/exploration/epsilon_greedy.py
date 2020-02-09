@@ -72,6 +72,8 @@ class EpsilonGreedy(Exploration):
                                timestep=None):
         # TODO(sven): This is hardcoded. Put a meaningful error, in case model
         # API is not as required.
+        if not hasattr(model, "q_value_head"):
+            return action
         q_values = model.q_value_head(model.last_output())
         if isinstance(q_values, list):
             q_values = q_values[0]

@@ -113,9 +113,13 @@ def traced_eager_policy(eager_policy_cls):
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
+                            deterministic=None,
                             explore=True,
                             timestep=None,
                             **kwargs):
+
+            deterministic = deterministic if deterministic is not None else \
+                self.config["model"]["deterministic_action_sampling"]
 
             obs_batch = tf.convert_to_tensor(obs_batch)
             state_batches = _convert_to_tf(state_batches)
@@ -129,7 +133,8 @@ def traced_eager_policy(eager_policy_cls):
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, explore, timestep, **kwargs)
+                info_batch, episodes, deterministic, explore, timestep,
+                **kwargs)
 
         @override(Policy)
         @convert_eager_inputs
