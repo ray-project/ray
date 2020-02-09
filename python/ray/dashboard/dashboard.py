@@ -464,9 +464,8 @@ class NodeStats(threading.Thread):
                 child_to_parent[actor_id] = caller_id
                 task["state"] = -1
                 task["invalidStateType"] = invalid_state_type
-                task["functionDescriptor"] = list(
-                    map(b64_decode, task["functionDescriptor"]))
-                _, task["actorTitle"], _ = task["functionDescriptor"]
+                task["actorTitle"] = task["functionDescriptor"][
+                    "pythonFunctionDescriptor"]["className"]
                 format_reply_id(task)
                 flattened_tree[actor_id] = task
 
