@@ -8,7 +8,7 @@ from ray.core.generated import dashboard_pb2
 from ray.core.generated import dashboard_pb2_grpc
 
 class Exporter(threading.Thread):
-    """Thread that keeps running to export metrics to an external services through gRPC."""
+    """Thread that keeps running and export metrics to external services through gRPC."""
     def __init__(self, export_address, dashboard_controller, update_frequency=1.0):
         self.dashboard_controller = dashboard_controller
         self.export_address = export_address

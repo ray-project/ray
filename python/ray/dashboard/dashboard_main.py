@@ -60,8 +60,7 @@ if __name__ == "__main__":
             args.port,
             args.redis_address,
             args.temp_dir,
-            redis_password=args.redis_password,
-            DashboardController=DashboardController)
+            redis_password=args.redis_password)
         dashboard.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.

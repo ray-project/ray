@@ -200,8 +200,11 @@ class Dashboard(object):
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
         redis_passord(str): Redis password to access GCS
-        is_hosted_dashboard(bool): True if using a hosted dashboard
-            instead of a local dashboard.
+        hosted_dashboard_client(bool): True if a server runs as a
+            hosted dashboard client mode. 
+        update_frequency(float): Frequency where metrics are updated.
+        DashboardController(DashboardController): DashboardController
+            that defines the business logic of a Dashboard server.
     """
 
     def __init__(self,
@@ -210,7 +213,7 @@ class Dashboard(object):
                  redis_address,
                  temp_dir,
                  redis_password=None,
-                 is_hosted_dashboard=True,
+                 hosted_dashboard_client=True,
                  update_frequency=1.0,
                  DashboardController=DashboardController):
         self.host = host
@@ -222,9 +225,10 @@ class Dashboard(object):
         self.dashboard_controller = DashboardController(
             redis_address, redis_password, update_frequency)
 
-        self.is_hosted_dashboard = is_hosted_dashboard
-        self.dashboard_client = DashboardClient(
-            self.dashboard_controller) if self.is_hosted_dashboard else None
+        self.hosted_dashboard_client = hosted_dashboard_client
+        self.dashboard_client = None 
+        if self.hosted_dashboard_client:
+            self.dashboard_client = DashboardClient(self.dashboard_controller)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -241,11 +245,6 @@ class Dashboard(object):
 
         def get_forbidden(_) -> aiohttp.web.Response:
             return forbidden()
-
-        def _export_if_hosted_dashboard(data, metrics_type=None):
-            if self.is_hosted_dashboard:
-                print("exported!")
-                self.exporter.export(data, metrics_type)
 
         async def get_index(req) -> aiohttp.web.Response:
             return aiohttp.web.FileResponse(
@@ -353,7 +352,7 @@ class Dashboard(object):
             result = self.dashboard_controller.errors(hostname, pid)
             return await json_response(result=result)
 
-        if not self.is_hosted_dashboard:
+        if not self.hosted_dashboard_client:
             # Hosted dashboard mode won't use local dashboard frontend.
             self.app.router.add_get("/", get_index)
             self.app.router.add_get("/favicon.ico", get_favicon)
@@ -398,7 +397,7 @@ class Dashboard(object):
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
-        if self.is_hosted_dashboard:
+        if self.hosted_dashboard_client:
             self.dashboard_client.start_exporting_metrics()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
@@ -746,19 +745,23 @@ class RayletStats(threading.Thread):
         while True:
             time.sleep(self.update_frequency)
             replies = {}
-            for node in self.nodes:
-                node_id = node["NodeID"]
-                stub = self.stubs[node_id]
-                reply = stub.GetNodeStats(
-                    node_manager_pb2.GetNodeStatsRequest(), timeout=2)
-                reply_dict = MessageToDict(reply)
-                reply_dict["nodeId"] = node_id
-                replies[node["NodeManagerAddress"]] = reply_dict
-            with self._raylet_stats_lock:
-                for address, reply_dict in replies.items():
-                    self._raylet_stats[address] = reply_dict
-            counter += 1
-            # From time to time, check if new nodes have joined the cluster
-            # and update self.nodes
-            if counter % 10:
-                self._update_nodes()
+            try:
+                for node in self.nodes:
+                    node_id = node["NodeID"]
+                    stub = self.stubs[node_id]
+                    reply = stub.GetNodeStats(
+                        node_manager_pb2.GetNodeStatsRequest(), timeout=2)
+                    reply_dict = MessageToDict(reply)
+                    reply_dict["nodeId"] = node_id
+                    replies[node["NodeManagerAddress"]] = reply_dict
+                with self._raylet_stats_lock:
+                    for address, reply_dict in replies.items():
+                        self._raylet_stats[address] = reply_dict
+            except Exception:
+                logger.exception(traceback.format_exc())
+            finally:
+                counter += 1
+                # From time to time, check if new nodes have joined the cluster
+                # and update self.nodes
+                if counter % 10:
+                    self._update_nodes()

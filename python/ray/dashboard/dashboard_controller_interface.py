@@ -1,5 +1,5 @@
 class DashboardControllerInterface:
-    """Interface that Dashboard server uses to get data and control actions"""
+    """Interface to get Ray cluster metrics and control actions"""
 
     def node_info(self):
         raise NotImplementedError("Please implement this method.")

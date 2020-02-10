@@ -1,14 +1,14 @@
 import argparse
 import re
-import redis
 import traceback
 import os
 
-import ray
+import redis
 
+import ray
 import ray.ray_constants as ray_constants
 from ray.dashboard.dashboard import Dashboard
-from ray.dashboard.closed_source.anyscale_dashboard_controller import HostedDashboardController
+from ray.dashboard.closed_source.hosted_dashboard_controller import HostedDashboardController
 
 """Run hosted dashboard server on Anyscale hosts.
 
@@ -29,7 +29,7 @@ To run a hosted dashboard in the local environment, follow the below.
 1. Make sure Redis server is running in `--redis-address`. 
 2. Ingest server should be running. 
 ```
-python anyscale_server.py
+python ingest_server.py
 ```
 TODO(sang): Change this part of the instruction. This is a temporary way
     to simulate the whole workflow.
@@ -96,9 +96,11 @@ if __name__ == "__main__":
     redis_address, redis_port = args.redis_address.strip().split(':')
     redis_client = redis.StrictRedis(host=redis_address, port=redis_port)
     web_ui_url = "{}:{}".format(args.host, args.port)
+    # Should record the webui address to Redis before running a dashboard
+    # so that the dashboard class can find the proper addresses.
     redis_client.hmset("webui", {"url": web_ui_url})
-    # When dashboard is running in Anyscale cluster, the hostsed_dashboard mode
-    is_hosted_dashboard = False
+
+    hosted_dashboard_client = False
 
     try:
         dashboard = Dashboard(
@@ -107,7 +109,7 @@ if __name__ == "__main__":
             args.redis_address,
             args.temp_dir,
             redis_password=args.redis_password,
-            is_hosted_dashboard=is_hosted_dashboard,
+            hosted_dashboard_client=hosted_dashboard_client,
             DashboardController=HostedDashboardController
         )
         dashboard.run()

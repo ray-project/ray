@@ -1,7 +1,7 @@
 from ray.dashboard.hosted_dashboard.exporter import Exporter
 
 class DashboardClient:
-    """Client class that communicates with external services
+    """In charge of communication to hosted dashboard.
     
     Attributes:
         ingestor_url(str): Address that metrics will be exported.
