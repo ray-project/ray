@@ -342,8 +342,15 @@ def attach_cluster(config_file, start, use_screen, use_tmux,
                  override_cluster_name, None)
 
 
-def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
-                 override_cluster_name, port_forward):
+def exec_cluster(config_file,
+                 cmd=None,
+                 docker=False,
+                 screen=False,
+                 tmux=False,
+                 stop=False,
+                 start=False,
+                 override_cluster_name=None,
+                 port_forward=None):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -389,15 +396,16 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             return with_docker_exec(
                 [command], container_name=container_name)[0]
 
-        cmd = wrap_docker(cmd) if docker else cmd
+        if cmd:
+            cmd = wrap_docker(cmd) if docker else cmd
 
-        if stop:
-            shutdown_cmd = (
-                "ray stop; ray teardown ~/ray_bootstrap_config.yaml "
-                "--yes --workers-only")
-            if docker:
-                shutdown_cmd = wrap_docker(shutdown_cmd)
-            cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
+            if stop:
+                shutdown_cmd = (
+                    "ray stop; ray teardown ~/ray_bootstrap_config.yaml "
+                    "--yes --workers-only")
+                if docker:
+                    shutdown_cmd = wrap_docker(shutdown_cmd)
+                cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
 
         _exec(updater, cmd, screen, tmux, port_forward=port_forward)
 
@@ -434,11 +442,8 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-        updater.cmd_runner.run(
-            cmd,
-            allocate_tty=True,
-            exit_on_fail=True,
-            port_forward=port_forward)
+    updater.cmd_runner.run(
+        cmd, allocate_tty=True, exit_on_fail=True, port_forward=port_forward)
 
 
 def rsync(config_file, source, target, override_cluster_name, down):

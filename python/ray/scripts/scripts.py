@@ -60,6 +60,55 @@ def cli(logging_level, logging_format):
     ray.utils.setup_logger(level, logging_format)
 
 
+@click.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+@click.option(
+    "--port",
+    "-p",
+    required=False,
+    type=int,
+    default=8265,
+    help="The local port to forward to the dashboard")
+def dashboard(cluster_config_file, cluster_name, port):
+    # Sleeping in a loop is preferable to `sleep infinity` because the latter
+    # only works on linux.
+    remote_port = 8265
+    if port:
+        dashboard_port = port
+    else:
+        dashboard_port = remote_port
+
+    port_taken = True
+
+    # Find the first open port sequentially from `remote_port`.
+    while port_taken:
+        try:
+            port_forward = [
+                (dashboard_port, remote_port),
+            ]
+            click.echo(
+                "Attempting to establish dashboard at localhost:{}".format(
+                    port_forward[0][0]))
+            # We want to probe with a no-op that returns quickly to avoid
+            # exceptions caused by network errors.
+            exec_cluster(
+                cluster_config_file,
+                override_cluster_name=cluster_name,
+                port_forward=port_forward)
+            port_taken = False
+        except Exception:
+            click.echo("Failed to forward dashboard, trying a new port...")
+            port_taken = True
+            dashboard_port += 1
+            pass
+
+
 @cli.command()
 @click.option(
     "--node-ip-address",
@@ -287,7 +336,6 @@ def start(node_ip_address, redis_address, address, redis_port,
         load_code_from_local=load_code_from_local,
         use_pickle=use_pickle,
         _internal_config=internal_config)
-
     if head:
         # Start Ray on the head node.
         if redis_shard_ports is not None:
@@ -713,9 +761,19 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     command_parts = ["python", target]
     if args is not None:
         command_parts += [args]
+
+    port_forward = [(port, port) for port in list(port_forward)]
     cmd = " ".join(command_parts)
-    exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
-                 cluster_name, list(port_forward))
+    exec_cluster(
+        cluster_config_file,
+        cmd,
+        docker,
+        screen,
+        tmux,
+        stop,
+        start=False,
+        override_cluster_name=cluster_name,
+        port_forward=port_forward)
 
 
 @cli.command()
@@ -757,8 +815,9 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     help="Port to forward. Use this multiple times to forward multiple ports.")
 def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
              cluster_name, port_forward):
+    port_forward = [(port, port) for port in list(port_forward)]
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-                 cluster_name, list(port_forward))
+                 cluster_name, port_forward)
 
 
 @cli.command()
@@ -872,6 +931,7 @@ def stat(address):
         print(reply)
 
 
+cli.add_command(dashboard)
 cli.add_command(start)
 cli.add_command(stop)
 cli.add_command(create_or_update, name="up")
