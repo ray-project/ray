@@ -20,6 +20,9 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CActorID
 )
+from ray.includes.function_descriptor cimport (
+    CFunctionDescriptor,
+)
 
 cdef class Buffer:
     cdef:
@@ -60,10 +63,12 @@ cdef class CoreWorker:
 
     cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
                             size_t data_size, ObjectID object_id,
+                            c_vector[CObjectID] contained_ids,
                             CObjectID *c_object_id, shared_ptr[CBuffer] *data)
-    # TODO: handle noreturn better
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,
             c_vector[shared_ptr[CRayObject]] *returns)
 
-cdef c_vector[c_string] string_vector_from_list(list string_list)
+cdef class FunctionDescriptor:
+    cdef:
+        CFunctionDescriptor descriptor

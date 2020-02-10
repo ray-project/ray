@@ -69,6 +69,13 @@ class GcsServer {
   virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
 
  private:
+  /// Store the address of GCS server in Redis.
+  ///
+  /// Clients will look up this address in Redis and use it to connect to GCS server.
+  /// TODO(ffbin): Once we entirely migrate to service-based GCS, we should pass GCS
+  /// server address directly to raylets and get rid of this lookup.
+  void StoreGcsServerAddressInRedis();
+
   /// Gcs server configuration
   GcsServerConfig config_;
   /// The grpc server

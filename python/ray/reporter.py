@@ -9,6 +9,7 @@ import grpc
 import subprocess
 from concurrent import futures
 
+import ray
 import psutil
 import ray.ray_constants as ray_constants
 import ray.services

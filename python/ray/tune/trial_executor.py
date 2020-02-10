@@ -45,7 +45,7 @@ class TrialExecutor:
             self.try_checkpoint_metadata(trial)
 
     def try_checkpoint_metadata(self, trial):
-        """Checkpoints metadata.
+        """Checkpoints trial metadata.
 
         Args:
             trial (Trial): Trial to checkpoint.
