@@ -93,7 +93,8 @@ class WarmStartTest(unittest.TestCase):
             restore=paths_to_checkpoints[0])
         # ensure the restored trial was given a new ID
         self.assertNotEqual(trials[0].trial_id, new_trials[0].trial_id)
-        # the new trial's name should have restore=<reference_to_restored_trial>
+        # the new trial's name should have
+        # restore=<reference_to_restored_trial>
         self.assertTrue("restore=" in new_paths_to_checkpoints[0])
         self.assertTrue(trials[0].trial_id in new_paths_to_checkpoints[0])
 
