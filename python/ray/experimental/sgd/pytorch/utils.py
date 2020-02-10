@@ -77,8 +77,6 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
     end = time.time()
 
     for batch_idx, (features, target) in enumerate(train_iterator):
-        if config.get(TEST_MODE) and batch_idx > 0:
-            break
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -117,12 +115,15 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
         batch_time.update(time.time() - end)
         end = time.time()
 
+        if config.get(TEST_MODE) and batch_idx  == 0:
+            break
+
     if config.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
         scheduler.step()
 
     stats = {
         "batch_time": batch_time.avg,
-        BATCH_COUNT: losses.count,
+        BATCH_COUNT: batch_idx + 1,
         "train_loss": losses.avg,
         "data_time": data_time.avg,
     }
@@ -174,9 +175,6 @@ def validate(config, model, val_iterator, criterion, scheduler):
     with torch.no_grad():
         end = time.time()
         for batch_idx, (features, target) in enumerate(val_iterator):
-            if config.get(TEST_MODE) and batch_idx > 0:
-                break
-
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=True)
                 target = target.cuda(non_blocking=True)
@@ -195,8 +193,11 @@ def validate(config, model, val_iterator, criterion, scheduler):
             batch_time.update(time.time() - end)
             end = time.time()
 
+            if config.get(TEST_MODE) and batch_idx == 0:
+                break
+
     stats = {
-        BATCH_COUNT: losses.count,
+        BATCH_COUNT: batch_idx + 1,
         "batch_time": batch_time.avg,
         "validation_loss": losses.avg
     }

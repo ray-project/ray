@@ -104,7 +104,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.train_loader.sampler.set_epoch(self.epoch)
         return super(DistributedPyTorchRunner, self).step()
 
-    def _get_models_state_dicts(self):
+    def _get_model_state_dicts(self):
         """Override the parent class method for supporting model.module."""
         # This is so that we create a duplicate of weights into CPU rather than
         # move the model weights entirely out of the GPU, so that we can
@@ -117,7 +117,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             cpu_state_dicts += [state_dict]
         return cpu_state_dicts
 
-    def _set_models_state_dicts(self, model_state_dicts):
+    def _set_model_state_dicts(self, model_state_dicts):
         for model, model_state_dict in zip(self.models, model_state_dicts):
             model.module.load_state_dict(model_state_dict)
 

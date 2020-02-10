@@ -127,9 +127,8 @@ class PyTorchRunner:
 
     def _setup_apex_if_available(self):
         """Sets up the model for fp16 training via apex if available."""
-        if len(self.models) > 1:
-            raise ValueError("apex only supported for single models.")
-
+        if not amp:
+            return
         self.models, self.optimizers = amp.initialize(
             self.models, self.optimizers, **self.apex_args)
 
@@ -148,7 +147,8 @@ class PyTorchRunner:
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
         self._create_schedulers_if_available()
-        self._setup_apex_if_available()
+        if self.use_fp16:
+            self._setup_apex_if_available()
         self._create_loss()
 
         logger.debug("Creating dataset")
@@ -179,7 +179,7 @@ class PyTorchRunner:
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         training_config = self.config.copy()
         training_config.update({
-            pytorch_utils.USE_APEX: self.use_fp16,
+            pytorch_utils.USE_FP16: self.use_fp16,
             pytorch_utils.SCHEDULER_STEP: self.scheduler_step_freq
         })
         with self._timers["training"]:
@@ -189,7 +189,7 @@ class PyTorchRunner:
                 self.train_loader,
                 self.criterion,
                 self.given_optimizers,
-                schedulers=self.given_schedulers)
+                scheduler=self.given_schedulers)
             train_stats["epoch"] = self.epoch
 
         self.epoch += 1
@@ -207,7 +207,7 @@ class PyTorchRunner:
                 self.given_models,
                 self.validation_loader,
                 self.criterion,
-                schedulers=self.given_schedulers)
+                scheduler=self.given_schedulers)
 
         validation_stats.update(self.stats())
         return validation_stats
@@ -252,7 +252,7 @@ class PyTorchRunner:
                     scheduler.state_dict() for scheduler in self.schedulers
                 ]
             })
-        if self.fp16 and amp:
+        if self.use_fp16 and amp:
             state.update({"amp": amp.state_dict()})
         return state
 
@@ -262,10 +262,12 @@ class PyTorchRunner:
         self._set_model_state_dicts(state["models"])
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
-        for scheduler, state_dict in zip(self.schedulers, state["schedulers"]):
-            scheduler.load_state_dict(state_dict)
+        if self.schedulers:
+            for scheduler, state_dict in zip(
+                    self.schedulers, state["schedulers"]):
+                scheduler.load_state_dict(state_dict)
 
-        if self.fp16 and "amp" in state and amp:
+        if self.use_fp16 and "amp" in state and amp:
             amp.load_state_dict(state["amp"])
         self.epoch = state["stats"]["epoch"]
 
