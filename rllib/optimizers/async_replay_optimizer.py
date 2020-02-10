@@ -3,15 +3,15 @@
 https://arxiv.org/abs/1803.00933"""
 
 import collections
+import numpy as np
 import os
 import random
-import time
-import threading
-
-import numpy as np
 from six.moves import queue
+import threading
+import time
 
 import ray
+from ray.exceptions import RayError
 from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -206,16 +206,25 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         with self.timers["sample_processing"]:
             completed = list(self.sample_tasks.completed())
-            counts = ray_get_and_free([c[1][1] for c in completed])
+
+            ray_error = None
             for i, (ev, (sample_batch, count)) in enumerate(completed):
-                sample_timesteps += counts[i]
+                # Task may have failed, try each without abandoning other,
+                # still good ones.
+                try:
+                    counts = ray_get_and_free(count)
+                except RayError as e:
+                    ray_error = e  # throw later
+                    continue
+
+                sample_timesteps += counts
 
                 # Send the data to the replay buffer
                 random.choice(
                     self.replay_actors).add_batch.remote(sample_batch)
 
                 # Update weights if needed
-                self.steps_since_update[ev] += counts[i]
+                self.steps_since_update[ev] += counts
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
                     # Note that it's important to pull new weights once
                     # updated to avoid excessive correlation between actors
@@ -228,8 +237,13 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                     self.num_weight_syncs += 1
                     self.steps_since_update[ev] = 0
 
-                # Kick off another sample request
+                # Kick off another sample request.
                 self.sample_tasks.add(ev, ev.sample_with_count.remote())
+
+            # Now that all still good tasks have been kicked off again,
+            # throw error.
+            if ray_error:
+                raise ray_error
 
         with self.timers["replay_processing"]:
             for ra, replay in self.replay_tasks.completed():
