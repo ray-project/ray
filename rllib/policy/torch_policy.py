@@ -108,8 +108,14 @@ class TorchPolicy(Policy):
                 if p.grad is not None:
                     grads.append(p.grad)
             start = time.time()
-            torch.distributed.all_reduce_coalesced(
-                grads, op=torch.distributed.ReduceOp.SUM)
+            if torch.cuda.is_available():
+                # Sadly, allreduce_coalesced does not work with CUDA yet.
+                for g in grads:
+                    torch.distributed.all_reduce(
+                        g, op=torch.distributed.ReduceOp.SUM)
+            else:
+                torch.distributed.all_reduce_coalesced(
+                    grads, op=torch.distributed.ReduceOp.SUM)
             for p in self.model.parameters():
                 if p.grad is not None:
                     p.grad /= self.distributed_world_size
@@ -208,6 +214,8 @@ class TorchPolicy(Policy):
         train_batch = UsageTrackingDict(postprocessed_batch)
 
         def convert(arr):
+            if torch.is_tensor(arr):
+                return arr.to(self.device)
             tensor = torch.from_numpy(np.asarray(arr))
             if tensor.dtype == torch.double:
                 tensor = tensor.float()

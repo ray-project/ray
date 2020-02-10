@@ -625,14 +625,14 @@ class RolloutWorker(EvaluatorInterface):
             logger.debug("Training out:\n\n{}\n".format(summarize(info_out)))
         return info_out
 
-    def sample_and_learn(self, train_batch_size, num_sgd_iter,
+    def sample_and_learn(self, expected_batch_size, num_sgd_iter,
                          sgd_minibatch_size, standardize_fields):
         """Sample and batch and learn on it.
 
         This is typically used in combination with distributed allreduce.
 
         Arguments:
-            train_batch_size (int): Number of samples to learn on.
+            expected_batch_size (int): Expected number of samples to learn on.
             num_sgd_iter (int): Number of SGD iterations.
             sgd_minibatch_size (int): SGD minibatch size.
             standardize_fields (list): List of sample fields to normalize.
@@ -642,10 +642,12 @@ class RolloutWorker(EvaluatorInterface):
             count: number of samples learned on.
         """
         batch = self.sample()
-        assert batch.count == train_batch_size, \
-            (batch.count, "Batch size possibly out of sync between workers")
+        assert batch.count == expected_batch_size, \
+            ("Batch size possibly out of sync between workers, expected:",
+             expected_batch_size, "got:", batch.count)
         logger.info("Executing distributed minibatch SGD "
-                    "on batch of size {}".format(batch.count))
+                    "with epoch size {}, minibatch size {}".format(
+                        batch.count, sgd_minibatch_size))
         info = do_minibatch_sgd(batch, self.policy_map, self, num_sgd_iter,
                                 sgd_minibatch_size, standardize_fields)
         return info, batch.count
