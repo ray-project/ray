@@ -243,7 +243,7 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: Ray Libraries
+   :caption: Distributed Libraries
 
    Tune ↪ <https://ray.readthedocs.io/en/latest/tune.html>
    RLlib ↪ <https://ray.readthedocs.io/en/latest/rllib.html>
