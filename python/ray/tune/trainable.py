@@ -24,6 +24,7 @@ from ray.tune.utils import UtilMonitor
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
+CHECKPOINT_DIR_FORMAT = os.path.join("{root_dir}", "checkpoint_{iteration}")
 
 
 class TrainableUtil:
@@ -74,6 +75,18 @@ class TrainableUtil:
         os.makedirs(checkpoint_dir, exist_ok=True)
         # Drop marker in directory to identify it as a checkpoint dir.
         open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+    @staticmethod
+    def read_metadata(checkpoint_path):
+        """Reads metadata corresponding to checkpoint at the provided path."""
+        with open(checkpoint_path + ".tune_metadata", "rb") as f:
+            return pickle.load(f)
+
+    @staticmethod
+    def write_metadata(checkpoint_path, metadata):
+        """Writes metadata corresponding to checkpoint at the provided path."""
+        with open(checkpoint_path + ".tune_metadata", "wb") as f:
+            pickle.dump(metadata, f)
 
     @staticmethod
     def get_checkpoints_paths(logdir):
@@ -329,8 +342,8 @@ class Trainable:
         Returns:
             Checkpoint path or prefix that may be passed to restore().
         """
-        checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
-                                      "checkpoint_{}".format(self._iteration))
+        checkpoint_dir = CHECKPOINT_DIR_FORMAT.format(
+            root_dir=checkpoint_dir or self.logdir, iteration=self._iteration)
         TrainableUtil.make_checkpoint_dir(checkpoint_dir)
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False
@@ -354,16 +367,16 @@ class Trainable:
             raise ValueError("Returned unexpected type {}. "
                              "Expected str or dict.".format(type(checkpoint)))
 
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
-            pickle.dump({
-                "experiment_id": self._experiment_id,
-                "iteration": self._iteration,
-                "timesteps_total": self._timesteps_total,
-                "time_total": self._time_total,
-                "episodes_total": self._episodes_total,
-                "saved_as_dict": saved_as_dict,
-                "ray_version": ray.__version__,
-            }, f)
+        metadata = {
+            "experiment_id": self._experiment_id,
+            "iteration": self._iteration,
+            "timesteps_total": self._timesteps_total,
+            "time_total": self._time_total,
+            "episodes_total": self._episodes_total,
+            "saved_as_dict": saved_as_dict,
+            "ray_version": ray.__version__,
+        }
+        TrainableUtil.write_metadata(checkpoint_path, metadata)
         return checkpoint_path
 
     def save_to_object(self):
@@ -393,8 +406,7 @@ class Trainable:
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
-        with open(checkpoint_path + ".tune_metadata", "rb") as f:
-            metadata = pickle.load(f)
+        metadata = TrainableUtil.read_metadata(checkpoint_path)
         self._experiment_id = metadata["experiment_id"]
         self._iteration = metadata["iteration"]
         self._timesteps_total = metadata["timesteps_total"]

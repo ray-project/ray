@@ -5,7 +5,7 @@ import os
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
 DONE = "done"
 
-# (Optional) Enum for user controlled checkpoint
+# (Optional) Enum for user-controlled checkpoint
 SHOULD_CHECKPOINT = "should_checkpoint"
 
 # (Auto-filled) The hostname of the machine hosting the training process.
@@ -64,6 +64,10 @@ DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
 # __duplicate__ is a magic keyword used internally to
 # avoid double-logging results when using the Function API.
 RESULT_DUPLICATE = "__duplicate__"
+
+# __func_save__ is a magic keyword used to save
+# checkpoints when using the Function API.
+FUNCTION_SAVE = "__func_save__"
 
 # Where Tune writes result files by default
 DEFAULT_RESULTS_DIR = (os.environ.get("TEST_TMPDIR")

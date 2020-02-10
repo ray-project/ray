@@ -9,11 +9,12 @@ import types
 
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
+from ray.tune.function_runner import FunctionRunner
 from ray.tune.stopper import NoopStopper
 from ray.tune.progress_reporter import trial_progress_str
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+                             SHOULD_CHECKPOINT, FUNCTION_SAVE)
 from ray.tune.syncer import get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -499,8 +500,10 @@ class TrialRunner:
             # the scheduler decision is STOP or PAUSE. Note that
             # PAUSE only checkpoints to memory and does not update
             # the global checkpoint state.
-            self._checkpoint_trial_if_needed(
-                trial, force=result.get(SHOULD_CHECKPOINT, False))
+            self._checkpoint_trial_if_needed(trial)
+            # Process checkpoint taken by function-based trial.
+            if result.get(FUNCTION_SAVE) is not None:
+                self._process_trial_function_save(trial)
 
             if trial.is_saving:
                 # Cache decision to execute on after the save is processed.
@@ -543,6 +546,19 @@ class TrialRunner:
         decision = self._cached_trial_decisions.pop(trial.trial_id, None)
         if decision and checkpoint_value:
             self._execute_action(trial, decision)
+
+    def _process_trial_function_save(self, trial):
+        """Processes a function-based trial save."""
+        logger.debug("Trial %s: Processing function-based trial save.", trial)
+        result = trial.last_result
+        checkpoint_path = result[FUNCTION_SAVE]
+
+        if not issubclass(trial.get_trainable_cls(), FunctionRunner):
+            logger.error("Trainable-based trials must only take "
+                         "checkpoints using the `Trainable.save` API.")
+            return
+        checkpoint = Checkpoint(Checkpoint.PERSISTENT, checkpoint_path, result)
+        trial.on_checkpoint(checkpoint)
 
     def _process_trial_restore(self, trial):
         """Processes a trial restore.
@@ -596,9 +612,14 @@ class TrialRunner:
         else:
             raise ValueError("Invalid decision: {}".format(decision))
 
-    def _checkpoint_trial_if_needed(self, trial, force=False):
+    def _checkpoint_trial_if_needed(self, trial):
         """Checkpoints trial based off trial.last_result."""
+        force = trial.last_result.get(SHOULD_CHECKPOINT, False)
         if trial.should_checkpoint() or force:
+            if issubclass(trial.get_trainable_cls(), FunctionRunner):
+                logger.error("Function-based trials must only take "
+                             "checkpoints using the `track.log` API.")
+                return
             # Save trial runtime if possible.
             if trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.PERSISTENT)
