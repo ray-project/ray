@@ -1,5 +1,5 @@
-Distributed SGD / PyTorch
-=========================
+Distributed SGD / TensorFlow
+============================
 
 .. important::
     This API requires TF2.0+. Help us make RaySGD better; take this 1 minute `User Survey <https://forms.gle/26EMwdahdgm7Lscy9>`_!
