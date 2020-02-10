@@ -113,6 +113,8 @@ def traced_eager_policy(eager_policy_cls):
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
+                            explore=True,
+                            timestep=None,
                             **kwargs):
 
             obs_batch = tf.convert_to_tensor(obs_batch)
@@ -127,7 +129,7 @@ def traced_eager_policy(eager_policy_cls):
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, **kwargs)
+                info_batch, episodes, explore, timestep, **kwargs)
 
         @override(Policy)
         @convert_eager_inputs
@@ -294,8 +296,9 @@ def build_eager_tf_policy(name,
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
+                            explore=True,
+                            timestep=None,
                             **kwargs):
-
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
             self._state_in = state_batches
@@ -331,15 +334,30 @@ def build_eager_tf_policy(name,
                     self, self.model, input_dict, self.observation_space,
                     self.action_space, self.config)
 
-            fetches = {}
+            # Override `action` with exploration action.
+            if explore and self.exploration:
+                action = self.exploration.get_exploration_action(
+                    action,
+                    self.model,
+                    action_dist=self.dist_class,
+                    explore=True,
+                    timestep=timestep
+                    if timestep is not None else self.global_timestep)
+                logp = None
+
+            extra_fetches = {}
             if logp is not None:
-                fetches.update({
+                extra_fetches.update({
                     ACTION_PROB: tf.exp(logp),
                     ACTION_LOGP: logp,
                 })
             if extra_action_fetches_fn:
-                fetches.update(extra_action_fetches_fn(self))
-            return action, state_out, fetches
+                extra_fetches.update(extra_action_fetches_fn(self))
+
+            # Increase our global sampling timestep counter by 1.
+            self.global_timestep += 1
+
+            return action, state_out, extra_fetches
 
         @override(Policy)
         def apply_gradients(self, gradients):
@@ -364,6 +382,7 @@ def build_eager_tf_policy(name,
             """Return the list of all savable variables for this policy."""
             return self.model.variables()
 
+        @override(Policy)
         def is_recurrent(self):
             return len(self._state_in) > 0
 

@@ -43,8 +43,7 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
-        super(TorchPolicy, self).__init__(observation_space, action_space,
-                                          config)
+        super().__init__(observation_space, action_space, config)
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
@@ -64,6 +63,8 @@ class TorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        explore=True,
+                        timestep=None,
                         **kwargs):
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
@@ -76,8 +77,16 @@ class TorchPolicy(Policy):
             model_out = self.model(input_dict, state_batches, [1])
             logits, state = model_out
             action_dist = self.dist_class(logits, self.model)
-            actions = action_dist.sample()
+            # Try our Exploration, if any.
+            if self.exploration:
+                actions = self.exploration.get_action(
+                    model_out, self.model, action_dist, explore, timestep
+                    if timestep is not None else self.global_timestep)
+            else:
+                actions = action_dist.sample()
+
             input_dict[SampleBatch.ACTIONS] = actions
+
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
                     self.extra_action_out(input_dict, state_batches,
                                           self.model, action_dist))
@@ -150,6 +159,10 @@ class TorchPolicy(Policy):
         self.model.load_state_dict(weights)
 
     @override(Policy)
+    def is_recurrent(self):
+        return len(self.model.get_initial_state()) > 0
+
+    @override(Policy)
     def num_state_tensors(self):
         return len(self.model.get_initial_state())
 
@@ -217,7 +230,7 @@ class TorchPolicy(Policy):
 
 
 @DeveloperAPI
-class LearningRateSchedule(object):
+class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
@@ -242,7 +255,7 @@ class LearningRateSchedule(object):
 
 
 @DeveloperAPI
-class EntropyCoeffSchedule(object):
+class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
     @DeveloperAPI

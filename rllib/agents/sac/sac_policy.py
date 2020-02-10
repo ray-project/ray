@@ -6,7 +6,8 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel
-from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
+from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio, \
+    PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -82,7 +83,7 @@ def postprocess_trajectory(policy,
                            sample_batch,
                            other_agent_batches=None,
                            episode=None):
-    return _postprocess_dqn(policy, sample_batch)
+    return postprocess_nstep_and_prio(policy, sample_batch)
 
 
 def build_action_output(policy, model, input_dict, obs_space, action_space,
