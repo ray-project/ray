@@ -131,18 +131,19 @@ public class RayConfig {
     }
 
     // session dir
-    String localSessionDir = null;
-    if (config.hasPath("ray.session-dir")) {
-      localSessionDir = removeTrailingSlash(config.getString("ray.session-dir"));
-    }
-    if (Strings.isNullOrEmpty(localSessionDir)) {
+    String localSessionDir = System.getProperty("ray.session-dir");
+    if (workerMode == WorkerType.DRIVER) {
+      Preconditions.checkState(localSessionDir == null);
       final int minBound = 100000;
       final int maxBound = 999999;
       final String sessionName = String.format("session_%s_%d", DATE_TIME_FORMATTER.format(
           LocalDateTime.now()), RANDOM.nextInt(maxBound - minBound) + minBound);
       sessionDir = String.format("%s/%s", DEFAULT_TEMP_DIR, sessionName);
+    } else if (workerMode == WorkerType.WORKER){
+      Preconditions.checkState(localSessionDir != null);
+      sessionDir = removeTrailingSlash(localSessionDir);
     } else {
-      sessionDir = localSessionDir;
+      throw new RuntimeException("Unknown worker type.");
     }
 
     // Log dir.

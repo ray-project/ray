@@ -28,6 +28,7 @@ public class BinaryFileUtil {
 
   public static void prepareFilesTo(String destDir) {
     dumpFileFromJar(REDIS_SERVER_BINARY_NAME, destDir);
+    dumpFileFromJar(GCS_SERVER_BINARY_NAME, destDir);
     dumpFileFromJar(PLASMA_STORE_SERVER_BINARY_NAME, destDir);
     dumpFileFromJar(RAYLET_BINARY_NAME, destDir);
     dumpFileFromJar(REDIS_MODULE_LIBRARY_NAME, destDir);
