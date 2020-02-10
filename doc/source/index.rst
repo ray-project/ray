@@ -245,8 +245,6 @@ Getting Involved
    :maxdepth: -1
    :caption: Ray Libraries
 
-   Tune ↪ <https://ray.readthedocs.io/en/latest/tune.html>
-   RLlib ↪ <https://ray.readthedocs.io/en/latest/rllib.html>
    raysgd/raysgd_pytorch.rst
    raysgd/raysgd_tensorflow.rst
    multiprocessing.rst
