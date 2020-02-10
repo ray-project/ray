@@ -15,8 +15,6 @@ The main features are:
 
 .. tip:: We need your feedback! RaySGD is currently early in its development, and we're hoping to get feedback from people using or considering it. We'd love `to get in touch <https://forms.gle/26EMwdahdgm7Lscy9>`_!
 
-.. warning:: This is still an experimental API and is subject to change in the near future.
-
 
 Getting Started
 ---------------
