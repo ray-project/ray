@@ -1,9 +1,11 @@
 import argparse
+import os
+import traceback
 
 import ray
 
 import ray.ray_constants as ray_constants
-from ray.dashboard.dashboard import Dashboard
+from ray.dashboard.dashboard import Dashboard, DashboardController
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -59,7 +61,7 @@ if __name__ == "__main__":
             args.redis_address,
             args.temp_dir,
             redis_password=args.redis_password,
-        )
+            DashboardController=DashboardController)
         dashboard.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
@@ -70,5 +72,4 @@ if __name__ == "__main__":
                    "error:\n{}".format(os.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
-        print(e.__traceback__)
         raise e
