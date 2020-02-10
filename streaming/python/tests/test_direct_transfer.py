@@ -3,9 +3,9 @@ import threading
 import time
 
 import ray
-from ray.streaming import _streaming
-from ray.streaming.runtime import transfer
-from ray import PythonFunctionDescriptor
+import ray.streaming._streaming as _streaming
+import ray.streaming.runtime.transfer as transfer
+from ray._raylet import PythonFunctionDescriptor
 from ray.streaming.config import Config
 
 

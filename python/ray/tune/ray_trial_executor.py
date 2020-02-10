@@ -172,13 +172,12 @@ class RayTrialExecutor(TrialExecutor):
         See `RayTrialExecutor.restore` for possible errors raised.
         """
         prior_status = trial.status
-        self.set_status(trial, Trial.RUNNING)
-        trial.set_runner(
-            runner or self._setup_remote_runner(
-                trial,
-                reuse_allowed=checkpoint is not None
-                or trial.has_checkpoint()))
+        if runner is None:
+            reuse_allowed = checkpoint is not None or trial.has_checkpoint()
+            runner = self._setup_remote_runner(trial, reuse_allowed)
+        trial.set_runner(runner)
         self.restore(trial, checkpoint)
+        self.set_status(trial, Trial.RUNNING)
 
         previous_run = self._find_item(self._paused, trial)
         if prior_status == Trial.PAUSED and previous_run:
@@ -421,6 +420,11 @@ class RayTrialExecutor(TrialExecutor):
     def _update_avail_resources(self, num_retries=5):
         resources = None
         for i in range(num_retries):
+            if i > 0:
+                logger.warning(
+                    "Cluster resources not detected or are 0. Attempt #"
+                    "%s...", i + 1)
+                time.sleep(0.5)
             try:
                 resources = ray.cluster_resources()
             except Exception:
@@ -428,10 +432,8 @@ class RayTrialExecutor(TrialExecutor):
                 # https://github.com/ray-project/ray/issues/4147
                 logger.debug("Using resources for local machine.")
                 resources = ResourceSpec().resolve(True).to_resource_dict()
-            if not resources:
-                logger.warning(
-                    "Cluster resources not detected or are 0. Retrying...")
-                time.sleep(0.5)
+            if resources:
+                break
 
         if not resources:
             # NOTE: This hides the possibility that Ray may be waiting for
@@ -552,46 +554,39 @@ class RayTrialExecutor(TrialExecutor):
         self._update_avail_resources()
 
     def save(self, trial, storage=Checkpoint.PERSISTENT, result=None):
-        """Saves the trial's state to a checkpoint.
+        """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
-            trial (Trial): The state of this trial to be saved.
+            trial (Trial): The trial to be saved.
             storage (str): Where to store the checkpoint. Defaults to
                 PERSISTENT.
             result (dict): The state of this trial as a dictionary to be saved.
                 If result is None, the trial's last result will be used.
 
         Returns:
-             Checkpoint future, or None if an Exception occurs.
+             Checkpoint object, or None if an Exception occurs.
         """
         result = result or trial.last_result
-
         with self._change_working_directory(trial):
             if storage == Checkpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
                 checkpoint = Checkpoint(storage, value, result)
-            else:
-                with warn_if_slow("save_checkpoint_to_storage"):
-                    # TODO(ujvl): Make this asynchronous.
-                    value = ray.get(trial.runner.save.remote())
-                    checkpoint = Checkpoint(storage, value, result)
-        with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
-            try:
                 trial.on_checkpoint(checkpoint)
-            except Exception:
-                logger.exception("Trial %s: Error handling checkpoint %s",
-                                 trial, checkpoint.value)
-                return None
-        if profile.too_slow and trial.sync_on_checkpoint:
-            logger.warning(
-                "Consider turning off forced head-worker trial checkpoint "
-                "syncs by setting sync_on_checkpoint=False. Note that this "
-                "might result in faulty trial restoration for some worker "
-                "failure modes.")
-        return checkpoint.value
+            else:
+                value = trial.runner.save.remote()
+                checkpoint = Checkpoint(storage, value, result)
+                trial.saving_to = checkpoint
+                self._running[value] = trial
+        return checkpoint
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a given model checkpoint.
+
+        Args:
+            trial (Trial): The trial to be restored.
+            checkpoint (Checkpoint): The checkpoint to restore from. If None,
+                the most recent PERSISTENT checkpoint is used. Defaults to
+                None.
 
         Raises:
             RuntimeError: This error is raised if no runner is found.

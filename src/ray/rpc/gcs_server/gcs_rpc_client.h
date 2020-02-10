@@ -1,6 +1,7 @@
 #ifndef RAY_RPC_GCS_RPC_CLIENT_H
 #define RAY_RPC_GCS_RPC_CLIENT_H
 
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 #include "src/ray/rpc/grpc_client.h"
 
 namespace ray {
@@ -28,6 +29,10 @@ class GcsRpcClient {
         new GrpcClient<TaskInfoGcsService>(address, port, client_call_manager));
     stats_grpc_client_ = std::unique_ptr<GrpcClient<StatsGcsService>>(
         new GrpcClient<StatsGcsService>(address, port, client_call_manager));
+    error_info_grpc_client_ = std::unique_ptr<GrpcClient<ErrorInfoGcsService>>(
+        new GrpcClient<ErrorInfoGcsService>(address, port, client_call_manager));
+    worker_info_grpc_client_ = std::unique_ptr<GrpcClient<WorkerInfoGcsService>>(
+        new GrpcClient<WorkerInfoGcsService>(address, port, client_call_manager));
   };
 
   /// Add job info to gcs server.
@@ -114,6 +119,13 @@ class GcsRpcClient {
   /// Add profile data to GCS Service.
   VOID_RPC_CLIENT_METHOD(StatsGcsService, AddProfileData, stats_grpc_client_, )
 
+  /// Report a job error to GCS Service.
+  VOID_RPC_CLIENT_METHOD(ErrorInfoGcsService, ReportJobError, error_info_grpc_client_, )
+
+  /// Report a worker failure to GCS Service.
+  VOID_RPC_CLIENT_METHOD(WorkerInfoGcsService, ReportWorkerFailure,
+                         worker_info_grpc_client_, )
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
@@ -122,6 +134,8 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
+  std::unique_ptr<GrpcClient<ErrorInfoGcsService>> error_info_grpc_client_;
+  std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
 };
 
 }  // namespace rpc

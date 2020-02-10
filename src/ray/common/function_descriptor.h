@@ -12,6 +12,9 @@ using FunctionDescriptorType = rpc::FunctionDescriptor::FunctionDescriptorCase;
 /// Wrap a protobuf message.
 class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescriptor> {
  public:
+  /// Construct an empty FunctionDescriptor.
+  FunctionDescriptorInterface() : MessageWrapper() {}
+
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
@@ -33,23 +36,22 @@ class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescripto
   }
 };
 
-class DriverFunctionDescriptor : public FunctionDescriptorInterface {
+class EmptyFunctionDescriptor : public FunctionDescriptorInterface {
  public:
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit DriverFunctionDescriptor(rpc::FunctionDescriptor message)
-      : FunctionDescriptorInterface(std::move(message)) {
+  explicit EmptyFunctionDescriptor() : FunctionDescriptorInterface() {
     RAY_CHECK(message_->function_descriptor_case() ==
-              ray::FunctionDescriptorType::kDriverFunctionDescriptor);
+              ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
   }
 
   virtual size_t Hash() const {
-    return std::hash<int>()(ray::FunctionDescriptorType::kDriverFunctionDescriptor);
+    return std::hash<int>()(ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
   }
 
-  virtual std::string ToString() const { return "{type=DriverFunctionDescriptor}"; }
+  virtual std::string ToString() const { return "{type=EmptyFunctionDescriptor}"; }
 };
 
 class JavaFunctionDescriptor : public FunctionDescriptorInterface {
@@ -146,21 +148,21 @@ inline bool operator!=(const FunctionDescriptor &left, const FunctionDescriptor 
 /// Helper class for building a `FunctionDescriptor` object.
 class FunctionDescriptorBuilder {
  public:
-  /// Build a DriverFunctionDescriptor.
+  /// Build an EmptyFunctionDescriptor.
   ///
-  /// @return new ray::FunctionDescriptor
-  static FunctionDescriptor BuildDriver();
+  /// \return a ray::EmptyFunctionDescriptor
+  static FunctionDescriptor Empty();
 
   /// Build a JavaFunctionDescriptor.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return a ray::JavaFunctionDescriptor
   static FunctionDescriptor BuildJava(const std::string &class_name,
                                       const std::string &function_name,
                                       const std::string &signature);
 
   /// Build a PythonFunctionDescriptor.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return a ray::PythonFunctionDescriptor
   static FunctionDescriptor BuildPython(const std::string &module_name,
                                         const std::string &class_name,
                                         const std::string &function_name,
@@ -168,12 +170,18 @@ class FunctionDescriptorBuilder {
 
   /// Build a ray::FunctionDescriptor according to input message.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return new ray::FunctionDescriptor
   static FunctionDescriptor FromProto(rpc::FunctionDescriptor message);
+
+  /// Build a ray::FunctionDescriptor from language and vector.
+  ///
+  /// \return new ray::FunctionDescriptor
+  static FunctionDescriptor FromVector(
+      rpc::Language language, const std::vector<std::string> &function_descriptor_list);
 
   /// Build a ray::FunctionDescriptor from serialized binary.
   ///
-  /// @return new ray::FunctionDescriptor
+  /// \return new ray::FunctionDescriptor
   static FunctionDescriptor Deserialize(const std::string &serialized_binary);
 };
 }  // namespace ray

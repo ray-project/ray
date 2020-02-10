@@ -8,6 +8,8 @@ from ray.experimental.async_api import _async_init
 from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.utils import BytesEncoder
+from ray.experimental.serve.request_params import RequestMetadata
+
 from urllib.parse import parse_qs
 
 
@@ -64,6 +66,7 @@ class HTTPProxy:
         self.serve_global_state = GlobalState()
         self.route_table_cache = dict()
 
+        self.route_checker_task = None
         self.route_checker_should_shutdown = False
 
     async def route_checker(self, interval):
@@ -82,10 +85,11 @@ class HTTPProxy:
         message = await receive()
         if message["type"] == "lifespan.startup":
             await _async_init()
-            asyncio.ensure_future(
+            self.route_checker_task = asyncio.get_event_loop().create_task(
                 self.route_checker(interval=HTTP_ROUTER_CHECKER_INTERVAL_S))
             await send({"type": "lifespan.startup.complete"})
         elif message["type"] == "lifespan.shutdown":
+            self.route_checker_task.cancel()
             self.route_checker_should_shutdown = True
             await send({"type": "lifespan.shutdown.complete"})
 
@@ -100,6 +104,20 @@ class HTTPProxy:
             body_buffer.append(message["body"])
 
         return b"".join(body_buffer)
+
+    def _check_slo_ms(self, request_slo_ms):
+        if request_slo_ms is not None:
+            if len(request_slo_ms) != 1:
+                raise ValueError(
+                    "Multiple SLO specified, please specific only one.")
+            request_slo_ms = request_slo_ms[0]
+            request_slo_ms = float(request_slo_ms)
+            if request_slo_ms < 0:
+                raise ValueError(
+                    "Request SLO must be positive, it is {}".format(
+                        request_slo_ms))
+            return request_slo_ms
+        return None
 
     async def __call__(self, scope, receive, send):
         # NOTE: This implements ASGI protocol specified in
@@ -132,32 +150,33 @@ class HTTPProxy:
         # get slo_ms before enqueuing the query
         query_string = scope["query_string"].decode("ascii")
         query_kwargs = parse_qs(query_string)
-        request_slo_ms = query_kwargs.pop("slo_ms", None)
-        if request_slo_ms is not None:
-            try:
-                if len(request_slo_ms) != 1:
-                    raise ValueError(
-                        "Multiple SLO specified, please specific only one.")
-                request_slo_ms = request_slo_ms[0]
-                request_slo_ms = float(request_slo_ms)
-                if request_slo_ms < 0:
-                    raise ValueError(
-                        "Request SLO must be positive, it is {}".format(
-                            request_slo_ms))
-            except ValueError as e:
-                await JSONResponse({"error": str(e)})(scope, receive, send)
-                return
+        relative_slo_ms = query_kwargs.pop("relative_slo_ms", None)
+        absolute_slo_ms = query_kwargs.pop("absolute_slo_ms", None)
+        try:
+            relative_slo_ms = self._check_slo_ms(relative_slo_ms)
+            absolute_slo_ms = self._check_slo_ms(absolute_slo_ms)
+            if relative_slo_ms is not None and absolute_slo_ms is not None:
+                raise ValueError("Both relative and absolute slo's"
+                                 "cannot be specified.")
+        except ValueError as e:
+            await JSONResponse({"error": str(e)})(scope, receive, send)
+            return
 
-        result_object_id_bytes = await (
-            self.serve_global_state.init_or_get_router()
-            .enqueue_request.remote(
-                service=endpoint_name,
-                request_args=(scope, http_body_bytes),
-                request_kwargs=dict(),
-                request_context=TaskContext.Web,
-                request_slo_ms=request_slo_ms))
+        # create objects necessary for enqueue
+        # enclosing http_body_bytes to list due to
+        # https://github.com/ray-project/ray/issues/6944
+        # TODO(alind):  remove list enclosing after issue is fixed
+        args = (scope, [http_body_bytes])
+        request_in_object = RequestMetadata(
+            endpoint_name,
+            TaskContext.Web,
+            relative_slo_ms=relative_slo_ms,
+            absolute_slo_ms=absolute_slo_ms)
 
-        result = await ray.ObjectID(result_object_id_bytes)
+        actual_result = await (self.serve_global_state.init_or_get_router()
+                               .enqueue_request.remote(request_in_object,
+                                                       *args))
+        result = actual_result
 
         if isinstance(result, ray.exceptions.RayTaskError):
             await JSONResponse({

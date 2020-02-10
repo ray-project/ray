@@ -7,13 +7,9 @@ from threading import Thread
 
 import numpy as np
 import ray
+import psutil
 
 logger = logging.getLogger(__name__)
-
-try:
-    import psutil
-except ImportError:
-    psutil = None
 
 try:
     import GPUtil
@@ -137,7 +133,14 @@ class warn_if_slow:
 
 
 def merge_dicts(d1, d2):
-    """Returns a new dict that is d1 and d2 deep merged."""
+    """
+    Args:
+        d1 (dict): Dict 1.
+        d2 (dict): Dict 2.
+
+    Returns:
+         dict: A new dict that is d1 and d2 deep merged.
+    """
     merged = copy.deepcopy(d1)
     deep_update(merged, d2, True, [])
     return merged
@@ -161,7 +164,7 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
         if k not in original:
             if not new_keys_allowed:
                 raise Exception("Unknown config parameter `{}` ".format(k))
-        if isinstance(original.get(k), dict):
+        if isinstance(original.get(k), dict) and isinstance(value, dict):
             if k in whitelist:
                 deep_update(original[k], value, True, [])
             else:

@@ -9,22 +9,12 @@ import TableRow from "@material-ui/core/TableRow";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { connect } from "react-redux";
-import { getNodeInfo, getRayletInfo } from "../../../api";
 import { StoreState } from "../../../store";
-import { dashboardActions } from "../state";
-import LastUpdated from "./LastUpdated";
 import NodeRowGroup from "./NodeRowGroup";
 import TotalRow from "./TotalRow";
 
 const styles = (theme: Theme) =>
   createStyles({
-    root: {
-      backgroundColor: theme.palette.background.paper,
-      padding: theme.spacing(2),
-      "& > :not(:first-child)": {
-        marginTop: theme.spacing(2)
-      }
-    },
     table: {
       marginTop: theme.spacing(1)
     },
@@ -42,41 +32,14 @@ const mapStateToProps = (state: StoreState) => ({
   rayletInfo: state.dashboard.rayletInfo
 });
 
-const mapDispatchToProps = dashboardActions;
-
 class NodeInfo extends React.Component<
-  WithStyles<typeof styles> &
-    ReturnType<typeof mapStateToProps> &
-    typeof mapDispatchToProps
+  WithStyles<typeof styles> & ReturnType<typeof mapStateToProps>
 > {
-  refreshNodeInfo = async () => {
-    try {
-      const [nodeInfo, rayletInfo] = await Promise.all([
-        getNodeInfo(),
-        getRayletInfo()
-      ]);
-      this.props.setNodeInfoAndRayletInfo({ nodeInfo, rayletInfo });
-      this.props.setError(null);
-    } catch (error) {
-      this.props.setError(error.toString());
-    } finally {
-      setTimeout(this.refreshNodeInfo, 1000);
-    }
-  };
-
-  async componentDidMount() {
-    await this.refreshNodeInfo();
-  }
-
   render() {
     const { classes, nodeInfo, rayletInfo } = this.props;
 
     if (nodeInfo === null || rayletInfo === null) {
-      return (
-        <Typography className={classes.root} color="textSecondary">
-          Loading...
-        </Typography>
-      );
+      return <Typography color="textSecondary">Loading...</Typography>;
     }
 
     const logCounts: {
@@ -125,49 +88,46 @@ class NodeInfo extends React.Component<
     }
 
     return (
-      <div>
-        <Typography>Node information:</Typography>
-        <Table className={classes.table}>
-          <TableHead>
-            <TableRow>
-              <TableCell className={classes.cell} />
-              <TableCell className={classes.cell}>Host</TableCell>
-              <TableCell className={classes.cell}>Workers</TableCell>
-              <TableCell className={classes.cell}>Uptime</TableCell>
-              <TableCell className={classes.cell}>CPU</TableCell>
-              <TableCell className={classes.cell}>RAM</TableCell>
-              <TableCell className={classes.cell}>Disk</TableCell>
-              <TableCell className={classes.cell}>Sent</TableCell>
-              <TableCell className={classes.cell}>Received</TableCell>
-              <TableCell className={classes.cell}>Logs</TableCell>
-              <TableCell className={classes.cell}>Errors</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {nodeInfo.clients.map(client => (
-              <NodeRowGroup
-                key={client.ip}
-                node={client}
-                raylet={client.ip in rayletInfo ? rayletInfo[client.ip] : null}
-                logCounts={logCounts[client.ip]}
-                errorCounts={errorCounts[client.ip]}
-                initialExpanded={nodeInfo.clients.length <= 4}
-              />
-            ))}
-            <TotalRow
-              nodes={nodeInfo.clients}
-              logCounts={logCounts}
-              errorCounts={errorCounts}
+      <Table className={classes.table}>
+        <TableHead>
+          <TableRow>
+            <TableCell className={classes.cell} />
+            <TableCell className={classes.cell}>Host</TableCell>
+            <TableCell className={classes.cell}>Workers</TableCell>
+            <TableCell className={classes.cell}>Uptime</TableCell>
+            <TableCell className={classes.cell}>CPU</TableCell>
+            <TableCell className={classes.cell}>RAM</TableCell>
+            <TableCell className={classes.cell}>Disk</TableCell>
+            <TableCell className={classes.cell}>Sent</TableCell>
+            <TableCell className={classes.cell}>Received</TableCell>
+            <TableCell className={classes.cell}>Logs</TableCell>
+            <TableCell className={classes.cell}>Errors</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {nodeInfo.clients.map(client => (
+            <NodeRowGroup
+              key={client.ip}
+              node={client}
+              raylet={
+                client.ip in rayletInfo.nodes
+                  ? rayletInfo.nodes[client.ip]
+                  : null
+              }
+              logCounts={logCounts[client.ip]}
+              errorCounts={errorCounts[client.ip]}
+              initialExpanded={nodeInfo.clients.length <= 4}
             />
-          </TableBody>
-        </Table>
-        <LastUpdated />
-      </div>
+          ))}
+          <TotalRow
+            nodes={nodeInfo.clients}
+            logCounts={logCounts}
+            errorCounts={errorCounts}
+          />
+        </TableBody>
+      </Table>
     );
   }
 }
 
-export default connect(
-  mapStateToProps,
-  mapDispatchToProps
-)(withStyles(styles)(NodeInfo));
+export default connect(mapStateToProps)(withStyles(styles)(NodeInfo));

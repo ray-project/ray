@@ -11,18 +11,20 @@ Ray
 
 **Ray is a fast and simple framework for building and running distributed applications.**
 
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `Distributed Training <distributed_training.html>`__
+- `RaySGD`_: Distributed Training
 
 
 Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
+.. _`RaySGD`: raysgd/raysgd.html
+
+.. important:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 
 Quick Start
@@ -274,10 +276,19 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
+   :caption: RaySGD
+
+   raysgd/raysgd.rst
+   raysgd/raysgd_pytorch.rst
+   raysgd/raysgd_pytorch_examples.rst
+   raysgd/raysgd_tensorflow.rst
+   raysgd/raysgd_ref.rst
+
+
+.. toctree::
+   :maxdepth: -1
    :caption: Experimental
 
-   distributed_training.rst
-   tf_distributed_training.rst
    pandas_on_ray.rst
    projects.rst
    signals.rst
@@ -285,6 +296,7 @@ Getting Involved
    serve.rst
    iter.rst
    multiprocessing.rst
+   joblib.rst
 
 .. toctree::
    :maxdepth: -1

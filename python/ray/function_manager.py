@@ -17,7 +17,7 @@ import ray
 from ray import profiling
 from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor
 from ray.utils import (
     is_function_or_method,
     is_class_method,
@@ -267,8 +267,7 @@ class FunctionActorManager:
                 ))
             self._num_task_executions[job_id][function_id] = 0
         except Exception:
-            logger.exception(
-                "Failed to load function {}.".format(function_name))
+            logger.exception("Failed to load function %s.", function_name)
             raise Exception(
                 "Function {} failed to be loaded from local code.".format(
                     function_descriptor))
@@ -331,10 +330,10 @@ class FunctionActorManager:
         self._worker.redis_client.hmset(key, actor_class_info)
         self._worker.redis_client.rpush("Exports", key)
 
-    def export_actor_class(self, Class, actor_method_names):
+    def export_actor_class(self, Class, actor_creation_function_descriptor,
+                           actor_method_names):
         if self._worker.load_code_from_local:
             return
-        function_descriptor = PythonFunctionDescriptor.from_class(Class)
         # `current_job_id` shouldn't be NIL, unless:
         # 1) This worker isn't an actor;
         # 2) And a previous task started a background thread, which didn't
@@ -345,10 +344,10 @@ class FunctionActorManager:
             "please make sure the thread finishes before the task finishes.")
         job_id = self._worker.current_job_id
         key = (b"ActorClass:" + job_id.binary() + b":" +
-               function_descriptor.function_id.binary())
+               actor_creation_function_descriptor.function_id.binary())
         actor_class_info = {
-            "class_name": Class.__name__,
-            "module": Class.__module__,
+            "class_name": actor_creation_function_descriptor.class_name,
+            "module": actor_creation_function_descriptor.module_name,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
             "collision_identifier": self.compute_collision_identifier(Class),
@@ -428,8 +427,7 @@ class FunctionActorManager:
             else:
                 return actor_class
         except Exception:
-            logger.exception(
-                "Failed to load actor_class %s.".format(class_name))
+            logger.exception("Failed to load actor_class %s.", class_name)
             raise Exception(
                 "Actor {} failed to be imported from local code.".format(
                     class_name))
@@ -475,8 +473,7 @@ class FunctionActorManager:
             with self.lock:
                 actor_class = pickle.loads(pickled_class)
         except Exception:
-            logger.exception(
-                "Failed to load actor class %s.".format(class_name))
+            logger.exception("Failed to load actor class %s.", class_name)
             # The actor class failed to be unpickled, create a fake actor
             # class instead (just to produce error messages and to prevent
             # the driver from hanging).
@@ -597,8 +594,9 @@ class FunctionActorManager:
         if actor.should_checkpoint(checkpoint_context):
             try:
                 now = int(1000 * time.time())
-                checkpoint_id = (self._worker.raylet_client.
-                                 prepare_actor_checkpoint(actor_id))
+                checkpoint_id = (
+                    self._worker.core_worker.prepare_actor_checkpoint(actor_id)
+                )
                 checkpoint_info.checkpoint_ids.append(checkpoint_id)
                 actor.save_checkpoint(actor_id, checkpoint_id)
                 if (len(checkpoint_info.checkpoint_ids) >
@@ -645,7 +643,7 @@ class FunctionActorManager:
                                for checkpoint in checkpoints), msg
                     # Notify raylet that this actor has been resumed from
                     # a checkpoint.
-                    (self._worker.raylet_client.
+                    (self._worker.core_worker.
                      notify_actor_resumed_from_checkpoint(
                          actor_id, checkpoint_id))
         except Exception:

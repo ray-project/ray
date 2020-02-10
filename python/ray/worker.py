@@ -27,6 +27,8 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
+import ray
+import setproctitle
 import ray.signature
 import ray.state
 
@@ -64,10 +66,11 @@ ERROR_KEY_PREFIX = b"Error:"
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
+# Whether we should warn about slow put performance.
+if os.environ.get("OMP_NUM_THREADS") == "1":
+    should_warn_of_slow_puts = True
+else:
+    should_warn_of_slow_puts = False
 
 
 class ActorCheckpointInfo:
@@ -207,7 +210,6 @@ class Worker:
             if job_id not in self.serialization_context_map:
                 self.serialization_context_map[
                     job_id] = serialization.SerializationContext(self)
-                self.serialization_context_map[job_id].initialize()
             return self.serialization_context_map[job_id]
 
     def check_connected(self):
@@ -273,17 +275,25 @@ class Worker:
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
+        global should_warn_of_slow_puts
+        if should_warn_of_slow_puts:
+            start = time.perf_counter()
+
         serialized_value = self.get_serialization_context().serialize(value)
-        return self.core_worker.put_serialized_object(
+        result = self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id, pin_object=pin_object)
 
-    def deserialize_objects(self,
-                            data_metadata_pairs,
-                            object_ids,
-                            error_timeout=10):
+        if should_warn_of_slow_puts:
+            delta = time.perf_counter() - start
+            if delta > 0.1:
+                logger.warning("OMP_NUM_THREADS=1 is set, this may slow down "
+                               "ray.put() for large objects (issue #6998).")
+                should_warn_of_slow_puts = False
+        return result
+
+    def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_ids,
-                                           error_timeout)
+        return context.deserialize_objects(data_metadata_pairs, object_ids)
 
     def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.
@@ -674,11 +684,6 @@ def init(address=None,
         driver_mode = LOCAL_MODE
     else:
         driver_mode = SCRIPT_MODE
-
-    if "OMP_NUM_THREADS" in os.environ:
-        logger.warning("OMP_NUM_THREADS={} is set, this may impact "
-                       "object transfer performance.".format(
-                           os.environ["OMP_NUM_THREADS"]))
 
     if setproctitle is None:
         logger.warning(
@@ -1256,7 +1261,6 @@ def connect(node,
         node.node_ip_address,
         node.node_manager_port,
     )
-    worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1426,7 +1430,7 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
-def show_in_webui(message):
+def show_in_webui(message, key="", dtype="text"):
     """Display message in dashboard.
 
     Display message for the current task or actor in the dashboard.
@@ -1435,10 +1439,23 @@ def show_in_webui(message):
 
     Args:
         message (str): Message to be displayed.
+        key (str): The key name for the message. Multiple message under
+            different keys will be displayed at the same time. Messages
+            under the same key will be overriden.
+        data_type (str): The type of message for rendering. One of the
+            following: text, html.
     """
     worker = global_worker
     worker.check_connected()
-    worker.core_worker.set_webui_display(message.encode())
+
+    acceptable_dtypes = {"text", "html"}
+    assert dtype in acceptable_dtypes, "dtype accepts only: {}".format(
+        acceptable_dtypes)
+
+    message_wrapped = {"message": message, "dtype": dtype}
+    message_encoded = json.dumps(message_wrapped).encode()
+
+    worker.core_worker.set_webui_display(key.encode(), message_encoded)
 
 
 def get(object_ids, timeout=None):
@@ -1449,6 +1466,10 @@ def get(object_ids, timeout=None):
     object store, it will be shipped from an object store that has it (once the
     object has been created). If object_ids is a list, then the objects
     corresponding to each object in the list will be returned.
+
+    This method will error will error if it's running inside async context,
+    you can use ``await object_id`` instead of ``ray.get(object_id)``. For
+    a list of object ids, you can use ``await asyncio.gather(*object_ids)``.
 
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
@@ -1510,8 +1531,6 @@ def put(value, weakref=False):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
-    Note that this pinning only applies to the particular object ID returned
-    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
@@ -1544,11 +1563,6 @@ def put(value, weakref=False):
 def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
 
-    .. warning::
-
-        The **timeout** argument used to be in **milliseconds** (up through
-        ``ray==0.6.1``) and now it is in **seconds**.
-
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
     is not set, the function simply waits until that number of objects is ready
@@ -1564,6 +1578,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     precede B in the ready list. This also holds true if A and B are both in
     the remaining list.
 
+    This method will error if it's running inside an async context. Instead of
+    ``ray.wait(object_ids)``, you can use ``await asyncio.wait(object_ids)``.
+
     Args:
         object_ids (List[ObjectID]): List of object IDs for objects that may or
             may not be ready. Note that these IDs must be unique.
@@ -1577,9 +1594,9 @@ def wait(object_ids, num_returns=1, timeout=None):
     """
     worker = global_worker
 
-    if hasattr(
-            worker,
-            "core_worker") and worker.core_worker.current_actor_is_asyncio():
+    if hasattr(worker,
+               "core_worker") and worker.core_worker.current_actor_is_asyncio(
+               ) and timeout != 0:
         raise RayError("Using blocking ray.wait inside async method. "
                        "This blocks the event loop. Please use `await` "
                        "on object id with asyncio.wait. ")
@@ -1593,11 +1610,6 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise TypeError(
             "wait() expected a list of ray.ObjectID, got {}".format(
                 type(object_ids)))
-
-    if isinstance(timeout, int) and timeout != 0:
-        logger.warning("The 'timeout' argument now requires seconds instead "
-                       "of milliseconds. This message can be suppressed by "
-                       "passing in a float.")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
@@ -1676,9 +1688,9 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                Language.PYTHON, function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls,
-                max_retries)
+                Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
+                memory, object_store_memory, resources, num_return_vals,
+                max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:

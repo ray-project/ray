@@ -345,6 +345,7 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   return java_obj;
 }
 
+// TODO(po): Convert C++ ray::FunctionDescriptor to Java FunctionDescriptor
 inline jobject NativeRayFunctionDescriptorToJavaStringList(
     JNIEnv *env, const ray::FunctionDescriptor &function_descriptor) {
   if (function_descriptor->Type() ==
@@ -362,6 +363,7 @@ inline jobject NativeRayFunctionDescriptorToJavaStringList(
         typed_descriptor->FunctionName(), typed_descriptor->FunctionHash()};
     return NativeStringVectorToJavaStringList(env, function_descriptor_list);
   }
+  RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
   return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
 

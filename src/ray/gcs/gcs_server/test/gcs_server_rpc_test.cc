@@ -235,7 +235,7 @@ class GcsServerTest : public RedisServiceManagerForTest {
                           [&resources, &promise](const Status &status,
                                                  const rpc::GetResourcesReply &reply) {
                             RAY_CHECK_OK(status);
-                            for (auto resource : reply.resources()) {
+                            for (auto &resource : reply.resources()) {
                               resources[resource.first] = resource.second;
                             }
                             promise.set_value(true);
@@ -349,6 +349,27 @@ class GcsServerTest : public RedisServiceManagerForTest {
     std::promise<bool> promise;
     client_->AddProfileData(
         request, [&promise](const Status &status, const rpc::AddProfileDataReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportJobError(const rpc::ReportJobErrorRequest &request) {
+    std::promise<bool> promise;
+    client_->ReportJobError(
+        request, [&promise](const Status &status, const rpc::ReportJobErrorReply &reply) {
+          RAY_CHECK_OK(status);
+          promise.set_value(true);
+        });
+    return WaitReady(promise.get_future(), timeout_ms_);
+  }
+
+  bool ReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request) {
+    std::promise<bool> promise;
+    client_->ReportWorkerFailure(
+        request,
+        [&promise](const Status &status, const rpc::ReportWorkerFailureReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
@@ -532,7 +553,7 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   delete_resources_request.add_resource_name_list(resource_name);
   ASSERT_TRUE(DeleteResources(delete_resources_request));
   resources = GetResources(node_id.Binary());
-  ASSERT_TRUE(resources.size() == 0);
+  ASSERT_TRUE(resources.empty());
 }
 
 TEST_F(GcsServerTest, TestObjectInfo) {
@@ -611,6 +632,25 @@ TEST_F(GcsServerTest, TestStats) {
   rpc::AddProfileDataRequest add_profile_data_request;
   add_profile_data_request.mutable_profile_data()->CopyFrom(profile_table_data);
   ASSERT_TRUE(AddProfileData(add_profile_data_request));
+}
+
+TEST_F(GcsServerTest, TestErrorInfo) {
+  // Report error
+  rpc::ReportJobErrorRequest report_error_request;
+  rpc::ErrorTableData error_table_data;
+  JobID job_id = JobID::FromInt(1);
+  error_table_data.set_job_id(job_id.Binary());
+  report_error_request.mutable_error_data()->CopyFrom(error_table_data);
+  ASSERT_TRUE(ReportJobError(report_error_request));
+}
+
+TEST_F(GcsServerTest, TestWorkerInfo) {
+  rpc::WorkerFailureData worker_failure_data;
+  worker_failure_data.mutable_worker_address()->set_ip_address("127.0.0.1");
+  worker_failure_data.mutable_worker_address()->set_port(5566);
+  rpc::ReportWorkerFailureRequest report_worker_failure_request;
+  report_worker_failure_request.mutable_worker_failure()->CopyFrom(worker_failure_data);
+  ASSERT_TRUE(ReportWorkerFailure(report_worker_failure_request));
 }
 
 }  // namespace ray

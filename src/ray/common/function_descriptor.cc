@@ -1,11 +1,10 @@
 #include "ray/common/function_descriptor.h"
 
 namespace ray {
-FunctionDescriptor FunctionDescriptorBuilder::BuildDriver() {
-  rpc::FunctionDescriptor descriptor;
-  descriptor.mutable_driver_function_descriptor();
-  return std::shared_ptr<FunctionDescriptorInterface>(
-      new DriverFunctionDescriptor(std::move(descriptor)));
+FunctionDescriptor FunctionDescriptorBuilder::Empty() {
+  static ray::FunctionDescriptor empty =
+      ray::FunctionDescriptor(new EmptyFunctionDescriptor());
+  return empty;
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::BuildJava(const std::string &class_name,
@@ -16,8 +15,7 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildJava(const std::string &class
   typed_descriptor->set_class_name(class_name);
   typed_descriptor->set_function_name(function_name);
   typed_descriptor->set_signature(signature);
-  return std::shared_ptr<FunctionDescriptorInterface>(
-      new JavaFunctionDescriptor(std::move(descriptor)));
+  return ray::FunctionDescriptor(new JavaFunctionDescriptor(std::move(descriptor)));
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
@@ -29,14 +27,11 @@ FunctionDescriptor FunctionDescriptorBuilder::BuildPython(
   typed_descriptor->set_class_name(class_name);
   typed_descriptor->set_function_name(function_name);
   typed_descriptor->set_function_hash(function_hash);
-  return std::shared_ptr<FunctionDescriptorInterface>(
-      new PythonFunctionDescriptor(std::move(descriptor)));
+  return ray::FunctionDescriptor(new PythonFunctionDescriptor(std::move(descriptor)));
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor message) {
   switch (message.function_descriptor_case()) {
-  case ray::FunctionDescriptorType::kDriverFunctionDescriptor:
-    return ray::FunctionDescriptor(new ray::DriverFunctionDescriptor(std::move(message)));
   case ray::FunctionDescriptorType::kJavaFunctionDescriptor:
     return ray::FunctionDescriptor(new ray::JavaFunctionDescriptor(std::move(message)));
   case ray::FunctionDescriptorType::kPythonFunctionDescriptor:
@@ -44,9 +39,34 @@ FunctionDescriptor FunctionDescriptorBuilder::FromProto(rpc::FunctionDescriptor 
   default:
     break;
   }
-  RAY_LOG(FATAL) << "Unknown function descriptor case: "
+  RAY_LOG(DEBUG) << "Unknown function descriptor case: "
                  << message.function_descriptor_case();
-  return ray::FunctionDescriptor();
+  // When TaskSpecification() constructed without function_descriptor set,
+  // we should return a valid ray::FunctionDescriptor instance.
+  return FunctionDescriptorBuilder::Empty();
+}
+
+FunctionDescriptor FunctionDescriptorBuilder::FromVector(
+    rpc::Language language, const std::vector<std::string> &function_descriptor_list) {
+  if (language == rpc::Language::JAVA) {
+    RAY_CHECK(function_descriptor_list.size() == 3);
+    return FunctionDescriptorBuilder::BuildJava(
+        function_descriptor_list[0],  // class name
+        function_descriptor_list[1],  // function name
+        function_descriptor_list[2]   // signature
+    );
+  } else if (language == rpc::Language::PYTHON) {
+    RAY_CHECK(function_descriptor_list.size() == 4);
+    return FunctionDescriptorBuilder::BuildPython(
+        function_descriptor_list[0],  // module name
+        function_descriptor_list[1],  // class name
+        function_descriptor_list[2],  // function name
+        function_descriptor_list[3]   // function hash
+    );
+  } else {
+    RAY_LOG(FATAL) << "Unspported language " << language;
+    return FunctionDescriptorBuilder::Empty();
+  }
 }
 
 FunctionDescriptor FunctionDescriptorBuilder::Deserialize(

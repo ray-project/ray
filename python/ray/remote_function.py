@@ -3,7 +3,8 @@ from functools import wraps
 
 from ray import cloudpickle as pickle
 from ray import ray_constants
-from ray import PythonFunctionDescriptor
+from ray._raylet import PythonFunctionDescriptor
+from ray import cross_language, Language
 import ray.signature
 
 # Default parameters for remote functions.
@@ -58,31 +59,15 @@ class RemoteFunction:
             different workers.
     """
 
-    def __init__(self, language, function_or_function_descriptor, num_cpus,
+    def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  num_return_vals, max_calls, max_retries):
-        # We do not set self._is_cross_language if self._language !=
-        # Language.PYTHON in order to test cross language feature by
-        # cross calling PYTHON from PYTHON.
         self._language = language
-
-        if callable(function_or_function_descriptor):
-            self._function = function_or_function_descriptor
-            self._function_name = (
-                self._function.__module__ + "." + self._function.__name__)
-            self._function_signature = ray.signature.extract_signature(
-                self._function)
-            self._function_descriptor = None
-            self._is_cross_language = False
-        else:
-            if not function_or_function_descriptor:
-                raise Exception("Function descriptor list is empty.")
-            self._function = lambda *args, **kwargs: None
-            self._function_name = repr(function_or_function_descriptor)
-            self._function_signature = None
-            self._function_descriptor = function_or_function_descriptor
-            self._is_cross_language = True
-
+        self._function = function
+        self._function_name = (
+            self._function.__module__ + "." + self._function.__name__)
+        self._function_descriptor = function_descriptor
+        self._is_cross_language = language != Language.PYTHON
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus
@@ -98,13 +83,15 @@ class RemoteFunction:
                            if max_calls is None else max_calls)
         self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
                              if max_retries is None else max_retries)
-        self._decorator = getattr(self._function,
-                                  "__ray_invocation_decorator__", None)
+        self._decorator = getattr(function, "__ray_invocation_decorator__",
+                                  None)
+        self._function_signature = ray.signature.extract_signature(
+            self._function)
 
         self._last_export_session_and_job = None
 
         # Override task.remote's signature and docstring
-        @wraps(self._function)
+        @wraps(function)
         def _remote_proxy(*args, **kwargs):
             return self._remote(args=args, kwargs=kwargs)
 
@@ -207,13 +194,7 @@ class RemoteFunction:
 
         def invocation(args, kwargs):
             if self._is_cross_language:
-                if kwargs:
-                    raise Exception("Cross language remote functions "
-                                    "not support kwargs.")
-                if not worker.load_code_from_local:
-                    raise Exception("Cross language feature needs "
-                                    "--load-code-from-local to be set.")
-                list_args = args
+                list_args = cross_language.format_args(worker, args, kwargs)
             elif not args and not kwargs and not self._function_signature:
                 list_args = []
             else:
@@ -221,17 +202,16 @@ class RemoteFunction:
                     self._function_signature, args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
-                if self._is_cross_language:
-                    raise Exception("Cross language remote functions "
-                                    "cannot be executed locally.")
+                assert not self._is_cross_language, \
+                    "Cross language remote function " \
+                    "cannot be executed locally."
                 object_ids = worker.local_mode_manager.execute(
                     self._function, self._function_descriptor, args, kwargs,
                     num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._language, self._function_descriptor, list_args,
-                    num_return_vals, is_direct_call, self._is_cross_language,
-                    resources, max_retries)
+                    num_return_vals, is_direct_call, resources, max_retries)
 
             if len(object_ids) == 1:
                 return object_ids[0]

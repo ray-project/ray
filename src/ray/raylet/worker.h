@@ -50,6 +50,8 @@ class Worker {
   void MarkDetachedActor();
   bool IsDetachedActor() const;
   const std::shared_ptr<LocalClientConnection> Connection() const;
+  void SetOwnerAddress(const rpc::Address &address);
+  const rpc::Address &GetOwnerAddress() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;
   void SetLifetimeResourceIds(ResourceIdSet &resource_ids);
@@ -106,8 +108,6 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
-  /// The set of object IDs that are currently in use on the worker.
-  std::unordered_set<ObjectID> active_object_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
@@ -116,6 +116,9 @@ class Worker {
   /// Whether the worker is detached. This is applies when the worker is actor.
   /// Detached actor means the actor's creator can exit without killing this actor.
   bool is_detached_actor_;
+  /// The address of this worker's owner. The owner is the worker that
+  /// currently holds the lease on this worker, if any.
+  rpc::Address owner_address_;
 };
 
 }  // namespace raylet

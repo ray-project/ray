@@ -62,7 +62,20 @@ class GcsServer {
   /// The stats handler
   virtual std::unique_ptr<rpc::StatsHandler> InitStatsHandler();
 
+  /// The error info handler
+  virtual std::unique_ptr<rpc::ErrorInfoHandler> InitErrorInfoHandler();
+
+  /// The worker info handler
+  virtual std::unique_ptr<rpc::WorkerInfoHandler> InitWorkerInfoHandler();
+
  private:
+  /// Store the address of GCS server in Redis.
+  ///
+  /// Clients will look up this address in Redis and use it to connect to GCS server.
+  /// TODO(ffbin): Once we entirely migrate to service-based GCS, we should pass GCS
+  /// server address directly to raylets and get rid of this lookup.
+  void StoreGcsServerAddressInRedis();
+
   /// Gcs server configuration
   GcsServerConfig config_;
   /// The grpc server
@@ -87,6 +100,12 @@ class GcsServer {
   /// Stats handler and service
   std::unique_ptr<rpc::StatsHandler> stats_handler_;
   std::unique_ptr<rpc::StatsGrpcService> stats_service_;
+  /// Error info handler and service
+  std::unique_ptr<rpc::ErrorInfoHandler> error_info_handler_;
+  std::unique_ptr<rpc::ErrorInfoGrpcService> error_info_service_;
+  /// Worker info handler and service
+  std::unique_ptr<rpc::WorkerInfoHandler> worker_info_handler_;
+  std::unique_ptr<rpc::WorkerInfoGrpcService> worker_info_service_;
   /// Backend client
   std::shared_ptr<RedisGcsClient> redis_gcs_client_;
 };

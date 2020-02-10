@@ -73,7 +73,7 @@ namespace raylet {
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const ClientID &self_node_id, const NodeManagerConfig &config,
                          ObjectManager &object_manager,
-                         std::shared_ptr<gcs::RedisGcsClient> gcs_client,
+                         std::shared_ptr<gcs::GcsClient> gcs_client,
                          std::shared_ptr<ObjectDirectoryInterface> object_directory)
     : self_node_id_(self_node_id),
       io_service_(io_service),
@@ -197,7 +197,7 @@ ray::Status NodeManager::RegisterGcs() {
   // in their rpc::Address to the ID of a failed raylet.
   const auto &worker_failure_handler =
       [this](const WorkerID &id, const gcs::WorkerFailureData &worker_failure_data) {
-        HandleUnexpectedWorkerFailure(id, worker_failure_data);
+        HandleUnexpectedWorkerFailure(worker_failure_data.worker_address());
       };
   RAY_CHECK_OK(gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
       worker_failure_handler, /*done_callback=*/nullptr));
@@ -219,12 +219,6 @@ ray::Status NodeManager::RegisterGcs() {
   GetObjectManagerProfileInfo();
 
   return ray::Status::OK();
-}
-
-void NodeManager::HandleUnexpectedWorkerFailure(
-    const WorkerID &worker_id, const gcs::WorkerFailureData &worker_failed_data) {
-  RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
-  // TODO: Clean up after the failure: If the failed worker is our owner, then exit.
 }
 
 void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
@@ -304,25 +298,6 @@ void NodeManager::Heartbeat() {
   for (const auto &resource_pair : local_resources.GetLoadResources().GetResourceMap()) {
     heartbeat_data->add_resource_load_label(resource_pair.first);
     heartbeat_data->add_resource_load_capacity(resource_pair.second);
-  }
-
-  size_t max_size = RayConfig::instance().raylet_max_active_object_ids();
-  std::unordered_set<ObjectID> active_object_ids = worker_pool_.GetActiveObjectIDs();
-  if (active_object_ids.size() <= max_size) {
-    for (const auto &object_id : active_object_ids) {
-      heartbeat_data->add_active_object_id(object_id.Binary());
-    }
-  } else {
-    // If there are more than the configured maximum number of object IDs to send per
-    // heartbeat, sample from them randomly.
-    // TODO(edoakes): we might want to improve the sampling technique here, for example
-    // preferring object IDs with the earliest last-refreshed timestamp.
-    std::vector<ObjectID> downsampled;
-    random_sample(active_object_ids.begin(), active_object_ids.end(), max_size,
-                  &downsampled);
-    for (const auto &object_id : downsampled) {
-      heartbeat_data->add_active_object_id(object_id.Binary());
-    }
   }
 
   ray::Status status = gcs_client_->Nodes().AsyncReportHeartbeat(heartbeat_data,
@@ -525,6 +500,54 @@ void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // guarantee that all tasks get flushed eventually, in case one of the tasks
   // in our local cache was supposed to be flushed by the node that died.
   lineage_cache_.FlushAllUncommittedTasks();
+
+  // Clean up workers that were owned by processes that were on the failed
+  // node.
+  rpc::Address address;
+  address.set_raylet_id(node_info.node_id());
+  HandleUnexpectedWorkerFailure(address);
+}
+
+void NodeManager::HandleUnexpectedWorkerFailure(const rpc::Address &address) {
+  const WorkerID worker_id = WorkerID::FromBinary(address.worker_id());
+  const ClientID node_id = ClientID::FromBinary(address.raylet_id());
+  if (!worker_id.IsNil()) {
+    RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
+    failed_workers_cache_.insert(worker_id);
+  } else {
+    RAY_CHECK(!node_id.IsNil());
+    failed_nodes_cache_.insert(node_id);
+  }
+
+  // TODO(swang): Also clean up any lease requests owned by the failed worker
+  // from the task queues. This is only necessary for lease requests that are
+  // infeasible, since requests that are fulfilled will get canceled during
+  // dispatch.
+  for (const auto &pair : leased_workers_) {
+    auto &worker = pair.second;
+    const auto owner_worker_id =
+        WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
+    const auto owner_node_id =
+        WorkerID::FromBinary(worker->GetOwnerAddress().raylet_id());
+    RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
+    RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
+    if (!worker->IsDetachedActor()) {
+      if (!worker_id.IsNil()) {
+        // If the failed worker was a leased worker's owner, then kill the leased worker.
+        if (owner_worker_id == worker_id) {
+          RAY_LOG(INFO) << "Owner process " << owner_worker_id
+                        << " died, killing leased worker " << worker->WorkerId();
+          KillWorker(worker);
+        }
+      } else if (owner_node_id == node_id) {
+        // If the leased worker's owner was on the failed node, then kill the leased
+        // worker.
+        RAY_LOG(INFO) << "Owner node " << owner_node_id << " died, killing leased worker "
+                      << worker->WorkerId();
+        KillWorker(worker);
+      }
+    }
+  }
 }
 
 void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
@@ -664,29 +687,13 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch) {
   // Update load information provided by each heartbeat.
-  // TODO(edoakes): this isn't currently used, but will be used to refresh the LRU
-  // cache in the object store.
-  std::unordered_set<ObjectID> active_object_ids;
   for (const auto &heartbeat_data : heartbeat_batch.batch()) {
-    for (int i = 0; i < heartbeat_data.active_object_id_size(); i++) {
-      active_object_ids.insert(ObjectID::FromBinary(heartbeat_data.active_object_id(i)));
-    }
     const ClientID &client_id = ClientID::FromBinary(heartbeat_data.client_id());
     if (client_id == self_node_id_) {
       // Skip heartbeats from self.
       continue;
     }
     HeartbeatAdded(client_id, heartbeat_data);
-  }
-
-  // Refresh the active object IDs in plasma to prevent them from being evicted.
-  std::vector<plasma::ObjectID> plasma_ids;
-  plasma_ids.reserve(active_object_ids.size());
-  for (const ObjectID &object_id : active_object_ids) {
-    plasma_ids.push_back(object_id.ToPlasmaId());
-  }
-  if (!store_client_.Refresh(plasma_ids).ok()) {
-    RAY_LOG(WARNING) << "Failed to refresh active object IDs in plasma.";
   }
 }
 
@@ -947,9 +954,6 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
-  } break;
-  case protocol::MessageType::ReportActiveObjectIDs: {
-    ProcessReportActiveObjectIDs(client, message_data);
   } break;
 
   default:
@@ -1410,22 +1414,6 @@ void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message
   checkpoint_id_to_restore_.emplace(actor_id, checkpoint_id);
 }
 
-void NodeManager::ProcessReportActiveObjectIDs(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-  if (!worker) {
-    worker = worker_pool_.GetRegisteredDriver(client);
-    if (!worker) {
-      RAY_LOG(ERROR) << "Ignoring object ids report from failed / unknown worker.";
-      return;
-    }
-  }
-
-  auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
-  worker->SetActiveObjectIds(
-      unordered_set_from_flatbuf<ObjectID>(*message->object_ids()));
-}
-
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
   auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
@@ -1572,11 +1560,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   // task directly on the worker.
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
+  rpc::Address owner_address = task.GetTaskSpecification().CallerAddress();
   task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback](
+      [this, owner_address, reply, send_reply_callback](
           const std::shared_ptr<void> granted, const std::string &address, int port,
           const WorkerID &worker_id, const ResourceIdSet &resource_ids) {
-        RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -1597,12 +1585,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
         }
         send_reply_callback(Status::OK(), nullptr, nullptr);
 
-        // TODO(swang): Kill worker if other end hangs up.
-        // TODO(swang): Implement a lease term by which the owner needs to return the
-        // worker.
         RAY_CHECK(leased_workers_.find(worker_id) == leased_workers_.end())
             << "Worker is already leased out " << worker_id;
-        leased_workers_[worker_id] = std::static_pointer_cast<Worker>(granted);
+
+        auto worker = std::static_pointer_cast<Worker>(granted);
+        leased_workers_[worker_id] = worker;
       });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
@@ -1621,6 +1608,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_id = WorkerID::FromBinary(request.worker_id());
+  RAY_LOG(DEBUG) << "Return worker " << worker_id;
   std::shared_ptr<Worker> worker = leased_workers_[worker_id];
 
   if (new_scheduler_enabled_) {
@@ -2312,10 +2300,27 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
     if (task.GetTaskSpecification().IsDetachedActor()) {
       worker->MarkDetachedActor();
     }
+
+    const auto owner_worker_id = WorkerID::FromBinary(spec.CallerAddress().worker_id());
+    const auto owner_node_id = ClientID::FromBinary(spec.CallerAddress().raylet_id());
+    RAY_CHECK(!owner_worker_id.IsNil());
+    RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id << " to worker "
+                   << worker->WorkerId() << ", owner ID " << owner_worker_id;
+
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
                       worker->WorkerId(),
                       spec.IsActorCreationTask() ? worker->GetLifetimeResourceIds()
                                                  : worker->GetTaskResourceIds());
+
+    // If the owner has died since this task was queued, cancel the task by
+    // killing the worker.
+    if (failed_workers_cache_.count(owner_worker_id) > 0 ||
+        failed_nodes_cache_.count(owner_node_id) > 0) {
+      // TODO(swang): Skip assigning this task to this worker instead of
+      // killing the worker?
+      KillWorker(worker);
+    }
+
     post_assign_callbacks->push_back([this, worker, task_id]() {
       RAY_LOG(DEBUG) << "Finished assigning task " << task_id << " to worker "
                      << worker->WorkerId();
@@ -2379,6 +2384,7 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     // direct actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
     worker.AssignTaskId(TaskID::Nil());
+    worker.SetOwnerAddress(rpc::Address());
   }
   // Direct actors will be assigned tasks via the core worker and therefore are
   // not idle.
@@ -2438,6 +2444,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
   actor_info_ptr->mutable_address()->set_raylet_id(self_node_id_.Binary());
   actor_info_ptr->mutable_address()->set_worker_id(worker_id.Binary());
   actor_info_ptr->set_state(ActorTableData::ALIVE);
+  actor_info_ptr->set_timestamp(current_time_ms());
   return actor_info_ptr;
 }
 
@@ -2715,17 +2722,62 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
   }
 }
 
+bool NodeManager::IsDirectActorCreationTask(const TaskID &task_id) {
+  auto actor_id = task_id.ActorId();
+  if (!actor_id.IsNil() && task_id == TaskID::ForActorCreationTask(actor_id)) {
+    // This task ID corresponds to an actor creation task.
+    auto iter = actor_registry_.find(actor_id);
+    if (iter != actor_registry_.end() && iter->second.GetTableData().is_direct_call()) {
+      // This actor is direct call actor.
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void NodeManager::HandleObjectMissing(const ObjectID &object_id) {
   // Notify the task dependency manager that this object is no longer local.
   const auto waiting_task_ids = task_dependency_manager_.HandleObjectMissing(object_id);
-  RAY_LOG(DEBUG) << "Object missing " << object_id << ", "
-                 << " on " << self_node_id_ << waiting_task_ids.size()
-                 << " tasks waiting";
+  std::stringstream result;
+  result << "Object missing " << object_id << ", "
+         << " on " << self_node_id_ << ", " << waiting_task_ids.size()
+         << " tasks waiting";
+  if (waiting_task_ids.size() > 0) {
+    result << ", tasks: ";
+    for (const auto &task_id : waiting_task_ids) {
+      result << task_id << "  ";
+    }
+  }
+  RAY_LOG(DEBUG) << result.str();
+
   // Transition any tasks that were in the runnable state and are dependent on
   // this object to the waiting state.
   if (!waiting_task_ids.empty()) {
     std::unordered_set<TaskID> waiting_task_id_set(waiting_task_ids.begin(),
                                                    waiting_task_ids.end());
+
+    // NOTE(zhijunfu): For direct actors, the worker is initially assigned actor
+    // creation task ID, which will not be reset after the task finishes. And later tasks
+    // of this actor will reuse this task ID to require objects from plasma with
+    // FetchOrReconstruct, since direct actor task IDs are not known to raylet.
+    // To support actor reconstruction for direct actor, raylet marks actor creation task
+    // as completed and removes it from `local_queues_` when it receives `TaskDone`
+    // message from worker. This is necessary because the actor creation task will be
+    // re-submitted during reconstruction, if the task is not removed previously, the new
+    // submitted task will be marked as duplicate and thus ignored.
+    // So here we check for direct actor creation task explicitly to allow this case.
+    auto iter = waiting_task_id_set.begin();
+    while (iter != waiting_task_id_set.end()) {
+      if (IsDirectActorCreationTask(*iter)) {
+        RAY_LOG(DEBUG) << "Ignoring direct actor creation task " << *iter
+                       << " when handling object missing for " << object_id;
+        iter = waiting_task_id_set.erase(iter);
+      } else {
+        ++iter;
+      }
+    }
+
     // First filter out any tasks that can't be transitioned to READY. These
     // are running workers or drivers, now blocked in a get.
     local_queues_.FilterState(waiting_task_id_set, TaskState::RUNNING);
@@ -2912,6 +2964,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     auto spec = assigned_task.GetTaskSpecification();
     // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
+    worker->SetOwnerAddress(spec.CallerAddress());
     worker->AssignJobId(spec.JobId());
     // TODO(swang): For actors with multiple actor handles, to
     // guarantee that tasks are replayed in the same order after a

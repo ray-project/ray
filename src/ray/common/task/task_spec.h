@@ -146,6 +146,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID CallerId() const;
 
+  const rpc::Address &CallerAddress() const;
+
   uint64_t ActorCounter() const;
 
   ObjectID ActorCreationDummyObjectId() const;
@@ -153,8 +155,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ObjectID PreviousActorTaskDummyObjectId() const;
 
   bool IsDirectCall() const;
-
-  bool IsCrossLanguage() const;
 
   bool IsDirectActorCreationCall() const;
 

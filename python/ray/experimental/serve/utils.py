@@ -4,6 +4,7 @@ import random
 import string
 import time
 import io
+import os
 
 import requests
 from pygments import formatters, highlight, lexers
@@ -15,7 +16,12 @@ def parse_request_item(request_item):
     if request_item.request_context == TaskContext.Web:
         is_web_context = True
         asgi_scope, body_bytes = request_item.request_args
-        flask_request = build_flask_request(asgi_scope, io.BytesIO(body_bytes))
+
+        # http_body_bytes enclosed in list due to
+        # https://github.com/ray-project/ray/issues/6944
+        # TODO(alind):  remove list enclosing after issue is fixed
+        flask_request = build_flask_request(asgi_scope,
+                                            io.BytesIO(body_bytes[0]))
         args = (flask_request, )
         kwargs = {}
     else:
@@ -23,14 +29,16 @@ def parse_request_item(request_item):
         args = (FakeFlaskRequest(), )
         kwargs = request_item.request_kwargs
 
-    result_object_id = request_item.result_object_id
-    return args, kwargs, is_web_context, result_object_id
+    return args, kwargs, is_web_context
 
 
 def _get_logger():
     logger = logging.getLogger("ray.serve")
     # TODO(simon): Make logging level configurable.
-    logger.setLevel(logging.INFO)
+    if os.environ.get("SERVE_LOG_DEBUG"):
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.INFO)
     return logger
 
 

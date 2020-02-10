@@ -145,8 +145,7 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
 }
 
 bool TaskSpecification::IsDriverTask() const {
-  return FunctionDescriptor()->Type() ==
-         FunctionDescriptorType::kDriverFunctionDescriptor;
+  return message_->type() == TaskType::DRIVER_TASK;
 }
 
 Language TaskSpecification::GetLanguage() const { return message_->language(); }
@@ -183,6 +182,10 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
 
 TaskID TaskSpecification::CallerId() const {
   return TaskID::FromBinary(message_->caller_id());
+}
+
+const rpc::Address &TaskSpecification::CallerAddress() const {
+  return message_->caller_address();
 }
 
 // === Below are getter methods specific to actor tasks.

@@ -61,7 +61,7 @@ public class JobGraphBuilderTest {
     JobVertex sink = jobVertexList.get(2);
 
     Assert.assertEquals(source.getVertexType(), VertexType.SOURCE);
-    Assert.assertEquals(map.getVertexType(), VertexType.PROCESS);
+    Assert.assertEquals(map.getVertexType(), VertexType.TRANSFORMATION);
     Assert.assertEquals(sink.getVertexType(), VertexType.SINK);
 
     JobEdge keyBy2Sink = jobEdgeList.get(0);

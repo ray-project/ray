@@ -25,6 +25,8 @@ enum TaskType {
   ACTOR_CREATION_TASK = 1;
   // Actor task.
   ACTOR_TASK = 2;
+  // Driver task.
+  DRIVER_TASK = 3;
 }
 
 // Address of a worker or node manager.
@@ -34,10 +36,6 @@ message Address {
   int32 port = 3;
   // Optional unique id for the worker.
   bytes worker_id = 4;
-}
-
-/// Function descriptor for Driver.
-message DriverFunctionDescriptor {
 }
 
 /// Function descriptor for Java.
@@ -58,9 +56,8 @@ message PythonFunctionDescriptor {
 // A union wrapper for various function descriptor types.
 message FunctionDescriptor {
   oneof function_descriptor {
-    DriverFunctionDescriptor driver_function_descriptor = 1;
-    JavaFunctionDescriptor java_function_descriptor = 2;
-    PythonFunctionDescriptor python_function_descriptor = 3;
+    JavaFunctionDescriptor java_function_descriptor = 1;
+    PythonFunctionDescriptor python_function_descriptor = 2;
   }
 }
 
@@ -219,7 +216,7 @@ message CoreWorkerStats {
   int32 num_pending_tasks = 2;
   // Number of object ids in local scope.
   int32 num_object_ids_in_scope = 3;
-  // Function descriptor of the currently executing task.
+  // String representation of the function descriptor of the currently executing task.
   string current_task_func_desc = 4;
   // IP address of the core worker.
   string ip_address = 6;
@@ -230,11 +227,15 @@ message CoreWorkerStats {
   // A map from the resource name (e.g. "CPU") to the amount of resource used.
   map<string, double> used_resources = 9;
   // A string displayed on Dashboard.
-  string webui_display = 10;
+  map<string, string> webui_display = 10;
   // Number of objects stored in local memory.
   int32 num_local_objects = 11;
   // Used local object store memory.
   int64 used_object_store_memory = 12;
   // Length of the task queue.
   int32 task_queue_length = 13;
+  // Number of executed tasks.
+  int32 num_executed_tasks = 14;
+  // Actor constructor.
+  string actor_title = 15;
 }

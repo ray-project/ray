@@ -46,7 +46,7 @@ public abstract class NativeRayActor implements RayActor, Externalizable {
   }
 
   public static NativeRayActor create(long nativeCoreWorkerPointer, byte[] actorId,
-      Language language) {
+                                      Language language) {
     Preconditions.checkState(nativeCoreWorkerPointer != 0);
     switch (language) {
       case JAVA:
@@ -90,15 +90,17 @@ public abstract class NativeRayActor implements RayActor, Externalizable {
     language = (Language) in.readObject();
   }
 
+
   @Override
   protected void finalize() {
     // TODO(zhijunfu): do we need to free the ActorHandle in core worker?
   }
 
-  private static native boolean nativeIsDirectCallActor(long nativeCoreWorkerPointer, byte[] actorId);
+  private static native boolean nativeIsDirectCallActor(
+      long nativeCoreWorkerPointer, byte[] actorId);
 
   static native List<String> nativeGetActorCreationTaskFunctionDescriptor(
-    long nativeCoreWorkerPointer, byte[] actorId);
+      long nativeCoreWorkerPointer, byte[] actorId);
 
   private static native byte[] nativeSerialize(long nativeCoreWorkerPointer, byte[] actorId);
 

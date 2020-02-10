@@ -1,10 +1,12 @@
 #include "gcs_server.h"
 #include "actor_info_handler_impl.h"
+#include "error_info_handler_impl.h"
 #include "job_info_handler_impl.h"
 #include "node_info_handler_impl.h"
 #include "object_info_handler_impl.h"
 #include "stats_handler_impl.h"
 #include "task_info_handler_impl.h"
+#include "worker_info_handler_impl.h"
 
 namespace ray {
 namespace gcs {
@@ -49,8 +51,21 @@ void GcsServer::Start() {
   stats_service_.reset(new rpc::StatsGrpcService(main_service_, *stats_handler_));
   rpc_server_.RegisterService(*stats_service_);
 
+  error_info_handler_ = InitErrorInfoHandler();
+  error_info_service_.reset(
+      new rpc::ErrorInfoGrpcService(main_service_, *error_info_handler_));
+  rpc_server_.RegisterService(*error_info_service_);
+
+  worker_info_handler_ = InitWorkerInfoHandler();
+  worker_info_service_.reset(
+      new rpc::WorkerInfoGrpcService(main_service_, *worker_info_handler_));
+  rpc_server_.RegisterService(*worker_info_service_);
+
   // Run rpc server.
   rpc_server_.Run();
+
+  // Store gcs rpc server address in redis
+  StoreGcsServerAddressInRedis();
 
   // Run the event loop.
   // Using boost::asio::io_context::work to avoid ending the event loop when
@@ -95,6 +110,36 @@ std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
       new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
 }
 
+void GcsServer::StoreGcsServerAddressInRedis() {
+  boost::asio::ip::detail::endpoint primary_endpoint;
+  boost::asio::ip::tcp::resolver resolver(main_service_);
+  boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
+  boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query);
+  boost::asio::ip::tcp::resolver::iterator end;  // End marker.
+  while (iter != end) {
+    boost::asio::ip::tcp::endpoint ep = *iter;
+    if (ep.address().is_v4() && !ep.address().is_loopback() &&
+        !ep.address().is_multicast()) {
+      primary_endpoint.address(ep.address());
+      primary_endpoint.port(ep.port());
+      break;
+    }
+    iter++;
+  }
+
+  std::string address;
+  if (iter == end) {
+    address = "127.0.0.1:" + std::to_string(GetPort());
+  } else {
+    address = primary_endpoint.address().to_string() + ":" + std::to_string(GetPort());
+  }
+  RAY_LOG(INFO) << "Gcs server address = " << address;
+
+  RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
+      {"SET", "GcsServerAddress", address}));
+  RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
+}
+
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
   return std::unique_ptr<rpc::DefaultTaskInfoHandler>(
       new rpc::DefaultTaskInfoHandler(*redis_gcs_client_));
@@ -103,6 +148,16 @@ std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {
 std::unique_ptr<rpc::StatsHandler> GcsServer::InitStatsHandler() {
   return std::unique_ptr<rpc::DefaultStatsHandler>(
       new rpc::DefaultStatsHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::ErrorInfoHandler> GcsServer::InitErrorInfoHandler() {
+  return std::unique_ptr<rpc::DefaultErrorInfoHandler>(
+      new rpc::DefaultErrorInfoHandler(*redis_gcs_client_));
+}
+
+std::unique_ptr<rpc::WorkerInfoHandler> GcsServer::InitWorkerInfoHandler() {
+  return std::unique_ptr<rpc::DefaultWorkerInfoHandler>(
+      new rpc::DefaultWorkerInfoHandler(*redis_gcs_client_));
 }
 
 }  // namespace gcs

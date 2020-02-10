@@ -59,4 +59,5 @@ public class JobVertex implements Serializable {
         .add("streamOperator", streamOperator)
         .toString();
   }
+
 }
