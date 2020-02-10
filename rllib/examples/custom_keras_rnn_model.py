@@ -21,6 +21,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")
 parser.add_argument("--env", type=str, default="RepeatAfterMeEnv")
 parser.add_argument("--stop", type=int, default=90)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class MyKerasRNN(RecurrentTFModelV2):
@@ -142,8 +143,8 @@ class RepeatAfterMeEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    ray.init()
     args = parser.parse_args()
+    ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("rnn", MyKerasRNN)
     register_env("RepeatAfterMeEnv", lambda c: RepeatAfterMeEnv(c))
     register_env("RepeatInitialEnv", lambda _: RepeatInitialEnv())

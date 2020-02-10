@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")
 parser.add_argument("--num-iters", type=int, default=20)
 parser.add_argument("--num-workers", type=int, default=2)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class CustomPolicy(Policy):
@@ -98,7 +99,7 @@ def training_workflow(config, reporter):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init()
+    ray.init(num_cpus=args.num_cpus or None)
 
     tune.run(
         training_workflow,
