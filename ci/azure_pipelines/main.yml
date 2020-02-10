@@ -185,6 +185,11 @@ stages:
               # This command should be kept in sync with ray/python/README-building-wheels.md,
               # except the `$MOUNT_BAZEL_CACHE` part.
 
+              # Not part of the original script
+              # Update pip to latest
+              pip install --upgrade setuptools
+              # End of Not part of the original script
+
               # Originally with ./ci/suppress_output 
               docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -i rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
               # End Original script

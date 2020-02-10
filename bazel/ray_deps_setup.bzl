@@ -2,15 +2,10 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_r
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def ray_deps_setup():
-    RULES_JVM_EXTERNAL_TAG = "1.2"
-   
-    RULES_JVM_EXTERNAL_SHA = "e5c68b87f750309a79f59c2b69ead5c3221ffa54ff9496306937bfa1c9c8c86b"
-   
-    http_archive(
+    git_repository(
         name = "rules_jvm_external",
-        sha256 = RULES_JVM_EXTERNAL_SHA,
-        strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
-        url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
+        tag = "2.10",
+        remote = "https://github.com/bazelbuild/rules_jvm_external",
     )
 
     http_archive(
@@ -80,18 +75,18 @@ def ray_deps_setup():
    
     http_archive(
         name = "io_opencensus_cpp",
-        strip_prefix = "opencensus-cpp-0.3.0",
-        urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/v0.3.0.zip"],
+        strip_prefix = "opencensus-cpp-3aa11f20dd610cb8d2f7c62e58d1e69196aadf11",
+        urls = ["https://github.com/census-instrumentation/opencensus-cpp/archive/3aa11f20dd610cb8d2f7c62e58d1e69196aadf11.zip"],
     )
    
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     git_repository(
         name = "com_google_absl",
-        commit = "88a152ae747c3c42dc9167d46c590929b048d436",
+        commit = "5b65c4af5107176555b23a638e5947686410ac1f",
         remote = "https://github.com/abseil/abseil-cpp.git",
     )
-   
+
     # OpenCensus depends on jupp0r/prometheus-cpp
     git_repository(
         name = "com_github_jupp0r_prometheus_cpp",
