@@ -11,7 +11,7 @@ try:
 except ImportError:
     pass
 
-USE_FP16 = "use_fp16"
+USE_FP16 = "__use_fp16__"
 TEST_MODE = "__test_mode__"
 BATCH_COUNT = "batch_processed"
 SCHEDULER_STEP = "scheduler_step"

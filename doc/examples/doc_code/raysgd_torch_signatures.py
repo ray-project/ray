@@ -1,6 +1,6 @@
 # flake8: noqa
 """
-This file holds code for the Torch best-practices guide in the documentation.
+This file holds code for the Pytorch Trainer creator signatures
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
@@ -89,13 +89,7 @@ def scheduler_creator(optimizers, config):
     """Constructor of one or more Torch optimizer schedulers.
 
     Note that optionally, you can pass in a Torch Scheduler constructor directly
-    into the PyTorchTrainer. For example:
-
-    .. code-block:: python
-
-        PyTorchTrainer(
-            scheduler_creator=torch.optim.lr_scheduler.ReduceLROnPlateau,
-            ...)``.
+    into the PyTorchTrainer.
 
     Args:
         optimizers: The return values from ``optimizer_creator``. This can be one
