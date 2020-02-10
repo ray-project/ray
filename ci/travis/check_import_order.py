@@ -17,8 +17,10 @@ def check_import(file):
     with open(file) as f:
         for i, line in enumerate(f):
             for check in check_to_lines.keys():
-                if re.match(r"\s+" + check + r"(\s|$)", line):
+                if re.search(r"^\s*" + check + r"(\s*|\s+# noqa F401.*)$",
+                             line):
                     check_to_lines[check] = i
+                    # print("{}:{} {}".format(str(file), i, line))
 
     for import_lib in ["import psutil", "import setproctitle"]:
         if check_to_lines[import_lib] != -1:
@@ -41,6 +43,17 @@ def test_check_import():
     with open(path, "w") as f:
         f.write("""
         import psutil
+        import ray
+        """)
+    check_import(path)
+    assert exit_with_error
+    exit_with_error = False
+
+    with open(path, "w") as f:
+        f.write("""
+        import psutil
+        import other as lib
+
         import ray
         """)
     check_import(path)

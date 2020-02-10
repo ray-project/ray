@@ -1,12 +1,12 @@
 import os
 import json
 import grpc
-import psutil
 import pytest
 import requests
 import time
 
 import ray
+import psutil
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2

@@ -6,9 +6,8 @@ import sys
 import tempfile
 import time
 
+import ray  # noqa F401
 import psutil
-
-import ray
 
 
 class RayTestTimeoutException(Exception):
