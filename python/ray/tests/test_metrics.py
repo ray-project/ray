@@ -6,12 +6,13 @@ import requests
 import time
 
 import ray
-import psutil
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.test_utils import RayTestTimeoutException
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 def test_worker_stats(shutdown_only):
