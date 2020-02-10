@@ -183,7 +183,6 @@ class TaskSpecification {
   ObjectID ReturnId(int64_t return_index) const;
   const uint8_t *ArgVal(int64_t arg_index) const;
   size_t ArgValLength(int64_t arg_index) const;
-  double GetRequiredResource(const std::string &resource_name) const;
   /// Return the resources that are to be acquired during the execution of this
   /// task.
   ///

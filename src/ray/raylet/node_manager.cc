@@ -1468,17 +1468,13 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       local_queues_.QueueTasks({task}, TaskState::RUNNING);
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = required_resources.GetNumCpus();
-      std::unordered_map<std::string, double> cpu_resources;
-      if (required_cpus > 0) {
-        cpu_resources[kCPU_ResourceLabel] = required_cpus;
-      }
+      const ResourceSet cpu_resources = required_resources.GetNumCpus();
 
       // Release the CPU resources.
       auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
       local_available_resources_.Release(cpu_resource_ids);
       cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-          ResourceSet(cpu_resources));
+          cpu_resources);
       worker->MarkBlocked();
 
       // Try dispatching tasks since we may have released some resources.
@@ -1521,12 +1517,7 @@ void NodeManager::HandleTaskUnblocked(
       local_queues_.QueueTasks({task}, TaskState::RUNNING);
       // Get the CPU resources required by the running task.
       const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-      double required_cpus = required_resources.GetNumCpus();
-      std::unordered_map<std::string, double> cpu_resources_map;
-      if (required_cpus > 0) {
-        cpu_resources_map[kCPU_ResourceLabel] = required_cpus;
-      }
-      const ResourceSet cpu_resources(cpu_resources_map);
+      const ResourceSet cpu_resources = required_resources.GetNumCpus();
       // Check if we can reacquire the CPU resources.
       bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
 

@@ -111,6 +111,7 @@ class NodeManager {
   /// \param data Data associated with the new client.
   /// \return Void.
   void ClientAdded(const ClientTableDataT &data);
+
   /// Handler for the removal of a GCS client.
   /// \param client_data Data associated with the removed client.
   /// \return Void.
