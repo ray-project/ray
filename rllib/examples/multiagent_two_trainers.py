@@ -54,6 +54,7 @@ if __name__ == "__main__":
                 "policy_mapping_fn": policy_mapping_fn,
                 "policies_to_train": ["ppo_policy"],
             },
+            "exploration": False,
             # disable filters, otherwise we would need to synchronize those
             # as well to the DQN agent
             "observation_filter": "NoFilter",
@@ -70,11 +71,6 @@ if __name__ == "__main__":
             "gamma": 0.95,
             "n_step": 3,
         })
-
-    # disable DQN exploration when used by the PPO trainer
-    ppo_trainer.workers.foreach_worker(
-        lambda ev: ev.for_policy(
-            lambda pi: pi.set_epsilon(0.0), policy_id="dqn_policy"))
 
     # You should see both the printed X and Y approach 200 as this trains:
     # info:

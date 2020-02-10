@@ -131,6 +131,7 @@ class RolloutWorker(EvaluatorInterface):
                  model_config=None,
                  policy_config=None,
                  worker_index=0,
+                 num_workers=0,
                  monitor_path=None,
                  log_dir=None,
                  log_level=None,
@@ -202,6 +203,8 @@ class RolloutWorker(EvaluatorInterface):
             worker_index (int): For remote workers, this should be set to a
                 non-zero and unique value. This index is passed to created envs
                 through EnvContext so that envs can be configured per worker.
+            num_workers (int): For remote workers, how many workers altogether
+                have been created?
             monitor_path (str): Write out episode stats and videos to this
                 directory if specified.
             log_dir (str): Directory where logs can be placed.
@@ -255,6 +258,7 @@ class RolloutWorker(EvaluatorInterface):
         self.policy_config = policy_config
         self.callbacks = callbacks or {}
         self.worker_index = worker_index
+        self.num_workers = num_workers
         model_config = model_config or {}
         policy_mapping_fn = (policy_mapping_fn
                              or (lambda agent_id: DEFAULT_POLICY_ID))
@@ -777,6 +781,8 @@ class RolloutWorker(EvaluatorInterface):
                    conf) in sorted(policy_dict.items()):
             logger.debug("Creating policy for {}".format(name))
             merged_conf = merge_dicts(policy_config, conf)
+            merged_conf["num_workers"] = self.num_workers
+            merged_conf["worker_index"] = self.worker_index
             if self.preprocessing_enabled:
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space, merged_conf.get("model"))
