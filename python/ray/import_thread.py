@@ -140,6 +140,16 @@ class ImportThread:
                         "more discussion.", import_type, name,
                         ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
 
+            if key.startswith(b"RemoteFunction"):
+                with profiling.profile("register_remote_function"):
+                    (self.worker.function_actor_manager.
+                     fetch_and_register_remote_function(key))
+            elif key.startswith(b"ActorClass"):
+                # Keep track of the fact that this actor class has been
+                # exported so that we know it is safe to turn this worker
+                # into an actor of that class.
+                self.worker.function_actor_manager.imported_actor_classes.add(
+                    key)
             # Return because FunctionsToRun are the only things that
             # the driver should import.
             return

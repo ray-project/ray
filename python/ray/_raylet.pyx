@@ -70,7 +70,8 @@ from ray.includes.libcoreworker cimport (
     CCoreWorker,
     CTaskOptions,
     ResourceMappingType,
-    CFiberEvent
+    CFiberEvent,
+    CActorHandle,
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
@@ -897,10 +898,43 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
+        from ray.actor import ActorHandle
+        cdef CActorHandle* c_actor_handle
+        worker = ray.worker.get_global_worker()
+        worker.check_connected()
+        manager = worker.function_actor_manager
         c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
             bytes)
+        check_status(self.core_worker.get().GetActorHandle(
+            c_actor_id, &c_actor_handle))
         actor_id = ActorID(c_actor_id.Binary())
-        return actor_id
+        job_id = JobID(c_actor_handle.CreationJobID().Binary())
+        language = Language.from_native(c_actor_handle.ActorLanguage())
+        actor_creation_function_descriptor = \
+            CFunctionDescriptorToPython(
+                c_actor_handle.ActorCreationTaskFunctionDescriptor())
+        if language == Language.PYTHON:
+            assert isinstance(actor_creation_function_descriptor,
+                              PythonFunctionDescriptor)
+            actor_class = manager.load_actor_class(job_id, actor_creation_function_descriptor)
+            actor_class = ray.remote(actor_class)
+            actor_class_meta = getattr(actor_class, '__ray_metadata__', None)
+            assert actor_class_meta is not None
+            return ActorHandle(language, actor_id, 
+                               actor_class_meta.method_decorators,
+                               actor_class_meta.method_signatures,
+                               actor_class_meta.actor_method_num_return_vals,
+                               0,  # actor method cpu
+                               actor_creation_function_descriptor,
+                               worker.current_session_and_job)
+        else:
+            return ActorHandle(language, actor_id,
+                               {},  # method decorators
+                               {},  # method signatures
+                               {},  # method num_return_vals
+                               0,  # actor method cpu
+                               actor_creation_function_descriptor,
+                               worker.current_session_and_job)
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:

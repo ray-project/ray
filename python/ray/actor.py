@@ -552,7 +552,6 @@ class ActorClass:
             meta.method_signatures,
             meta.actor_method_num_return_vals,
             actor_method_cpu,
-            meta.is_cross_language,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
             original_handle=True)
@@ -600,7 +599,6 @@ class ActorHandle:
                  method_signatures,
                  method_num_return_vals,
                  actor_method_cpus,
-                 is_cross_language,
                  actor_creation_function_descriptor,
                  session_and_job,
                  original_handle=False):
@@ -612,7 +610,7 @@ class ActorHandle:
         self._ray_method_num_return_vals = method_num_return_vals
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
-        self._ray_is_cross_language = is_cross_language
+        self._ray_is_cross_language = language != Language.PYTHON
         self._ray_actor_creation_function_descriptor = \
             actor_creation_function_descriptor
         self._ray_function_descriptor = {}
@@ -779,24 +777,29 @@ class ActorHandle:
         """
         worker = ray.worker.get_global_worker()
         worker.check_connected()
-        state = {
-            "actor_language": self._ray_actor_language,
-            # Local mode just uses the actor ID.
-            "core_handle": worker.core_worker.serialize_actor_handle(
-                self._ray_actor_id)
-            if hasattr(worker, "core_worker") else self._ray_actor_id,
-            "method_decorators": self._ray_method_decorators,
-            "method_signatures": self._ray_method_signatures,
-            "method_num_return_vals": self._ray_method_num_return_vals,
-            "actor_method_cpus": self._ray_actor_method_cpus,
-            "is_cross_language": self._ray_is_cross_language,
-            "actor_creation_function_descriptor": self.
-            _ray_actor_creation_function_descriptor,
-        }
+
+        if hasattr(worker, "core_worker"):
+            state = {
+                "core_handle": worker.core_worker.serialize_actor_handle(
+                    self._ray_actor_id)
+            }
+        else:
+            state = {
+                "actor_language": self._ray_actor_language,
+                # Local mode just uses the actor ID.
+                "actor_id": self._ray_actor_id,
+                "method_decorators": self._ray_method_decorators,
+                "method_signatures": self._ray_method_signatures,
+                "method_num_return_vals": self._ray_method_num_return_vals,
+                "actor_method_cpus": self._ray_actor_method_cpus,
+                "actor_creation_function_descriptor": self.
+                _ray_actor_creation_function_descriptor,
+            }
 
         return state
 
-    def _deserialization_helper(self, state, ray_forking):
+    @classmethod
+    def _deserialization_helper(cls, state, ray_forking):
         """This is defined in order to make pickling work.
 
         Args:
@@ -807,29 +810,27 @@ class ActorHandle:
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        self.__init__(
-            # TODO(swang): Accessing the worker's current task ID is not
-            # thread-safe.
-            # Local mode just uses the actor ID.
-            state["actor_language"],
-            worker.core_worker.deserialize_and_register_actor_handle(
+        if hasattr(worker, "core_worker"):
+            return worker.core_worker.deserialize_and_register_actor_handle(
                 state["core_handle"])
-            if hasattr(worker, "core_worker") else state["core_handle"],
-            state["method_decorators"],
-            state["method_signatures"],
-            state["method_num_return_vals"],
-            state["actor_method_cpus"],
-            state["is_cross_language"],
-            state["actor_creation_function_descriptor"],
-            worker.current_session_and_job)
+        else:
+            return cls(
+                # TODO(swang): Accessing the worker's current task ID is not
+                # thread-safe.
+                # Local mode just uses the actor ID.
+                state["actor_language"],
+                state["actor_id"],
+                state["method_decorators"],
+                state["method_signatures"],
+                state["method_num_return_vals"],
+                state["actor_method_cpus"],
+                state["actor_creation_function_descriptor"],
+                worker.current_session_and_job)
 
-    def __getstate__(self):
+    def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        return self._serialization_helper(False)
-
-    def __setstate__(self, state):
-        """This code path is used by pickling but not by Ray forking."""
-        return self._deserialization_helper(state, False)
+        state = self._serialization_helper(False)
+        return ActorHandle._deserialization_helper, (state, False)
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
