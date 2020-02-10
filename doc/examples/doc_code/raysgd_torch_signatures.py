@@ -1,6 +1,6 @@
 # flake8: noqa
 """
-This file holds code for the Pytorch Trainer creator signatures
+This file holds code for the Pytorch Trainer creator signatures.
 
 It ignores yapf because yapf doesn't allow comments right after code blocks,
 but we put comments right after code blocks to prevent large white spaces
