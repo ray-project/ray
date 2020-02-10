@@ -68,7 +68,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.optimizers = [self.optimizers]
 
         self._create_schedulers_if_available()
-        self._setup_apex_if_available()
+
+        self._try_setup_apex()
 
         # This needs to happen after apex
         self.models = [DistributedDataParallel(model) for model in self.models]

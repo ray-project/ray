@@ -125,12 +125,11 @@ class PyTorchRunner:
         if not isinstance(self.schedulers, collections.Iterable):
             self.schedulers = [self.schedulers]
 
-    def _setup_apex_if_available(self):
+    def _try_setup_apex(self):
         """Sets up the model for fp16 training via apex if available."""
-        if not amp:
-            return
-        self.models, self.optimizers = amp.initialize(
-            self.models, self.optimizers, **self.apex_args)
+        if self.use_fp16 and amp:
+            self.models, self.optimizers = amp.initialize(
+                self.models, self.optimizers, **self.apex_args)
 
     def setup(self):
         """Initializes the model."""
@@ -147,8 +146,7 @@ class PyTorchRunner:
         if not isinstance(self.optimizers, collections.Iterable):
             self.optimizers = [self.optimizers]
         self._create_schedulers_if_available()
-        if self.use_fp16:
-            self._setup_apex_if_available()
+        self._try_setup_apex()
         self._create_loss()
 
         logger.debug("Creating dataset")
