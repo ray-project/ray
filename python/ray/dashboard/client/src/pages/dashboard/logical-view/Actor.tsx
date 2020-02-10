@@ -251,19 +251,10 @@ class Actor extends React.Component<Props & WithStyles<typeof styles>, State> {
                 </React.Fragment>
               ))}
               ){" "}
-<<<<<<< HEAD
               {actor.state === 0 && (
                 <span className={classes.action} onClick={this.killActor}>
                   Kill Actor
                 </span>
-=======
-              {actor.state === 0 ? (
-                <span className={classes.action} onClick={this.killActor}>
-                  Kill Actor
-                </span>
-              ) : (
-                ""
->>>>>>> master
               )}
               {Object.entries(profiling).map(
                 ([profilingId, { startTime, latestResponse }]) =>
