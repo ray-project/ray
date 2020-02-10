@@ -1029,14 +1029,25 @@ def check_and_update_resources(num_cpus, num_gpus, resources):
         if gpu_ids is not None:
             resources["GPU"] = min(resources["GPU"], len(gpu_ids))
 
+    resources = {
+        resource_label: resource_quantity
+        for resource_label, resource_quantity in resources.items()
+        if resource_quantity != 0
+    }
+
     # Check types.
     for _, resource_quantity in resources.items():
         assert (isinstance(resource_quantity, int)
                 or isinstance(resource_quantity, float))
         if (isinstance(resource_quantity, float)
                 and not resource_quantity.is_integer()):
-            raise ValueError("Resource quantities must all be whole numbers.")
-
+            raise ValueError(
+                "Resource quantities must all be whole numbers. Received {}.".
+                format(resources))
+        if resource_quantity < 0:
+            raise ValueError(
+                "Resource quantities must be nonnegative. Received {}.".format(
+                    resources))
         if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
             raise ValueError("Resource quantities must be at most {}.".format(
                 ray_constants.MAX_RESOURCE_QUANTITY))
@@ -1113,8 +1124,9 @@ def start_raylet(redis_address,
 
     # Limit the number of workers that can be started in parallel by the
     # raylet. However, make sure it is at least 1.
+    num_cpus_static = static_resources.get("CPU", 0)
     maximum_startup_concurrency = max(
-        1, min(multiprocessing.cpu_count(), static_resources["CPU"]))
+        1, min(multiprocessing.cpu_count(), num_cpus_static))
 
     # Format the resource argument in a form like 'CPU,1.0,GPU,0,Custom,3'.
     resource_argument = ",".join(

@@ -8,19 +8,25 @@
 
 #include "ray/raylet/format/node_manager_generated.h"
 
+#define EPSILON 0.00001
+
 namespace ray {
 
 namespace raylet {
 
 const std::string kCPU_ResourceLabel = "CPU";
 
-/// Resource availability status reports whether the resource requirement is
-/// (1) infeasible, (2) feasible but currently unavailable, or (3) available.
-enum class ResourceAvailabilityStatus : int {
-  kInfeasible,            ///< Cannot ever satisfy resource requirements.
-  kResourcesUnavailable,  ///< Feasible, but not currently available.
-  kFeasible               ///< Feasible and currently available.
-};
+/// \brief Test if the quantity is within epsilon bounds of 0.
+///
+/// \param quantity: Quantity to check
+/// \return True if  -epsilon <= Quantity <= epsilon, False otherwise.
+bool EqualsZeroEpsilon(double quantity);
+
+/// \brief Test if the quantity is within epsilon bounds of 1.
+///
+/// \param quantity: Quantity to check
+/// \return True if  1 - epsilon <= Quantity <= 1 + epsilon, False otherwise.
+bool EqualsOneEpsilon(double quantity);
 
 /// \class ResourceSet
 /// \brief Encapsulates and operates on a set of resources, including CPUs,
@@ -67,25 +73,11 @@ class ResourceSet {
   /// False otherwise.
   bool IsSuperset(const ResourceSet &other) const;
 
-  /// \brief Add a new resource to the resource set.
-  ///
-  /// \param resource_name: name/label of the resource to add.
-  /// \param capacity: numeric capacity value for the resource to add.
-  /// \return True, if the resource was successfully added. False otherwise.
-  bool AddResource(const std::string &resource_name, double capacity);
-
   /// \brief Remove the specified resource from the resource set.
   ///
   /// \param resource_name: name/label of the resource to remove.
   /// \return True, if the resource was successfully removed. False otherwise.
   bool RemoveResource(const std::string &resource_name);
-
-  /// \brief Add a set of resources to the current set of resources only if the resource
-  /// labels match.
-  ///
-  /// \param other: The other resource set to add.
-  /// \return True if the resource set was added successfully. False otherwise.
-  bool AddResourcesStrict(const ResourceSet &other);
 
   /// \brief Aggregate resources from the other set into this set, adding any missing
   /// resource labels to this set.
@@ -94,21 +86,28 @@ class ResourceSet {
   /// \return Void.
   void AddResources(const ResourceSet &other);
 
-  /// \brief Subtract a set of resources from the current set of resources, only if
-  /// resource labels match.
+  /// \brief Subtract a set of resources from the current set of resources.
+  /// Deletes any resource if the capacity after subtraction is zero or negative.
   ///
   /// \param other: The resource set to subtract from the current resource set.
-  /// \return True if the resource set was subtracted successfully.
-  /// False otherwise.
-  bool SubtractResourcesStrict(const ResourceSet &other);
+  /// \return Void.
+  void SubtractResources(const ResourceSet &other);
+
+  /// \brief Subtract a set of resources from the current set of resources and
+  /// check that the post-subtraction result nonnegative. Assumes other
+  /// is a subset of the ResourceSet. Deletes any resource if the capacity after
+  /// subtraction is zero.
+  ///
+  /// \param other: The resource set to subtract from the current resource set.
+  /// \return Void.
+  void SubtractResourcesStrict(const ResourceSet &other);
 
   /// Return the capacity value associated with the specified resource.
   ///
   /// \param resource_name: Resource name for which capacity is requested.
-  /// \param[out] value: Resource capacity value.
-  /// \return True if the resource capacity value was successfully retrieved.
-  /// False otherwise.
-  bool GetResource(const std::string &resource_name, double *value) const;
+  /// \return The capacity value associated with the specified resource, zero if resource
+  /// does not exist.
+  double GetResource(const std::string &resource_name) const;
 
   /// Return the number of CPUs.
   ///
@@ -126,7 +125,7 @@ class ResourceSet {
   const std::string ToString() const;
 
  private:
-  /// Resource capacity map.
+  /// Resource capacity map. The capacities (double) are always positive.
   std::unordered_map<std::string, double> resource_capacity_;
 };
 
@@ -204,6 +203,11 @@ class ResourceIds {
   ///
   /// \return The fractional IDs.
   const std::vector<std::pair<int64_t, double>> &FractionalIds() const;
+
+  /// \brief Check if ResourceIds has any resources.
+  ///
+  /// \return True if there are no whole or fractional resources. False otherwise.
+  bool TotalQuantityIsZero() const;
 
   /// \brief Return the total quantity of resources, ignoring the specific IDs.
   ///
@@ -329,13 +333,6 @@ class SchedulingResources {
   /// \brief SchedulingResources destructor.
   ~SchedulingResources();
 
-  /// \brief Check if the specified resource request can be satisfied.
-  ///
-  /// \param set: The set of resources representing the resource request.
-  /// \return Availability status that specifies if the requested resource set
-  /// is feasible, infeasible, or feasible but unavailable.
-  ResourceAvailabilityStatus CheckResourcesSatisfied(ResourceSet &set) const;
-
   /// \brief Request the set and capacity of resources currently available.
   ///
   /// \return Immutable set of resources with currently available capacity.
@@ -363,16 +360,14 @@ class SchedulingResources {
   /// \brief Release the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be released.
-  /// \return True if resources were successfully released. False otherwise.
-  bool Release(const ResourceSet &resources);
+  /// \return Void.
+  void Release(const ResourceSet &resources);
 
   /// \brief Acquire the amount of resources specified.
   ///
   /// \param resources: the amount of resources to be acquired.
-  /// \return True if resources were acquired without oversubscription. If this
-  /// returns false, then the resources were still acquired, but we are now at
-  /// negative resources.
-  bool Acquire(const ResourceSet &resources);
+  /// \return Void.
+  void Acquire(const ResourceSet &resources);
 
   /// Returns debug string for class.
   ///
