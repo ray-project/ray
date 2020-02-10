@@ -1027,8 +1027,10 @@ py_test(
     name = "examples/custom_loss",
     tags = ["examples"],
     size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
     srcs = ["examples/custom_loss.py"],
-    args = ["--iters=2"]
+    args = ["--iters=2", "--input-files=tests/data/cartpole_small"]
 )
 
 py_test(
