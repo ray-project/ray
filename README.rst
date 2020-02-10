@@ -184,7 +184,7 @@ More Information
 
 - `Documentation`_
 - `Tutorial`_
-- `Blog`_
+- `Blog`_ (and the `Old Blog`_)
 - `Ray paper`_
 - `Ray HotOS paper`_
 - `RLlib paper`_
@@ -192,7 +192,8 @@ More Information
 
 .. _`Documentation`: http://ray.readthedocs.io/en/latest/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog`: https://ray-project.github.io/
+.. _`Blog`: https://medium.com/distributed-computing-with-ray
+.. _`Old Blog`: https://ray-project.github.io/
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381

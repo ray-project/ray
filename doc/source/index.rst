@@ -174,9 +174,10 @@ Blog and Press
   - [RLlib] `Functional RL with Keras and Tensorflow Eager <https://bair.berkeley.edu/blog/2019/10/14/functional-rl/>`_
   - [Modin] `How to Speed up Pandas by 4x with one line of code <https://www.kdnuggets.com/2019/11/speed-up-pandas-4x.html>`_
   - [Modin] `Quick Tip – Speed up Pandas using Modin <https://pythondata.com/quick-tip-speed-up-pandas-using-modin/>`_
-  - `Ray Blog`_
+  - `Ray Blog`_ (and the `Old Blog`_)
 
-.. _`Ray Blog`: https://ray-project.github.io/
+.. _`Ray Blog`: https://medium.com/distributed-computing-with-ray
+.. _`Old Blog`: https://ray-project.github.io/
 
 Talks (Videos)
 ~~~~~~~~~~~~~~
