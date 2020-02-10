@@ -967,7 +967,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     if (!return_objects->at(i)) {
       continue;
     }
-    if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
+    if (return_objects->at(i)->GetData() != nullptr &&
+        return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
       if (!Seal(return_ids[i], /*pin_object=*/false).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();

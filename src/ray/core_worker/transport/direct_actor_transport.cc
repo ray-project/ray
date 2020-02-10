@@ -265,7 +265,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
         // The object is nullptr if it already existed in the object store.
         const auto &result = return_objects[i];
-        if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
+        if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
           return_object->set_in_plasma(true);
           plasma_return_ids.push_back(id);
         } else {
