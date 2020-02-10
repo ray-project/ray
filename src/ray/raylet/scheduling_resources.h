@@ -58,7 +58,7 @@ class FractionalResourceQuantity {
  private:
   /// The resource quantity represented as 1/kResourceConversionFactor-th of a
   /// unit.
-  int resource_quantity_;
+  int64_t resource_quantity_;
 };
 
 /// \class ResourceSet

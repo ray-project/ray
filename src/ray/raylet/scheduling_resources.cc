@@ -18,7 +18,8 @@ FractionalResourceQuantity::FractionalResourceQuantity(double resource_quantity)
   RAY_CHECK(resource_quantity >= 0) << "Resource capacity, " << resource_quantity
                                     << ", should be nonnegative.";
 
-  resource_quantity_ = static_cast<int>(resource_quantity * kResourceConversionFactor);
+  resource_quantity_ =
+      static_cast<int64_t>(resource_quantity * kResourceConversionFactor);
 }
 
 const FractionalResourceQuantity FractionalResourceQuantity::operator+(
