@@ -22,6 +22,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.util.BinaryFileUtil;
+import org.ray.runtime.util.FileUtil;
 import org.ray.runtime.util.ResourceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -234,18 +235,16 @@ public class RunManager {
       }
 
       // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
-      try (FileUtil.TempFile gcsServerFile = FileUtil.getTempFileFromResource("gcs_server")) {
-        gcsServerFile.getFile().setExecutable(true);
-        List<String> command = ImmutableList.of(
-            gcsServerFile.getFile().getAbsolutePath(),
-            String.format("--redis_address=%s", rayConfig.getRedisIp()),
-            String.format("--redis_port=%d", rayConfig.getRedisPort()),
-            String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
-            String.format("--redis_password=%s", redisPasswordOption)
-        );
-
-        startProcess(command, null, "gcs_server");
-      }
+      final String gcsServerFile = BinaryFileUtil.getFilePath(rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
+      Preconditions.checkState(new File(gcsServerFile).setExecutable(true));
+      List<String> command = ImmutableList.of(
+          gcsServerFile,
+          String.format("--redis_address=%s", rayConfig.getRedisIp()),
+          String.format("--redis_port=%d", rayConfig.getRedisPort()),
+          String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
+          String.format("--redis_password=%s", redisPasswordOption)
+      );
+      startProcess(command, null, "gcs_server");
     }
   }
 

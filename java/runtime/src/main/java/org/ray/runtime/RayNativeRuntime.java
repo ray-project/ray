@@ -58,7 +58,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     resetLibraryPath(rayConfig);
 
     nativeSetup(rayConfig.logDir);
-    Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
   public RayNativeRuntime(RunManager manager, RayConfig rayConfig, FunctionManager functionManager) {

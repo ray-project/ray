@@ -12,6 +12,8 @@ import java.nio.file.StandardCopyOption;
 public class BinaryFileUtil {
   public static final String REDIS_SERVER_BINARY_NAME = "redis-server";
 
+  public static final String GCS_SERVER_BINARY_NAME = "gcs_server";
+
   public static final String PLASMA_STORE_SERVER_BINARY_NAME = "plasma_store_server";
 
   public static final String RAYLET_BINARY_NAME = "raylet";
