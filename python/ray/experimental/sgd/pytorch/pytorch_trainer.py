@@ -181,6 +181,8 @@ class PyTorchTrainer:
                 "Scheduler step freq must be in {}. Got {}".format(
                     pytorch_utils.VALID_SCHEDULER_STEP, scheduler_step_freq))
 
+        self.scheduler_step_freq = scheduler_step_freq
+
         self._start_workers(self.max_replicas)
 
     def _start_workers(self, num_replicas):
@@ -204,6 +206,7 @@ class PyTorchTrainer:
                     batch_size=self.batch_size,
                     use_fp16=self.use_fp16,
                     apex_args=self.apex_args,
+                    scheduler_step_freq=self.scheduler_step_freq,
                 )
             ]
             if self.initialization_hook:
@@ -241,7 +244,9 @@ class PyTorchTrainer:
                     dataloader_config=self.dataloader_config,
                     batch_size=batch_size_per_replica,
                     use_fp16=self.use_fp16,
-                    apex_args=self.apex_args) for i in range(num_replicas)
+                    apex_args=self.apex_args,
+                    scheduler_step_freq=self.scheduler_step_freq
+                ) for i in range(num_replicas)
             ]
             if self.initialization_hook:
                 self.apply_all_workers(self.initialization_hook)

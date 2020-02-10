@@ -12,7 +12,8 @@ import ray
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
-from ray.experimental.sgd.pytorch.utils import train, BATCH_COUNT, TEST_MODE
+from ray.experimental.sgd.pytorch.utils import (
+    train, BATCH_COUNT, TEST_MODE, SCHEDULER_STEP)
 from ray.experimental.sgd.utils import check_for_failure
 
 from ray.experimental.sgd.pytorch.examples.train_example import (
@@ -175,6 +176,31 @@ def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
                     })
                 trainer.train()
                 trainer.shutdown()
+
+
+@pytest.mark.parametrize("scheduler_freq", ["epoch", "batch"])
+def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
+    def custom_train(config, model, dataloader, criterion, optimizer,
+                     scheduler):
+        assert config[utils.SCHEDULER_STEP] == scheduler_freq
+        return {"done": 1}
+
+    def scheduler_creator(optimizer, config):
+        return torch.optim.lr_scheduler.StepLR(
+            main_opt, step_size=30, gamma=0.1)
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        scheduler_creator=scheduler_creator,
+        num_replicas=num_replicas)
+
+    for i in range(3):
+        train_loss1 = trainer.train()["train_loss"]
+    trainer.shutdown()
+
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]

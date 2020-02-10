@@ -54,6 +54,7 @@ def scheduler_creator(optimizer, config):
 
 
 def train_example(num_replicas=1,
+                  num_epochs=5,
                   use_gpu=False,
                   use_fp16=False,
                   test_mode=False):
@@ -72,8 +73,8 @@ def train_example(num_replicas=1,
         backend="nccl" if use_gpu else "gloo",
         scheduler_step_freq="epoch",
         use_fp16=use_fp16)
-    for i in range(5):
-        stats = trainer1.train()
+    for i in range(num_epochs):
+        stats = trainer1.train(max_retries=0)
         print(stats)
 
     print(trainer1.validate())
@@ -111,7 +112,7 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--ray-redis-address",
+        "--address",
         required=False,
         type=str,
         help="the address to use for Redis")
@@ -121,6 +122,11 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="Sets number of replicas for training.")
+    parser.add_argument(
+        "--num-epochs",
+        type=int,
+        default=5,
+        help="Number of epochs to train.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
@@ -141,7 +147,7 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    ray.init(address=args.ray_redis_address, log_to_driver=False)
+    ray.init(address=args.address, log_to_driver=True)
 
     if args.tune:
         tune_example(
@@ -151,6 +157,7 @@ if __name__ == "__main__":
     else:
         train_example(
             num_replicas=args.num_replicas,
+            num_epochs=args.num_epochs,
             use_gpu=args.use_gpu,
             use_fp16=args.fp16,
             test_mode=args.smoke_test)

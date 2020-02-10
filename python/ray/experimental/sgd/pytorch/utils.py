@@ -118,7 +118,7 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
         if config.get(TEST_MODE) and batch_idx  == 0:
             break
 
-    if config.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
+    if scheduler and config.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:
         scheduler.step()
 
     stats = {
