@@ -298,8 +298,9 @@ cdef void prepare_args(
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference(
-                        (CObjectID.FromBinary(core_worker.put_serialized_cobject(
-                            serialized_arg)))))
+                        (CObjectID.FromBinary(
+                            core_worker.put_serialized_cobject(
+                                serialized_arg)))))
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -681,11 +682,12 @@ cdef class CoreWorker:
     def put_serialized_object(self, serialized_object,
                               ObjectID object_id=None,
                               c_bool pin_object=True):
-        return ObjectID(self.put_serialized_cobject(serialized_object, object_id, pin_object))
+        return ObjectID(self.put_serialized_cobject(
+            serialized_object, object_id, pin_object))
 
     def put_serialized_cobject(self, serialized_object,
-                              ObjectID object_id=None,
-                              c_bool pin_object=True):
+                               ObjectID object_id=None,
+                               c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -916,11 +918,12 @@ cdef class CoreWorker:
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
-            actor_class = manager.load_actor_class(job_id, actor_creation_function_descriptor)
+            actor_class = manager.load_actor_class(
+                job_id, actor_creation_function_descriptor)
             actor_class = ray.remote(actor_class)
             actor_class_meta = getattr(actor_class, '__ray_metadata__', None)
             assert actor_class_meta is not None
-            return ActorHandle(language, actor_id, 
+            return ActorHandle(language, actor_id,
                                actor_class_meta.method_decorators,
                                actor_class_meta.method_signatures,
                                actor_class_meta.actor_method_num_return_vals,
