@@ -73,7 +73,7 @@ class WarmStartTest(unittest.TestCase):
             checkpoint_path = os.path.join(trial.logdir,
                                            "checkpoint_1/checkpoint-1")
             self.assertTrue(os.path.isfile(checkpoint_path))
-            checkpoint_path.append(checkpoint_path)
+            checkpoint_paths.append(checkpoint_path)
 
         return trials, checkpoint_paths
 
