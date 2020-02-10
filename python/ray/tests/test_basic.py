@@ -43,6 +43,8 @@ def test_simple_serialization(ray_start_regular):
         0.9,
         1 << 62,
         1 << 999,
+        b"",
+        b"a",
         "a",
         string.printable,
         "\u262F",
