@@ -1,5 +1,6 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@com_github_checkstyle_java//checkstyle:checkstyle.bzl", "checkstyle_test")
+load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 
 def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
     flatbuffer_library_public(
@@ -52,3 +53,12 @@ def define_java_module(name, additional_srcs = [], additional_resources = [], de
             size = "small",
             tags = ["checkstyle"],
         )
+
+def gen_java_pom_file(name):
+    pom_file(
+        name = "org_ray_ray_" + name + "_pom",
+        targets = [
+            ":org_ray_ray_" + name,
+        ],
+        template_file = name + "/pom_template.xml",
+    )
