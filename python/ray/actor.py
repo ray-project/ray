@@ -698,6 +698,21 @@ class ActorHandle:
         if not self._ray_is_cross_language:
             raise AttributeError("'{}' object has no attribute '{}'".format(
                 type(self).__name__, item))
+        if item in ["__ray_terminate__", "__ray_checkpoint__"]:
+
+            class FakeActorMethod(object):
+                def __call__(self, *args, **kwargs):
+                    raise Exception(
+                        "Actor methods cannot be called directly. Instead "
+                        "of running 'object.{}()', try 'object.{}.remote()'.".
+                        format(item, item))
+
+                def remote(self, *args, **kwargs):
+                    logger.warning(
+                        "Actor method {} is not supported by cross language."
+                        .format(item))
+
+            return FakeActorMethod()
 
         return ActorMethod(
             self,
