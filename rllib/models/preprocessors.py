@@ -143,7 +143,7 @@ class OneHotPreprocessor(Preprocessor):
     @override(Preprocessor)
     def transform(self, observation):
         self.check_shape(observation)
-        arr = np.zeros(self._obs_space.n)
+        arr = np.zeros(self._obs_space.n, dtype=np.float32)
         arr[observation] = 1
         return arr
 

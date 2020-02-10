@@ -2,6 +2,7 @@ import os
 import json
 import grpc
 import psutil
+import pytest
 import requests
 import time
 
@@ -188,7 +189,13 @@ def test_raylet_info_endpoint(shutdown_only):
         try:
             webui_url = addresses["webui_url"]
             webui_url = webui_url.replace("localhost", "http://127.0.0.1")
-            raylet_info = requests.get(webui_url + "/api/raylet_info").json()
+            response = requests.get(webui_url + "/api/raylet_info")
+            response.raise_for_status()
+            try:
+                raylet_info = response.json()
+            except Exception as ex:
+                print("failed response: {}".format(response.text))
+                raise ex
             actor_info = raylet_info["result"]["actors"]
             try:
                 assert len(actor_info) == 1
@@ -242,6 +249,9 @@ def test_raylet_info_endpoint(shutdown_only):
         time.sleep(1)
 
 
+@pytest.mark.skipif(
+    os.environ.get("TRAVIS") is None,
+    reason="This test requires password-less sudo due to py-spy requirement.")
 def test_profiling_info_endpoint(shutdown_only):
     ray.init(num_cpus=1)
 
