@@ -57,6 +57,7 @@ class WarmStartTest(unittest.TestCase):
                 "training_iteration": 1
             },
             checkpoint_freq=1,
+            checkpoint_at_end=True,
             local_dir=absolute_local_dir,
             config={
                 "env": "CartPole-v0",
