@@ -185,6 +185,7 @@ export const launchKillActor = (
   actorPort: number
 ) =>
   get<object>("/api/kill_actor", {
+    // make sure object is okay
     actor_id: actorId,
     ip_address: actorIpAddress,
     port: actorPort

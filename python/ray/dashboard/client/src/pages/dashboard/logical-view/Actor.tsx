@@ -9,8 +9,7 @@ import {
   getProfilingResultURL,
   launchKillActor,
   launchProfiling,
-  RayletInfoResponse,
-  launchKillActor
+  RayletInfoResponse
 } from "../../../api";
 import Actors from "./Actors";
 import Collapse from "@material-ui/core/Collapse";
