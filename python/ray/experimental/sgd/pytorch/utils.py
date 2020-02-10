@@ -115,7 +115,7 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if config.get(TEST_MODE) and batch_idx  == 0:
+        if config.get(TEST_MODE) and batch_idx == 0:
             break
 
     if scheduler and config.get(SCHEDULER_STEP) == SCHEDULER_STEP_EPOCH:

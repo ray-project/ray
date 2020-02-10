@@ -261,8 +261,8 @@ class PyTorchRunner:
         for optimizer, state_dict in zip(self.optimizers, state["optimizers"]):
             optimizer.load_state_dict(state_dict)
         if self.schedulers:
-            for scheduler, state_dict in zip(
-                    self.schedulers, state["schedulers"]):
+            for scheduler, state_dict in zip(self.schedulers,
+                                             state["schedulers"]):
                 scheduler.load_state_dict(state_dict)
 
         if self.use_fp16 and "amp" in state and amp:

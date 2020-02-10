@@ -12,8 +12,8 @@ import ray
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
 from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
-from ray.experimental.sgd.pytorch.utils import (
-    train, BATCH_COUNT, TEST_MODE, SCHEDULER_STEP)
+from ray.experimental.sgd.pytorch.utils import (train, BATCH_COUNT, TEST_MODE,
+                                                SCHEDULER_STEP)
 from ray.experimental.sgd.utils import check_for_failure
 
 from ray.experimental.sgd.pytorch.examples.train_example import (
@@ -182,25 +182,23 @@ def test_multi_model_matrix(ray_start_2_cpus, num_replicas):  # noqa: F811
 def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
     def custom_train(config, model, dataloader, criterion, optimizer,
                      scheduler):
-        assert config[utils.SCHEDULER_STEP] == scheduler_freq
+        assert config[SCHEDULER_STEP] == scheduler_freq
         return {"done": 1}
 
     def scheduler_creator(optimizer, config):
         return torch.optim.lr_scheduler.StepLR(
-            main_opt, step_size=30, gamma=0.1)
+            optimizer, step_size=30, gamma=0.1)
 
     trainer = PyTorchTrainer(
         model_creator,
         data_creator,
         optimizer_creator,
         loss_creator=lambda config: nn.MSELoss(),
-        scheduler_creator=scheduler_creator,
-        num_replicas=num_replicas)
+        scheduler_creator=scheduler_creator)
 
     for i in range(3):
-        train_loss1 = trainer.train()["train_loss"]
+        trainer.train()["train_loss"]
     trainer.shutdown()
-
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]
@@ -226,14 +224,14 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         verbose=1)
 
     # # checks loss decreasing for every trials
-    # for path, df in analysis.trial_dataframes.items():
-    #     train_loss1 = df.loc[0, "train_loss"]
-    #     train_loss2 = df.loc[1, "train_loss"]
-    #     validation_loss1 = df.loc[0, "validation_loss"]
-    #     validation_loss2 = df.loc[1, "validation_loss"]
+    for path, df in analysis.trial_dataframes.items():
+        train_loss1 = df.loc[0, "train_loss"]
+        train_loss2 = df.loc[1, "train_loss"]
+        validation_loss1 = df.loc[0, "validation_loss"]
+        validation_loss2 = df.loc[1, "validation_loss"]
 
-    #     assert train_loss2 <= train_loss1
-    #     assert validation_loss2 <= validation_loss1
+        assert train_loss2 <= train_loss1
+        assert validation_loss2 <= validation_loss1
 
 
 @pytest.mark.parametrize("num_replicas", [1, 2]

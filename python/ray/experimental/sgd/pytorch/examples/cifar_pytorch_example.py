@@ -123,10 +123,7 @@ if __name__ == "__main__":
         default=1,
         help="Sets number of replicas for training.")
     parser.add_argument(
-        "--num-epochs",
-        type=int,
-        default=5,
-        help="Number of epochs to train.")
+        "--num-epochs", type=int, default=5, help="Number of epochs to train.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
