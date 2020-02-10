@@ -103,7 +103,7 @@ export interface RayletInfoResponse {
           actorTitle: string;
           averageTaskExecutionSpeed: number;
           children: RayletInfoResponse["actors"];
-          currentTaskFuncDesc: string[];
+          // currentTaskFuncDesc: string[];
           ipAddress: string;
           isDirectCall: boolean;
           jobId: string;

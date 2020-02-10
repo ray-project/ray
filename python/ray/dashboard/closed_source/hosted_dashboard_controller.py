@@ -4,11 +4,15 @@ import threading
 import redis
 
 import ray
-from ray.dashboard.closed_source.ingest_server import NODE_INFO_CHANNEL, RAY_INFO_CHANNEL
-from ray.dashboard.dashboard_controller_interface import DashboardControllerInterface
+from ray.dashboard.closed_source.ingest_server \
+    import NODE_INFO_CHANNEL, RAY_INFO_CHANNEL
+from ray.dashboard.dashboard_controller_interface \
+    import DashboardControllerInterface
+
 
 class HostedDashboardController(DashboardControllerInterface):
     """Dashboard interface that is used in a hosted side."""
+
     def __init__(self, redis_address, redis_password, update_frequency=1.0):
         self.redis_client = redis.StrictRedis(host="127.0.0.1", port=6379)
         self.node_stats = HostedNodeStats(self.redis_client)
@@ -56,15 +60,14 @@ class HostedNodeStats(threading.Thread):
             return copy.deepcopy(self.node_stats_data)
 
     def run(self):
-        p = self.redis_client.pubsub(ignore_subscribe_messages=True) 
+        p = self.redis_client.pubsub(ignore_subscribe_messages=True)
         p.psubscribe(NODE_INFO_CHANNEL)
         for x in p.listen():
             with self._node_stats_lock:
-                channel = ray.utils.decode(x["channel"])
                 data = x["data"]
                 data = json.loads(ray.utils.decode(data))
                 self.node_stats_data = data
-                
+
 
 class HostedRayletStats(threading.Thread):
     def __init__(self, redis_client):
@@ -79,12 +82,10 @@ class HostedRayletStats(threading.Thread):
             return copy.deepcopy(self.raylet_stats_data)
 
     def run(self):
-        p = self.redis_client.pubsub(ignore_subscribe_messages=True) 
+        p = self.redis_client.pubsub(ignore_subscribe_messages=True)
         p.psubscribe(RAY_INFO_CHANNEL)
         for x in p.listen():
             with self._raylet_stats_lock:
-                channel = ray.utils.decode(x["channel"])
                 data = x["data"]
                 data = json.loads(ray.utils.decode(data))
                 self.raylet_stats_data = data
-            

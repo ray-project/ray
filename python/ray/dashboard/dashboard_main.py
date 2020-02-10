@@ -5,7 +5,7 @@ import traceback
 import ray
 
 import ray.ray_constants as ray_constants
-from ray.dashboard.dashboard import Dashboard, DashboardController
+from ray.dashboard.dashboard import Dashboard
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -60,6 +60,7 @@ if __name__ == "__main__":
             args.port,
             args.redis_address,
             args.temp_dir,
+            hosted_dashboard_client=True,
             redis_password=args.redis_password)
         dashboard.run()
     except Exception as e:

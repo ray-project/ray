@@ -1,5 +1,4 @@
 import argparse
-import re
 import traceback
 import os
 
@@ -8,8 +7,8 @@ import redis
 import ray
 import ray.ray_constants as ray_constants
 from ray.dashboard.dashboard import Dashboard
-from ray.dashboard.closed_source.hosted_dashboard_controller import HostedDashboardController
-
+from ray.dashboard.closed_source.hosted_dashboard_controller \
+    import HostedDashboardController
 """Run hosted dashboard server on Anyscale hosts.
 
 This is a standalone main script that is independent from
@@ -21,15 +20,18 @@ As described above, hosted dashboard server should run in the same way
 as an open source dashboard, but how it reads data is different.
 To achieve this, you should inject a HostedDashboardController class that has
 the same interface as an open source DashboardController. Refer to
-`Hosted Dashboard Architecture Design` and `Hosted Dashboard Implementation Plan`
-in a shared google doc (under a design doc section) to understand the
-architecture and implementation in details.
+`Hosted Dashboard Architecture Design` and `Hosted Dashboard
+Implementation Plan` in a shared google doc (under a design doc section)
+to understand the architecture and implementation in details.
 
 To run a hosted dashboard in the local environment, follow the below.
-1. Make sure Redis server is running in `--redis-address`. 
-2. Ingest server should be running. 
+1. Make sure Redis server is running in `--redis-address`.
+2. Ingest server should be running.
 ```
 python ingest_server.py
+    --host 127.0.0.1
+    -port 50051
+    --redis-address 127.0.0.1:6379
 ```
 TODO(sang): Change this part of the instruction. This is a temporary way
     to simulate the whole workflow.
@@ -37,7 +39,7 @@ TODO(sang): Change this part of the instruction. This is a temporary way
     Note that the argument should be explictly set for now.
 4. Finally, run the hosted_dashboard_main.py
 ```
-python hosted_dashboard_main.py 
+python hosted_dashboard_main.py
     --host 127.0.0.1
     --port 8266
     --redis-address 127.0.0.1:6379
@@ -93,14 +95,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    redis_address, redis_port = args.redis_address.strip().split(':')
+    redis_address, redis_port = args.redis_address.strip().split(":")
     redis_client = redis.StrictRedis(host=redis_address, port=redis_port)
     web_ui_url = "{}:{}".format(args.host, args.port)
     # Should record the webui address to Redis before running a dashboard
     # so that the dashboard class can find the proper addresses.
     redis_client.hmset("webui", {"url": web_ui_url})
-
-    hosted_dashboard_client = False
 
     try:
         dashboard = Dashboard(
@@ -109,9 +109,8 @@ if __name__ == "__main__":
             args.redis_address,
             args.temp_dir,
             redis_password=args.redis_password,
-            hosted_dashboard_client=hosted_dashboard_client,
-            DashboardController=HostedDashboardController
-        )
+            hosted_dashboard_client=False,
+            DashboardController=HostedDashboardController)
         dashboard.run()
     except Exception as e:
         traceback_str = ray.utils.format_error_message(traceback.format_exc())

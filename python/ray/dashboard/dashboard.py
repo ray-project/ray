@@ -201,7 +201,7 @@ class Dashboard(object):
             information for this Ray session.
         redis_passord(str): Redis password to access GCS
         hosted_dashboard_client(bool): True if a server runs as a
-            hosted dashboard client mode. 
+            hosted dashboard client mode.
         update_frequency(float): Frequency where metrics are updated.
         DashboardController(DashboardController): DashboardController
             that defines the business logic of a Dashboard server.
@@ -213,7 +213,7 @@ class Dashboard(object):
                  redis_address,
                  temp_dir,
                  redis_password=None,
-                 hosted_dashboard_client=True,
+                 hosted_dashboard_client=False,
                  update_frequency=1.0,
                  DashboardController=DashboardController):
         self.host = host
@@ -226,7 +226,7 @@ class Dashboard(object):
             redis_address, redis_password, update_frequency)
 
         self.hosted_dashboard_client = hosted_dashboard_client
-        self.dashboard_client = None 
+        self.dashboard_client = None
         if self.hosted_dashboard_client:
             self.dashboard_client = DashboardClient(self.dashboard_controller)
 
