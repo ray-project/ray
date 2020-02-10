@@ -39,8 +39,7 @@ class TestEagerSupport(unittest.TestCase):
         check_support("A2C", {"num_workers": 0})
 
     def testA3C(self):
-        # TODO(ekl) trace on is flaky
-        check_support("A3C", {"num_workers": 1}, test_trace=False)
+        check_support("A3C", {"num_workers": 1})
 
     def testPG(self):
         check_support("PG", {"num_workers": 0})

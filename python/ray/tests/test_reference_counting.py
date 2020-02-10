@@ -221,9 +221,9 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
     # pending task dependencies aren't considered, it will be evicted before
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
+    np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
     random_oid = ray.ObjectID.from_random()
-    oid = pending.remote(
-        np.zeros(40 * 1024 * 1024, dtype=np.uint8), random_oid)
+    oid = pending.remote(np_array, random_oid)
 
     for _ in range(2):
         ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))

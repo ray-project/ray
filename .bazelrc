@@ -26,6 +26,7 @@ build --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
 build --http_timeout_scaling=5.0
+build:iwyu --experimental_action_listener=//:iwyu_cpp
 # This workaround is due to an incompatibility of
 # bazel_common/tools/maven/pom_file.bzl with Bazel 1.0
 build --incompatible_depset_is_not_iterable=false

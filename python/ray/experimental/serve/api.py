@@ -417,11 +417,15 @@ def split(endpoint_name, traffic_policy_dictionary):
 
 
 @_ensure_connected
-def get_handle(endpoint_name):
+def get_handle(endpoint_name, relative_slo_ms=None, absolute_slo_ms=None):
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
         endpoint_name (str): A registered service endpoint.
+        relative_slo_ms(float): Specify relative deadline in milliseconds for
+            queries fired using this handle. (Default: None)
+        absolute_slo_ms(float): Specify absolute deadline in milliseconds for
+            queries fired using this handle. (Default: None)
 
     Returns:
         RayServeHandle
@@ -431,7 +435,8 @@ def get_handle(endpoint_name):
     # Delay import due to it's dependency on global_state
     from ray.experimental.serve.handle import RayServeHandle
 
-    return RayServeHandle(global_state.init_or_get_router(), endpoint_name)
+    return RayServeHandle(global_state.init_or_get_router(), endpoint_name,
+                          relative_slo_ms, absolute_slo_ms)
 
 
 @_ensure_connected

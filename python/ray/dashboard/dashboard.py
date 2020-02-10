@@ -441,12 +441,6 @@ class NodeStats(threading.Thread):
                         if addr in self._addr_to_actor_id:
                             actor_info = flattened_tree[self._addr_to_actor_id[
                                 addr]]
-                            if "currentTaskFuncDesc" in core_worker_stats:
-                                core_worker_stats[
-                                    "currentTaskFuncDesc"] = list(
-                                        map(
-                                            b64_decode, core_worker_stats[
-                                                "currentTaskFuncDesc"]))
                             format_reply_id(core_worker_stats)
                             actor_info.update(core_worker_stats)
                             actor_info["averageTaskExecutionSpeed"] = round(
@@ -464,8 +458,6 @@ class NodeStats(threading.Thread):
                 caller_id = self._addr_to_actor_id.get(caller_addr, "root")
                 child_to_parent[actor_id] = caller_id
                 infeasible_task["state"] = -1
-                infeasible_task["functionDescriptor"] = list(
-                    map(b64_decode, infeasible_task["functionDescriptor"]))
                 format_reply_id(infeasible_tasks)
                 flattened_tree[actor_id] = infeasible_task
 
