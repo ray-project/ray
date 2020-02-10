@@ -144,11 +144,11 @@ class DiagGaussian(TFActionDistribution):
     """
 
     def __init__(self, inputs, model):
-        super().__init__(inputs, model)
         mean, log_std = tf.split(inputs, 2, axis=1)
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
+        super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def deterministic_sample(self):

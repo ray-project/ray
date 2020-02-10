@@ -97,9 +97,11 @@ def simple_sample_action_from_q_network(policy,
                                         config,
                                         q_values_func=None):
     # Action Q network.
-    policy.q_values, q_logits, q_dist = (q_values_func or _compute_q_values)(
-        policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
-        action_space)
+    ret = (q_values_func or _compute_q_values)(policy, q_model,
+                                               input_dict[SampleBatch.CUR_OBS],
+                                               obs_space, action_space)
+
+    policy.q_values = ret[0] if isinstance(ret, tuple) else ret
     policy.q_func_vars = q_model.variables()
 
     # Soft-Q.
