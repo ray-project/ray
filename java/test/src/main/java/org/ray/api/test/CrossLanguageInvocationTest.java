@@ -10,11 +10,14 @@ import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(CrossLanguageInvocationTest.class);
   private static final String PYTHON_MODULE = "test_cross_language_invocation";
 
   @Override
@@ -46,6 +49,12 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     Assert.assertEquals(res.get(), "Response from Python: hello".getBytes());
   }
 
+  @Test
+  public void testPythonCallJavaFunction() {
+    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_function", "hello".getBytes());
+    Assert.assertEquals(res.get(), "[Python]py_func -> [Java]bytesEcho -> hello".getBytes());
+  }
+
   @Test(groups = {"directCall"})
   public void testCallingPythonActor() {
     // Python worker doesn't support direct call yet.
@@ -53,5 +62,33 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
     Assert.assertEquals(res.get(), "2".getBytes());
+  }
+
+  @Test
+  public void testPythonCallJavaActor() {
+    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor", "1".getBytes());
+    Assert.assertEquals(res.get(), "Counter1".getBytes());
+  }
+
+  public static byte[] bytesEcho(byte[] value) {
+    // This function will be called from test_cross_language_invocation.py
+    String valueStr = new String(value);
+    LOGGER.debug(String.format("bytesEcho called with: %s", valueStr));
+    return ("[Java]bytesEcho -> " + valueStr).getBytes();
+  }
+
+  public static class TestActor {
+    public TestActor(byte[] v) {
+      value = v;
+    }
+
+    public byte[] concat(byte[] v) {
+      byte[] c = new byte[value.length + v.length];
+      System.arraycopy(value, 0, c, 0, value.length);
+      System.arraycopy(v, 0, c, value.length, v.length);
+      return c;
+    }
+
+    private byte[] value;
   }
 }

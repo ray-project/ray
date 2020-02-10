@@ -1,6 +1,7 @@
 import inspect
 from functools import wraps
 from tempfile import mkstemp
+from multiprocessing import cpu_count
 
 import numpy as np
 
@@ -65,7 +66,10 @@ def init(kv_store_connector=None,
          blocking=False,
          http_host=DEFAULT_HTTP_HOST,
          http_port=DEFAULT_HTTP_PORT,
-         ray_init_kwargs={"object_store_memory": int(1e8)},
+         ray_init_kwargs={
+             "object_store_memory": int(1e8),
+             "num_cpus": max(cpu_count(), 8)
+         },
          gc_window_seconds=3600,
          queueing_policy=RoutePolicy.Random,
          policy_kwargs={}):
@@ -408,16 +412,20 @@ def split(endpoint_name, traffic_policy_dictionary):
 
     global_state.policy_table.register_traffic_policy(
         endpoint_name, traffic_policy_dictionary)
-    global_state.init_or_get_router().set_traffic.remote(
-        endpoint_name, traffic_policy_dictionary)
+    ray.get(global_state.init_or_get_router().set_traffic.remote(
+        endpoint_name, traffic_policy_dictionary))
 
 
 @_ensure_connected
-def get_handle(endpoint_name):
+def get_handle(endpoint_name, relative_slo_ms=None, absolute_slo_ms=None):
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
     Args:
         endpoint_name (str): A registered service endpoint.
+        relative_slo_ms(float): Specify relative deadline in milliseconds for
+            queries fired using this handle. (Default: None)
+        absolute_slo_ms(float): Specify absolute deadline in milliseconds for
+            queries fired using this handle. (Default: None)
 
     Returns:
         RayServeHandle
@@ -427,7 +435,8 @@ def get_handle(endpoint_name):
     # Delay import due to it's dependency on global_state
     from ray.experimental.serve.handle import RayServeHandle
 
-    return RayServeHandle(global_state.init_or_get_router(), endpoint_name)
+    return RayServeHandle(global_state.init_or_get_router(), endpoint_name,
+                          relative_slo_ms, absolute_slo_ms)
 
 
 @_ensure_connected
