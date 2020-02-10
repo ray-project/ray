@@ -18,9 +18,11 @@ all_modules = [
 java_import(
     name = "all_modules",
     jars = [
-        "liborg_ray_ray_" + module + ".jar" for module in all_modules
+        "liborg_ray_ray_" + module + ".jar"
+        for module in all_modules
     ] + [
-        "liborg_ray_ray_" + module + "-src.jar" for module in all_modules
+        "liborg_ray_ray_" + module + "-src.jar"
+        for module in all_modules
     ] + [
         "all_tests_deploy.jar",
         "all_tests_deploy-src.jar",
@@ -28,7 +30,8 @@ java_import(
         "streaming_tests_deploy-src.jar",
     ],
     deps = [
-        ":org_ray_ray_" + module for module in all_modules
+        ":org_ray_ray_" + module
+        for module in all_modules
     ] + [
         ":all_tests",
         ":streaming_tests",
@@ -37,22 +40,23 @@ java_import(
 
 define_java_module(
     name = "api",
+    visibility = ["//visibility:public"],
     deps = [
-        "@maven//:org_slf4j_slf4j_log4j12",
-        "@maven//:log4j_log4j",
-        "@maven//:javax_xml_bind_jaxb_api",
         "@maven//:com_sun_xml_bind_jaxb_core",
         "@maven//:com_sun_xml_bind_jaxb_impl",
+        "@maven//:javax_xml_bind_jaxb_api",
+        "@maven//:log4j_log4j",
+        "@maven//:org_slf4j_slf4j_log4j12",
     ],
 )
 
 define_java_module(
     name = "runtime",
-    additional_srcs = [
-        ":generate_java_gcs_fbs",
-    ],
     additional_resources = [
         ":java_native_deps",
+    ],
+    additional_srcs = [
+        ":generate_java_gcs_fbs",
     ],
     define_test_lib = True,
     test_deps = [
@@ -63,6 +67,7 @@ define_java_module(
         "@maven//:org_testng_testng",
         "@maven//:commons_io_commons_io",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":org_ray_ray_api",
         "@plasma//:org_apache_arrow_arrow_plasma",
@@ -71,6 +76,7 @@ define_java_module(
         "@maven//:com_typesafe_config",
         "@maven//:commons_io_commons_io",
         "@maven//:de_ruedigermoeller_fst",
+        "@maven//:net_java_dev_jna_jna",
         "@maven//:org_apache_commons_commons_lang3",
         "@maven//:org_ow2_asm_asm",
         "@maven//:org_slf4j_slf4j_api",
@@ -126,12 +132,12 @@ define_java_module(
 
 java_binary(
     name = "all_tests",
-    main_class = "org.testng.TestNG",
-    data = ["testng.xml"],
     args = ["java/testng.xml"],
+    data = ["testng.xml"],
+    main_class = "org.testng.TestNG",
     runtime_deps = [
-        ":org_ray_ray_test",
         ":org_ray_ray_runtime_test",
+        ":org_ray_ray_test",
     ],
 )
 
@@ -211,18 +217,18 @@ genrule(
     outs = ["plasma_store_server"],
     cmd = """
         cp -f $(location @plasma//:plasma_store_server) $@
-    """
+    """,
 )
 
 filegroup(
     name = "java_native_deps",
     srcs = [
-        "//:redis-server",
+        ":cp_plasma_store_server",
+        "//:raylet_library_java",
         "//:libray_redis_module.so",
         "//:raylet",
-        "//:raylet_library_java",
-        ":cp_plasma_store_server",
         "@plasma//:plasma_client_java",
+        "//:redis-server",
     ],
 )
 
@@ -264,7 +270,8 @@ genrule(
 genrule(
     name = "copy_pom_file",
     srcs = [
-        "//java:org_ray_ray_" + module + "_pom" for module in all_modules
+        "//java:org_ray_ray_" + module + "_pom"
+        for module in all_modules
     ],
     outs = ["copy_pom_file.out"],
     cmd = """
@@ -280,3 +287,15 @@ genrule(
     local = 1,
     tags = ["no-cache"],
 )
+
+# From Diff PR Fix building Java with maven #6764
+#genrule(
+#    name = "ray_java_pkg",
+#    remove -> srcs = ["//java:ray_dist_deploy.jar"],
+#    srcs = [
+#        "//java:ray_dist_deploy.jar",
+#        "//java:gen_maven_deps",
+#    ],
+#    outs = ["ray_java_pkg.out"],
+#    cmd = """
+#        WORK_DIR=$$(pwd)
