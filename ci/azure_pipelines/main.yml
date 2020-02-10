@@ -254,16 +254,19 @@ stages:
               # Set some variables to make the system looks like Travis
               source $BUILD_SOURCESDIRECTORY/ci/azure_pipelines/templates/travis-legacy/pre-install.sh
 
-              # Change the default deployment target
-              export MACOSX_DEPLOYMENT_TARGET="10.6"
-              export PYTHON_CONFIGURE_OPTS="--enable-universalsdk=/ --with-universal-archs=intel"
-
               # Start Original script
               eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
               if [ $RAY_CI_MACOS_WHEELS_AFFECTED != "1" ]; then exit; fi
 
               # Originally with ./ci/suppress_output
               ./ci/travis/install-dependencies.sh
+
+              # Not part of the original script
+              # Change the default deployment target
+              export MACOSX_DEPLOYMENT_TARGET="10.6"
+              export PYTHON_CONFIGURE_OPTS="--enable-universalsdk=/ --with-universal-archs=intel"
+              # End of Not part of the original script
+
               # This command should be kept in sync with ray/python/README-building-wheels.md.
               # Originally with ./ci/suppress_output 
               ./python/build-wheel-macos.sh
