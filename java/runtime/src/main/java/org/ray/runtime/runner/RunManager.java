@@ -326,15 +326,19 @@ public class RunManager {
   }
 
   private void startObjectStore() {
-    List<String> command = ImmutableList.of(
-        // The plasma store executable file.
-        getTempFile("/plasma_store_server").getAbsolutePath(),
-        "-s",
-        rayConfig.objectStoreSocketName,
-        "-m",
-        rayConfig.objectStoreSize.toString()
-    );
-    startProcess(command, null, "plasma_store");
+    try (FileUtil.TempFile plasmaStoreFile = FileUtil
+        .getTempFileFromResource("plasma_store_server")) {
+      plasmaStoreFile.getFile().setExecutable(true);
+      List<String> command = ImmutableList.of(
+          // The plasma store executable file.
+          plasmaStoreFile.getFile().getAbsolutePath(),
+          "-s",
+          rayConfig.objectStoreSocketName,
+          "-m",
+          rayConfig.objectStoreSize.toString()
+      );
+      startProcess(command, null, "plasma_store");
+    }
   }
 
   private String buildPythonWorkerCommand() {
