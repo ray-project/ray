@@ -14,7 +14,7 @@ if "pickle5" in sys.modules:
                       "packaged along with Ray).")
 
 if "OMP_NUM_THREADS" not in os.environ:
-    logger.warning("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+    logger.info("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
                    "degradation with many workers (issue #6998). You can "
                    "override this by explicitly setting OMP_NUM_THREADS.")
     os.environ["OMP_NUM_THREADS"] = "1"
