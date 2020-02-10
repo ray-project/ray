@@ -62,8 +62,7 @@ class PyTorchRunner:
         self.scheduler_creator = scheduler_creator
         self.config = {} if config is None else config
         self.dataloader_config = {
-            "num_workers": 2,
-            "pin_memory": True
+            "num_workers": 2
         } if dataloader_config is None else dataloader_config
         self.train_function = train_function or pytorch_utils.train
         self.validation_function = (validation_function
