@@ -215,9 +215,9 @@ cc_test(
 )
 
 cc_test(
-    name = "event_server_tests",
+    name = "event_service_tests",
     srcs = [
-        "src/test/event_server_tests.cc",
+        "src/test/event_service_tests.cc",
     ],
     deps = test_common_deps,
 )

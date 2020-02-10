@@ -9,7 +9,7 @@
 
 #include "channel.h"
 #include "config/streaming_config.h"
-#include "event_server.h"
+#include "event_service.h"
 #include "message/message_bundle.h"
 #include "runtime_context.h"
 
@@ -110,7 +110,7 @@ class DataWriter {
   void Stop();
 
  private:
-  std::shared_ptr<EventServer> event_server_;
+  std::shared_ptr<EventService> event_service_;
 
   std::shared_ptr<std::thread> empty_message_thread_;
   // One channel have unique identity.

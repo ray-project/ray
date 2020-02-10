@@ -96,7 +96,7 @@ StreamingStatus DataWriter::WriteBufferToChannel(ProducerChannelInfo &channel_in
 
 void DataWriter::Run() {
   STREAMING_LOG(INFO) << "Event server start";
-  event_server_->Run();
+  event_service_->Run();
   // Enable empty message timer after writer running.
   empty_message_thread_ =
       std::make_shared<std::thread>(&DataWriter::EmptyMessageTimerCallback, this);
@@ -136,7 +136,7 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
     } else if (!channel_info.flow_control) {
       channel_info.in_event_queue = true;
       Event event{&channel_info, EventType::UserEvent, false};
-      event_server_->Push(event);
+      event_service_->Push(event);
       ++channel_info.user_event_cnt;
     }
   }
@@ -193,12 +193,12 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
     }
   }
   // Register empty event and user event to event server.
-  event_server_ = std::make_shared<EventServer>();
-  event_server_->Register(
+  event_service_ = std::make_shared<EventService>();
+  event_service_->Register(
       EventType::EmptyEvent,
       std::bind(&DataWriter::SendEmptyToChannel, this, std::placeholders::_1));
-  event_server_->Register(EventType::UserEvent, std::bind(&DataWriter::WriteAllToChannel,
-                                                          this, std::placeholders::_1));
+  event_service_->Register(EventType::UserEvent, std::bind(&DataWriter::WriteAllToChannel,
+                                                           this, std::placeholders::_1));
 
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Running);
   return StreamingStatus::OK;
@@ -213,8 +213,8 @@ DataWriter::~DataWriter() {
     return;
   }
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Interrupted);
-  if (event_server_) {
-    event_server_->Stop();
+  if (event_service_) {
+    event_service_->Stop();
     if (empty_message_thread_->joinable()) {
       STREAMING_LOG(INFO) << "Empty message thread waiting for join";
       empty_message_thread_->join();
@@ -411,7 +411,7 @@ void DataWriter::EmptyMessageTimerCallback() {
       if (current_ts - channel_info.message_pass_by_ts >=
           runtime_context_->GetConfig().GetEmptyMessageTimeInterval()) {
         Event event{&channel_info, EventType::EmptyEvent, true};
-        event_server_->Push(event);
+        event_service_->Push(event);
         ++channel_info.sent_empty_cnt;
         ++count;
         continue;
@@ -421,7 +421,7 @@ void DataWriter::EmptyMessageTimerCallback() {
       }
     }
     STREAMING_LOG(DEBUG) << "EmptyThd:produce empty_events:" << count
-                         << " eventqueue size:" << event_server_->EventNums()
+                         << " eventqueue size:" << event_service_->EventNums()
                          << " next_sleep_time:"
                          << runtime_context_->GetConfig().GetEmptyMessageTimeInterval() -
                                 current_ts + min_passby_message_ts;

@@ -1,5 +1,5 @@
 #include <thread>
-#include "event_server.h"
+#include "event_service.h"
 #include "gtest/gtest.h"
 
 using namespace ray::streaming;
@@ -11,8 +11,8 @@ bool SendEmptyToChannel(ProducerChannelInfo *info) { return true; }
 bool WriteAllToChannel(ProducerChannelInfo *info) { return true; }
 
 bool stop = false;
-TEST(EventServerTest, Test1) {
-  std::shared_ptr<EventServer> server = std::make_shared<EventServer>();
+TEST(EventServiceTest, Test1) {
+  std::shared_ptr<EventService> server = std::make_shared<EventService>();
 
   ProducerChannelInfo mock_channel_info;
   server->Register(EventType::EmptyEvent, SendEmptyToChannel);
@@ -63,8 +63,8 @@ TEST(EventServerTest, Test1) {
   thread_user.join();
 }
 
-TEST(EventServerTest, remove_delete_channel_event) {
-  std::shared_ptr<EventServer> server = std::make_shared<EventServer>();
+TEST(EventServiceTest, remove_delete_channel_event) {
+  std::shared_ptr<EventService> server = std::make_shared<EventService>();
 
   std::vector<ObjectID> channel_vec;
   std::vector<ProducerChannelInfo> mock_channel_info_vec;
