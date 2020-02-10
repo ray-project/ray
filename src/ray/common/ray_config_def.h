@@ -67,11 +67,9 @@ RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
 /// for direct task submission until it must be returned to the raylet.
 RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 
-/// The duration between heartbeats sent from the workers to the raylet.
-/// If set to a negative value, the heartbeats will not be sent.
-/// These are used to report active object IDs for garbage collection and
-/// to ensure that workers go down when the raylet dies unexpectedly.
-RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 1000)
+/// The interval at which the workers will check if their raylet has gone down.
+/// When this happens, they will kill themselves.
+RAY_CONFIG(int64_t, raylet_death_check_interval_milliseconds, 1000)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.
@@ -193,3 +191,8 @@ RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
 /// When getting objects from object store, max number of ids to print in the warning
 /// message.
 RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
+
+/// Allow up to 5 seconds for connecting to gcs service.
+/// Note: this only takes effect when gcs service is enabled.
+RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
+RAY_CONFIG(int64_t, gcs_service_connect_wait_milliseconds, 100)

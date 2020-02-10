@@ -110,10 +110,12 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
     std::shared_ptr<ReferenceCounter> counter,
-    std::shared_ptr<raylet::RayletClient> raylet_client)
+    std::shared_ptr<raylet::RayletClient> raylet_client,
+    std::function<Status()> check_signals)
     : store_in_plasma_(store_in_plasma),
       ref_counter_(counter),
-      raylet_client_(raylet_client) {}
+      raylet_client_(raylet_client),
+      check_signals_(check_signals) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -275,7 +277,34 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   if (should_notify_raylet) {
     RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
   }
-  bool done = get_request->Wait(timeout_ms);
+
+  bool done = false;
+  bool timed_out = false;
+  Status signal_status = Status::OK();
+  int64_t remaining_timeout = timeout_ms;
+  int64_t iteration_timeout =
+      std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
+  if (timeout_ms == -1) {
+    iteration_timeout = RayConfig::instance().get_timeout_milliseconds();
+  }
+
+  // Repeatedly call Wait() on a shorter timeout so we can check for signals between
+  // calls. If timeout_ms == -1, this should run forever until all objects are
+  // ready or a signal is received. Else it should run repeatedly until that timeout
+  // is reached.
+  while (!(done = get_request->Wait(iteration_timeout)) && !timed_out &&
+         signal_status.ok()) {
+    if (check_signals_) {
+      signal_status = check_signals_();
+    }
+
+    if (remaining_timeout >= 0) {
+      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
+      remaining_timeout -= iteration_timeout;
+      timed_out = remaining_timeout <= 0;
+    }
+  }
+
   if (should_notify_raylet) {
     RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
   }
@@ -308,7 +337,9 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  if (done) {
+  if (!signal_status.ok()) {
+    return signal_status;
+  } else if (done) {
     return Status::OK();
   } else {
     return Status::TimedOut("Get timed out: some object(s) not ready.");

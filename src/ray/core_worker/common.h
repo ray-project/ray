@@ -23,18 +23,18 @@ std::string LanguageString(Language language);
 class RayFunction {
  public:
   RayFunction() {}
-  RayFunction(Language language, const std::vector<std::string> &function_descriptor)
+  RayFunction(Language language, const ray::FunctionDescriptor &function_descriptor)
       : language_(language), function_descriptor_(function_descriptor) {}
 
   Language GetLanguage() const { return language_; }
 
-  const std::vector<std::string> &GetFunctionDescriptor() const {
+  const ray::FunctionDescriptor &GetFunctionDescriptor() const {
     return function_descriptor_;
   }
 
  private:
   Language language_;
-  std::vector<std::string> function_descriptor_;
+  ray::FunctionDescriptor function_descriptor_;
 };
 
 /// Argument of a task.
