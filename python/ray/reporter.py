@@ -9,6 +9,7 @@ import grpc
 import subprocess
 from concurrent import futures
 
+<<<<<<< HEAD
 import sys
 if "psutil" in sys.modules:
     print("please remove psutil")
@@ -25,6 +26,10 @@ except ImportError:
     import sys
     sys.exit(1)
 
+=======
+import ray
+import psutil
+>>>>>>> master
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils

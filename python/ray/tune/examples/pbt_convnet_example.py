@@ -98,17 +98,20 @@ if __name__ == "__main__":
     # __pbt_end__
 
     # __tune_begin__
-    class Stopper:
+    class CustomStopper(tune.Stopper):
         def __init__(self):
             self.should_stop = False
 
-        def stop(self, trial_id, result):
+        def __call__(self, trial_id, result):
             max_iter = 5 if args.smoke_test else 100
             if not self.should_stop and result["mean_accuracy"] > 0.96:
                 self.should_stop = True
             return self.should_stop or result["training_iteration"] >= max_iter
 
-    stopper = Stopper()
+        def stop_all(self):
+            return self.should_stop
+
+    stopper = CustomStopper()
 
     analysis = tune.run(
         PytorchTrainble,
@@ -116,7 +119,7 @@ if __name__ == "__main__":
         scheduler=scheduler,
         reuse_actors=True,
         verbose=1,
-        stop=stopper.stop,
+        stop=stopper,
         export_formats=[ExportFormat.MODEL],
         checkpoint_score_attr="mean_accuracy",
         checkpoint_freq=5,

@@ -194,6 +194,7 @@ class Trial:
         self.custom_trial_name = None
 
         # Checkpointing fields
+        self.saving_to = None
         if remote_checkpoint_dir:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
@@ -210,7 +211,6 @@ class Trial:
         # Restoration fields
         self.restoring_from = None
         self.num_failures = 0
-        self.num_consecutive_start_attempts = 0
 
         # AutoML fields
         self.results = None
@@ -329,9 +329,6 @@ class Trial:
         """Whether the given result meets this trial's stopping criteria."""
         if result.get(DONE):
             return True
-
-        if callable(self.stopping_criterion):
-            return self.stopping_criterion(self.trial_id, result)
 
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
@@ -463,6 +460,10 @@ class Trial:
     def is_restoring(self):
         return self.restoring_from is not None
 
+    @property
+    def is_saving(self):
+        return self.saving_to is not None
+
     def __repr__(self):
         return str(self)
 
@@ -500,6 +501,9 @@ class Trial:
 
         state["runner"] = None
         state["result_logger"] = None
+        # Avoid waiting for events that will never occur on resume.
+        state["resuming_from"] = None
+        state["saving_to"] = None
         if self.result_logger:
             self.result_logger.flush(sync_down=False)
             state["__logger_started__"] = True

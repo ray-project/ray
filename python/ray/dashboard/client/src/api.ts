@@ -184,7 +184,11 @@ export const launchKillActor = (
   actorIpAddress: string,
   actorPort: number
 ) =>
+<<<<<<< HEAD
   get<object>("/api/kill_actor", {
+=======
+  get<string>("/api/kill_actor", {
+>>>>>>> master
     actor_id: actorId,
     ip_address: actorIpAddress,
     port: actorPort

@@ -123,14 +123,6 @@ void Worker::AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
   task_resource_ids_.Release(cpu_resources);
 }
 
-const std::unordered_set<ObjectID> &Worker::GetActiveObjectIds() const {
-  return active_object_ids_;
-}
-
-void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids) {
-  active_object_ids_ = object_ids;
-}
-
 Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
   RAY_CHECK(port_ > 0);
   rpc::AssignTaskRequest request;

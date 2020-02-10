@@ -35,20 +35,23 @@ class MockWorker {
                      const std::vector<ObjectID> &return_ids,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
-    const std::vector<std::string> &function_descriptor =
+    const ray::FunctionDescriptor function_descriptor =
         ray_function.GetFunctionDescriptor();
-    RAY_CHECK(return_ids.size() >= 0 && 1 == function_descriptor.size());
+    RAY_CHECK(function_descriptor->Type() ==
+              ray::FunctionDescriptorType::kPythonFunctionDescriptor);
+    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
 
-    if ("actor creation task" == function_descriptor[0]) {
+    if ("actor creation task" == typed_descriptor->ModuleName()) {
       return Status::OK();
-    } else if ("GetWorkerPid" == function_descriptor[0]) {
+    } else if ("GetWorkerPid" == typed_descriptor->ModuleName()) {
       // Get mock worker pid
       return GetWorkerPid(results);
-    } else if ("MergeInputArgsAsOutput" == function_descriptor[0]) {
+    } else if ("MergeInputArgsAsOutput" == typed_descriptor->ModuleName()) {
       // Merge input args and write the merged content to each of return ids
       return MergeInputArgsAsOutput(args, return_ids, results);
     } else {
-      return Status::TypeError("Unknown function descriptor: " + function_descriptor[0]);
+      return Status::TypeError("Unknown function descriptor: " +
+                               typed_descriptor->ModuleName());
     }
   }
 

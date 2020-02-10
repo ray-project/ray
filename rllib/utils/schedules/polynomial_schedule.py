@@ -30,17 +30,10 @@ class PolynomialSchedule(Schedule):
         self.initial_p = initial_p
         self.power = power
 
-    def value(self, t):
+    def _value(self, t):
         """
         Returns the result of:
         final_p + (initial_p - final_p) * (1 - `t`/t_max) ** power
         """
-        if self.framework == "tf" and tf.executing_eagerly() is False:
-            return tf.train.polynomial_decay(
-                learning_rate=self.initial_p,
-                global_step=t,
-                decay_steps=self.schedule_timesteps,
-                end_learning_rate=self.final_p,
-                power=self.power)
         return self.final_p + (self.initial_p - self.final_p) * (
             1.0 - (t / self.schedule_timesteps))**self.power

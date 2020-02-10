@@ -492,23 +492,38 @@ In the example below, each trial will be stopped either when it completes 10 ite
 
 For more flexibility, you can pass in a function instead. If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean (``True`` if trial should be stopped and ``False`` otherwise).
 
-You can use this to stop all trials after the criteria is fulfilled by any individual trial:
+.. code-block:: python
+
+
+    def stopper(trial_id, result):
+        return result["mean_accuracy"] / result["training_iteration"] > 5
+
+    tune.run(my_trainable, stop=stopper)
+
+Finally, you can implement the ``Stopper`` abstract class for stopping entire experiments. For example, the following example stops all trials after the criteria is fulfilled by any individual trial, and prevents new ones from starting:
 
 .. code-block:: python
 
-    class Stopper:
+    from ray.tune import Stopper
+
+    class CustomStopper(Stopper):
         def __init__(self):
             self.should_stop = False
 
-        def stop(self, trial_id, result):
+        def __call__(self, trial_id, result):
             if not self.should_stop and result['foo'] > 10:
                 self.should_stop = True
             return self.should_stop
 
-    stopper = Stopper()
-    tune.run(my_trainable, stop=stopper.stop)
+        def stop_all(self):
+            """Returns whether to stop trials and prevent new ones from starting."""
+            return self.should_stop
 
-Note that in the above example all trials will not stop immediately, but will do so once their current iterations are complete.
+    stopper = CustomStopper()
+    tune.run(my_trainable, stop=stopper)
+
+
+Note that in the above example the currently running trials will not stop immediately but will do so once their current iterations are complete.
 
 Auto-Filled Results
 -------------------
@@ -602,21 +617,6 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
     )
 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
-
-TBXLogger (TensorboardX)
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Tune provides a logger using `TensorBoardX <https://github.com/lanpa/tensorboardX>`_. You can install tensorboardX via ``pip install tensorboardX`` or ``pip install 'ray[tune]'``. This logger automatically outputs loggers similar to using a default TensorFlow logging format. By default, it will log any scalar value provided via the result dictionary along with HParams information.
-
-.. code-block:: python
-
-    from ray.tune.logger import TBXLogger
-
-    tune.run(
-        MyTrainableClass,
-        name="experiment_name",
-        loggers=[TBXLogger]
-    )
 
 MLFlow
 ~~~~~~
