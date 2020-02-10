@@ -779,10 +779,8 @@ class ActorHandle:
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
-            state = {
-                "core_handle": worker.core_worker.serialize_actor_handle(
-                    self._ray_actor_id)
-            }
+            state = worker.core_worker.serialize_actor_handle(
+                self._ray_actor_id)
         else:
             state = {
                 "actor_language": self._ray_actor_language,
@@ -812,7 +810,7 @@ class ActorHandle:
 
         if hasattr(worker, "core_worker"):
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state["core_handle"])
+                state)
         else:
             return cls(
                 # TODO(swang): Accessing the worker's current task ID is not
