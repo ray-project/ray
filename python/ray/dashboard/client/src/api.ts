@@ -103,7 +103,7 @@ export interface RayletInfoResponse {
           actorTitle: string;
           averageTaskExecutionSpeed: number;
           children: RayletInfoResponse["actors"];
-          currentTaskFuncDesc: string[];
+          // currentTaskFuncDesc: string[];
           ipAddress: string;
           isDirectCall: boolean;
           jobId: string;
@@ -124,8 +124,10 @@ export interface RayletInfoResponse {
         }
       | {
           actorId: string;
+          actorTitle: string;
           requiredResources: { [key: string]: number };
           state: -1;
+          invalidStateType?: 'infeasibleActor' | 'pendingActor';
         };
   };
 }
