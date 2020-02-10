@@ -3,6 +3,7 @@
 
 #include <jni.h>
 #include "ray/common/buffer.h"
+#include "ray/common/function_descriptor.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
@@ -342,6 +343,28 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   env->DeleteLocalRef(java_metadata);
   env->DeleteLocalRef(java_data);
   return java_obj;
+}
+
+// TODO(po): Convert C++ ray::FunctionDescriptor to Java FunctionDescriptor
+inline jobject NativeRayFunctionDescriptorToJavaStringList(
+    JNIEnv *env, const ray::FunctionDescriptor &function_descriptor) {
+  if (function_descriptor->Type() ==
+      ray::FunctionDescriptorType::kJavaFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::JavaFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {typed_descriptor->ClassName(),
+                                                         typed_descriptor->FunctionName(),
+                                                         typed_descriptor->Signature()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  } else if (function_descriptor->Type() ==
+             ray::FunctionDescriptorType::kPythonFunctionDescriptor) {
+    auto typed_descriptor = function_descriptor->As<ray::PythonFunctionDescriptor>();
+    std::vector<std::string> function_descriptor_list = {
+        typed_descriptor->ModuleName(), typed_descriptor->ClassName(),
+        typed_descriptor->FunctionName(), typed_descriptor->FunctionHash()};
+    return NativeStringVectorToJavaStringList(env, function_descriptor_list);
+  }
+  RAY_LOG(FATAL) << "Unknown function descriptor type: " << function_descriptor->Type();
+  return NativeStringVectorToJavaStringList(env, std::vector<std::string>());
 }
 
 #endif  // RAY_COMMON_JAVA_JNI_UTILS_H
