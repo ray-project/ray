@@ -1,6 +1,7 @@
 #ifndef RAY_CONFIG_H
 #define RAY_CONFIG_H
 
+#include <sstream>
 #include <unordered_map>
 
 #include "ray/util/logging.h"
@@ -35,9 +36,13 @@ class RayConfig {
 /// -----------Include ray_config_def.h to set config items.-------------------
 /// A helper macro that helps to set a value to a config item.
 #define RAY_CONFIG(type, name, default_value) \
-  if (pair.first == #name) { name##_ = pair.second; continue; }
+  if (pair.first == #name) {                  \
+    std::istringstream stream(pair.second);   \
+    stream >> name##_;                        \
+    continue;                                 \
+  }
 
-  void initialize(const std::unordered_map<std::string, int> &config_map) {
+  void initialize(const std::unordered_map<std::string, std::string> &config_map) {
     RAY_CHECK(!initialized_);
     for (auto const &pair : config_map) {
       // We use a big chain of if else statements because C++ doesn't allow
