@@ -40,16 +40,12 @@ struct Event {
 
 /// Data writer utilizes what's called an event-driven programming model
 /// that includes two important components: event service and event
-/// queue. In the process of data transmission, the inputer will first define
+/// queue. In the process of data transmission, the writer will first define
 /// the processing method of corresponding events. However, by triggering
 /// different events in actual operation, these events will be put into the event
 /// queue, and finally the event server will schedule the previously registered
 /// processing functions ordered by its priority.
-
-/// The event queue inherits from the universal ring queue. It mainly divides
-/// event into two different levels: normal event and urgent event, and the
-/// total size of the queue is the sum of them.
-class EventQueue : public AbstractRingBuffer<Event> {
+class EventQueue {
  public:
   EventQueue(size_t size) : urgent_(false), capacity_(size), is_started_(true) {}
 
@@ -59,27 +55,29 @@ class EventQueue : public AbstractRingBuffer<Event> {
 
   void Stop();
 
-  void Push(const Event &t) override;
+  void Push(const Event &t);
 
-  void Pop() override;
+  void Pop();
 
   bool Get(Event &evt);
 
   Event PopAndGet();
 
-  Event &Front() override;
+  Event &Front();
 
-  inline bool Empty() const override { return buffer_.empty() && urgent_buffer_.empty(); }
+  inline size_t Capacity() const { return capacity_; }
 
-  inline bool Full() const override {
-    return buffer_.size() + urgent_buffer_.size() == capacity_;
-  }
+  /// It mainly divides event into two different levels: normal event and urgent
+  /// event, and the total size of the queue is the sum of them.
+  inline size_t Size() const { return buffer_.size() + urgent_buffer_.size(); }
 
-  inline size_t Size() const override { return buffer_.size() + urgent_buffer_.size(); }
+ private:
+  /// (NOTE:lingxuan.zlx) There is no strict thread-safe when query empty or full,
+  /// but it can reduce lock contention. In fact, these functions are thread-safe
+  /// when invoked via Push/Pop where buffer size will only be changed in whole process.
+  inline bool Empty() const { return buffer_.empty() && urgent_buffer_.empty(); }
 
-  inline size_t UrgentBufferSize() const { return urgent_buffer_.size(); }
-
-  inline size_t Capacity() const override { return capacity_; }
+  inline bool Full() const { return buffer_.size() + urgent_buffer_.size() == capacity_; }
 
  private:
   std::mutex ring_buffer_mutex_;
@@ -112,17 +110,17 @@ class EventService {
 
   void Push(const Event &event);
 
-  /// A single thread should be invoked to run this loop function, so that
-  /// event server can poll and execute registered callback function event
-  /// one by one.
-  void LoopThreadHandler();
-
   inline size_t EventNums() const { return event_queue_->Size(); }
 
   void RemoveDestroyedChannelEvent(const std::vector<ObjectID> &removed_ids);
 
  private:
   void Execute(Event &event);
+
+  /// A single thread should be invoked to run this loop function, so that
+  /// event server can poll and execute registered callback function event
+  /// one by one.
+  void LoopThreadHandler();
 
  private:
   std::unordered_map<EventType, Handle, EnumTypeHash> event_handle_map_;

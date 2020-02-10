@@ -4,7 +4,7 @@
 namespace ray {
 namespace streaming {
 
-virtual EventQueue::~EventQueue() {
+EventQueue::~EventQueue() {
   is_started_ = false;
   no_full_cv_.notify_all();
   no_empty_cv_.notify_all();
