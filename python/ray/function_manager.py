@@ -267,8 +267,7 @@ class FunctionActorManager:
                 ))
             self._num_task_executions[job_id][function_id] = 0
         except Exception:
-            logger.exception(
-                "Failed to load function {}.".format(function_name))
+            logger.exception("Failed to load function %s.", function_name)
             raise Exception(
                 "Function {} failed to be loaded from local code.".format(
                     function_descriptor))
@@ -428,8 +427,7 @@ class FunctionActorManager:
             else:
                 return actor_class
         except Exception:
-            logger.exception(
-                "Failed to load actor_class %s.".format(class_name))
+            logger.exception("Failed to load actor_class %s.", class_name)
             raise Exception(
                 "Actor {} failed to be imported from local code.".format(
                     class_name))
@@ -475,8 +473,7 @@ class FunctionActorManager:
             with self.lock:
                 actor_class = pickle.loads(pickled_class)
         except Exception:
-            logger.exception(
-                "Failed to load actor class %s.".format(class_name))
+            logger.exception("Failed to load actor class %s.", class_name)
             # The actor class failed to be unpickled, create a fake actor
             # class instead (just to produce error messages and to prevent
             # the driver from hanging).

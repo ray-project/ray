@@ -173,7 +173,7 @@ public class RunManager {
     try {
       createTempDirs();
       if (isHead) {
-        startRedisServer();
+        startGcs();
       }
       startObjectStore();
       startRaylet();
@@ -186,7 +186,7 @@ public class RunManager {
     }
   }
 
-  private void startRedisServer() {
+  private void startGcs() {
     // start primary redis
     String primary = startRedisInstance(rayConfig.nodeIp,
         rayConfig.headRedisPort, rayConfig.headRedisPassword, null);
@@ -207,6 +207,28 @@ public class RunManager {
         String shard = startRedisInstance(rayConfig.nodeIp,
             rayConfig.redisShardPorts[i], rayConfig.headRedisPassword, i);
         client.rpush("RedisShards", shard);
+      }
+    }
+
+    // start gcs server
+    if (System.getenv("RAY_GCS_SERVICE_ENABLED") != null) {
+      String redisPasswordOption = "";
+      if (!Strings.isNullOrEmpty(rayConfig.headRedisPassword)) {
+        redisPasswordOption = rayConfig.headRedisPassword;
+      }
+
+      // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
+      try (FileUtil.TempFile gcsServerFile = FileUtil.getTempFileFromResource("gcs_server")) {
+        gcsServerFile.getFile().setExecutable(true);
+        List<String> command = ImmutableList.of(
+            gcsServerFile.getFile().getAbsolutePath(),
+            String.format("--redis_address=%s", rayConfig.getRedisIp()),
+            String.format("--redis_port=%d", rayConfig.getRedisPort()),
+            String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
+            String.format("--redis_password=%s", redisPasswordOption)
+        );
+
+        startProcess(command, null, "gcs_server");
       }
     }
   }

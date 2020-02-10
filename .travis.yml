@@ -52,10 +52,9 @@ matrix:
         - TESTSUITE=gcs_service
         - JDK='Oracle JDK 8'
         - RAY_GCS_SERVICE_ENABLED=true
-        - RAY_INSTALL_JAVA=1
         - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
       install:
-        - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
@@ -64,6 +63,7 @@ matrix:
       script:
         - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
         - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
+        - ./java/test.sh
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore

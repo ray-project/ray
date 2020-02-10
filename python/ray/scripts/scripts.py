@@ -439,6 +439,7 @@ def stop(force, verbose):
         ["raylet", True],
         ["plasma_store", True],
         ["raylet_monitor", True],
+        ["gcs_server", True],
         ["monitor.py", False],
         ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
