@@ -214,7 +214,9 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         "use_gpu": False,
         "batch_size": 512,
         "backend": "gloo",
-        "config": {"lr": 0.001}
+        "config": {
+            "lr": 0.001
+        }
     }
 
     analysis = tune.run(
