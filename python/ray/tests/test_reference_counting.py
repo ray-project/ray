@@ -271,6 +271,9 @@ def test_basic_serialized_reference(one_worker_100MiB):
     def pending(ref, dep):
         ray.get(ref[0])
 
+    # TODO(edoakes): currently these tests don't work with ray.put() so we need
+    # to return from a task like this instead. Once that is fixed, should have
+    # tests run with both codepaths.
     @ray.remote
     def put():
         return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
