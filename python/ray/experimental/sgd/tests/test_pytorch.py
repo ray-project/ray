@@ -224,7 +224,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         stop={"training_iteration": 2},
         verbose=1)
 
-    # # checks loss decreasing for every trials
+    # checks loss decreasing for every trials
     for path, df in analysis.trial_dataframes.items():
         train_loss1 = df.loc[0, "train_loss"]
         train_loss2 = df.loc[1, "train_loss"]

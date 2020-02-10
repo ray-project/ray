@@ -226,9 +226,10 @@ You can enable mixed precision training for PyTorch by the ``use_fp16`` flag. Th
         use_fp16=True
     )
 
-``Apex`` is a Pytorch extension with NVIDIA-maintained utilities to streamline mixed precision and distributed training. When using ``use_fp16``, you should not manually cast their model or data to .half(). The flag informs the Trainer to call ``amp.initialize`` on the provided models and optimizers underneath the hood, along with using the scaled loss: ``amp.scale_loss(loss, optimizer)``.
+``Apex`` is a Pytorch extension with NVIDIA-maintained utilities to streamline mixed precision and distributed training. When ``use_fp16=True``,
+you should not manually cast your model or data to ``.half()``. The flag informs the Trainer to call ``amp.initialize`` on the created models and optimizers and optimize using the scaled loss: ``amp.scale_loss(loss, optimizer)``.
 
-To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field for the PyTorchTrainer constructor, as follows:
+To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field for the PyTorchTrainer constructor:
 
 .. code-block::
     :emphasize-lines: 7-12
@@ -432,7 +433,7 @@ Note that this is needed if the model creator returns multiple models, optimizer
         }
 
 
-    def custom_validate(config, model, val_iterator, criterion, scheduler):
+    def custom_validate(config, model, val_iterator, criterion, scheduler=None):
         """Runs one standard validation pass over the val_iterator.
 
         Args:

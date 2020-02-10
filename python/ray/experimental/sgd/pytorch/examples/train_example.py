@@ -41,7 +41,7 @@ def optimizer_creator(model, config):
 
 
 def scheduler_creator(optimizer, config):
-    """Returns optimizer."""
+    """Returns a learning rate scheduler wrapping the optimizer."""
     return torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
 
 
