@@ -899,8 +899,8 @@ py_test(
     name = "examples/custom_eval", main = "examples/custom_eval.py",
     tags = ["examples"],
     size = "small",
-    srcs = ["examples/custom_eval.py"]
-    args = ["--custom-eval", "--num-cpus=4"],
+    srcs = ["examples/custom_eval.py"],
+    args = ["--custom-eval", "--num-cpus=4"]
 )
 
 py_test(
