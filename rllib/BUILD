@@ -763,59 +763,16 @@ py_test(
 # rllib/tests/ directory
 # ----------------------------------------
 
+py_test(
+    name = "tests/test_avail_actions_qmix",
+    size = "small",
+    srcs = ["tests/test_avail_actions_qmix.py"]
+)
 
 py_test(
     name = "tests/test_catalog",
     size = "small",
     srcs = ["tests/test_catalog.py"]
-)
-
-py_test(
-    name = "tests/test_optimizers",
-    size = "large",
-    srcs = ["tests/test_optimizers.py"]
-)
-
-py_test(
-    name = "tests/test_filters",
-    size = "small",
-    srcs = ["tests/test_filters.py"]
-)
-
-py_test(
-    name = "tests/test_evaluators",
-    size = "small",
-    srcs = ["tests/test_evaluators.py"]
-)
-
-py_test(
-    name = "tests/test_eager_support",
-    size = "small",
-    srcs = ["tests/test_eager_support.py"]
-)
-
-py_test(
-    name = "tests/test_local",
-    size = "small",
-    srcs = ["tests/test_local.py"]
-)
-
-py_test(
-    name = "tests/test_reproducibility",
-    size = "small",
-    srcs = ["tests/test_reproducibility.py"]
-)
-
-py_test(
-    name = "tests/test_dependency",
-    size = "small",
-    srcs = ["tests/test_dependency.py"]
-)
-
-py_test(
-    name = "tests/test_io",
-    size = "small",
-    srcs = ["tests/test_io.py"]
 )
 
 py_test(
@@ -825,15 +782,35 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_rollout_worker",
+    name = "tests/test_dependency",
     size = "small",
-    srcs = ["tests/test_rollout_worker.py"]
+    srcs = ["tests/test_dependency.py"]
+)
+
+# PR 7086
+#py_test(
+#    name = "tests/test_deterministic_support",
+#    size = "small",
+#    srcs = ["tests/test_deterministic_support.py"]
+#)
+
+py_test(
+    name = "tests/test_eager_support",
+    size = "small",
+    srcs = ["tests/test_eager_support.py"]
 )
 
 py_test(
-    name = "tests/test_nested_spaces",
+    name = "test_env_with_subprocess",
+    main = "tests/test_env_with_subprocess.py",
+    size = "large",
+    srcs = ["tests/test_env_with_subprocess.py"]
+)
+
+py_test(
+    name = "tests/test_evaluators",
     size = "small",
-    srcs = ["tests/test_nested_spaces.py"]
+    srcs = ["tests/test_evaluators.py"]
 )
 
 py_test(
@@ -849,27 +826,9 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_multi_agent_env",
+    name = "tests/test_filters",
     size = "small",
-    srcs = ["tests/test_multi_agent_env.py"]
-)
-
-py_test(
-    name = "tests/test_supported_spaces",
-    size = "large",
-    srcs = ["tests/test_supported_spaces.py"]
-)
-
-py_test(
-    name = "tests/multiagent_pendulum",
-    size = "large",
-    srcs = ["tests/multiagent_pendulum.py"]
-)
-
-py_test(
-    name = "tests/test_avail_actions_qmix",
-    size = "small",
-    srcs = ["tests/test_avail_actions_qmix.py"]
+    srcs = ["tests/test_filters.py"]
 )
 
 py_test(
@@ -879,16 +838,63 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_io",
+    size = "small",
+    srcs = ["tests/test_io.py"]
+)
+
+py_test(
+    name = "tests/test_local",
+    size = "small",
+    srcs = ["tests/test_local.py"]
+)
+
+py_test(
     name = "tests/test_lstm",
     size = "small",
     srcs = ["tests/test_lstm.py"]
 )
 
 py_test(
-    name = "test_env_with_subprocess",
-    main = "tests/test_env_with_subprocess.py",
+    name = "tests/test_multi_agent_env",
+    size = "small",
+    srcs = ["tests/test_multi_agent_env.py"]
+)
+
+py_test(
+    name = "tests/multiagent_pendulum",
     size = "large",
-    srcs = ["tests/test_env_with_subprocess.py"]
+    srcs = ["tests/multiagent_pendulum.py"]
+)
+
+py_test(
+    name = "tests/test_nested_spaces",
+    size = "small",
+    srcs = ["tests/test_nested_spaces.py"]
+)
+
+py_test(
+    name = "tests/test_optimizers",
+    size = "large",
+    srcs = ["tests/test_optimizers.py"]
+)
+
+py_test(
+    name = "tests/test_reproducibility",
+    size = "small",
+    srcs = ["tests/test_reproducibility.py"]
+)
+
+py_test(
+    name = "tests/test_rollout_worker",
+    size = "small",
+    srcs = ["tests/test_rollout_worker.py"]
+)
+
+py_test(
+    name = "tests/test_supported_spaces",
+    size = "large",
+    srcs = ["tests/test_supported_spaces.py"]
 )
 
 # ----------------------------------------
