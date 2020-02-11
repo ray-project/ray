@@ -55,8 +55,8 @@ def check_import(file):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help="File path to check. e.g. '.' or './src'")
-    # TODO: For the future, consider adding a feature to explicitly white-list
-    #       path instead of skipping them.
+    # TODO(simon): For the future, consider adding a feature to explicitly
+    # white-list the path instead of skipping them.
     parser.add_argument(
         "-s", "--skip", action="append", help="Skip certian directory")
     args = parser.parse_args()
