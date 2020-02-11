@@ -32,16 +32,16 @@ subprocess.call([
     "chmod +x hey_linux_amd64"
 ])
 
-ray.init(address=cluster.address, include_webui=True, webui_host='0.0.0.0')
+ray.init(address=cluster.address, include_webui=True, webui_host="0.0.0.0")
 serve.init(blocking=True, kv_store_connector=lambda ns: RayInternalKVStore(ns))
 
 
-@serve.route('/echo')
+@serve.route("/echo")
 @serve.accept_batch
 def echo(_):
     time.sleep(0.01)  # Sleep for 10ms
     ray.show_in_webui(str(serve.context.batch_size), key="Current batch size")
-    return ['hi {}'.format(i) for i in range(serve.context.batch_size)]
+    return ["hi {}".format(i) for i in range(serve.context.batch_size)]
 
 
 print("Scaling to 30 replicas")
