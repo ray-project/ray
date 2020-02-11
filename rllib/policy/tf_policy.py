@@ -59,6 +59,8 @@ class TFPolicy(Policy):
                  loss_inputs,
                  model=None,
                  action_logp=None,
+                 action_dist_class=None,
+                 action_dist_inputs=None,
                  state_inputs=None,
                  state_outputs=None,
                  prev_action_input=None,
@@ -116,6 +118,8 @@ class TFPolicy(Policy):
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
                              if self._action_logp is not None else None)
+        self._action_dist_class = action_dist_class
+        self._action_dist_inputs = action_dist_inputs
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._seq_lens = seq_lens
@@ -255,8 +259,39 @@ class TFPolicy(Policy):
             timestep=timestep
             if timestep is not None else self.global_timestep)
         # Execute session run to get action (and other fetches).
-        ret = builder.get(fetches)
-        return ret[:3]
+        return builder.get(fetches)
+
+    @override(Policy)
+    def compute_log_likelihood(self,
+                               actions,
+                               obs_batch,
+                               state_batches=None,
+                               prev_action_batch=None,
+                               prev_reward_batch=None):
+        if self._action_dist_class is None:
+            raise ValueError("Cannot compute log-prob/likelihood w/o an action"
+                             " distribution!")
+        # Do the forward pass through the model to capture the parameters
+        # for the action distribution, then do a logp on that distribution.
+        builder = TFRunBuilder(self._sess, "compute_log_likelihoods")
+        state_batches = state_batches or []
+        if len(self._state_inputs) != len(state_batches):
+            raise ValueError(
+                "Must pass in RNN state batches for placeholders {}, got {}".
+                format(self._state_inputs, state_batches))
+        builder.add_feed_dict({self._obs_input: obs_batch})
+        # TODO(sven) actions input.
+        if state_batches:
+            builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
+        if self._prev_action_input is not None and \
+           prev_action_batch is not None:
+            builder.add_feed_dict({self._prev_action_input: prev_action_batch})
+        if self._prev_reward_input is not None and \
+           prev_reward_batch is not None:
+            builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
+        builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
+        fetches = builder.add_fetches([self._log_likelihoods])
+        return builder.get(fetches)
 
     @override(Policy)
     def compute_gradients(self, postprocessed_batch):

@@ -168,7 +168,7 @@ class DynamicTFPolicy(TFPolicy):
             action_sampler = action_dist.sample()
             action_logp = action_dist.sampled_action_logp()
 
-        # Phase 1 init
+        # Phase 1 init.
         sess = tf.get_default_session() or tf.Session()
         if get_batch_divisibility_req:
             batch_divisibility_req = get_batch_divisibility_req(self)
@@ -183,6 +183,10 @@ class DynamicTFPolicy(TFPolicy):
             obs_input=obs,
             action_sampler=action_sampler,
             action_logp=action_logp,
+            # TODO(sven): For DQN (and others that provide action_sampler_fn)
+            #  this must be Categorical.
+            action_dist_class=self.dist_class,
+            action_dist_inputs=model_out,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,

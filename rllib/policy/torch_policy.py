@@ -92,6 +92,27 @@ class TorchPolicy(Policy):
                                           self.model, action_dist))
 
     @override(Policy)
+    def compute_log_likelihood(self,
+                               actions,
+                               obs_batch,
+                               state_batches=None,
+                               prev_action_batch=None,
+                               prev_reward_batch=None):
+        with torch.no_grad():
+            input_dict = self._lazy_tensor_dict({
+                SampleBatch.CUR_OBS: obs_batch,
+            })
+            if prev_action_batch:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+            if prev_reward_batch:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+            model_out = self.model(input_dict, state_batches, [1])
+            logits, state = model_out
+            action_dist = self.dist_class(logits, self.model)
+            log_likelihoods = action_dist.logp(actions)
+            return log_likelihoods.cpu().numpy()
+
+    @override(Policy)
     def learn_on_batch(self, postprocessed_batch):
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
 

@@ -614,14 +614,16 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
-  absl::flat_hash_set<ObjectID> memory_object_ids;
-  GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
-
   // TODO(edoakes): what are the desired semantics for deleting from a non-owner?
   // Should we just delete locally or ping the owner and delete globally?
   reference_counter_->DeleteReferences(object_ids);
-  memory_store_->Delete(memory_object_ids, &plasma_object_ids);
+
+  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
+  // objects are always handled by ref counting only.
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  for (const auto &obj_id : object_ids) {
+    plasma_object_ids.insert(obj_id);
+  }
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
 
