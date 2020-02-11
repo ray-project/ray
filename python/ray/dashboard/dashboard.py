@@ -91,7 +91,7 @@ def b64_decode(reply):
 
 
 class DashboardController(BaseDashboardController):
-    """DashboardController contains business logic for running dashboard."""
+    """Perform data fetching and other actions required by HTTP endpoints."""
 
     def __init__(self, redis_address, redis_password, update_frequency=1.0):
         self.node_stats = NodeStats(redis_address, redis_password)

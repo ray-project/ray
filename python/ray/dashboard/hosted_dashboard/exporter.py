@@ -50,4 +50,5 @@ class Exporter(threading.Thread):
         while True:
             time.sleep(self.update_frequency)
             self.export_node_info(self.dashboard_controller.get_node_info())
-            self.export_raylet_info(self.dashboard_controller.get_raylet_info())
+            self.export_raylet_info(
+                self.dashboard_controller.get_raylet_info())
