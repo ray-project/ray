@@ -81,7 +81,6 @@ message TaskSpec {
   bool is_direct_call = 16;
   // Number of times this task may be retried on worker failure.
   int32 max_retries = 17;
-  repeated bytes inlined_ids = 18;
 }
 
 // Argument in the task.
@@ -95,6 +94,8 @@ message TaskArg {
   bytes data = 2;
   // Metadata for pass-by-value arguments.
   bytes metadata = 3;
+  // ObjectIDs that were inlined in the data field.
+  repeated bytes inlined_ids = 4;
 }
 
 // Task spec of an actor creation task.

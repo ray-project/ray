@@ -149,15 +149,18 @@ message GetCoreWorkerStatsReply {
 }
 
 message ObjectReference {
+  // ObjectID that the worker has a reference to.
   bytes object_id = 1;
+  // The task or actor ID of the object's owner.
   bytes owner_id = 2;
+  // The address of the object's owner.
   Address owner_address = 3;
 }
 
 message WaitForRefRemovedRequest {
   // The ID of the worker this message is intended for.
   bytes intended_worker_id = 1;
-  // ObjectID of the object whose removal we are waiting for.
+  // Object whose removal we are waiting for.
   ObjectReference reference = 2;
   // ObjectID that contains object_id. This is used when an ObjectID is stored
   // inside another object ID that we do not own. Then, we must notify the
@@ -166,14 +169,28 @@ message WaitForRefRemovedRequest {
 }
 
 message ObjectReferenceCount {
+  // The reference that the worker has or had a reference to.
   ObjectReference reference = 1;
+  // Whether the worker is still using the object ID locally. This means that
+  // it has a copy of the ObjectID in the language frontend, has a pending task
+  // that depends on the object, and/or owns an ObjectID that is in scope and
+  // that contains the object ID.
   bool has_local_ref = 2;
+  // Any other borrowers that the worker created, by passing the ID again.
   repeated Address borrowers = 3;
+  // The borrowed object ID that contained this object, if any. This is used
+  // for nested object IDs.
   bytes contained_in_borrowed_id = 4;
+  // The object IDs that this object contains, if any. This is used for nested
+  // object IDs.
   repeated bytes contains = 5;
 }
 
 message WaitForRefRemovedReply {
+  // The reference counts for the object that the worker was borrowing, or of
+  // any objects nested inside. The worker should no longer be using the object
+  // ID, but may have accumulated other borrowers or may be using an object ID
+  // that was nested inside.
   repeated ObjectReferenceCount borrower_refs = 1;
 }
 
@@ -195,5 +212,6 @@ service CoreWorkerService {
   rpc KillActor(KillActorRequest) returns (KillActorReply);
   // Get metrics from core workers.
   rpc GetCoreWorkerStats(GetCoreWorkerStatsRequest) returns (GetCoreWorkerStatsReply);
+  // Wait for a borrower to finish using an object. Sent by the object's owner.
   rpc WaitForRefRemoved(WaitForRefRemovedRequest) returns (WaitForRefRemovedReply);
 }

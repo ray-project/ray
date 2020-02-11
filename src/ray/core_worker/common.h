@@ -45,16 +45,16 @@ class TaskArg {
   /// \param[in] object_id Id of the argument.
   /// \return The task argument.
   static TaskArg PassByReference(const ObjectID &object_id) {
-    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr);
+    return TaskArg(std::make_shared<ObjectID>(object_id), nullptr, {});
   }
 
   /// Create a pass-by-value task argument.
   ///
   /// \param[in] value Value of the argument.
   /// \return The task argument.
-  static TaskArg PassByValue(const std::shared_ptr<RayObject> &value) {
+  static TaskArg PassByValue(const std::shared_ptr<RayObject> &value, const std::vector<ObjectID> &inlined_ids) {
     RAY_CHECK(value) << "Value can't be null.";
-    return TaskArg(nullptr, value);
+    return TaskArg(nullptr, value, inlined_ids);
   }
 
   /// Return true if this argument is passed by reference, false if passed by value.
@@ -72,14 +72,20 @@ class TaskArg {
     return *value_;
   }
 
+  const std::vector<ObjectID> &GetInlinedIds() const {
+    RAY_CHECK(value_ != nullptr) << "Only by-value arguments can have inlined IDs";
+    return inlined_ids_;
+  }
+
  private:
-  TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<RayObject> value)
-      : id_(id), value_(value) {}
+  TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<RayObject> value, const std::vector<ObjectID> &inlined_ids)
+      : id_(id), value_(value), inlined_ids_(inlined_ids) {}
 
   /// Id of the argument if passed by reference, otherwise nullptr.
   const std::shared_ptr<ObjectID> id_;
   /// Value of the argument if passed by value, otherwise nullptr.
   const std::shared_ptr<RayObject> value_;
+  const std::vector<ObjectID> inlined_ids_;
 };
 
 /// Options for all tasks (actor and non-actor) except for actor creation.

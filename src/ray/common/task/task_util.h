@@ -50,13 +50,6 @@ class TaskSpecBuilder {
     return *this;
   }
 
-  TaskSpecBuilder &AddInlinedIds(const std::vector<ObjectID> &inlined_ids) {
-    for (const auto &inlined_id : inlined_ids) {
-      message_->add_inlined_ids(inlined_id.Binary());
-    }
-    return *this;
-  }
-
   /// Add a by-reference argument to the task.
   ///
   /// \param arg_id Id of the argument.
@@ -68,21 +61,9 @@ class TaskSpecBuilder {
 
   /// Add a by-value argument to the task.
   ///
-  /// \param data String object that contains the data.
-  /// \param metadata String object that contains the metadata.
-  /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const std::string &data, const std::string &metadata) {
-    auto arg = message_->add_args();
-    arg->set_data(data);
-    arg->set_metadata(metadata);
-    return *this;
-  }
-
-  /// Add a by-value argument to the task.
-  ///
   /// \param value the RayObject instance that contains the data and the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const RayObject &value) {
+  TaskSpecBuilder &AddByValueArg(const RayObject &value, const std::vector<ObjectID> &inlined_ids) {
     auto arg = message_->add_args();
     if (value.HasData()) {
       const auto &data = value.GetData();
@@ -91,6 +72,9 @@ class TaskSpecBuilder {
     if (value.HasMetadata()) {
       const auto &metadata = value.GetMetadata();
       arg->set_metadata(metadata->Data(), metadata->Size());
+    }
+    for (const auto &inlined_id : inlined_ids) {
+      arg->add_inlined_ids(inlined_id.Binary());
     }
     return *this;
   }

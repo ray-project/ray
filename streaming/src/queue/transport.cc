@@ -23,15 +23,15 @@ void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
         std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
     args.emplace_back(TaskArg::PassByValue(
-        std::make_shared<RayObject>(std::move(dummyBuffer), meta, true)));
+        std::make_shared<RayObject>(std::move(dummyBuffer), meta, true), {}));
   }
   args.emplace_back(
-      TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true)));
+      TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true), {}));
 
   STREAMING_CHECK(core_worker_ != nullptr);
   std::vector<std::shared_ptr<RayObject>> results;
   ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, function, args, options,
-                                                 {}, &return_ids);
+                                                 &return_ids);
   if (!st.ok()) {
     STREAMING_LOG(ERROR) << "SubmitActorTask failed. " << st;
   }

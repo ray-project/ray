@@ -270,7 +270,7 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
         out.push_back(s)
     return out
 
-cdef c_vector[CObjectID] prepare_args(
+cdef void prepare_args(
         CoreWorker core_worker, list args, c_vector[CTaskArg] *args_vector):
     cdef:
         size_t size
@@ -298,20 +298,19 @@ cdef c_vector[CObjectID] prepare_args(
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 write_serialized_object(serialized_arg, arg_data)
-                args_vector.push_back(
-                    CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(serialized_arg.metadata))))
                 for obj_id in serialized_arg.contained_object_ids:
                     inlined_ids.push_back(obj_id.native())
+                args_vector.push_back(
+                    CTaskArg.PassByValue(make_shared[CRayObject](
+                        arg_data, string_to_buffer(serialized_arg.metadata)
+                        ), inlined_ids))
+                inlined_ids.clear()
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference(
                         (CObjectID.FromBinary(
                             core_worker.put_serialized_cobject(
                                 serialized_arg)))))
-    # The core worker must pin the inlined IDs until the task replies to notify
-    # us whether it is borrowing them or not.
-    return inlined_ids
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -801,12 +800,11 @@ cdef class CoreWorker:
                 num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            inlined_ids = prepare_args(self, args, &args_vector)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids,
-                    inlined_ids,
                     max_retries))
 
             return VectorToObjectIDs(return_ids)
@@ -834,7 +832,7 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            inlined_ids = prepare_args(self, args, &args_vector)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
@@ -843,7 +841,7 @@ cdef class CoreWorker:
                         max_reconstructions, is_direct_call, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
-                    inlined_ids, &c_actor_id))
+                    &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
 
@@ -868,13 +866,13 @@ cdef class CoreWorker:
             task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-            inlined_ids = prepare_args(self, args, &args_vector)
+            prepare_args(self, args, &args_vector)
 
             with nogil:
                 check_status(self.core_worker.get().SubmitActorTask(
                       c_actor_id,
                       ray_function,
-                      args_vector, task_options, inlined_ids, &return_ids))
+                      args_vector, task_options, &return_ids))
 
             return VectorToObjectIDs(return_ids)
 

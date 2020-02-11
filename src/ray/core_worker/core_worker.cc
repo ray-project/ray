@@ -20,8 +20,7 @@ void BuildCommonTaskSpec(
     const std::vector<ray::TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
-    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids,
-    const std::vector<ObjectID> &inlined_ids) {
+    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
@@ -33,11 +32,9 @@ void BuildCommonTaskSpec(
     if (arg.IsPassedByReference()) {
       builder.AddByRefArg(arg.GetReference());
     } else {
-      builder.AddByValueArg(arg.GetValue());
+      builder.AddByValueArg(arg.GetValue(), arg.GetInlinedIds());
     }
   }
-
-  builder.AddInlinedIds(inlined_ids);
 
   // Compute return IDs.
   return_ids->resize(num_returns);
@@ -692,7 +689,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
                               std::vector<ObjectID> *return_ids,
-                              const std::vector<ObjectID> &inlined_ids, int max_retries) {
+                              int max_retries) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -707,7 +704,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       function, args, task_options.num_returns, task_options.resources,
       required_resources,
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
-      return_ids, inlined_ids);
+      return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
     task_manager_->AddPendingTask(GetCallerId(), rpc_address_, task_spec, max_retries);
@@ -720,7 +717,6 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
-                               const std::vector<ObjectID> &inlined_ids,
                                ActorID *return_actor_id) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
@@ -736,7 +732,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.placement_resources,
                       actor_creation_options.is_direct_call ? TaskTransportType::DIRECT
                                                             : TaskTransportType::RAYLET,
-                      &return_ids, inlined_ids);
+                      &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
@@ -765,7 +761,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
                                    const std::vector<TaskArg> &args,
                                    const TaskOptions &task_options,
-                                   const std::vector<ObjectID> &inlined_ids,
                                    std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
@@ -787,7 +782,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
-                      required_resources, transport_type, return_ids, inlined_ids);
+                      required_resources, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);
@@ -945,7 +940,7 @@ Status CoreWorker::AllocateReturnObjects(
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
-                               ReferenceCounter::ReferenceTableProto *borrower_refs) {
+                               ReferenceCounter::ReferenceTableProto *borrowed_refs) {
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -964,23 +959,15 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   std::vector<std::shared_ptr<RayObject>> args;
   std::vector<ObjectID> arg_reference_ids;
-  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
-
-  std::vector<ObjectID> pinned_ids;
-  for (const auto &id : arg_reference_ids) {
-    if (!id.IsNil()) {
-      pinned_ids.push_back(id);
-    }
-  }
-  for (const auto &inlined_id_str : task_spec.GetMessage().inlined_ids()) {
-    const auto inlined_id = ObjectID::FromBinary(inlined_id_str);
-    if (!reference_counter_->HasReference(inlined_id)) {
-      pinned_ids.push_back(inlined_id);
-    }
-  }
-  for (const auto &pinned_id : pinned_ids) {
-    RAY_LOG(DEBUG) << "ADD " << pinned_id << " 1";
-    reference_counter_->AddLocalReference(pinned_id);
+  // This includes all IDs that were passed by reference and any IDs that were
+  // inlined in the task spec. These references will be pinned during the task
+  // execution and unpinned once the task completes. We will notify the caller
+  // about any IDs that we are still borrowing by the time the task completes.
+  std::vector<ObjectID> borrowed_ids;
+  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids, &borrowed_ids));
+  // Pin the borrowed IDs for the duration of the task.
+  for (const auto &borrowed_id : borrowed_ids) {
+    reference_counter_->AddLocalReference(borrowed_id);
   }
 
   const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
@@ -1027,11 +1014,15 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
-  reference_counter_->GetAndStripBorrowedRefs(pinned_ids, borrower_refs);
+  // Get the reference counts for any IDs that we borrowed during this task and
+  // return them to the caller. This will notify the caller of any IDs that we
+  // (or a nested task) are still borrowing. It will also any new IDs that were
+  // contained in a borrowed ID that we (or a nested task) are now borrowing.
+  reference_counter_->GetAndStripBorrowedRefs(borrowed_ids, borrowed_refs);
+  // Unpin the borrowed IDs.
   std::vector<ObjectID> deleted;
-  for (const auto &pinned_id : pinned_ids) {
-    RAY_LOG(DEBUG) << "REMOVE" << pinned_id << " 1";
-    reference_counter_->RemoveLocalReference(pinned_id, &deleted);
+  for (const auto &borrowed_id : borrowed_ids) {
+    reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
   }
   if (ref_counting_enabled_) {
     memory_store_->Delete(deleted);
@@ -1057,7 +1048,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
 Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
                                         std::vector<std::shared_ptr<RayObject>> *args,
-                                        std::vector<ObjectID> *arg_reference_ids) {
+                                        std::vector<ObjectID> *arg_reference_ids,
+                                        std::vector<ObjectID> *borrowed_ids) {
   auto num_args = task.NumArgs();
   args->resize(num_args);
   arg_reference_ids->resize(num_args);
@@ -1081,10 +1073,15 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       args->at(i) = std::make_shared<RayObject>(data, metadata, /*copy_data*/ true);
       int count = task.ArgIdCount(i);
       if (count == 1) {
-        arg_reference_ids->at(i) = task.ArgId(i, 0);
+        const auto &arg_id = task.ArgId(i, 0);
+        arg_reference_ids->at(i) = arg_id;
+        borrowed_ids->push_back(arg_id);
       } else {
         RAY_CHECK(count == 0);
         arg_reference_ids->at(i) = ObjectID::Nil();
+        for (const auto &inlined_id : task.ArgInlinedIds(i)) {
+          borrowed_ids->push_back(inlined_id);
+        }
       }
     } else {
       // pass by reference.
@@ -1097,9 +1094,11 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
         RAY_CHECK_OK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                         task.ArgId(i, 0)));
       }
-      by_ref_ids.insert(task.ArgId(i, 0));
-      by_ref_indices.emplace(task.ArgId(i, 0), i);
-      arg_reference_ids->at(i) = task.ArgId(i, 0);
+      const auto &arg_id = task.ArgId(i, 0);
+      by_ref_ids.insert(arg_id);
+      by_ref_indices.emplace(arg_id, i);
+      arg_reference_ids->at(i) = arg_id;
+      borrowed_ids->push_back(arg_id);
     }
   }
 

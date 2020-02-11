@@ -26,9 +26,8 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
         task_deps.push_back(spec.ArgId(i, j));
       }
     }
-  }
-  for (const auto &inlined_id : spec.GetMessage().inlined_ids()) {
-    task_deps.push_back(ObjectID::FromBinary(inlined_id));
+    const auto &inlined_ids = spec.ArgInlinedIds(i);
+    task_deps.insert(task_deps.end(), inlined_ids.begin(), inlined_ids.end());
   }
   reference_counter_->AddSubmittedTaskReferences(task_deps);
 
@@ -202,9 +201,8 @@ void TaskManager::RemovePlasmaSubmittedTaskReferences(
       const auto &id = spec.ArgId(i, 0);
       plasma_dependencies.push_back(id);
     }
-  }
-  for (const auto &inlined_id : spec.GetMessage().inlined_ids()) {
-    plasma_dependencies.push_back(ObjectID::FromBinary(inlined_id));
+    const auto &inlined_ids = spec.ArgInlinedIds(i);
+    plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(), inlined_ids.end());
   }
   RemoveSubmittedTaskReferences(plasma_dependencies, borrower_addr, borrower_refs);
 }
