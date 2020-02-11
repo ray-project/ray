@@ -28,11 +28,12 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
         runtime = new RayDevRuntime(rayConfig, functionManager);
       } else {
         RunManager manager = null;
-        if (rayConfig.getRedisAddress() == null) {
+        final boolean startHeadProcesses = (rayConfig.getRedisAddress() == null);
+        if (startHeadProcesses) {
           manager = new RunManager(rayConfig);
           manager.startRayProcesses(true);
         }
-        RayNativeRuntime.setup(rayConfig);
+        RayNativeRuntime.setup(startHeadProcesses, rayConfig);
 
         if (rayConfig.workerMode == WorkerType.DRIVER) {
           runtime = new RayNativeRuntime(manager, rayConfig, functionManager);
