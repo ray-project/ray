@@ -446,7 +446,7 @@ def rsync(config_file,
           target,
           override_cluster_name,
           down,
-          sync_workers=False):
+          all_nodes=False):
     """Rsyncs files.
 
     Arguments:
@@ -455,7 +455,7 @@ def rsync(config_file,
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
-        sync_workers: whether to sync worker nodes in addition to the head node
+        all_nodes: whether to sync worker nodes in addition to the head node
     """
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
@@ -468,7 +468,7 @@ def rsync(config_file,
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         nodes = []
-        if sync_workers:
+        if all_nodes:
             # technically we re-open the provider for no reason
             # in get_worker_nodes but it's cleaner this way
             # and _get_head_node does this too
