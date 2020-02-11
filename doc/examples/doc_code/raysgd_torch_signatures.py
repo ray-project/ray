@@ -88,12 +88,9 @@ import torch
 def scheduler_creator(optimizers, config):
     """Constructor of one or more Torch optimizer schedulers.
 
-    Note that optionally, you can pass in a Torch Scheduler constructor directly
-    into the PyTorchTrainer.
-
     Args:
-        optimizers: The return values from ``optimizer_creator``. This can be one
-            or more torch optimizer objects.
+        optimizers: The return values from ``optimizer_creator``.
+            This can be one or more torch optimizer objects.
         config: Configuration dictionary passed into ``PyTorchTrainer``
 
     Returns:
