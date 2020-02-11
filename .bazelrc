@@ -11,6 +11,9 @@ build --action_env=USE_CLANG_CL=1
 build:linux   --compilation_mode=opt
 build:macos   --compilation_mode=opt
 build:windows --compilation_mode=fastbuild
+# This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
+build:linux --force_pic
+build:macos --force_pic
 # TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
