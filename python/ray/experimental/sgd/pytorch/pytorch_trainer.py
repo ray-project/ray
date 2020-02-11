@@ -74,13 +74,12 @@ class PyTorchTrainer:
             takes in the provided config for customization or a subclass
             of ``torch.nn.modules.loss._Loss``, which is most Pytorch
             loss classes. For example, ``loss_creator=torch.nn.BCELoss``.
-        scheduler_creator (torch.optim.*scheduler | optimizers, dict -> loss):
-            A constructor function for the scheduler loss. This can be either
+        scheduler_creator (optimizers, dict -> loss):
+            A constructor function for the scheduler loss. This is
             a function that takes in the generated optimizers (from
-            ``optimizer_creator``) provided config for customization
-            or a subclass of ``torch.optim.lr_scheduler._LRScheduler``,
-            which is most Pytorch learning rate schedulers. Be sure to set
-            ``scheduler_step_freq`` to increment the scheduler correctly.
+            ``optimizer_creator``) provided config for customization.
+            Be sure to set ``scheduler_step_freq`` to increment the
+            scheduler correctly.
         train_function: Custom function for training. This function
             will be executed in parallel across all workers at once. The
             function needs to take in (models, train_dataloader, criterion,

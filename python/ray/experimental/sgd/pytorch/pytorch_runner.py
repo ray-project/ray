@@ -114,12 +114,8 @@ class PyTorchRunner:
     def _create_schedulers_if_available(self):
         if not self.scheduler_creator:
             return
-        if inspect.isclass(self.scheduler_creator) and issubclass(
-                self.scheduler_creator, torch.optim.lr_scheduler._LRScheduler):
-            self.schedulers = self.scheduler_creator(self.given_optimizers)
-        else:
-            self.schedulers = self.scheduler_creator(self.given_optimizers,
-                                                     self.config)
+        self.schedulers = self.scheduler_creator(self.given_optimizers,
+                                                 self.config)
 
         if not isinstance(self.schedulers, collections.Iterable):
             self.schedulers = [self.schedulers]

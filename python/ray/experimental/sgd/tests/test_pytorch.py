@@ -201,6 +201,26 @@ def test_scheduler_freq(ray_start_2_cpus, scheduler_freq):  # noqa: F811
     trainer.shutdown()
 
 
+def test_scheduler_validate(ray_start_2_cpus):  # noqa: F811
+    def custom_train(config, model, dataloader, criterion, optimizer,
+                     scheduler):
+        return {"done": 1}
+
+    from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+    trainer = PyTorchTrainer(
+        model_creator,
+        data_creator,
+        optimizer_creator,
+        loss_creator=lambda config: nn.MSELoss(),
+        scheduler_creator=lambda optimizer, cfg: ReduceLROnPlateau(optimizer))
+    trainer.update_scheduler(0.5)
+    trainer.update_scheduler(0.5)
+    assert all(
+        trainer.apply_all_workers(lambda r: r.schedulers[0].last_epoch == 2))
+    trainer.shutdown()
+
+
 @pytest.mark.parametrize("num_replicas", [1, 2]
                          if dist.is_available() else [1])
 def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
