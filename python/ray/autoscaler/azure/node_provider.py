@@ -5,24 +5,11 @@ from uuid import uuid4
 from azure.common.client_factory import get_client_from_auth_file
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
-# from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
+from ray.autoscaler.node_provider import NodeProvider
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
 
-TAG_RAY_CLUSTER_NAME = "ray-cluster"
-TAG_RAY_NODE_NAME = "raynode"
 INSTANCE_NAME_MAX_LEN = 16
 INSTANCE_NAME_UUID_LEN = 4
-IP_CONFIG_NAME = "ray-ip-config"
-NIC_NAME = "ray-nic"
-
-
-# FIXME: reset this after testing
-# from ray.autoscaler.node_provider import NodeProvider
-class NodeProvider():
-    def __init__(self, provider_config, cluster_name):
-        self.provider_config = provider_config
-        self.cluster_name = cluster_name
-        pass
-
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +45,52 @@ class AzureNodeProvider(NodeProvider):
         self.lock = RLock()
 
         # cache node objects
-        self.all_nodes = {}
-        self.live_nodes = {}
+        self.cached_nodes = {}
+
+    def _get_filtered_nodes(self, tag_filters):
+        def match_tags(vm):
+            for k, v in tag_filters.items():
+                if vm.tags.get(k) != v:
+                    return False
+            return True
+
+        vms = self.compute_client.virtual_machines.list(
+            resource_group_name=self.provider_config["resource_group"])
+
+        nodes = [self._extract_metadata(vm) for vm in filter(match_tags, vms)]
+        self.cached_nodes = {vm["name"]: vm for vm in nodes}
+        return self.cached_nodes
+
+    def _extract_metadata(self, vm):
+        # get tags
+        metadata = {"name": vm.name, "tags": vm.tags}
+
+        # get status
+        resource_group = self.provider_config["resource_group"]
+        instance = self.compute_client.virtual_machines.instance_view(
+            resource_group_name=resource_group, vm_name=vm.name).as_dict()
+        for status in instance["statuses"]:
+            code, state = status["code"].split("/")
+            # skip provisioning status
+            if code == "PowerState":
+                metadata["status"] = state
+                break
+
+        # get ip data
+        nic_id = vm.network_profile.network_interfaces[0].id
+        metadata["nic_name"] = nic_id.split("/")[-1]
+        nic = self.network_client.network_interfaces.get(
+            resource_group_name=resource_group,
+            network_interface_name=metadata["nic_name"])
+        ip_config = nic.ip_configurations[0]
+        public_ip_id = ip_config.public_ip_address.id
+        metadata["public_ip_name"] = public_ip_id.split("/")[-1]
+        public_ip = self.network_client.public_ip_addresses.get(
+            resource_group_name=resource_group,
+            public_ip_address_name=metadata["public_ip_name"])
+        metadata["external_ip"] = ip_config.private_ip_address
+        metadata["internal_ip"] = public_ip.ip_address
+        return metadata
 
     @synchronized
     def non_terminated_nodes(self, tag_filters):
@@ -74,46 +105,11 @@ class AzureNodeProvider(NodeProvider):
             >>> provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
             ["node-1", "node-2"]
         """
-        resource_group = self.provider_config["resource_group"]
-        vms = self.compute_client.virtual_machines.list(
-            resource_group_name=resource_group)
-
-        def match_tags(vm):
-            for k, v in tag_filters.items():
-                if vm.tags.get(k) != v:
-                    return False
-            return True
-
-        def extract_metadata(vm):
-            # get tags
-            metadata = {"tags": vm.tags}
-
-            # get status
-            instance = self.compute_client.virtual_machines.instance_view(
-                resource_group_name=resource_group, vm_name=vm.name).as_dict()
-            for status in instance["statuses"]:
-                code, state = status["code"].split("/")
-                # skip provisioning status
-                if code == "PowerState":
-                    metadata["status"] = state
-                    break
-
-            # TODO: get ip data
-            metadata["external_ip"] = 0
-            metadata["internal_ip"] = 0
-            return metadata
-
-        self.all_nodes = {
-            vm.name: extract_metadata(vm)
-            for vm in filter(match_tags, vms)
-        }
-
-        # remove terminated nodes from list
-        self.live_nodes = {
-            k: v
-            for k, v in self.all_nodes.items() if v["status"] != "deallocated"
-        }
-        return list(self.cached_nodes.keys())
+        nodes = self._get_filtered_nodes(tag_filters=tag_filters)
+        return [
+            k for k, v in nodes.items()
+            if not v["status"].startswith("deallocat")
+        ]
 
     @synchronized
     def is_running(self, node_id):
@@ -123,8 +119,9 @@ class AzureNodeProvider(NodeProvider):
     @synchronized
     def is_terminated(self, node_id):
         """Return whether the specified node is terminated."""
-        return self._get_cached_node(
-            node_id=node_id)["status"] == "deallocated"
+        return self._get_cached_node(node_id=node_id)["status"] in [
+            "deallocating", "deallocated"
+        ]
 
     @synchronized
     def node_tags(self, node_id):
@@ -144,11 +141,10 @@ class AzureNodeProvider(NodeProvider):
     @synchronized
     def create_node(self, node_config, tags, count):
         """Creates a number of nodes within the namespace."""
-        # TODO: restart de-allocated nodes if possible
+        # TODO: restart deallocated nodes if possible
         location = self.provider_config["location"]
-        resource_group = self.provider_confg["resource_group"]
-        subnet_id = self.provider_confg["subnet_id"]
-        ssh_key_data = self.provider["ssh_public_key_data"]
+        resource_group = self.provider_config["resource_group"]
+        subnet_id = self.provider_config["subnet_id"]
 
         config = node_config.copy()
         config_tags = config.get("tags", {})
@@ -178,7 +174,7 @@ class AzureNodeProvider(NodeProvider):
             nic_params = {
                 "location": location,
                 "ip_configurations": [{
-                    "name": IP_CONFIG_NAME,
+                    "name": uuid4().hex,
                     "public_ip_address": public_ip_address,
                     "subnet": {
                         "id": subnet_id
@@ -187,29 +183,17 @@ class AzureNodeProvider(NodeProvider):
             }
             nic = self.network_client.network_interfaces.create_or_update(
                 resource_group_name=resource_group,
-                network_interface_name=NIC_NAME,
+                network_interface_name="{}-nic".format(vm_name),
                 parameters=nic_params).result()
 
-            # update config with nested ssh config parameters
+            # update vm config with network parameters
             config.update({
                 "network_profile": {
                     "network_interfaces": [{
                         "id": nic.id
                     }]
-                },
-                "os_profile": {
-                    "computer_name": TAG_RAY_NODE_NAME,
-                    "linux_configuration": {
-                        "ssh": {
-                            "public_keys": [{
-                                "key_data": ssh_key_data,
-                                "path": "/home/ubuntu/.ssh/authorized_keys"
-                            }]
-                        }
-                    }
                 }
             })
-
             self.compute_client.virtual_machines.create_or_update(
                 resource_group_name=self.provider_config["resource_group"],
                 vm_name=vm_name,
@@ -218,46 +202,57 @@ class AzureNodeProvider(NodeProvider):
     @synchronized
     def set_node_tags(self, node_id, tags):
         """Sets the tag values (string dict) for the specified node."""
-        return self.compute_client.virtual_machines.update(
+        node_tags = self._get_cached_node(node_id)["tags"]
+        node_tags.update(tags)
+        self.cached_nodes[node_id]["tags"] = node_tags
+        self.compute_client.virtual_machines.update(
             resource_group_name=self.provider_config["resource_group"],
             vm_name=node_id,
-            parameters={
-                "tags": tags
-            }).result()
+            parameters={"tags": node_tags})
 
     @synchronized
     def terminate_node(self, node_id):
         """Terminates the specified node."""
-        return self.compute_client.virtual_machines.deallocate(
+        self.compute_client.virtual_machines.deallocate(
             resource_group_name=self.provider_config["resource_group"],
             vm_name=node_id)
 
     @synchronized
     def cleanup(self):
         """Delete all created VM resources"""
-        # TODO: delete associated ip addresses, nics, and disks
-        self.non_terminated_nodes({})
-        for node_id in self.all_nodes.keys():
+        resource_group = self.provider_config["resource_group"]
+        nodes = self._get_filtered_nodes(
+            tag_filters={TAG_RAY_CLUSTER_NAME: self.cluster_name})
+        for node, metadata in nodes.items():
             self.compute_client.virtual_machines.delete(
-                resource_group_name=self.provider_config["resource_group"],
-                vm_name=node_id)
+                resource_group_name=resource_group, vm_name=node).wait()
+            self.network_client.network_interfaces.delete(
+                resource_group_name=resource_group,
+                network_interface_name=metadata["nic_name"])
+            self.network_client.public_ip_addresses.delete(
+                resource_group_name=resource_group,
+                public_ip_address_name=metadata["public_ip_name"])
+            vm = self.compute_client.virtual_machines.get(
+                resource_group_name=resource_group, vm_name=node)
+            disks = vm.storage_profile.data_disks
+            disks.append(vm.storage_profile.os_disk)
+            for disk in disks:
+                self.compute_client.disks.delete(
+                    resource_group_name=resource_group, disk_name=disk.name)
 
     @synchronized
     def _get_node(self, node_id):
-        if node_id in self.live_nodes:
-            return self.live_nodes[node_id]
-        elif node_id in self.all_nodes:
-            return self.all_nodes[node_id]
+        if node_id in self.cached_nodes:
+            return self.cached_nodes[node_id]
 
-        return self.compute_client.virtual_machines.get(
+        vm = self.compute_client.virtual_machines.get(
             resource_group_name=self.provider_config["resource_group"],
-            vm_name=node_id).result()
+            vm_name=node_id)
+        return self._extract_metadata(vm)
 
     def _get_cached_node(self, node_id):
-        if node_id in self.live_nodes:
-            return self.live_nodes[node_id]
-        elif node_id in self.all_nodes:
-            return self.all_nodes[node_id]
+        if node_id in self.cached_nodes:
+            return self.cached_nodes[node_id]
 
-        self.non_terminated_nodes({})  # Side effect: updates cache
+        self._get_filtered_nodes({})  # Side effect: updates cache
         return self._get_node(node_id)

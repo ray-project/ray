@@ -53,7 +53,9 @@ provider:
     type: azure
     location: westus2
     service_principal: http://ray-service
-    # set AZURE_CLIENT_SECRET environment variable to use an existing service principal
+    # create credential json file to use an existing service principal 
+    # https://docs.microsoft.com/en-us/azure/python/python-sdk-azure-authenticate#mgmt-auth-file
+    # e.g. ~/.azure/azure_credentials_ray-service.json
     resource_group: ray-cluster
     # set subscription id otherwise the default from az cli will be used
     # subscription_id: 00000000-0000-0000-0000-000000000000
@@ -63,6 +65,7 @@ auth:
     ssh_user: ubuntu
 # By default Ray creates a new private keypair, but you can also use your own.
 #    ssh_private_key: /path/to/your/key.pem
+# This should match the public key configuration in each head/worker nodes
 
 # Provider-specific config for the head node, e.g. instance type. By default
 # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
@@ -100,8 +103,13 @@ worker_nodes:
             offer: linux-data-science-vm-ubuntu
             sku: linuxdsvmubuntu
             version: latest
+        # run workers on spot instances by default
+        priority: Spot
+        eviction_policy: Deallocate
+        billing_profile:
+            max_price: -1
 
-        # You can provision additional disk space with a conf as follows
+        # You can provision additional disk space as follows
         # data_disks:
         #    - disk_size_gb: 1024
 
