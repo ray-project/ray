@@ -55,7 +55,7 @@ public class JniUtils {
 
   public static synchronized void loadLibraryByPath(String libraryName, String libraryPath) {
     if (loadedLibs.contains(libraryName)) {
-      return ;
+      return;
     }
     LOGGER.debug("Loading native library {}.", libraryName);
     // Load native library.

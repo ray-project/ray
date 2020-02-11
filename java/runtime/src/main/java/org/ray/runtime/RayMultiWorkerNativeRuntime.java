@@ -18,7 +18,6 @@ import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.generated.Common.WorkerType;
-import org.ray.runtime.runner.RunManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

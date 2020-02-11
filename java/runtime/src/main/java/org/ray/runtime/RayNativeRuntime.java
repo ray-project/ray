@@ -53,14 +53,16 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     // libraries such as libstreaming_java.so.
     // See BUILD.bazel:libcore_worker_library_java.so
     JniUtils.loadLibraryByPath("core_worker_library_java",
-        BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY).getAbsolutePath());
+        BinaryFileUtil.getFile(
+            rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY).getAbsolutePath());
     LOGGER.debug("Native libraries loaded.");
     resetLibraryPath(rayConfig);
 
     nativeSetup(rayConfig.logDir);
   }
 
-  public RayNativeRuntime(RunManager manager, RayConfig rayConfig, FunctionManager functionManager) {
+  public RayNativeRuntime(
+      RunManager manager, RayConfig rayConfig, FunctionManager functionManager) {
     super(rayConfig, functionManager);
     this.manager = manager;
     // Reset library path at runtime.

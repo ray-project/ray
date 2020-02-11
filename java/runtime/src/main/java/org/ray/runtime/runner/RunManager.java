@@ -104,7 +104,8 @@ public class RunManager {
 
       // Remove session_latest first, and then create a new symbolic link for session_latest.
       final String parentOfSessionDir = new File(rayConfig.sessionDir).getParent();
-      final File sessionLatest = new File(String.format("%s/%s", parentOfSessionDir, SESSION_LATEST));
+      final File sessionLatest = new File(
+          String.format("%s/%s", parentOfSessionDir, SESSION_LATEST));
       if (sessionLatest.exists()) {
         sessionLatest.delete();
       }
@@ -233,7 +234,8 @@ public class RunManager {
       }
 
       // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
-      final File gcsServerFile = BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
+      final File gcsServerFile = BinaryFileUtil.getFile(
+          rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
       Preconditions.checkState(gcsServerFile.setExecutable(true));
       List<String> command = ImmutableList.of(
           gcsServerFile.getAbsolutePath(),
@@ -247,7 +249,8 @@ public class RunManager {
   }
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
-    final File redisServerFile = BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
+    final File redisServerFile = BinaryFileUtil.getFile(
+        rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
     Preconditions.checkState(redisServerFile.setExecutable(true));
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.
@@ -260,7 +263,8 @@ public class RunManager {
         "warning",
         "--loadmodule",
         // The redis module file.
-        BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME).getAbsolutePath()
+        BinaryFileUtil.getFile(
+            rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME).getAbsolutePath()
     );
 
     if (!Strings.isNullOrEmpty(password)) {
@@ -296,7 +300,8 @@ public class RunManager {
     }
 
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
-    final File rayletFile = BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.RAYLET_BINARY_NAME);
+    final File rayletFile = BinaryFileUtil.getFile(
+        rayConfig.sessionDir, BinaryFileUtil.RAYLET_BINARY_NAME);
     Preconditions.checkState(rayletFile.setExecutable(true));
     List<String> command = ImmutableList.of(
         rayletFile.getAbsolutePath(),
@@ -390,8 +395,8 @@ public class RunManager {
   }
 
   private void startObjectStore() {
-    // TODO(qwang): Use try-with
-    final File objectStoreFile = BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.PLASMA_STORE_SERVER_BINARY_NAME);
+    final File objectStoreFile = BinaryFileUtil.getFile(
+        rayConfig.sessionDir, BinaryFileUtil.PLASMA_STORE_SERVER_BINARY_NAME);
     Preconditions.checkState(objectStoreFile.setExecutable(true));
     List<String> command = ImmutableList.of(
         // The plasma store executable file.
@@ -403,6 +408,7 @@ public class RunManager {
     );
     startProcess(command, null, "plasma_store");
   }
+
 
   private String buildPythonWorkerCommand() {
     // disable python worker start from raylet, which starts from java

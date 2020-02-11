@@ -1,7 +1,6 @@
 package org.ray.runtime.util;
 
 import com.google.common.base.Preconditions;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,7 +18,8 @@ public class BinaryFileUtil {
 
   public static final String REDIS_MODULE_LIBRARY_NAME = "libray_redis_module.so";
 
-  public static final String CORE_WORKER_JAVA_LIBRARY = System.mapLibraryName("core_worker_library_java");
+  public static final String CORE_WORKER_JAVA_LIBRARY =
+      System.mapLibraryName("core_worker_library_java");
 
   public static File getFile(String destDir, String fileName) {
     File file = new File(String.format("%s/%s", destDir, fileName));

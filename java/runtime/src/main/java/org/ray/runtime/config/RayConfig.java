@@ -139,7 +139,7 @@ public class RayConfig {
       final String sessionName = String.format("session_%s_%d", DATE_TIME_FORMATTER.format(
           LocalDateTime.now()), RANDOM.nextInt(maxBound - minBound) + minBound);
       sessionDir = String.format("%s/%s", DEFAULT_TEMP_DIR, sessionName);
-    } else if (workerMode == WorkerType.WORKER){
+    } else if (workerMode == WorkerType.WORKER) {
       Preconditions.checkState(localSessionDir != null);
       sessionDir = removeTrailingSlash(localSessionDir);
     } else {
