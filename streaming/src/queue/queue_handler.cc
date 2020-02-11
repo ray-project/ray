@@ -17,6 +17,16 @@ RayFunction UpstreamQueueMessageHandler::peer_async_function_;
 RayFunction DownstreamQueueMessageHandler::peer_sync_function_;
 RayFunction DownstreamQueueMessageHandler::peer_async_function_;
 
+QueueMessageHandler::QueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
+    : core_worker_(core_worker),
+      actor_id_(actor_id),
+      queue_dummy_work_(std::make_shared<boost::asio::io_service::work>(
+          *queue_service_)) {
+  Start();
+}
+
+QueueMessageHandler::~QueueMessageHandler() { Stop(); }
+
 std::shared_ptr<Message> QueueMessageHandler::ParseMessage(
     std::shared_ptr<LocalMemoryBuffer> buffer) {
   uint8_t *bytes = buffer->Data();
@@ -54,7 +64,7 @@ std::shared_ptr<Message> QueueMessageHandler::ParseMessage(
 
 void QueueMessageHandler::DispatchMessageAsync(
     std::shared_ptr<LocalMemoryBuffer> buffer) {
-  queue_service_.post(
+  queue_service_->post(
       boost::bind(&QueueMessageHandler::DispatchMessageInternal, this, buffer, nullptr));
 }
 
@@ -62,7 +72,7 @@ std::shared_ptr<LocalMemoryBuffer> QueueMessageHandler::DispatchMessageSync(
     std::shared_ptr<LocalMemoryBuffer> buffer) {
   std::shared_ptr<LocalMemoryBuffer> result = nullptr;
   std::shared_ptr<PromiseWrapper> promise = std::make_shared<PromiseWrapper>();
-  queue_service_.post(
+  queue_service_->post(
       boost::bind(&QueueMessageHandler::DispatchMessageInternal, this, buffer,
                   [&promise, &result](std::shared_ptr<LocalMemoryBuffer> rst) {
                     result = rst;
@@ -106,7 +116,7 @@ void QueueMessageHandler::Start() {
 
 void QueueMessageHandler::Stop() {
   STREAMING_LOG(INFO) << "QueueMessageHandler Stop.";
-  queue_service_.stop();
+  queue_service_->stop();
   if (queue_thread_.joinable()) {
     queue_thread_.join();
   }

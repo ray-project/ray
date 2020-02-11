@@ -17,6 +17,8 @@ using rpc::HeartbeatTableData;
 
 class Monitor {
  public:
+  ~Monitor();
+
   /// Create a Raylet monitor attached to the given GCS address and port.
   ///
   /// \param io_service The event loop to run the monitor on.
@@ -47,7 +49,7 @@ class Monitor {
   /// The number of heartbeats that can be missed before a client is removed.
   int64_t num_heartbeats_timeout_;
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
-  boost::asio::deadline_timer heartbeat_timer_;
+  std::unique_ptr<boost::asio::deadline_timer> heartbeat_timer_;
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
   std::unordered_map<ClientID, int64_t> heartbeats_;

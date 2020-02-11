@@ -1,5 +1,6 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
+#include <boost/asio/basic_deadline_timer.hpp>
 #include <thread>
 
 #include "ray/common/task/task.h"
@@ -341,6 +342,124 @@ void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(
   RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
   waiter_->OnWaitComplete(request.tag());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+BoundedExecutor::~BoundedExecutor() {}
+
+BoundedExecutor::BoundedExecutor(int max_concurrency)
+    : num_running_(0), max_concurrency_(max_concurrency),
+      pool_(new boost::asio::thread_pool(max_concurrency)) {}
+
+void BoundedExecutor::PostBlocking(const std::function<void()> &fn) {
+  mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
+  num_running_ += 1;
+  mu_.Unlock();
+  boost::asio::post(*pool_, [this, fn]() {
+    fn();
+    absl::MutexLock lock(&mu_);
+    num_running_ -= 1;
+  });
+}
+
+SchedulingQueue::~SchedulingQueue() = default;
+
+SchedulingQueue::SchedulingQueue(boost::asio::io_service &main_io_service,
+                                 DependencyWaiter &waiter,
+                                 std::shared_ptr<BoundedExecutor> pool, bool use_asyncio,
+                                 std::shared_ptr<FiberState> fiber_state,
+                                 int64_t reorder_wait_seconds)
+    : reorder_wait_seconds_(reorder_wait_seconds),
+      wait_timer_(new boost::asio::deadline_timer(main_io_service)),
+      main_thread_id_(boost::this_thread::get_id()),
+      waiter_(waiter),
+      pool_(pool),
+      use_asyncio_(use_asyncio),
+      fiber_state_(fiber_state) {}
+
+void SchedulingQueue::Add(int64_t seq_no, int64_t client_processed_up_to,
+                          std::function<void()> accept_request,
+                          std::function<void()> reject_request,
+                          const std::vector<ObjectID> &dependencies) {
+  if (seq_no == -1) {
+    accept_request();  // A seq_no of -1 means no ordering constraint.
+    return;
+  }
+  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  if (client_processed_up_to >= next_seq_no_) {
+    RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
+                   << client_processed_up_to;
+    next_seq_no_ = client_processed_up_to + 1;
+  }
+  RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
+  pending_tasks_[seq_no] =
+      InboundRequest(accept_request, reject_request, dependencies.size() > 0);
+  if (dependencies.size() > 0) {
+    waiter_.Wait(dependencies, [seq_no, this]() {
+      RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+      auto it = pending_tasks_.find(seq_no);
+      if (it != pending_tasks_.end()) {
+        it->second.MarkDependenciesSatisfied();
+        ScheduleRequests();
+      }
+    });
+  }
+  ScheduleRequests();
+}
+
+void SchedulingQueue::ScheduleRequests() {
+  // Cancel any stale requests that the client doesn't need any longer.
+  while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
+    auto head = pending_tasks_.begin();
+    RAY_LOG(ERROR) << "Cancelling stale RPC with seqno " << pending_tasks_.begin()->first
+                   << " < " << next_seq_no_;
+    head->second.Cancel();
+    pending_tasks_.erase(head);
+  }
+
+  // Process as many in-order requests as we can.
+  while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_ &&
+         pending_tasks_.begin()->second.CanExecute()) {
+    auto head = pending_tasks_.begin();
+    auto request = head->second;
+
+    if (use_asyncio_) {
+      fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
+    } else if (pool_ != nullptr) {
+      pool_->PostBlocking([request]() mutable { request.Accept(); });
+    } else {
+      request.Accept();
+    }
+    pending_tasks_.erase(head);
+    next_seq_no_++;
+  }
+
+  if (pending_tasks_.empty() || !pending_tasks_.begin()->second.CanExecute()) {
+    // No timeout for object dependency waits.
+    wait_timer_->cancel();
+  } else {
+    // Set a timeout on the queued tasks to avoid an infinite wait on failure.
+    wait_timer_->expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
+    RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
+                   << pending_tasks_.size();
+    wait_timer_->async_wait([this](const boost::system::error_code &error) {
+      if (error == boost::asio::error::operation_aborted) {
+        return;  // time deadline was adjusted
+      }
+      OnSequencingWaitTimeout();
+    });
+  }
+}
+
+void SchedulingQueue::OnSequencingWaitTimeout() {
+  RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
+                 << ", cancelling all queued tasks";
+  while (!pending_tasks_.empty()) {
+    auto head = pending_tasks_.begin();
+    head->second.Cancel();
+    pending_tasks_.erase(head);
+    next_seq_no_ = std::max(next_seq_no_, head->first + 1);
+  }
 }
 
 }  // namespace ray

@@ -2,11 +2,13 @@
 
 #include "ray/util/logging.h"
 
+RedisAsioClient::~RedisAsioClient() {}
+
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)
     : redis_async_context_(redis_async_context),
       io_service_(io_service),
-      socket_(io_service),
+      socket_(new boost::asio::basic_stream_socket<boost::asio::ip::tcp>(io_service)),
       read_requested_(false),
       write_requested_(false),
       read_in_progress_(false),
@@ -18,7 +20,7 @@ RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
 
   // hiredis is already connected
   // use the existing native socket
-  socket_.assign(boost::asio::ip::tcp::v4(), c->fd);
+  socket_->assign(boost::asio::ip::tcp::v4(), c->fd);
 
   // register hooks with the hiredis async context
   async_context->ev.addRead = call_C_addRead;
@@ -34,16 +36,16 @@ RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
 void RedisAsioClient::operate() {
   if (read_requested_ && !read_in_progress_) {
     read_in_progress_ = true;
-    socket_.async_read_some(boost::asio::null_buffers(),
-                            boost::bind(&RedisAsioClient::handle_read, this,
-                                        boost::asio::placeholders::error));
+    socket_->async_read_some(boost::asio::null_buffers(),
+                             boost::bind(&RedisAsioClient::handle_read, this,
+                                         boost::asio::placeholders::error));
   }
 
   if (write_requested_ && !write_in_progress_) {
     write_in_progress_ = true;
-    socket_.async_write_some(boost::asio::null_buffers(),
-                             boost::bind(&RedisAsioClient::handle_write, this,
-                                         boost::asio::placeholders::error));
+    socket_->async_write_some(boost::asio::null_buffers(),
+                              boost::bind(&RedisAsioClient::handle_write, this,
+                                          boost::asio::placeholders::error));
   }
 }
 

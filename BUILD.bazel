@@ -883,6 +883,7 @@ cc_library(
     srcs = glob(
         [
             "src/ray/gcs/*.cc",
+            "src/ray/gcs/test/accessor_test_base.cc",
         ],
         exclude = [
             "src/ray/gcs/*_test.cc",

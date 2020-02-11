@@ -9,31 +9,28 @@
 
 namespace ray {
 
-template <class T>
-std::shared_ptr<ServerConnection<T>> ServerConnection<T>::Create(
-    boost::asio::basic_stream_socket<T> &&socket) {
-  std::shared_ptr<ServerConnection<T>> self(new ServerConnection(std::move(socket)));
-  return self;
-}
-
-template <class T>
-ServerConnection<T>::ServerConnection(boost::asio::basic_stream_socket<T> &&socket)
-    : socket_(std::move(socket)),
-      async_write_max_messages_(1),
+struct ServerConnectionBase::AsyncWriteBuffer {
+  int64_t write_cookie;
+  int64_t write_type;
+  uint64_t write_length;
+  std::vector<uint8_t> write_message;
+  std::function<void(const ray::Status &)> handler;
+};
+  
+ServerConnectionBase::ServerConnectionBase()
+    : async_write_max_messages_(1),
       async_write_queue_(),
       async_write_in_flight_(false),
       async_write_broken_pipe_(false) {}
 
-template <class T>
-ServerConnection<T>::~ServerConnection() {
+ServerConnectionBase::~ServerConnectionBase() {
   // If there are any pending messages, invoke their callbacks with an IOError status.
   for (const auto &write_buffer : async_write_queue_) {
     write_buffer->handler(Status::IOError("Connection closed."));
   }
 }
 
-template <class T>
-Status ServerConnection<T>::WriteBuffer(
+Status ServerConnectionBase::WriteBuffer(
     const std::vector<boost::asio::const_buffer> &buffer) {
   boost::system::error_code error;
   // Loop until all bytes are written while handling interrupts.
@@ -44,7 +41,7 @@ Status ServerConnection<T>::WriteBuffer(
     uint64_t position = 0;
     while (bytes_remaining != 0) {
       size_t bytes_written =
-          socket_.write_some(boost::asio::buffer(b + position, bytes_remaining), error);
+          SocketWriteSome(boost::asio::buffer(b + position, bytes_remaining), error);
       position += bytes_written;
       bytes_remaining -= bytes_written;
       if (error.value() == EINTR) {
@@ -57,8 +54,7 @@ Status ServerConnection<T>::WriteBuffer(
   return ray::Status::OK();
 }
 
-template <class T>
-Status ServerConnection<T>::ReadBuffer(
+Status ServerConnectionBase::ReadBuffer(
     const std::vector<boost::asio::mutable_buffer> &buffer) {
   boost::system::error_code error;
   // Loop until all bytes are read while handling interrupts.
@@ -67,7 +63,7 @@ Status ServerConnection<T>::ReadBuffer(
     uint64_t position = 0;
     while (bytes_remaining != 0) {
       size_t bytes_read =
-          socket_.read_some(boost::asio::buffer(b + position, bytes_remaining), error);
+          SocketReadSome(boost::asio::buffer(b + position, bytes_remaining), error);
       position += bytes_read;
       bytes_remaining -= bytes_read;
       if (error.value() == EINTR) {
@@ -80,8 +76,7 @@ Status ServerConnection<T>::ReadBuffer(
   return Status::OK();
 }
 
-template <class T>
-ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
+ray::Status ServerConnectionBase::WriteMessage(int64_t type, int64_t length,
                                               const uint8_t *message) {
   sync_writes_ += 1;
   bytes_written_ += length;
@@ -95,8 +90,7 @@ ray::Status ServerConnection<T>::WriteMessage(int64_t type, int64_t length,
   return WriteBuffer(message_buffers);
 }
 
-template <class T>
-void ServerConnection<T>::WriteMessageAsync(
+void ServerConnectionBase::WriteMessageAsync(
     int64_t type, int64_t length, const uint8_t *message,
     const std::function<void(const ray::Status &)> &handler) {
   async_writes_ += 1;
@@ -113,7 +107,7 @@ void ServerConnection<T>::WriteMessageAsync(
   auto size = async_write_queue_.size();
   auto size_is_power_of_two = (size & (size - 1)) == 0;
   if (size > 1000 && size_is_power_of_two) {
-    RAY_LOG(WARNING) << "ServerConnection has " << size << " buffered async writes";
+    RAY_LOG(WARNING) << "ServerConnectionBase has " << size << " buffered async writes";
   }
 
   async_write_queue_.push_back(std::move(write_buffer));
@@ -123,7 +117,7 @@ void ServerConnection<T>::WriteMessageAsync(
   }
 }
 
-template <class T>
+template <typename T>
 void ServerConnection<T>::DoAsyncWrites() {
   // Make sure we were not writing to the socket.
   RAY_CHECK(!async_write_in_flight_);
@@ -169,24 +163,53 @@ void ServerConnection<T>::DoAsyncWrites() {
   }
   auto this_ptr = this->shared_from_this();
   boost::asio::async_write(
-      ServerConnection<T>::socket_, message_buffers,
+      *ServerConnection::socket_, message_buffers,
       [this, this_ptr, num_messages, call_handlers](
           const boost::system::error_code &error, size_t bytes_transferred) {
         ray::Status status = boost_to_ray_status(error);
         if (error.value() == boost::system::errc::errc_t::broken_pipe) {
           RAY_LOG(ERROR) << "Broken Pipe happened during calling "
-                         << "ServerConnection<T>::DoAsyncWrites.";
+                         << "ServerConnectionBase::DoAsyncWrites.";
           // From now on, calling DoAsyncWrites will directly call the handler
           // with this broken-pipe status.
           async_write_broken_pipe_ = true;
         } else if (!status.ok()) {
           RAY_LOG(ERROR) << "Error encountered during calling "
-                         << "ServerConnection<T>::DoAsyncWrites, message: "
+                         << "ServerConnectionBase::DoAsyncWrites, message: "
                          << status.message()
                          << ", error code: " << static_cast<int>(error.value());
         }
         call_handlers(status, num_messages);
       });
+}
+
+template <typename T>
+ServerConnection<T>::ServerConnection(
+    boost::asio::basic_stream_socket<T> &&socket)
+    : socket_(std::unique_ptr<boost::asio::basic_stream_socket<T>>(
+          new boost::asio::basic_stream_socket<T>(std::move(socket)))) {}
+
+template <typename T>
+std::shared_ptr<ServerConnection<T>> ServerConnection<T>::Create(
+    boost::asio::basic_stream_socket<T> &&socket) {
+  return std::shared_ptr<ServerConnection>(new ServerConnection(std::move(socket)));
+}
+
+template <typename T>
+void ServerConnection<T>::SocketClose(boost::system::error_code &ec) {
+  socket_->close(ec);
+}
+
+template <typename T>
+size_t ServerConnection<T>::SocketReadSome(const boost::asio::mutable_buffer &buffer,
+                                           boost::system::error_code &error) {
+  return socket_->read_some(buffer, error);
+}
+
+template <typename T>
+size_t ServerConnection<T>::SocketWriteSome(const boost::asio::const_buffer &buffer,
+                                            boost::system::error_code &error) {
+  return socket_->write_some(buffer, error);
 }
 
 template <class T>
@@ -229,7 +252,7 @@ void ClientConnection<T>::ProcessMessages() {
   header.push_back(boost::asio::buffer(&read_type_, sizeof(read_type_)));
   header.push_back(boost::asio::buffer(&read_length_, sizeof(read_length_)));
   boost::asio::async_read(
-      ServerConnection<T>::socket_, header,
+      *ServerConnection<T>::socket_, header,
       boost::bind(&ClientConnection<T>::ProcessMessageHeader,
                   shared_ClientConnection_from_this(), boost::asio::placeholders::error));
 }
@@ -255,7 +278,7 @@ void ClientConnection<T>::ProcessMessageHeader(const boost::system::error_code &
   ServerConnection<T>::bytes_read_ += read_length_;
   // Wait for the message to be read.
   boost::asio::async_read(
-      ServerConnection<T>::socket_, boost::asio::buffer(read_message_),
+      *ServerConnection<T>::socket_, boost::asio::buffer(read_message_),
       boost::bind(&ClientConnection<T>::ProcessMessage,
                   shared_ClientConnection_from_this(), boost::asio::placeholders::error));
 }
@@ -297,7 +320,7 @@ std::string ClientConnection<T>::RemoteEndpointInfo() {
 template <>
 std::string ClientConnection<remote_stream_protocol>::RemoteEndpointInfo() {
   const auto &remote_endpoint =
-      ServerConnection<remote_stream_protocol>::socket_.remote_endpoint();
+      ServerConnection<remote_stream_protocol>::socket_->remote_endpoint();
   return remote_endpoint.address().to_string() + ":" +
          std::to_string(remote_endpoint.port());
 }
@@ -323,8 +346,12 @@ void ClientConnection<T>::ProcessMessage(const boost::system::error_code &error)
   }
 }
 
-template <class T>
-std::string ServerConnection<T>::DebugString() const {
+void ServerConnectionBase::Close() {
+  boost::system::error_code ec;
+  return SocketClose(ec);
+}
+
+std::string ServerConnectionBase::DebugString() const {
   std::stringstream result;
   result << "\n- bytes read: " << bytes_read_;
   result << "\n- bytes written: " << bytes_written_;

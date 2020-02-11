@@ -604,20 +604,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// and a new one takes its place with the same place. In this situation, we want
   /// the new worker to reject messages meant for the old one.
   bool HandleWrongRecipient(const WorkerID &intended_worker_id,
-                            rpc::SendReplyCallback send_reply_callback) {
-    if (intended_worker_id != worker_context_.GetWorkerID()) {
-      std::ostringstream stream;
-      stream << "Mismatched WorkerID: ignoring RPC for previous worker "
-             << intended_worker_id
-             << ", current worker ID: " << worker_context_.GetWorkerID();
-      auto msg = stream.str();
-      RAY_LOG(ERROR) << msg;
-      send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
-      return true;
-    } else {
-      return false;
-    }
-  }
+                            rpc::SendReplyCallback send_reply_callback);
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
@@ -650,19 +637,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   bool shutdown_ = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
-  boost::asio::io_service io_service_;
+  std::unique_ptr<boost::asio::io_service> io_service_;
 
   /// Keeps the io_service_ alive.
-  boost::asio::io_service::work io_work_;
+  std::shared_ptr<void> io_work_;
 
   /// Shared client call manager.
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   /// Timer used to periodically check if the raylet has died.
-  boost::asio::steady_timer death_check_timer_;
+  std::unique_ptr<boost::asio::steady_timer> death_check_timer_;
 
   /// Timer for internal book-keeping.
-  boost::asio::steady_timer internal_timer_;
+  std::unique_ptr<boost::asio::steady_timer> internal_timer_;
 
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;
@@ -752,10 +739,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::atomic<int64_t> num_executed_tasks_;
 
   /// Event loop where tasks are processed.
-  boost::asio::io_service task_execution_service_;
+  std::unique_ptr<boost::asio::io_service> task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work task_execution_service_work_;
+  std::shared_ptr<void> task_execution_service_work_;
 
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;

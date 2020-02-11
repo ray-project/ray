@@ -13,22 +13,10 @@
 
 namespace ray {
 
-/// \typename ServerConnection
-///
-/// A generic type representing a client connection to a server. This typename
-/// can be used to write messages synchronously to the server.
-template <typename T>
-class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>> {
+class ServerConnectionBase : public std::enable_shared_from_this<ServerConnectionBase> {
  public:
   /// ServerConnection destructor.
-  virtual ~ServerConnection();
-
-  /// Allocate a new server connection.
-  ///
-  /// \param socket A reference to the server socket.
-  /// \return std::shared_ptr<ServerConnection>.
-  static std::shared_ptr<ServerConnection<T>> Create(
-      boost::asio::basic_stream_socket<T> &&socket);
+  virtual ~ServerConnectionBase();
 
   /// Write a message to the client.
   ///
@@ -60,28 +48,24 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   Status ReadBuffer(const std::vector<boost::asio::mutable_buffer> &buffer);
 
   /// Shuts down socket for this connection.
-  void Close() {
-    boost::system::error_code ec;
-    socket_.close(ec);
-  }
+  void Close();
 
   std::string DebugString() const;
 
  protected:
   /// A private constructor for a server connection.
-  ServerConnection(boost::asio::basic_stream_socket<T> &&socket);
+  ServerConnectionBase();
+
+  virtual void SocketClose(boost::system::error_code &ec) = 0;
+
+  virtual size_t SocketReadSome(const boost::asio::mutable_buffer &buffer,
+                                boost::system::error_code &error) = 0;
+
+  virtual size_t SocketWriteSome(const boost::asio::const_buffer &buffer,
+                                 boost::system::error_code &error) = 0;
 
   /// A message that is queued for writing asynchronously.
-  struct AsyncWriteBuffer {
-    int64_t write_cookie;
-    int64_t write_type;
-    uint64_t write_length;
-    std::vector<uint8_t> write_message;
-    std::function<void(const ray::Status &)> handler;
-  };
-
-  /// The socket connection to the server.
-  boost::asio::basic_stream_socket<T> socket_;
+  struct AsyncWriteBuffer;
 
   /// Max number of messages to write out at once.
   const int async_write_max_messages_;
@@ -111,6 +95,40 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection<T>
   /// Asynchronously flushes the write queue. While async writes are running, the flag
   /// async_write_in_flight_ will be set. This should only be called when no async writes
   /// are currently in flight.
+  virtual void DoAsyncWrites() = 0;
+};
+
+/// \typename ServerConnection
+///
+/// A generic type representing a client connection to a server. This typename
+/// can be used to write messages synchronously to the server.
+template <typename T>
+class ServerConnection : public ServerConnectionBase
+{
+ public:
+  /// Allocate a new server connection.
+  ///
+  /// \param socket A reference to the server socket.
+  /// \return std::shared_ptr<ServerConnection>.
+  static std::shared_ptr<ServerConnection> Create(
+      boost::asio::basic_stream_socket<T> &&socket);
+
+ protected:
+  /// A private constructor for a server connection.
+  ServerConnection(boost::asio::basic_stream_socket<T> &&socket);
+
+  void SocketClose(boost::system::error_code &ec);
+
+  size_t SocketReadSome(const boost::asio::mutable_buffer &buffer,
+                        boost::system::error_code &error);
+
+  size_t SocketWriteSome(const boost::asio::const_buffer &buffer,
+                         boost::system::error_code &error);
+
+  /// The socket connection to the server.
+  std::unique_ptr<boost::asio::basic_stream_socket<T>> socket_;
+
+ private:
   void DoAsyncWrites();
 };
 
@@ -131,7 +149,7 @@ using MessageHandler =
 template <typename T>
 class ClientConnection : public ServerConnection<T> {
  public:
-  using std::enable_shared_from_this<ServerConnection<T>>::shared_from_this;
+  using std::enable_shared_from_this<ServerConnectionBase>::shared_from_this;
 
   /// Allocate a new node client connection.
   ///

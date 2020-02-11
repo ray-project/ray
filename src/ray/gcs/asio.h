@@ -35,6 +35,7 @@
 
 class RedisAsioClient {
  public:
+  ~RedisAsioClient();
   /// Constructor of RedisAsioClient.
   /// Use single-threaded io_service as event loop (because the redis commands
   /// that will run in the event loop are non-thread safe).
@@ -59,7 +60,7 @@ class RedisAsioClient {
   ray::gcs::RedisAsyncContext &redis_async_context_;
 
   boost::asio::io_service &io_service_;
-  boost::asio::ip::tcp::socket socket_;
+  std::unique_ptr<boost::asio::basic_stream_socket<boost::asio::ip::tcp> > socket_;
   // Hiredis wanted to add a read operation to the event loop
   // but the read might not have happened yet
   bool read_requested_;

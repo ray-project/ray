@@ -54,13 +54,14 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
       socket_name_(socket_name),
-      acceptor_(main_service,
+      acceptor_(new boost::asio::basic_socket_acceptor<local_stream_protocol>(
+          main_service,
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
-                local_stream_protocol::endpoint(socket_name)
+          local_stream_protocol::endpoint(socket_name)
 #else
-                parse_ip_tcp_endpoint(socket_name)
+          parse_ip_tcp_endpoint(socket_name)
 #endif
-                    ),
+              )),
       socket_(main_service) {
   self_node_info_.set_node_id(self_node_id_.Binary());
   self_node_info_.set_state(GcsNodeInfo::ALIVE);
@@ -83,7 +84,7 @@ void Raylet::Start() {
 
 void Raylet::Stop() {
   RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf());
-  acceptor_.close();
+  acceptor_->close();
 }
 
 ray::Status Raylet::RegisterGcs() {
@@ -113,8 +114,8 @@ ray::Status Raylet::RegisterGcs() {
 }
 
 void Raylet::DoAccept() {
-  acceptor_.async_accept(socket_, boost::bind(&Raylet::HandleAccept, this,
-                                              boost::asio::placeholders::error));
+  acceptor_->async_accept(socket_, boost::bind(&Raylet::HandleAccept, this,
+                                               boost::asio::placeholders::error));
 }
 
 void Raylet::HandleAccept(const boost::system::error_code &error) {

@@ -75,10 +75,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       ref_counting_enabled_(ref_counting_enabled),
       check_signals_(check_signals),
       worker_context_(worker_type, job_id),
-      io_work_(io_service_),
-      client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      death_check_timer_(io_service_),
-      internal_timer_(io_service_),
+      io_service_(new boost::asio::io_service())
+      io_work_(std::make_shared<boost::asio::io_service::work>(*io_service_)),
+      client_call_manager_(new rpc::ClientCallManager(*io_service_)),
+      death_check_timer_(new boost::asio::steady_timer(*io_service_)),
+      internal_timer_(new boost::asio::steady_timer(*io_service_)),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>(
           /*distributed_ref_counting_enabled=*/RayConfig::instance()
@@ -89,10 +90,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           })),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      task_execution_service_work_(task_execution_service_),
+      task_execution_service_(new boost::asio::io_service()),
+      task_execution_service_work_(std::make_shared<boost::asio::io_service::work>(
+          *task_execution_service_)),
       task_execution_callback_(task_execution_callback),
       resource_ids_(new ResourceMappingType()),
-      grpc_service_(io_service_, *this) {
+      grpc_service_(*io_service_, *this) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -105,13 +108,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
   actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->Actors()));
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
-                                                 io_service_, gcs_client_);
+                                                 *io_service_, gcs_client_);
 
   // Initialize task receivers.
   if (worker_type_ == WorkerType::WORKER) {
@@ -125,7 +128,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       task_manager_->DrainAndShutdown([this, intentional]() {
         // To avoid problems, make sure shutdown is always called from the same
         // event loop each time.
-        task_execution_service_.post([this, intentional]() {
+        task_execution_service_->post([this, intentional]() {
           if (intentional) {
             Disconnect();  // Notify the raylet this is an intentional exit.
           }
@@ -138,7 +141,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
     direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
         new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
-                                         task_execution_service_, execute_task, exit));
+                                         *task_execution_service_, execute_task, exit));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -154,7 +157,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       node_ip_address, node_manager_port, *client_call_manager_);
   ClientID local_raylet_id;
   local_raylet_client_ = std::shared_ptr<raylet::RayletClient>(new raylet::RayletClient(
-      io_service_, std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
+      *io_service_, std::move(grpc_client), raylet_socket, worker_context_.GetWorkerID(),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
   connected_ = true;
@@ -167,14 +170,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
 
   if (worker_type_ == ray::WorkerType::WORKER) {
-    death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
+    death_check_timer_->expires_from_now(boost::asio::chrono::milliseconds(
         RayConfig::instance().raylet_death_check_interval_milliseconds()));
-    death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
+    death_check_timer_->async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
   }
 
-  internal_timer_.expires_from_now(
+  internal_timer_->expires_from_now(
       boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
+  internal_timer_->async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
 
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
@@ -251,7 +254,7 @@ CoreWorker::~CoreWorker() {
   // first.
   plasma_notifier_->Shutdown();
 
-  io_service_.stop();
+  io_service_->stop();
   io_thread_.join();
   if (log_dir_ != "") {
     RayLog::ShutDownRayLog();
@@ -259,14 +262,14 @@ CoreWorker::~CoreWorker() {
 }
 
 void CoreWorker::Shutdown() {
-  io_service_.stop();
+  io_service_->stop();
   if (worker_type_ == WorkerType::WORKER) {
-    task_execution_service_.stop();
+    task_execution_service_->stop();
   }
 }
 
 void CoreWorker::Disconnect() {
-  io_service_.stop();
+  io_service_->stop();
   if (connected_) {
     connected_ = false;
     if (gcs_client_) {
@@ -290,7 +293,7 @@ void CoreWorker::RunIOService() {
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
 #endif
 
-  io_service_.run();
+  io_service_->run();
 }
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
@@ -324,11 +327,11 @@ void CoreWorker::CheckForRayletFailure() {
 #endif
 
   // Reset the timer from the previous expiration time to avoid drift.
-  death_check_timer_.expires_at(
-      death_check_timer_.expiry() +
+  death_check_timer_->expires_at(
+      death_check_timer_->expiry() +
       boost::asio::chrono::milliseconds(
           RayConfig::instance().raylet_death_check_interval_milliseconds()));
-  death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
+  death_check_timer_->async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
 }
 
 void CoreWorker::InternalHeartbeat() {
@@ -337,9 +340,9 @@ void CoreWorker::InternalHeartbeat() {
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(to_resubmit_.front().second));
     to_resubmit_.pop_front();
   }
-  internal_timer_.expires_at(internal_timer_.expiry() +
+  internal_timer_->expires_at(internal_timer_->expiry() +
                              boost::asio::chrono::milliseconds(kInternalHeartbeatMillis));
-  internal_timer_.async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
+  internal_timer_->async_wait(boost::bind(&CoreWorker::InternalHeartbeat, this));
 }
 
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
@@ -926,7 +929,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
       new worker::ProfileEvent(profiler_, event_type));
 }
 
-void CoreWorker::StartExecutingTasks() { task_execution_service_.run(); }
+void CoreWorker::StartExecutingTasks() { task_execution_service_->run(); }
 
 Status CoreWorker::AllocateReturnObjects(
     const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
@@ -1166,6 +1169,22 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   return Status::OK();
 }
 
+void CoreWorker::HandleWrongRecipient(const WorkerID &intended_worker_id,
+                                      rpc::SendReplyCallback send_reply_callback) {
+  if (intended_worker_id != worker_context_.GetWorkerID()) {
+    std::ostringstream stream;
+    stream << "Mismatched WorkerID: ignoring RPC for previous worker "
+           << intended_worker_id
+           << ", current worker ID: " << worker_context_.GetWorkerID();
+    auto msg = stream.str();
+    RAY_LOG(ERROR) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return true;
+  } else {
+    return false;
+  }
+}
+
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                                   rpc::AssignTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
@@ -1180,7 +1199,7 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
     return;
   } else {
     task_queue_length_ += 1;
-    task_execution_service_.post([=] {
+    task_execution_service_->post([=] {
       raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
     });
   }
@@ -1195,7 +1214,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
   }
 
   task_queue_length_ += 1;
-  task_execution_service_.post([=] {
+  task_execution_service_->post([=] {
     direct_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
 }
@@ -1209,7 +1228,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     return;
   }
 
-  task_execution_service_.post([=] {
+  task_execution_service_->post([=] {
     direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
                                                                 send_reply_callback);
   });

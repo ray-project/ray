@@ -9,6 +9,8 @@ namespace ray {
 
 namespace raylet {
 
+Monitor::~Monitor() {}
+
 /// \class Monitor
 ///
 /// The monitor is responsible for listening for heartbeats from Raylets and
@@ -20,7 +22,7 @@ Monitor::Monitor(boost::asio::io_service &io_service,
                  const gcs::GcsClientOptions &gcs_client_options)
     : gcs_client_(new gcs::RedisGcsClient(gcs_client_options)),
       num_heartbeats_timeout_(RayConfig::instance().num_heartbeats_timeout()),
-      heartbeat_timer_(io_service) {
+      heartbeat_timer_(new boost::asio::deadline_timer(io_service)) {
   RAY_CHECK_OK(gcs_client_->Connect(io_service));
 }
 
@@ -95,8 +97,8 @@ void Monitor::Tick() {
 
   auto heartbeat_period = boost::posix_time::milliseconds(
       RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
-  heartbeat_timer_.expires_from_now(heartbeat_period);
-  heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
+  heartbeat_timer_->expires_from_now(heartbeat_period);
+  heartbeat_timer_->async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);
     Tick();
   });

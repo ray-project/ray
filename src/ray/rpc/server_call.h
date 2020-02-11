@@ -95,6 +95,45 @@ template <class ServiceHandler, class Request, class Reply>
 using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
                                                        SendReplyCallback);
 
+class ServerCallImplBase : public ServerCall {
+ public:
+  /// Constructor.
+  ///
+  /// \param[in] factory The factory which created this call.
+  /// \param[in] io_service The event loop.
+  ServerCallImplBase(
+      const ServerCallFactory &factory,
+      boost::asio::io_service &io_service)
+      : state_(ServerCallState::PENDING),
+        factory_(factory),
+        io_service_(io_service) {}
+
+ protected:
+  void HandleRequestImpl();
+
+   /// Tell gRPC to finish this request and send reply asynchronously.
+  void SendReply(const Status &status);
+
+  /// State of this call.
+  ServerCallState state_;
+
+  /// The factory which created this call.
+  const ServerCallFactory &factory_;
+
+  /// Context for the request, allowing to tweak aspects of it such as the use
+  /// of compression, authentication, as well as to send metadata back to the client.
+  grpc::ServerContext context_;
+
+  /// The event loop.
+  boost::asio::io_service &io_service_;
+
+  /// The callback when sending reply successes.
+  std::function<void()> send_reply_success_callback_ = nullptr;
+
+  /// The callback when sending reply fails.
+  std::function<void()> send_reply_failure_callback_ = nullptr;
+};
+
 /// Implementation of `ServerCall`. It represents `ServerCall` for a particular
 /// RPC method.
 ///
@@ -102,7 +141,7 @@ using HandleRequestFunction = void (ServiceHandler::*)(const Request &, Reply *,
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class ServiceHandler, class Request, class Reply>
-class ServerCallImpl : public ServerCall {
+class ServerCallImpl : public ServerCallImplBase {
  public:
   /// Constructor.
   ///
@@ -114,106 +153,31 @@ class ServerCallImpl : public ServerCall {
       const ServerCallFactory &factory, ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       boost::asio::io_service &io_service)
-      : state_(ServerCallState::PENDING),
-        factory_(factory),
+      : ServerCallImplBase(factory, io_service),
+        state_(ServerCallState::PENDING),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
-        response_writer_(&context_),
-        io_service_(io_service) {}
+        response_writer_(&context_) {}
 
   ServerCallState GetState() const override { return state_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
-  void HandleRequest() override {
-    if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); });
-    } else {
-      // Handle service for rpc call has stopped, we must handle the call here
-      // to send reply and remove it from cq
-      RAY_LOG(DEBUG) << "Handle service has been closed.";
-      SendReply(Status::Invalid("HandleServiceClosed"));
-    }
-  }
-
-  void HandleRequestImpl() {
-    state_ = ServerCallState::PROCESSING;
-    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
-    // a different thread, and will cause `this` to be deleted.
-    const auto &factory = factory_;
-    (service_handler_.*handle_request_function_)(
-        request_, &reply_,
-        [this](Status status, std::function<void()> success,
-               std::function<void()> failure) {
-          // These two callbacks must be set before `SendReply`, because `SendReply`
-          // is async and this `ServerCall` might be deleted right after `SendReply`.
-          send_reply_success_callback_ = std::move(success);
-          send_reply_failure_callback_ = std::move(failure);
-
-          // When the handler is done with the request, tell gRPC to finish this request.
-          // Must send reply at the bottom of this callback, once we invoke this funciton,
-          // this server call might be deleted
-          SendReply(status);
-        });
-    // We've finished handling this request,
-    // create a new `ServerCall` to accept the next incoming request.
-    factory.CreateCall();
-  }
-
-  void OnReplySent() override {
-    if (send_reply_success_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_success_callback_);
-      io_service_.post([callback]() { callback(); });
-    }
-  }
-
-  void OnReplyFailed() override {
-    if (send_reply_failure_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_failure_callback_);
-      io_service_.post([callback]() { callback(); });
-    }
-  }
-
  private:
-  /// Tell gRPC to finish this request and send reply asynchronously.
-  void SendReply(const Status &status) {
-    state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
-  }
-
-  /// State of this call.
-  ServerCallState state_;
-
-  /// The factory which created this call.
-  const ServerCallFactory &factory_;
-
   /// The service handler that handles the request.
   ServiceHandler &service_handler_;
 
   /// Pointer to the service handler function.
   HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function_;
 
-  /// Context for the request, allowing to tweak aspects of it such as the use
-  /// of compression, authentication, as well as to send metadata back to the client.
-  grpc::ServerContext context_;
-
   /// The response writer.
   grpc_impl::ServerAsyncResponseWriter<Reply> response_writer_;
-
-  /// The event loop.
-  boost::asio::io_service &io_service_;
 
   /// The request message.
   Request request_;
 
   /// The reply message.
   Reply reply_;
-
-  /// The callback when sending reply successes.
-  std::function<void()> send_reply_success_callback_ = nullptr;
-
-  /// The callback when sending reply fails.
-  std::function<void()> send_reply_failure_callback_ = nullptr;
 
   template <class T1, class T2, class T3, class T4>
   friend class ServerCallFactoryImpl;

@@ -81,11 +81,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 
  private:
   struct ReconstructionTask {
-    ReconstructionTask(boost::asio::io_service &io_service)
-        : expires_at(INT64_MAX),
-          subscribed(false),
-          reconstruction_attempt(0),
-          reconstruction_timer(new boost::asio::deadline_timer(io_service)) {}
+    ReconstructionTask(boost::asio::io_service &io_service);
 
     // The objects created by this task that we are listening for notifications for.
     std::unordered_set<ObjectID> created_objects;

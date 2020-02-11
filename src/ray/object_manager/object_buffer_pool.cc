@@ -1,5 +1,7 @@
 #include "ray/object_manager/object_buffer_pool.h"
 
+#include <boost/asio/buffer.hpp>
+
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 

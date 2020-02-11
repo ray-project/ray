@@ -81,28 +81,7 @@ class RedisCallbackManager {
     return instance;
   }
 
-  struct CallbackItem : public std::enable_shared_from_this<CallbackItem> {
-    CallbackItem() = default;
-
-    CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
-                 boost::asio::io_service &io_service)
-        : callback_(callback),
-          is_subscription_(is_subscription),
-          start_time_(start_time),
-          io_service_(&io_service) {}
-
-    void Dispatch(std::shared_ptr<CallbackReply> &reply) {
-      std::shared_ptr<CallbackItem> self = shared_from_this();
-      if (callback_ != nullptr) {
-        io_service_->post([self, reply]() { self->callback_(std::move(reply)); });
-      }
-    }
-
-    RedisCallback callback_;
-    bool is_subscription_;
-    int64_t start_time_;
-    boost::asio::io_service *io_service_;
-  };
+  struct CallbackItem;
 
   int64_t add(const RedisCallback &function, bool is_subscription,
               boost::asio::io_service &io_service);
