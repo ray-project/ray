@@ -900,7 +900,7 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
-        from ray.actor import ActorHandle
+        from ray.actor import ActorHandle, ActorClassMethodMetadata
         cdef CActorHandle* c_actor_handle
         worker = ray.worker.get_global_worker()
         worker.check_connected()
@@ -920,14 +920,13 @@ cdef class CoreWorker:
                               PythonFunctionDescriptor)
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
-            actor_class = ray.remote(actor_class)
-            actor_class_meta = getattr(actor_class, '__ray_metadata__', None)
-            assert actor_class_meta is not None
+            method_meta = ActorClassMethodMetadata(actor_class)
             return ActorHandle(language, actor_id,
-                               actor_class_meta.method_meta.decorators,
-                               actor_class_meta.method_meta.signatures,
-                               actor_class_meta.method_meta.num_return_vals,
-                               0,  # actor method cpu
+                               method_meta.decorators,
+                               method_meta.signatures,
+                               method_meta.num_return_vals,
+                               0,  # actor method cpu, TODO(fyrestone):
+                               # serialize actor method cpu with actor handle
                                actor_creation_function_descriptor,
                                worker.current_session_and_job)
         else:
@@ -939,12 +938,14 @@ cdef class CoreWorker:
                                actor_creation_function_descriptor,
                                worker.current_session_and_job)
 
-    def serialize_actor_handle(self, ActorID actor_id):
+    def serialize_actor_handle(self, actor_handle):
+        from ray.actor import ActorHandle
+        assert isinstance(actor_handle, ActorHandle)
         cdef:
-            CActorID c_actor_id = actor_id.native()
+            ActorID actor_id = actor_handle._ray_actor_id
             c_string output
         check_status(self.core_worker.get().SerializeActorHandle(
-            c_actor_id, &output))
+            actor_id.native(), &output))
         return output
 
     def add_object_id_reference(self, ObjectID object_id):

@@ -787,8 +787,7 @@ class ActorHandle:
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
-            state = worker.core_worker.serialize_actor_handle(
-                self._ray_actor_id)
+            state = worker.core_worker.serialize_actor_handle(self)
         else:
             state = {
                 "actor_language": self._ray_actor_language,
