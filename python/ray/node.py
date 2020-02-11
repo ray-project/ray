@@ -11,7 +11,6 @@ import sys
 import tempfile
 import threading
 import time
-import shutil
 
 import ray
 import ray.ray_constants as ray_constants
@@ -215,12 +214,6 @@ class Node:
         try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
-
-        # Copy libcore_worker_java library for java to session dir.
-        if self._ray_params.include_java:
-            library_name = "libcore_worker_library_java" + ray.utils.get_library_suffix()
-            shutil.copyfile(os.path.join(ray.services.get_ray_jars_dir(), library_name),
-                            os.path.join(self._session_dir, library_name))
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""

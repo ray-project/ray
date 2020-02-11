@@ -27,19 +27,9 @@ ray_files = [
     "ray/streaming/_streaming.so",
 ]
 
-
-def get_library_suffix():
-    if sys.platform == "darwin":
-        return "dylib"
-    elif sys.platform == "linux":
-        return "so"
-    raise RuntimeError("unknown platform")
-
-
 build_java = os.getenv("RAY_INSTALL_JAVA") == "1"
 if build_java:
     ray_files.append("ray/jars/ray_dist.jar")
-    ray_files.append("ray/jars/libcore_worker_library_java." + get_library_suffix())
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.

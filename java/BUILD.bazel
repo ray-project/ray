@@ -231,14 +231,12 @@ genrule(
     srcs = [
         "//java:ray_dist_deploy.jar",
         "//java:gen_maven_deps",
-        "//:core_worker_library_java",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """
         WORK_DIR=$$(pwd)
         rm -rf $$WORK_DIR/python/ray/jars && mkdir -p $$WORK_DIR/python/ray/jars
         cp -f $(location //java:ray_dist_deploy.jar) $$WORK_DIR/python/ray/jars/ray_dist.jar
-        cp -f $(location //:core_worker_library_java) $$WORK_DIR/python/ray/jars/
         echo $$(date) > $@
     """,
     local = 1,
