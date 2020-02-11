@@ -369,7 +369,7 @@ class CoreWorkerDirectTaskReceiver {
       std::function<Status(const TaskSpecification &task_spec,
                            const std::shared_ptr<ResourceMappingType> resource_ids,
                            std::vector<std::shared_ptr<RayObject>> *return_objects,
-                           ReferenceCounter::ReferenceTable *borrower_refs)>;
+                           ReferenceCounter::ReferenceTableProto *borrower_refs)>;
 
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                std::shared_ptr<raylet::RayletClient> &local_raylet_client,

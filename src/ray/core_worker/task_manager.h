@@ -97,13 +97,13 @@ class TaskManager : public TaskFinisherInterface {
   /// If their reference counts reach zero, they are deleted from the in-memory store.
   void RemoveSubmittedTaskReferences(
       const std::vector<ObjectID> &object_ids, const rpc::Address *borrower_addr,
-      const ReferenceCounter::ReferenceTable *borrower_refs);
+      const ReferenceCounter::ReferenceTableProto *borrower_refs);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the plasma dependencies
   /// of the given task spec.
   void RemovePlasmaSubmittedTaskReferences(
       TaskSpecification &spec, const rpc::Address *borrower_addr,
-      const ReferenceCounter::ReferenceTable *borrower_refs);
+      const ReferenceCounter::ReferenceTableProto *borrower_refs);
 
   /// Shutdown if all tasks are finished and shutdown is scheduled.
   void ShutdownIfNeeded() LOCKS_EXCLUDED(mu_);

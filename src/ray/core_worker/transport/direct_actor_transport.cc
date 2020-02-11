@@ -253,14 +253,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    ReferenceCounter::ReferenceTable borrower_refs;
-    auto status = task_handler_(task_spec, resource_ids, &return_objects, &borrower_refs);
-
-    for (const auto &id_ref : borrower_refs) {
-      auto ref = id_ref.second.ToProto();
-      ref.mutable_reference()->set_object_id(id_ref.first.Binary());
-      reply->add_borrower_refs()->CopyFrom(ref);
-    }
+    auto status = task_handler_(task_spec, resource_ids, &return_objects, reply->mutable_borrower_refs());
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {

@@ -74,27 +74,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     pending_tasks_.erase(it);
   }
 
-  ReferenceCounter::ReferenceTable new_borrower_refs;
-  for (const auto &ref : reply.borrower_refs()) {
-    ray::ReferenceCounter::Reference reference;
-    reference.owner = {ray::TaskID::FromBinary(ref.reference().owner_id()),
-                       ref.reference().owner_address()};
-    reference.local_ref_count = ref.has_local_ref() ? 1 : 0;
-    for (const auto &borrower : ref.borrowers()) {
-      reference.borrowers.insert(ray::rpc::WorkerAddress(borrower));
-    }
-    const auto contained_in_borrowed_id =
-        ray::ObjectID::FromBinary(ref.contained_in_borrowed_id());
-    if (!contained_in_borrowed_id.IsNil()) {
-      reference.contained_in_borrowed_id = contained_in_borrowed_id;
-    }
-    for (const auto &contains_id : ref.contains()) {
-      reference.contains.insert(ray::ObjectID::FromBinary(contains_id));
-    }
-    new_borrower_refs[ray::ObjectID::FromBinary(ref.reference().object_id())] = reference;
-  }
-
-  RemovePlasmaSubmittedTaskReferences(spec, actor_addr, &new_borrower_refs);
+  RemovePlasmaSubmittedTaskReferences(spec, actor_addr, &reply.borrower_refs());
 
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
@@ -194,8 +174,8 @@ void TaskManager::ShutdownIfNeeded() {
 
 void TaskManager::RemoveSubmittedTaskReferences(
     const std::vector<ObjectID> &object_ids, const rpc::Address *borrower_addr,
-    const ReferenceCounter::ReferenceTable *borrower_refs) {
-  ReferenceCounter::ReferenceTable refs;
+    const ReferenceCounter::ReferenceTableProto *borrower_refs) {
+  ReferenceCounter::ReferenceTableProto refs;
   rpc::Address addr;
   if (borrower_refs && borrower_addr) {
     refs = *borrower_refs;
@@ -214,7 +194,7 @@ void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_
 
 void TaskManager::RemovePlasmaSubmittedTaskReferences(
     TaskSpecification &spec, const rpc::Address *borrower_addr,
-    const ReferenceCounter::ReferenceTable *borrower_refs) {
+    const ReferenceCounter::ReferenceTableProto *borrower_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     auto count = spec.ArgIdCount(i);

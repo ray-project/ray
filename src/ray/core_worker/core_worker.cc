@@ -363,7 +363,7 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const rpc::Address &owner_address) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
-  reference_counter_->AddBorrowedObject(outer_object_id, object_id, owner_id,
+  reference_counter_->AddBorrowedObject(object_id, outer_object_id, owner_id,
                                         owner_address);
 
   RAY_CHECK(!owner_id.IsNil());
@@ -945,7 +945,7 @@ Status CoreWorker::AllocateReturnObjects(
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
-                               ReferenceCounter::ReferenceTable *borrower_refs) {
+                               ReferenceCounter::ReferenceTableProto *borrower_refs) {
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -966,7 +966,12 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<ObjectID> arg_reference_ids;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
 
-  std::vector<ObjectID> pinned_ids(arg_reference_ids);
+  std::vector<ObjectID> pinned_ids;
+  for (const auto &id : arg_reference_ids) {
+    if (!id.IsNil()) {
+      pinned_ids.push_back(id);
+    }
+  }
   for (const auto &inlined_id_str : task_spec.GetMessage().inlined_ids()) {
     const auto inlined_id = ObjectID::FromBinary(inlined_id_str);
     if (!reference_counter_->HasReference(inlined_id)) {
@@ -974,9 +979,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
   for (const auto &pinned_id : pinned_ids) {
-    if (!pinned_id.IsNil()) {
-      reference_counter_->AddLocalReference(pinned_id);
-    }
+    RAY_LOG(DEBUG) << "ADD " << pinned_id << " 1";
+    reference_counter_->AddLocalReference(pinned_id);
   }
 
   const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
@@ -1023,12 +1027,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
-  for (const auto &arg_id : pinned_ids) {
-    if (!arg_id.IsNil()) {
-      reference_counter_->PopBorrowerRefsPointer(arg_id, borrower_refs);
-      RAY_LOG(DEBUG) << " REMOVE x";
-      reference_counter_->RemoveLocalReference(arg_id, nullptr);
-    }
+  reference_counter_->GetAndStripBorrowedRefs(pinned_ids, borrower_refs);
+  std::vector<ObjectID> deleted;
+  for (const auto &pinned_id : pinned_ids) {
+    RAY_LOG(DEBUG) << "REMOVE" << pinned_id << " 1";
+    reference_counter_->RemoveLocalReference(pinned_id, &deleted);
+  }
+  if (ref_counting_enabled_) {
+    memory_store_->Delete(deleted);
   }
 
   if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {

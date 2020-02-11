@@ -157,6 +157,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// object.
   ///
   /// \param[in] object_id The object ID to deserialize.
+  /// \param[in] outer_object_id The object ID that contained object_id, if
+  /// any. This may be nil if the object ID was inlined directly in a task spec
+  /// or if it was passed out-of-band by the application (deserialized from a
+  /// byte string).
   /// \param[out] owner_id The ID of the object's owner.
   /// \param[out] owner_address The address of the object's owner.
   void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
@@ -553,7 +557,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
-                     ReferenceCounter::ReferenceTable *borrower_refs);
+                     ReferenceCounter::ReferenceTableProto *borrower_refs);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
