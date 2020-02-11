@@ -239,7 +239,7 @@ class TFRunner:
                                   self._fit_action, self._fit_get_results)
 
     def _validate_action(self, config):
-        return self.model.evaluate(self.test_dataset, **config)
+        return self.local_model.evaluate(self.test_dataset, **config)
 
     def _validate_get_results(self):
         if isinstance(self._history, list):
@@ -254,9 +254,23 @@ class TFRunner:
 
     # todo: technically you can interleave validate_step and fit_step
     # and cause trouble for yourself
+    #
+    # todo: tensorflow fails to validate a distributed model
+    # with a weird shape mismatch error if validation is called
+    # after at least 2 other calls to model functions and at least one fit call
+    # we revert here to just using a local model for now, but ideally
+    # this needs to be fixed somehow
+    #
+    # still using the threaded setup so we actually get to show progress
     def validate_step(self, number_of_steps=1):
         """Evaluates the model on the validation data set."""
-        return self._generic_step(number_of_steps, "evaluate_config",
+
+        logger.debug("Running a local model to get validation score.")
+        self.local_model = self.model_creator(self.config)
+        self.local_model.set_weights(self.model.get_weights())
+
+        return self._generic_step(number_of_steps,
+                                  "evaluate_config",
                                   self._validate_action,
                                   self._validate_get_results)
 

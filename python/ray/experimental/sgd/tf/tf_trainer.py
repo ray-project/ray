@@ -98,14 +98,16 @@ class TFTrainer:
         import tensorflow as tf
         self._Progbar = tf.keras.utils.Progbar
 
-    def _generic_model_driver(self, request_step, steps, res_metrics_prefix):
+    # todo: the worker parameter should be removed once distributed eval works
+    def _generic_model_driver(self, request_step, steps, res_metrics_prefix,
+                              workers):
         """Runs a training epoch."""
         progbar = self._Progbar(steps)
 
-        worker_stats = [None] * len(self.workers)
+        worker_stats = [None] * len(workers)
         done = False
         while not done:
-            reqs = [request_step(w) for w in self.workers]
+            reqs = [request_step(w) for w in workers]
             for workerN, (type, logs) in enumerate(ray.get(reqs)):
                 if type == "batch":
                     if workerN != 0:
@@ -157,7 +159,8 @@ class TFTrainer:
 
         return self._generic_model_driver(
             lambda w: w.fit_step.remote(progress_report_interval),
-            fit_config.get("steps_per_epoch", None), "train_")
+            fit_config.get("steps_per_epoch", None), "train_",
+            self.workers)
 
     def validate(self, progress_report_interval=1):
         """Evaluates the model on the validation data set."""
@@ -168,7 +171,8 @@ class TFTrainer:
 
         return self._generic_model_driver(
             lambda w: w.validate_step.remote(progress_report_interval),
-            evaluate_config.get("steps", None), "validation_")
+            evaluate_config.get("steps", None), "validation_",
+            self.workers[:1])
 
     def get_model(self):
         """Returns the learned model."""
