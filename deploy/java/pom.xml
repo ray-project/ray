@@ -1,37 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-    <packaging>pom</packaging>
-    <parent>
-        <artifactId>ray-superpom</artifactId>
-        <groupId>org.ray</groupId>
-        <version>0.1-SNAPSHOT</version>
-    </parent>
-
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <packaging>pom</packaging>
+  <parent>
+    <artifactId>ray-superpom</artifactId>
     <groupId>org.ray</groupId>
-    <artifactId>ray-deploy</artifactId>
     <version>0.1-SNAPSHOT</version>
+  </parent>
 
-    <dependencyManagement>
-        <dependencies>
-          <dependency>
-            <groupId>io.fabric8</groupId>
-            <artifactId>kubernetes-client</artifactId>
-            <version>4.2.2</version>
-          </dependency>
-          <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <version>1.18.0</version>
-          </dependency>
-        </dependencies>
-    </dependencyManagement>
+  <artifactId>ray-deploy</artifactId>
+  <version>0.1-SNAPSHOT</version>
 
-    <modules>
-        <module>ray-rps-model</module>
-        <module>ray-rps-k8s-impl</module>
-    </modules>
-    
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.ray</groupId>
+        <artifactId>ray-rps-facade</artifactId>
+        <version>0.1-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>io.fabric8</groupId>
+        <artifactId>kubernetes-client</artifactId>
+        <version>4.2.2</version>
+      </dependency>
+      <dependency>
+        <groupId>org.projectlombok</groupId>
+        <artifactId>lombok</artifactId>
+        <version>1.18.0</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <modules>
+    <module>rps/ray-rps-facade</module>
+  </modules>
+
 </project>

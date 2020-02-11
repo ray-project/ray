@@ -6,10 +6,10 @@
     <artifactId>ray-deploy</artifactId>
     <groupId>org.ray</groupId>
     <version>0.1-SNAPSHOT</version>
+    <relativePath>../../pom.xml</relativePath>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
-  <artifactId>ray-rps-model</artifactId>
-
+  <artifactId>ray-rps-facade</artifactId>
 
 </project>
