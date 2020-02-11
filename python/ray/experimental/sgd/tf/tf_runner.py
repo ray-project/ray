@@ -83,12 +83,14 @@ class TFRunner:
             verbose (bool): Outputs training data if true.
         """
 
+        if init_hook is not None:
+            init_hook()
+
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.config = {} if config is None else config
         self.epoch = 0
         self.verbose = verbose
-        self.init_hook = init_hook
 
         self._model_thread = None
         self._recorded_all_results = threading.Event()
@@ -111,9 +113,6 @@ class TFRunner:
 
     def setup(self):
         """Initializes the model."""
-        if self.init_hook is not None:
-            self.init_hook()
-
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
 
@@ -128,9 +127,6 @@ class TFRunner:
             world_size (int): the total number of runners.
         """
         assert len(urls) == world_size
-
-        if self.init_hook is not None:
-            self.init_hook()
 
         tf_config = {
             "cluster": {
