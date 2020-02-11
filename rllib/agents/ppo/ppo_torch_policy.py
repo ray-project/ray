@@ -1,25 +1,23 @@
 import logging
 import guppy
 
-h = guppy.hpy()
-
 import ray
 from ray.rllib.agents.impala.vtrace_policy import BEHAVIOUR_LOGITS
 from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.ppo.ppo_tf_policy import postprocess_ppo_gae, \
-    setup_config
+   setup_config
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
-    LearningRateSchedule
+   LearningRateSchedule
 from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.utils.explained_variance import explained_variance
+# from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.torch_ops import sequence_mask
 from ray.rllib.utils import try_import_torch
 
 torch, nn = try_import_torch()
-
+h = guppy.hpy()
 logger = logging.getLogger(__name__)
 
 
@@ -71,6 +69,8 @@ class PPOLoss:
             vf_loss_coeff (float): Coefficient of the value function loss
             use_gae (bool): If true, use the Generalized Advantage Estimator.
         """
+
+
 """
         def reduce_mean_valid(t):
             return torch.mean(t * valid_mask)
@@ -111,7 +111,7 @@ class PPOLoss:
 
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
-    #h.heap()
+    # h.heap()
     logits, state = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
 
@@ -129,38 +129,42 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     prev_dist = dist_class(train_batch[BEHAVIOUR_LOGITS], model)
     # Make loss functions.
     logp_ratio = torch.exp(
-        action_dist.logp(train_batch[SampleBatch.ACTIONS]) - train_batch[ACTION_LOGP])
+        action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
+        train_batch[ACTION_LOGP])
     action_kl = prev_dist.kl(action_dist)
-    #mean_kl = reduce_mean_valid(action_kl)
+    # mean_kl = reduce_mean_valid(action_kl)
 
     curr_entropy = action_dist.entropy()
-    #mean_entropy = reduce_mean_valid(curr_entropy)
+    # mean_entropy = reduce_mean_valid(curr_entropy)
 
     surrogate_loss = torch.min(
         train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-        train_batch[Postprocessing.ADVANTAGES] * torch.clamp(logp_ratio, 1 - policy.config["clip_param"],
-                                 1 + policy.config["clip_param"]))
-    #mean_policy_loss = reduce_mean_valid(-surrogate_loss)
-
+        train_batch[Postprocessing.ADVANTAGES] * torch.clamp(
+            logp_ratio, 1 - policy.config["clip_param"],
+            1 + policy.config["clip_param"]))
+    # mean_policy_loss = reduce_mean_valid(-surrogate_loss)
 
     if policy.config["use_gae"]:
         value_fn = model.value_function()
-        vf_loss1 = torch.pow(value_fn - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
-        vf_clipped = train_batch[SampleBatch.VF_PREDS] + torch.clamp(value_fn - train_batch[SampleBatch.VF_PREDS],
-                                            -policy.config["vf_clip_param"], policy.config["vf_clip_param"])
-        vf_loss2 = torch.pow(vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_loss1 = torch.pow(
+            value_fn - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
+        vf_clipped = train_batch[SampleBatch.VF_PREDS] + torch.clamp(
+            value_fn - train_batch[SampleBatch.VF_PREDS],
+            -policy.config["vf_clip_param"], policy.config["vf_clip_param"])
+        vf_loss2 = torch.pow(
+            vf_clipped - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
         vf_loss = torch.max(vf_loss1, vf_loss2)
-        #mean_vf_loss = reduce_mean_valid(vf_loss)
-        loss = reduce_mean_valid(
-            -surrogate_loss + policy.kl_coeff * action_kl +
-            policy.config["vf_loss_coeff"] * vf_loss - policy.entropy_coeff * curr_entropy)
+        # mean_vf_loss = reduce_mean_valid(vf_loss)
+        loss = reduce_mean_valid(-surrogate_loss +
+                                 policy.kl_coeff * action_kl +
+                                 policy.config["vf_loss_coeff"] * vf_loss -
+                                 policy.entropy_coeff * curr_entropy)
     else:
-        #mean_vf_loss = 0.0
+        # mean_vf_loss = 0.0
         loss = reduce_mean_valid(-surrogate_loss +
                                  policy.kl_coeff * action_kl -
                                  policy.entropy_coeff * curr_entropy)
     return loss
-
     """policy.loss_obj = PPOLoss(
         dist_class,
         model,
@@ -184,12 +188,13 @@ def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     return policy.loss_obj.loss
     """
 
+
 def kl_and_loss_stats(policy, train_batch):
-    #return {
+    # return {
     #    "cur_kl_coeff": policy.kl_coeff,
     #    "cur_lr": policy.cur_lr,
     #    "total_loss": policy.loss_obj.loss.cpu().detach().numpy(),
-    #    "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
+    #   "policy_loss": policy.loss_obj.mean_policy_loss.cpu().detach().numpy(),
     #    "vf_loss": policy.loss_obj.mean_vf_loss.cpu().detach().numpy(),
     #    "vf_explained_var": explained_variance(
     #        train_batch[Postprocessing.VALUE_TARGETS],
@@ -198,7 +203,7 @@ def kl_and_loss_stats(policy, train_batch):
     #    "kl": policy.loss_obj.mean_kl.cpu().detach().numpy(),
     #    "entropy": policy.loss_obj.mean_entropy.cpu().detach().numpy(),
     #    "entropy_coeff": policy.entropy_coeff,
-    #}
+    # }
     return {}
 
 
@@ -206,9 +211,10 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function(),
-        BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
-        ACTION_LOGP: action_dist.logp(input_dict[SampleBatch.ACTIONS])
+        SampleBatch.VF_PREDS: policy.model.value_function().cpu().numpy(),
+        BEHAVIOUR_LOGITS: policy.model.last_output().cpu().numpy(),
+        ACTION_LOGP: action_dist.logp(
+            input_dict[SampleBatch.ACTIONS]).cpu().numpy(),
     }
 
 
@@ -232,11 +238,14 @@ class ValueNetworkMixin:
 
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: torch.Tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]),
-                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]),
+                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
+                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
+                        self.device),
+                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
+                        self.device),
                     "is_training": False,
-                }, [torch.Tensor([s]) for s in state], torch.Tensor([1]))
+                }, [torch.Tensor([s]).to(self.device) for s in state],
+                                          torch.Tensor([1]).to(self.device))
                 return self.model.value_function()[0]
 
         else:
