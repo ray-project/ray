@@ -98,7 +98,7 @@ class TFTrainer:
         import tensorflow as tf
         self._Progbar = tf.keras.utils.Progbar
 
-    def _generic_model_driver(self, request_step, steps, metrics_prefix):
+    def _generic_model_driver(self, request_step, steps, res_metrics_prefix):
         """Runs a training epoch."""
         progbar = self._Progbar(steps)
 
@@ -108,18 +108,33 @@ class TFTrainer:
             reqs = [request_step(w) for w in self.workers]
             for workerN, (type, logs) in enumerate(ray.get(reqs)):
                 if type == "batch":
-                    if workerN == 0:
-                        metrics = [(k, logs[k]) for k in ["loss", "accuracy"]]
+                    if workerN != 0:
+                        continue
 
-                        # see ./tf_runner.py:setup_distributed
-                        # for an explanation of only taking
-                        # the first worker's data
-                        progbar.update(logs["batch"], metrics)
+                    batch = logs["batch"]
+
+                    # we log batch # as the step in the progbar
+                    logs.pop('batch', None)
+                    # we don't want to log batch size
+                    logs.pop('size', None)
+                    # this does not need to be done in end logs
+                    # since they have entirely different metrics
+
+                    metrics = list(logs.items())
+
+                    # see ./tf_runner.py:setup_distributed
+                    # for an explanation of only taking
+                    # the first worker's data
+                    progbar.update(batch, metrics)
                 elif type == "end":
                     if workerN == 0:
-                        metrics = [("loss", logs[metrics_prefix + "loss"]),
-                                   ("accuracy",
-                                    logs[metrics_prefix + "accuracy"])]
+                        # todo: check that the metric name indeed starts
+                        # with the res_metrics_prefix, keeping in mind
+                        # that if no metrics were specified for the model
+                        # there will only be a single unprefixed "loss" key
+                        metrics = [
+                            (k[len(res_metrics_prefix):], i)
+                            for (k, i) in logs.items()]
 
                         progbar.update(steps, metrics)
 
