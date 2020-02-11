@@ -24,6 +24,8 @@ class MockPolicy(TestPolicy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
+                        explore=True,
+                        timestep=None,
                         **kwargs):
         return [random.choice([0, 1])] * len(obs_batch), [], {}
 
@@ -43,6 +45,8 @@ class BadPolicy(MockPolicy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
+                        explore=True,
+                        timestep=None,
                         **kwargs):
         raise Exception("intentional error")
 
