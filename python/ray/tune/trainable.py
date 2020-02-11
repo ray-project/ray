@@ -453,7 +453,8 @@ class Trainable:
                 f.write(file_contents)
 
         self.restore(checkpoint_path)
-        shutil.rmtree(tmpdir)
+        if self._cleanup_object_restore():
+            shutil.rmtree(tmpdir)
 
     def delete_checkpoint(self, checkpoint_path):
         """Deletes local copy of checkpoint.
@@ -550,7 +551,6 @@ class Trainable:
             A dict that describes training progress.
 
         """
-
         raise NotImplementedError
 
     def _save(self, tmp_checkpoint_dir):
@@ -586,7 +586,6 @@ class Trainable:
             >>> trainable._save("/tmp/bad_example")
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
-
         raise NotImplementedError
 
     def _restore(self, checkpoint):
@@ -629,7 +628,6 @@ class Trainable:
                 The directory structure underneath the `checkpoint_dir`
                 `_save` is preserved.
         """
-
         raise NotImplementedError
 
     def _setup(self, config):
@@ -667,7 +665,14 @@ class Trainable:
             export_formats (list): List of formats that should be exported.
             export_dir (str): Directory to place exported models.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}
+
+    def _cleanup_object_restore(self):
+        """Whether or not to cleanup checkpoint after `restore_from_object`.
+
+        This does not normally need to be overridden.
+        """
+        return True

@@ -1,6 +1,7 @@
 import argparse
 import cloudpickle
 import numpy as np
+import os
 import time
 import logging
 
@@ -17,7 +18,8 @@ class OptimusFn(object):
         self.params = params
         self.noise = np.random.normal(size=max_t) * 0.005
 
-    def eval(self, k, add_noise=True):
+    def __call__(self, k, add_noise=True):
+        time.sleep(0.5)
         b0, b1, b2 = self.params
         score = (b0 * k / 100 + 0.1 * b1 + 0.5)**(-1) + b2 * 0.01
         if add_noise:
@@ -46,8 +48,7 @@ def train(config):
         cur_i = 0
 
     for i in range(cur_i, TRAINING_ITERS):
-        new_loss = func.eval(i)
-        time.sleep(0.5)
+        new_loss = func(i)
 
         if i % CHECKPOINT_FREQ == 0:
             checkpoint = {

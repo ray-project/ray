@@ -85,9 +85,11 @@ class StatusReporter:
         self._last_report_time = time.time()
 
     def is_pending_restore(self):
+        """Whether the reporter was initialized with a checkpoint."""
         return self._restore_from is not None
 
     def pop_checkpoint(self):
+        """Returns the checkpoint the reporter was initialized with."""
         checkpoint = self._restore_from
         self._restore_from = None
         return checkpoint
@@ -300,6 +302,14 @@ class FunctionRunner(Trainable):
                              .format(err_tb_str)))
         except queue.Empty:
             pass
+
+    def _cleanup_object_restore(self):
+        """Do not cleanup checkpoint dir at the end of `restore_from_object`.
+
+        This prevents the temporary checkpoint dir from being deleted before
+        the runner thread has a chance to restore from it.
+        """
+        return False
 
 
 def wrap_function(train_func):
