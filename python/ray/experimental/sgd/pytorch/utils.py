@@ -33,8 +33,8 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
     The scheduler will only be called at a batch or epoch frequency, depending
     on the user parameter. Be sure to set ``scheduler_step_freq`` in
     ``PyTorchTrainer`` to either "batch" or "epoch" to increment the scheduler
-    correctly. If using a scheduler that depends on validation
-    loss, you must provide a custom training function.
+    correctly during training. If using a learning rate scheduler
+    that depends on validation loss, you can use ``trainer.update_scheduler``.
 
     Raises:
         ValueError if multiple models/optimizers/schedulers are provided. You
@@ -131,7 +131,7 @@ def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
     return stats
 
 
-def validate(config, model, val_iterator, criterion, scheduler):
+def validate(config, model, val_iterator, criterion, scheduler=None):
     """Runs one standard validation pass over the val_iterator.
 
     This function automatically measures timing for various operations such
@@ -153,7 +153,8 @@ def validate(config, model, val_iterator, criterion, scheduler):
             wraps the provided Dataset.
         criterion: The loss object created by the loss_creator.
         scheduler (optional): The torch.optim.lr_scheduler object
-            as created by the scheduler_creator.
+            as created by the scheduler_creator. By default,
+            this is not used in this function.
 
     Returns:
         A dict of metrics from the evaluation.

@@ -118,8 +118,10 @@ class PyTorchTrainer:
             See https://nvidia.github.io/apex/amp.html#module-apex.amp. By
             default, the models and optimizers are passed in. Consider using
             "num_losses" if operating over multiple models and optimizers.
-        scheduler_step_freq (str): One of "batch" or "epoch". This will
-            determine when ``scheduler.step`` is called.
+        scheduler_step_freq: "batch", "epoch", or None. This will
+            determine when ``scheduler.step`` is called. If "batch",
+            ``step`` will be called after every optimizer step. If "epoch",
+            ``step`` will be called after one pass of the DataLoader.
 
     """
 
@@ -339,6 +341,14 @@ class PyTorchTrainer:
             validation_stats[stat_key] = np.nanmean(
                 [s.get(stat_key, np.nan) for s in worker_stats])
         return validation_stats
+
+    def update_scheduler(self, metric):
+        """Calls ``scheduler.step(metric)`` on all schedulers.
+
+        This is useful for lr_schedulers such as ``ReduceLROnPlateau``.
+        """
+        self.apply_all_workers(
+            lambda runner: [sched.step(metric) for sched in runner.schedulers])
 
     def get_model(self):
         """Returns the learned model(s)."""
