@@ -9,7 +9,6 @@ The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch.
 Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
 
 .. image:: raysgd-actors.svg
-    :scale: 20%
     :align: center
 
 For end to end examples leveraging RaySGD PyTorchTrainer, jump to :ref:`raysgd-pytorch-examples`.

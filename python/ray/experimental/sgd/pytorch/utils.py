@@ -18,7 +18,7 @@ SCHEDULER_STEP = "scheduler_step"
 SCHEDULER_STEP_BATCH = "batch"
 SCHEDULER_STEP_EPOCH = "epoch"
 
-VALID_SCHEDULER_STEP = set([SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH])
+VALID_SCHEDULER_STEP = set(SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH)
 
 
 def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
