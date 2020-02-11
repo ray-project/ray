@@ -60,7 +60,8 @@ def load_gcp_example_config():
 
 def load_azure_example_config():
     import ray.autoscaler.azure as ray_azure
-    return os.path.join(os.path.dirname(ray_azure.__file__), "example-full.yaml")
+    return os.path.join(
+        os.path.dirname(ray_azure.__file__), "example-full.yaml")
 
 
 def import_external():
