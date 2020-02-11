@@ -1,19 +1,16 @@
 import argparse
 import cloudpickle
 import numpy as np
-import os
 import time
-import logging
 
 import ray
 from ray import tune
 from ray.tune import track
 
-logger = logging.getLogger(__name__)
-logger.setLevel("INFO")
-
 
 class OptimusFn(object):
+    """Simulate learning."""
+
     def __init__(self, params, max_t=10000):
         self.params = params
         self.noise = np.random.normal(size=max_t) * 0.005
@@ -86,10 +83,10 @@ if __name__ == "__main__":
 
     analysis = tune.run(
         train,
-        name="durableTrainable" + str(time.time()),
+        name="ft_func" + str(time.time()),
         config=config,
-        num_samples=1,
-        verbose=2,
+        num_samples=4,
+        verbose=1,
         queue_trials=True,
         max_failures=-1,
     )

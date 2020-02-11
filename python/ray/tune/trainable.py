@@ -24,7 +24,6 @@ from ray.tune.utils import UtilMonitor
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
-CHECKPOINT_DIR_FORMAT = os.path.join("{root_dir}", "checkpoint_{iteration}")
 
 
 class TrainableUtil:
@@ -70,6 +69,10 @@ class TrainableUtil:
         return checkpoint_dir
 
     @staticmethod
+    def get_checkpoint_dir(root_dir, iteration):
+        return os.path.join(root_dir, "checkpoint_{}".format(iteration))
+
+    @staticmethod
     def make_checkpoint_dir(checkpoint_dir):
         """Creates a checkpoint directory at the provided path."""
         os.makedirs(checkpoint_dir, exist_ok=True)
@@ -98,6 +101,7 @@ class TrainableUtil:
         Raises:
             FileNotFoundError if the directory is not found.
         """
+        # TODO(ujvl): Fix this function for nested dirs.
         marker_paths = glob.glob(
             os.path.join(logdir, "checkpoint_*/.is_checkpoint"))
         iter_chkpt_pairs = []
@@ -342,8 +346,8 @@ class Trainable:
         Returns:
             Checkpoint path or prefix that may be passed to restore().
         """
-        checkpoint_dir = CHECKPOINT_DIR_FORMAT.format(
-            root_dir=checkpoint_dir or self.logdir, iteration=self._iteration)
+        checkpoint_dir = TrainableUtil.get_checkpoint_dir(
+            checkpoint_dir or self.logdir, self._iteration)
         TrainableUtil.make_checkpoint_dir(checkpoint_dir)
         checkpoint = self._save(checkpoint_dir)
         saved_as_dict = False

@@ -5,7 +5,7 @@ from datetime import datetime
 
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION
-from ray.tune.trainable import CHECKPOINT_DIR_FORMAT, TrainableUtil
+from ray.tune.trainable import TrainableUtil
 from ray.tune.trial import Trial
 
 logger = logging.getLogger(__name__)
@@ -131,9 +131,8 @@ class TuneSession(TrackSession):
 
     def get_next_iter_checkpoint_dir(self):
         """Returns the next iteration's checkpoint directory."""
-        checkpoint_dir = CHECKPOINT_DIR_FORMAT.format(
-            root_dir=self.logdir, iteration=self._iteration + 1)
-        return checkpoint_dir
+        next_iter = self._iteration + 1
+        return TrainableUtil.get_checkpoint_dir(self.logdir, next_iter)
 
     def restore(self):
         """Restores session state.
