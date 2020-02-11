@@ -23,10 +23,47 @@ INSTANCE_NAME_UUID_LEN = 8
 PASSWORD_MIN_LENGTH = 16
 SSH_KEYS_MAX_COUNT = 10
 RETRIES = 10
-IP_CONFIG_NAME = 'ray-ip-config'
 SUBNET_NAME = 'ray-subnet'
-NIC_NAME = 'ray-nic'
+NSG_NAME = 'ray-nsg'
 VNET_NAME = 'ray-vnet'
+AUTH_ENDPOINTS = {
+    "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
+    "resourceManagerEndpointUrl": "https://management.azure.com/",
+    "activeDirectoryGraphResourceId": "https://graph.windows.net/",
+    "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
+    "galleryEndpointUrl": "https://gallery.azure.com/",
+    "managementEndpointUrl": "https://management.core.windows.net/"
+}
+DEFAULT_NODE_CONFIG = {
+    'hardware_profile': {
+        'vm_size': 'Standard_D2s_v3'
+    },
+    'storage_profile': {
+        'os_disk': {
+            'create_option': 'FromImage',
+            'caching': 'ReadWrite'
+        },
+        'image_reference': {
+            'publisher': 'microsoft-dsvm',
+            'offer': 'linux-data-science-vm-ubuntu',
+            'sku': 'linuxdsvmubuntu',
+            'version': 'latest'
+        }
+    },
+    'os_profile': {
+        'admin_username': 'ubuntu',
+        'linux_configuration': {
+            'disable_password_authentication': True,
+        }
+    }
+
+    'priority': 'Spot',
+    'evictionPolicy': 'Deallocate',
+    'billingProfile': {
+        'maxPrice': -1
+    }
+}
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +72,14 @@ def bootstrap_azure(config):
     config = _configure_resource_group(config)
     config = _configure_service_principal(config)
     config = _configure_key_pair(config)
-    config = _configure_nic(config)
+    config = _configure_network(config)
+    config = _configure_nodes(config)
     return config
 
 
 def _configure_resource_group(config):
+    # TODO: look at availability sets
+    # https://docs.microsoft.com/en-us/azure/virtual-machines/windows/tutorial-availability-sets
     kwargs = dict()
     if 'subscription_id' in config['provider']:
         kwargs['subscription_id'] = config['provider']['subscription_id']
@@ -139,7 +179,9 @@ def _configure_service_principal(config):
                            clientId=app.app_id,
                            subscriptionId=config['provider']['subscription_id'],
                            tenantId=graph_client.config.tenant_id)
-        store_azure_auth_file(credentials=credentials, auth_path=auth_path)
+        credentials.update(AUTH_ENDPOINTS)
+        with open(auth_path, 'w') as f:
+            json.dump(credentials, f)
 
     config['provider']['auth_path'] = auth_path
     return config
@@ -166,17 +208,16 @@ def _configure_key_pair(config):
         with open(public_key_path, 'r') as f:
             public_key = f.read()
     else:
-        public_key, public_key_path, private_key_path = generate_ssh_keys(key_name)
+        public_key, private_key_path = _generate_ssh_keys(key_name)
         logger.info('SSH key pair created: %s', key_name)
 
     config["auth"]["ssh_private_key"] = private_key_path
     config['provider']['ssh_public_key_data'] = public_key
-    config['provider']['ssh_public_key_path'] = public_key_path
 
     return config
 
 
-def _configure_nic(config):
+def _configure_network(config):
     # skip this if nic is manually set in configuration yaml
     head_node_nic = config['head_node'].get('network_profile', {}).get('network_interfaces', [])
     worker_nodes_nic = config['worker_nodes'].get('network_profile', {}).get('network_interfaces', [])
@@ -188,19 +229,25 @@ def _configure_nic(config):
     auth_path = config['provider']['auth_path']
     network_client = get_client_from_auth_file(NetworkManagementClient, auth_path=auth_path)
 
+    vnets = []
     for _ in range(RETRIES):
         try:
-            # create VNet
-            logger.info('Creating VNet: %s', VNET_NAME)
-            vnet_params = dict(location=location,
-                               address_space=dict(address_prefixes=['10.0.0.0/16']))
-            network_client.virtual_networks.create_or_update(resource_group_name=resource_group,
-                                                             virtual_network_name=VNET_NAME,
-                                                             parameters=vnet_params).wait()
+            vnets = list(network_client.virtual_networks.list(resource_group_name=resource_group,
+                                                              filter='name eq "{}"'.format(VNET_NAME)))
             break
         except AuthenticationError:
             # wait for service principal authorization to populate
             time.sleep(1)
+
+    # can't update vnet if subnet already exists
+    if not vnets:
+        # create VNet
+        logger.info('Creating VNet: %s', VNET_NAME)
+        vnet_params = dict(location=location,
+                           address_space=dict(address_prefixes=['10.0.0.0/16']))
+        network_client.virtual_networks.create_or_update(resource_group_name=resource_group,
+                                                         virtual_network_name=VNET_NAME,
+                                                         parameters=vnet_params).wait()
 
     # create Subnet
     logger.info('Creating Subnet: %s', SUBNET_NAME)
@@ -210,21 +257,28 @@ def _configure_nic(config):
                                                      subnet_name=SUBNET_NAME,
                                                      subnet_parameters=subnet_params).result()
 
-    # create NIC
-    logger.info('Creating NIC: %s', NIC_NAME)
-    nic_params = dict(location=location,
-                      ip_configurations=[dict(name=IP_CONFIG_NAME, subnet=dict(id=subnet.id))])
-    nic = network_client.network_interfaces.create_or_update(resource_group_name=resource_group,
-                                                             network_interface_name=NIC_NAME,
-                                                             parameters=nic_params).result()
+    config['provider']['subnet_id'] = subnet.id
 
-    config['head_node']['network_profile'] = dict(network_interfaces=[dict(id=nic.id)])
-    config['worker_nodes']['network_profile'] = dict(network_interfaces=[dict(id=nic.id)])
+    # create NSG
+    logger.info('Creating NSG: %s', NSG_NAME)
+    nsg_params = {
+        'name': NSG_NAME,
+        'location': config['location'],
+        'security_rules': [{
+            'name': 'ssh',
+            'access': 'Allow',
+            'priority': 300,
+            'destination_port_range': '22'
+        }]
+    }
+    network_client.network_security_groups.create_or_update(resource_group_name=resource_group,
+                                                            network_security_group_name=NSG_NAME,
+                                                            parameters=nsg_params)
 
     return config
 
 
-def generate_ssh_keys(key_name):
+def _generate_ssh_keys(key_name):
     """Generate and store public and private keys"""
     public_key_path = os.path.expanduser("~/.ssh/{}.pub".format(key_name))
     private_key_path = os.path.expanduser("~/.ssh/{}.pem".format(key_name))
@@ -244,19 +298,12 @@ def generate_ssh_keys(key_name):
         public_key_file.write(public_key)
     os.chmod(public_key_path, 0o644)
 
-    return public_key, public_key_path, private_key_path
+    return public_key, private_key_path
 
-
-def store_azure_auth_file(credentials, auth_path):
-    endpoints = {
-        "activeDirectoryEndpointUrl": "https://login.microsoftonline.com",
-        "resourceManagerEndpointUrl": "https://management.azure.com/",
-        "activeDirectoryGraphResourceId": "https://graph.windows.net/",
-        "sqlManagementEndpointUrl": "https://management.core.windows.net:8443/",
-        "galleryEndpointUrl": "https://gallery.azure.com/",
-        "managementEndpointUrl": "https://management.core.windows.net/"
-    }
-
-    endpoints.update(credentials)
-    with open(auth_path, 'w') as f:
-        json.dump(endpoints, f)
+def _configure_nodes(config):
+    """Add default node configuration if not provided"""
+    if 'head_node' not in config:
+        config['head_node'] = DEFAULT_NODE_CONFIG
+    if 'worker_nodes' not in config:
+        config['worker_nodes'] = DEFAULT_NODE_CONFIG
+    return config
