@@ -924,9 +924,9 @@ cdef class CoreWorker:
             actor_class_meta = getattr(actor_class, '__ray_metadata__', None)
             assert actor_class_meta is not None
             return ActorHandle(language, actor_id,
-                               actor_class_meta.method_decorators,
-                               actor_class_meta.method_signatures,
-                               actor_class_meta.actor_method_num_return_vals,
+                               actor_class_meta.method_meta.decorators,
+                               actor_class_meta.method_meta.signatures,
+                               actor_class_meta.method_meta.num_return_vals,
                                0,  # actor method cpu
                                actor_creation_function_descriptor,
                                worker.current_session_and_job)

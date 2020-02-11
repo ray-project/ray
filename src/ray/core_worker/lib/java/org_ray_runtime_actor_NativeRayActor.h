@@ -12,40 +12,42 @@ extern "C" {
  * Method:    nativeGetLanguage
  * Signature: (J[B)I
  */
-JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage
-  (JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeIsDirectCallActor
  * Signature: (J[B)Z
  */
-JNIEXPORT jboolean JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor
-  (JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jboolean JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(JNIEnv *, jclass, jlong,
+                                                                  jbyteArray);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeGetActorCreationTaskFunctionDescriptor
  * Signature: (J[B)Ljava/util/List;
  */
-JNIEXPORT jobject JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor
-  (JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jobject JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeSerialize
  * Signature: (J[B)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize
-  (JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeDeserialize
  * Signature: (J[B)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize
-  (JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(
+    JNIEnv *, jclass, jlong, jbyteArray);
 
 #ifdef __cplusplus
 }

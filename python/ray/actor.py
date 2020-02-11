@@ -140,6 +140,58 @@ class ActorMethod:
             hardref=True)
 
 
+class ActorClassMethodMetadata(object):
+    """Metadata for an actor class method. This data can be cached.
+
+    Attributes:
+        methods: The actor methods.
+        decorators: Optional decorators that should be applied to the
+            method invocation function before invoking the actor methods. These
+            can be set by attaching the attribute
+            "__ray_invocation_decorator__" to the actor method.
+        signatures: The signatures of the methods.
+        num_return_vals: The default number of return values for
+            each actor method.
+    """
+
+    def __init__(self, modified_class):
+        actor_methods = inspect.getmembers(modified_class,
+                                           ray.utils.is_function_or_method)
+        self.methods = dict(actor_methods)
+
+        # Extract the signatures of each of the methods. This will be used
+        # to catch some errors if the methods are called with inappropriate
+        # arguments.
+        self.decorators = {}
+        self.signatures = {}
+        self.num_return_vals = {}
+        for method_name, method in actor_methods:
+            # Whether or not this method requires binding of its first
+            # argument. For class and static methods, we do not want to bind
+            # the first argument, but we do for instance methods
+            is_bound = (ray.utils.is_class_method(method)
+                        or ray.utils.is_static_method(modified_class,
+                                                      method_name))
+
+            # Print a warning message if the method signature is not
+            # supported. We don't raise an exception because if the actor
+            # inherits from a class that has a method whose signature we
+            # don't support, there may not be much the user can do about it.
+            self.signatures[method_name] = signature.extract_signature(
+                method, ignore_first=not is_bound)
+            # Set the default number of return values for this method.
+            if hasattr(method, "__ray_num_return_vals__"):
+                self.num_return_vals[method_name] = (
+                    method.__ray_num_return_vals__)
+            else:
+                self.num_return_vals[method_name] = (
+                    ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
+
+            if hasattr(method, "__ray_invocation_decorator__"):
+                self.decorators[method_name] = (
+                    method.__ray_invocation_decorator__)
+
+
 class ActorClassMetadata:
     """Metadata for an actor class.
 
@@ -164,15 +216,7 @@ class ActorClassMetadata:
             export the remote function again. It is imperfect in the sense that
             the actor class definition could be exported multiple times by
             different workers.
-        actor_methods: The actor methods.
-        method_decorators: Optional decorators that should be applied to the
-            method invocation function before invoking the actor methods. These
-            can be set by attaching the attribute
-            "__ray_invocation_decorator__" to the actor method.
-        method_signatures: The signatures of the methods.
-        actor_method_names: The names of the actor methods.
-        actor_method_num_return_vals: The default number of return values for
-            each actor method.
+        method_meta: The actor method metadata.
     """
 
     def __init__(self, language, modified_class,
@@ -193,58 +237,7 @@ class ActorClassMetadata:
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.last_export_session_and_job = None
-
-        self.actor_methods = inspect.getmembers(
-            self.modified_class, ray.utils.is_function_or_method)
-        self.actor_method_names = [
-            method_name for method_name, _ in self.actor_methods
-        ]
-
-        constructor_name = "__init__"
-        if not self.is_cross_language and \
-                constructor_name not in self.actor_method_names:
-            # Add __init__ if it does not exist.
-            # Actor creation will be executed with __init__ together.
-
-            # Assign an __init__ function will avoid many checks later on.
-            def __init__(self):
-                pass
-
-            self.modified_class.__init__ = __init__
-            self.actor_method_names.append(constructor_name)
-            self.actor_methods.append((constructor_name, __init__))
-
-        # Extract the signatures of each of the methods. This will be used
-        # to catch some errors if the methods are called with inappropriate
-        # arguments.
-        self.method_decorators = {}
-        self.method_signatures = {}
-        self.actor_method_num_return_vals = {}
-        for method_name, method in self.actor_methods:
-            # Whether or not this method requires binding of its first
-            # argument. For class and static methods, we do not want to bind
-            # the first argument, but we do for instance methods
-            is_bound = (ray.utils.is_class_method(method)
-                        or ray.utils.is_static_method(self.modified_class,
-                                                      method_name))
-
-            # Print a warning message if the method signature is not
-            # supported. We don't raise an exception because if the actor
-            # inherits from a class that has a method whose signature we
-            # don't support, there may not be much the user can do about it.
-            self.method_signatures[method_name] = signature.extract_signature(
-                method, ignore_first=not is_bound)
-            # Set the default number of return values for this method.
-            if hasattr(method, "__ray_num_return_vals__"):
-                self.actor_method_num_return_vals[method_name] = (
-                    method.__ray_num_return_vals__)
-            else:
-                self.actor_method_num_return_vals[method_name] = (
-                    ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
-
-            if hasattr(method, "__ray_invocation_decorator__"):
-                self.method_decorators[method_name] = (
-                    method.__ray_invocation_decorator__)
+        self.method_meta = ActorClassMethodMetadata(modified_class)
 
 
 class ActorClass:
@@ -517,7 +510,7 @@ class ActorClass:
                 worker.function_actor_manager.export_actor_class(
                     meta.modified_class,
                     meta.actor_creation_function_descriptor,
-                    meta.actor_method_names)
+                    meta.method_meta.methods.keys())
 
             resources = ray.utils.resources_from_resource_arguments(
                 cpus_to_use, meta.num_gpus, meta.memory,
@@ -536,7 +529,7 @@ class ActorClass:
                 creation_args = cross_language.format_args(
                     worker, args, kwargs)
             else:
-                function_signature = meta.method_signatures["__init__"]
+                function_signature = meta.method_meta.signatures["__init__"]
                 creation_args = signature.flatten_args(function_signature,
                                                        args, kwargs)
             actor_id = worker.core_worker.create_actor(
@@ -548,9 +541,9 @@ class ActorClass:
         actor_handle = ActorHandle(
             meta.language,
             actor_id,
-            meta.method_decorators,
-            meta.method_signatures,
-            meta.actor_method_num_return_vals,
+            meta.method_meta.decorators,
+            meta.method_meta.signatures,
+            meta.method_meta.num_return_vals,
             actor_method_cpu,
             meta.actor_creation_function_descriptor,
             worker.current_session_and_job,
@@ -846,8 +839,11 @@ class ActorHandle:
         return ActorHandle._deserialization_helper, (state, False)
 
 
-def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_reconstructions):
+def modify_class(cls):
+    # cls has been modified.
+    if hasattr(cls, "__ray_terminate__"):
+        return cls
+
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(
@@ -859,15 +855,6 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
         raise TypeError(
             "A checkpointable actor class should implement all abstract "
             "methods in the `Checkpointable` interface.")
-
-    if max_reconstructions is None:
-        max_reconstructions = 0
-
-    if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
-            ray_constants.INFINITE_RECONSTRUCTION):
-        raise Exception("max_reconstructions must be in range [%d, %d]." %
-                        (ray_constants.NO_RECONSTRUCTION,
-                         ray_constants.INFINITE_RECONSTRUCTION))
 
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
@@ -893,6 +880,32 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
 
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
+
+    if not ray.utils.is_function_or_method(getattr(Class, "__init__", None)):
+        # Add __init__ if it does not exist.
+        # Actor creation will be executed with __init__ together.
+
+        # Assign an __init__ function will avoid many checks later on.
+        def __init__(self):
+            pass
+
+        Class.__init__ = __init__
+
+    return Class
+
+
+def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
+               max_reconstructions):
+    Class = modify_class(cls)
+
+    if max_reconstructions is None:
+        max_reconstructions = 0
+
+    if not (ray_constants.NO_RECONSTRUCTION <= max_reconstructions <=
+            ray_constants.INFINITE_RECONSTRUCTION):
+        raise Exception("max_reconstructions must be in range [%d, %d]." %
+                        (ray_constants.NO_RECONSTRUCTION,
+                         ray_constants.INFINITE_RECONSTRUCTION))
 
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_reconstructions, num_cpus,

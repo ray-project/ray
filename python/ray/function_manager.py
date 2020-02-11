@@ -381,7 +381,7 @@ class FunctionActorManager:
             if self._worker.load_code_from_local:
                 job_id = ray.JobID.nil()
                 # Load actor class from local code.
-                actor_class = self._load_actor_from_local(
+                actor_class = self._load_actor_class_from_local(
                     job_id, function_descriptor)
             else:
                 # Load actor class from GCS.
@@ -414,7 +414,7 @@ class FunctionActorManager:
             self._num_task_executions[job_id][function_id] = 0
         return actor_class
 
-    def _load_actor_from_local(self, job_id, function_descriptor):
+    def _load_actor_class_from_local(self, job_id, function_descriptor):
         """Load actor class from local code."""
         assert isinstance(job_id, ray.JobID)
         module_name, class_name = (function_descriptor.module_name,
