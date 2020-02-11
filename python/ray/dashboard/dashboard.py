@@ -34,8 +34,11 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 import ray.ray_constants as ray_constants
 
-from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune import Analysis
+try:
+    from ray.tune.result import DEFAULT_RESULTS_DIR
+    from ray.tune import Analysis
+except ImportError:
+    Analysis = None
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -117,7 +120,8 @@ class Dashboard(object):
 
         self.node_stats = NodeStats(redis_address, redis_password)
         self.raylet_stats = RayletStats(redis_address, redis_password)
-        self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
+        if Analysis is not None:
+            self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -263,11 +267,17 @@ class Dashboard(object):
             return await json_response(result=result)
 
         async def tune_info(req) -> aiohttp.web.Response:
-            D = self.tune_stats.get_stats()
+            if Analysis is not None:
+                D = self.tune_stats.get_stats()
+            else:
+                D = {}
             return await json_response(result=D)
 
         async def tune_availability(req) -> aiohttp.web.Response:
-            D = self.tune_stats.get_availability()
+            if Analysis is not None:
+                D = self.tune_stats.get_availability()
+            else:
+                D = {"available": False}
             return await json_response(result=D)
 
         async def launch_profiling(req) -> aiohttp.web.Response:
@@ -351,7 +361,8 @@ class Dashboard(object):
         self.log_dashboard_url()
         self.node_stats.start()
         self.raylet_stats.start()
-        self.tune_stats.start()
+        if Analysis is not None:
+            self.tune_stats.start()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 
