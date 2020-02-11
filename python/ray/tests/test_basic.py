@@ -44,6 +44,7 @@ def test_internal_free(shutdown_only):
     sample = ray.get(obj_id)  # Will block forever here
     print("Refetched sample: {}".format(sample))
 
+
 # https://github.com/ray-project/ray/issues/6662
 def test_ignore_http_proxy(shutdown_only):
     ray.init(num_cpus=1)
