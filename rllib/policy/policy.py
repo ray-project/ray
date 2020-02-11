@@ -398,8 +398,7 @@ def clip_action(action, space):
         return np.clip(action, space.low, space.high)
     elif isinstance(space, gym.spaces.Tuple):
         if type(action) not in (tuple, list):
-            raise ValueError("Expected tuple space for actions {}: {}".format(
-                action, space))
+            raise ValueError("Expected tuple space for actions {}: {}".format(action, space))
         out = []
         for a, s in zip(action, space.spaces):
             out.append(clip_action(a, s))

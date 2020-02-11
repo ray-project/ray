@@ -1,10 +1,11 @@
 """Graph mode TF policy built using build_tf_policy()."""
 
 from collections import OrderedDict
+from gym.spaces import Tuple
 import logging
 import numpy as np
 
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import Policy, TupleActions
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
@@ -172,6 +173,8 @@ class DynamicTFPolicy(TFPolicy):
                 deterministic_actions,
                 true_fn=lambda: action_dist.deterministic_sample(),
                 false_fn=lambda: action_dist.sample())
+            if isinstance(action_space, Tuple):
+                action_sampler = TupleActions(action_sampler)
             action_logp = action_dist.sampled_action_logp()
 
         # Phase 1 init
