@@ -25,7 +25,7 @@ if [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install -q scipy tensorflow cython==0.29.0 gym opencv-python-headless pyyaml pandas==0.24.2 requests \
-    feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil aiohttp \
+    feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
     blist torch torchvision scikit-learn
 elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
@@ -34,7 +34,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install -q cython==0.29.0 tensorflow gym opencv-python-headless pyyaml pandas==0.24.2 requests \
-    feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil aiohttp \
+    feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
     blist torch torchvision scikit-learn
 elif [[ "$LINT" == "1" ]]; then
