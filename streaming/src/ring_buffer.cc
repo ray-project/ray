@@ -23,11 +23,6 @@ bool StreamingRingBuffer::Push(const StreamingMessagePtr &msg) {
   return true;
 }
 
-bool StreamingRingBuffer::Push(StreamingMessagePtr &&msg) {
-  message_buffer_->Push(std::forward<StreamingMessagePtr>(msg));
-  return true;
-}
-
 StreamingMessagePtr &StreamingRingBuffer::Front() {
   STREAMING_CHECK(!message_buffer_->Empty());
   return message_buffer_->Front();
@@ -38,11 +33,11 @@ void StreamingRingBuffer::Pop() {
   message_buffer_->Pop();
 }
 
-bool StreamingRingBuffer::IsFull() { return message_buffer_->Full(); }
+bool StreamingRingBuffer::IsFull() const { return message_buffer_->Full(); }
 
-bool StreamingRingBuffer::IsEmpty() { return message_buffer_->Empty(); }
+bool StreamingRingBuffer::IsEmpty() const { return message_buffer_->Empty(); }
 
-size_t StreamingRingBuffer::Size() { return message_buffer_->Size(); };
+size_t StreamingRingBuffer::Size() const { return message_buffer_->Size(); }
 
 size_t StreamingRingBuffer::Capacity() const { return message_buffer_->Capacity(); }
 

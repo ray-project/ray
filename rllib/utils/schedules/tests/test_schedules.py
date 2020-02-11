@@ -11,7 +11,7 @@ tf = try_import_tf()
 
 class TestSchedules(unittest.TestCase):
     """
-    Tests all time-step/time-percentage dependent Schedule classes.
+    Tests all time-step dependent Schedule classes.
     """
 
     def test_constant_schedule(self):

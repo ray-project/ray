@@ -15,10 +15,10 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
 from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.utils import FilterManager, deep_update, merge_dicts, \
+    try_import_tf
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
-from ray.rllib.utils import FilterManager, deep_update, merge_dicts
 from ray.rllib.utils.memory import ray_get_and_free
-from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
 from ray.tune.trial import ExportFormat
@@ -165,6 +165,11 @@ COMMON_CONFIG = {
     # only has an effect if eager is enabled.
     "no_eager_on_workers": False,
 
+    # === Exploration Settings ===
+    # Provide a dict specifying the Exploration object's config.
+    # Set to False or None for no exploration behavior (e.g., for evaluation).
+    "exploration": False,
+
     # === Evaluation Settings ===
     # Evaluate with every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
@@ -174,7 +179,6 @@ COMMON_CONFIG = {
     # Number of episodes to run per evaluation period. If using multiple
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
-    # Extra arguments to pass to evaluation workers.
     # Typical usage is to pass extra args to evaluation env creator
     # and to disable exploration by computing deterministic actions
     "evaluation_config": {
@@ -182,6 +186,7 @@ COMMON_CONFIG = {
         # "env_config": {...},
         # "exploration_fraction": 0,
         # "exploration_final_eps": 0,
+        "exploration": False
     },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
@@ -301,7 +306,7 @@ COMMON_CONFIG = {
     "input_evaluation": ["is", "wis"],
     # Whether to run postprocess_trajectory() on the trajectory fragments from
     # offline inputs. Note that postprocessing will be done using the *current*
-    # policy, not the *behaviour* policy, which is typically undesirable for
+    # policy, not the *behavior* policy, which is typically undesirable for
     # on-policy algorithms.
     "postprocess_inputs": False,
     # If positive, input batches will be shuffled via a sliding window buffer
@@ -419,7 +424,7 @@ class Trainer(Trainable):
 
             logger_creator = default_logger_creator
 
-        Trainable.__init__(self, config, logger_creator)
+        super().__init__(config, logger_creator)
 
     @classmethod
     @override(Trainable)
@@ -556,7 +561,7 @@ class Trainer(Trainable):
         with get_scope():
             self._init(self.config, self.env_creator)
 
-            # Evaluation related
+            # Evaluation setup.
             if self.config.get("evaluation_interval"):
                 # Update env_config with evaluation settings:
                 extra_config = copy.deepcopy(self.config["evaluation_config"])
@@ -566,6 +571,7 @@ class Trainer(Trainable):
                 })
                 logger.debug(
                     "using evaluation_config: {}".format(extra_config))
+
                 self.evaluation_workers = self._make_workers(
                     self.env_creator,
                     self._policy,
@@ -594,6 +600,26 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _make_workers(self, env_creator, policy, config, num_workers):
+        """Default factory method for a WorkerSet running under this Trainer.
+
+        Override this method by passing a custom `make_workers` into
+        `build_trainer`.
+
+        Args:
+            env_creator (callable): A function that return and Env given an env
+                config.
+            policy (class): The Policy class to use for creating the policies
+                of the workers.
+            config (dict): The Trainer's config.
+            num_workers (int): Number of remote rollout workers to create.
+                0 for local only.
+            remote_config_updates (Optional[List[dict]]): A list of config
+                dicts to update `config` with for each Worker (len must be
+                same as `num_workers`).
+
+        Returns:
+            WorkerSet: The created WorkerSet.
+        """
         return WorkerSet(
             env_creator,
             policy,
@@ -604,7 +630,6 @@ class Trainer(Trainable):
     @DeveloperAPI
     def _init(self, config, env_creator):
         """Subclasses should override this for custom initialization."""
-
         raise NotImplementedError
 
     @DeveloperAPI
@@ -614,7 +639,6 @@ class Trainer(Trainable):
         Note that this default implementation does not do anything beyond
         merging evaluation_config with the normal trainer config.
         """
-
         if not self.config["evaluation_config"]:
             raise ValueError(
                 "No evaluation_config specified. It doesn't make sense "
@@ -677,8 +701,9 @@ class Trainer(Trainable):
                        prev_reward=None,
                        info=None,
                        policy_id=DEFAULT_POLICY_ID,
-                       full_fetch=False):
-        """Computes an action for the specified policy.
+                       full_fetch=False,
+                       explore=True):
+        """Computes an action for the specified policy on the local Worker.
 
         Note that you can also access the policy object through
         self.get_policy(policy_id) and call compute_actions() on it directly.
@@ -686,58 +711,57 @@ class Trainer(Trainable):
         Arguments:
             observation (obj): observation from the environment.
             state (list): RNN hidden state, if any. If state is not None,
-                          then all of compute_single_action(...) is returned
-                          (computed action, rnn state, logits dictionary).
-                          Otherwise compute_single_action(...)[0] is
-                          returned (computed action).
+                then all of compute_single_action(...) is returned
+                (computed action, rnn state(s), logits dictionary).
+                Otherwise compute_single_action(...)[0] is returned
+                (computed action).
             prev_action (obj): previous action value, if any
             prev_reward (int): previous reward, if any
             info (dict): info object, if any
-            policy_id (str): policy to query (only applies to multi-agent).
-            full_fetch (bool): whether to return extra action fetch results.
-                This is always set to true if RNN state is specified.
+            policy_id (str): Policy to query (only applies to multi-agent).
+            full_fetch (bool): Whether to return extra action fetch results.
+                This is always set to True if RNN state is specified.
+            explore (bool): Whether to pick an action using exploration or not.
 
         Returns:
-            Just the computed action if full_fetch=False, or the full output
-            of policy.compute_actions() otherwise.
+            any: The computed action if full_fetch=False, or
+            tuple: The full output of policy.compute_actions() if
+                full_fetch=True or we have an RNN-based Policy.
         """
-
         if state is None:
             state = []
         preprocessed = self.workers.local_worker().preprocessors[
             policy_id].transform(observation)
         filtered_obs = self.workers.local_worker().filters[policy_id](
             preprocessed, update=False)
-        if state:
-            return self.get_policy(policy_id).compute_single_action(
-                filtered_obs,
-                state,
-                prev_action,
-                prev_reward,
-                info,
-                clip_actions=self.config["clip_actions"])
-        res = self.get_policy(policy_id).compute_single_action(
+
+        # Figure out the current (sample) time step and pass it into Policy.
+        timestep = self.optimizer.num_steps_sampled \
+            if self._has_policy_optimizer() else None
+
+        result = self.get_policy(policy_id).compute_single_action(
             filtered_obs,
             state,
             prev_action,
             prev_reward,
             info,
-            clip_actions=self.config["clip_actions"])
-        if full_fetch:
-            return res
+            clip_actions=self.config["clip_actions"],
+            explore=explore,
+            timestep=timestep)
+
+        if state or full_fetch:
+            return result
         else:
-            return res[0]  # backwards compatibility
+            return result[0]  # backwards compatibility
 
     @property
     def _name(self):
         """Subclasses should override this to declare their name."""
-
         raise NotImplementedError
 
     @property
     def _default_config(self):
         """Subclasses should override this to declare their default config."""
-
         raise NotImplementedError
 
     @PublicAPI
@@ -747,7 +771,6 @@ class Trainer(Trainable):
         Arguments:
             policy_id (str): id of policy to return.
         """
-
         return self.workers.local_worker().get_policy(policy_id)
 
     @PublicAPI
@@ -890,6 +913,12 @@ class Trainer(Trainable):
         self.optimizer.reset(healthy_workers)
 
     def _has_policy_optimizer(self):
+        """Whether this Trainer has a PolicyOptimizer as `optimizer` property.
+
+        Returns:
+            bool: True if this Trainer holds a PolicyOptimizer object in
+                property `self.optimizer`.
+        """
         return hasattr(self, "optimizer") and isinstance(
             self.optimizer, PolicyOptimizer)
 
