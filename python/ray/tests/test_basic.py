@@ -38,7 +38,7 @@ def test_internal_free(shutdown_only):
     print("Sample: {}".format(sample))
     del sample
 
-    ray.internal.free(obj_id, delete_plasma_only=True)
+    ray.internal.free(obj_id)
     print(ray.worker.global_worker.core_worker.get_all_reference_counts())
 
     sample = ray.get(obj_id)  # Will block forever here
