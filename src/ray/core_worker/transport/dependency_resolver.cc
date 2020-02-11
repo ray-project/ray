@@ -18,7 +18,8 @@ struct TaskState {
 
 void InlineDependencies(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> dependencies,
-    TaskSpecification &task, std::vector<ObjectID> *inlined) {
+    TaskSpecification &task, std::vector<ObjectID> *inlined_dependency_ids,
+    std::vector<ObjectID> *contained_ids) {
   auto &msg = task.GetMutableMessage();
   size_t found = 0;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -29,7 +30,7 @@ void InlineDependencies(
       if (it != dependencies.end()) {
         RAY_CHECK(it->second);
         auto *mutable_arg = msg.mutable_args(i);
-        // mutable_arg->clear_object_ids();
+        mutable_arg->clear_object_ids();
         if (it->second->IsInPlasmaError()) {
           // Promote the object id to plasma.
           mutable_arg->clear_object_ids();
@@ -44,7 +45,11 @@ void InlineDependencies(
             const auto &metadata = it->second->GetMetadata();
             mutable_arg->set_metadata(metadata->Data(), metadata->Size());
           }
-          inlined->push_back(id);
+          for (const auto &inlined_id : it->second->GetInlinedIds()) {
+            mutable_arg->add_inlined_ids(inlined_id.Binary());
+            contained_ids->push_back(inlined_id);
+          }
+          inlined_dependency_ids->push_back(id);
         }
         found++;
       } else {
@@ -81,27 +86,29 @@ void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
 
   for (const auto &it : state->local_dependencies) {
     const ObjectID &obj_id = it.first;
-    in_memory_store_->GetAsync(
-        obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
-          RAY_CHECK(obj != nullptr);
-          bool complete = false;
-          std::vector<ObjectID> inlined;
-          {
-            absl::MutexLock lock(&mu_);
-            state->local_dependencies[obj_id] = std::move(obj);
-            if (--state->dependencies_remaining == 0) {
-              InlineDependencies(state->local_dependencies, state->task, &inlined);
-              complete = true;
-              num_pending_ -= 1;
-            }
-          }
-          if (inlined.size() > 0) {
-            task_finisher_->OnTaskDependenciesInlined(inlined);
-          }
-          if (complete) {
-            on_complete();
-          }
-        });
+    in_memory_store_->GetAsync(obj_id, [this, state, obj_id,
+                                        on_complete](std::shared_ptr<RayObject> obj) {
+      RAY_CHECK(obj != nullptr);
+      bool complete = false;
+      std::vector<ObjectID> inlined_dependency_ids;
+      std::vector<ObjectID> contained_ids;
+      {
+        absl::MutexLock lock(&mu_);
+        state->local_dependencies[obj_id] = std::move(obj);
+        if (--state->dependencies_remaining == 0) {
+          InlineDependencies(state->local_dependencies, state->task,
+                             &inlined_dependency_ids, &contained_ids);
+          complete = true;
+          num_pending_ -= 1;
+        }
+      }
+      if (inlined_dependency_ids.size() > 0) {
+        task_finisher_->OnTaskDependenciesInlined(inlined_dependency_ids, contained_ids);
+      }
+      if (complete) {
+        on_complete();
+      }
+    });
   }
 }
 

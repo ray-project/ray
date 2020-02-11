@@ -302,8 +302,9 @@ cdef void prepare_args(
                     inlined_ids.push_back(obj_id.native())
                 args_vector.push_back(
                     CTaskArg.PassByValue(make_shared[CRayObject](
-                        arg_data, string_to_buffer(serialized_arg.metadata)
-                        ), inlined_ids))
+                        arg_data, string_to_buffer(serialized_arg.metadata),
+                        inlined_ids
+                        )))
                 inlined_ids.clear()
             else:
                 args_vector.push_back(
@@ -673,8 +674,7 @@ cdef class CoreWorker:
                     c_object_id[0] = object_id.native()
                     with nogil:
                         check_status(self.core_worker.get().Create(
-                                    metadata, data_size, contained_ids,
-                                    NULL,
+                                    metadata, data_size,
                                     c_object_id[0], data))
                 break
             except ObjectStoreFullError as e:

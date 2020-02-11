@@ -60,6 +60,8 @@ message ReturnObject {
   bytes data = 3;
   // Metadata of the object.
   bytes metadata = 4;
+  // ObjectIDs that were inlined in the data field.
+  repeated bytes inlined_ids = 5;
 }
 
 message PushTaskRequest {

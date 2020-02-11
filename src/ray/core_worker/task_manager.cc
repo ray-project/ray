@@ -25,9 +25,10 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
       for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
         task_deps.push_back(spec.ArgId(i, j));
       }
+    } else {
+      const auto &inlined_ids = spec.ArgInlinedIds(i);
+      task_deps.insert(task_deps.end(), inlined_ids.begin(), inlined_ids.end());
     }
-    const auto &inlined_ids = spec.ArgInlinedIds(i);
-    task_deps.insert(task_deps.end(), inlined_ids.begin(), inlined_ids.end());
   }
   reference_counter_->AddSubmittedTaskReferences(task_deps);
 
@@ -61,7 +62,7 @@ bool TaskManager::IsTaskPending(const TaskID &task_id) const {
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::PushTaskReply &reply,
-                                      const rpc::Address *actor_addr) {
+                                      const rpc::Address &worker_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
   TaskSpecification spec;
   {
@@ -73,7 +74,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     pending_tasks_.erase(it);
   }
 
-  RemovePlasmaSubmittedTaskReferences(spec, actor_addr, &reply.borrower_refs());
+  RemoveFinishedTaskReferences(spec, worker_addr, reply.borrower_refs());
 
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
@@ -98,8 +99,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                 reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
             return_object.metadata().size());
       }
-      RAY_CHECK_OK(
-          in_memory_store_->Put(RayObject(data_buffer, metadata_buffer), object_id));
+      RAY_CHECK_OK(in_memory_store_->Put(
+          RayObject(data_buffer, metadata_buffer,
+                    IdVectorFromProtobuf<ObjectID>(return_object.inlined_ids())),
+          object_id));
     }
   }
 
@@ -156,7 +159,10 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
         }
       }
     }
-    RemovePlasmaSubmittedTaskReferences(spec, nullptr, nullptr);
+    // The worker failed to execute the task, so it cannot be borrowing any
+    // objects.
+    RemoveFinishedTaskReferences(spec, rpc::Address(),
+                                 ReferenceCounter::ReferenceTableProto());
     MarkPendingTaskFailed(task_id, spec, error_type);
   }
 
@@ -172,37 +178,35 @@ void TaskManager::ShutdownIfNeeded() {
 }
 
 void TaskManager::RemoveSubmittedTaskReferences(
-    const std::vector<ObjectID> &object_ids, const rpc::Address *borrower_addr,
-    const ReferenceCounter::ReferenceTableProto *borrower_refs) {
-  ReferenceCounter::ReferenceTableProto refs;
-  rpc::Address addr;
-  if (borrower_refs && borrower_addr) {
-    refs = *borrower_refs;
-    addr = *borrower_addr;
-  }
+    const std::vector<ObjectID> &object_ids, const rpc::Address &worker_addr,
+    const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> deleted;
-  // TODO: Fill in the borrower address.
-  RAY_LOG(DEBUG) << "RemoveSubmittedTaskReferences got refs: " << refs.size();
-  reference_counter_->RemoveSubmittedTaskReferences(object_ids, addr, refs, &deleted);
+  reference_counter_->RemoveSubmittedTaskReferences(object_ids, worker_addr,
+                                                    borrowed_refs, &deleted);
   in_memory_store_->Delete(deleted);
 }
 
-void TaskManager::OnTaskDependenciesInlined(const std::vector<ObjectID> &object_ids) {
-  // RemoveSubmittedTaskReferences(object_ids, nullptr);
+void TaskManager::OnTaskDependenciesInlined(
+    const std::vector<ObjectID> &inlined_dependency_ids,
+    const std::vector<ObjectID> &contained_ids) {
+  reference_counter_->AddSubmittedTaskReferences(contained_ids);
+  RemoveSubmittedTaskReferences(inlined_dependency_ids);
 }
 
-void TaskManager::RemovePlasmaSubmittedTaskReferences(
-    TaskSpecification &spec, const rpc::Address *borrower_addr,
-    const ReferenceCounter::ReferenceTableProto *borrower_refs) {
+void TaskManager::RemoveFinishedTaskReferences(
+    TaskSpecification &spec, const rpc::Address &borrower_addr,
+    const ReferenceCounter::ReferenceTableProto &borrower_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
-    auto count = spec.ArgIdCount(i);
-    if (count > 0) {
-      const auto &id = spec.ArgId(i, 0);
-      plasma_dependencies.push_back(id);
+    if (spec.ArgByRef(i)) {
+      for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
+        plasma_dependencies.push_back(spec.ArgId(i, j));
+      }
+    } else {
+      const auto &inlined_ids = spec.ArgInlinedIds(i);
+      plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(),
+                                 inlined_ids.end());
     }
-    const auto &inlined_ids = spec.ArgInlinedIds(i);
-    plasma_dependencies.insert(plasma_dependencies.end(), inlined_ids.begin(), inlined_ids.end());
   }
   RemoveSubmittedTaskReferences(plasma_dependencies, borrower_addr, borrower_refs);
 }

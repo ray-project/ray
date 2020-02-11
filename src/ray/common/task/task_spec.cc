@@ -95,8 +95,7 @@ ObjectID TaskSpecification::ReturnId(size_t return_index,
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
-  return (ArgData(arg_index) != nullptr);
-  // return (ArgIdCount(arg_index) != 0);
+  return (ArgIdCount(arg_index) != 0);
 }
 
 size_t TaskSpecification::ArgIdCount(size_t arg_index) const {

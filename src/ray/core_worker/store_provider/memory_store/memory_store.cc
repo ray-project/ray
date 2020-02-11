@@ -155,8 +155,8 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
 Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   RAY_CHECK(object_id.IsDirectCallType());
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
-  auto object_entry =
-      std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
+  auto object_entry = std::make_shared<RayObject>(object.GetData(), object.GetMetadata(),
+                                                  object.GetInlinedIds(), true);
 
   {
     absl::MutexLock lock(&mu_);

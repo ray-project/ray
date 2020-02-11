@@ -159,7 +159,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
         if (!status.ok()) {
           task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED, &status);
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply, &addr);
+          task_finisher_->CompletePendingTask(task_id, reply, addr);
         }
       }));
 }
@@ -278,6 +278,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
           if (result->GetMetadata() != nullptr) {
             return_object->set_metadata(result->GetMetadata()->Data(),
                                         result->GetMetadata()->Size());
+          }
+          for (const auto &inlined_id : result->GetInlinedIds()) {
+            return_object->add_inlined_ids(inlined_id.Binary());
           }
         }
       }

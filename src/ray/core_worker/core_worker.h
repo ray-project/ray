@@ -227,14 +227,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] metadata Metadata of the object to be written.
   /// \param[in] data_size Size of the object to be written.
-  /// \param[in] contained_object_ids The IDs serialized in this object.
   /// \param[in] object_id Object ID specified by the user.
   /// \param[out] data Buffer for the user to write the object into.
   /// \return Status.
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const std::vector<ObjectID> &contained_object_ids,
-                const rpc::Address *owner_address, const ObjectID &object_id,
-                std::shared_ptr<Buffer> *data);
+                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `Create()` call and then writing into the returned buffer.

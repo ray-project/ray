@@ -116,7 +116,8 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
         metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
       }
-      const auto result_object = std::make_shared<RayObject>(data, metadata);
+      const auto result_object =
+          std::make_shared<RayObject>(data, metadata, std::vector<ObjectID>());
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {

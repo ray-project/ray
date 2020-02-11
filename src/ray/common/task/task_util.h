@@ -63,7 +63,7 @@ class TaskSpecBuilder {
   ///
   /// \param value the RayObject instance that contains the data and the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const RayObject &value, const std::vector<ObjectID> &inlined_ids) {
+  TaskSpecBuilder &AddByValueArg(const RayObject &value) {
     auto arg = message_->add_args();
     if (value.HasData()) {
       const auto &data = value.GetData();
@@ -73,7 +73,7 @@ class TaskSpecBuilder {
       const auto &metadata = value.GetMetadata();
       arg->set_metadata(metadata->Data(), metadata->Size());
     }
-    for (const auto &inlined_id : inlined_ids) {
+    for (const auto &inlined_id : value.GetInlinedIds()) {
       arg->add_inlined_ids(inlined_id.Binary());
     }
     return *this;

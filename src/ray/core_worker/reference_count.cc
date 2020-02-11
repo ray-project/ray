@@ -1,5 +1,15 @@
 #include "ray/core_worker/reference_count.h"
 
+#define PRINT_REF_COUNT(it)                                                              \
+  RAY_LOG(DEBUG) << "REF " << it->first << " borrowers: " << it->second.borrowers.size() \
+                 << " local_ref_count: " << it->second.local_ref_count                   \
+                 << " submitted_count: " << it->second.submitted_task_ref_count          \
+                 << " contained_in_owned: " << it->second.contained_in_owned.size()      \
+                 << " contained_in_borrowed: "                                           \
+                 << (it->second.contained_in_borrowed_id.has_value()                     \
+                         ? *it->second.contained_in_borrowed_id                          \
+                         : ObjectID::Nil());
+
 namespace {}  // namespace
 
 namespace ray {
@@ -88,8 +98,8 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
     it = object_id_refs_.emplace(object_id, Reference()).first;
   }
   it->second.local_ref_count++;
-  RAY_LOG(DEBUG) << "Add local reference " << object_id << " count is now "
-                 << it->second.local_ref_count;
+  RAY_LOG(DEBUG) << "Add local reference " << object_id;
+  PRINT_REF_COUNT(it);
 }
 
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
@@ -104,8 +114,8 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   RAY_CHECK(it->second.local_ref_count > 0)
       << "Tried to decrease ref count for object ID that has count 0" << object_id;
   it->second.local_ref_count--;
-  RAY_LOG(DEBUG) << "Remove local reference " << object_id << " count is now "
-                 << it->second.local_ref_count;
+  RAY_LOG(DEBUG) << "Remove local reference " << object_id;
+  PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {
     RAY_LOG(DEBUG) << "xxx";
     DeleteReferenceInternal(it, deleted);
@@ -136,6 +146,7 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
   // outer ID.
   const auto refs = ReferenceTableFromProto(borrowed_refs);
   for (const ObjectID &object_id : object_ids) {
+    RAY_CHECK(!WorkerID::FromBinary(worker_addr.worker_id()).IsNil());
     MergeBorrowerRefs(object_id, worker_addr, refs);
   }
 
@@ -191,6 +202,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     RAY_LOG(DEBUG) << "Calling on_local_ref_deleted for object " << id;
     it->second.on_local_ref_deleted();
   }
+  PRINT_REF_COUNT(it);
   if (it->second.CanDelete()) {
     for (const auto &inner_id : it->second.contains) {
       RAY_LOG(DEBUG) << "Try to delete inner object " << inner_id;

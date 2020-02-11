@@ -148,8 +148,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                           CObjectID *object_id, shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size,
-                          const c_vector[CObjectID] &contained_object_ids,
-                          const CAddress *owner_address,
                           const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
         CRayStatus Seal(const CObjectID &object_id, c_bool pin_object)

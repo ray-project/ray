@@ -196,8 +196,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status);
         } else {
-          rpc::Address proto = addr.ToProto();
-          task_finisher_->CompletePendingTask(task_id, reply, &proto);
+          task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
         }
       });
   if (!status.ok()) {

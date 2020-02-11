@@ -30,6 +30,7 @@ def _fill_object_store_and_get(oid, succeed=True, object_MiB=40,
     if type(oid) is bytes:
         oid = ray.ObjectID(oid)
 
+    print("GET", oid)
     if succeed:
         ray.get(oid)
     else:

@@ -3096,7 +3096,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
     pinned_objects_.emplace(
         object_id, std::unique_ptr<RayObject>(new RayObject(
                        std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata))));
+                       std::make_shared<PlasmaBuffer>(plasma_results[i].metadata), {})));
     i++;
 
     // Send a long-running RPC request to the owner for each object. When we get a

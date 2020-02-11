@@ -32,7 +32,7 @@ void BuildCommonTaskSpec(
     if (arg.IsPassedByReference()) {
       builder.AddByRefArg(arg.GetReference());
     } else {
-      builder.AddByValueArg(arg.GetValue(), arg.GetInlinedIds());
+      builder.AddByValueArg(arg.GetValue());
     }
   }
 
@@ -182,6 +182,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
+        RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {obj_id}));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       check_signals_));
@@ -343,6 +344,7 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
     RAY_CHECK_OK(plasma_store_provider_->Put(*value, object_id));
+    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
@@ -352,7 +354,8 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
          "which task will create them. "
          "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
-  RAY_LOG(DEBUG) << "Serializing object " << object_id << " owned by " << *owner_id;
+  RAY_LOG(DEBUG) << "Promoted object to plasma " << object_id << " owned by "
+                 << *owner_id;
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
@@ -422,13 +425,7 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                          const std::vector<ObjectID> &contained_object_ids,
-                          const rpc::Address *owner_address, const ObjectID &object_id,
-                          std::shared_ptr<Buffer> *data) {
-  if (!contained_object_ids.empty() && owner_address) {
-    reference_counter_->WrapObjectId(object_id, contained_object_ids,
-                                     rpc::WorkerAddress(*owner_address));
-  }
+                          const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
   return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
 
@@ -688,8 +685,7 @@ Status CoreWorker::SetResource(const std::string &resource_name, const double ca
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
-                              std::vector<ObjectID> *return_ids,
-                              int max_retries) {
+                              std::vector<ObjectID> *return_ids, int max_retries) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -915,14 +911,22 @@ Status CoreWorker::AllocateReturnObjects(
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
+      RAY_LOG(DEBUG) << "Creating return object " << object_ids[i];
+      // Mark this object as containing other object IDs. The ref counter will
+      // keep the inner IDs in scope until the outer one is out of scope.
+      if (!contained_object_ids[i].empty()) {
+        reference_counter_->WrapObjectId(object_ids[i], contained_object_ids[i],
+                                         owner_address);
+      }
+
+      // Allocate a buffer for the return object.
       if (worker_context_.CurrentTaskIsDirectCall() &&
           static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_direct_call_object_size() &&
-          contained_object_ids[i].empty()) {
+              RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
-        RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], contained_object_ids[i],
-                                 &owner_address, object_ids[i], &data_buffer));
+        RAY_RETURN_NOT_OK(
+            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -930,7 +934,8 @@ Status CoreWorker::AllocateReturnObjects(
     // This allows the caller to prevent the core worker from storing an output
     // (e.g., to support ray.experimental.no_return.NoReturn).
     if (!object_already_exists && (data_buffer || metadatas[i])) {
-      return_objects->at(i) = std::make_shared<RayObject>(data_buffer, metadatas[i]);
+      return_objects->at(i) =
+          std::make_shared<RayObject>(data_buffer, metadatas[i], contained_object_ids[i]);
     }
   }
 
@@ -1058,35 +1063,9 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   absl::flat_hash_map<ObjectID, int> by_ref_indices;
 
   for (size_t i = 0; i < task.NumArgs(); ++i) {
-    if (task.ArgDataSize(i)) {
-      // pass by value.
-      std::shared_ptr<LocalMemoryBuffer> data = nullptr;
-      if (task.ArgDataSize(i)) {
-        data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
-                                                   task.ArgDataSize(i));
-      }
-      std::shared_ptr<LocalMemoryBuffer> metadata = nullptr;
-      if (task.ArgMetadataSize(i)) {
-        metadata = std::make_shared<LocalMemoryBuffer>(
-            const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
-      }
-      args->at(i) = std::make_shared<RayObject>(data, metadata, /*copy_data*/ true);
-      int count = task.ArgIdCount(i);
-      if (count == 1) {
-        const auto &arg_id = task.ArgId(i, 0);
-        arg_reference_ids->at(i) = arg_id;
-        borrowed_ids->push_back(arg_id);
-      } else {
-        RAY_CHECK(count == 0);
-        arg_reference_ids->at(i) = ObjectID::Nil();
-        for (const auto &inlined_id : task.ArgInlinedIds(i)) {
-          borrowed_ids->push_back(inlined_id);
-        }
-      }
-    } else {
+    if (task.ArgByRef(i)) {
       // pass by reference.
-      int count = task.ArgIdCount(i);
-      RAY_CHECK(count == 1);
+      RAY_CHECK(task.ArgIdCount(i) == 1);
       // Direct call type objects that weren't inlined have been promoted to plasma.
       // We need to put an OBJECT_IN_PLASMA error here so the subsequent call to Get()
       // properly redirects to the plasma store.
@@ -1098,7 +1077,33 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
       by_ref_ids.insert(arg_id);
       by_ref_indices.emplace(arg_id, i);
       arg_reference_ids->at(i) = arg_id;
+      // The task borrows all args passed by reference. Because the task does
+      // not have a reference to the argument ID in the frontend, it is not
+      // possible for the task to still be borrowing the argument by the time
+      // it finishes.
       borrowed_ids->push_back(arg_id);
+    } else {
+      // pass by value.
+      std::shared_ptr<LocalMemoryBuffer> data = nullptr;
+      if (task.ArgDataSize(i)) {
+        data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
+                                                   task.ArgDataSize(i));
+      }
+      std::shared_ptr<LocalMemoryBuffer> metadata = nullptr;
+      if (task.ArgMetadataSize(i)) {
+        metadata = std::make_shared<LocalMemoryBuffer>(
+            const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
+      }
+      args->at(i) = std::make_shared<RayObject>(data, metadata, task.ArgInlinedIds(i),
+                                                /*copy_data*/ true);
+      arg_reference_ids->at(i) = ObjectID::Nil();
+      // The task borrows all ObjectIDs that were serialized in the inlined
+      // arguments. The task will receive references to these IDs, so it is
+      // possible for the task to continue borrowing these arguments by the
+      // time it finishes.
+      for (const auto &inlined_id : task.ArgInlinedIds(i)) {
+        borrowed_ids->push_back(inlined_id);
+      }
     }
   }
 
