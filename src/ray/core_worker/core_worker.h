@@ -269,7 +269,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
               const int64_t timeout_ms, std::vector<bool> *results);
 
-  /// Delete a list of objects from the object store.
+  /// Delete a list of objects from the plasma object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
