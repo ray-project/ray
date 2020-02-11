@@ -7,21 +7,21 @@ import ray
 from ray.dashboard.closed_source.ingest_server \
     import NODE_INFO_CHANNEL, RAY_INFO_CHANNEL
 from ray.dashboard.dashboard_controller_interface \
-    import DashboardControllerInterface
+    import BaseDashboardController
 
 
-class HostedDashboardController(DashboardControllerInterface):
+class HostedDashboardController(BaseDashboardController):
     """Dashboard interface that is used in a hosted side."""
 
     def __init__(self, redis_address, redis_password, update_frequency=1.0):
         self.redis_client = redis.StrictRedis(host="127.0.0.1", port=6379)
-        self.node_stats = HostedNodeStats(self.redis_client)
-        self.raylet_stats = HostedRayletStats(self.redis_client)
+        self.node_stats = HostedNodeStatsImporter(self.redis_client)
+        self.raylet_stats = HostedRayletStatsImporter(self.redis_client)
 
-    def node_info(self):
+    def get_node_info(self):
         return self.node_stats.get_node_stats()
 
-    def raylet_info(self):
+    def get_raylet_info(self):
         return self.raylet_stats.get_ralyet_stats()
 
     def launch_profiling(self, node_id, pid, duration):
@@ -36,10 +36,10 @@ class HostedDashboardController(DashboardControllerInterface):
     def kill_actor(self, actor_id, ip_address, port):
         raise NotImplementedError("TODO")
 
-    def logs(self, hostname, pid):
+    def get_logs(self, hostname, pid):
         raise NotImplementedError("TODO")
 
-    def errors(self, hostname, pid):
+    def get_errors(self, hostname, pid):
         raise NotImplementedError("TODO")
 
     def start_collecting_metrics(self):
@@ -47,7 +47,7 @@ class HostedDashboardController(DashboardControllerInterface):
         self.raylet_stats.start()
 
 
-class HostedNodeStats(threading.Thread):
+class HostedNodeStatsImporter(threading.Thread):
     def __init__(self, redis_client):
         self.redis_client = redis_client
         self.node_stats_data = {}
@@ -62,6 +62,7 @@ class HostedNodeStats(threading.Thread):
     def run(self):
         p = self.redis_client.pubsub(ignore_subscribe_messages=True)
         p.psubscribe(NODE_INFO_CHANNEL)
+        # TODO(sang): Error handling
         for x in p.listen():
             with self._node_stats_lock:
                 data = x["data"]
@@ -69,7 +70,7 @@ class HostedNodeStats(threading.Thread):
                 self.node_stats_data = data
 
 
-class HostedRayletStats(threading.Thread):
+class HostedRayletStatsImporter(threading.Thread):
     def __init__(self, redis_client):
         self.redis_client = redis_client
         self.raylet_stats_data = {}
@@ -84,6 +85,7 @@ class HostedRayletStats(threading.Thread):
     def run(self):
         p = self.redis_client.pubsub(ignore_subscribe_messages=True)
         p.psubscribe(RAY_INFO_CHANNEL)
+        # TODO(sang): Error handling
         for x in p.listen():
             with self._raylet_stats_lock:
                 data = x["data"]

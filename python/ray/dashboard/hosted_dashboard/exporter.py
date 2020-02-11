@@ -34,27 +34,20 @@ class Exporter(threading.Thread):
         self.stub.RayletInfoEvent.future(request)
 
     def export_log_file(self, data: dict):
-        request = dashboard_pb2.LogFileEventRequest(
-            json_data=json.dumps(data).encode("utf-8"))
-        self.stub.LogFileEvent.future(request)
+        raise NotImplementedError("Not implemented yet.")
 
     def export_error_info(self, data: dict):
-        request = dashboard_pb2.ErrorInfoEventRequest(
-            json_data=json.dumps(data).encode("utf-8"))
-        self.stub.ErrorInfoEvent.future(request)
+        raise NotImplementedError("Not implemented yet.")
 
     def export_profiling_status(self, data: dict):
-        request = dashboard_pb2.ProfilingStatusEventRequest(
-            json_data=json.dumps(data).encode("utf-8"))
-        self.stub.ProfilingStatusEvent.future(request)
+        raise NotImplementedError("Not implemented yet.")
 
     def export_profiling_info(self, data: dict):
-        request = dashboard_pb2.ProfilingInfoEventRequest(
-            json_data=json.dumps(data).encode("utf-8"))
-        self.stub.ProfilingInfoEvent.future(request)
+        raise NotImplementedError("Not implemented yet.")
 
     def run(self):
+        # TODO(sang): Add error handling.
         while True:
             time.sleep(self.update_frequency)
-            self.export_node_info(self.dashboard_controller.node_info())
-            self.export_raylet_info(self.dashboard_controller.raylet_info())
+            self.export_node_info(self.dashboard_controller.get_node_info())
+            self.export_raylet_info(self.dashboard_controller.get_raylet_info())

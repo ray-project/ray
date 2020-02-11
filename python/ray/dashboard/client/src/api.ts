@@ -103,6 +103,9 @@ export interface RayletInfoResponse {
           actorTitle: string;
           averageTaskExecutionSpeed: number;
           children: RayletInfoResponse["actors"];
+          // https://github.com/ray-project/ray/pull/6709/files
+          // chages internal structure, and currentTaskFuncDesc
+          // causes errors.
           // currentTaskFuncDesc: string[];
           ipAddress: string;
           isDirectCall: boolean;

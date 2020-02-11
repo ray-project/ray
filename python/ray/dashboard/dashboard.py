@@ -34,7 +34,7 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 from ray.dashboard.hosted_dashboard.dashboard_client import DashboardClient
 from ray.dashboard.dashboard_controller_interface \
-    import DashboardControllerInterface
+    import BaseDashboardController
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -90,7 +90,7 @@ def b64_decode(reply):
     return b64decode(reply).decode("utf-8")
 
 
-class DashboardController(DashboardControllerInterface):
+class DashboardController(BaseDashboardController):
     """DashboardController contains business logic for running dashboard."""
 
     def __init__(self, redis_address, redis_password, update_frequency=1.0):
@@ -155,10 +155,10 @@ class DashboardController(DashboardControllerInterface):
                 data["extraInfo"] += "\n" + "\n".join(to_print)
         return {"nodes": D, "actors": actor_tree}
 
-    def node_info(self):
+    def get_node_info(self):
         return self.node_stats.get_node_stats()
 
-    def raylet_info(self):
+    def get_raylet_info(self):
         return self._construct_raylet_info()
 
     def launch_profiling(self, node_id, pid, duration):
@@ -175,10 +175,10 @@ class DashboardController(DashboardControllerInterface):
     def kill_actor(self, actor_id, ip_address, port):
         return self.raylet_stats.kill_actor(actor_id, ip_address, port)
 
-    def logs(self, hostname, pid):
+    def get_logs(self, hostname, pid):
         return self.node_stats.get_logs(hostname, pid)
 
-    def errors(self, hostname, pid):
+    def get_errors(self, hostname, pid):
         self.node_stats.get_errors(hostname, pid)
 
     def start_collecting_metrics(self):
@@ -305,11 +305,11 @@ class Dashboard(object):
 
         async def node_info(req) -> aiohttp.web.Response:
             now = datetime.datetime.utcnow()
-            D = self.dashboard_controller.node_info()
+            D = self.dashboard_controller.get_node_info()
             return await json_response(result=D, ts=now)
 
         async def raylet_info(req) -> aiohttp.web.Response:
-            result = self.dashboard_controller.raylet_info()
+            result = self.dashboard_controller.get_raylet_info()
             return await json_response(result=result)
 
         async def launch_profiling(req) -> aiohttp.web.Response:
@@ -343,13 +343,13 @@ class Dashboard(object):
         async def logs(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
             pid = req.query.get("pid")
-            result = self.dashboard_controller.logs(hostname, pid)
+            result = self.dashboard_controller.get_logs(hostname, pid)
             return await json_response(result=result)
 
         async def errors(req) -> aiohttp.web.Response:
             hostname = req.query.get("hostname")
             pid = req.query.get("pid")
-            result = self.dashboard_controller.errors(hostname, pid)
+            result = self.dashboard_controller.get_errors(hostname, pid)
             return await json_response(result=result)
 
         if not self.hosted_dashboard_client:

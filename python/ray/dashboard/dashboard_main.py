@@ -8,6 +8,7 @@ import ray.ray_constants as ray_constants
 from ray.dashboard.dashboard import Dashboard
 
 if __name__ == "__main__":
+    # TODO(sang): Use Click instead of argparser
     parser = argparse.ArgumentParser(
         description=("Parse Redis server for the "
                      "dashboard to connect to."))
@@ -60,6 +61,8 @@ if __name__ == "__main__":
             args.port,
             args.redis_address,
             args.temp_dir,
+            # TODO(sang): Make this value configurable
+            # through Ray API
             hosted_dashboard_client=True,
             redis_password=args.redis_password)
         dashboard.run()
@@ -68,8 +71,9 @@ if __name__ == "__main__":
         redis_client = ray.services.create_redis_client(
             args.redis_address, password=args.redis_password)
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        message = ("The dashboard on node {} failed with the following "
-                   "error:\n{}".format(os.uname()[1], traceback_str))
+        message = (
+            "The dashboard on node {} failed to start with the following "
+            "error:\n{}".format(os.uname()[1], traceback_str))
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         raise e

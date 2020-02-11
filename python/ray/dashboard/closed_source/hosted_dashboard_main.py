@@ -1,14 +1,3 @@
-import argparse
-import traceback
-import os
-
-import redis
-
-import ray
-import ray.ray_constants as ray_constants
-from ray.dashboard.dashboard import Dashboard
-from ray.dashboard.closed_source.hosted_dashboard_controller \
-    import HostedDashboardController
 """Run hosted dashboard server on Anyscale hosts.
 
 This is a standalone main script that is independent from
@@ -48,7 +37,20 @@ python hosted_dashboard_main.py
 5. You can see the hosted dashboard is working in the address
 [--host]:[--port]
 """
+import argparse
+import traceback
+import os
+
+import redis
+
+import ray
+import ray.ray_constants as ray_constants
+from ray.dashboard.dashboard import Dashboard
+from ray.dashboard.closed_source.hosted_dashboard_controller \
+    import HostedDashboardController
+
 if __name__ == "__main__":
+    # TODO(sang): Use click instead of argparse
     parser = argparse.ArgumentParser(
         description=("Parse Redis server for the "
                      "dashboard to connect to."))
