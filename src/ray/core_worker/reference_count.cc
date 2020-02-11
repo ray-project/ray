@@ -145,8 +145,10 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
   // the inner ID before decrementing the submitted_task_ref_count for the
   // outer ID.
   const auto refs = ReferenceTableFromProto(borrowed_refs);
-  for (const ObjectID &object_id : object_ids) {
+  if (!refs.empty()) {
     RAY_CHECK(!WorkerID::FromBinary(worker_addr.worker_id()).IsNil());
+  }
+  for (const ObjectID &object_id : object_ids) {
     MergeBorrowerRefs(object_id, worker_addr, refs);
   }
 
