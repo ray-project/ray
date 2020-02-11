@@ -22,6 +22,28 @@ import ray.test_utils
 logger = logging.getLogger(__name__)
 
 
+# issue https://github.com/ray-project/ray/issues/7105
+def test_internal_free(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Sampler:
+        def sample(self):
+            return [1, 2, 3, 4, 5]
+
+    sampler = Sampler.remote()
+
+    obj_id = sampler.sample.remote()
+    sample = ray.get(obj_id)
+    print("Sample: {}".format(sample))
+    del sample
+
+    ray.internal.free(obj_id, delete_plasma_only=True)
+    print(ray.worker.global_worker.core_worker.get_all_reference_counts())
+
+    sample = ray.get(obj_id)  # Will block forever here
+    print("Refetched sample: {}".format(sample))
+
 # https://github.com/ray-project/ray/issues/6662
 def test_ignore_http_proxy(shutdown_only):
     ray.init(num_cpus=1)

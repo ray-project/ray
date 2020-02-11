@@ -621,7 +621,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
   // We only delete from plasma, which avoids hangs (issue #7105). In-memory
   // objects are always handled by ref counting only.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
-  for (const auto& obj_id : object_ids) {
+  for (const auto &obj_id : object_ids) {
     plasma_object_ids.insert(obj_id);
   }
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
