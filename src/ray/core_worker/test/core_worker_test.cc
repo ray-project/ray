@@ -76,7 +76,7 @@ class CoreWorkerTest : public ::testing::Test {
  public:
   CoreWorkerTest(int num_nodes) : gcs_options_("127.0.0.1", 6379, "") {
 #ifdef _WIN32
-    RAY_CHECK(false) << !"port system() calls to Windows before running this test";
+    RAY_CHECK(false) << "port system() calls to Windows before running this test";
 #endif
     // flush redis first.
     flushall_redis();

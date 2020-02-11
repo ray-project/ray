@@ -64,7 +64,7 @@ class TestObjectManagerBase : public ::testing::Test {
  public:
   TestObjectManagerBase() {
 #ifdef _WIN32
-    RAY_CHECK(false) << !"port system() calls to Windows before running this test";
+    RAY_CHECK(false) << "port system() calls to Windows before running this test";
 #endif
   }
 
