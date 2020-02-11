@@ -23,6 +23,8 @@ enum class EventType : uint8_t {
   FullChannel = 3,
   // Recovery at the beginning.
   Reload = 4,
+  // Error event if event queue is freezed.
+  ErrorEvent = 5
 };
 
 struct EnumTypeHash {
@@ -47,13 +49,15 @@ struct Event {
 /// processing functions ordered by its priority.
 class EventQueue {
  public:
-  EventQueue(size_t size) : urgent_(false), capacity_(size), is_started_(true) {}
+  EventQueue(size_t size) : urgent_(false), capacity_(size), is_freezed_(true) {}
 
   virtual ~EventQueue();
 
-  void Start();
+  /// Resume event queue to normal model.
+  void Unfreeze();
 
-  void Stop();
+  /// Push is prohibited when event queue is freezed.
+  void Freeze();
 
   void Push(const Event &t);
 
@@ -90,7 +94,7 @@ class EventQueue {
   // Urgent event will be poped out first if urgent_ flag is true.
   bool urgent_;
   size_t capacity_;
-  bool is_started_;
+  bool is_freezed_;
 };
 
 class EventService {

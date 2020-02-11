@@ -5,22 +5,22 @@ namespace ray {
 namespace streaming {
 
 EventQueue::~EventQueue() {
-  is_started_ = false;
+  is_freezed_ = false;
   no_full_cv_.notify_all();
   no_empty_cv_.notify_all();
 };
 
-void EventQueue::Start() { is_started_ = true; }
+void EventQueue::Unfreeze() { is_freezed_ = true; }
 
-void EventQueue::Stop() {
-  is_started_ = false;
+void EventQueue::Freeze() {
+  is_freezed_ = false;
   no_empty_cv_.notify_all();
   no_full_cv_.notify_all();
 }
 
 void EventQueue::Push(const Event &t) {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
-  while (Size() >= capacity_ && is_started_) {
+  while (Size() >= capacity_ && is_freezed_) {
     STREAMING_LOG(WARNING) << " EventQueue is full, its size:" << Size()
                            << " capacity:" << capacity_
                            << " buffer size:" << buffer_.size()
@@ -28,7 +28,7 @@ void EventQueue::Push(const Event &t) {
     no_full_cv_.wait(lock);
     STREAMING_LOG(WARNING) << "Event server is full_sleep be notified";
   }
-  if (!is_started_) {
+  if (!is_freezed_) {
     return;
   }
   if (t.urgent) {
@@ -57,10 +57,10 @@ void EventQueue::Pop() {
 
 bool EventQueue::Get(Event &evt) {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
-  while (Empty() && is_started_) {
+  while (Empty() && is_freezed_) {
     no_empty_cv_.wait(lock);
   }
-  if (!is_started_) {
+  if (!is_freezed_) {
     return false;
   }
   if (!urgent_buffer_.empty()) {
@@ -75,11 +75,12 @@ bool EventQueue::Get(Event &evt) {
 
 Event EventQueue::PopAndGet() {
   std::unique_lock<std::mutex> lock(ring_buffer_mutex_);
-  while (Empty() && is_started_) {
+  while (Empty() && is_freezed_) {
     no_empty_cv_.wait(lock);
   }
-  if (!is_started_) {
-    return Event();
+  if (!is_freezed_) {
+    // Return error event if queue is freezed.
+    return Event({nullptr, EventType::ErrorEvent, false});
   }
   if (!urgent_buffer_.empty()) {
     Event res = urgent_buffer_.front();
@@ -116,14 +117,14 @@ EventService::~EventService() {
 
 void EventService::Run() {
   stop_flag_ = false;
-  event_queue_->Start();
+  event_queue_->Unfreeze();
   loop_thread_ = std::make_shared<std::thread>(&EventService::LoopThreadHandler, this);
   STREAMING_LOG(WARNING) << "event_server run";
 }
 
 void EventService::Stop() {
   stop_flag_ = true;
-  event_queue_->Stop();
+  event_queue_->Freeze();
   if (loop_thread_->joinable()) {
     loop_thread_->join();
   }
@@ -173,7 +174,7 @@ void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &remo
   STREAMING_LOG(INFO) << "Remove Destroyed channel event, removed_ids size "
                       << removed_ids.size() << ", total event size " << total_event_nums;
   size_t removed_related_num = 0;
-  event_queue_->Start();
+  event_queue_->Freeze();
   for (size_t i = 0; i < total_event_nums; ++i) {
     Event event;
     if (!event_queue_->Get(event) || !event.channel_info) {
@@ -187,7 +188,7 @@ void EventService::RemoveDestroyedChannelEvent(const std::vector<ObjectID> &remo
     }
     event_queue_->Pop();
   }
-  event_queue_->Stop();
+  event_queue_->Unfreeze();
   STREAMING_LOG(INFO) << "Total event num => " << total_event_nums
                       << ", removed related num => " << removed_related_num;
 }
