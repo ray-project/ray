@@ -45,8 +45,7 @@ def test_internal_free(shutdown_only):
     big_id = sampler.sample_big.remote()
     ray.get(big_id)
     ray.internal.free(big_id)
-    import time
-    time.sleep(.1)
+    time.sleep(1)  # wait for delete RPC to propagate
     with pytest.raises(Exception):
         ray.get(big_id)
 
