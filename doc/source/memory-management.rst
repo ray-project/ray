@@ -38,18 +38,18 @@ For Ray usage on a cluster, consider setting the following fields on both the co
 
   # In your Python script connecting to Ray:
   ray.init(
-      address="localhost:6379",
+      address="auto",  # or "<hostname>:<port>" if not using the default port
       driver_object_store_memory=100 * 1024 * 1024
   )
 
 
-For any custom remote method or actor, you can try setting requirements as follows:
+For any custom remote method or actor, you can set requirements as follows:
 
 .. code-block:: python
 
   @ray.remote(
       memory=2000 * 1024 * 1024,
-      object_store_memory=200 * 1024 * 1024)
+  )
 
 
 Concept Overview

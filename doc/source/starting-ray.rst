@@ -8,19 +8,19 @@ This page covers how to start Ray on your single machine or cluster of machines.
 Installation
 ------------
 
-Install Ray with ``pip install -U ray``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
+Install Ray with ``pip install -U ray``. For the latest wheels (a snapshot of the ``master`` branch), you can use the instructions at :ref:`install-nightlies`.
 
 Starting Ray on a single machine
 --------------------------------
 
-You can start Ray by calling ``ray.init()`` in your Python script. This needs to happen before any Ray tasks or actors are called (i.e., ``function.remote()`` will not work).
+You can start Ray by calling ``ray.init()`` in your Python script. This will start the local services that Ray uses to schedule remote tasks and actors and then connect to them. Note that you must initialize Ray before any tasks or actors are called (i.e., ``function.remote()`` will not work until `ray.init()` is called).
 
 .. code-block:: python
 
   import ray
   ray.init()
 
-To stop or restart Ray, use ``ray.shutdown()``. This is useful when Ray is initialized improperly:
+To stop or restart Ray, use ``ray.shutdown()``.
 
 .. code-block:: python
 
@@ -49,7 +49,7 @@ Using Ray on a cluster
 There are two steps needed to use Ray in a distributed setting:
 
     1. You must first start the Ray cluster.
-    2. You need to add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``).
+    2. You need to add the ``address`` parameter to ``ray.init`` (like ``ray.init(address=...)``). This causes Ray to connect to the existing cluster instead of starting a new one on the local node.
 
 If you have a Ray cluster specification (:ref:`ref-automatic-cluster`), you can launch a multi-node cluster with Ray initialized on each node with ``ray up``. **From your local machine/laptop**:
 
@@ -59,7 +59,7 @@ If you have a Ray cluster specification (:ref:`ref-automatic-cluster`), you can 
 
 You can monitor the Ray cluster status with ``ray monitor cluster.yaml`` and ssh into the head node with ``ray attach cluster.yaml``.
 
-Your Python script will **only** need to execute on the same machine as the head node. To make sure your Ray program utilizes all cluster resources, add the following to your Python script:
+Your Python script **only** needs to execute on one machine in the cluster (usually the head node). To connect your program to the Ray cluster, add the following to your Python script:
 
 .. code-block:: python
 
@@ -67,7 +67,7 @@ Your Python script will **only** need to execute on the same machine as the head
 
 .. note:: Without ``ray.init(address...)``, your Ray program will only be parallelized across a single machine!
 
-Manual Cluster Setup
+Manual cluster setup
 ~~~~~~~~~~~~~~~~~~~~
 
 You can also use the manual cluster setup (:ref:`ref-cluster-setup`) by running initialization commands on each node.
@@ -99,7 +99,7 @@ By default, Ray will parallelize its workload. However, if you need to debug you
 
 Note that some behavior such as setting global process variables may not work as expected.
 
-What's Next?
+What's next?
 ------------
 
 Check out our `Deployment section <cluster-index.html>`_ for more information on deploying Ray in different settings, including Kubernetes, YARN, and SLURM.
