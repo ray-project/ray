@@ -102,8 +102,11 @@ class TFRunner:
 
     def _common_setup(self):
         """
-        Initialize fields that are used both in the local and the distributed case.
+        Initialize fields that are used both in the local
+        and the distributed case.
         """
+        # technically dataset creation is supposed to happen with self.strategy
+        # but it works anyway
         logger.debug("Creating dataset")
         self.train_dataset, self.test_dataset = self.data_creator(self.config)
 
@@ -160,11 +163,18 @@ class TFRunner:
 
     # runs on another thread
     def _record_progress(self, batchN, logs):
+        """Called on every batch of a running model thread."""
         self._step_counter += 1
         self._logs = logs
 
     # runs on another thread
     def _has_next_batch(self, batchN, logs):
+        """
+        Called before every batch of a running model thread.
+        We have to use this instead of doing everything on batch end because
+        when the training ends, batch end gets called first and we end up
+        with two _recorded_all_results events otherwise.
+        """
         if batchN != 0:
             # always gate the first batch so the model doesn't immediately run
             if self._step_counter < self._step_limit:
@@ -180,6 +190,15 @@ class TFRunner:
         self._step_counter = 0
 
     def _generic_step(self, number_of_steps, config_key, action_fn, res_fn):
+        """
+        Run a new thread which will call fit or evaluate on the model,
+        then block every number_of_steps steps and let the main thread
+        run again. Main will then return the intermediate progress report
+        to the tf_trainer instance (over network) and wait for the next
+        {fit, validate}_step call. When that finally arrives, compute the
+        next number_of_steps steps and block again. Repeat one full epoch is
+        complete.
+        """
         if self._model_thread is None or not self._model_thread.is_alive():
             self._recorded_all_results.clear()
             self._ready_to_continue.reset()
@@ -226,9 +245,11 @@ class TFRunner:
         return ("batch", self._logs)
 
     def _fit_action(self, config):
+        """Ran by the model thread when fitting."""
         return self.model.fit(self.train_dataset, **config)
 
     def _fit_get_results(self):
+        """Ran by the model thread when reporting final fitting results."""
         self.epoch += 1
 
         return ({
@@ -244,9 +265,11 @@ class TFRunner:
                                   self._fit_action, self._fit_get_results)
 
     def _validate_action(self, config):
+        """Ran by the model thread when evaluating."""
         return self.local_model.evaluate(self.test_dataset, **config)
 
     def _validate_get_results(self):
+        """Ran by the model thread when reporting final validation results."""
         if isinstance(self._history, list):
             res = {
                 "validation_" + k: v
@@ -268,7 +291,9 @@ class TFRunner:
     #
     # still using the threaded setup so we actually get to show progress
     def validate_step(self, number_of_steps=1):
-        """Evaluates the model on the validation data set."""
+        """
+        Run number_of_steps evaluation steps, then report the most recent logs.
+        """
 
         logger.debug("Running a local model to get validation score.")
         self.local_model = self.model_creator(self.config)

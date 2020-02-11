@@ -101,7 +101,26 @@ class TFTrainer:
     # todo: the worker parameter should be removed once distributed eval works
     def _generic_model_driver(self, request_step, steps, res_metrics_prefix,
                               workers):
-        """Runs a training epoch."""
+        """
+        Runs a training epoch, reporting intermediate results.
+
+        Args:
+            request_step (TFRunner actor -> ray_id):
+                called to request a runner to make more progress
+            steps (int):
+                total steps per epoch
+                (used to determine the progress bar length)
+            res_metrics_prefix (str):
+                the prefix used by final results received from TFRunner,
+                is "train_" for training and "validation_" for validate.
+                Needed here to report correct metric names to the progress bar.
+            workers ([TFRunner actor]):
+                workers to use in this run. Should be self.workers for all
+                distributed tasks, but evaluation cannot be distributed due to
+                what seems to be a tensorflow bug.
+
+        Returns: the final metrics of running a full epoch.
+        """
         progbar = self._Progbar(steps)
 
         worker_stats = [None] * len(workers)
