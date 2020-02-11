@@ -61,9 +61,10 @@ matrix:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
-        - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
-        - ./java/test.sh
+#        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+#        - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
+#        - ./java/test.sh
+        - ./ci/keep_alive bazel test --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/tests/...
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
