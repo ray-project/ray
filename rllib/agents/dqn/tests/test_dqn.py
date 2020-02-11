@@ -36,8 +36,9 @@ class TestDQN(unittest.TestCase):
         config["evaluation_interval"] = 1
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
 
-        # Low softmax temperature.
-        config["softmax_temperature"] = 0.0  # Like argmax.
+        # Low softmax temperature. Behaves like argmax
+        # (but no epsilon exploration).
+        config["softmax_temperature"] = 0.0
         trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
         # Assert that exploration has been switched off.
         check(trainer.config["exploration"], False)
@@ -46,7 +47,6 @@ class TestDQN(unittest.TestCase):
         for _ in range(50):
             a = trainer.compute_action(observation=np.array(0))
             check(a, a_)
-        # trainer._evaluate()
 
         # Higher softmax temperature.
         config["softmax_temperature"] = 1.0
@@ -56,8 +56,8 @@ class TestDQN(unittest.TestCase):
         for _ in range(300):
             actions.append(trainer.compute_action(observation=np.array(0)))
         check(np.mean(actions), 1.5, atol=0.2)
-        # metrics = trainer._evaluate()
 
+        # Test n train runs.
         num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()

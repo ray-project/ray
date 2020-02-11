@@ -40,10 +40,6 @@ OBSERVATION_SPACES_TO_TEST = {
     "dict": Dict({
         "task": Discrete(10),
         "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-        "nested_crap": Dict({
-            "a": Discrete(2),
-            "b": Discrete(2)
-        })
     }),
 }
 

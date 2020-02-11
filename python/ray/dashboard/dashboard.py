@@ -201,8 +201,13 @@ class Dashboard(object):
             }
             infeasible_tasks = sum(
                 (data.get("infeasibleTasks", []) for data in D.values()), [])
+            # ready_tasks are used to render tasks that are not schedulable
+            # due to resource limitations.
+            # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
+            ready_tasks = sum(
+                (data.get("readyTasks", []) for data in D.values()), [])
             actor_tree = self.node_stats.get_actor_tree(
-                workers_info_by_node, infeasible_tasks)
+                workers_info_by_node, infeasible_tasks, ready_tasks)
             for address, data in D.items():
                 # process view data
                 measures_dicts = {}
@@ -418,7 +423,8 @@ class NodeStats(threading.Thread):
                 "error_counts": self.calculate_error_counts(),
             }
 
-    def get_actor_tree(self, workers_info_by_node, infeasible_tasks) -> Dict:
+    def get_actor_tree(self, workers_info_by_node, infeasible_tasks,
+                       ready_tasks) -> Dict:
         now = time.time()
         # construct flattened actor tree
         flattened_tree = {"root": {"children": {}}}
@@ -449,17 +455,27 @@ class NodeStats(threading.Thread):
                             actor_info["nodeId"] = node_id
                             actor_info["pid"] = worker_info["pid"]
 
-            for infeasible_task in infeasible_tasks:
+            def _update_flatten_tree(task, task_spec_type, invalid_state_type):
                 actor_id = ray.utils.binary_to_hex(
-                    b64decode(
-                        infeasible_task["actorCreationTaskSpec"]["actorId"]))
-                caller_addr = (infeasible_task["callerAddress"]["ipAddress"],
-                               str(infeasible_task["callerAddress"]["port"]))
+                    b64decode(task[task_spec_type]["actorId"]))
+                caller_addr = (task["callerAddress"]["ipAddress"],
+                               str(task["callerAddress"]["port"]))
                 caller_id = self._addr_to_actor_id.get(caller_addr, "root")
                 child_to_parent[actor_id] = caller_id
-                infeasible_task["state"] = -1
-                format_reply_id(infeasible_tasks)
-                flattened_tree[actor_id] = infeasible_task
+                task["state"] = -1
+                task["invalidStateType"] = invalid_state_type
+                task["actorTitle"] = task["functionDescriptor"][
+                    "pythonFunctionDescriptor"]["className"]
+                format_reply_id(task)
+                flattened_tree[actor_id] = task
+
+            for infeasible_task in infeasible_tasks:
+                _update_flatten_tree(infeasible_task, "actorCreationTaskSpec",
+                                     "infeasibleActor")
+
+            for ready_task in ready_tasks:
+                _update_flatten_tree(ready_task, "actorCreationTaskSpec",
+                                     "pendingActor")
 
         # construct actor tree
         actor_tree = flattened_tree

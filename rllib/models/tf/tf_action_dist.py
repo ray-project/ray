@@ -56,24 +56,22 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def entropy(self):
-        a0 = self.inputs - tf.reduce_max(self.inputs, axis=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
         ea0 = tf.exp(a0)
-        z0 = tf.reduce_sum(ea0, axis=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=[1])
+        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(self.inputs, axis=[1], keep_dims=True)
-        a1 = other.inputs - tf.reduce_max(
-            other.inputs, axis=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
+        a1 = other.inputs - tf.reduce_max(other.inputs, axis=1, keep_dims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
-        z0 = tf.reduce_sum(ea0, axis=[1], keep_dims=True)
-        z1 = tf.reduce_sum(ea1, axis=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
+        z1 = tf.reduce_sum(ea1, axis=1, keep_dims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(
-            p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=[1])
+        return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -120,7 +118,9 @@ class MultiCategorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def multi_kl(self, other):
-        return [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)]
+        return tf.stack(
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)],
+            axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
@@ -157,9 +157,9 @@ class DiagGaussian(TFActionDistribution):
     @override(ActionDistribution)
     def logp(self, x):
         return -0.5 * tf.reduce_sum(
-            tf.square((x - self.mean) / self.std), axis=[1]) - \
+            tf.square((x - self.mean) / self.std), axis=1) - \
                0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(x)[1]) - \
-               tf.reduce_sum(self.log_std, axis=[1])
+               tf.reduce_sum(self.log_std, axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):
@@ -168,12 +168,12 @@ class DiagGaussian(TFActionDistribution):
             other.log_std - self.log_std +
             (tf.square(self.std) + tf.square(self.mean - other.mean)) /
             (2.0 * tf.square(other.std)) - 0.5,
-            axis=[1])
+            axis=1)
 
     @override(ActionDistribution)
     def entropy(self):
         return tf.reduce_sum(
-            self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=[1])
+            self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -219,7 +219,7 @@ class MultiActionDistribution(TFActionDistribution):
     def __init__(self, inputs, model, action_space, child_distributions,
                  input_lens):
         # skip TFActionDistribution init
-        super().__init__(inputs, model)
+        ActionDistribution.__init__(self, inputs, model)
         self.input_lens = input_lens
         split_inputs = tf.split(inputs, self.input_lens, axis=1)
         child_list = []
