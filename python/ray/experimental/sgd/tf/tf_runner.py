@@ -18,20 +18,28 @@ def _try_import_strategy():
 
 
 def _noop():
+    """Do nothing by default."""
     pass
 
 
-def _load_proper_LambdaCallback():
-    # default TF2 LambdaCallback does not support the new callback naming
-
+def _load_Callback():
     import tensorflow as tf
 
-    class LambdaCallback(tf.keras.callbacks.LambdaCallback):
+    class TFRunnerCallback(tf.keras.callbacks.Callback):
+        """
+        The default TF2 LambdaCallback does not support the new callback naming
+        and so we can't get on_predict callbacks. This class calls the provided
+        callbacks on batch end and begin regardless of mode.
+
+        Args:
+            on_batch_begin ((int, dict) -> None):
+                callback for batch end for both fit and evaluate
+            on_batch_end ((int, dict) -> None):
+                callback for batch end for both fit and evaluate
+        """
+
         def __init__(self, on_batch_begin=_noop, on_batch_end=_noop):
             super().__init__()
-
-            def noop(self, batch, logs):
-                pass
 
             self.batch_begin = on_batch_begin
             self.batch_end = on_batch_end
@@ -54,7 +62,7 @@ def _load_proper_LambdaCallback():
         def on_test_batch_end(self, batch, logs):
             self.batch_end(batch, logs)
 
-    return LambdaCallback
+    return TFRunnerCallback
 
 
 class TFRunner:
@@ -88,20 +96,28 @@ class TFRunner:
         self._step_counter = 0
         self._step_limit = 1
 
-        self._LambdaCallback = None
+        self._callback = None
+
+    def _common_setup(self):
+        """
+        Initialize fields that are used both in the local and the distributed case.
+        """
+        logger.debug("Creating dataset")
+        self.train_dataset, self.test_dataset = self.data_creator(self.config)
+
+        self._callback = _load_Callback()(
+            on_batch_begin=self._has_next_batch,
+            on_batch_end=self._record_progress)
 
     def setup(self):
         """Initializes the model."""
         if self.init_hook is not None:
             self.init_hook()
 
-        logger.debug("Creating dataset")
-        self.train_dataset, self.test_dataset = self.data_creator(self.config)
-
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
 
-        self._LambdaCallback = _load_proper_LambdaCallback()
+        self._common_setup()
 
     def setup_distributed(self, urls, world_rank, world_size):
         """Sets up TensorFLow distributed environment and initializes the model.
@@ -140,13 +156,11 @@ class TFRunner:
         # because of this, we only really ever need to query its state
         self.strategy = MultiWorkerMirroredStrategy()
 
-        self.train_dataset, self.test_dataset = self.data_creator(self.config)
-
         logger.debug("Creating model with MultiWorkerMirroredStrategy")
         with self.strategy.scope():
             self.model = self.model_creator(self.config)
 
-        self._LambdaCallback = _load_proper_LambdaCallback()
+        self._common_setup()
 
     # runs on another thread
     def _record_progress(self, batchN, logs):
@@ -184,12 +198,7 @@ class TFRunner:
             config.update(self.config.get(config_key, {}))
             config["verbose"] = 0  # we are using our own logging
             config["callbacks"] = (
-                # todo: only create this callback once
-                config.get("callbacks", []) + [
-                    self._LambdaCallback(
-                        on_batch_begin=self._has_next_batch,
-                        on_batch_end=self._record_progress)
-                ])
+                config.get("callbacks", []) + [self._callback])
 
             logger.debug("Starting a new model thread")
 
