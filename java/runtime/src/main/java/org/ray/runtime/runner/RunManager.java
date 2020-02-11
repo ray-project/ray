@@ -22,7 +22,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.util.BinaryFileUtil;
-import org.ray.runtime.util.FileUtil;
 import org.ray.runtime.util.ResourceUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,7 +53,6 @@ public class RunManager {
     this.rayConfig = rayConfig;
     processes = new ArrayList<>();
     createTempDirs();
-    BinaryFileUtil.prepareFilesTo(rayConfig.sessionDir);
   }
 
   public void cleanup() {
@@ -235,10 +233,10 @@ public class RunManager {
       }
 
       // See `src/ray/gcs/gcs_server/gcs_server_main.cc` for the meaning of each parameter.
-      final String gcsServerFile = BinaryFileUtil.getFilePath(rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
-      Preconditions.checkState(new File(gcsServerFile).setExecutable(true));
+      final File gcsServerFile = BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.GCS_SERVER_BINARY_NAME);
+      Preconditions.checkState(gcsServerFile.setExecutable(true));
       List<String> command = ImmutableList.of(
-          gcsServerFile,
+          gcsServerFile.getAbsolutePath(),
           String.format("--redis_address=%s", rayConfig.getRedisIp()),
           String.format("--redis_port=%d", rayConfig.getRedisPort()),
           String.format("--config_list=%s", String.join(",", rayConfig.rayletConfigParameters)),
@@ -249,11 +247,11 @@ public class RunManager {
   }
 
   private String startRedisInstance(String ip, int port, String password, Integer shard) {
-    final String redisServerFile = BinaryFileUtil.getFilePath(rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
-    Preconditions.checkState(new File(redisServerFile).setExecutable(true));
+    final File redisServerFile = BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.REDIS_SERVER_BINARY_NAME);
+    Preconditions.checkState(redisServerFile.setExecutable(true));
     List<String> command = Lists.newArrayList(
         // The redis-server executable file.
-        redisServerFile,
+        redisServerFile.getAbsolutePath(),
         "--protected-mode",
         "no",
         "--port",
@@ -262,7 +260,7 @@ public class RunManager {
         "warning",
         "--loadmodule",
         // The redis module file.
-        BinaryFileUtil.getFilePath(rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME)
+        BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.REDIS_MODULE_LIBRARY_NAME).getAbsolutePath()
     );
 
     if (!Strings.isNullOrEmpty(password)) {
@@ -298,10 +296,10 @@ public class RunManager {
     }
 
     // See `src/ray/raylet/main.cc` for the meaning of each parameter.
-    final String rayletFile = BinaryFileUtil.getFilePath(rayConfig.sessionDir, BinaryFileUtil.RAYLET_BINARY_NAME);
-    Preconditions.checkState(new File(rayletFile).setExecutable(true));
+    final File rayletFile = BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.RAYLET_BINARY_NAME);
+    Preconditions.checkState(rayletFile.setExecutable(true));
     List<String> command = ImmutableList.of(
-        rayletFile,
+        rayletFile.getAbsolutePath(),
         String.format("--raylet_socket_name=%s", rayConfig.rayletSocketName),
         String.format("--store_socket_name=%s", rayConfig.objectStoreSocketName),
         String.format("--object_manager_port=%d", 0), // The object manager port.
@@ -392,11 +390,12 @@ public class RunManager {
   }
 
   private void startObjectStore() {
-    final String objectStoreFile = BinaryFileUtil.getFilePath(rayConfig.sessionDir, BinaryFileUtil.PLASMA_STORE_SERVER_BINARY_NAME);
-    Preconditions.checkState(new File(objectStoreFile).setExecutable(true));
+    // TODO(qwang): Use try-with
+    final File objectStoreFile = BinaryFileUtil.getFile(rayConfig.sessionDir, BinaryFileUtil.PLASMA_STORE_SERVER_BINARY_NAME);
+    Preconditions.checkState(objectStoreFile.setExecutable(true));
     List<String> command = ImmutableList.of(
         // The plasma store executable file.
-        objectStoreFile,
+        objectStoreFile.getAbsolutePath(),
         "-s",
         rayConfig.objectStoreSocketName,
         "-m",
