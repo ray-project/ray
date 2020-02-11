@@ -29,6 +29,17 @@ struct ProducerChannelInfo {
   uint32_t queue_size;
   int64_t message_pass_by_ts;
   ActorID actor_id;
+
+  /// The following parameters are used for event driven to record different
+  /// input events.
+  uint64_t sent_empty_cnt = 0;
+  uint64_t flow_control_cnt = 0;
+  uint64_t user_event_cnt = 0;
+  uint64_t rb_full_cnt = 0;
+  uint64_t queue_full_cnt = 0;
+  uint64_t in_event_queue_cnt = 0;
+  bool in_event_queue = false;
+  bool flow_control = false;
 };
 
 struct ConsumerChannelInfo {
