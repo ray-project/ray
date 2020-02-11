@@ -206,28 +206,40 @@ class AsyncReplayOptimizer(PolicyOptimizer):
 
         with self.timers["sample_processing"]:
             completed = list(self.sample_tasks.completed())
-
+            # First try a batched ray.get().
             ray_error = None
+            try:
+                counts = {
+                    i: v
+                    for i, v in enumerate(
+                        ray_get_and_free([c[1][1] for c in completed]))
+                }
+            # If there are failed workers, try to recover the still good ones
+            # (via non-batched ray.get()) and store the first error (to raise
+            # later).
+            except RayError:
+                counts = {}
+                for i, c in enumerate(completed):
+                    try:
+                        counts[i] = ray_get_and_free(c[1][1])
+                    except RayError as e:
+                        ray_error = e
+
             for i, (ev, (sample_batch, count)) in enumerate(completed):
-                # Task may have failed, try each without abandoning other,
-                # still good ones.
-                try:
-                    counts = ray_get_and_free(count)
-                except RayError as e:
-                    ray_error = e  # throw later
+                # Skip failed tasks.
+                if i not in counts:
                     continue
 
-                sample_timesteps += counts
-
+                sample_timesteps += counts[i]
                 # Send the data to the replay buffer
                 random.choice(
                     self.replay_actors).add_batch.remote(sample_batch)
 
-                # Update weights if needed
-                self.steps_since_update[ev] += counts
+                # Update weights if needed.
+                self.steps_since_update[ev] += counts[i]
                 if self.steps_since_update[ev] >= self.max_weight_sync_delay:
                     # Note that it's important to pull new weights once
-                    # updated to avoid excessive correlation between actors
+                    # updated to avoid excessive correlation between actors.
                     if weights is None or self.learner.weights_updated:
                         self.learner.weights_updated = False
                         with self.timers["put_weights"]:
@@ -241,7 +253,7 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                 self.sample_tasks.add(ev, ev.sample_with_count.remote())
 
             # Now that all still good tasks have been kicked off again,
-            # throw error.
+            # we can throw the error.
             if ray_error:
                 raise ray_error
 
