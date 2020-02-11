@@ -70,9 +70,9 @@ head_node:
             create_option: FromImage
             caching: ReadWrite
         image_reference:
-            publisher: microsoft-ads,
-            offer: linux-data-science-vm-ubuntu,
-            sku: linuxdsvmubuntu,
+            publisher: microsoft-dsvm
+            offer: linux-data-science-vm-ubuntu
+            sku: linuxdsvmubuntu
             version: latest
     # Additional properties in the azure docs.
 
@@ -89,9 +89,9 @@ worker_nodes:
             create_option: FromImage
             caching: ReadWrite
         image_reference:
-            publisher: microsoft-ads,
-            offer: linux-data-science-vm-ubuntu,
-            sku: linuxdsvmubuntu,
+            publisher: microsoft-dsvm
+            offer: linux-data-science-vm-ubuntu
+            sku: linuxdsvmubuntu
             version: latest
 
         # You can provision additional disk space with a conf as follows
