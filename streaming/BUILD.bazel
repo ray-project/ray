@@ -1,7 +1,6 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
 load("//bazel:ray.bzl", "COPTS")
 
@@ -210,6 +209,14 @@ cc_test(
     name = "streaming_util_tests",
     srcs = [
         "src/test/streaming_util_tests.cc",
+    ],
+    deps = test_common_deps,
+)
+
+cc_test(
+    name = "event_service_tests",
+    srcs = [
+        "src/test/event_service_tests.cc",
     ],
     deps = test_common_deps,
 )

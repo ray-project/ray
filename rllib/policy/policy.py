@@ -4,6 +4,8 @@ import gym
 import numpy as np
 
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.exploration.exploration import Exploration
+from ray.rllib.utils.from_config import from_config
 
 # By convention, metrics from optimizing the loss can be reported in the
 # `grad_info` dict returned by learn_on_batch() / compute_grads() via this key.
@@ -58,6 +60,22 @@ class Policy(metaclass=ABCMeta):
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
+        # The global timestep, broadcast down from time to time from the
+        # driver.
+        self.global_timestep = 0
+
+        # Create the Exploration object to use for this Policy.
+        self.exploration = from_config(
+            Exploration,
+            config.get("exploration"),
+            action_space=self.action_space,
+            num_workers=self.config.get("num_workers"),
+            worker_index=self.config.get("worker_index"),
+            framework="torch" if self.config.get("use_pytorch") else "tf")
+
+        # The default sampling behavior for actions if not explicitly given
+        # in calls to `compute_actions`.
+        self.deterministic = config.get("deterministic", False)
 
     @abstractmethod
     @DeveloperAPI
@@ -68,6 +86,8 @@ class Policy(metaclass=ABCMeta):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        explore=True,
+                        timestep=None,
                         **kwargs):
         """Computes actions for the current policy.
 
@@ -83,6 +103,9 @@ class Policy(metaclass=ABCMeta):
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
+            explore (bool): Whether we should use exploration
+                (e.g. when training) or not (for inference/evaluation).
+            timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -104,6 +127,8 @@ class Policy(metaclass=ABCMeta):
                               info=None,
                               episode=None,
                               clip_actions=False,
+                              explore=True,
+                              timestep=None,
                               **kwargs):
         """Unbatched version of compute_actions.
 
@@ -117,6 +142,9 @@ class Policy(metaclass=ABCMeta):
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
             clip_actions (bool): should the action be clipped
+            explore (bool): Whether we should use exploration (i.e. when
+                training) or not (e.g. for inference/evaluation).
+            timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
         Returns:
@@ -146,7 +174,10 @@ class Policy(metaclass=ABCMeta):
             prev_action_batch=prev_action_batch,
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
-            episodes=episodes)
+            episodes=episodes,
+            explore=explore,
+            timestep=timestep)
+
         if clip_actions:
             action = clip_action(action, self.action_space)
 
@@ -237,10 +268,55 @@ class Policy(metaclass=ABCMeta):
         raise NotImplementedError
 
     @DeveloperAPI
-    def num_state_tensors(self):
-        """
+    def get_exploration_info(self):
+        """Returns the current exploration information of this policy.
+
+        This information depends on the policy's Exploration object.
+
         Returns:
-            int: The number of RNN hidden states kept by this Policy's Model.
+            any: Serializable information on the `self.exploration` object.
+        """
+        if isinstance(self.exploration, Exploration):
+            return self.exploration.get_info()
+
+    @DeveloperAPI
+    def get_exploration_state(self):
+        """Returns the current exploration state of this policy.
+
+        This state depends on the policy's Exploration object.
+
+        Returns:
+            any: Serializable copy or view of the current exploration state.
+        """
+        if isinstance(self.exploration, Exploration):
+            raise NotImplementedError
+
+    @DeveloperAPI
+    def set_exploration_state(self, exploration_state):
+        """Sets the current exploration state of this Policy.
+
+        Arguments:
+            exploration_state (any): Serializable copy or view of the new
+                exploration state.
+        """
+        if isinstance(self.exploration, Exploration):
+            raise NotImplementedError
+
+    @DeveloperAPI
+    def is_recurrent(self):
+        """Whether this Policy holds a recurrent Model.
+
+        Returns:
+            bool: True if this Policy has-a RNN-based Model.
+        """
+        return 0
+
+    @DeveloperAPI
+    def num_state_tensors(self):
+        """The number of internal states needed by the RNN-Model of the Policy.
+
+        Returns:
+            int: The number of RNN internal states kept by this Policy's Model.
         """
         return 0
 
@@ -274,7 +350,9 @@ class Policy(metaclass=ABCMeta):
         Arguments:
             global_vars (dict): Global variables broadcast from the driver.
         """
-        pass
+        # Store the current global time step (sum over all policies' sample
+        # steps).
+        self.global_timestep = global_vars["timestep"]
 
     @DeveloperAPI
     def export_model(self, export_dir):

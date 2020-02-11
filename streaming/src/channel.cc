@@ -207,9 +207,9 @@ struct MockQueueItem {
 
 class MockQueue {
  public:
-  std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBufferImpl<MockQueueItem>>>
+  std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBuffer<MockQueueItem>>>
       message_buffer_;
-  std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBufferImpl<MockQueueItem>>>
+  std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBuffer<MockQueueItem>>>
       consumed_buffer_;
   static std::mutex mutex;
   static MockQueue &GetMockQueue() {

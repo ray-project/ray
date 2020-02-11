@@ -28,7 +28,7 @@ if [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
     cython==0.29.0 \
     gym gym[atari] atari_py \
     opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml \
-    openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil \
+    openpyxl xlrd py-spy pytest-timeout networkx tabulate \
     aiohttp uvicorn dataclasses pygments werkzeug kubernetes flask grpcio \
     pytest-sugar pytest-rerunfailures pytest-asyncio blist torch torchvision \
     scikit-learn
@@ -40,7 +40,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   pip install -q cython==0.29.0 tensorflow==2.0.0b1 tensorflow-probability==0.8 gast==0.2.2 \
     gym gym[atari] atari_py \
     opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml \
-    openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil \
+    openpyxl xlrd py-spy pytest-timeout networkx tabulate \
     aiohttp uvicorn dataclasses pygments werkzeug kubernetes flask grpcio \
     pytest-sugar pytest-rerunfailures pytest-asyncio blist torch torchvision \
     scikit-learn
