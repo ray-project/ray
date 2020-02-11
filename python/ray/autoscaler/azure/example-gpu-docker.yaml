@@ -93,8 +93,13 @@ worker_nodes:
             offer: linux-data-science-vm-ubuntu
             sku: linuxdsvmubuntu
             version: latest
+        # run workers on spot instances by default
+        priority: Spot
+        eviction_policy: Deallocate
+        billing_profile:
+            max_price: -1
 
-        # You can provision additional disk space with a conf as follows
+        # You can provision additional disk space as follows
         # data_disks:
         #    - disk_size_gb: 1024
 
