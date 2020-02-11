@@ -19,14 +19,14 @@ public final class JavaFunctionDescriptor implements FunctionDescriptor {
    */
   public final String name;
   /**
-   * Function's type descriptor.
+   * Function's signature.
    */
-  public final String typeDescriptor;
+  public final String signature;
 
-  public JavaFunctionDescriptor(String className, String name, String typeDescriptor) {
+  public JavaFunctionDescriptor(String className, String name, String signature) {
     this.className = className;
     this.name = name;
-    this.typeDescriptor = typeDescriptor;
+    this.signature = signature;
   }
 
   @Override
@@ -45,17 +45,17 @@ public final class JavaFunctionDescriptor implements FunctionDescriptor {
     JavaFunctionDescriptor that = (JavaFunctionDescriptor) o;
     return Objects.equal(className, that.className) &&
         Objects.equal(name, that.name) &&
-        Objects.equal(typeDescriptor, that.typeDescriptor);
+        Objects.equal(signature, that.signature);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(className, name, typeDescriptor);
+    return Objects.hashCode(className, name, signature);
   }
 
   @Override
   public List<String> toList() {
-    return ImmutableList.of(className, name, typeDescriptor);
+    return ImmutableList.of(className, name, signature);
   }
 
   @Override

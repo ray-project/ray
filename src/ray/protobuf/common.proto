@@ -25,6 +25,8 @@ enum TaskType {
   ACTOR_CREATION_TASK = 1;
   // Actor task.
   ACTOR_TASK = 2;
+  // Driver task.
+  DRIVER_TASK = 3;
 }
 
 // Address of a worker or node manager.
@@ -36,6 +38,29 @@ message Address {
   bytes worker_id = 4;
 }
 
+/// Function descriptor for Java.
+message JavaFunctionDescriptor {
+  string class_name = 1;
+  string function_name = 2;
+  string signature = 3;
+}
+
+/// Function descriptor for Python.
+message PythonFunctionDescriptor {
+  string module_name = 1;
+  string class_name = 2;
+  string function_name = 3;
+  string function_hash = 4;
+}
+
+// A union wrapper for various function descriptor types.
+message FunctionDescriptor {
+  oneof function_descriptor {
+    JavaFunctionDescriptor java_function_descriptor = 1;
+    PythonFunctionDescriptor python_function_descriptor = 2;
+  }
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.
@@ -44,11 +69,8 @@ message TaskSpec {
   TaskType type = 1;
   // Language of this task.
   Language language = 2;
-  // Function descriptor of this task, which is a list of strings that can
-  // uniquely describe the function to execute.
-  // For a Python function, it should be: [module_name, class_name, function_name]
-  // For a Java function, it should be: [class_name, method_name, type_descriptor]
-  repeated bytes function_descriptor = 3;
+  // Function descriptor of this task uniquely describe the function to execute.
+  FunctionDescriptor function_descriptor = 3;
   // ID of the job that this task belongs to.
   bytes job_id = 4;
   // Task ID of the task.
@@ -194,8 +216,8 @@ message CoreWorkerStats {
   int32 num_pending_tasks = 2;
   // Number of object ids in local scope.
   int32 num_object_ids_in_scope = 3;
-  // Function descriptor of the currently executing task.
-  repeated bytes current_task_func_desc = 4;
+  // String representation of the function descriptor of the currently executing task.
+  string current_task_func_desc = 4;
   // IP address of the core worker.
   string ip_address = 6;
   // Port of the core worker.

@@ -2,6 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
+# cython: c_string_encoding = default
 
 from cpython.exc cimport PyErr_CheckSignals
 
@@ -87,7 +88,6 @@ from ray.exceptions import (
     RayTimeoutError,
 )
 from ray.experimental.no_return import NoReturn
-from ray.function_manager import FunctionDescriptor
 from ray.utils import decode
 from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
@@ -106,6 +106,7 @@ cimport cpython
 
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
+include "includes/function_descriptor.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
@@ -206,6 +207,7 @@ def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
 
+@cython.auto_pickle(False)
 cdef class Language:
     cdef CLanguage lang
 
@@ -218,7 +220,7 @@ cdef class Language:
 
     def __eq__(self, other):
         return (isinstance(other, Language) and
-                (<int32_t>self.lang) == (<int32_t>other.lang))
+                (<int32_t>self.lang) == (<int32_t>(<Language>other).lang))
 
     def __repr__(self):
         if <int32_t>self.lang == <int32_t>LANGUAGE_PYTHON:
@@ -230,11 +232,12 @@ cdef class Language:
         else:
             raise Exception("Unexpected error")
 
+    def __reduce__(self):
+        return Language, (<int32_t>self.lang,)
 
-# Programming language enum values.
-cdef Language LANG_PYTHON = Language.from_native(LANGUAGE_PYTHON)
-cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
-cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
+    PYTHON = Language.from_native(LANGUAGE_PYTHON)
+    CPP = Language.from_native(LANGUAGE_CPP)
+    JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
 cdef int prepare_resources(
@@ -261,17 +264,8 @@ cdef int prepare_resources(
     return 0
 
 
-cdef c_vector[c_string] string_vector_from_list(list string_list):
-    cdef:
-        c_vector[c_string] out
-    for s in string_list:
-        if not isinstance(s, bytes):
-            raise TypeError("string_list elements must be bytes")
-        out.push_back(s)
-    return out
-
 cdef void prepare_args(
-        CoreWorker core_worker, list args, c_vector[CTaskArg] *args_vector):
+        CoreWorker core_worker, args, c_vector[CTaskArg] *args_vector):
     cdef:
         size_t size
         int64_t put_threshold
@@ -303,8 +297,8 @@ cdef void prepare_args(
             else:
                 args_vector.push_back(
                     CTaskArg.PassByReference(
-                        (<ObjectID>core_worker.put_serialized_object(
-                            serialized_arg)).native()))
+                        (CObjectID.FromBinary(core_worker.put_serialized_cobject(
+                            serialized_arg)))))
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -345,11 +339,10 @@ cdef execute_task(
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-    descriptor = tuple(ray_function.GetFunctionDescriptor())
+    function_descriptor = CFunctionDescriptorToPython(
+        ray_function.GetFunctionDescriptor())
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
@@ -359,13 +352,11 @@ cdef execute_task(
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
 
-    execution_info = execution_infos.get(descriptor)
+    execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
         execution_info = manager.get_execution_info(
             job_id, function_descriptor)
-        execution_infos[descriptor] = execution_info
+        execution_infos[function_descriptor] = execution_info
 
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
@@ -500,9 +491,6 @@ cdef execute_task(
         ray_signal.reset()
 
     if execution_info.max_calls != 0:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
-
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
         manager.increase_task_counter(job_id, function_descriptor)
@@ -578,10 +566,13 @@ cdef write_serialized_object(
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
     if isinstance(serialized_object, RawSerializedObject):
-        buffer = Buffer.make(buf)
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
-        stream.set_memcopy_threads(MEMCOPY_THREADS)
-        stream.write(pyarrow.py_buffer(serialized_object.value))
+        if buf.get() != NULL and buf.get().Size() > 0:
+            buffer = Buffer.make(buf)
+            # `Buffer` has a nullptr buffer underlying if size is 0,
+            # which will cause `pyarrow.py_buffer` crash
+            stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
+            stream.set_memcopy_threads(MEMCOPY_THREADS)
+            stream.write(pyarrow.py_buffer(serialized_object.value))
     elif isinstance(serialized_object, Pickle5SerializedObject):
         (<Pickle5Writer>serialized_object.writer).write_to(
             serialized_object.inband, buf, MEMCOPY_THREADS)
@@ -689,6 +680,11 @@ cdef class CoreWorker:
     def put_serialized_object(self, serialized_object,
                               ObjectID object_id=None,
                               c_bool pin_object=True):
+        return ObjectID(self.put_serialized_cobject(serialized_object, object_id, pin_object))
+
+    def put_serialized_cobject(self, serialized_object,
+                              ObjectID object_id=None,
+                              c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -710,7 +706,7 @@ cdef class CoreWorker:
                     self.core_worker.get().Seal(
                         c_object_id, pin_object and object_id is None))
 
-        return ObjectID(c_object_id.Binary())
+        return c_object_id.Binary()
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
              TaskID current_task_id):
@@ -767,7 +763,8 @@ cdef class CoreWorker:
             message.decode("utf-8")))
 
     def submit_task(self,
-                    function_descriptor,
+                    Language language,
+                    FunctionDescriptor function_descriptor,
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
@@ -785,7 +782,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(
                 num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
 
             with nogil:
@@ -796,7 +793,8 @@ cdef class CoreWorker:
             return VectorToObjectIDs(return_ids)
 
     def create_actor(self,
-                     function_descriptor,
+                     Language language,
+                     FunctionDescriptor function_descriptor,
                      args,
                      uint64_t max_reconstructions,
                      resources,
@@ -817,7 +815,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
 
             with nogil:
@@ -832,8 +830,9 @@ cdef class CoreWorker:
             return ActorID(c_actor_id.Binary())
 
     def submit_actor_task(self,
+                          Language language,
                           ActorID actor_id,
-                          function_descriptor,
+                          FunctionDescriptor function_descriptor,
                           args,
                           int num_return_vals,
                           double num_method_cpus):
@@ -851,7 +850,7 @@ cdef class CoreWorker:
                 c_resources[b"CPU"] = num_method_cpus
             task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
 
             with nogil:
@@ -942,6 +941,15 @@ cdef class CoreWorker:
                 c_object_id,
                 c_owner_id,
                 c_owner_address)
+
+    def add_contained_object_ids(
+            self, ObjectID object_id, contained_object_ids):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+            c_vector[CObjectID] c_contained_ids
+        c_contained_ids = ObjectIDsToVector(contained_object_ids)
+        self.core_worker.get().AddContainedObjectIDs(
+            c_object_id, c_contained_ids)
 
     # TODO: handle noreturn better
     cdef store_task_outputs(

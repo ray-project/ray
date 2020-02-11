@@ -8,6 +8,8 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 
+#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
 DEFINE_int32(object_manager_port, -1, "The port of object manager.");
@@ -156,7 +158,17 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
-  auto gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+  std::shared_ptr<ray::gcs::GcsClient> gcs_client;
+
+  std::unique_ptr<std::thread> thread_io_service;
+  boost::asio::io_service io_service;
+
+  // RAY_GCS_SERVICE_ENABLED only set in ci job, so we just check if it is null.
+  if (getenv("RAY_GCS_SERVICE_ENABLED") != nullptr) {
+    gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+  } else {
+    gcs_client = std::make_shared<ray::gcs::RedisGcsClient>(client_options);
+  }
   RAY_CHECK_OK(gcs_client->Connect(main_service));
 
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(

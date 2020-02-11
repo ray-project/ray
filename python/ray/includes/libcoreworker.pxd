@@ -128,6 +128,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void RegisterOwnershipInfoAndResolveFuture(
                 const CObjectID &object_id, const CTaskID &owner_id, const
                 CAddress &owner_address)
+        void AddContainedObjectIDs(
+            const CObjectID &object_id,
+            const c_vector[CObjectID] &contained_object_ids)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object,

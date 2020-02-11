@@ -7,13 +7,9 @@ from threading import Thread
 
 import numpy as np
 import ray
+import psutil
 
 logger = logging.getLogger(__name__)
-
-try:
-    import psutil
-except ImportError:
-    psutil = None
 
 try:
     import GPUtil
@@ -168,7 +164,7 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
         if k not in original:
             if not new_keys_allowed:
                 raise Exception("Unknown config parameter `{}` ".format(k))
-        if isinstance(original.get(k), dict):
+        if isinstance(original.get(k), dict) and isinstance(value, dict):
             if k in whitelist:
                 deep_update(original[k], value, True, [])
             else:

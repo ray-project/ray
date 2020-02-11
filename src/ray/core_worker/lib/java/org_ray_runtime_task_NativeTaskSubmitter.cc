@@ -10,17 +10,20 @@ inline ray::CoreWorker &GetCoreWorker(jlong nativeCoreWorkerPointer) {
 }
 
 inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject functionDescriptor) {
-  std::vector<std::string> function_descriptor;
+  std::vector<std::string> function_descriptor_list;
   jobject list =
       env->CallObjectMethod(functionDescriptor, java_function_descriptor_to_list);
   RAY_CHECK_JAVA_EXCEPTION(env);
-  JavaStringListToNativeStringVector(env, list, &function_descriptor);
+  JavaStringListToNativeStringVector(env, list, &function_descriptor_list);
   jobject java_language =
       env->CallObjectMethod(functionDescriptor, java_function_descriptor_get_language);
   RAY_CHECK_JAVA_EXCEPTION(env);
-  int language = env->CallIntMethod(java_language, java_language_get_number);
+  auto language = static_cast<::Language>(
+      env->CallIntMethod(java_language, java_language_get_number));
   RAY_CHECK_JAVA_EXCEPTION(env);
-  ray::RayFunction ray_function{static_cast<::Language>(language), function_descriptor};
+  ray::FunctionDescriptor function_descriptor =
+      ray::FunctionDescriptorBuilder::FromVector(language, function_descriptor_list);
+  ray::RayFunction ray_function{language, function_descriptor};
   return ray_function;
 }
 
@@ -134,7 +137,8 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
 
   std::vector<ObjectID> return_ids;
   auto status = GetCoreWorker(nativeCoreWorkerPointer)
-                    .SubmitTask(ray_function, task_args, task_options, &return_ids, /*max_retries=*/1);
+                    .SubmitTask(ray_function, task_args, task_options, &return_ids,
+                                /*max_retries=*/1);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
 

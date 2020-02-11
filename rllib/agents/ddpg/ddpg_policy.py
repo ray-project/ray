@@ -3,7 +3,7 @@ import numpy as np
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn
+from ray.rllib.agents.dqn.dqn_policy import postprocess_nstep_and_prio
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.models import ModelCatalog
@@ -64,7 +64,7 @@ class DDPGPostprocessing:
             self.parameter_noise_sigma.load(
                 self.parameter_noise_sigma_val, session=self.sess)
 
-        return _postprocess_dqn(self, sample_batch)
+        return postprocess_nstep_and_prio(self, sample_batch)
 
 
 class DDPGTFPolicy(DDPGPostprocessing, TFPolicy):
