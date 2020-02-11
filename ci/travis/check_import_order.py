@@ -31,7 +31,7 @@ def check_import(file):
                 # - white space/indentation + the string:`    import psutil`
                 # - the string and arbitrary whitespace: `import psutil    `
                 # - the string and the noqa flag to silent pylint
-                #   `import psutl # noqa F401 import-ordering`
+                #   `import psutil # noqa F401 import-ordering`
                 # It will not match the following
                 # - submodule import: `import ray.constants as ray_constants`
                 # - submodule import: `from ray import xyz`
