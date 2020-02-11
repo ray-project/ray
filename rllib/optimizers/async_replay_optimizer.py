@@ -3,6 +3,7 @@
 https://arxiv.org/abs/1803.00933"""
 
 import collections
+import logging
 import numpy as np
 import os
 import random
@@ -26,6 +27,8 @@ from ray.rllib.utils.window_stat import WindowStat
 SAMPLE_QUEUE_DEPTH = 2
 REPLAY_QUEUE_DEPTH = 4
 LEARNER_QUEUE_MAX_SIZE = 16
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncReplayOptimizer(PolicyOptimizer):
@@ -223,7 +226,9 @@ class AsyncReplayOptimizer(PolicyOptimizer):
                     try:
                         counts[i] = ray_get_and_free(c[1][1])
                     except RayError as e:
-                        ray_error = e
+                        logger.exception(
+                            "Error in completed task: {}".format(e))
+                        ray_error = ray_error if ray_error is not None else e
 
             for i, (ev, (sample_batch, count)) in enumerate(completed):
                 # Skip failed tasks.
