@@ -35,8 +35,8 @@ class Worker {
   /// Return the worker's ID.
   WorkerID WorkerId() const;
   /// Return the worker process.
-  ProcessHandle Process() const;
-  void SetProcess(const ProcessHandle &proc);
+  Process GetProcess() const;
+  void SetProcess(Process proc);
   Language GetLanguage() const;
   int Port() const;
   void AssignTaskId(const TaskID &task_id);
@@ -83,7 +83,7 @@ class Worker {
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
-  ProcessHandle proc_;
+  Process proc_;
   /// The language type of this worker.
   Language language_;
   /// Port that this worker listens on.

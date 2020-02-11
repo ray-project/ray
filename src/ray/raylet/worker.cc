@@ -41,11 +41,11 @@ bool Worker::IsBlocked() const { return blocked_; }
 
 WorkerID Worker::WorkerId() const { return worker_id_; }
 
-ProcessHandle Worker::Process() const { return proc_; }
+Process Worker::GetProcess() const { return proc_; }
 
-void Worker::SetProcess(const ProcessHandle &proc) {
-  RAY_CHECK(!proc_);  // this procedure should not be called multiple times
-  proc_ = proc;
+void Worker::SetProcess(Process proc) {
+  RAY_CHECK(proc_.IsNull());  // this procedure should not be called multiple times
+  proc_ = std::move(proc);
 }
 
 Language Worker::GetLanguage() const { return language_; }

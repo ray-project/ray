@@ -4,11 +4,6 @@
 
 #include <algorithm>
 
-#include <boost/asio/io_service.hpp>
-#include <boost/process/args.hpp>
-#include <boost/process/async.hpp>
-#include <boost/process/search_path.hpp>
-
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -54,6 +49,11 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
   RAY_CHECK(maximum_startup_concurrency > 0);
+#ifndef _WIN32
+  // Ignore SIGCHLD signals. If we don't do this, then worker processes will
+  // become zombies instead of dying gracefully.
+  signal(SIGCHLD, SIG_IGN);
+#endif
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
@@ -95,21 +95,24 @@ void WorkerPool::Start(int num_workers) {
 }
 
 WorkerPool::~WorkerPool() {
-  std::unordered_set<ProcessHandle> procs_to_kill;
+  std::vector<Process> procs_to_kill;
   for (const auto &entry : states_by_lang_) {
     // Kill all registered workers. NOTE(swang): This assumes that the registered
     // workers were started by the pool.
     for (const auto &worker : entry.second.registered_workers) {
-      procs_to_kill.insert(worker->Process());
+      procs_to_kill.push_back(worker->GetProcess());
     }
     // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
-      procs_to_kill.insert(starting_worker.first);
+      procs_to_kill.push_back(starting_worker.first);
     }
   }
-  for (const auto &proc : procs_to_kill) {
-    proc.get()->terminate();
-    proc.get()->wait();
+  procs_to_kill.erase(
+      std::unique(procs_to_kill.begin(), procs_to_kill.end(), std::equal_to<Process>()),
+      procs_to_kill.end());
+  for (auto &proc : procs_to_kill) {
+    proc.Kill();
+    proc.Join();
   }
 }
 
@@ -123,8 +126,8 @@ uint32_t WorkerPool::Size(const Language &language) const {
   }
 }
 
-ProcessHandle WorkerPool::StartWorkerProcess(
-    const Language &language, const std::vector<std::string> &dynamic_options) {
+Process WorkerPool::StartWorkerProcess(const Language &language,
+                                       const std::vector<std::string> &dynamic_options) {
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
   // more.
@@ -137,7 +140,7 @@ ProcessHandle WorkerPool::StartWorkerProcess(
     RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
                    << " pending registration";
-    return ProcessHandle();
+    return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
   RAY_LOG(DEBUG) << "Starting new worker process, current pool has "
@@ -185,16 +188,31 @@ ProcessHandle WorkerPool::StartWorkerProcess(
       << Language_Name(language) << " worker process. But the "
       << kWorkerNumWorkersPlaceholder << "placeholder is not found in worker command.";
 
-  ProcessHandle proc = StartProcess(worker_command_args);
-  RAY_CHECK(proc);
+  Process proc = StartProcess(worker_command_args);
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
-                 << " worker(s) with pid " << proc.get()->id();
+                 << " worker(s) with pid " << proc.GetId();
   state.starting_worker_processes.emplace(proc, workers_to_start);
   return proc;
 }
 
-ProcessHandle WorkerPool::StartProcess(
-    const std::vector<std::string> &worker_command_args) {
+#ifndef _WIN32
+// Fork + exec combo for POSIX. Returns -1 on failure.
+static pid_t spawnvp_wrapper(std::vector<const char *> const &argv) {
+  RAY_CHECK(!argv.empty() && !argv.back());  // must be NULL-terminated
+  pid_t pid = fork();
+  if (pid == 0) {
+    // Child process case. Reset the SIGCHLD handler for the worker.
+    signal(SIGCHLD, SIG_DFL);
+    if (execvp(argv[0], const_cast<char *const *>(argv.data())) == -1) {
+      pid = -1;
+      abort();  // fork() succeeded but exec() failed, so abort the child
+    }
+  }
+  return pid;
+}
+#endif
+
+Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
     stream << "Starting worker process with command:";
@@ -205,18 +223,29 @@ ProcessHandle WorkerPool::StartProcess(
   }
 
   // Launch the process to create the worker.
-  auto exit_callback = [=](int, const std::error_code &ec) {
-    // This callback seems to be necessary for proper zombie cleanup.
-    // However, it doesn't need to do anything.
-  };
+  Process child;
   std::error_code ec;
-  ProcessHandle child(
-      std::make_shared<Process>(boost::process::args(worker_command_args), *io_service_,
-                                boost::process::on_exit = exit_callback, ec));
-  if (!child.get()->valid()) {
-    child = ProcessHandle();
+  std::vector<const char *> argv;
+  for (const std::string &arg : worker_command_args) {
+    argv.push_back(arg.c_str());
   }
-  if (!child || !child.get()->valid() || ec) {
+  argv.push_back(NULL);
+#ifdef _WIN32
+  child = Process(argv.data(), io_service_,
+                  [=](int, const std::error_code &ec) {
+                    // This callback seems to be necessary for proper zombie cleanup.
+                    // However, it doesn't need to do anything.
+                  },
+                  ec);
+#else
+  pid_t pid = spawnvp_wrapper(argv);
+  if (pid == -1) {
+    ec = std::error_code(errno, std::system_category());
+  } else {
+    child = Process::FromPid(pid);
+  }
+#endif
+  if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start worker with return value " << ec << ": "
                    << ec.message();
@@ -228,7 +257,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<Worker> &worker, pid_t p
   const auto port = worker->Port();
   RAY_LOG(DEBUG) << "Registering worker with pid " << pid << ", port: " << port;
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  auto it = state.starting_worker_processes.find(ProcessHandle::FromPid(pid));
+  auto it = state.starting_worker_processes.find(Process::FromPid(pid));
   if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING) << "Received a register request from an unknown worker " << pid;
     return Status::Invalid("Unknown worker");
@@ -278,7 +307,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<Worker> &worker) {
       << "Idle workers cannot have an assigned task ID";
   auto &state = GetStateForLanguage(worker->GetLanguage());
 
-  auto it = state.dedicated_workers_to_tasks.find(worker->Process());
+  auto it = state.dedicated_workers_to_tasks.find(worker->GetProcess());
   if (it != state.dedicated_workers_to_tasks.end()) {
     // The worker is used for the actor creation task with dynamic options.
     // Put it into idle dedicated worker pool.
@@ -299,7 +328,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<Worker> worker = nullptr;
-  ProcessHandle proc;
+  Process proc;
   if (task_spec.IsActorCreationTask() && !task_spec.DynamicWorkerOptions().empty()) {
     // Code path of actor creation task with dynamic worker options.
     // Try to pop it from idle dedicated pool.
@@ -310,14 +339,14 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
       state.idle_dedicated_workers.erase(it);
       // Because we found a worker that can perform this task,
       // we can remove it from dedicated_workers_to_tasks.
-      state.dedicated_workers_to_tasks.erase(worker->Process());
+      state.dedicated_workers_to_tasks.erase(worker->GetProcess());
       state.tasks_to_dedicated_workers.erase(task_spec.TaskId());
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
       proc =
           StartWorkerProcess(task_spec.GetLanguage(), task_spec.DynamicWorkerOptions());
-      if (proc) {
+      if (proc.IsValid()) {
         state.dedicated_workers_to_tasks[proc] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = proc;
       }
@@ -342,7 +371,7 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     }
   }
 
-  if (worker == nullptr && proc) {
+  if (worker == nullptr && proc.IsValid()) {
     WarnAboutSize();
   }
 
@@ -355,7 +384,7 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<Worker> &worker) {
 
   stats::CurrentWorker().Record(
       0, {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(worker->Process().get()->id())}});
+          {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
 
   return RemoveWorker(state.idle, worker);
 }
@@ -365,7 +394,7 @@ void WorkerPool::DisconnectDriver(const std::shared_ptr<Worker> &driver) {
   RAY_CHECK(RemoveWorker(state.registered_drivers, driver));
   stats::CurrentDriver().Record(
       0, {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-          {stats::WorkerPidKey, std::to_string(driver->Process().get()->id())}});
+          {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
 }
 
 inline WorkerPool::State &WorkerPool::GetStateForLanguage(const Language &language) {
@@ -466,17 +495,17 @@ void WorkerPool::RecordMetrics() const {
     // Record worker.
     for (auto worker : entry.second.registered_workers) {
       stats::CurrentWorker().Record(
-          worker->Process().get()->id(),
+          worker->GetProcess().GetId(),
           {{stats::LanguageKey, Language_Name(worker->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(worker->Process().get()->id())}});
+           {stats::WorkerPidKey, std::to_string(worker->GetProcess().GetId())}});
     }
 
     // Record driver.
     for (auto driver : entry.second.registered_drivers) {
       stats::CurrentDriver().Record(
-          driver->Process().get()->id(),
+          driver->GetProcess().GetId(),
           {{stats::LanguageKey, Language_Name(driver->GetLanguage())},
-           {stats::WorkerPidKey, std::to_string(driver->Process().get()->id())}});
+           {stats::WorkerPidKey, std::to_string(driver->GetProcess().GetId())}});
     }
   }
 }
