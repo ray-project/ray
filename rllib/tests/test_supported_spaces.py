@@ -16,13 +16,13 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
 
 ACTION_SPACES_TO_TEST = {
-    #"discrete": Discrete(5),
-    #"vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    #"vector2": Box(-1.0, 1.0, (
-    #    5,
-    #    5,
-    #), dtype=np.float32),
-    #"multidiscrete": MultiDiscrete([1, 2, 3, 4]),
+    "discrete": Discrete(5),
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (
+        5,
+        5,
+    ), dtype=np.float32),
+    "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
         [Discrete(2),
          Discrete(3),
@@ -30,13 +30,13 @@ ACTION_SPACES_TO_TEST = {
 }
 
 OBSERVATION_SPACES_TO_TEST = {
-    #"discrete": Discrete(5),
-    #"vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    #"vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
-    #"image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
-    #"atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
-    #"tuple": Tuple([Discrete(10),
-    #                Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
+    "discrete": Discrete(5),
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+    "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
+    "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
+    "tuple": Tuple([Discrete(10),
+                    Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
     "dict": Dict({
         "task": Discrete(10),
         "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
@@ -72,6 +72,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
     covered_a = set()
     covered_o = set()
     config["log_level"] = "ERROR"
+    first_error = None
     for a_name, action_space in ACTION_SPACES_TO_TEST.items():
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing {} A={} S={} ===".format(
@@ -85,7 +86,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                     stat = "skip"  # speed up tests by avoiding full grid
                 else:
                     a = get_agent_class(alg)(config=config, env="stub_env")
-                    if alg not in ["DDPG", "ES", "ARS"]:
+                    if alg not in ["DDPG", "ES", "ARS", "SAC"]:
                         if o_name in ["atari", "image"]:
                             assert isinstance(a.get_policy().model,
                                               VisionNetV2)
@@ -100,6 +101,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                 stat = "ERROR"
                 print(e)
                 print(traceback.format_exc())
+                first_error = first_error if first_error is not None else e
             finally:
                 if a:
                     try:
@@ -110,6 +112,10 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
             print(stat)
             print()
             stats[name or alg, a_name, o_name] = stat
+
+    # If anything happened, raise error.
+    if first_error is not None:
+        raise first_error
 
 
 def check_support_multiagent(alg, config):
@@ -128,7 +134,7 @@ def check_support_multiagent(alg, config):
 
 class ModelSupportedSpaces(unittest.TestCase):
     stats = {}
-    
+
     def setUp(self):
         ray.init(num_cpus=4)
 
@@ -152,7 +158,9 @@ class ModelSupportedSpaces(unittest.TestCase):
             "APPO", {
                 "num_gpus": 0,
                 "vtrace": True
-            }, self.stats, name="APPO-vt")
+            },
+            self.stats,
+            name="APPO-vt")
 
     def test_ars(self):
         check_support(
@@ -209,9 +217,10 @@ class ModelSupportedSpaces(unittest.TestCase):
             self.stats,
             check_bounds=True)
 
-    #def testAll(self):
+    def test_sac(self):
+        check_support("SAC", {}, self.stats, check_bounds=True)
 
-    #    # TODO(sven): SAC missing here.
+    # def testAll(self):
 
     #    num_unexpected_errors = 0
     #    for (alg, a_name, o_name), stat in sorted(self.stats.items()):
@@ -221,7 +230,15 @@ class ModelSupportedSpaces(unittest.TestCase):
     #              stat)
     #    self.assertEqual(num_unexpected_errors, 0)
 
-    def testMultiAgent(self):
+    def test_a3c_multiagent(self):
+        check_support_multiagent("A3C", {
+            "num_workers": 1,
+            "optimizer": {
+                "grads_per_step": 1
+            }
+        })
+
+    def test_apex_multiagent(self):
         check_support_multiagent(
             "APEX", {
                 "num_workers": 2,
@@ -231,6 +248,8 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "learning_starts": 1000,
                 "target_network_update_freq": 100,
             })
+
+    def test_apex_ddpg_multiagent(self):
         check_support_multiagent(
             "APEX_DDPG", {
                 "num_workers": 2,
@@ -241,14 +260,23 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "target_network_update_freq": 100,
                 "use_state_preprocessor": True,
             })
-        check_support_multiagent("IMPALA", {"num_gpus": 0})
-        check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
-        check_support_multiagent("A3C", {
-            "num_workers": 1,
-            "optimizer": {
-                "grads_per_step": 1
-            }
+
+    def test_ddpg_multiagent(self):
+        check_support_multiagent("DDPG", {
+            "timesteps_per_iteration": 1,
+            "use_state_preprocessor": True,
         })
+
+    def test_dqn_multiagent(self):
+        check_support_multiagent("DQN", {"timesteps_per_iteration": 1})
+
+    def test_impala_multiagent(self):
+        check_support_multiagent("IMPALA", {"num_gpus": 0})
+
+    def test_pg_multiagent(self):
+        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
+
+    def test_ppo_multiagent(self):
         check_support_multiagent(
             "PPO", {
                 "num_workers": 1,
@@ -257,11 +285,6 @@ class ModelSupportedSpaces(unittest.TestCase):
                 "sample_batch_size": 10,
                 "sgd_minibatch_size": 1,
             })
-        check_support_multiagent("PG", {"num_workers": 1, "optimizer": {}})
-        check_support_multiagent("DDPG", {
-            "timesteps_per_iteration": 1,
-            "use_state_preprocessor": True,
-        })
 
 
 if __name__ == "__main__":
