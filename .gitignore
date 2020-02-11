@@ -169,3 +169,6 @@ venv
 
 # tools
 tools/prometheus*
+
+# ray project files
+project-id

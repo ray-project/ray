@@ -14,9 +14,9 @@ if "pickle5" in sys.modules:
                       "packaged along with Ray).")
 
 if "OMP_NUM_THREADS" not in os.environ:
-    logger.warning("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
-                   "degradation with many workers (issue #6998). You can "
-                   "override this by explicitly setting OMP_NUM_THREADS.")
+    logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
+                 "degradation with many workers (issue #6998). You can "
+                 "override this by explicitly setting OMP_NUM_THREADS.")
     os.environ["OMP_NUM_THREADS"] = "1"
 
 # Add the directory containing pickle5 to the Python path so that we find the
