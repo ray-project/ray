@@ -765,7 +765,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
                                    const std::vector<TaskArg> &args,
                                    const TaskOptions &task_options,
-                               const std::vector<ObjectID> &inlined_ids,
+                                   const std::vector<ObjectID> &inlined_ids,
                                    std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));

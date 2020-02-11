@@ -253,7 +253,8 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
-    auto status = task_handler_(task_spec, resource_ids, &return_objects, reply->mutable_borrower_refs());
+    auto status = task_handler_(task_spec, resource_ids, &return_objects,
+                                reply->mutable_borrower_refs());
 
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {

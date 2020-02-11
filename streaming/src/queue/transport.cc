@@ -30,8 +30,8 @@ void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
 
   STREAMING_CHECK(core_worker_ != nullptr);
   std::vector<std::shared_ptr<RayObject>> results;
-  ray::Status st =
-      core_worker_->SubmitActorTask(peer_actor_id_, function, args, options, {}, &return_ids);
+  ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, function, args, options,
+                                                 {}, &return_ids);
   if (!st.ok()) {
     STREAMING_LOG(ERROR) << "SubmitActorTask failed. " << st;
   }

@@ -236,7 +236,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
       if (iter != objects_.end()) {
         (*results)[i] = iter->second;
         if (remove_after_get) {
-		RAY_LOG(ERROR) << "REMOVE_AFTER_GET";
+          RAY_LOG(ERROR) << "REMOVE_AFTER_GET";
           // Note that we cannot remove the object_id from `objects_` now,
           // because `object_ids` might have duplicate ids.
           ids_to_remove.insert(object_id);

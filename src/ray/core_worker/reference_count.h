@@ -19,7 +19,8 @@ namespace ray {
 /// collection. This class is thread safe.
 class ReferenceCounter {
  public:
-  using ReferenceTableProto = ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
+  using ReferenceTableProto =
+      ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
 
   ReferenceCounter(rpc::ClientFactoryFn client_factory = nullptr)
       : client_factory_(client_factory) {}
@@ -90,8 +91,8 @@ class ReferenceCounter {
   /// \param[in] owner_id The ID of the owner of the object. This is either the
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
-  bool AddBorrowedObject(const ObjectID &object_id,
-                         const ObjectID &outer_id, const TaskID &owner_id, const rpc::Address &owner_address)
+  bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
+                         const TaskID &owner_id, const rpc::Address &owner_address)
       LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner ID and address of the given object.
@@ -138,8 +139,8 @@ class ReferenceCounter {
   /// IDs that the task's arguments contained.
   /// \param[out] proto The protobuf table to populate with the borrowed
   /// references.
-  void GetAndStripBorrowedRefs(const std::vector<ObjectID> &borrowed_ids, ReferenceTableProto *proto)
-      LOCKS_EXCLUDED(mutex_);
+  void GetAndStripBorrowedRefs(const std::vector<ObjectID> &borrowed_ids,
+                               ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
 
   /// Wrap an ObjectID(s) inside another object ID.
   ///
@@ -268,7 +269,8 @@ class ReferenceCounter {
   static ReferenceTable ReferenceTableFromProto(const ReferenceTableProto &proto);
 
   /// Serialize a ReferenceTable.
-  static void ReferenceTableToProto(const ReferenceTable &table, ReferenceTableProto *proto);
+  static void ReferenceTableToProto(const ReferenceTable &table,
+                                    ReferenceTableProto *proto);
 
   /// Populates the table with the ObjectID that we were or are still
   /// borrowing. The table also includes any IDs that we discovered were
@@ -284,7 +286,8 @@ class ReferenceCounter {
   /// - For each borrowed ID, remove the addresses of any new borrowers.
   /// - For each ID that was contained in a borrowed ID, forget that the ID
   ///   that contained it.
-  bool GetAndStripBorrowedRefsInternal(const ObjectID &object_id, ReferenceTable *borrower_refs)
+  bool GetAndStripBorrowedRefsInternal(const ObjectID &object_id,
+                                       ReferenceTable *borrower_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Merge a worker's borrowed refs, and recursively all refs that they
@@ -324,7 +327,8 @@ class ReferenceCounter {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Respond to the object's owner once we are no longer borrowing it.
-  void OnRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply, rpc::SendReplyCallback send_reply_callback)
+  void OnRefRemoved(const ObjectID &object_id, rpc::WaitForRefRemovedReply *reply,
+                    rpc::SendReplyCallback send_reply_callback)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary

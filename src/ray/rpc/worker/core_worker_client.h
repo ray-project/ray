@@ -81,7 +81,6 @@ typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const std::stri
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
  public:
-
   virtual const rpc::Address &Addr() const { return rpc::Address(); }
   /// This is called by the Raylet to assign a task to the worker.
   ///
@@ -174,9 +173,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         new GrpcClient<CoreWorkerService>(address, port, client_call_manager));
   };
 
-  const rpc::Address &Addr() const override {
-	  return addr_;
-  }
+  const rpc::Address &Addr() const override { return addr_; }
 
   RPC_CLIENT_METHOD(CoreWorkerService, AssignTask, grpc_client_, override)
 

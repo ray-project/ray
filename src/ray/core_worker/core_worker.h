@@ -360,8 +360,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status error if actor creation fails, likely due to raylet failure.
   Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
-                               const std::vector<ObjectID> &inlined_ids,
-                     ActorID *actor_id);
+                     const std::vector<ObjectID> &inlined_ids, ActorID *actor_id);
 
   /// Submit an actor task.
   ///
@@ -378,7 +377,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
                          const std::vector<TaskArg> &args,
                          const TaskOptions &task_options,
-                               const std::vector<ObjectID> &inlined_ids,
+                         const std::vector<ObjectID> &inlined_ids,
                          std::vector<ObjectID> *return_ids);
 
   /// Tell an actor to exit immediately, without completing outstanding work.
