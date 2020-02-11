@@ -52,6 +52,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     // Expose ray ABI symbols which may be depended by other shared
     // libraries such as libstreaming_java.so.
     // See BUILD.bazel:libcore_worker_library_java.so
+
+    if (rayConfig.getRedisAddress() != null && rayConfig.workerMode == WorkerType.DRIVER) {
+      // Fetch session dir from GCS if this is a driver connected to the existing GCS.
+      RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
+      final String sessionDir = client.get("session_dir", null);
+      Preconditions.checkNotNull(sessionDir);
+      rayConfig.setSessionDir(sessionDir);
+    }
+
     JniUtils.loadLibraryByPath("core_worker_library_java",
         BinaryFileUtil.getFile(
             rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY).getAbsolutePath());

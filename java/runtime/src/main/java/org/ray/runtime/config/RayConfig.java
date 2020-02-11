@@ -45,7 +45,7 @@ public class RayConfig {
   public final RunMode runMode;
   public final Map<String, Double> resources;
   private JobId jobId;
-  public final String sessionDir;
+  public String sessionDir;
   public String logDir;
   public final boolean redirectOutput;
   public final List<String> libraryPath;
@@ -288,6 +288,14 @@ public class RayConfig {
 
   public int getNodeManagerPort() {
     return nodeManagerPort;
+  }
+
+  public void setSessionDir(String sessionDir) {
+    this.sessionDir = sessionDir;
+  }
+
+  public String getSessionDir() {
+    return sessionDir;
   }
 
   @Override
