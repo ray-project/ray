@@ -51,6 +51,8 @@ setup_commands:
     - ray &> /dev/null || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.9.0.dev0-cp36-cp36m-manylinux1_x86_64.whl
     - pip install -U ray[tune]
     - pip install tensorflow-gpu==2.1.0
+    # the amazon DeepLearning AMI is broken and sets up an older CUDA version by default. We manually link the latest cuda for TF2 to work
+    # the conda cuda should theoretically take precedence, but in reality TF2 always uses what is in /usr/local/cuda
     - sudo rm /usr/local/cuda
     - sudo ln -s /usr/local/cuda-10.1 /usr/local/cuda
 
