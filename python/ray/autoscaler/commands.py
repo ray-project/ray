@@ -342,8 +342,15 @@ def attach_cluster(config_file, start, use_screen, use_tmux,
                  override_cluster_name, None)
 
 
-def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
-                 override_cluster_name, port_forward):
+def exec_cluster(config_file,
+                 cmd=None,
+                 docker=False,
+                 screen=False,
+                 tmux=False,
+                 stop=False,
+                 start=False,
+                 override_cluster_name=None,
+                 port_forward=None):
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -389,15 +396,16 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             return with_docker_exec(
                 [command], container_name=container_name)[0]
 
-        cmd = wrap_docker(cmd) if docker else cmd
+        if cmd:
+            cmd = wrap_docker(cmd) if docker else cmd
 
-        if stop:
-            shutdown_cmd = (
-                "ray stop; ray teardown ~/ray_bootstrap_config.yaml "
-                "--yes --workers-only")
-            if docker:
-                shutdown_cmd = wrap_docker(shutdown_cmd)
-            cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
+            if stop:
+                shutdown_cmd = (
+                    "ray stop; ray teardown ~/ray_bootstrap_config.yaml "
+                    "--yes --workers-only")
+                if docker:
+                    shutdown_cmd = wrap_docker(shutdown_cmd)
+                cmd += ("; {}; sudo shutdown -h now".format(shutdown_cmd))
 
         _exec(updater, cmd, screen, tmux, port_forward=port_forward)
 
@@ -434,14 +442,16 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-        updater.cmd_runner.run(
-            cmd,
-            allocate_tty=True,
-            exit_on_fail=True,
-            port_forward=port_forward)
+    updater.cmd_runner.run(
+        cmd, allocate_tty=True, exit_on_fail=True, port_forward=port_forward)
 
 
-def rsync(config_file, source, target, override_cluster_name, down):
+def rsync(config_file,
+          source,
+          target,
+          override_cluster_name,
+          down,
+          all_nodes=False):
     """Rsyncs files.
 
     Arguments:
@@ -450,6 +460,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
         target: target dir
         override_cluster_name: set the name of the cluster
         down: whether we're syncing remote -> local
+        all_nodes: whether to sync worker nodes in addition to the head node
     """
     assert bool(source) == bool(target), (
         "Must either provide both or neither source and target.")
@@ -458,32 +469,46 @@ def rsync(config_file, source, target, override_cluster_name, down):
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config)
-    head_node = _get_head_node(
-        config, config_file, override_cluster_name, create_if_needed=False)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
-        updater = NodeUpdaterThread(
-            node_id=head_node,
-            provider_config=config["provider"],
-            provider=provider,
-            auth_config=config["auth"],
-            cluster_name=config["cluster_name"],
-            file_mounts=config["file_mounts"],
-            initialization_commands=[],
-            setup_commands=[],
-            ray_start_commands=[],
-            runtime_hash="",
-        )
-        if down:
-            rsync = updater.rsync_down
-        else:
-            rsync = updater.rsync_up
+        nodes = []
+        if all_nodes:
+            # technically we re-open the provider for no reason
+            # in get_worker_nodes but it's cleaner this way
+            # and _get_head_node does this too
+            nodes = _get_worker_nodes(config, override_cluster_name)
 
-        if source and target:
-            rsync(source, target)
-        else:
-            updater.sync_file_mounts(rsync)
+        nodes += [
+            _get_head_node(
+                config,
+                config_file,
+                override_cluster_name,
+                create_if_needed=False)
+        ]
+
+        for node_id in nodes:
+            updater = NodeUpdaterThread(
+                node_id=node_id,
+                provider_config=config["provider"],
+                provider=provider,
+                auth_config=config["auth"],
+                cluster_name=config["cluster_name"],
+                file_mounts=config["file_mounts"],
+                initialization_commands=[],
+                setup_commands=[],
+                ray_start_commands=[],
+                runtime_hash="",
+            )
+            if down:
+                rsync = updater.rsync_down
+            else:
+                rsync = updater.rsync_up
+
+            if source and target:
+                rsync(source, target)
+            else:
+                updater.sync_file_mounts(rsync)
 
     finally:
         provider.cleanup()
@@ -526,6 +551,21 @@ def get_worker_node_ips(config_file, override_cluster_name):
             return [provider.internal_ip(node) for node in nodes]
         else:
             return [provider.external_ip(node) for node in nodes]
+    finally:
+        provider.cleanup()
+
+
+def _get_worker_nodes(config, override_cluster_name):
+    """Returns worker node ids for given configuration."""
+    # todo: technically could be reused in get_worker_node_ips
+    if override_cluster_name is not None:
+        config["cluster_name"] = override_cluster_name
+
+    provider = get_node_provider(config["provider"], config["cluster_name"])
+    try:
+        return provider.non_terminated_nodes({
+            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+        })
     finally:
         provider.cleanup()
 

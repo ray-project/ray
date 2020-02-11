@@ -67,7 +67,7 @@ class OffPolicyEstimator:
             prev_action_batch=batch.data.get("prev_action"),
             prev_reward_batch=batch.data.get("prev_reward"),
             info_batch=batch.data.get("info"),
-            explore=False)
+            explore=False)  # switch off any exploration
         if "action_prob" not in info:
             raise ValueError(
                 "Off-policy estimation is not possible unless the policy "

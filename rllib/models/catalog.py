@@ -179,7 +179,7 @@ class ModelCatalog:
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
-                    "Simplex action spaces not supported for Pytorch.")
+                    "Simplex action spaces not supported for torch.")
             dist = Dirichlet
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             if framework == "torch":
