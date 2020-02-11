@@ -1,3 +1,5 @@
+.. _configuring-ray:
+
 Configuring Ray
 ===============
 

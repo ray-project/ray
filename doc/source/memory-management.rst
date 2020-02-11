@@ -3,7 +3,6 @@ Memory Management
 
 This page describes how memory management works in Ray, and how you can set memory quotas to ensure memory-intensive applications run predictably and reliably.
 
-
 Summary
 -------
 
@@ -20,17 +19,19 @@ For Ray initialization on a single node, consider setting the following fields:
 
 For Ray usage on a cluster, consider setting the following fields on both the command line and in your Python script:
 
+.. tip:: 200 * 1024 * 1024 bytes is 200 MiB. Use double parentheses to evaluate math in Bash: ``$((200 * 1024 * 1024))``.
+
 .. code-block:: bash
 
   # On the head node
   ray start --head --redis-port=6379 \
-      --object-store-memory=200000000 \
-      --memory 200000000 \
+      --object-store-memory=$((200 * 1024 * 1024)) \
+      --memory=$((200 * 1024 * 1024)) \
       --num-cpus=1
 
   # On the worker node
-  ray start --object-store-memory=200000000 \
-      --memory 200000000 \
+  ray start --object-store-memory=$((200 * 1024 * 1024)) \
+      --memory=$((200 * 1024 * 1024)) \
       --num-cpus=1 \
       --address=$RAY_HEAD_ADDRESS:6379
 
