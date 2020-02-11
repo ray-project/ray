@@ -27,6 +27,8 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
+import ray
+import setproctitle
 import ray.signature
 import ray.state
 
@@ -34,6 +36,7 @@ from ray import (
     ActorID,
     JobID,
     ObjectID,
+    Language,
 )
 from ray import import_thread
 from ray import profiling
@@ -63,10 +66,11 @@ ERROR_KEY_PREFIX = b"Error:"
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
+# Whether we should warn about slow put performance.
+if os.environ.get("OMP_NUM_THREADS") == "1":
+    should_warn_of_slow_puts = True
+else:
+    should_warn_of_slow_puts = False
 
 
 class ActorCheckpointInfo:
@@ -206,7 +210,6 @@ class Worker:
             if job_id not in self.serialization_context_map:
                 self.serialization_context_map[
                     job_id] = serialization.SerializationContext(self)
-                self.serialization_context_map[job_id].initialize()
             return self.serialization_context_map[job_id]
 
     def check_connected(self):
@@ -272,17 +275,25 @@ class Worker:
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
+        global should_warn_of_slow_puts
+        if should_warn_of_slow_puts:
+            start = time.perf_counter()
+
         serialized_value = self.get_serialization_context().serialize(value)
-        return self.core_worker.put_serialized_object(
+        result = self.core_worker.put_serialized_object(
             serialized_value, object_id=object_id, pin_object=pin_object)
 
-    def deserialize_objects(self,
-                            data_metadata_pairs,
-                            object_ids,
-                            error_timeout=10):
+        if should_warn_of_slow_puts:
+            delta = time.perf_counter() - start
+            if delta > 0.1:
+                logger.warning("OMP_NUM_THREADS=1 is set, this may slow down "
+                               "ray.put() for large objects (issue #6998).")
+                should_warn_of_slow_puts = False
+        return result
+
+    def deserialize_objects(self, data_metadata_pairs, object_ids):
         context = self.get_serialization_context()
-        return context.deserialize_objects(data_metadata_pairs, object_ids,
-                                           error_timeout)
+        return context.deserialize_objects(data_metadata_pairs, object_ids)
 
     def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.
@@ -543,6 +554,7 @@ def init(address=None,
          redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
+         include_java=False,
          include_webui=None,
          webui_host="localhost",
          job_id=None,
@@ -622,6 +634,7 @@ def init(address=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        include_java: Boolean flag indicating whether to enable java worker.
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster. If this argument
             is None, then the UI will be started if the relevant dependencies
@@ -672,11 +685,6 @@ def init(address=None,
     else:
         driver_mode = SCRIPT_MODE
 
-    if "OMP_NUM_THREADS" in os.environ:
-        logger.warning("OMP_NUM_THREADS={} is set, this may impact "
-                       "object transfer performance.".format(
-                           os.environ["OMP_NUM_THREADS"]))
-
     if setproctitle is None:
         logger.warning(
             "WARNING: Not updating worker name since `setproctitle` is not "
@@ -720,6 +728,7 @@ def init(address=None,
             redis_password=redis_password,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
+            include_java=include_java,
             include_webui=include_webui,
             webui_host=webui_host,
             memory=memory,
@@ -1252,7 +1261,6 @@ def connect(node,
         node.node_ip_address,
         node.node_manager_port,
     )
-    worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
         worker.core_worker.set_object_store_client_options(
@@ -1523,8 +1531,6 @@ def put(value, weakref=False):
     """Store an object in the object store.
 
     The object may not be evicted while a reference to the returned ID exists.
-    Note that this pinning only applies to the particular object ID returned
-    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
@@ -1556,11 +1562,6 @@ def put(value, weakref=False):
 
 def wait(object_ids, num_returns=1, timeout=None):
     """Return a list of IDs that are ready and a list of IDs that are not.
-
-    .. warning::
-
-        The **timeout** argument used to be in **milliseconds** (up through
-        ``ray==0.6.1``) and now it is in **seconds**.
 
     If timeout is set, the function returns either when the requested number of
     IDs are ready or when the timeout is reached, whichever occurs first. If it
@@ -1609,11 +1610,6 @@ def wait(object_ids, num_returns=1, timeout=None):
         raise TypeError(
             "wait() expected a list of ray.ObjectID, got {}".format(
                 type(object_ids)))
-
-    if isinstance(timeout, int) and timeout != 0:
-        logger.warning("The 'timeout' argument now requires seconds instead "
-                       "of milliseconds. This message can be suppressed by "
-                       "passing in a float.")
 
     if timeout is not None and timeout < 0:
         raise ValueError("The 'timeout' argument must be nonnegative. "
@@ -1692,9 +1688,9 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls,
-                max_retries)
+                Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
+                memory, object_store_memory, resources, num_return_vals,
+                max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:

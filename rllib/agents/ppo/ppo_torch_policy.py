@@ -161,9 +161,10 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
                                 action_dist):
     """Adds value function and logits outputs to experience train_batches."""
     return {
-        SampleBatch.VF_PREDS: policy.model.value_function(),
-        BEHAVIOUR_LOGITS: policy.model.last_output().numpy(),
-        ACTION_LOGP: action_dist.logp(input_dict[SampleBatch.ACTIONS])
+        SampleBatch.VF_PREDS: policy.model.value_function().cpu().numpy(),
+        BEHAVIOUR_LOGITS: policy.model.last_output().cpu().numpy(),
+        ACTION_LOGP: action_dist.logp(
+            input_dict[SampleBatch.ACTIONS]).cpu().numpy(),
     }
 
 
@@ -187,11 +188,14 @@ class ValueNetworkMixin:
 
             def value(ob, prev_action, prev_reward, *state):
                 model_out, _ = self.model({
-                    SampleBatch.CUR_OBS: torch.Tensor([ob]),
-                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]),
-                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]),
+                    SampleBatch.CUR_OBS: torch.Tensor([ob]).to(self.device),
+                    SampleBatch.PREV_ACTIONS: torch.Tensor([prev_action]).to(
+                        self.device),
+                    SampleBatch.PREV_REWARDS: torch.Tensor([prev_reward]).to(
+                        self.device),
                     "is_training": False,
-                }, [torch.Tensor([s]) for s in state], torch.Tensor([1]))
+                }, [torch.Tensor([s]).to(self.device) for s in state],
+                                          torch.Tensor([1]).to(self.device))
                 return self.model.value_function()[0]
 
         else:

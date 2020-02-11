@@ -15,7 +15,7 @@ class TFActionDistribution(ActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model):
-        super(TFActionDistribution, self).__init__(inputs, model)
+        super().__init__(inputs, model)
         self.sample_op = self._build_sample_op()
 
     @DeveloperAPI
@@ -43,7 +43,7 @@ class Categorical(TFActionDistribution):
 
     @DeveloperAPI
     def __init__(self, inputs, model=None):
-        super(Categorical, self).__init__(inputs, model)
+        super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -142,7 +142,7 @@ class DiagGaussian(TFActionDistribution):
         self.mean = mean
         self.log_std = log_std
         self.std = tf.exp(log_std)
-        TFActionDistribution.__init__(self, inputs, model)
+        super().__init__(inputs, model)
 
     @override(ActionDistribution)
     def logp(self, x):
@@ -281,12 +281,12 @@ class Dirichlet(TFActionDistribution):
             validate_args=True,
             allow_nan_stats=False,
         )
-        TFActionDistribution.__init__(self, concentration, model)
+        super().__init__(concentration, model)
 
     @override(ActionDistribution)
     def logp(self, x):
-        # Support of Dirichlet are positive real numbers. x is already be
-        # an array of positive number, but we clip to avoid zeros due to
+        # Support of Dirichlet are positive real numbers. x is already
+        # an array of positive numbers, but we clip to avoid zeros due to
         # numerical errors.
         x = tf.maximum(x, self.epsilon)
         x = x / tf.reduce_sum(x, axis=-1, keepdims=True)

@@ -33,8 +33,8 @@ def build_trainer(name,
     Arguments:
         name (str): name of the trainer (e.g., "PPO")
         default_policy (cls): the default Policy class to use
-        default_config (dict): the default config dict of the algorithm,
-            otherwises uses the Trainer default config
+        default_config (dict): The default config dict of the algorithm,
+            otherwise uses the Trainer default config.
         validate_config (func): optional callback that checks a given config
             for correctness. It may mutate the config as needed.
         get_initial_state (func): optional function that returns the initial

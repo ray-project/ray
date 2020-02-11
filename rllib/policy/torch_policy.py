@@ -43,8 +43,7 @@ class TorchPolicy(Policy):
             action_distribution_class (ActionDistribution): Class for action
                 distribution.
         """
-        super(TorchPolicy, self).__init__(observation_space, action_space,
-                                          config)
+        super().__init__(observation_space, action_space, config)
         self.device = (torch.device("cuda")
                        if torch.cuda.is_available() else torch.device("cpu"))
         self.model = model.to(self.device)
@@ -64,6 +63,8 @@ class TorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        explore=True,
+                        timestep=None,
                         **kwargs):
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
@@ -76,8 +77,16 @@ class TorchPolicy(Policy):
             model_out = self.model(input_dict, state_batches, [1])
             logits, state = model_out
             action_dist = self.dist_class(logits, self.model)
-            actions = action_dist.sample()
+            # Try our Exploration, if any.
+            if self.exploration:
+                actions = self.exploration.get_action(
+                    model_out, self.model, action_dist, explore, timestep
+                    if timestep is not None else self.global_timestep)
+            else:
+                actions = action_dist.sample()
+
             input_dict[SampleBatch.ACTIONS] = actions
+
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
                     self.extra_action_out(input_dict, state_batches,
                                           self.model, action_dist))
@@ -99,8 +108,14 @@ class TorchPolicy(Policy):
                 if p.grad is not None:
                     grads.append(p.grad)
             start = time.time()
-            torch.distributed.all_reduce_coalesced(
-                grads, op=torch.distributed.ReduceOp.SUM)
+            if torch.cuda.is_available():
+                # Sadly, allreduce_coalesced does not work with CUDA yet.
+                for g in grads:
+                    torch.distributed.all_reduce(
+                        g, op=torch.distributed.ReduceOp.SUM)
+            else:
+                torch.distributed.all_reduce_coalesced(
+                    grads, op=torch.distributed.ReduceOp.SUM)
             for p in self.model.parameters():
                 if p.grad is not None:
                     p.grad /= self.distributed_world_size
@@ -150,6 +165,10 @@ class TorchPolicy(Policy):
         self.model.load_state_dict(weights)
 
     @override(Policy)
+    def is_recurrent(self):
+        return len(self.model.get_initial_state()) > 0
+
+    @override(Policy)
     def num_state_tensors(self):
         return len(self.model.get_initial_state())
 
@@ -195,6 +214,8 @@ class TorchPolicy(Policy):
         train_batch = UsageTrackingDict(postprocessed_batch)
 
         def convert(arr):
+            if torch.is_tensor(arr):
+                return arr.to(self.device)
             tensor = torch.from_numpy(np.asarray(arr))
             if tensor.dtype == torch.double:
                 tensor = tensor.float()
@@ -217,7 +238,7 @@ class TorchPolicy(Policy):
 
 
 @DeveloperAPI
-class LearningRateSchedule(object):
+class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
@@ -242,7 +263,7 @@ class LearningRateSchedule(object):
 
 
 @DeveloperAPI
-class EntropyCoeffSchedule(object):
+class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
     @DeveloperAPI

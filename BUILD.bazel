@@ -329,6 +329,7 @@ cc_binary(
         "src/ray/gcs/gcs_server/gcs_server_main.cc",
     ],
     copts = COPTS,
+    visibility = ["//java:__subpackages__"],
     deps = [
         ":gcs_server_lib",
         "@com_github_gflags_gflags//:gflags",
@@ -412,6 +413,7 @@ cc_library(
         ":object_manager",
         ":ray_common",
         ":ray_util",
+        ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "@boost//:asio",
@@ -703,6 +705,40 @@ cc_test(
 )
 
 cc_library(
+    name = "service_based_gcs_client_lib",
+    srcs = glob(
+        [
+            "src/ray/gcs/gcs_client/service_based_*.cc",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "src/ray/gcs/gcs_client/service_based_*.h",
+        ],
+    ),
+    copts = COPTS,
+    deps = [
+        ":gcs_server_lib",
+    ],
+)
+
+cc_test(
+    name = "gcs_server_test",
+    srcs = ["src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc"],
+    args = ["$(location redis-server) $(location redis-cli) $(location libray_redis_module.so)"],
+    copts = COPTS,
+    data = [
+        "//:libray_redis_module.so",
+        "//:redis-cli",
+        "//:redis-server",
+    ],
+    deps = [
+        ":service_based_gcs_client_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "object_manager",
     srcs = glob([
         "src/ray/object_manager/*.cc",
@@ -796,6 +832,37 @@ cc_library(
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
+    ],
+)
+
+filegroup(
+    name = "iwyu_sh",
+    srcs = ["ci/travis/iwyu.sh"],
+)
+
+filegroup(
+    name = "extra_actions_base_proto",
+    srcs = [
+        # TODO: Replace our file with the built-in copy once this issue is resolved:
+        #   https://github.com/bazelbuild/bazel/issues/8738
+        "thirdparty/protobuf/extra_actions_base.proto",
+        #"@bazel_tools//src/main/protobuf:extra_actions_base.proto",
+    ],
+)
+
+action_listener(
+    name = "iwyu_cpp",
+    extra_actions = [":iwyu_action"],
+    mnemonics = ["CppCompile"],
+)
+
+extra_action(
+    name = "iwyu_action",
+    cmd = "$(location :iwyu_sh) $(location @com_google_protobuf//:protoc) $(location :extra_actions_base_proto) --extra_action_file=$(EXTRA_ACTION_FILE)",
+    tools = [
+        ":extra_actions_base_proto",
+        ":iwyu_sh",
+        "@com_google_protobuf//:protoc",
     ],
 )
 
@@ -991,10 +1058,10 @@ pyx_library(
     # Export ray ABI symbols, which can then be used by _streaming.so.
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
-    cc_kwargs = {
-        "linkstatic": 1,
+    cc_kwargs = dict(
+        copts = COPTS,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
-        "linkopts": select({
+        linkopts = select({
             "@bazel_tools//src/conditions:darwin": [
                 "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
             ],
@@ -1004,8 +1071,8 @@ pyx_library(
                 "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
             ],
         }),
-    },
-    copts = COPTS,
+        linkstatic = 1,
+    ),
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
@@ -1027,7 +1094,9 @@ pyx_library(
         "python/ray/streaming/includes/*.pxd",
         "python/ray/streaming/includes/*.pxi",
     ]),
-    copts = COPTS,
+    cc_kwargs = dict(
+        copts = COPTS,
+    ),
     deps = [
         "//streaming:streaming_lib",
     ],
@@ -1209,6 +1278,7 @@ genrule(
         "//:libray_redis_module.so",
         "//:raylet",
         "//:raylet_monitor",
+        "//:gcs_server",
         "@plasma//:plasma_store_server",
         "//streaming:copy_streaming_py_proto",
     ] + select({
@@ -1228,6 +1298,7 @@ genrule(
         cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
         cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
         cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
+        cp -f $(location //:gcs_server) "$$WORK_DIR/python/ray/core/src/ray/gcs/" &&
         mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&
         for f in $(locations //:all_py_proto); do
             cp -f "$$f" "$$WORK_DIR/python/ray/core/generated/";

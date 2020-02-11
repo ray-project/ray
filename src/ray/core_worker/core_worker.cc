@@ -1,7 +1,5 @@
 #include "ray/core_worker/core_worker.h"
 
-#include <cstdlib>
-
 #include "boost/fiber/all.hpp"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
@@ -79,7 +77,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      heartbeat_timer_(io_service_),
+      death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       reference_counter_(std::make_shared<ReferenceCounter>()),
@@ -162,18 +160,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   rpc_address_.set_raylet_id(local_raylet_id.Binary());
   rpc_address_.set_worker_id(worker_context_.GetWorkerID().Binary());
 
-  // Set timer to periodically send heartbeats containing active object IDs to the raylet.
-  // If the heartbeat timeout is < 0, the heartbeats are disabled.
-  if (RayConfig::instance().worker_heartbeat_timeout_milliseconds() >= 0) {
-    // Seed using current time.
-    std::srand(std::time(nullptr));
-    // Randomly choose a time from [0, timeout]) to send the first heartbeat to avoid all
-    // workers sending heartbeats at the same time.
-    int64_t heartbeat_timeout =
-        std::rand() % RayConfig::instance().worker_heartbeat_timeout_milliseconds();
-    heartbeat_timer_.expires_from_now(
-        boost::asio::chrono::milliseconds(heartbeat_timeout));
-    heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
+  if (worker_type_ == ray::WorkerType::WORKER) {
+    death_check_timer_.expires_from_now(boost::asio::chrono::milliseconds(
+        RayConfig::instance().raylet_death_check_interval_milliseconds()));
+    death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
   }
 
   internal_timer_.expires_from_now(
@@ -188,7 +178,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
-      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
+      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
+      check_signals_));
 
   task_manager_.reset(new TaskManager(
       memory_store_, reference_counter_, actor_manager_,
@@ -209,13 +200,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // rerun the driver.
   if (worker_type_ == WorkerType::DRIVER) {
     TaskSpecBuilder builder;
-    std::vector<std::string> empty_descriptor;
-    std::unordered_map<std::string, double> empty_resources;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
-    builder.SetCommonTaskSpec(
-        task_id, language_, empty_descriptor, worker_context_.GetCurrentJobID(),
-        TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()), 0, GetCallerId(),
-        rpc_address_, 0, false, empty_resources, empty_resources);
+    builder.SetDriverTaskSpec(task_id, language_, worker_context_.GetCurrentJobID(),
+                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
+                              GetCallerId(), rpc_address_);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
@@ -299,28 +287,23 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   // https://github.com/ray-project/ray/pull/6885
 }
 
-void CoreWorker::ReportActiveObjectIDs() {
-  std::unordered_set<ObjectID> active_object_ids;
-  size_t max_active = RayConfig::instance().raylet_max_active_object_ids();
-  if (max_active > 0) {
-    active_object_ids = reference_counter_->GetAllInScopeObjectIDs();
-    if (active_object_ids.size() > max_active) {
-      RAY_LOG(INFO) << active_object_ids.size() << " object IDs are currently in scope.";
-    }
-  }
-
-  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
-  if (!local_raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
-    RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
+void CoreWorker::CheckForRayletFailure() {
+// If the raylet fails, we will be reassigned to init (PID=1).
+#ifdef _WIN32
+// TODO(mehrdadn): need a different solution for Windows.
+#else
+  if (getppid() == 1) {
+    RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
     Shutdown();
   }
+#endif
 
   // Reset the timer from the previous expiration time to avoid drift.
-  heartbeat_timer_.expires_at(
-      heartbeat_timer_.expiry() +
+  death_check_timer_.expires_at(
+      death_check_timer_.expiry() +
       boost::asio::chrono::milliseconds(
-          RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
-  heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
+          RayConfig::instance().raylet_death_check_interval_milliseconds()));
+  death_check_timer_.async_wait(boost::bind(&CoreWorker::CheckForRayletFailure, this));
 }
 
 void CoreWorker::InternalHeartbeat() {
@@ -365,50 +348,65 @@ void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
   future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
 }
 
+void CoreWorker::AddContainedObjectIDs(
+    const ObjectID &object_id, const std::vector<ObjectID> &contained_object_ids) {
+  // TODO(edoakes,swang): integrate with the reference counting logic.
+}
+
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
   // Currently only the Plasma store supports client options.
   return plasma_store_provider_->SetClientOptions(name, limit_bytes);
 }
 
-Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
+Status CoreWorker::Put(const RayObject &object,
+                       const std::vector<ObjectID> &contained_object_ids,
+                       ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
-  RAY_RETURN_NOT_OK(Put(object, *object_id));
+  RAY_RETURN_NOT_OK(Put(object, contained_object_ids, *object_id));
   // Tell the raylet to pin the object **after** it is created.
   RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
   return Status::OK();
 }
 
-Status CoreWorker::Put(const RayObject &object, const ObjectID &object_id) {
+Status CoreWorker::Put(const RayObject &object,
+                       const std::vector<ObjectID> &contained_object_ids,
+                       const ObjectID &object_id) {
   RAY_CHECK(object_id.GetTransportType() ==
             static_cast<uint8_t>(TaskTransportType::RAYLET))
       << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
+  // TODO(edoakes,swang): add contained object IDs to the reference counter.
   return plasma_store_provider_->Put(object, object_id);
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                          const std::vector<ObjectID> &contained_object_ids,
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
-  return Create(metadata, data_size, *object_id, data);
+  RAY_RETURN_NOT_OK(Create(metadata, data_size, contained_object_ids, *object_id, data));
+  // Only add the object to the reference counter if it didn't already exist.
+  if (data) {
+    reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
+  }
+  return Status::OK();
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                          const std::vector<ObjectID> &contained_object_ids,
                           const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
+  // TODO(edoakes,swang): add contained object IDs to the reference counter.
   return plasma_store_provider_->Create(metadata, data_size, object_id, data);
 }
 
-Status CoreWorker::Seal(const ObjectID &object_id, bool owns_object, bool pin_object) {
+Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
-  if (owns_object) {
-    reference_counter_->AddOwnedObject(object_id, GetCallerId(), rpc_address_);
-    if (pin_object) {
-      // Tell the raylet to pin the object **after** it is created.
-      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
-    }
+  if (pin_object) {
+    // Tell the raylet to pin the object **after** it is created.
+    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
   }
   return Status::OK();
 }
@@ -635,6 +633,26 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
+Status CoreWorker::PushError(const JobID &job_id, const std::string &type,
+                             const std::string &error_message, double timestamp) {
+  return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
+}
+
+Status CoreWorker::PrepareActorCheckpoint(const ActorID &actor_id,
+                                          ActorCheckpointID *checkpoint_id) {
+  return local_raylet_client_->PrepareActorCheckpoint(actor_id, checkpoint_id);
+}
+
+Status CoreWorker::NotifyActorResumedFromCheckpoint(
+    const ActorID &actor_id, const ActorCheckpointID &checkpoint_id) {
+  return local_raylet_client_->NotifyActorResumedFromCheckpoint(actor_id, checkpoint_id);
+}
+
+Status CoreWorker::SetResource(const std::string &resource_name, const double capacity,
+                               const ClientID &client_id) {
+  return local_raylet_client_->SetResource(resource_name, capacity, client_id);
+}
+
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
@@ -852,6 +870,7 @@ void CoreWorker::StartExecutingTasks() { task_execution_service_.run(); }
 Status CoreWorker::AllocateReturnObjects(
     const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
     const std::vector<std::shared_ptr<Buffer>> &metadatas,
+    const std::vector<std::vector<ObjectID>> &contained_object_ids,
     std::vector<std::shared_ptr<RayObject>> *return_objects) {
   RAY_CHECK(object_ids.size() == metadatas.size());
   RAY_CHECK(object_ids.size() == data_sizes.size());
@@ -863,11 +882,12 @@ Status CoreWorker::AllocateReturnObjects(
     if (data_sizes[i] > 0) {
       if (worker_context_.CurrentTaskIsDirectCall() &&
           static_cast<int64_t>(data_sizes[i]) <
-              RayConfig::instance().max_direct_call_object_size()) {
+              RayConfig::instance().max_direct_call_object_size() &&
+          contained_object_ids[i].empty()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
-        RAY_RETURN_NOT_OK(
-            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
+        RAY_RETURN_NOT_OK(Create(metadatas[i], data_sizes[i], contained_object_ids[i],
+                                 object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -936,13 +956,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     if (!return_objects->at(i)) {
       continue;
     }
-    if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i], /*owns_object=*/false, /*pin_object=*/false).ok()) {
+    if (return_objects->at(i)->GetData() != nullptr &&
+        return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
+      if (!Seal(return_ids[i], /*pin_object=*/false).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
     } else if (!worker_context_.CurrentTaskIsDirectCall()) {
-      if (!Put(*return_objects->at(i), return_ids[i]).ok()) {
+      if (!Put(*return_objects->at(i), {}, return_ids[i]).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
       }
@@ -1160,12 +1181,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
-  if (!current_task_.TaskId().IsNil()) {
-    stats->set_current_task_desc(current_task_.DebugString());
-    for (auto const it : current_task_.FunctionDescriptor()) {
-      stats->add_current_task_func_desc(it);
-    }
-  }
+  stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_actor_id(actor_id_.Binary());

@@ -64,6 +64,9 @@ void GcsServer::Start() {
   // Run rpc server.
   rpc_server_.Run();
 
+  // Store gcs rpc server address in redis
+  StoreGcsServerAddressInRedis();
+
   // Run the event loop.
   // Using boost::asio::io_context::work to avoid ending the event loop when
   // there are no events to handle.
@@ -105,6 +108,36 @@ std::unique_ptr<rpc::NodeInfoHandler> GcsServer::InitNodeInfoHandler() {
 std::unique_ptr<rpc::ObjectInfoHandler> GcsServer::InitObjectInfoHandler() {
   return std::unique_ptr<rpc::DefaultObjectInfoHandler>(
       new rpc::DefaultObjectInfoHandler(*redis_gcs_client_));
+}
+
+void GcsServer::StoreGcsServerAddressInRedis() {
+  boost::asio::ip::detail::endpoint primary_endpoint;
+  boost::asio::ip::tcp::resolver resolver(main_service_);
+  boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
+  boost::asio::ip::tcp::resolver::iterator iter = resolver.resolve(query);
+  boost::asio::ip::tcp::resolver::iterator end;  // End marker.
+  while (iter != end) {
+    boost::asio::ip::tcp::endpoint ep = *iter;
+    if (ep.address().is_v4() && !ep.address().is_loopback() &&
+        !ep.address().is_multicast()) {
+      primary_endpoint.address(ep.address());
+      primary_endpoint.port(ep.port());
+      break;
+    }
+    iter++;
+  }
+
+  std::string address;
+  if (iter == end) {
+    address = "127.0.0.1:" + std::to_string(GetPort());
+  } else {
+    address = primary_endpoint.address().to_string() + ":" + std::to_string(GetPort());
+  }
+  RAY_LOG(INFO) << "Gcs server address = " << address;
+
+  RAY_CHECK_OK(redis_gcs_client_->primary_context()->RunArgvAsync(
+      {"SET", "GcsServerAddress", address}));
+  RAY_LOG(INFO) << "Finished setting gcs server address: " << address;
 }
 
 std::unique_ptr<rpc::TaskInfoHandler> GcsServer::InitTaskInfoHandler() {

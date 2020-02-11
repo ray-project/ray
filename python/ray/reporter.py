@@ -9,13 +9,8 @@ import grpc
 import subprocess
 from concurrent import futures
 
-try:
-    import psutil
-except ImportError:
-    print("The reporter requires psutil to run.")
-    import sys
-    sys.exit(1)
-
+import ray
+import psutil
 import ray.ray_constants as ray_constants
 import ray.services
 import ray.utils

@@ -1,6 +1,6 @@
 from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.agents.marwil.marwil_policy import MARWILPolicy
+from ray.rllib.agents.marwil.marwil_policy import MARWILTFPolicy
 from ray.rllib.optimizers import SyncBatchReplayOptimizer
 
 # yapf: disable
@@ -53,7 +53,6 @@ def validate_config(config):
 MARWILTrainer = build_trainer(
     name="MARWIL",
     default_config=DEFAULT_CONFIG,
-    default_policy=MARWILPolicy,
+    default_policy=MARWILTFPolicy,
     validate_config=validate_config,
-    make_policy_optimizer=make_optimizer
-)
+    make_policy_optimizer=make_optimizer)

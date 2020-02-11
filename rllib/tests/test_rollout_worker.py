@@ -24,6 +24,8 @@ class MockPolicy(TestPolicy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
+                        explore=True,
+                        timestep=None,
                         **kwargs):
         return [random.choice([0, 1])] * len(obs_batch), [], {}
 
@@ -32,7 +34,8 @@ class MockPolicy(TestPolicy):
                                other_agent_batches=None,
                                episode=None):
         assert episode is not None
-        return compute_advantages(batch, 100.0, 0.9, use_gae=False)
+        return compute_advantages(
+            batch, 100.0, 0.9, use_gae=False, use_critic=False)
 
 
 class BadPolicy(MockPolicy):
@@ -42,6 +45,8 @@ class BadPolicy(MockPolicy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
+                        explore=True,
+                        timestep=None,
                         **kwargs):
         raise Exception("intentional error")
 

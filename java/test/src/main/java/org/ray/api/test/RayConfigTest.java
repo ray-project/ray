@@ -7,7 +7,7 @@ import org.testng.annotations.Test;
 
 public class RayConfigTest {
 
-  public final static int NUM_RETRIES = 5;
+  public static final int NUM_RETRIES = 5;
 
   @Test
   public void testCreateRayConfig() {
