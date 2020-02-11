@@ -370,15 +370,14 @@ def test_actor_holding_serialized_reference(one_worker_100MiB):
     actor = GreedyActor.remote()
     actor.set_ref1.remote([array_oid])
 
+    # Test that giving the same actor a duplicate reference works.
+    ray.get(actor.add_ref2.remote([array_oid]))
+
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
     del array_oid
 
-    # Test that the remote reference still pins the object.
-    _fill_object_store_and_get(array_oid_bytes)
-
-    # Test that giving the same actor a duplicate reference works.
-    ray.get(actor.add_ref2.remote([ray.ObjectID(array_oid_bytes)]))
+    # Test that the remote references still pin the object.
     _fill_object_store_and_get(array_oid_bytes)
 
     # Test that removing only the first reference doesn't unpin the object.
@@ -445,13 +444,59 @@ def test_basic_nested_ids(one_worker_100MiB):
     _fill_object_store_and_get(inner_oid_bytes, succeed=False)
 
 
+# Test that an object containing object IDs within it pins the inner IDs
+# recursively and for submitted tasks.
+def test_recursively_nest_ids(one_worker_100MiB):
+    @ray.remote
+    def recursive(ref, dep, max_depth, depth=0):
+        unwrapped = ray.get(ref[0])
+        if depth == max_depth:
+            return ray.get(dep[0])
+        else:
+            return recursive.remote(unwrapped, dep, max_depth, depth + 1)
+
+    @ray.remote
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+
+    max_depth = 5
+    array_oid = put.remote()
+    random_oid = ray.ObjectID.from_random()
+    nested_oid = array_oid
+    for _ in range(max_depth):
+        nested_oid = ray.put([nested_oid])
+    head_oid = recursive.remote([nested_oid], [random_oid], max_depth)
+
+    # Remove the local reference.
+    array_oid_bytes = array_oid.binary()
+    del array_oid, nested_oid
+
+    tail_oid = head_oid
+    for _ in range(max_depth - 1):
+        tail_oid = ray.get(tail_oid)
+
+    # Check that the remote reference pins the object.
+    _fill_object_store_and_get(array_oid_bytes)
+
+    # Fulfill the dependency, causing the tail task to finish.
+    ray.worker.global_worker.put_object(None, object_id=random_oid)
+    ray.get(tail_oid)
+
+    # Reference should be gone, check that array gets evicted.
+    _fill_object_store_and_get(array_oid_bytes, succeed=False)
+
+
 # Test that serialized objectIDs returned from remote tasks are pinned until
 # they go out of scope on the caller side.
 @pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_return_object_id(one_worker_100MiB):
     @ray.remote
+    def put():
+        return np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+
+    @ray.remote
     def return_an_id():
-        return [ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))]
+        return [put.remote()]
 
     outer_oid = return_an_id.remote()
     inner_oid_binary = ray.get(outer_oid)[0].binary()
