@@ -1032,7 +1032,7 @@ py_test(
 py_test(
     name = "examples/custom_loss",
     tags = ["examples", "examples_5"],
-    size = "large",
+    size = "small",
     # Include the json data file.
     data = glob(["tests/data/cartpole_small/**"]),
     srcs = ["examples/custom_loss.py"],
@@ -1042,7 +1042,7 @@ py_test(
 py_test(
     name = "examples/eager_execution",
     tags = ["examples", "examples_5"],
-    size = "large",
+    size = "small",
     srcs = ["examples/eager_execution.py"],
     args = ["--iters=2"]
 )
