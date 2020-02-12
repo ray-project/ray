@@ -1,22 +1,18 @@
 #!/usr/bin/env bash
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-
 echo "PYTHON is $PYTHON"
+
+# Make sure all important package versions are static (via env variables
+# or assign default values to them).
 tf_version="$TF_VERSION"
-if [[ $tf_version == "" ]]; then
-  tf_version="2.0.0b1"
-fi
+if [[ $tf_version == "" ]]; then tf_version="2.0.0b1"; fi
 echo "tf_version is $tf_version"
-tfp_version="$TFP_VERSION" or "0.8"
-if [[ tfp_version == "" ]]; then
-  tfp_version="0.8"
-fi
+tfp_version="$TFP_VERSION"
+if [[ tfp_version == "" ]]; then tfp_version="0.8"; fi
 echo "tfp_version is $tfp_version"
 torch_version="$TORCH_VERSION"
-if [[ torch_version == "" ]]; then
-  torch_version="1.4"
-fi
+if [[ torch_version == "" ]]; then torch_version="1.4"; fi
 echo "torch_version is $torch_version"
 
 platform="unknown"
@@ -47,9 +43,14 @@ fi
 
 bash miniconda.sh -b -p $HOME/miniconda
 export PATH="$HOME/miniconda/bin:$PATH"
+
+# Upgrade pip.
+pip install --upgrade pip
+
+# pip-install all required packages.
 pip install -q scipy cython==0.29.0 \
-  tensorflow==$TF_VERSION tensorflow-probability==$TFP_VERSION \
-  torch==$TORCH_VERSION torchvision \
+  tensorflow==$tf_version tensorflow-probability==$tfp_version \
+  torch==$torch_version torchvision \
   gast==0.2.2 gym gym[atari] atari_py opencv-python-headless pyyaml \
   pandas==0.24.2 requests feather-format lxml lz4 \
   openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil \
