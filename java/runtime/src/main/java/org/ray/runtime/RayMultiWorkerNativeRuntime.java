@@ -63,7 +63,7 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
     for (int i = 0; i < numWorkers; i++) {
       final int workerIndex = i;
       threads[i] = new Thread(() -> {
-        RayNativeRuntime runtime = new RayNativeRuntime(null, rayConfig, functionManager);
+        RayNativeRuntime runtime = new RayNativeRuntime(rayConfig, functionManager);
         runtimes[workerIndex] = runtime;
         currentThreadRuntime.set(runtime);
         runtime.run();

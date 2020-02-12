@@ -47,13 +47,13 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   /**
    * Do some setups like adding hooks and setup logging.
    */
-  public static synchronized void setup(boolean startHeadProcesses, RayConfig rayConfig) {
+  public static synchronized void setup(RayConfig rayConfig) {
     LOGGER.debug("Loading native libraries.");
     // Expose ray ABI symbols which may be depended by other shared
     // libraries such as libstreaming_java.so.
     // See BUILD.bazel:libcore_worker_library_java.so
 
-    if (!startHeadProcesses && rayConfig.workerMode == WorkerType.DRIVER) {
+    if (rayConfig.getRedisAddress() != null && rayConfig.workerMode == WorkerType.DRIVER) {
       // Fetch session dir from GCS if this is a driver that is connecting to the existing GCS.
       RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       final String sessionDir = client.get("session_dir", null);
@@ -70,10 +70,12 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeSetup(rayConfig.logDir);
   }
 
-  public RayNativeRuntime(
-      RunManager manager, RayConfig rayConfig, FunctionManager functionManager) {
+  public RayNativeRuntime(RayConfig rayConfig, FunctionManager functionManager) {
     super(rayConfig, functionManager);
-    this.manager = manager;
+    if (rayConfig.getRedisAddress() == null) {
+      manager = new RunManager(rayConfig);
+      manager.startRayProcesses(true);
+    }
     // Reset library path at runtime.
     resetLibraryPath(rayConfig);
 

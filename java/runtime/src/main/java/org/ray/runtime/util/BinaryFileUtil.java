@@ -1,6 +1,8 @@
 package org.ray.runtime.util;
 
 import com.google.common.base.Preconditions;
+import org.apache.commons.io.FileUtils;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,6 +29,14 @@ public class BinaryFileUtil {
       return file;
     }
 
+    final File dir = file.getParentFile();
+    try {
+      if (!dir.exists()) {
+        FileUtils.forceMkdir(dir);
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Couldn't make directory: " + dir.getAbsolutePath(), e);
+    }
     // File does not exist.
     try (InputStream is = FileUtil.class.getResourceAsStream("/" + fileName)) {
       Preconditions.checkNotNull(is, "{} doesn't exist.", fileName);
@@ -36,5 +46,4 @@ public class BinaryFileUtil {
     }
     return file;
   }
-
 }

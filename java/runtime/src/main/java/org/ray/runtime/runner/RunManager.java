@@ -97,7 +97,6 @@ public class RunManager {
 
   private void createTempDirs() {
     try {
-      FileUtils.forceMkdir(new File(rayConfig.sessionDir));
       FileUtils.forceMkdir(new File(rayConfig.logDir));
       FileUtils.forceMkdir(new File(rayConfig.rayletSocketName).getParentFile());
       FileUtils.forceMkdir(new File(rayConfig.objectStoreSocketName).getParentFile());
