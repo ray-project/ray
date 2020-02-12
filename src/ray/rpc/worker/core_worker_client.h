@@ -76,6 +76,16 @@ typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const std::stri
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
  public:
+  /// This is called by the Raylet to assign a task to the worker.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  virtual ray::Status AssignTask(const AssignTaskRequest &request,
+                                 const ClientCallback<AssignTaskReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   /// Push an actor task directly from worker to worker.
   ///
   /// \param[in] request The request message.
@@ -148,6 +158,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     grpc_client_ = std::unique_ptr<GrpcClient<CoreWorkerService>>(
         new GrpcClient<CoreWorkerService>(address, port, client_call_manager));
   };
+
+  RPC_CLIENT_METHOD(CoreWorkerService, AssignTask, grpc_client_, override)
 
   RPC_CLIENT_METHOD(CoreWorkerService, DirectActorCallArgWaitComplete, grpc_client_,
                     override)

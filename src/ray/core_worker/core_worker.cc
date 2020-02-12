@@ -127,6 +127,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     direct_task_receiver_ = std::unique_ptr<CoreWorkerDirectTaskReceiver>(
         new CoreWorkerDirectTaskReceiver(worker_context_, local_raylet_client_,
                                          task_execution_service_, execute_task, exit));
+    raylet_task_receiver_ =
+        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+            worker_context_.GetWorkerID(), local_raylet_client_, execute_task, exit));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -1018,6 +1021,20 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   }
 
   return Status::OK();
+}
+
+void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
+                                  rpc::AssignTaskReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
+
+  task_queue_length_ += 1;
+  task_execution_service_.post([=] {
+    raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
+  });
 }
 
 void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
