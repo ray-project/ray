@@ -166,7 +166,7 @@ class DashboardController(BaseDashboardController):
                     to_print.append(line +
                                     (max_line_length - len(line)) * " ")
                 data["extraInfo"] += "\n" + "\n".join(to_print)
-        result = {"nodes": D, "actors": actor_tree}
+        return {"nodes": D, "actors": actor_tree}
 
     def get_node_info(self):
         return self.node_stats.get_node_stats()
@@ -822,12 +822,22 @@ class TuneCollector(threading.Thread):
     """
 
     def __init__(self, logdir, reload_interval):
-        super().__init__()
         self._logdir = logdir
         self._trial_records = {}
         self._data_lock = threading.Lock()
         self._reload_interval = reload_interval
         self._available = False
+
+        if not os.path.exists(self._logdir):
+            try:
+                logger.info("Create a directory at {}".format(self._logdir))
+                os.mkdir(self._logdir)
+            except:
+                FileNotFoundError("Log directory {} does not exist. "
+                                    "Please create the directory to use Tune "
+                                    "collector".format(self._logdir))
+
+        super().__init__()
 
     def get_stats(self):
         with self._data_lock:

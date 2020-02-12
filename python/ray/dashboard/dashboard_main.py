@@ -63,7 +63,7 @@ if __name__ == "__main__":
             args.temp_dir,
             # TODO(sang): Make this value configurable
             # through Ray API
-            hosted_dashboard_client=True,
+            hosted_dashboard_client=False,
             redis_password=args.redis_password)
         dashboard.run()
     except Exception as e:
