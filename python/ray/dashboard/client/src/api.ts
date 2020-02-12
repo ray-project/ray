@@ -127,8 +127,10 @@ export interface RayletInfoResponse {
         }
       | {
           actorId: string;
+          actorTitle: string;
           requiredResources: { [key: string]: number };
           state: -1;
+          invalidStateType?: 'infeasibleActor' | 'pendingActor';
         };
   };
 }
@@ -144,15 +146,21 @@ export interface ErrorsResponse {
   }>;
 }
 
-export const getErrors = (hostname: string, pid: string | undefined) =>
-  get<ErrorsResponse>("/api/errors", { hostname, pid: pid || "" });
+export const getErrors = (hostname: string, pid: number | null) =>
+  get<ErrorsResponse>("/api/errors", {
+    hostname,
+    pid: pid === null ? "" : pid
+  });
 
 export interface LogsResponse {
   [pid: string]: string[];
 }
 
-export const getLogs = (hostname: string, pid: string | undefined) =>
-  get<LogsResponse>("/api/logs", { hostname, pid: pid || "" });
+export const getLogs = (hostname: string, pid: number | null) =>
+  get<LogsResponse>("/api/logs", {
+    hostname,
+    pid: pid === null ? "" : pid
+  });
 
 export type LaunchProfilingResponse = string;
 
@@ -192,3 +200,41 @@ export const launchKillActor = (
     ip_address: actorIpAddress,
     port: actorPort
   });
+
+export interface TuneTrial {
+  date: string;
+  episodes_total: string;
+  experiment_id: string;
+  experiment_tag: string;
+  hostname: string;
+  iterations_since_restore: number;
+  logdir: string;
+  node_ip: string;
+  pid: number;
+  time_since_restore: number;
+  time_this_iter_s: number;
+  time_total_s: number;
+  timestamp: number;
+  timesteps_since_restore: number;
+  timesteps_total: number;
+  training_iteration: number;
+  start_time: string;
+  status: string;
+  trial_id: string;
+  job_id: string;
+  params: { [key: string]: string };
+  metrics: { [key: string]: string };
+}
+
+export interface TuneJobResponse {
+  trial_records: { [key: string]: TuneTrial };
+}
+
+export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
+
+export interface TuneAvailabilityResponse {
+  available: boolean;
+}
+
+export const getTuneAvailability = () =>
+  get<TuneAvailabilityResponse>("/api/tune_availability", {});

@@ -6,6 +6,11 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#if !defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
+#include <sys/socket.h>
+#include <sys/types.h>
+#endif
+
 #include "ray/common/client_connection.h"
 
 namespace ray {
@@ -15,7 +20,14 @@ class ClientConnectionTest : public ::testing::Test {
  public:
   ClientConnectionTest()
       : io_service_(), in_(io_service_), out_(io_service_), error_message_type_(1) {
+#if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
     boost::asio::local::connect_pair(in_, out_);
+#else
+    int pair[2] = {};  // TODO(mehrdadn): This should be type SOCKET for Windows
+    RAY_CHECK(socketpair(AF_INET, SOCK_STREAM, 0, pair) == 0);
+    in_.assign(local_stream_protocol::v4(), pair[0]);
+    out_.assign(local_stream_protocol::v4(), pair[1]);
+#endif
   }
 
   ray::Status WriteBadMessage(std::shared_ptr<ray::LocalClientConnection> conn,
