@@ -271,7 +271,7 @@ public class RayConfig {
     return sessionDir;
   }
 
-  public void updateSessionDir() {
+  private void updateSessionDir() {
     // session dir
     String localSessionDir = System.getProperty("ray.session-dir");
     if (workerMode == WorkerType.DRIVER) {
