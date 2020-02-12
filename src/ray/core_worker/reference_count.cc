@@ -117,7 +117,6 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   RAY_LOG(DEBUG) << "Remove local reference " << object_id;
   PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {
-    RAY_LOG(DEBUG) << "xxx";
     DeleteReferenceInternal(it, deleted);
   }
 }
@@ -161,7 +160,6 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     }
     it->second.submitted_task_ref_count--;
     if (it->second.RefCount() == 0) {
-      RAY_LOG(DEBUG) << "yyy";
       DeleteReferenceInternal(it, deleted);
     }
   }
@@ -191,7 +189,6 @@ void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids)
     if (it == object_id_refs_.end()) {
       return;
     }
-    RAY_LOG(DEBUG) << "zzz";
     DeleteReferenceInternal(it, nullptr);
   }
 }
@@ -200,11 +197,28 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
                                                std::vector<ObjectID> *deleted) {
   const ObjectID id = it->first;
   RAY_LOG(DEBUG) << "Attempting to delete object " << id;
-  if (it->second.RefCount() == 0 && it->second.on_local_ref_deleted) {
+  if (distributed_ref_counting_enabled_ && it->second.RefCount() == 0 &&
+      it->second.on_local_ref_deleted) {
     RAY_LOG(DEBUG) << "Calling on_local_ref_deleted for object " << id;
     it->second.on_local_ref_deleted();
   }
   PRINT_REF_COUNT(it);
+
+  bool evicted = false;
+  // If distributed ref counting is not enabled, then delete the object as soon
+  // as its local ref count goes to 0.
+  if (!distributed_ref_counting_enabled_ && it->second.RefCount() == 0) {
+    RAY_LOG(DEBUG) << "Deleting object " << id;
+    if (it->second.on_delete) {
+      it->second.on_delete(id);
+      it->second.on_delete = nullptr;
+    }
+    if (deleted) {
+      deleted->push_back(id);
+    }
+    evicted = true;
+  }
+
   if (it->second.CanDelete()) {
     for (const auto &inner_id : it->second.contains) {
       RAY_LOG(DEBUG) << "Try to delete inner object " << inner_id;
@@ -215,16 +229,17 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       } else {
         RAY_CHECK(!inner_it->second.contained_in_borrowed_id.has_value());
       }
-      RAY_LOG(DEBUG) << "aaa";
       DeleteReferenceInternal(inner_it, deleted);
     }
 
-    RAY_LOG(DEBUG) << "Deleting object " << id;
-    if (it->second.on_delete) {
-      it->second.on_delete(id);
-    }
-    if (deleted) {
-      deleted->push_back(id);
+    if (!evicted) {
+      RAY_LOG(DEBUG) << "Deleting object " << id;
+      if (it->second.on_delete) {
+        it->second.on_delete(id);
+      }
+      if (deleted) {
+        deleted->push_back(id);
+      }
     }
     object_id_refs_.erase(it);
   }
@@ -416,7 +431,6 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
             ReferenceTableFromProto(reply.borrower_refs());
 
         MergeBorrowerRefs(object_id, addr, new_borrower_refs);
-        RAY_LOG(DEBUG) << "ddd";
         DeleteReferenceInternal(it, nullptr);
       }));
 }

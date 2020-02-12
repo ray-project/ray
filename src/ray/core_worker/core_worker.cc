@@ -80,8 +80,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      reference_counter_(
-          std::make_shared<ReferenceCounter>([this](const rpc::Address &addr) {
+      reference_counter_(std::make_shared<ReferenceCounter>(
+          /*distributed_ref_counting_enabled=*/true,
+          [this](const rpc::Address &addr) {
             return std::shared_ptr<rpc::CoreWorkerClient>(
                 new rpc::CoreWorkerClient(addr, *client_call_manager_));
           })),

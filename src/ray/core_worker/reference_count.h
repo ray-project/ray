@@ -22,8 +22,10 @@ class ReferenceCounter {
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
 
-  ReferenceCounter(rpc::ClientFactoryFn client_factory = nullptr)
-      : client_factory_(client_factory) {}
+  ReferenceCounter(bool distributed_ref_counting_enabled = true,
+                   rpc::ClientFactoryFn client_factory = nullptr)
+      : distributed_ref_counting_enabled_(distributed_ref_counting_enabled),
+        client_factory_(client_factory) {}
 
   ~ReferenceCounter() {}
 
@@ -337,6 +339,11 @@ class ReferenceCounter {
   void DeleteReferenceInternal(ReferenceTable::iterator entry,
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Feature flag for distributed ref counting. If this is false, then we will
+  /// keep the distributed ref count, but only the local ref count will be used
+  /// to decide when objects can be evicted.
+  bool distributed_ref_counting_enabled_;
 
   /// Factory for producing new core worker clients.
   rpc::ClientFactoryFn client_factory_;
