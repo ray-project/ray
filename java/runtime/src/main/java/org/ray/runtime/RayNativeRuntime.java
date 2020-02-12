@@ -1,8 +1,13 @@
 package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
+
+import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.apache.commons.io.FileUtils;
 import org.ray.api.RayActor;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
@@ -38,15 +43,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
    */
   private long nativeCoreWorkerPointer;
 
-  private static void resetLibraryPath(RayConfig rayConfig) {
-    String separator = System.getProperty("path.separator");
-    String libraryPath = String.join(separator, rayConfig.libraryPath);
-    JniUtils.resetLibraryPath(libraryPath);
-  }
-
-  /**
-   * Do some setups like adding hooks and setup logging.
-   */
   static {
     LOGGER.debug("Loading native libraries.");
     // Expose ray ABI symbols which may be depended by other shared
@@ -66,9 +62,19 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             rayConfig.sessionDir, BinaryFileUtil.CORE_WORKER_JAVA_LIBRARY).getAbsolutePath());
     LOGGER.debug("Native libraries loaded.");
     resetLibraryPath(rayConfig);
-
+    try {
+      FileUtils.forceMkdir(new File(rayConfig.logDir));
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to create the log directory.", e);
+    }
     nativeSetup(rayConfig.logDir);
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
+  }
+
+  private static void resetLibraryPath(RayConfig rayConfig) {
+    String separator = System.getProperty("path.separator");
+    String libraryPath = String.join(separator, rayConfig.libraryPath);
+    JniUtils.resetLibraryPath(libraryPath);
   }
 
   public RayNativeRuntime(RayConfig rayConfig, FunctionManager functionManager) {
