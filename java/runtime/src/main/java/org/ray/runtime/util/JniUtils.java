@@ -3,8 +3,10 @@ package org.ray.runtime.util;
 import com.google.common.base.Strings;
 import com.google.common.collect.Sets;
 import com.sun.jna.NativeLibrary;
+import java.io.File;
 import java.lang.reflect.Field;
 import java.util.Set;
+import org.ray.runtime.config.RayConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,35 +39,19 @@ public class JniUtils {
       // Load native library.
       String fileName = System.mapLibraryName(libraryName);
       String libPath = null;
+      final String sessionDir = RayConfig.getInstance().sessionDir;
+      final File file = BinaryFileUtil.getFile(sessionDir, fileName);
 
-      try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
-        libPath = libFile.getFile().getAbsolutePath();
-        if (exportSymbols) {
-          // Expose library symbols using RTLD_GLOBAL which may be depended by other shared
-          // libraries.
-          NativeLibrary.getInstance(libFile.getFile().getAbsolutePath());
-        }
-        System.load(libPath);
+      if (exportSymbols) {
+        // Expose library symbols using RTLD_GLOBAL which may be depended by other shared
+        // libraries.
+        NativeLibrary.getInstance(file.getAbsolutePath());
       }
+      System.load(libPath);
       LOGGER.debug("Native library loaded.");
-      resetLibraryPath(libPath);
+      resetLibraryPath(file.getAbsolutePath());
       loadedLibs.add(libraryName);
     }
-  }
-
-  public static synchronized void loadLibraryByPath(String libraryName, String libraryPath) {
-    if (loadedLibs.contains(libraryName)) {
-      return;
-    }
-    LOGGER.debug("Loading native library {}.", libraryName);
-    // Load native library.
-    // Expose library symbols using RTLD_GLOBAL which may be depended by other shared
-    // libraries.
-    NativeLibrary.getInstance(libraryPath);
-    System.load(libraryPath);
-    LOGGER.debug("Native library loaded.");
-    resetLibraryPath(libraryPath);
-    loadedLibs.add(libraryName);
   }
 
   /**

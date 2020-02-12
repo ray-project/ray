@@ -37,7 +37,7 @@ public class BinaryFileUtil {
       throw new RuntimeException("Couldn't make directory: " + dir.getAbsolutePath(), e);
     }
     // File does not exist.
-    try (InputStream is = FileUtil.class.getResourceAsStream("/" + fileName)) {
+    try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + fileName)) {
       Preconditions.checkNotNull(is, "{} doesn't exist.", fileName);
       Files.copy(is, Paths.get(file.getCanonicalPath()));
     } catch (IOException e) {
