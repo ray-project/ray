@@ -396,8 +396,11 @@ class FunctionActorManager:
             actor_methods = inspect.getmembers(
                 actor_class, predicate=is_function_or_method)
             for actor_method_name, actor_method in actor_methods:
-                method_descriptor = PythonFunctionDescriptor(
-                    module_name, actor_method_name, actor_class_name)
+                if actor_method_name == "__init__":
+                    method_descriptor = function_descriptor
+                else:
+                    method_descriptor = PythonFunctionDescriptor(
+                        module_name, actor_method_name, actor_class_name)
                 method_id = method_descriptor.function_id
                 executor = self._make_actor_method_executor(
                     actor_method_name,

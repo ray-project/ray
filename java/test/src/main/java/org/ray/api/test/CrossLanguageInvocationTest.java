@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
+import org.ray.api.annotation.RayRemote;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -14,7 +15,6 @@ import org.ray.api.RayPyActor;
 import org.ray.api.TestUtils;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.actor.NativeRayPyActor;
-import org.ray.api.annotation.RayRemote;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -67,7 +67,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
     Assert.assertEquals(res.get(), "2".getBytes());
-    // Call a python function which create a python actor and pass the actor handle to callPythonActorHandle.
+    // Call a python function which create a python actor
+    // and pass the actor handle to callPythonActorHandle.
     res = Ray.callPy(PYTHON_MODULE, "py_func_pass_python_actor_handle");
     Assert.assertEquals(res.get(), "3".getBytes());
   }

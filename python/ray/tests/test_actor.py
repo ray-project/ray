@@ -102,6 +102,30 @@ def test_keyword_args(ray_start_regular):
         ray.get(actor.get_values.remote())
 
 
+def test_actor_name_conflict(ray_start_regular):
+    @ray.remote
+    class A(object):
+        def foo(self):
+            return 100000
+
+    a = A.remote()
+    r = a.foo.remote()
+
+    results = [r]
+    for x in range(10):
+
+        @ray.remote
+        class A(object):
+            def foo(self):
+                return x
+
+        a = A.remote()
+        r = a.foo.remote()
+        results.append(r)
+
+    assert ray.get(results) == [100000, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+
 def test_variable_number_of_args(ray_start_regular):
     @ray.remote
     class Actor:
