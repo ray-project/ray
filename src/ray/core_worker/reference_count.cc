@@ -455,6 +455,12 @@ void ReferenceCounter::WrapObjectId(
     for (const auto &inner_id : inner_ids) {
       auto inner_it = object_id_refs_.find(inner_id);
       RAY_CHECK(inner_it != object_id_refs_.end());
+      if (!inner_it->second.owned_by_us) {
+        RAY_LOG(WARNING)
+            << "Ref counting currently does not support returning an object ID that was "
+               "not created by the worker executing the task. The object may be evicted "
+               "before all references are out of scope.";
+      }
       // Add the task's caller as a borrower and wait for it to remove its
       // reference.
       inner_it->second.borrowers.insert(*owner_address);
