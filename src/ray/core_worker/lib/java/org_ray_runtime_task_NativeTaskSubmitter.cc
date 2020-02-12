@@ -82,21 +82,18 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
     resources = ToResources(env, java_resources);
   }
 
-  ray::TaskOptions task_options{numReturns, /*is_direct_call=*/false, resources};
+  ray::TaskOptions task_options{numReturns, resources};
   return task_options;
 }
 
 inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                         jobject actorCreationOptions) {
   uint64_t max_reconstructions = 0;
-  bool use_direct_call;
   std::unordered_map<std::string, double> resources;
   std::vector<std::string> dynamic_worker_options;
   if (actorCreationOptions) {
     max_reconstructions = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_reconstructions));
-    use_direct_call = env->GetBooleanField(actorCreationOptions,
-                                           java_actor_creation_options_use_direct_call);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -106,15 +103,10 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       std::string jvm_options = JavaStringToNativeString(env, java_jvm_options);
       dynamic_worker_options.emplace_back(jvm_options);
     }
-  } else {
-    use_direct_call =
-        env->GetStaticBooleanField(java_actor_creation_options_class,
-                                   java_actor_creation_options_default_use_direct_call);
   }
 
   ray::ActorCreationOptions actor_creation_options{
       static_cast<uint64_t>(max_reconstructions),
-      use_direct_call,
       /*max_concurrency=*/1,
       resources,
       resources,
