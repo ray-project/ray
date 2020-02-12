@@ -992,7 +992,7 @@ py_test(
 py_test(
     name = "examples/multiagent_cartpole",
     tags = ["examples", "examples_3"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multiagent_cartpole.py"],
     args = ["--num-iters=2", "--num-cpus=4"]
 )
@@ -1010,7 +1010,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=200", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=50", "--num-cpus=4"]
 )
 
 py_test(
@@ -1018,7 +1018,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--stop=100", "--num-cpus=4"]
+    args = ["--run=IMPALA", "--stop=50", "--num-cpus=4"]
 )
 
 py_test(
@@ -1026,7 +1026,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=200", "--use-prev-action-reward", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=50", "--use-prev-action-reward", "--num-cpus=4"]
 )
 
 py_test(
