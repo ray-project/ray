@@ -38,7 +38,6 @@ public class JniUtils {
       LOGGER.debug("Loading native library {}.", libraryName);
       // Load native library.
       String fileName = System.mapLibraryName(libraryName);
-      String libPath = null;
       final String sessionDir = RayConfig.getInstance().sessionDir;
       final File file = BinaryFileUtil.getFile(sessionDir, fileName);
 
@@ -47,7 +46,7 @@ public class JniUtils {
         // libraries.
         NativeLibrary.getInstance(file.getAbsolutePath());
       }
-      System.load(libPath);
+      System.load(file.getAbsolutePath());
       LOGGER.debug("Native library loaded.");
       resetLibraryPath(file.getAbsolutePath());
       loadedLibs.add(libraryName);
