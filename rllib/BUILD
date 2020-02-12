@@ -992,7 +992,7 @@ py_test(
 py_test(
     name = "examples/multiagent_cartpole",
     tags = ["examples", "examples_3"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multiagent_cartpole.py"],
     args = ["--num-iters=2", "--num-cpus=4"]
 )
@@ -1000,7 +1000,7 @@ py_test(
 py_test(
     name = "examples/multiagent_two_trainers",
     tags = ["examples", "examples_4"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/multiagent_two_trainers.py"],
     args = ["--num-iters=2"]
 )
@@ -1010,7 +1010,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=200", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=50", "--num-cpus=4"]
 )
 
 py_test(
@@ -1018,7 +1018,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--stop=100", "--num-cpus=4"]
+    args = ["--run=IMPALA", "--stop=50", "--num-cpus=4"]
 )
 
 py_test(
@@ -1026,13 +1026,13 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=200", "--use-prev-action-reward", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=50", "--use-prev-action-reward", "--num-cpus=4"]
 )
 
 py_test(
     name = "examples/custom_loss",
     tags = ["examples", "examples_5"],
-    size = "small",
+    size = "large",
     # Include the json data file.
     data = glob(["tests/data/cartpole_small/**"]),
     srcs = ["examples/custom_loss.py"],
@@ -1138,7 +1138,7 @@ py_test(
 py_test(
     name = "examples/custom_keras_rnn_model_repeat_after_me", main = "examples/custom_keras_rnn_model.py",
     tags = ["examples", "examples_8"],
-    size = "small",
+    size = "large",
     srcs = ["examples/custom_keras_rnn_model.py"],
     args = ["--run=PPO", "--stop=50", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
 )
@@ -1147,7 +1147,7 @@ py_test(
     name = "examples/custom_keras_rnn_model_repeat_initial",
     main = "examples/custom_keras_rnn_model.py",
     tags = ["examples", "examples_8"],
-    size = "small",
+    size = "large",
     srcs = ["examples/custom_keras_rnn_model.py"],
     args = ["--run=PPO", "--stop=50", "--env=RepeatInitialEnv", "--num-cpus=4"]
 )
@@ -1155,6 +1155,6 @@ py_test(
 py_test(
     name = "examples/random_env", main = "examples/random_env.py",
     tags = ["examples", "examples_8"],
-    size = "small",
+    size = "large",
     srcs = ["examples/random_env.py"]
 )
