@@ -1,3 +1,5 @@
+.. _configuring-ray:
+
 Configuring Ray
 ===============
 
@@ -5,7 +7,7 @@ This page discusses the various way to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
 
-.. important:: For the multi-node setting, you must first run `ray start` on the command line before ``ray.init`` in Python. On a single machine, you can run ``ray.init()`` without `ray start`.
+.. important:: For the multi-node setting, you must first run ``ray start`` on the command line to start the Ray cluster services on the machine before ``ray.init`` in Python to connect to the cluster services. On a single machine, you can run ``ray.init()`` without ``ray start``, which will both start the Ray cluster services and connect to them.
 
 
 Cluster Resources
