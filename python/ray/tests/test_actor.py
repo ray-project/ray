@@ -1,4 +1,5 @@
 import random
+import pytest
 import numpy as np
 import os
 try:
@@ -718,5 +719,4 @@ def test_inherit_actor_from_class(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))
