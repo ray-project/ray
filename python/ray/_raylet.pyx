@@ -617,7 +617,14 @@ cdef class CoreWorker:
         self.core_worker.get().SetActorTitle(title)
 
     def subscribe_to_plasma(self, plasma_event_handler):
-        self.core_worker.get().SubscribeToAsyncPlasma(async_plasma_callback, <void*>plasma_event_handler)
+        self.plasma_event_handler = plasma_event_handler
+        self.core_worker.get().SubscribeToAsyncPlasma(async_plasma_callback)
+
+    def get_plasma_event_handler(self):
+        if self.plasma_event_handler is None:
+            return None
+        else:
+            return self.plasma_event_handler
 
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
@@ -1117,14 +1124,11 @@ cdef void async_retry_with_plasma_callback(shared_ptr[CRayObject] obj,
                     plasma_fallback_id=ObjectID(object_id.Binary()),
                     result=None)))
 
-cdef void async_plasma_callback(CObjectID object_id, int64_t data_size, int64_t metadata_size, void *evh) with gil:
+cdef void async_plasma_callback(CObjectID object_id, int64_t data_size, int64_t metadata_size) with gil:
     # Do some conversion therapy on the object_id
     # Make EventHandler a member variable for CoreWorker
     message = []
-    print("Raylet: ASYNC PLASMA CALLBACK")
     message.append((ObjectID(object_id.Binary()), data_size, metadata_size))
-    try:
-        event_handler = <object>(evh)
+    event_handler = ray.worker.global_worker.core_worker.get_plasma_event_handler()
+    if event_handler is not None:
         event_handler.process_notifications(message)
-    except Exception as e:
-        print(e)

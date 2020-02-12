@@ -1236,13 +1236,11 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
   });
 }
 
-void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback sub_callback,
-                                        void *plasma_event_handler) {
+void CoreWorker::SubscribeToAsyncPlasma(PlasmaSubscriptionCallback sub_callback) {
   plasma_notifier_->SubscribeObjAdded(
-      [sub_callback,
-       plasma_event_handler](const object_manager::protocol::ObjectInfoT &info) {
+      [sub_callback](const object_manager::protocol::ObjectInfoT &info) {
         sub_callback(ObjectID::FromPlasmaIdBinary(info.object_id), info.data_size,
-                     info.metadata_size, plasma_event_handler);
+                     info.metadata_size);
       });
 }
 

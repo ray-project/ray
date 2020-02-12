@@ -188,13 +188,6 @@ class PlasmaEventHandler:
     def process_notifications(self, messages):
         """Process notifications."""
         for object_id, object_size, metadata_size in messages:
-            # print("PlasmaEventHandler: Processing: " + str(object_id),
-            #       str(object_size))
-            # print("size check: ", object_size > 0)
-            # print("inclusion check: ", object_id in self._waiting_dict)
-            # print("objid type: ", type(object_id))
-            # print("objid type: ", type(list(self._waiting_dict.keys())[0]))
-            print(self._waiting_dict.keys())
             if object_size > 0 and object_id in self._waiting_dict:
                 print("INside!")
                 linked_list = self._waiting_dict[object_id]
