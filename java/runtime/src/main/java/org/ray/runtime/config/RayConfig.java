@@ -72,20 +72,23 @@ public class RayConfig {
   public final String jobResourcePath;
   public final String pythonWorkerCommand;
 
-  /// An inner holder class to make this as a singleton.
-  private static class RayConfigSingletonHolder {
-    private static RayConfig INSTANCE = RayConfig.create();
-  }
+  private static volatile RayConfig instance = null;
 
   public static RayConfig getInstance() {
-    if (RayConfigSingletonHolder.INSTANCE == null) {
-      RayConfigSingletonHolder.INSTANCE = RayConfig.create();
+    if (instance == null) {
+      synchronized(RayConfig.class) {
+        if(instance == null){
+          instance = RayConfig.create();
+        }
+      }
     }
-    return RayConfigSingletonHolder.INSTANCE;
+    return instance;
   }
 
   public static void reset() {
-    RayConfigSingletonHolder.INSTANCE = null;
+    synchronized (RayConfig.class) {
+      instance = null;
+    }
   }
 
   /**
