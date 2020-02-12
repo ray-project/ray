@@ -52,8 +52,8 @@ class TaskPool:
                 del self._tasks[obj_id]
                 del self._objects[obj_id]
 
-        # We want to keep the same deque reference so that we don't suffer from stale references
-        # in generators that are still in flight
+        # We want to keep the same deque reference so that we don't suffer from
+        # stale references in generators that are still in flight
         for _ in range(len(self._fetching)):
             ev, obj_id = self._fetching.popleft()
             if ev in workers:
