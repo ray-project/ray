@@ -44,8 +44,8 @@ fi
 bash miniconda.sh -b -p $HOME/miniconda
 export PATH="$HOME/miniconda/bin:$PATH"
 
-# Upgrade pip.
-pip install --upgrade pip
+# Upgrade pip and other packages to avoid incompatibility ERRORS.
+pip install --upgrade pip setuptools cloudpickle urllib
 
 # pip-install all required packages.
 pip install -q scipy cython==0.29.0 \
