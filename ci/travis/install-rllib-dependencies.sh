@@ -8,7 +8,7 @@ if [[ $tf_version == "" ]]; then
   tf_version="2.0.0b1"
 fi
 echo "tf_version is $tf_version"
-tfp_version="$TFP_VERSION" or "0.8"
+tfp_version="$TFP_VERSION"
 if [[ tfp_version == "" ]]; then
   tfp_version="0.8"
 fi
