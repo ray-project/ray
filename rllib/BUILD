@@ -765,24 +765,28 @@ py_test(
 
 py_test(
     name = "tests/test_avail_actions_qmix",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_avail_actions_qmix.py"]
 )
 
 py_test(
     name = "tests/test_catalog",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_catalog.py"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_checkpoint_restore.py"]
 )
 
 py_test(
     name = "tests/test_dependency",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_dependency.py"]
 )
@@ -790,12 +794,14 @@ py_test(
 # PR 7086
 #py_test(
 #    name = "tests/test_deterministic_support",
+#    tags = ["tests_dir"],
 #    size = "small",
 #    srcs = ["tests/test_deterministic_support.py"]
 #)
 
 py_test(
     name = "tests/test_eager_support",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_eager_support.py"]
 )
@@ -803,96 +809,112 @@ py_test(
 py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
+    tags = ["tests_dir"],
     size = "large",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
 py_test(
     name = "tests/test_evaluators",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_evaluators.py"]
 )
 
 py_test(
     name = "tests/test_external_env",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_external_env.py"]
 )
 
 py_test(
     name = "tests/test_external_multi_agent_env",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_external_multi_agent_env.py"]
 )
 
 py_test(
     name = "tests/test_filters",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_filters.py"]
 )
 
 py_test(
     name = "tests/test_ignore_worker_failure",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_ignore_worker_failure.py"]
 )
 
 py_test(
     name = "tests/test_io",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_io.py"]
 )
 
 py_test(
     name = "tests/test_local",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_local.py"]
 )
 
 py_test(
     name = "tests/test_lstm",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_lstm.py"]
 )
 
 py_test(
     name = "tests/test_multi_agent_env",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_multi_agent_env.py"]
 )
 
 py_test(
     name = "tests/multiagent_pendulum",
+    tags = ["tests_dir"],
     size = "large",
     srcs = ["tests/multiagent_pendulum.py"]
 )
 
 py_test(
     name = "tests/test_nested_spaces",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_nested_spaces.py"]
 )
 
 py_test(
     name = "tests/test_optimizers",
+    tags = ["tests_dir"],
     size = "large",
     srcs = ["tests/test_optimizers.py"]
 )
 
 py_test(
     name = "tests/test_reproducibility",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_reproducibility.py"]
 )
 
 py_test(
     name = "tests/test_rollout_worker",
+    tags = ["tests_dir"],
     size = "small",
     srcs = ["tests/test_rollout_worker.py"]
 )
 
 py_test(
     name = "tests/test_supported_spaces",
+    tags = ["tests_dir"],
     size = "large",
     srcs = ["tests/test_supported_spaces.py"]
 )
@@ -1010,7 +1032,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=50", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=40", "--num-cpus=4"]
 )
 
 py_test(
@@ -1018,7 +1040,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--stop=50", "--num-cpus=4"]
+    args = ["--run=IMPALA", "--stop=40", "--num-cpus=4"]
 )
 
 py_test(
@@ -1026,7 +1048,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=50", "--use-prev-action-reward", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=40", "--use-prev-action-reward", "--num-cpus=4"]
 )
 
 py_test(
