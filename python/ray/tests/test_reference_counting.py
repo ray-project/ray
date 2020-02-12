@@ -428,6 +428,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB):
 
 
 # Test that an object containing object IDs within it pins the inner IDs.
+@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_basic_nested_ids(one_worker_100MiB):
     inner_oid = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
@@ -446,6 +447,7 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 # Test that an object containing object IDs within it pins the inner IDs
 # recursively and for submitted tasks.
+@pytest.mark.skip("Serialized ObjectID reference counting not implemented.")
 def test_recursively_nest_ids(one_worker_100MiB):
     @ray.remote
     def recursive(ref, dep, max_depth, depth=0):
