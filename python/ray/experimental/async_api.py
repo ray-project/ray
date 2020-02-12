@@ -7,12 +7,10 @@ import threading
 import pyarrow.plasma as plasma
 
 import ray
-from ray.experimental.async_plasma import PlasmaProtocol, PlasmaEventHandler
+from ray.experimental.async_plasma import PlasmaEventHandler
 from ray.services import logger
 
 handler = None
-transport = None
-protocol = None
 
 
 class _ThreadSafeProxy:
@@ -69,7 +67,7 @@ def thread_safe_client(client, lock=None):
 
 async def _async_init():
     print("ASYNC INIT!!")
-    global handler, transport, protocol
+    global handler
     if handler is None:
         worker = ray.worker.global_worker
         # plasma_client = thread_safe_client(
@@ -130,10 +128,7 @@ def shutdown():
 
     Cancels all related tasks and all the socket transportation.
     """
-    global handler, transport, protocol
+    global handler
     if handler is not None:
         handler.close()
-        transport.close()
         handler = None
-        transport = None
-        protocol = None
