@@ -105,6 +105,7 @@ class PlasmaObjectLinkedList(asyncio.Future):
         Args:
             future (PlasmaObjectFuture): A PlasmaObjectFuture instance.
         """
+        print("Appending: ", future)
         future.prev = self.tail
         if self.tail is None:
             assert self.head is None
@@ -121,6 +122,7 @@ class PlasmaObjectLinkedList(asyncio.Future):
         Args:
             future (PlasmaObjectFuture): A PlasmaObjectFuture instance.
         """
+        print("Removing %s from the linked list.", future)
         if self._loop.get_debug():
             logger.debug("Removing %s from the linked list.", future)
         if future.prev is None:
@@ -141,6 +143,7 @@ class PlasmaObjectLinkedList(asyncio.Future):
                     self.set_result(None)
             else:
                 self.tail.prev = None
+        print("END OF REMOVAL")
 
     def cancel(self, *args, **kwargs):
         """Manually cancel all tasks assigned to this event loop."""
@@ -156,12 +159,16 @@ class PlasmaObjectLinkedList(asyncio.Future):
 
     def set_result(self, result):
         """Complete all tasks. """
+        print("entering set result")
         for future in self.traverse():
+            print("Nxt future [set result]: ", future)
             # All cancelled futures should have callbacks to removed itself
             # from this linked list. However, these callbacks are scheduled in
             # an event loop, so we could still find them in our list.
             future.set_result(result)
+            print("Exiting recursive call?")
         if not self.done():
+            print("Finale??! future [set result]: ", super())
             super().set_result(result)
 
     def traverse(self):
@@ -207,9 +214,15 @@ class PlasmaEventHandler:
     def _complete_future(self, fut):
         obj = self._worker.get_objects([ray.ObjectID(
             fut.object_id.binary())])[0]
+        print("Object is: ", str(obj), "Future type ", type(fut))
+        if isinstance(fut, PlasmaObjectLinkedList):
+            print("Traversing")
+            for i in fut.traverse():
+                print(i, "\n")
         fut.set_result(obj)
 
     def as_future(self, object_id, check_ready=True):
+        print("AS FUTURE!!!")
         """Turn an object_id into a Future object.
 
         Args:
