@@ -1248,12 +1248,12 @@ def test_get_with_timeout(ray_start_regular):
         time.sleep(a)
         return a
 
-    assert ray.get(f.remote(3), timeout=10) == 3
+    assert ray.get(f.remote(0), timeout=10) == 0
 
-    obj_id = f.remote(3)
+    obj_id = f.remote(2)
     with pytest.raises(RayTimeoutError):
-        ray.get(obj_id, timeout=2)
-    assert ray.get(obj_id, timeout=2) == 3
+        ray.get(obj_id, timeout=0.1)
+    assert ray.get(obj_id, timeout=10) == 2
 
 
 @pytest.mark.parametrize(

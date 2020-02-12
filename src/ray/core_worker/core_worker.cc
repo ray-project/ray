@@ -795,12 +795,12 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         absl::MutexLock lock(&actor_handles_mutex_);
         auto it = actor_handles_.find(actor_id);
         RAY_CHECK(it != actor_handles_.end());
-          // We have to reset the actor handle since the next instance of the
-          // actor will not have the last sequence number that we sent.
-          // TODO: Remove the check for direct calls. We do not reset for the
-          // raylet codepath because it tries to replay all tasks since the
-          // last actor checkpoint.
-          it->second->Reset();
+        // We have to reset the actor handle since the next instance of the
+        // actor will not have the last sequence number that we sent.
+        // TODO: Remove the check for direct calls. We do not reset for the
+        // raylet codepath because it tries to replay all tasks since the
+        // last actor checkpoint.
+        it->second->Reset();
         direct_actor_submitter_->DisconnectActor(actor_id, false);
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
@@ -862,8 +862,7 @@ Status CoreWorker::AllocateReturnObjects(
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
-      if (
-          static_cast<int64_t>(data_sizes[i]) <
+      if (static_cast<int64_t>(data_sizes[i]) <
               RayConfig::instance().max_direct_call_object_size() &&
           contained_object_ids[i].empty()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
@@ -941,7 +940,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
-    } else if (!worker_context_.CurrentTaskIsDirectCall()) { // XXX: java?
+    } else if (!worker_context_.CurrentTaskIsDirectCall()) {  // XXX: java?
       if (!Put(*return_objects->at(i), {}, return_ids[i]).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
