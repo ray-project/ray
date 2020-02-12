@@ -302,7 +302,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// shared between multiple (potentially overlapping) tasks.
   ///
   /// \return The initial caller ID.
-  TaskID GetInitialCallerId() const;
+  TaskID GetInitialCallerId();
 
   /// Push an error to the relevant driver.
   ///

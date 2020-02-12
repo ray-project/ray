@@ -624,7 +624,7 @@ std::string CoreWorker::MemoryUsageString() {
   return plasma_store_provider_->MemoryUsageString();
 }
 
-TaskID CoreWorker::GetInitialCallerId() const {
+TaskID CoreWorker::GetInitialCallerId() {
   absl::MutexLock lock(&mutex_);
   if (initial_caller_id_.IsNil()) {
     initial_caller_id_ = GetCallerId();
