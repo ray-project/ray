@@ -174,6 +174,7 @@ StreamingStatus StreamingQueueConsumer::ClearTransferCheckpoint(
 
 StreamingStatus StreamingQueueConsumer::RefreshChannelInfo() {
   channel_info_.queue_info.last_seq_id = queue_->GetLastRecvSeqId();
+  return StreamingStatus::OK;
 }
 
 StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(uint64_t &offset_id,
