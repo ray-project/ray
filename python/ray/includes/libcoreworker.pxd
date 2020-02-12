@@ -74,6 +74,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CLanguage ActorLanguage() const
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
         c_bool IsDirectCallActor() const
+        c_string ExtensionData() const
 
     cdef cppclass CCoreWorker "ray::CoreWorker":
         CCoreWorker(const CWorkerType worker_type, const CLanguage language,
@@ -103,7 +104,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int max_retries)
         CRayStatus CreateActor(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CActorCreationOptions &options, CActorID *actor_id)
+            const CActorCreationOptions &options,
+            const c_string &extension_data, CActorID *actor_id)
         CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,

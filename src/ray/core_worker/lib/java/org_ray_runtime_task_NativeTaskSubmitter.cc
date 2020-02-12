@@ -156,7 +156,7 @@ Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
   ray::ActorID actor_id;
   auto status =
       GetCoreWorker(nativeCoreWorkerPointer)
-          .CreateActor(ray_function, task_args, actor_creation_options, &actor_id);
+          .CreateActor(ray_function, task_args, actor_creation_options, "", &actor_id);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ActorID>(env, actor_id);

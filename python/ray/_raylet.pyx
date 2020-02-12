@@ -805,7 +805,8 @@ cdef class CoreWorker:
                      c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
-                     c_bool is_asyncio):
+                     c_bool is_asyncio,
+                     c_string extension_data):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -828,6 +829,7 @@ cdef class CoreWorker:
                         max_reconstructions, is_direct_call, max_concurrency,
                         c_resources, c_placement_resources,
                         dynamic_worker_options, is_detached, is_asyncio),
+                    extension_data,
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
@@ -918,6 +920,7 @@ cdef class CoreWorker:
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
+            actor_method_cpu = int(c_actor_handle.ExtensionData())
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
             method_meta = ActorClassMethodMetadata(actor_class)
@@ -925,8 +928,7 @@ cdef class CoreWorker:
                                method_meta.decorators,
                                method_meta.signatures,
                                method_meta.num_return_vals,
-                               0,  # actor method cpu, TODO(fyrestone):
-                               # serialize actor method cpu with actor handle
+                               actor_method_cpu,
                                actor_creation_function_descriptor,
                                worker.current_session_and_job)
         else:

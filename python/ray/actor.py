@@ -533,10 +533,17 @@ class ActorClass:
                 creation_args = signature.flatten_args(function_signature,
                                                        args, kwargs)
             actor_id = worker.core_worker.create_actor(
-                meta.language, meta.actor_creation_function_descriptor,
-                creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources, is_direct_call, max_concurrency,
-                detached, is_asyncio)
+                meta.language,
+                meta.actor_creation_function_descriptor,
+                creation_args,
+                meta.max_reconstructions,
+                resources,
+                actor_placement_resources,
+                is_direct_call,
+                max_concurrency,
+                detached,
+                is_asyncio,
+                extension_data=str(actor_method_cpu))
 
         actor_handle = ActorHandle(
             meta.language,
