@@ -282,7 +282,10 @@ void ReferenceCounter::GetAndStripBorrowedRefs(
   ReferenceTable borrower_refs;
   for (const auto &borrowed_id : borrowed_ids) {
     RAY_CHECK(GetAndStripBorrowedRefsInternal(borrowed_id, &borrower_refs));
-    // TODO: make this nicer.
+    // Decrease the ref count for each of the borrowed IDs. This is because we
+    // artificially increment each borrowed ID to keep it pinned during task
+    // execution. However, this should not count towards the final ref count
+    // returned to the task's caller.
     auto it = borrower_refs.find(borrowed_id);
     RAY_CHECK(it != borrower_refs.end());
     it->second.local_ref_count--;
@@ -292,7 +295,6 @@ void ReferenceCounter::GetAndStripBorrowedRefs(
 
 bool ReferenceCounter::GetAndStripBorrowedRefsInternal(const ObjectID &object_id,
                                                        ReferenceTable *borrower_refs) {
-  // TODO: Delete references that now have ref count 0.
   RAY_LOG(DEBUG) << "Pop " << object_id;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -449,7 +451,7 @@ void ReferenceCounter::WrapObjectId(
     RAY_CHECK(owner_address.has_value());
     // Returning an object ID from a task, and the task's caller executed in a
     // remote process.
-    // TODO: Need to handle the case where we return a borrowed ID.
+    // TODO: Handle the case where we return a BORROWED id.
     for (const auto &inner_id : inner_ids) {
       auto inner_it = object_id_refs_.find(inner_id);
       RAY_CHECK(inner_it != object_id_refs_.end());
