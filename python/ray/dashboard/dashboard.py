@@ -114,7 +114,7 @@ class Dashboard(object):
         """Initialize the dashboard object."""
         self.host = host
         self.port = port
-        # This is passed through an environment line variable
+        # This is passed through an environment variable
         # instead of an argument, to make sure it does not show up
         # in any logs.
         self.token = os.environ.get("RAY_DASHBOARD_TOKEN")
