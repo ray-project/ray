@@ -57,7 +57,7 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 }
 
 std::shared_ptr<RayObject> GenerateRandomObject() {
-  return std::shared_ptr<RayObject>(new RayObject(GenerateRandomBuffer(), nullptr));
+  return std::shared_ptr<RayObject>(new RayObject(GenerateRandomBuffer(), nullptr, {}));
 }
 
 /// Path to redis server executable binary.

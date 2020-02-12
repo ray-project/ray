@@ -448,7 +448,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   auto start_time = current_time_ms();
 
   if (!memory_object_ids.empty()) {
-    RAY_LOG(ERROR) << "IN-MEMORY GET";
     RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, timeout_ms, worker_context_,
                                          &result_map, &got_exception));
   }
@@ -459,7 +458,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     // the transport type again and return them for the original direct call ids.
     for (const auto &pair : result_map) {
       if (pair.second->IsInPlasmaError()) {
-        RAY_LOG(INFO) << pair.first << " in plasma, doing fetch-and-get";
+        RAY_LOG(DEBUG) << pair.first << " in plasma, doing fetch-and-get";
         plasma_object_ids.insert(pair.first);
       }
     }
@@ -469,7 +468,6 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
-    RAY_LOG(ERROR) << "PLASMA GET";
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, local_timeout_ms,
                                                   worker_context_, &result_map,
                                                   &got_exception));
@@ -1192,11 +1190,9 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
                               [send_reply_callback](std::shared_ptr<RayObject> obj) {
                                 send_reply_callback(Status::OK(), nullptr, nullptr);
                               });
-      RAY_LOG(DEBUG) << " REMOVE y";
       RemoveLocalReference(object_id);
     } else {
       // We lost the race, the task is done.
-      RAY_LOG(DEBUG) << " REMOVE z";
       RemoveLocalReference(object_id);
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }

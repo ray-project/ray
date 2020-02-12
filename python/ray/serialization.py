@@ -166,7 +166,6 @@ class SerializationContext:
                     worker.core_worker.serialize_and_promote_object_id(obj))
             obj = id_serializer(obj)
             owner_id = id_serializer(owner_id) if owner_id else owner_id
-            print("SERIALIZE", obj, bool(owner_id))
             return (obj, owner_id, owner_address)
 
         def object_id_deserializer(serialized_obj):
@@ -180,7 +179,6 @@ class SerializationContext:
             # to 'self' here instead, but this function is itself pickled
             # somewhere, which causes an error.
             context = ray.worker.global_worker.get_serialization_context()
-            print("DESERIALIZE", deserialized_object_id, bool(owner_id))
             if owner_id:
                 worker = ray.worker.get_global_worker()
                 worker.check_connected()
@@ -213,7 +211,7 @@ class SerializationContext:
         self._thread_local.outer_object_id = outer_object_id
 
     def get_outer_object_id(self):
-        return self._thread_local.outer_object_id
+        return getattr(self._thread_local, "outer_object_id", None)
 
     def get_and_clear_contained_object_ids(self):
         if not hasattr(self._thread_local, "object_ids"):
@@ -231,14 +229,12 @@ class SerializationContext:
         self._thread_local.object_ids.add(object_id)
 
     def _deserialize_object(self, data, metadata, object_id):
-        self.set_outer_object_id(object_id)
         if metadata:
             if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
                 if not self.use_pickle:
                     raise ValueError("Receiving pickle5 serialized objects "
                                      "while the serialization context is "
                                      "using pyarrow as the backend.")
-                self.set_outer_object_id(object_id)
                 try:
                     in_band, buffers = unpack_pickle5_buffers(data)
                     if len(buffers) > 0:
@@ -248,9 +244,6 @@ class SerializationContext:
                 # cloudpickle does not provide error types
                 except pickle.pickle.PicklingError:
                     raise DeserializationError()
-                finally:
-                    # Must clear ObjectID to not hold a reference.
-                    self.set_outer_object_id(None)
                 return obj
 
             # Check if the object should be returned as raw bytes.
@@ -293,6 +286,8 @@ class SerializationContext:
         while i < len(object_ids):
             object_id = object_ids[i]
             data, metadata = data_metadata_pairs[i]
+            assert self.get_outer_object_id() is None
+            self.set_outer_object_id(object_id)
             try:
                 results.append(
                     self._deserialize_object(data, metadata, object_id))
@@ -316,6 +311,9 @@ class SerializationContext:
                             warning_message,
                             job_id=self.worker.current_job_id)
                     warning_sent = True
+            finally:
+                # Must clear ObjectID to not hold a reference.
+                self.set_outer_object_id(None)
 
         return results
 
