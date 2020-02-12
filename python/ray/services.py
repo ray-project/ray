@@ -1080,7 +1080,8 @@ def start_dashboard(require_webui,
         dashboard_url = "{}:{}".format(
             host if host != "0.0.0.0" else get_node_ip_address(), port)
         if os.environ.get("RAY_DASHBOARD_TOKEN"):
-            dashboard_url += "/?token={}".format(os.environ["RAY_DASHBOARD_TOKEN"])
+            dashboard_url += "/?token={}".format(
+                os.environ["RAY_DASHBOARD_TOKEN"])
         logger.info("View the Ray dashboard at {}{}{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
             colorama.Fore.RESET, colorama.Style.NORMAL))
