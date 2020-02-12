@@ -762,7 +762,6 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 Status CoreWorker::KillActor(const ActorID &actor_id) {
   ActorHandle *actor_handle = nullptr;
   RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-  RAY_CHECK(actor_handle->IsDirectCallActor());
   return direct_actor_submitter_->KillActor(actor_id);
 }
 
@@ -796,14 +795,12 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         absl::MutexLock lock(&actor_handles_mutex_);
         auto it = actor_handles_.find(actor_id);
         RAY_CHECK(it != actor_handles_.end());
-        if (it->second->IsDirectCallActor()) {
           // We have to reset the actor handle since the next instance of the
           // actor will not have the last sequence number that we sent.
           // TODO: Remove the check for direct calls. We do not reset for the
           // raylet codepath because it tries to replay all tasks since the
           // last actor checkpoint.
           it->second->Reset();
-        }
         direct_actor_submitter_->DisconnectActor(actor_id, false);
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         direct_actor_submitter_->DisconnectActor(actor_id, true);
@@ -865,7 +862,7 @@ Status CoreWorker::AllocateReturnObjects(
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
-      if (worker_context_.CurrentTaskIsDirectCall() &&
+      if (
           static_cast<int64_t>(data_sizes[i]) <
               RayConfig::instance().max_direct_call_object_size() &&
           contained_object_ids[i].empty()) {
@@ -910,12 +907,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<ObjectID> arg_reference_ids;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
 
-  const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
-                                  ? TaskTransportType::DIRECT
-                                  : TaskTransportType::RAYLET;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_ids.push_back(task_spec.ReturnId(i, transport_type));
+    return_ids.push_back(task_spec.ReturnId(i, TaskTransportType::DIRECT));
   }
 
   Status status;
@@ -947,7 +941,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
-    } else if (!worker_context_.CurrentTaskIsDirectCall()) {
+    } else if (!worker_context_.CurrentTaskIsDirectCall()) { // XXX: java?
       if (!Put(*return_objects->at(i), {}, return_ids[i]).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
