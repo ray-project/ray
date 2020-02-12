@@ -73,6 +73,9 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   public RayNativeRuntime(RayConfig rayConfig, FunctionManager functionManager) {
     super(rayConfig, functionManager);
+    // Reset library path at runtime.
+    resetLibraryPath(rayConfig);
+
     if (rayConfig.getRedisAddress() == null) {
       manager = new RunManager(rayConfig);
       manager.startRayProcesses(true);

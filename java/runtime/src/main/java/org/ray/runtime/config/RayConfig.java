@@ -339,7 +339,6 @@ public class RayConfig {
    * 2. `ray.conf` file.
    * 3. `ray.default.conf` file.
    */
-  // TODO(qwang): Should be private.
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties();
