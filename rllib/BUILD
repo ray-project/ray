@@ -765,24 +765,28 @@ py_test(
 
 py_test(
     name = "tests/test_avail_actions_qmix",
+    tags = ["tests_dir", "tests_dir_1"],
     size = "small",
     srcs = ["tests/test_avail_actions_qmix.py"]
 )
 
 py_test(
     name = "tests/test_catalog",
+    tags = ["tests_dir", "tests_dir_1"],
     size = "small",
     srcs = ["tests/test_catalog.py"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore",
+    tags = ["tests_dir", "tests_dir_1"],
     size = "small",
     srcs = ["tests/test_checkpoint_restore.py"]
 )
 
 py_test(
     name = "tests/test_dependency",
+    tags = ["tests_dir", "tests_dir_1"],
     size = "small",
     srcs = ["tests/test_dependency.py"]
 )
@@ -790,12 +794,14 @@ py_test(
 # PR 7086
 #py_test(
 #    name = "tests/test_deterministic_support",
+#    tags = ["tests_dir", "tests_dir_2"],
 #    size = "small",
 #    srcs = ["tests/test_deterministic_support.py"]
 #)
 
 py_test(
     name = "tests/test_eager_support",
+    tags = ["tests_dir", "tests_dir_2"],
     size = "small",
     srcs = ["tests/test_eager_support.py"]
 )
@@ -803,96 +809,112 @@ py_test(
 py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
+    tags = ["tests_dir", "tests_dir_2"],
     size = "large",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
 py_test(
     name = "tests/test_evaluators",
+    tags = ["tests_dir", "tests_dir_2"],
     size = "small",
     srcs = ["tests/test_evaluators.py"]
 )
 
 py_test(
     name = "tests/test_external_env",
+    tags = ["tests_dir", "tests_dir_3"],
     size = "small",
     srcs = ["tests/test_external_env.py"]
 )
 
 py_test(
     name = "tests/test_external_multi_agent_env",
+    tags = ["tests_dir", "tests_dir_3"],
     size = "small",
     srcs = ["tests/test_external_multi_agent_env.py"]
 )
 
 py_test(
     name = "tests/test_filters",
+    tags = ["tests_dir", "tests_dir_3"],
     size = "small",
     srcs = ["tests/test_filters.py"]
 )
 
 py_test(
     name = "tests/test_ignore_worker_failure",
+    tags = ["tests_dir", "tests_dir_3"],
     size = "small",
     srcs = ["tests/test_ignore_worker_failure.py"]
 )
 
 py_test(
     name = "tests/test_io",
+    tags = ["tests_dir", "tests_dir_4"],
     size = "small",
     srcs = ["tests/test_io.py"]
 )
 
 py_test(
     name = "tests/test_local",
+    tags = ["tests_dir", "tests_dir_4"],
     size = "small",
     srcs = ["tests/test_local.py"]
 )
 
 py_test(
     name = "tests/test_lstm",
+    tags = ["tests_dir", "tests_dir_4"],
     size = "small",
     srcs = ["tests/test_lstm.py"]
 )
 
 py_test(
     name = "tests/test_multi_agent_env",
+    tags = ["tests_dir", "tests_dir_4"],
     size = "small",
     srcs = ["tests/test_multi_agent_env.py"]
 )
 
 py_test(
     name = "tests/multiagent_pendulum",
+    tags = ["tests_dir", "tests_dir_5"],
     size = "large",
     srcs = ["tests/multiagent_pendulum.py"]
 )
 
 py_test(
     name = "tests/test_nested_spaces",
+    tags = ["tests_dir", "tests_dir_5"],
     size = "small",
     srcs = ["tests/test_nested_spaces.py"]
 )
 
 py_test(
     name = "tests/test_optimizers",
+    tags = ["tests_dir", "tests_dir_5"],
     size = "large",
     srcs = ["tests/test_optimizers.py"]
 )
 
 py_test(
     name = "tests/test_reproducibility",
+    tags = ["tests_dir", "tests_dir_5"],
     size = "small",
     srcs = ["tests/test_reproducibility.py"]
 )
 
 py_test(
     name = "tests/test_rollout_worker",
+    tags = ["tests_dir", "tests_dir_6"],
     size = "small",
     srcs = ["tests/test_rollout_worker.py"]
 )
 
 py_test(
     name = "tests/test_supported_spaces",
+    tags = ["tests_dir", "tests_dir_6"],
     size = "large",
     srcs = ["tests/test_supported_spaces.py"]
 )
@@ -904,7 +926,7 @@ py_test(
 py_test(
     name = "examples/custom_eval", main = "examples/custom_eval.py",
     tags = ["examples", "examples_1"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/custom_eval.py"],
     args = ["--custom-eval", "--num-cpus=4"]
 )
@@ -920,7 +942,7 @@ py_test(
 py_test(
     name = "examples/custom_keras_model_ppo", main="examples/custom_keras_model.py",
     tags = ["examples", "examples_1"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/custom_keras_model.py"],
     args = ["--run=PPO", "--stop=50", "--num-cpus=4"]
 )
@@ -928,7 +950,7 @@ py_test(
 py_test(
     name = "examples/custom_keras_model_dqn", main="examples/custom_keras_model.py",
     tags = ["examples", "examples_1"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/custom_keras_model.py"],
     args = ["--run=DQN", "--stop=50"]
 )
@@ -960,7 +982,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ppo", main="examples/batch_norm_model.py",
     tags = ["examples", "examples_2"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=PPO", "--num-iters=1"]
 )
@@ -968,7 +990,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_pg", main="examples/batch_norm_model.py",
     tags = ["examples", "examples_3"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=PG", "--num-iters=1"]
 )
@@ -976,7 +998,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_dqn", main="examples/batch_norm_model.py",
     tags = ["examples", "examples_3"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DQN", "--num-iters=1"]
 )
@@ -984,7 +1006,7 @@ py_test(
 py_test(
     name = "examples/batch_norm_model_ddpg", main="examples/batch_norm_model.py",
     tags = ["examples", "examples_3"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--num-iters=1"]
 )
@@ -1008,17 +1030,17 @@ py_test(
 py_test(
     name = "examples/cartpole_lstm_ppo", main="examples/cartpole_lstm.py",
     tags = ["examples", "examples_4"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=50", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=40", "--num-cpus=4"]
 )
 
 py_test(
     name = "examples/cartpole_lstm_impala", main="examples/cartpole_lstm.py",
     tags = ["examples", "examples_4"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--stop=50", "--num-cpus=4"]
+    args = ["--run=IMPALA", "--stop=40", "--num-cpus=4"]
 )
 
 py_test(
@@ -1026,7 +1048,7 @@ py_test(
     tags = ["examples", "examples_4"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=50", "--use-prev-action-reward", "--num-cpus=4"]
+    args = ["--run=PPO", "--stop=40", "--use-prev-action-reward", "--num-cpus=4"]
 )
 
 py_test(
@@ -1082,7 +1104,7 @@ py_test(
 py_test(
     name = "examples/centralized_critic",
     tags = ["examples", "examples_6"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/centralized_critic.py"],
     args = ["--stop=2000"]
 )
@@ -1090,7 +1112,7 @@ py_test(
 py_test(
     name = "examples/centralized_critic_2",
     tags = ["examples", "examples_6"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--stop=2000"]
 )
