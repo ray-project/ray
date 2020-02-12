@@ -299,7 +299,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// The first caller id set in this worker, which is used to serialize all tasks
   /// submitted from this worker. We need this since the same actor handles are
-  /// shared between multiple (potentially overlapping) tasks.
+  /// shared between multiple tasks.
   ///
   /// \return The initial caller ID.
   TaskID GetInitialCallerId();
@@ -711,7 +711,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// The first caller id set in this worker, which is used to serialize all tasks
   /// submitted from this worker. We need this since the same actor handles are
-  /// shared between multiple (potentially overlapping) tasks.
+  /// shared between multiple tasks.
   TaskID initial_caller_id_ GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
