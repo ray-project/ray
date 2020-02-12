@@ -10,7 +10,7 @@ def createMockWorkerAndObjectId(obj_id):
 
 
 class TaskPoolTest(unittest.TestCase):
-    @patch("ray.wait")
+    @patch('ray.wait')
     def test_completed_prefetch_yieldsAllComplete(self, rayWaitMock):
         task1 = createMockWorkerAndObjectId(1)
         task2 = createMockWorkerAndObjectId(2)
@@ -24,7 +24,7 @@ class TaskPoolTest(unittest.TestCase):
         fetched = [pair for pair in pool.completed_prefetch()]
         self.assertListEqual(fetched, [task2])
 
-    @patch("ray.wait")
+    @patch('ray.wait')
     def test_completed_prefetch_yieldsAllCompleteUpToDefaultLimit(
             self, rayWaitMock):
         # Load the pool with 1000 tasks, mock them all as complete and then
@@ -45,7 +45,7 @@ class TaskPoolTest(unittest.TestCase):
         fetched = [pair[1] for pair in pool.completed_prefetch()]
         self.assertListEqual(fetched, [999])
 
-    @patch("ray.wait")
+    @patch('ray.wait')
     def test_completed_prefetch_yieldsAllCompleteUpToSpecifiedLimit(
             self, rayWaitMock):
         # Load the pool with 1000 tasks, mock them all as complete and then
@@ -67,7 +67,7 @@ class TaskPoolTest(unittest.TestCase):
         fetched = [pair[1] for pair in pool.completed_prefetch()]
         self.assertListEqual(fetched, [i for i in range(500, 1000)])
 
-    @patch("ray.wait")
+    @patch('ray.wait')
     def test_completed_prefetch_yieldsRemainingIfIterationStops(
             self, rayWaitMock):
         # Test for issue #7106
@@ -93,7 +93,7 @@ class TaskPoolTest(unittest.TestCase):
         fetched = [pair[1] for pair in pool.completed_prefetch()]
         self.assertListEqual(fetched, [i for i in range(1, 10)])
 
-    @patch("ray.wait")
+    @patch('ray.wait')
     def test_reset_workers_pendingFetchesFromFailedWorkersRemoved(
             self, rayWaitMock):
         pool = TaskPool()
@@ -134,5 +134,5 @@ class TaskPoolTest(unittest.TestCase):
         self.assertListEqual(fetched, [2, 3, 5])
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main(verbosity=2)
