@@ -47,12 +47,12 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   /**
    * Do some setups like adding hooks and setup logging.
    */
-  public static synchronized void setup(RayConfig rayConfig) {
+  static {
     LOGGER.debug("Loading native libraries.");
     // Expose ray ABI symbols which may be depended by other shared
     // libraries such as libstreaming_java.so.
     // See BUILD.bazel:libcore_worker_library_java.so
-
+    final RayConfig rayConfig = RayConfig.getInstance();
     if (rayConfig.getRedisAddress() != null && rayConfig.workerMode == WorkerType.DRIVER) {
       // Fetch session dir from GCS if this is a driver that is connecting to the existing GCS.
       RedisClient client = new RedisClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
@@ -68,6 +68,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     resetLibraryPath(rayConfig);
 
     nativeSetup(rayConfig.logDir);
+    Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
   public RayNativeRuntime(RayConfig rayConfig, FunctionManager functionManager) {
@@ -76,8 +77,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       manager = new RunManager(rayConfig);
       manager.startRayProcesses(true);
     }
-    // Reset library path at runtime.
-    resetLibraryPath(rayConfig);
 
     gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
 
@@ -107,7 +106,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   @Override
   public void shutdown() {
     if (nativeCoreWorkerPointer != 0) {
-      nativeShutdownHook();
       nativeDestroyCoreWorker(nativeCoreWorkerPointer);
       nativeCoreWorkerPointer = 0;
     }

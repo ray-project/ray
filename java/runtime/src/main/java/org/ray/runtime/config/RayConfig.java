@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-
 import org.ray.api.id.JobId;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.util.NetworkUtil;
@@ -70,6 +69,15 @@ public class RayConfig {
 
   public final String jobResourcePath;
   public final String pythonWorkerCommand;
+
+  /// An inner holder class to make this as a singleton.
+  private static class RayConfigSingletonHolder {
+    private static final RayConfig INSTANCE = RayConfig.create();
+  }
+
+  public static RayConfig getInstance() {
+    return RayConfigSingletonHolder.INSTANCE;
+  }
 
   /**
    * Number of threads that execute tasks.
@@ -331,6 +339,7 @@ public class RayConfig {
    * 2. `ray.conf` file.
    * 3. `ray.default.conf` file.
    */
+  // TODO(qwang): Should be private.
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties();

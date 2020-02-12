@@ -18,14 +18,13 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
 
   @Override
   public RayRuntime createRayRuntime() {
-    RayConfig rayConfig = RayConfig.create();
+    RayConfig rayConfig = RayConfig.getInstance();
     try {
       FunctionManager functionManager = new FunctionManager(rayConfig.jobResourcePath);
       RayRuntime runtime;
       if (rayConfig.runMode == RunMode.SINGLE_PROCESS) {
         runtime = new RayDevRuntime(rayConfig, functionManager);
       } else {
-        RayNativeRuntime.setup(rayConfig);
         if (rayConfig.workerMode == WorkerType.DRIVER) {
           runtime = new RayNativeRuntime(rayConfig, functionManager);
         } else {
