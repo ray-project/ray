@@ -1,13 +1,12 @@
 package org.ray.runtime.util;
 
 import com.google.common.base.Preconditions;
-import org.apache.commons.io.FileUtils;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import org.apache.commons.io.FileUtils;
 
 public class BinaryFileUtil {
   public static final String REDIS_SERVER_BINARY_NAME = "redis-server";
