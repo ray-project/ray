@@ -303,7 +303,7 @@ class ReferenceCounter {
   ///   owner.
   /// - If we are the owner of the ID, then also contact any new borrowers and
   ///   wait for them to stop using the reference.
-  void MergeBorrowerRefs(const ObjectID &object_id, const rpc::WorkerAddress &worker_addr,
+  void MergeBorrowedRefs(const ObjectID &object_id, const rpc::WorkerAddress &worker_addr,
                          const ReferenceTable &borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

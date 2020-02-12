@@ -74,7 +74,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     pending_tasks_.erase(it);
   }
 
-  RemoveFinishedTaskReferences(spec, worker_addr, reply.borrower_refs());
+  RemoveFinishedTaskReferences(spec, worker_addr, reply.borrowed_refs());
 
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
@@ -195,7 +195,7 @@ void TaskManager::OnTaskDependenciesInlined(
 
 void TaskManager::RemoveFinishedTaskReferences(
     TaskSpecification &spec, const rpc::Address &borrower_addr,
-    const ReferenceCounter::ReferenceTableProto &borrower_refs) {
+    const ReferenceCounter::ReferenceTableProto &borrowed_refs) {
   std::vector<ObjectID> plasma_dependencies;
   for (size_t i = 0; i < spec.NumArgs(); i++) {
     if (spec.ArgByRef(i)) {
@@ -208,7 +208,7 @@ void TaskManager::RemoveFinishedTaskReferences(
                                  inlined_ids.end());
     }
   }
-  RemoveSubmittedTaskReferences(plasma_dependencies, borrower_addr, borrower_refs);
+  RemoveSubmittedTaskReferences(plasma_dependencies, borrower_addr, borrowed_refs);
 }
 
 void TaskManager::MarkPendingTaskFailed(const TaskID &task_id,

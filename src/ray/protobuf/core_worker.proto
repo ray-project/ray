@@ -92,7 +92,14 @@ message PushTaskReply {
   repeated ReturnObject return_objects = 1;
   // Set to true if the worker will be exiting.
   bool worker_exiting = 2;
-  repeated ObjectReferenceCount borrower_refs = 3;
+  // The references that the worker borrowed during the task execution. This
+  // includes the reference counts for any IDs that were passed to the worker
+  // in the task spec as an argument by reference, or an ObjectID that was
+  // serialized in an inlined argument. It also includes reference counts for
+  // any IDs that were nested inside these objects that the worker may now be
+  // borrowing. The reference counts also include any new borrowers that the
+  // worker created by passing a borrowed ID into a nested task.
+  repeated ObjectReferenceCount borrowed_refs = 3;
 }
 
 message DirectActorCallArgWaitCompleteRequest {
@@ -189,11 +196,11 @@ message ObjectReferenceCount {
 }
 
 message WaitForRefRemovedReply {
-  // The reference counts for the object that the worker was borrowing, or of
+  // The reference counts for the object that the worker was borrowing and
   // any objects nested inside. The worker should no longer be using the object
-  // ID, but may have accumulated other borrowers or may be using an object ID
-  // that was nested inside.
-  repeated ObjectReferenceCount borrower_refs = 1;
+  // ID by the time it replies, but may have accumulated other borrowers or may
+  // still be borrowing an object ID that was nested inside.
+  repeated ObjectReferenceCount borrowed_refs = 1;
 }
 
 service CoreWorkerService {
