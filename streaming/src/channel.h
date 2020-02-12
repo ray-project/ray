@@ -151,7 +151,7 @@ class MockProducer : public ProducerChannel {
     return StreamingStatus::OK;
   }
 
-  StreamingStatus RefreshChannelInfo() override {}
+  StreamingStatus RefreshChannelInfo() override { return StreamingStatus::OK; }
 
   StreamingStatus ProduceItemToChannel(uint8_t *data, uint32_t data_size) override;
 
@@ -171,7 +171,7 @@ class MockConsumer : public ConsumerChannel {
                                           uint64_t checkpoint_offset) override {
     return StreamingStatus::OK;
   }
-  StreamingStatus RefreshChannelInfo() override {}
+  StreamingStatus RefreshChannelInfo() override { return StreamingStatus::OK; }
   StreamingStatus ConsumeItemFromChannel(uint64_t &offset_id, uint8_t *&data,
                                          uint32_t &data_size, uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
