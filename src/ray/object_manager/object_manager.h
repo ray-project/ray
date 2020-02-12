@@ -2,6 +2,7 @@
 #define RAY_OBJECT_MANAGER_OBJECT_MANAGER_H
 
 #include <algorithm>
+#include <boost/bind.hpp>
 #include <cstdint>
 #include <deque>
 #include <map>
@@ -10,17 +11,12 @@
 #include <random>
 #include <thread>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
-
 #include "absl/time/clock.h"
+#include "fwd/boost/asio.hpp"
 #include "plasma/client.h"
-
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
-
 #include "ray/object_manager/format/object_manager_generated.h"
 #include "ray/object_manager/object_buffer_pool.h"
 #include "ray/object_manager/object_directory.h"

@@ -1,11 +1,11 @@
 #ifndef _QUEUE_SERVICE_H_
 #define _QUEUE_SERVICE_H_
 
-#include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/thread.hpp>
 #include <thread>
 
+#include "fwd/boost/asio.hpp"
 #include "queue.h"
 #include "util/streaming_logging.h"
 

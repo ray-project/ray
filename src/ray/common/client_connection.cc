@@ -1,6 +1,8 @@
 #include "client_connection.h"
 
 #include <stdio.h>
+
+#include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <sstream>
 

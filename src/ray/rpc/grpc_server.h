@@ -3,10 +3,10 @@
 
 #include <grpcpp/grpcpp.h>
 
-#include <boost/asio.hpp>
 #include <thread>
 #include <utility>
 
+#include "fwd/boost/asio.hpp"
 #include "ray/common/status.h"
 #include "ray/rpc/server_call.h"
 

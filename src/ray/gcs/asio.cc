@@ -1,5 +1,7 @@
 #include "asio.h"
 
+#include <boost/asio.hpp>
+
 #include "ray/util/logging.h"
 
 RedisAsioClient::~RedisAsioClient() {}

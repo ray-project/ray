@@ -1,13 +1,11 @@
 #ifndef RAY_COMMON_CLIENT_CONNECTION_H
 #define RAY_COMMON_CLIENT_CONNECTION_H
 
+#include <boost/enable_shared_from_this.hpp>
 #include <deque>
 #include <memory>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/enable_shared_from_this.hpp>
-
+#include "fwd/boost/asio.hpp"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 

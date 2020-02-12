@@ -1,20 +1,16 @@
 #ifndef RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
 #define RAY_OBJECT_MANAGER_OBJECT_STORE_CLIENT_H
 
+#include <boost/bind.hpp>
 #include <list>
 #include <memory>
 #include <vector>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
-
+#include "fwd/boost/asio.hpp"
 #include "plasma/client.h"
-
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-
 #include "ray/object_manager/object_directory.h"
 
 namespace ray {

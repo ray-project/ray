@@ -1,5 +1,7 @@
 #include "ray/object_manager/object_directory.h"
 
+#include <boost/asio/io_service.hpp>
+
 namespace ray {
 
 ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,

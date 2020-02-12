@@ -1,10 +1,11 @@
 #ifndef RAY_GCS_GCS_CLIENT_H
 #define RAY_GCS_GCS_CLIENT_H
 
-#include <boost/asio.hpp>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "fwd/boost/asio.hpp"
 #include "ray/common/status.h"
 #include "ray/gcs/accessor.h"
 #include "ray/util/logging.h"

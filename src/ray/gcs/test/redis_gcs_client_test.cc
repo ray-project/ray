@@ -1,3 +1,5 @@
+#include <boost/asio/io_service.hpp>
+
 #include "gtest/gtest.h"
 
 // TODO(pcm): get rid of this and replace with the type safe plasma event loop

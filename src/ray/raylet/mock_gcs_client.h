@@ -1,6 +1,7 @@
 #ifndef RAY_RAYLET_MOCK_GCS_CLIENT_H
 #define RAY_RAYLET_MOCK_GCS_CLIENT_H
 
+#include <boost/bind.hpp>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -8,10 +9,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
-
+#include "fwd/boost/asio.hpp"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 

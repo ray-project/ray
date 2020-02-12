@@ -1,8 +1,6 @@
 #ifndef RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
-#include <boost/asio/thread_pool.hpp>
-#include <boost/thread.hpp>
 #include <list>
 #include <queue>
 #include <set>
@@ -12,6 +10,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "fwd/boost/asio.hpp"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"

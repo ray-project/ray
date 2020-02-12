@@ -1,7 +1,7 @@
 #ifndef RAY_RAYLET_NODE_MANAGER_H
 #define RAY_RAYLET_NODE_MANAGER_H
 
-#include <boost/asio/steady_timer.hpp>
+#include "fwd/boost/asio.hpp"
 
 // clang-format off
 #include "ray/rpc/grpc_client.h"

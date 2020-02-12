@@ -2,8 +2,8 @@
 #define RAY_RPC_GRPC_CLIENT_H
 
 #include <grpcpp/grpcpp.h>
-#include <boost/asio.hpp>
 
+#include "fwd/boost/asio.hpp"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"

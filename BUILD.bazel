@@ -253,6 +253,8 @@ cc_library(
     hdrs = glob(
         [
             "src/ray/common/**/*.h",
+            "src/fwd/**/*.h",
+            "src/fwd/**/*.hpp",
         ],
     ),
     copts = COPTS,

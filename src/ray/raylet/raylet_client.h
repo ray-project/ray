@@ -4,11 +4,11 @@
 #include <ray/protobuf/gcs.pb.h>
 #include <unistd.h>
 
-#include <boost/asio/detail/socket_holder.hpp>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
 
+#include "fwd/boost/asio.hpp"
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"

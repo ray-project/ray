@@ -6,8 +6,6 @@
 #include <mutex>
 #include <vector>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
 #include "plasma/client.h"

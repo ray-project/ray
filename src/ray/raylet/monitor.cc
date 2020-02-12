@@ -1,5 +1,8 @@
 #include "ray/raylet/monitor.h"
 
+#include <boost/asio/deadline_timer.hpp>
+#include <boost/date_time/posix_time/posix_time_types.hpp>
+
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"

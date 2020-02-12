@@ -22,13 +22,12 @@
 #define RAY_GCS_ASIO_H
 
 #include <stdio.h>
+
+#include <boost/bind.hpp>
 #include <iostream>
 #include <string>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
-
+#include "fwd/boost/asio.hpp"
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
 #include "ray/gcs/redis_async_context.h"

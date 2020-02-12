@@ -3,8 +3,7 @@
 
 #include <list>
 
-#include <boost/asio.hpp>
-#include <boost/asio/error.hpp>
+#include "fwd/boost/asio.hpp"
 
 // clang-format off
 #include "ray/raylet/node_manager.h"

@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 
+#include <boost/asio/io_service.hpp>
 #include <sstream>
 
 #include "ray/stats/stats.h"

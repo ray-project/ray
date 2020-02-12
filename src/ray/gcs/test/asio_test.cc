@@ -1,7 +1,9 @@
+#include "ray/gcs/asio.h"
+
+#include <boost/asio.hpp>
 #include <iostream>
 
 #include "gtest/gtest.h"
-#include "ray/gcs/asio.h"
 #include "ray/util/logging.h"
 #include "ray/util/test_util.h"
 

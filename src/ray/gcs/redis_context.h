@@ -1,19 +1,17 @@
 #ifndef RAY_GCS_REDIS_CONTEXT_H
 #define RAY_GCS_REDIS_CONTEXT_H
 
-#include <boost/asio.hpp>
-#include <boost/bind.hpp>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 
+#include "fwd/boost/asio.hpp"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/util/logging.h"
-
 #include "ray/gcs/redis_async_context.h"
 #include "ray/protobuf/gcs.pb.h"
+#include "ray/util/logging.h"
 
 extern "C" {
 #include "hiredis/async.h"
