@@ -20,8 +20,6 @@ from ray.test_utils import (
     RayTestTimeoutException,
 )
 
-RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
-
 
 def test_failed_task(ray_start_regular):
     @ray.remote
@@ -539,7 +537,7 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO detect resource deadlock")
+@pytest.mark.skip(reason="TODO detect resource deadlock")
 def test_warning_for_resource_deadlock(shutdown_only):
     # Check that we get warning messages for infeasible tasks.
     ray.init(num_cpus=1)

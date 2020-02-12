@@ -20,7 +20,6 @@ class ActorHandle {
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id, const JobID &job_id,
               const ObjectID &initial_cursor, const Language actor_language,
-              bool is_direct_call,
               const ray::FunctionDescriptor &actor_creation_task_function_descriptor);
 
   /// Constructs an ActorHandle from a serialized string.

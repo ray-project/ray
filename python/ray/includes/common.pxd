@@ -217,13 +217,13 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
-        CTaskOptions(int num_returns, c_bool is_direct_call,
+        CTaskOptions(int num_returns,
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
         CActorCreationOptions()
         CActorCreationOptions(
-            uint64_t max_reconstructions, c_bool is_direct_call,
+            uint64_t max_reconstructions,
             int32_t max_concurrency,
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,

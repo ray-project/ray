@@ -66,7 +66,6 @@ class Worker {
   const std::unordered_set<ObjectID> &GetActiveObjectIds() const;
   void SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids);
 
-  Status AssignTask(const Task &task, const ResourceIdSet &resource_id_set);
   void DirectActorCallArgWaitComplete(int64_t tag);
   void WorkerLeaseGranted(const std::string &address, int port);
 
