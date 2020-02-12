@@ -402,7 +402,7 @@ cdef execute_task(
                 # mistakenly count each callstack towards recusion limit.
                 # We don't need to worry about stackoverflow here because
                 # the max number of callstacks is limited in direct actor
-                # transport with max_concurreny flag.
+                # transport with max_concurrency flag.
                 increase_recursion_limit()
 
                 if inspect.iscoroutinefunction(function.method):
@@ -429,8 +429,7 @@ cdef execute_task(
                     (core_worker.core_worker.get()
                         .YieldCurrentFiber(fiber_event))
 
-                result = future.result()
-                return result
+                return future.result()
 
             return function(actor, *arguments, **kwarguments)
 
