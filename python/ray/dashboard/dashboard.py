@@ -96,6 +96,10 @@ def b64_decode(reply):
     return b64decode(reply).decode("utf-8")
 
 
+def get_host_and_port(addr):
+    return addr.strip().split(':')
+
+
 class DashboardController(BaseDashboardController):
     """Perform data fetching and other actions required by HTTP endpoints."""
 
@@ -213,8 +217,7 @@ class Dashboard(object):
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
         redis_passord(str): Redis password to access GCS
-        hosted_dashboard_client(bool): True if a server runs as a
-            hosted dashboard client mode.
+        hosted_dashboard_addr(str): The address users host their dashboard.
         update_frequency(float): Frequency where metrics are updated.
         DashboardController(DashboardController): DashboardController
             that defines the business logic of a Dashboard server.
@@ -226,7 +229,7 @@ class Dashboard(object):
                  redis_address,
                  temp_dir,
                  redis_password=None,
-                 hosted_dashboard_client=False,
+                 hosted_dashboard_addr=None,
                  update_frequency=1.0,
                  DashboardController=DashboardController):
         self.host = host
@@ -240,10 +243,16 @@ class Dashboard(object):
         if Analysis is not None:
             self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
 
-        self.hosted_dashboard_client = hosted_dashboard_client
+        self.hosted_dashboard_addr = hosted_dashboard_addr
         self.dashboard_client = None
-        if self.hosted_dashboard_client:
-            self.dashboard_client = DashboardClient(self.dashboard_controller)
+
+        if self.hosted_dashboard_addr:
+            hosted_dashboard_host, hosted_dashboard_port = get_host_and_port(
+                self.hosted_dashboard_addr)
+            self.dashboard_client = DashboardClient(
+                hosted_dashboard_host, 
+                hosted_dashboard_port, 
+                self.dashboard_controller)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -381,7 +390,7 @@ class Dashboard(object):
             result = self.dashboard_controller.get_errors(hostname, pid)
             return await json_response(result=result)
 
-        if not self.hosted_dashboard_client:
+        if self.hosted_dashboard_addr is None:
             # Hosted dashboard mode won't use local dashboard frontend.
             self.app.router.add_get("/", get_index)
             self.app.router.add_get("/favicon.ico", get_favicon)
@@ -428,7 +437,7 @@ class Dashboard(object):
     def run(self):
         self.log_dashboard_url()
         self.dashboard_controller.start_collecting_metrics()
-        if self.hosted_dashboard_client:
+        if self.hosted_dashboard_addr:
             self.dashboard_client.start_exporting_metrics()
         if Analysis is not None:
             self.tune_stats.start()

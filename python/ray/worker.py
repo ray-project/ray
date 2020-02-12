@@ -566,6 +566,7 @@ def init(address=None,
          temp_dir=None,
          load_code_from_local=False,
          use_pickle=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
+         hosted_dashboard_addr=None,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -658,6 +659,7 @@ def init(address=None,
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
         use_pickle: Whether data objects should be serialized with cloudpickle.
+        hosted_dashboard_addr: The address users host their dashboard. 
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -739,6 +741,7 @@ def init(address=None,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
             use_pickle=use_pickle,
+            hosted_dashboard_addr=hosted_dashboard_addr,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we

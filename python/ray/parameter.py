@@ -80,6 +80,7 @@ class RayParams:
         java_worker_options (str): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
         use_pickle: Whether data objects should be serialized with cloudpickle.
+        hosted_dashboard_addr: The address where users host their dashboard.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -121,6 +122,7 @@ class RayParams:
                  java_worker_options=None,
                  load_code_from_local=False,
                  use_pickle=False,
+                 hosted_dashboard_addr=None,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -156,6 +158,7 @@ class RayParams:
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
         self.use_pickle = use_pickle
+        self.hosted_dashboard_addr = hosted_dashboard_addr
         self._internal_config = _internal_config
         self._check_usage()
 
