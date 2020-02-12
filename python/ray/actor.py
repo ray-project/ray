@@ -141,7 +141,7 @@ class ActorMethod:
 
 
 class ActorClassMethodMetadata(object):
-    """Metadata for an actor class method. This data can be cached.
+    """Metadata for all methods in an actor class. This data can be cached.
 
     Attributes:
         methods: The actor methods.
@@ -314,8 +314,8 @@ class ActorClass:
         # Construct the base object.
         self = DerivedActorClass.__new__(DerivedActorClass)
         # Actor creation function descriptor.
-        actor_creation_function_descriptor = PythonFunctionDescriptor(
-            modified_class.__module__, "__init__", modified_class.__name__)
+        actor_creation_function_descriptor = \
+            PythonFunctionDescriptor.from_class(modified_class)
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,

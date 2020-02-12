@@ -31,7 +31,7 @@ message ActorHandle {
   // Whether direct actor call is used.
   bool is_direct_call = 7;
 
-  // Extension data field for worker, e.g. Python ActorHandle specific data.
+  // An extension field that is used for storing app-language-specific data.
   bytes extension_data = 8;
 }
 

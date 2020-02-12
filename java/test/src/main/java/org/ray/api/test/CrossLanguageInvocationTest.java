@@ -1,5 +1,6 @@
 package org.ray.api.test;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.io.IOException;
@@ -77,13 +78,10 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     Assert.assertEquals(res.get(), "Counter1".getBytes());
     // Create a java actor, and pass actor handle to python.
     RayActor<TestActor> actor = Ray.createActor(TestActor::new, "1".getBytes());
-    if (actor instanceof NativeRayActor) {
-      byte[] actorHandleBytes = ((NativeRayActor) actor).toBytes();
-      res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor_from_handle", actorHandleBytes);
-      Assert.assertEquals(res.get(), "12".getBytes());
-    } else {
-      Assert.fail("actor is not an instance of NativeRayActor");
-    }
+    Preconditions.checkState(actor instanceof NativeRayActor);
+    byte[] actorHandleBytes = ((NativeRayActor) actor).toBytes();
+    res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor_from_handle", actorHandleBytes);
+    Assert.assertEquals(res.get(), "12".getBytes());
   }
 
   public static byte[] bytesEcho(byte[] value) {
