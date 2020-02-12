@@ -68,17 +68,21 @@ def thread_safe_client(client, lock=None):
 
 
 async def _async_init():
+    print("ASYNC INIT!!")
     global handler, transport, protocol
     if handler is None:
         worker = ray.worker.global_worker
-        plasma_client = thread_safe_client(
-            plasma.connect(worker.node.plasma_store_socket_name, 300))
+        # plasma_client = thread_safe_client(
+        #     plasma.connect(worker.node.plasma_store_socket_name, 300))
         loop = asyncio.get_event_loop()
-        plasma_client.subscribe()
-        rsock = plasma_client.get_notification_socket()
+        # Something along the lines of call
+        # worker.core_worker.Subscribe()
+        # plasma_client.subscribe()
+        # rsock = plasma_client.get_notification_socket()
         handler = PlasmaEventHandler(loop, worker)
-        transport, protocol = await loop.create_connection(
-            lambda: PlasmaProtocol(plasma_client, handler), sock=rsock)
+        worker.core_worker.subscribe_to_plasma(handler)
+        # transport, protocol = await loop.create_connection(
+        #     lambda: PlasmaProtocol(plasma_client, handler), sock=rsock)
         logger.debug("AsyncPlasma Connection Created!")
 
 

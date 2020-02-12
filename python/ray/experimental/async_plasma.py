@@ -88,13 +88,13 @@ class PlasmaObjectLinkedList(asyncio.Future):
 
     Args:
         loop: an event loop.
-        plain_object_id (plasma.ObjectID):
-            The plasma ObjectID this class holds.
+        plain_object_id (ray.ObjectID):
+            The ray ObjectID this class holds.
     """
 
     def __init__(self, loop, plain_object_id):
         super().__init__(loop=loop)
-        assert isinstance(plain_object_id, plasma.ObjectID)
+        assert isinstance(plain_object_id, ray.ObjectID)
         self.object_id = plain_object_id
         self.head = None
         self.tail = None
@@ -188,7 +188,15 @@ class PlasmaEventHandler:
     def process_notifications(self, messages):
         """Process notifications."""
         for object_id, object_size, metadata_size in messages:
+            # print("PlasmaEventHandler: Processing: " + str(object_id),
+            #       str(object_size))
+            # print("size check: ", object_size > 0)
+            # print("inclusion check: ", object_id in self._waiting_dict)
+            # print("objid type: ", type(object_id))
+            # print("objid type: ", type(list(self._waiting_dict.keys())[0]))
+            print(self._waiting_dict.keys())
             if object_size > 0 and object_id in self._waiting_dict:
+                print("INside!")
                 linked_list = self._waiting_dict[object_id]
                 self._complete_future(linked_list)
 
@@ -220,23 +228,21 @@ class PlasmaEventHandler:
         """
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Input should be an ObjectID.")
-
-        plain_object_id = plasma.ObjectID(object_id.binary())
-        fut = PlasmaObjectFuture(loop=self._loop, object_id=plain_object_id)
+        fut = PlasmaObjectFuture(loop=self._loop, object_id=object_id)
 
         if check_ready:
             ready, _ = ray.wait([object_id], timeout=0)
             if ready:
                 if self._loop.get_debug():
-                    logger.debug("%s has been ready.", plain_object_id)
+                    logger.debug("%s has been ready.", object_id)
                 self._complete_future(fut)
                 return fut
 
-        if plain_object_id not in self._waiting_dict:
-            linked_list = PlasmaObjectLinkedList(self._loop, plain_object_id)
+        if object_id not in self._waiting_dict:
+            linked_list = PlasmaObjectLinkedList(self._loop, object_id)
             linked_list.add_done_callback(self._unregister_callback)
-            self._waiting_dict[plain_object_id] = linked_list
-        self._waiting_dict[plain_object_id].append(fut)
+            self._waiting_dict[object_id] = linked_list
+        self._waiting_dict[object_id].append(fut)
         if self._loop.get_debug():
             logger.debug("%s added to the waiting list.", fut)
 

@@ -90,7 +90,8 @@ def get_async(object_id):
         # We must add the done_callback before sending to in_memory_store_get
         inner_future.add_done_callback(done_callback)
         core_worker.in_memory_store_get_async(object_id, inner_future)
-    else:
+        ##Make sure this cond is being hit
+    else:  ##Check for why await is not working
         inner_future = as_future(object_id)
         inner_future.add_done_callback(done_callback)
     # A hack to keep reference to inner_future so it doesn't get GC.
