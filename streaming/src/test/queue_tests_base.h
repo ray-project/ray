@@ -164,7 +164,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(msg.ToBytes(), nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, true, resources};
+    TaskOptions options{0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON,
                      ray::FunctionDescriptorBuilder::BuildPython("init", "", "", "")};
@@ -179,7 +179,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, true, resources};
+    TaskOptions options{0, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "execute_test", test, "", "")};
@@ -194,7 +194,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{1, true, resources};
+    TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
                                                 "check_current_test_status", "", "", "")};
@@ -250,7 +250,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
   ActorID CreateActorHelper(CoreWorker &worker,
                             const std::unordered_map<std::string, double> &resources,
-                            bool is_direct_call, uint64_t max_reconstructions) {
+                            uint64_t max_reconstructions) {
     std::unique_ptr<ActorHandle> actor_handle;
 
     // Test creating actor.
@@ -263,7 +263,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
     ActorCreationOptions actor_options{
-        max_reconstructions,   is_direct_call,
+        max_reconstructions,
         /*max_concurrency*/ 1, resources,           resources, {},
         /*is_detached*/ false, /*is_asyncio*/ false};
 
@@ -302,8 +302,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     // Create writer and reader actors
     std::unordered_map<std::string, double> resources;
-    auto actor_id_writer = CreateActorHelper(driver, resources, true, 0);
-    auto actor_id_reader = CreateActorHelper(driver, resources, true, 0);
+    auto actor_id_writer = CreateActorHelper(driver, resources, 0);
+    auto actor_id_reader = CreateActorHelper(driver, resources, 0);
 
     InitWorker(driver, actor_id_writer, actor_id_reader,
                queue::protobuf::StreamingQueueTestRole::WRITER, queue_id_vec,
