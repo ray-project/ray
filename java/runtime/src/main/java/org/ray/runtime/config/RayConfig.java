@@ -39,6 +39,8 @@ public class RayConfig {
 
   private static final String DEFAULT_TEMP_DIR = "/tmp/ray";
 
+  private Config config;
+
   public final String nodeIp;
   public final WorkerType workerMode;
   public final RunMode runMode;
@@ -72,11 +74,18 @@ public class RayConfig {
 
   /// An inner holder class to make this as a singleton.
   private static class RayConfigSingletonHolder {
-    private static final RayConfig INSTANCE = RayConfig.create();
+    private static RayConfig INSTANCE = RayConfig.create();
   }
 
   public static RayConfig getInstance() {
+    if (RayConfigSingletonHolder.INSTANCE == null) {
+      RayConfigSingletonHolder.INSTANCE = RayConfig.create();
+    }
     return RayConfigSingletonHolder.INSTANCE;
+  }
+
+  public static void reset() {
+    RayConfigSingletonHolder.INSTANCE = null;
   }
 
   /**
@@ -102,6 +111,7 @@ public class RayConfig {
   }
 
   public RayConfig(Config config) {
+    this.config = config;
     // Worker mode.
     WorkerType localWorkerMode;
     try {
@@ -138,57 +148,9 @@ public class RayConfig {
       this.jobId = JobId.NIL;
     }
 
-    // session dir
-    String localSessionDir = System.getProperty("ray.session-dir");
-    if (workerMode == WorkerType.DRIVER) {
-      Preconditions.checkState(localSessionDir == null);
-      final int minBound = 100000;
-      final int maxBound = 999999;
-      final String sessionName = String.format("session_%s_%d", DATE_TIME_FORMATTER.format(
-          LocalDateTime.now()), RANDOM.nextInt(maxBound - minBound) + minBound);
-      sessionDir = String.format("%s/%s", DEFAULT_TEMP_DIR, sessionName);
-    } else if (workerMode == WorkerType.WORKER) {
-      Preconditions.checkState(localSessionDir != null);
-      sessionDir = removeTrailingSlash(localSessionDir);
-    } else {
-      throw new RuntimeException("Unknown worker type.");
-    }
-
-    // Log dir.
-    String localLogDir = null;
-    if (config.hasPath("ray.log-dir")) {
-      localLogDir = removeTrailingSlash(config.getString("ray.log-dir"));
-    }
-    if (Strings.isNullOrEmpty(localLogDir)) {
-      logDir = String.format("%s/logs", sessionDir);
-    } else {
-      logDir = localLogDir;
-    }
-
+    updateSessionDir();
     // Object store configurations.
     objectStoreSize = config.getBytes("ray.object-store.size");
-
-    // Object store socket name.
-    String localObjectStoreSocketName = null;
-    if (config.hasPath("ray.object-store.socket-name")) {
-      localObjectStoreSocketName = config.getString("ray.object-store.socket-name");
-    }
-    if (Strings.isNullOrEmpty(localObjectStoreSocketName)) {
-      objectStoreSocketName = String.format("%s/sockets/object_store", sessionDir);
-    } else {
-      objectStoreSocketName = localObjectStoreSocketName;
-    }
-
-    // Raylet socket name.
-    String localRayletSocketName = null;
-    if (config.hasPath("ray.raylet.socket-name")) {
-      localRayletSocketName = config.getString("ray.raylet.socket-name");
-    }
-    if (Strings.isNullOrEmpty(localRayletSocketName)) {
-      rayletSocketName = String.format("%s/sockets/raylet", sessionDir);
-    } else {
-      rayletSocketName = localRayletSocketName;
-    }
 
     // Redirect output.
     redirectOutput = config.getBoolean("ray.redirect-output");
@@ -304,6 +266,58 @@ public class RayConfig {
 
   public String getSessionDir() {
     return sessionDir;
+  }
+
+  public void updateSessionDir() {
+    // session dir
+    String localSessionDir = System.getProperty("ray.session-dir");
+    if (workerMode == WorkerType.DRIVER) {
+      Preconditions.checkState(localSessionDir == null);
+      final int minBound = 100000;
+      final int maxBound = 999999;
+      final String sessionName = String.format("session_%s_%d", DATE_TIME_FORMATTER.format(
+          LocalDateTime.now()), RANDOM.nextInt(maxBound - minBound) + minBound);
+      sessionDir = String.format("%s/%s", DEFAULT_TEMP_DIR, sessionName);
+    } else if (workerMode == WorkerType.WORKER) {
+      Preconditions.checkState(localSessionDir != null);
+      sessionDir = removeTrailingSlash(localSessionDir);
+    } else {
+      throw new RuntimeException("Unknown worker type.");
+    }
+
+    // Log dir.
+    String localLogDir = null;
+    if (config.hasPath("ray.log-dir")) {
+      localLogDir = removeTrailingSlash(config.getString("ray.log-dir"));
+    }
+    if (Strings.isNullOrEmpty(localLogDir)) {
+      logDir = String.format("%s/logs", sessionDir);
+    } else {
+      logDir = localLogDir;
+    }
+
+    // Object store socket name.
+    String localObjectStoreSocketName = null;
+    if (config.hasPath("ray.object-store.socket-name")) {
+      localObjectStoreSocketName = config.getString("ray.object-store.socket-name");
+    }
+    if (Strings.isNullOrEmpty(localObjectStoreSocketName)) {
+      objectStoreSocketName = String.format("%s/sockets/object_store", sessionDir);
+    } else {
+      objectStoreSocketName = localObjectStoreSocketName;
+    }
+
+    // Raylet socket name.
+    String localRayletSocketName = null;
+    if (config.hasPath("ray.raylet.socket-name")) {
+      localRayletSocketName = config.getString("ray.raylet.socket-name");
+    }
+    if (Strings.isNullOrEmpty(localRayletSocketName)) {
+      rayletSocketName = String.format("%s/sockets/raylet", sessionDir);
+    } else {
+      rayletSocketName = localRayletSocketName;
+    }
+
   }
 
   @Override
