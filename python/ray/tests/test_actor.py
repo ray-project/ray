@@ -16,6 +16,25 @@ from ray.test_utils import run_string_as_driver
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 
 
+def test_actor_exit_from_task(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            print("Actor created")
+
+        def f(self):
+            return 0
+
+    @ray.remote
+    def f():
+        a = Actor.remote()
+        x_id = a.f.remote()
+        return [x_id]
+
+    x_id = ray.get(f.remote())[0]
+    print(ray.get(x_id))  # This should not hang.
+
+
 def test_actor_init_error_propagated(ray_start_regular):
     @ray.remote
     class Actor:

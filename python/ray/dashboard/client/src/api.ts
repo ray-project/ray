@@ -191,3 +191,41 @@ export const launchKillActor = (
     ip_address: actorIpAddress,
     port: actorPort
   });
+
+export interface TuneTrial {
+  date: string;
+  episodes_total: string;
+  experiment_id: string;
+  experiment_tag: string;
+  hostname: string;
+  iterations_since_restore: number;
+  logdir: string;
+  node_ip: string;
+  pid: number;
+  time_since_restore: number;
+  time_this_iter_s: number;
+  time_total_s: number;
+  timestamp: number;
+  timesteps_since_restore: number;
+  timesteps_total: number;
+  training_iteration: number;
+  start_time: string;
+  status: string;
+  trial_id: string;
+  job_id: string;
+  params: { [key: string]: string };
+  metrics: { [key: string]: string };
+}
+
+export interface TuneJobResponse {
+  trial_records: { [key: string]: TuneTrial };
+}
+
+export const getTuneInfo = () => get<TuneJobResponse>("/api/tune_info", {});
+
+export interface TuneAvailabilityResponse {
+  available: boolean;
+}
+
+export const getTuneAvailability = () =>
+  get<TuneAvailabilityResponse>("/api/tune_availability", {});
