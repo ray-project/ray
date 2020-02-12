@@ -21,7 +21,7 @@ message ActorHandle {
   Language actor_language = 4;
 
   // Function descriptor of actor creation task.
-  repeated string actor_creation_task_function_descriptor = 5;
+  FunctionDescriptor actor_creation_task_function_descriptor = 5;
 
   // The unique id of the dummy object returned by the actor creation task.
   // It's used as a dependency for the first task.

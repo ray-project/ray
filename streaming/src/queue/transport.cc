@@ -77,7 +77,7 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResultWithRetry(
     int64_t timeout_ms) {
   STREAMING_LOG(INFO) << "SendForResultWithRetry retry_cnt: " << retry_cnt
                       << " timeout_ms: " << timeout_ms
-                      << " function: " << function.GetFunctionDescriptor()[0];
+                      << " function: " << function.GetFunctionDescriptor()->ToString();
   std::shared_ptr<LocalMemoryBuffer> buffer_shared = std::move(buffer);
   for (int cnt = 0; cnt < retry_cnt; cnt++) {
     auto result = SendForResult(buffer_shared, function, timeout_ms);

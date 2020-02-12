@@ -51,6 +51,7 @@ type RayClusterReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods/status,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
+
 func (r *RayClusterReconciler) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	_ = r.Log.WithValues("raycluster", request.NamespacedName)
 	log.Info("Reconciling RayCluster", "cluster name", request.Name)

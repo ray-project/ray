@@ -206,13 +206,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // rerun the driver.
   if (worker_type_ == WorkerType::DRIVER) {
     TaskSpecBuilder builder;
-    std::vector<std::string> empty_descriptor;
-    std::unordered_map<std::string, double> empty_resources;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
-    builder.SetCommonTaskSpec(
-        task_id, language_, empty_descriptor, worker_context_.GetCurrentJobID(),
-        TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()), 0, GetCallerId(),
-        rpc_address_, 0, false, empty_resources, empty_resources);
+    builder.SetDriverTaskSpec(task_id, language_, worker_context_.GetCurrentJobID(),
+                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
+                              GetCallerId(), rpc_address_);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
@@ -632,14 +629,16 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  absl::flat_hash_set<ObjectID> plasma_object_ids;
-  absl::flat_hash_set<ObjectID> memory_object_ids;
-  GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
-
   // TODO(edoakes): what are the desired semantics for deleting from a non-owner?
   // Should we just delete locally or ping the owner and delete globally?
   reference_counter_->DeleteReferences(object_ids);
-  memory_store_->Delete(memory_object_ids, &plasma_object_ids);
+
+  // We only delete from plasma, which avoids hangs (issue #7105). In-memory
+  // objects are always handled by ref counting only.
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  for (const auto &obj_id : object_ids) {
+    plasma_object_ids.insert(obj_id);
+  }
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
 
@@ -1006,7 +1005,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     if (!return_objects->at(i)) {
       continue;
     }
-    if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
+    if (return_objects->at(i)->GetData() != nullptr &&
+        return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
       if (!Seal(return_ids[i], /*pin_object=*/false).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
@@ -1270,12 +1270,7 @@ void CoreWorker::HandleGetCoreWorkerStats(const rpc::GetCoreWorkerStatsRequest &
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_ids_in_scope(reference_counter_->NumObjectIDsInScope());
-  if (!current_task_.TaskId().IsNil()) {
-    stats->set_current_task_desc(current_task_.DebugString());
-    for (auto const it : current_task_.FunctionDescriptor()) {
-      stats->add_current_task_func_desc(it);
-    }
-  }
+  stats->set_current_task_func_desc(current_task_.FunctionDescriptor()->ToString());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_actor_id(actor_id_.Binary());
