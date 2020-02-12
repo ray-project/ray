@@ -3059,8 +3059,7 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   auto it = worker_rpc_clients_.find(worker_id);
   if (it == worker_rpc_clients_.end()) {
     auto client = std::unique_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(request.owner_address().ip_address(),
-                                  request.owner_address().port(), client_call_manager_));
+        new rpc::CoreWorkerClient(request.owner_address(), client_call_manager_));
     it = worker_rpc_clients_
              .emplace(worker_id,
                       std::make_pair<std::unique_ptr<rpc::CoreWorkerClient>, size_t>(

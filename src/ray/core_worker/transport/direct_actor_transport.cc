@@ -80,8 +80,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Create a new connection to the actor.
   // TODO(edoakes): are these clients cleaned up properly?
   if (rpc_clients_.count(actor_id) == 0) {
-    rpc_clients_[actor_id] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
-        client_factory_(address.ip_address(), address.port()));
+    rpc_clients_[actor_id] =
+        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(address));
   }
   if (pending_requests_.count(actor_id) > 0) {
     SendPendingTasks(actor_id);

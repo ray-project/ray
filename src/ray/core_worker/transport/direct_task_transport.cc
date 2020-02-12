@@ -29,8 +29,8 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
     const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
   auto it = client_cache_.find(addr);
   if (it == client_cache_.end()) {
-    client_cache_[addr] = std::shared_ptr<rpc::CoreWorkerClientInterface>(
-        client_factory_(addr.ip_address, addr.port));
+    client_cache_[addr] =
+        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr.ToProto()));
     RAY_LOG(INFO) << "Connected to " << addr.ip_address << ":" << addr.port;
   }
   int64_t expiration = current_time_ms() + lease_timeout_ms_;

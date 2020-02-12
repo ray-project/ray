@@ -80,10 +80,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       death_check_timer_(io_service_),
       internal_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      reference_counter_(std::make_shared<ReferenceCounter>(
-          [this](const std::string ip_address, int port) {
+      reference_counter_(
+          std::make_shared<ReferenceCounter>([this](const rpc::Address &addr) {
             return std::shared_ptr<rpc::CoreWorkerClient>(
-                new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
+                new rpc::CoreWorkerClient(addr, *client_call_manager_));
           })),
       task_queue_length_(0),
       num_executed_tasks_(0),
@@ -220,9 +220,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     SetCurrentTaskId(task_id);
   }
 
-  auto client_factory = [this](const std::string ip_address, int port) {
+  auto client_factory = [this](const rpc::Address &addr) {
     return std::shared_ptr<rpc::CoreWorkerClient>(
-        new rpc::CoreWorkerClient(ip_address, port, *client_call_manager_));
+        new rpc::CoreWorkerClient(addr, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(rpc_address_, client_factory, memory_store_,
@@ -1233,6 +1233,10 @@ void CoreWorker::HandleWaitForObjectEviction(
 void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &request,
                                          rpc::WaitForRefRemovedReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
+  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
+                           send_reply_callback)) {
+    return;
+  }
   reference_counter_->HandleWaitForRefRemoved(request, reply, send_reply_callback);
 }
 

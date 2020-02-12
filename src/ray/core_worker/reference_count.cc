@@ -395,7 +395,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
   auto it = borrower_cache_.find(addr);
   if (it == borrower_cache_.end()) {
     RAY_CHECK(client_factory_ != nullptr);
-    it = borrower_cache_.emplace(addr, client_factory_(addr.ip_address, addr.port)).first;
+    it = borrower_cache_.emplace(addr, client_factory_(addr.ToProto())).first;
     RAY_LOG(DEBUG) << "Connected to borrower " << addr.ip_address << ":" << addr.port
                    << " for object " << object_id;
   }

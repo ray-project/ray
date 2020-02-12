@@ -74,8 +74,7 @@ class WorkerAddress {
   const ClientID raylet_id;
 };
 
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const std::string &,
-                                                                 int)>
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
     ClientFactoryFn;
 
 /// Abstract client interface for testing.
@@ -164,13 +163,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// \param[in] address Address of the worker server.
   /// \param[in] port Port of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  CoreWorkerClient(const std::string &address, const int port,
-                   ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    addr_.set_ip_address(address);
-    addr_.set_port(port);
-    grpc_client_ = std::unique_ptr<GrpcClient<CoreWorkerService>>(
-        new GrpcClient<CoreWorkerService>(address, port, client_call_manager));
+  CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
+      : addr_(address), client_call_manager_(client_call_manager) {
+    grpc_client_ =
+        std::unique_ptr<GrpcClient<CoreWorkerService>>(new GrpcClient<CoreWorkerService>(
+            addr_.ip_address(), addr_.port(), client_call_manager));
   };
 
   const rpc::Address &Addr() const override { return addr_; }
