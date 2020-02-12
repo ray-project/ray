@@ -114,6 +114,10 @@ class Dashboard(object):
         """Initialize the dashboard object."""
         self.host = host
         self.port = port
+        # This is passed through an environment line variable
+        # instead of an argument, to make sure it does not show up
+        # in any logs.
+        self.token = os.environ.get("RAY_DASHBOARD_TOKEN")
         self.redis_client = ray.services.create_redis_client(
             redis_address, password=redis_password)
         self.temp_dir = temp_dir
@@ -129,8 +133,40 @@ class Dashboard(object):
         # allow cross-origin requests to be made.
         self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
 
-        self.app = aiohttp.web.Application()
+        middlewares = []
+        if self.token:
+            middlewares.append(self.auth_middleware)
+        self.app = aiohttp.web.Application(middlewares=middlewares)
         self.setup_routes()
+
+    @aiohttp.web.middleware
+    async def auth_middleware(self, req, handler):
+        def valid_token(req):
+            # If the cookie token is correct, accept that.
+            try:
+                if req.cookies["token"] == self.token:
+                    return True
+            except KeyError:
+                pass
+
+            # If the query token is correct, accept that.
+            try:
+                if req.query["token"] == self.token:
+                    return True
+            except KeyError:
+                pass
+
+            # Reject.
+            logger.warning("Dashboard: rejected an invalid token")
+            return False
+
+        # Check that the token is present, either in query or as cookie.
+        if not valid_token(req):
+            return aiohttp.web.Response(status=401, text="401 Unauthorized")
+
+        resp = await handler(req)
+        resp.cookies["token"] = self.token
+        return resp
 
     def setup_routes(self):
         def forbidden() -> aiohttp.web.Response:
@@ -875,6 +911,12 @@ if __name__ == "__main__":
         type=int,
         help="The port to use for the HTTP server.")
     parser.add_argument(
+        "--token",
+        required=False,
+        type=str,
+        default=None,
+        help="The token to use for the dashboard.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -884,7 +926,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
-        help="the password to use for Redis")
+        help="The password to use for Redis")
     parser.add_argument(
         "--logging-level",
         required=False,

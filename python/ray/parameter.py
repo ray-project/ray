@@ -109,7 +109,7 @@ class RayParams:
                  worker_path=None,
                  huge_pages=False,
                  include_webui=None,
-                 webui_host="localhost",
+                 webui_host=None,
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,

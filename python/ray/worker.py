@@ -556,7 +556,7 @@ def init(address=None,
          huge_pages=False,
          include_java=False,
          include_webui=None,
-         webui_host="localhost",
+         webui_host=None,
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -642,7 +642,11 @@ def init(address=None,
         webui_host: The host to bind the web UI server to. Can either be
             localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
             By default, this is set to localhost to prevent access from
-            external machines.
+            external machines. If the environment variable RAY_DASHBOARD_TOKEN
+            is set on the head node, it is set to 0.0.0.0 by default and will
+            use the authentication token stored in RAY_DASHBOARD_TOKEN. We
+            strongly advise against opening the dashboard to the public if
+            no authentication token is set.
         job_id: The ID of this job.
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
@@ -711,6 +715,13 @@ def init(address=None,
         # If starting Ray in LOCAL_MODE, don't start any other processes.
         _global_node = ray.node.LocalNode()
     elif redis_address is None:
+
+        # If we are on the head node, set webui_host to the correct address.
+        if webui_host is None and os.environ.get("RAY_DASHBOARD_TOKEN"):
+            webui_host = "0.0.0.0"
+        else:
+            webui_host = "localhost"
+
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
@@ -788,6 +799,10 @@ def init(address=None,
         if raylet_socket_name is not None:
             raise Exception("When connecting to an existing cluster, "
                             "raylet_socket_name must not be provided.")
+        if webui_host is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "webui_host must not be provided.")
+
         if _internal_config is not None:
             raise Exception("When connecting to an existing cluster, "
                             "_internal_config must not be provided.")

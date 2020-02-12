@@ -208,7 +208,7 @@ def dashboard(cluster_config_file, cluster_name, port):
 @click.option(
     "--webui-host",
     required=False,
-    default="localhost",
+    default=None,
     help="The host to bind the web UI server to. Can either be localhost "
     "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
     "is set to localhost to prevent access from external machines.")
@@ -331,7 +331,6 @@ def start(node_ip_address, redis_address, address, redis_port,
         temp_dir=temp_dir,
         include_java=include_java,
         include_webui=include_webui,
-        webui_host=webui_host,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
         use_pickle=use_pickle,
@@ -362,6 +361,13 @@ def start(node_ip_address, redis_address, address, redis_port,
             node_ip_address=services.get_node_ip_address())
         logger.info("Using IP address {} for this node.".format(
             ray_params.node_ip_address))
+
+        # If we are on the head node, set webui_host to the correct address.
+        if webui_host is None and os.environ.get("RAY_DASHBOARD_TOKEN"):
+            webui_host = "0.0.0.0"
+        else:
+            webui_host = "localhost"
+
         ray_params.update_if_absent(
             redis_port=redis_port,
             redis_shard_ports=redis_shard_ports,
@@ -370,6 +376,7 @@ def start(node_ip_address, redis_address, address, redis_port,
             redis_max_clients=redis_max_clients,
             autoscaling_config=autoscaling_config,
             include_java=False,
+            webui_host=webui_host,
         )
 
         node = ray.node.Node(
@@ -411,6 +418,9 @@ def start(node_ip_address, redis_address, address, redis_port,
                             "must not be provided.")
         if include_webui:
             raise Exception("If --head is not passed in, the --include-webui "
+                            "flag is not relevant.")
+        if webui_host:
+            raise Exception("If --head is not passed in, the --webui-host "
                             "flag is not relevant.")
         if include_java is not None:
             raise ValueError("--include-java should only be set for the head "
