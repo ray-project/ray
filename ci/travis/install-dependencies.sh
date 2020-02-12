@@ -17,33 +17,26 @@ else
   exit 1
 fi
 
-if [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
+if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-Linux-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q scipy tensorflow==2.0.0b1 tensorflow-probability==0.8 gast==0.2.2 \
-    cython==0.29.0 \
-    gym gym[atari] atari_py \
-    opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml \
-    openpyxl xlrd py-spy pytest-timeout networkx tabulate \
-    aiohttp uvicorn dataclasses pygments werkzeug kubernetes flask grpcio \
-    pytest-sugar pytest-rerunfailures pytest-asyncio blist torch torchvision \
-    scikit-learn
-elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
+  pip install -q scipy tensorflow cython==0.29.0 gym opencv-python-headless pyyaml pandas==0.24.2 requests \
+    feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
+    uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
+    blist torch torchvision scikit-learn
+elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 tensorflow==2.0.0b1 tensorflow-probability==0.8 gast==0.2.2 \
-    gym gym[atari] atari_py \
-    opencv-python-headless pyyaml pandas==0.24.2 requests feather-format lxml \
-    openpyxl xlrd py-spy pytest-timeout networkx tabulate \
-    aiohttp uvicorn dataclasses pygments werkzeug kubernetes flask grpcio \
-    pytest-sugar pytest-rerunfailures pytest-asyncio blist torch torchvision \
-    scikit-learn
+  pip install -q cython==0.29.0 tensorflow gym opencv-python-headless pyyaml pandas==0.24.2 requests \
+    feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
+    uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
+    blist torch torchvision scikit-learn
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip
@@ -63,7 +56,7 @@ else
   exit 1
 fi
 
-if [[ "$PYTHON" == "3.5" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
+if [[ "$PYTHON" == "3.6" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
   # Install the latest version of Node.js in order to build the dashboard.
   source $HOME/.nvm/nvm.sh
   nvm install node
