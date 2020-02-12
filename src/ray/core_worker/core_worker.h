@@ -297,13 +297,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// of the bytes zeroed out.
   TaskID GetCallerId() const;
 
-  /// The first caller id set in this worker, which is used to serialize all tasks
-  /// submitted from this worker. We need this since the same actor handles are
-  /// shared between multiple tasks.
-  ///
-  /// \return The initial caller ID.
-  TaskID GetInitialCallerId();
-
   /// Push an error to the relevant driver.
   ///
   /// \param[in] The ID of the job_id that the error is for.
@@ -708,11 +701,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// The currently executing task spec. We have to track this separately since
   /// we cannot access the thread-local worker contexts from GetCoreWorkerStats()
   TaskSpecification current_task_ GUARDED_BY(mutex_);
-
-  /// The first caller id set in this worker, which is used to serialize all tasks
-  /// submitted from this worker. We need this since the same actor handles are
-  /// shared between multiple tasks.
-  TaskID initial_caller_id_ GUARDED_BY(mutex_);
 
   /// Key value pairs to be displayed on Web UI.
   std::unordered_map<std::string, std::string> webui_display_ GUARDED_BY(mutex_);

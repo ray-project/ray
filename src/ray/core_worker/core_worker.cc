@@ -283,8 +283,20 @@ void CoreWorker::RunIOService() {
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
-  // TODO(ekl) we can't unsubscribe to actor notifications here due to
-  // https://github.com/ray-project/ray/pull/6885
+  bool not_actor_task = false;
+  {
+    absl::MutexLock lock(&mutex_);
+    not_actor_task = actor_id_.IsNil();
+  }
+  if (not_actor_task && task_id.IsNil()) {
+    absl::MutexLock lock(&actor_handles_mutex_);
+    // Reset the seqnos so that for the next task it start off at 0.
+    for (const auto &handle : actor_handles_) {
+      handle.second->Reset();
+    }
+    // TODO(ekl) we can't unsubscribe to actor notifications here due to
+    // https://github.com/ray-project/ray/pull/6885
+  }
 }
 
 void CoreWorker::CheckForRayletFailure() {
@@ -624,14 +636,6 @@ std::string CoreWorker::MemoryUsageString() {
   return plasma_store_provider_->MemoryUsageString();
 }
 
-TaskID CoreWorker::GetInitialCallerId() {
-  absl::MutexLock lock(&mutex_);
-  if (initial_caller_id_.IsNil()) {
-    initial_caller_id_ = GetCallerId();
-  }
-  return initial_caller_id_;
-}
-
 TaskID CoreWorker::GetCallerId() const {
   TaskID caller_id;
   ActorID actor_id = GetActorId();
@@ -757,7 +761,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
       next_task_index, actor_handle->GetActorID());
   const std::unordered_map<std::string, double> required_resources;
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetInitialCallerId(),
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, transport_type, return_ids);
 
