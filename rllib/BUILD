@@ -780,7 +780,7 @@ py_test(
 py_test(
     name = "tests/test_checkpoint_restore",
     tags = ["tests_dir", "tests_dir_1"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_checkpoint_restore.py"]
 )
 
@@ -802,7 +802,7 @@ py_test(
 py_test(
     name = "tests/test_eager_support",
     tags = ["tests_dir", "tests_dir_2"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_eager_support.py"]
 )
 
@@ -817,7 +817,7 @@ py_test(
 py_test(
     name = "tests/test_evaluators",
     tags = ["tests_dir", "tests_dir_2"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_evaluators.py"]
 )
 

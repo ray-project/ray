@@ -142,7 +142,9 @@ matrix:
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
       env:
-        - RLLIB_REGRESSION_TESTS=1 PYTHON=3.5 PYTHONWARNINGS=ignore
+        - RLLIB_REGRESSION_TESTS=1
+        - PYTHON=3.5
+        - PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
@@ -178,7 +180,9 @@ matrix:
     # RLlib: Quick Agent train.py runs (compilation & running, no learning).
     - os: linux
       env:
-        - RLLIB_QUICK_TRAIN_TESTS=1 PYTHON=3.5 PYTHONWARNINGS=ignore
+        - RLLIB_QUICK_TRAIN_TESTS=1
+        - PYTHON=3.5
+        - PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
         - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
