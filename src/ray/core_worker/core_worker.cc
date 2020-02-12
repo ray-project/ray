@@ -624,6 +624,14 @@ std::string CoreWorker::MemoryUsageString() {
   return plasma_store_provider_->MemoryUsageString();
 }
 
+TaskID CoreWorker::GetInitialCallerId() const {
+  absl::MutexLock lock(&mutex_);
+  if (initial_caller_id_.IsNil()) {
+    initial_caller_id_ = GetCallerId();
+  }
+  return initial_caller_id_;
+}
+
 TaskID CoreWorker::GetCallerId() const {
   TaskID caller_id;
   ActorID actor_id = GetActorId();
@@ -749,7 +757,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
       next_task_index, actor_handle->GetActorID());
   const std::unordered_map<std::string, double> required_resources;
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetInitialCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, transport_type, return_ids);
 
