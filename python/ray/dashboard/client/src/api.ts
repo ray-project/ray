@@ -143,15 +143,21 @@ export interface ErrorsResponse {
   }>;
 }
 
-export const getErrors = (hostname: string, pid: string | undefined) =>
-  get<ErrorsResponse>("/api/errors", { hostname, pid: pid || "" });
+export const getErrors = (hostname: string, pid: number | null) =>
+  get<ErrorsResponse>("/api/errors", {
+    hostname,
+    pid: pid === null ? "" : pid
+  });
 
 export interface LogsResponse {
   [pid: string]: string[];
 }
 
-export const getLogs = (hostname: string, pid: string | undefined) =>
-  get<LogsResponse>("/api/logs", { hostname, pid: pid || "" });
+export const getLogs = (hostname: string, pid: number | null) =>
+  get<LogsResponse>("/api/logs", {
+    hostname,
+    pid: pid === null ? "" : pid
+  });
 
 export type LaunchProfilingResponse = string;
 

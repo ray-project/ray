@@ -43,6 +43,8 @@ class Dashboard extends React.Component<
     ReturnType<typeof mapStateToProps> &
     typeof mapDispatchToProps
 > {
+  timeoutId = 0;
+
   refreshNodeAndRayletInfo = async () => {
     try {
       const [nodeInfo, rayletInfo, tuneAvailability] = await Promise.all([
@@ -56,12 +58,16 @@ class Dashboard extends React.Component<
     } catch (error) {
       this.props.setError(error.toString());
     } finally {
-      setTimeout(this.refreshNodeAndRayletInfo, 1000);
+      this.timeoutId = window.setTimeout(this.refreshNodeAndRayletInfo, 1000);
     }
   };
 
   async componentDidMount() {
     await this.refreshNodeAndRayletInfo();
+  }
+
+  componentWillUnmount() {
+    clearTimeout(this.timeoutId);
   }
 
   handleTabChange = (event: React.ChangeEvent<{}>, value: number) => {
