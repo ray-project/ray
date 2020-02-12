@@ -1265,15 +1265,14 @@ def test_get_with_timeout(ray_start_regular):
         "num_nodes": 2,
     }],
     indirect=True)
-def test_direct_call_simple(ray_start_cluster):
+def test_simple(ray_start_cluster):
     @ray.remote
     def f(x):
         return x + 1
 
-    f_direct = f.options(is_direct_call=True)
-    assert ray.get(f_direct.remote(2)) == 3
+    assert ray.get(f.remote(2)) == 3
     for _ in range(10):
-        assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
+        assert ray.get([f.remote(i) for i in range(100)]) == list(
             range(1, 101))
 
 
@@ -1307,7 +1306,7 @@ def test_call_actors_indirect_through_tasks(ray_start_regular):
         ray.get(zoo.remote([c]))
 
 
-def test_direct_call_refcount(ray_start_regular):
+def test_refcount(ray_start_regular):
     @ray.remote
     def f(x):
         return x + 1
@@ -1318,17 +1317,16 @@ def test_direct_call_refcount(ray_start_regular):
         return 1
 
     # Multiple gets should not hang with ref counting enabled.
-    f_direct = f.options(is_direct_call=True)
-    x = f_direct.remote(2)
+    x = f.remote(2)
     ray.get(x)
     ray.get(x)
 
     # Temporary objects should be retained for chained callers.
-    y = f_direct.remote(sleep.options(is_direct_call=True).remote())
+    y = f.remote(sleep.remote())
     assert ray.get(y) == 2
 
 
-def test_direct_call_matrix(shutdown_only):
+def test_matrix(shutdown_only):
     ray.init(object_store_memory=1000 * 1024 * 1024)
 
     @ray.remote
@@ -1364,23 +1362,23 @@ def test_direct_call_matrix(shutdown_only):
               if is_large else "small_object", "out_of_band"
               if out_of_band else "in_band")
         if source_actor:
-            a = Actor.options(is_direct_call=True).remote()
+            a = Actor.remote()
             if is_large:
                 x_id = a.large_value.remote()
             else:
                 x_id = a.small_value.remote()
         else:
             if is_large:
-                x_id = large_value.options(is_direct_call=True).remote()
+                x_id = large_value.remote()
             else:
-                x_id = small_value.options(is_direct_call=True).remote()
+                x_id = small_value.remote()
         if out_of_band:
             x_id = [x_id]
         if dest_actor:
-            b = Actor.options(is_direct_call=True).remote()
+            b = Actor.remote()
             x = ray.get(b.echo.remote(x_id))
         else:
-            x = ray.get(echo.options(is_direct_call=True).remote(x_id))
+            x = ray.get(echo.remote(x_id))
         if is_large:
             assert isinstance(x, np.ndarray)
         else:
@@ -1402,15 +1400,14 @@ def test_direct_call_matrix(shutdown_only):
         "num_nodes": 2,
     }],
     indirect=True)
-def test_direct_call_chain(ray_start_cluster):
+def test_chain(ray_start_cluster):
     @ray.remote
     def g(x):
         return x + 1
 
-    g_direct = g.options(is_direct_call=True)
     x = 0
     for _ in range(100):
-        x = g_direct.remote(x)
+        x = g.remote(x)
     assert ray.get(x) == 100
 
 
@@ -1429,10 +1426,9 @@ def test_direct_inline_arg_memory_corruption(ray_start_regular):
             for prev in self.z:
                 assert np.sum(prev) == 0, ("memory corruption detected", prev)
 
-    a = Actor.options(is_direct_call=True).remote()
-    f_direct = f.options(is_direct_call=True)
+    a = Actor.options().remote()
     for i in range(100):
-        ray.get(a.add.remote(f_direct.remote()))
+        ray.get(a.add.remote(f.remote()))
 
 
 def test_direct_actor_enabled(ray_start_regular):
@@ -1444,7 +1440,7 @@ def test_direct_actor_enabled(ray_start_regular):
         def f(self, x):
             return x * 2
 
-    a = Actor._remote(is_direct_call=True)
+    a = Actor.remote()
     obj_id = a.f.remote(1)
     # it is not stored in plasma
     assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
@@ -1469,11 +1465,9 @@ def test_direct_actor_order(shutdown_only):
             self.count += 1
             return count
 
-    a = Actor._remote(is_direct_call=True)
-    assert ray.get([
-        a.inc.remote(i, small_value.options(is_direct_call=True).remote())
-        for i in range(100)
-    ]) == list(range(100))
+    a = Actor.remote()
+    assert ray.get([a.inc.remote(i, small_value.remote())
+                    for i in range(100)]) == list(range(100))
 
 
 def test_direct_actor_large_objects(ray_start_regular):
@@ -1486,7 +1480,7 @@ def test_direct_actor_large_objects(ray_start_regular):
             time.sleep(1)
             return np.zeros(10000000)
 
-    a = Actor._remote(is_direct_call=True)
+    a = Actor.remote()
     obj_id = a.f.remote()
     assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
     done, _ = ray.wait([obj_id])
@@ -1512,7 +1506,7 @@ def test_direct_actor_pass_by_ref(ray_start_regular):
     def error():
         sys.exit(0)
 
-    a = Actor._remote(is_direct_call=True)
+    a = Actor.remote()
     assert ray.get(a.f.remote(f.remote(1))) == 2
 
     fut = [a.f.remote(f.remote(i)) for i in range(100)]
@@ -1534,7 +1528,7 @@ def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
         def f(self, x):
             pass
 
-    a = Actor._remote(is_direct_call=True)
+    a = Actor.remote()
 
     @ray.remote
     def fast_value():
@@ -1571,9 +1565,9 @@ def test_direct_actor_recursive(ray_start_regular):
                 return ray.get(self.delegate.f.remote(x))
             return x * 2
 
-    a = Actor._remote(is_direct_call=True)
-    b = Actor._remote(args=[a], is_direct_call=True)
-    c = Actor._remote(args=[b], is_direct_call=True)
+    a = Actor.remote()
+    b = Actor.remote(a)
+    c = Actor.remote(b)
 
     result = ray.get([c.f.remote(i) for i in range(100)])
     assert result == [x * 2 for x in range(100)]
@@ -1598,7 +1592,7 @@ def test_direct_actor_concurrent(ray_start_regular):
                 self.event.wait()
             return sorted(self.batch)
 
-    a = Batcher.options(is_direct_call=True, max_concurrency=3).remote()
+    a = Batcher.options(max_concurrency=3).remote()
     x1 = a.add.remote(1)
     x2 = a.add.remote(2)
     x3 = a.add.remote(3)

@@ -890,7 +890,7 @@ def test_fill_object_store_exception(ray_start_cluster_head):
         "num_cpus": 1,
     }],
     indirect=True)
-def test_direct_call_eviction(ray_start_cluster):
+def test_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
         return np.zeros(10 * 1024 * 1024)
@@ -924,7 +924,7 @@ def test_direct_call_eviction(ray_start_cluster):
         "num_cpus": 1,
     }],
     indirect=True)
-def test_direct_call_serialized_id_eviction(ray_start_cluster):
+def test_serialized_id_eviction(ray_start_cluster):
     @ray.remote
     def large_object():
         return np.zeros(10 * 1024 * 1024)
