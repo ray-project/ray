@@ -3,6 +3,21 @@
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 echo "PYTHON is $PYTHON"
+tf_version="$TF_VERSION"
+if [[ $tf_version == "" ]]; then
+  tf_version="2.0.0b1"
+fi
+echo "tf_version is $tf_version"
+tfp_version="$TFP_VERSION" or "0.8"
+if [[ tfp_version == "" ]]; then
+  tfp_version="0.8"
+fi
+echo "tfp_version is $tfp_version"
+torch_version="$TORCH_VERSION"
+if [[ torch_version == "" ]]; then
+  torch_version="1.4"
+fi
+echo "torch_version is $torch_version"
 
 platform="unknown"
 unamestr="$(uname)"
@@ -32,13 +47,14 @@ fi
 
 bash miniconda.sh -b -p $HOME/miniconda
 export PATH="$HOME/miniconda/bin:$PATH"
-pip install -q scipy tensorflow==2.0.0b1 tensorflow-probability==0.8 gast==0.2.2 \
-  cython==0.29.0 \
-  gym gym[atari] atari_py opencv-python-headless pyyaml \
-  pandas==0.24.2 requests feather-format lxml \
+pip install -q scipy cython==0.29.0 \
+  tensorflow==$TF_VERSION tensorflow-probability==$TFP_VERSION \
+  torch==$TORCH_VERSION torchvision \
+  gast==0.2.2 gym gym[atari] atari_py opencv-python-headless pyyaml \
+  pandas==0.24.2 requests feather-format lxml lz4 \
   openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil \
   aiohttp uvicorn dataclasses pygments werkzeug kubernetes flask grpcio \
-  pytest-sugar pytest-rerunfailures pytest-asyncio blist torch torchvision \
+  pytest-sugar pytest-rerunfailures pytest-asyncio blist \
   scikit-learn
 
 pip install -q psutil setproctitle \
