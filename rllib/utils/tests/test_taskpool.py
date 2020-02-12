@@ -90,6 +90,40 @@ class TaskPoolTest(unittest.TestCase):
         fetched = [pair[1] for pair in pool.completed_prefetch()]
         self.assertListEqual(fetched, [i for i in range(1, 10)])
 
+    @patch("ray.wait")
+    def test_reset_workers_pendingFetchesFromFailedWorkersRemoved(self, rayWaitMock):
+        pool = TaskPool()
+        tasks = [] # We need to hold onto the tasks for this test so that we can fail a specific worker
+        for i in range(10):
+            task = createMockWorkerAndObjectId(i)
+            pool.add(*task)
+            tasks.append(task)
+
+        # Simulate only some of the work being complete and fetch a couple of tasks in order to fill
+        # the fetching queue
+        rayWaitMock.return_value = ([0, 1, 2, 3, 4, 5], [6, 7, 8, 9])
+        fetched = [pair[1] for pair in pool.completed_prefetch(max_yield=2)]
+        
+        # As we still have some pending tasks, we need to update the completion states to remove the completed tasks
+        rayWaitMock.return_value = ([], [6, 7, 8, 9])
+
+        pool.reset_workers([
+            tasks[0][0],
+            tasks[1][0],
+            tasks[2][0],
+            tasks[3][0],
+            # OH NO! WORKER 4 HAS CRASHED!
+            tasks[5][0],
+            tasks[6][0],
+            tasks[7][0],
+            tasks[8][0],
+            tasks[9][0]
+        ])
+
+        # Fetch the remaining tasks which should already be in the _fetching queue
+        fetched = [pair[1] for pair in pool.completed_prefetch()]
+        self.assertListEqual(fetched, [2, 3, 5])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
