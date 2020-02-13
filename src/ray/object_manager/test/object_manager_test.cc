@@ -464,5 +464,7 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   store_executable = std::string(argv[1]);
   wait_timeout_ms = std::stoi(std::string(argv[2]));
+  ray::RayLog::StartRayLog("object_manager_test", ray::RayLogLevel::DEBUG, "");
+  ray::RayLog::InstallFailureSignalHandler();
   return RUN_ALL_TESTS();
 }

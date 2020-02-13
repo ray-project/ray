@@ -171,6 +171,8 @@ class CoreWorkerTest : public ::testing::Test {
                 store_socket_name + " " + raylet_socket_name + " " +
                 std::to_string(port) + "\"")
         .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
+        .append(" > " + raylet_socket_name + ".out")
+        .append(" 2> " + raylet_socket_name + ".err")
         .append(" & echo $! > " + raylet_socket_name + ".pid");
 
     RAY_LOG(DEBUG) << "Ray Start command: " << ray_start_cmd;
@@ -1050,5 +1052,7 @@ int main(int argc, char **argv) {
   raylet_monitor_executable = std::string(argv[4]);
   mock_worker_executable = std::string(argv[5]);
   gcs_server_executable = std::string(argv[6]);
+  ray::RayLog::StartRayLog("core_worker_test", ray::RayLogLevel::INFO, "");
+  ray::RayLog::InstallFailureSignalHandler();
   return RUN_ALL_TESTS();
 }
