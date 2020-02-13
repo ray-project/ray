@@ -53,7 +53,7 @@ pip install -q scipy cython==0.29.0 \
   torch==$torch_version torchvision \
   gast==0.2.2 gym gym[atari] atari_py opencv-python-headless pyyaml \
   pandas==0.24.2 requests feather-format lxml lz4 \
-  openpyxl xlrd py-spy setproctitle pytest-timeout networkx tabulate psutil \
+  openpyxl xlrd py-spy pytest-timeout networkx tabulate \
   aiohttp uvicorn dataclasses pygments werkzeug kubernetes flask grpcio \
   pytest-sugar pytest-rerunfailures pytest-asyncio blist \
   scikit-learn
