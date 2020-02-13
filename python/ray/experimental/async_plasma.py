@@ -1,12 +1,9 @@
 import asyncio
-import ctypes
 
 import ray
 from ray.services import logger
 from collections import defaultdict
 from typing import List
-
-INT64_SIZE = ctypes.sizeof(ctypes.c_int64)
 
 
 class PlasmaObjectFuture(asyncio.Future):
@@ -36,19 +33,30 @@ class PlasmaEventHandler:
                 fut.cancel()
 
     def _complete_future(self, futures: List[asyncio.Future], ray_object_id):
+        logger.debug(
+            "Completing plasma futures for object id {}".format(ray_object_id))
+
         obj = ray.get(ray_object_id)
         for fut in futures:
-            try:
-                fut.set_result(obj)
-            except asyncio.InvalidStateError:
-                # Avoid issues where process_notifications
-                # and check_ready both get executed
-                pass
-        try:
-            self._waiting_dict.pop(ray_object_id)
-        except KeyError:
-            # Same situation as above
-            pass
+            loop = fut._loop
+
+            def complete_closure():
+                try:
+                    fut.set_result(obj)
+                except asyncio.InvalidStateError:
+                    # Avoid issues where process_notifications
+                    # and check_ready both get executed
+                    logger.debug("Failed to set result for future {}."
+                                 "It's ok.".format(fut))
+
+            loop.call_soon_threadsafe(complete_closure)
+
+        self._waiting_dict.pop(ray_object_id)
+
+    def check_immediately(self, object_id, future):
+        ready, _ = ray.wait([object_id], timeout=0)
+        if ready:
+            self._complete_future([future], object_id)
 
     def as_future(self, object_id, check_ready=True):
         """Turn an object_id into a Future object.
@@ -62,19 +70,9 @@ class PlasmaEventHandler:
         """
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Input should be a Ray ObjectID.")
-        fut = PlasmaObjectFuture(loop=self._loop)
 
-        self._waiting_dict[object_id].append(fut)
+        future = PlasmaObjectFuture(loop=self._loop)
+        self._waiting_dict[object_id].append(future)
+        self.check_immediately(object_id, future)
 
-        if check_ready:
-            ready, _ = ray.wait([object_id], timeout=0)
-            if ready:
-                if self._loop.get_debug():
-                    logger.debug("%s has been ready.", object_id)
-                if not fut.done():
-                    self._complete_future([fut], object_id)
-                return fut
-        if self._loop.get_debug():
-            logger.debug("%s added to the waiting list.", fut)
-
-        return fut
+        return future
