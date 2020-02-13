@@ -240,20 +240,17 @@ class CoreWorkerTest : public ::testing::Test {
   void TestNormalTask(std::unordered_map<std::string, double> &resources);
 
   // Test actor tasks.
-  void TestActorTask(std::unordered_map<std::string, double> &resources,
-                     bool is_direct_call);
+  void TestActorTask(std::unordered_map<std::string, double> &resources);
 
   // Test actor failure case, verify that the tasks would either succeed or
   // fail with exceptions, in that case the return objects fetched from `Get`
   // contain errors.
-  void TestActorFailure(std::unordered_map<std::string, double> &resources,
-                        bool is_direct_call);
+  void TestActorFailure(std::unordered_map<std::string, double> &resources);
 
   // Test actor failover case. Verify that actor can be reconstructed successfully,
   // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
-  void TestActorReconstruction(std::unordered_map<std::string, double> &resources,
-                               bool is_direct_call);
+  void TestActorReconstruction(std::unordered_map<std::string, double> &resources);
 
  protected:
   bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id,
@@ -347,8 +344,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
   }
 }
 
-void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &resources,
-                                   bool is_direct_call) {
+void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
                     node_manager_port, nullptr);
@@ -435,7 +431,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 }
 
 void CoreWorkerTest::TestActorReconstruction(
-    std::unordered_map<std::string, double> &resources, bool is_direct_call) {
+    std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
                     node_manager_port, nullptr);
@@ -496,8 +492,8 @@ void CoreWorkerTest::TestActorReconstruction(
   }
 }
 
-void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &resources,
-                                      bool is_direct_call) {
+void CoreWorkerTest::TestActorFailure(
+    std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
                     node_manager_port, nullptr);
@@ -1013,46 +1009,34 @@ TEST_F(TwoNodeTest, TestNormalTaskCrossNodes) {
 
 TEST_F(SingleNodeTest, TestActorTaskLocal) {
   std::unordered_map<std::string, double> resources;
-  TestActorTask(resources, false);
+  TestActorTask(resources);
 }
 
 TEST_F(TwoNodeTest, TestActorTaskCrossNodes) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
-  TestActorTask(resources, false);
+  TestActorTask(resources);
 }
 
-TEST_F(SingleNodeTest, TestDirectActorTaskLocal) {
+TEST_F(SingleNodeTest, TestActorTaskLocalReconstruction) {
   std::unordered_map<std::string, double> resources;
-  TestActorTask(resources, true);
+  TestActorReconstruction(resources);
 }
 
-TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodes) {
-  std::unordered_map<std::string, double> resources;
-  resources.emplace("resource1", 1);
-  TestActorTask(resources, true);
-}
-
-TEST_F(SingleNodeTest, TestDirectActorTaskLocalReconstruction) {
-  std::unordered_map<std::string, double> resources;
-  TestActorReconstruction(resources, true);
-}
-
-TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesReconstruction) {
+TEST_F(TwoNodeTest, TestActorTaskCrossNodesReconstruction) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
-  TestActorReconstruction(resources, true);
 }
 
-TEST_F(SingleNodeTest, TestDirectActorTaskLocalFailure) {
+TEST_F(SingleNodeTest, TestActorTaskLocalFailure) {
   std::unordered_map<std::string, double> resources;
-  TestActorFailure(resources, true);
+  TestActorFailure(resources);
 }
 
-TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
+TEST_F(TwoNodeTest, TestActorTaskCrossNodesFailure) {
   std::unordered_map<std::string, double> resources;
   resources.emplace("resource1", 1);
-  TestActorFailure(resources, true);
+  TestActorFailure(resources);
 }
 
 }  // namespace ray
