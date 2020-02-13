@@ -3,16 +3,13 @@ import requests
 from ray.dashboard.hosted_dashboard.exporter import Exporter
 
 class DashboardClient:
-    """Managing the communication to hosted dashboard.
+    """Managing the authentication to external services.
 
     Args:
-        dashboard_controller (BaseDashboardController): Dashboard
-            controller that is used to export metrics.
-        hosted_dashboard_addr (str): The address users host their
-            dashboard.
+        host: Host address of service that are used to authenticate.
+        port: Port of the host that are used to authenticate.
 
     Attributes:
-        ingestor_url(str): Address that metrics will be exported.
         exporter(Exporter): Exporter thread that keeps exporting
             metrics to the external services.
     """

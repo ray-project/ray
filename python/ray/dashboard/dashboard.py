@@ -32,9 +32,10 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
-from ray.dashboard.hosted_dashboard.dashboard_client import DashboardClient
 from ray.dashboard.dashboard_controller_interface \
     import BaseDashboardController
+from ray.dashboard.hosted_dashboard.dashboard_client import DashboardClient
+from ray.dashboard.hosted_dashboard.exporter import Exporter
 
 try:
     from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -201,6 +202,12 @@ class DashboardController(BaseDashboardController):
     def start_collecting_metrics(self):
         self.node_stats.start()
         self.raylet_stats.start()
+
+    def start_exporting_metrics(self, auth_info):
+        exporter = Exporter(self.auth_info.get("ingestor_url"), 
+                            self.auth_info.get("access_token"), 
+                            dashboard_controller)
+        exporter.start()
 
 
 class Dashboard(object):

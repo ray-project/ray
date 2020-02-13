@@ -16,7 +16,8 @@ from ray.dashboard.closed_source.ingest_server \
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
+# TODO(sang) Refactor to have more scalable structure
+# TODO(sang) Add args
 if __name__ == '__main__':
     redis_client = redis.StrictRedis(host="127.0.0.1", port=6379)
     p = redis_client.pubsub(ignore_subscribe_messages=True)
@@ -26,6 +27,7 @@ if __name__ == '__main__':
     metrics_mem_usage = Gauge("ray_metrics_mem_usage", "Memory usage of pid residing in a host.", labelnames=("pid", "host", "ip"))
 
     # Start up the server to expose the metrics.
+    # TODO(sang) Read from args
     host, port = '127.0.0.1', 8000
     logger.info('Server listening on port {} at address {}'.format(host, port))
     start_http_server(port)
@@ -35,8 +37,6 @@ if __name__ == '__main__':
         data = x["data"]
         channel = ray.utils.decode(x["channel"])
         data = json.loads(ray.utils.decode(data))
-        print(channel)
-        print(data)
 
         if channel == NODE_INFO_CHANNEL:
             clients = data['clients']

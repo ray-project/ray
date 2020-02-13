@@ -1089,6 +1089,7 @@ def start_dashboard(require_webui,
         else:
             # TODO(sang): Find a way to read hosted dashboard url
             dashboard_url = "localhost:8266"
+            logger.info("Dashboard is running in a host {}".format(dashboard_url))
             
         logger.info("View the Ray dashboard at {}{}{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
