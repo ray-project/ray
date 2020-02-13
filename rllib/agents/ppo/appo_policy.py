@@ -224,7 +224,7 @@ def build_appo_model(policy, obs_space, action_space, config):
 
 def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
-    action_dist = dist_class(model_out)  # , model)
+    action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
         is_multidiscrete = False
@@ -254,8 +254,8 @@ def build_appo_surrogate_loss(policy, model, dist_class, train_batch):
     unpacked_old_policy_behaviour_logits = tf.split(
         old_policy_behaviour_logits, output_hidden_shape, axis=1)
     unpacked_outputs = tf.split(model_out, output_hidden_shape, axis=1)
-    old_policy_action_dist = dist_class(old_policy_behaviour_logits)  # , model
-    prev_action_dist = dist_class(behaviour_logits)  # , policy.model)
+    old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
+    prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
 
     policy.model_vars = policy.model.variables()

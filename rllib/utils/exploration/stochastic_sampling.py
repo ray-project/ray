@@ -9,7 +9,7 @@ torch, _ = try_import_torch()
 class StochasticSampling(Exploration):
     """An exploration that simply samples from a distribution.
 
-    The sampling can be made deterministic by passing exploit=True into
+    The sampling can be made deterministic by passing explore=False into
     the call to `get_exploration_action`.
     Also allows for scheduled parameters for the distributions, such as
     lowering stddev, temperature, etc.. over time.
@@ -47,7 +47,7 @@ class StochasticSampling(Exploration):
                                model_output,
                                model,
                                action_dist_class=None,
-                               exploit=False,
+                               explore=True,
                                timestep=None):
         kwargs = self.static_params.copy()
 
@@ -58,27 +58,27 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(model_output, **kwargs)
+        action_dist = action_dist_class(model_output, model, **kwargs)
 
         if self.framework == "tf":
-            return self._get_tf_exploration_action_op(action_dist, exploit)
+            return self._get_tf_exploration_action_op(action_dist, explore)
         else:
-            return self._get_torch_exploration_action(action_dist, exploit)
+            return self._get_torch_exploration_action(action_dist, explore)
 
     @staticmethod
-    def _get_tf_exploration_action_op(action_dist, exploit):
+    def _get_tf_exploration_action_op(action_dist, explore):
         action = tf.cond(
-            pred=exploit,
-            true_fn=lambda: action_dist.deterministic_sample(),
-            false_fn=lambda: action_dist.sample())
+            pred=explore,
+            true_fn=lambda: action_dist.sample(),
+            false_fn=lambda: action_dist.deterministic_sample())
         return action, action_dist.sampled_action_logp()
 
     @staticmethod
-    def _get_torch_exploration_action(action_dist, exploit):
-        if exploit is True:
-            action = action_dist.deterministic_sample()
-            logp = None
-        else:
+    def _get_torch_exploration_action(action_dist, explore):
+        if explore is True:
             action = action_dist.sample()
             logp = action_dist.sampled_action_logp()
+        else:
+            action = action_dist.deterministic_sample()
+            logp = None
         return action, logp

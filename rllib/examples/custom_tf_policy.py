@@ -15,7 +15,7 @@ parser.add_argument("--iters", type=int, default=200)
 
 def policy_gradient_loss(policy, model, dist_class, train_batch):
     logits, _ = model.from_batch(train_batch)
-    action_dist = dist_class(logits)  # , model)
+    action_dist = dist_class(logits, model)
     return -tf.reduce_mean(
         action_dist.logp(train_batch["actions"]) * train_batch["returns"])
 

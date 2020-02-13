@@ -15,7 +15,7 @@ class TestPolicy(Policy):
                         prev_action_batch=None,
                         prev_reward_batch=None,
                         episodes=None,
-                        exploit=False,
+                        explore=None,
                         timestep=None,
                         **kwargs):
         return [random.choice([0, 1])] * len(obs_batch), [], {}

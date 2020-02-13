@@ -24,7 +24,7 @@ def post_process_advantages(policy,
 def pg_tf_loss(policy, model, dist_class, train_batch):
     """The basic policy gradients loss."""
     logits, _ = model.from_batch(train_batch)
-    action_dist = dist_class(logits)  # , model)
+    action_dist = dist_class(logits, model)
     return -tf.reduce_mean(
         action_dist.logp(train_batch[SampleBatch.ACTIONS]) *
         train_batch[Postprocessing.ADVANTAGES])

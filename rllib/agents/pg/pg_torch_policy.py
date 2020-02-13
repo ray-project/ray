@@ -11,7 +11,7 @@ torch, _ = try_import_torch()
 def pg_torch_loss(policy, model, dist_class, train_batch):
     """The basic policy gradients loss."""
     logits, _ = model.from_batch(train_batch)
-    action_dist = dist_class(logits)  # , model)
+    action_dist = dist_class(logits, model)
     log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
     # Save the error in the policy object.
     # policy.pi_err = -train_batch[Postprocessing.ADVANTAGES].dot(

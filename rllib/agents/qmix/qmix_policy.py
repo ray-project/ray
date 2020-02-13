@@ -155,6 +155,7 @@ class QMixTorchPolicy(Policy):
     dict space with an action_mask key, e.g. {"obs": ob, "action_mask": mask}.
     The mask space must be `Box(0, 1, (n_actions,))`.
     """
+
     def __init__(self, obs_space, action_space, config):
         _validate(obs_space, action_space)
         config = dict(ray.rllib.agents.qmix.qmix.DEFAULT_CONFIG, **config)
@@ -251,7 +252,9 @@ class QMixTorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
+                        explore=None,
                         **kwargs):
+        explore = explore if explore is not None else self.config["explore"]
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
         # We need to ensure we do not use the env global state
         # to compute actions
@@ -271,7 +274,8 @@ class QMixTorchPolicy(Policy):
             masked_q_values[avail == 0.0] = -float("inf")
             # epsilon-greedy action selector
             random_numbers = th.rand_like(q_values[:, :, 0])
-            pick_random = (random_numbers < self.cur_epsilon).long()
+            pick_random = (random_numbers < (self.cur_epsilon
+                                             if explore else 0.0)).long()
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
                        (1 - pick_random) * masked_q_values.argmax(dim=2))

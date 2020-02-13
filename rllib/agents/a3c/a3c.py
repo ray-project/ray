@@ -12,7 +12,6 @@ DEFAULT_CONFIG = with_common_config({
     # If true, use the Generalized Advantage Estimator (GAE)
     # with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
     "use_gae": True,
-
     # Size of rollout batch
     "sample_batch_size": 10,
     # GAE(gamma) parameter

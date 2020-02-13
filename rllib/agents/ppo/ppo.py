@@ -67,17 +67,6 @@ DEFAULT_CONFIG = with_common_config({
     # usually slower, but you might want to try it if you run into issues with
     # the default optimizer.
     "simple_optimizer": False,
-
-    # === Exploration Settings (Experimental) ===
-    "exploration": {
-        # The Exploration class to use. In the simplest case, this is the name
-        # (str) of any class present in the `rllib.utils.exploration` package.
-        # You can also provide the python class directly or the full location
-        # of your class (e.g. "ray.rllib.utils.exploration.stochastic_sampling.
-        # StochasticSampling").
-        "type": "StochasticSampling",
-        # TODO(sven): time-dependent parameters (temp, stddev, etc..)
-    },
     # Use PyTorch as framework?
     "use_pytorch": False
 })

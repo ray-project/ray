@@ -36,12 +36,8 @@ DEFAULT_CONFIG = with_common_config({
     "n_step": 1,
 
     # === Exploration Settings (Experimental) ===
-    "exploration": {
-        # The Exploration class to use. In the simplest case, this is the name
-        # (str) of any class present in the `rllib.utils.exploration` package.
-        # You can also provide the python class directly or the full location
-        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-        # EpsilonGreedy").
+    "exploration_config": {
+        # The Exploration class to use.
         "type": "EpsilonGreedy",
         # Config for the Exploration class' constructor:
         "initial_epsilon": 1.0,
@@ -49,7 +45,7 @@ DEFAULT_CONFIG = with_common_config({
         "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
 
         # For soft_q, use:
-        # "exploration" = {
+        # "exploration_config" = {
         #   "type": "SoftQ"
         #   "temperature": [float, e.g. 1.0]
         # }
@@ -167,22 +163,23 @@ def validate_config_and_setup_param_noise(config):
     if "schedule_max_timesteps" in config and \
             config["schedule_max_timesteps"] > 0:
         deprecation_warning(
-            "schedule_max_timesteps", "exploration.epsilon_timesteps AND "
+            "schedule_max_timesteps",
+            "exploration_config.epsilon_timesteps AND "
             "prioritized_replay_beta_annealing_timesteps")
         schedule_max_timesteps = config["schedule_max_timesteps"]
     if "exploration_final_eps" in config and \
             config["exploration_final_eps"] > 0:
         deprecation_warning("exploration_final_eps",
-                            "exploration.final_epsilon")
-        if isinstance(config["exploration"], dict):
-            config["exploration"]["final_epsilon"] = \
+                            "exploration_config.final_epsilon")
+        if isinstance(config["exploration_config"], dict):
+            config["exploration_config"]["final_epsilon"] = \
                 config.pop("exploration_final_eps")
     if "exploration_fraction" in config and config["exploration_fraction"] > 0:
         assert schedule_max_timesteps is not None
         deprecation_warning("exploration_fraction",
-                            "exploration.epsilon_timesteps")
-        if isinstance(config["exploration"], dict):
-            config["exploration"]["epsilon_timesteps"] = config.pop(
+                            "exploration_config.epsilon_timesteps")
+        if isinstance(config["exploration_config"], dict):
+            config["exploration_config"]["epsilon_timesteps"] = config.pop(
                 "exploration_fraction") * schedule_max_timesteps
     if "beta_annealing_fraction" in config and \
             config["beta_annealing_fraction"] > 0:
@@ -195,21 +192,23 @@ def validate_config_and_setup_param_noise(config):
     if "per_worker_exploration" in config and \
             config["per_worker_exploration"] != -1:
         deprecation_warning("per_worker_exploration",
-                            "exploration.type=PerWorkerEpsilonGreedy")
-        if isinstance(config["exploration"], dict):
-            config["exploration"]["type"] = PerWorkerEpsilonGreedy
+                            "exploration_config.type=PerWorkerEpsilonGreedy")
+        if isinstance(config["exploration_config"], dict):
+            config["exploration_config"]["type"] = PerWorkerEpsilonGreedy
     if config.get("softmax_temp", -1) != -1:
         deprecation_warning(
-            "soft_q",
-            "exploration={type=StochasticSampling, temperature=[float]}")
+            "soft_q", "exploration_config={"
+            "type=StochasticSampling, temperature=[float]"
+            "}")
         if config.get("softmax_temp", 1.0) < 0.00001:
             logger.warning("softmax temp very low: Clipped it to 0.00001.")
             config["softmax_temperature"] = 0.00001
     if config.get("soft_q", -1) != -1:
         deprecation_warning(
-            "soft_q",
-            "exploration={type=StochasticSampling, temperature=[float]}")
-        config["exploration"] = {
+            "soft_q", "exploration_config={"
+            "type=StochasticSampling, temperature=[float]"
+            "}")
+        config["exploration_config"] = {
             "type": "SoftQ",
             "temperature": config.get("softmax_temp", 1.0)
         }

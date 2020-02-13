@@ -38,7 +38,6 @@ DEFAULT_CONFIG = with_common_config({
     "no_done_at_end": True,
     # N-step target updates
     "n_step": 1,
-
     # === Evaluation ===
     # The evaluation stats will be reported under the "evaluation" metric key.
     "evaluation_interval": 1,
@@ -49,7 +48,6 @@ DEFAULT_CONFIG = with_common_config({
         "exploration": False,
     },
 
-    # === Exploration ===
     # Number of env steps to optimize for before returning
     "timesteps_per_iteration": 100,
 

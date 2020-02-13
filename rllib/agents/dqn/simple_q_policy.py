@@ -93,7 +93,7 @@ def simple_sample_action_from_q_network(policy,
                                         input_dict,
                                         obs_space,
                                         action_space,
-                                        exploit,
+                                        explore,
                                         config,
                                         timestep,
                                         q_values_func=None):
@@ -105,16 +105,9 @@ def simple_sample_action_from_q_network(policy,
     policy.q_values = ret[0] if isinstance(ret, tuple) else ret
     policy.q_func_vars = q_model.variables()
 
-    # Get exploration action.
-    if policy.exploration:
-        policy.output_actions, policy.action_logp = \
-            policy.exploration.get_exploration_action(
-                policy.q_values, q_model, Categorical, exploit, timestep)
-    # No exploration: Return argmax.
-    else:
-        policy.output_actions = tf.argmax(policy.q_values, axis=1)
-        policy.action_logp = tf.ones_like(
-            policy.output_actions, dtype=tf.float32)
+    policy.output_actions, policy.action_logp = \
+        policy.exploration.get_exploration_action(
+            policy.q_values, q_model, Categorical, explore, timestep)
 
     return policy.output_actions, policy.action_logp
 

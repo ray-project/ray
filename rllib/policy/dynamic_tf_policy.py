@@ -109,7 +109,7 @@ class DynamicTFPolicy(TFPolicy):
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
 
-        exploit = tf.placeholder_with_default(False, (), name="is_exploiting")
+        explore = tf.placeholder_with_default(False, (), name="is_exploring")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -167,17 +167,17 @@ class DynamicTFPolicy(TFPolicy):
         if action_sampler_fn:
             action, logp = action_sampler_fn(
                 self, self.model, self._input_dict, obs_space, action_space,
-                exploit, config, self._timestep)
+                explore, config, self._timestep)
         # Create a default action sampler.
         else:
             # Using an exporation setup.
-            action_dist = self.dist_class(model_out)  # , self.model)
+            action_dist = self.dist_class(model_out, self.model)
             if exploration:
                 action, logp = exploration.get_exploration_action(
                     model_out,
                     self.model,
                     action_dist_class=self.dist_class,
-                    exploit=exploit,
+                    explore=explore,
                     timestep=timestep)
             # If no exploration setup: Act deterministically.
             else:
@@ -212,7 +212,7 @@ class DynamicTFPolicy(TFPolicy):
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
             exploration=exploration,
-            exploit=exploit,
+            explore=explore,
             timestep=timestep)
 
         # Phase 2 init.

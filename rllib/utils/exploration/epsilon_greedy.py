@@ -68,17 +68,17 @@ class EpsilonGreedy(Exploration):
                                model_output,
                                model,
                                action_dist_class=None,
-                               exploit=False,
+                               explore=True,
                                timestep=None):
 
         if self.framework == "tf":
-            return self._get_tf_exploration_action_op(model_output, exploit,
+            return self._get_tf_exploration_action_op(model_output, explore,
                                                       timestep)
         else:
-            return self._get_torch_exploration_action(model_output, exploit,
+            return self._get_torch_exploration_action(model_output, explore,
                                                       timestep)
 
-    def _get_tf_exploration_action_op(self, model_output, exploit, timestep):
+    def _get_tf_exploration_action_op(self, model_output, explore, timestep):
         """Tf method to produce the tf op for an epsilon exploration action.
 
         Args:
@@ -110,12 +110,12 @@ class EpsilonGreedy(Exploration):
             < epsilon
 
         action = tf.cond(
-            pred=tf.constant(exploit, dtype=tf.bool)
-            if isinstance(exploit, bool) else exploit,
-            true_fn=lambda: exploit_action,
-            false_fn=(
+            pred=tf.constant(explore, dtype=tf.bool)
+            if isinstance(explore, bool) else explore,
+            true_fn=(
                 lambda: tf.where(chose_random, random_actions, exploit_action)
-            ))
+            ),
+            false_fn=lambda: exploit_action)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         assign_op = \
@@ -124,7 +124,7 @@ class EpsilonGreedy(Exploration):
         with tf.control_dependencies([assign_op]):
             return action, tf.zeros_like(action, dtype=tf.float32)
 
-    def _get_torch_exploration_action(self, model_output, exploit, timestep):
+    def _get_torch_exploration_action(self, model_output, explore, timestep):
         """Torch method to produce an epsilon exploration action.
 
         Args:
@@ -140,11 +140,8 @@ class EpsilonGreedy(Exploration):
         _, exploit_action = torch.max(model_output, 1)
         action_logp = torch.zeros_like(exploit_action)
 
-        # Return the deterministic "sample" (argmax) over the logits.
-        if exploit:
-            return exploit_action, action_logp
         # Explore.
-        else:
+        if explore:
             # Get the current epsilon.
             epsilon = self.epsilon_schedule(self.last_timestep)
             batch_size = model_output.size()[0]
@@ -163,6 +160,9 @@ class EpsilonGreedy(Exploration):
                 random_actions, exploit_action)
 
             return action, action_logp
+        # Return the deterministic "sample" (argmax) over the logits.
+        else:
+            return exploit_action, action_logp
 
     @override(Exploration)
     def get_info(self):

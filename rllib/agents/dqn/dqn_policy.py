@@ -202,12 +202,12 @@ def build_q_model(policy, obs_space, action_space, config):
 
 
 def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-                                 action_space, exploit, config, timestep):
+                                 action_space, explore, config, timestep):
 
     policy.output_actions, policy.action_logp = \
         simple_sample_action_from_q_network(
             policy, q_model, input_dict, obs_space,
-            action_space, exploit, config, timestep, _compute_q_values)
+            action_space, explore, config, timestep, _compute_q_values)
 
     # Noise vars for Q network except for layer normalization vars.
     if config["parameter_noise"]:

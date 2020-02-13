@@ -36,7 +36,7 @@ class A3CLoss:
 
 def actor_critic_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
-    action_dist = dist_class(model_out)  # , model)
+    action_dist = dist_class(model_out, model)
     policy.loss = A3CLoss(action_dist, train_batch[SampleBatch.ACTIONS],
                           train_batch[Postprocessing.ADVANTAGES],
                           train_batch[Postprocessing.VALUE_TARGETS],

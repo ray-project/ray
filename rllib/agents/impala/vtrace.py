@@ -95,7 +95,7 @@ def multi_log_probs_from_logits_and_actions(policy_logits, actions, dist_class,
                                   tf.concat([[-1], a_shape[2:]], axis=0))
         log_probs.append(
             tf.reshape(
-                dist_class(policy_logits_flat).logp(actions_flat),  # , model)
+                dist_class(policy_logits_flat, model).logp(actions_flat),
                 a_shape[:2]))
 
     return log_probs

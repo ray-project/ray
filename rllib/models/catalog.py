@@ -101,7 +101,7 @@ class ModelCatalog:
         >>> dist_class, dist_dim = ModelCatalog.get_action_dist(
                 env.action_space, {})
         >>> model = ModelCatalog.get_model(inputs, dist_dim, options)
-        >>> dist = dist_class(model.outputs)  # , model)
+        >>> dist = dist_class(model.outputs, model)
         >>> action = dist.sample()
     """
 
@@ -192,7 +192,7 @@ class ModelCatalog:
             raise NotImplementedError("Unsupported args: {} {}".format(
                 action_space, dist_type))
 
-        return dist, dist.required_model_output_shape(action_space)  # , config
+        return dist, dist.required_model_output_shape(action_space, config)
 
     @staticmethod
     @DeveloperAPI

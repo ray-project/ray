@@ -138,7 +138,7 @@ class ModelCatalogTest(unittest.TestCase):
         dist_input = tf.placeholder(tf.float32, (None, ) + param_shape)
         model = Model()
         model.model_config = model_config
-        dist = dist_cls(dist_input)  # , model=model)
+        dist = dist_cls(dist_input, model=model)
         self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])
         self.assertIsInstance(dist.sample(), tf.Tensor)
         with self.assertRaises(NotImplementedError):
@@ -151,7 +151,7 @@ class ModelCatalogTest(unittest.TestCase):
         self.assertEqual(param_shape, (3, ))
         dist_input = tf.placeholder(tf.float32, (None, ) + param_shape)
         model.model_config = model_config
-        dist = dist_cls(dist_input)  # , model=model)
+        dist = dist_cls(dist_input, model=model)
         self.assertEqual(dist.sample().shape[1:], dist_input.shape[1:])
         self.assertIsInstance(dist.sample(), tf.Tensor)
         with self.assertRaises(NotImplementedError):

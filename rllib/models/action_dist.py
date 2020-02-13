@@ -11,7 +11,7 @@ class ActionDistribution:
     """
 
     @DeveloperAPI
-    def __init__(self, inputs):  # , model):
+    def __init__(self, inputs, model):
         """Initialize the action dist.
 
         Arguments:
@@ -22,7 +22,7 @@ class ActionDistribution:
                 see examples/autoregressive_action_dist.py).
         """
         self.inputs = inputs
-        # self.model = model
+        self.model = model
 
     @DeveloperAPI
     def sample(self):
@@ -76,7 +76,7 @@ class ActionDistribution:
 
     @DeveloperAPI
     @staticmethod
-    def required_model_output_shape(action_space):  # , model_config):
+    def required_model_output_shape(action_space, model_config):
         """Returns the required shape of an input parameter tensor for a
         particular action space and an optional dict of distribution-specific
         options.

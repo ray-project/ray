@@ -32,7 +32,7 @@ class Exploration:
                                model_output,
                                model,
                                action_dist_class=None,
-                               exploit=False,
+                               explore=True,
                                timestep=None):
         """Returns a (possibly) exploratory action.
 
@@ -44,8 +44,8 @@ class Exploration:
                 (e.g. q-values or PG-logits).
             model (ModelV2): The Model object.
             action_dist_class: The ActionDistribution class.
-            exploit (bool): False: "Normal" exploration behavior.
-                True: Suppress all exploratory behavior and return
+            explore (bool): True: "Normal" exploration behavior.
+                False: Suppress all exploratory behavior and return
                     a deterministic action.
             timestep (int): The current sampling time step. If None, the
                 component should try to use an internal counter, which it

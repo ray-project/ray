@@ -41,7 +41,7 @@ class TestPPO(unittest.TestCase):
         for i in range(num_iterations):
             trainer.train()
 
-    def test_ppo_exploration_and_exploit_setup(self):
+    def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
         config = ppo.DEFAULT_CONFIG.copy()
         config["eager"] = True
@@ -52,10 +52,10 @@ class TestPPO(unittest.TestCase):
 
         # Default Agent should be setup with StochasticSampling.
         trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
-        # Due to exploit=True, always expect the same (deterministic) action.
+        # Due to explore=False, always expect the same (deterministic) action.
         a_ = trainer.compute_action(
             obs,
-            exploit=True,
+            explore=False,
             prev_action=np.array(2),
             prev_reward=np.array(1.0))
         # Test whether this is really the argmax action over the logits.
@@ -63,12 +63,12 @@ class TestPPO(unittest.TestCase):
         for _ in range(50):
             a = trainer.compute_action(
                 obs,
-                exploit=True,
+                explore=False,
                 prev_action=np.array(2),
                 prev_reward=np.array(1.0))
             check(a, a_)
 
-        # With exploit=False (default), expect stochastic actions.
+        # With explore=True (default), expect stochastic actions.
         actions = []
         for _ in range(300):
             actions.append(

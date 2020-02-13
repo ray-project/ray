@@ -32,12 +32,12 @@ class TestDQN(unittest.TestCase):
 
         # Default EpsilonGreedy setup.
         trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
-        # Setting exploit=True should always return the same action.
-        a_ = trainer.compute_action(observation=np.array(0), exploit=True)
+        # Setting explore=False should always return the same action.
+        a_ = trainer.compute_action(observation=np.array(0), explore=False)
         for _ in range(50):
-            a = trainer.compute_action(observation=np.array(0), exploit=True)
+            a = trainer.compute_action(observation=np.array(0), explore=False)
             check(a, a_)
-        # exploit=False should return different (random) actions.
+        # explore=None (by default: explore) should return different actions.
         actions = []
         for _ in range(50):
             actions.append(trainer.compute_action(observation=np.array(0)))
@@ -57,11 +57,11 @@ class TestDQN(unittest.TestCase):
         config["exploration"]["temperature"] = 1.0
         trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
 
-        # Even with the higher temperature, if we set exploit=True, we should
+        # Even with the higher temperature, if we set explore=False, we should
         # expect the same actions always.
-        a_ = trainer.compute_action(observation=np.array(0), exploit=True)
+        a_ = trainer.compute_action(observation=np.array(0), explore=False)
         for _ in range(50):
-            a = trainer.compute_action(observation=np.array(0), exploit=True)
+            a = trainer.compute_action(observation=np.array(0), explore=False)
             check(a, a_)
 
         # Due to the higher temp, expect different actions avg'ing around 1.5.

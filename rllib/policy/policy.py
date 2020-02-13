@@ -81,7 +81,7 @@ class Policy(metaclass=ABCMeta):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        exploit=False,
+                        explore=None,
                         timestep=None,
                         **kwargs):
         """Computes actions for the current policy.
@@ -98,9 +98,8 @@ class Policy(metaclass=ABCMeta):
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
-            exploit (bool): Whether to pick an exploitation or exploration
-                action (default: False -> do explore). If "exploration"
-                in the config is False/None, this parameter has no effect.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
@@ -123,7 +122,7 @@ class Policy(metaclass=ABCMeta):
                               info=None,
                               episode=None,
                               clip_actions=False,
-                              exploit=False,
+                              explore=None,
                               timestep=None,
                               **kwargs):
         """Unbatched version of compute_actions.
@@ -138,8 +137,8 @@ class Policy(metaclass=ABCMeta):
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
             clip_actions (bool): should the action be clipped
-            exploit (bool): Whether we should use exploitation or exploration
-                (default) to compute an action.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
@@ -171,7 +170,7 @@ class Policy(metaclass=ABCMeta):
             prev_reward_batch=prev_reward_batch,
             info_batch=info_batch,
             episodes=episodes,
-            exploit=exploit,
+            explore=explore,
             timestep=timestep)
 
         if clip_actions:
@@ -371,7 +370,7 @@ class Policy(metaclass=ABCMeta):
     def _create_exploration(self, action_space, config):
         return from_config(
             Exploration,
-            config.get("exploration"),
+            config["exploration_config"],
             action_space=action_space,
             num_workers=config.get("num_workers"),
             worker_index=config.get("worker_index"),

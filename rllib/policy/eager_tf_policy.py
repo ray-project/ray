@@ -113,7 +113,7 @@ def traced_eager_policy(eager_policy_cls):
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
-                            exploit=False,
+                            explore=None,
                             timestep=None,
                             **kwargs):
 
@@ -129,7 +129,7 @@ def traced_eager_policy(eager_policy_cls):
 
             return self._traced_compute_actions(
                 obs_batch, state_batches, prev_action_batch, prev_reward_batch,
-                info_batch, episodes, exploit, timestep, **kwargs)
+                info_batch, episodes, explore, timestep, **kwargs)
 
         @override(Policy)
         @convert_eager_inputs
@@ -296,9 +296,12 @@ def build_eager_tf_policy(name,
                             prev_reward_batch=None,
                             info_batch=None,
                             episodes=None,
-                            exploit=False,
+                            explore=None,
                             timestep=None,
                             **kwargs):
+
+            explore = explore if explore is not None else \
+                self.config["explore"]
 
             # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
@@ -326,26 +329,26 @@ def build_eager_tf_policy(name,
                 model_out, state_out = self.model(input_dict, state_batches,
                                                   seq_lens)
 
-            # Custom sampler fn given (which should handle self.exploration).
+            # Custom sampler fn given (which may handle self.exploration).
             if action_sampler_fn is not None:
                 action, logp = action_sampler_fn(
                     self, self.model, input_dict, self.observation_space,
-                    self.action_space, exploit, self.config, timestep)
-            # Query exploration component.
-            elif self.exploration:
+                    self.action_space, explore, self.config, timestep)
+            # Use Exploration object.
+            else:
                 action, logp = self.exploration.get_exploration_action(
                     model_out,
                     self.model,
                     action_dist_class=self.dist_class,
-                    exploit=exploit,
+                    explore=explore,
                     timestep=timestep
                     if timestep is not None else self.global_timestep)
             # If no exploration setup: Act deterministically.
-            else:
-                assert self.dist_class
-                action_dist = self.dist_class(model_out)  # , self.model)
-                action = action_dist.deterministic_sample()
-                logp = None
+            # else:
+            #    assert self.dist_class
+            #    action_dist = self.dist_class(model_out, self.model)
+            #    action = action_dist.deterministic_sample()
+            #    logp = None
 
             extra_fetches = {}
             if logp is not None:

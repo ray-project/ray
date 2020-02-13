@@ -68,7 +68,7 @@ class TFPolicy(Policy):
                  batch_divisibility_req=1,
                  update_ops=None,
                  exploration=None,
-                 exploit=None,
+                 is_exploring=None,
                  timestep=None):
         """Initialize the policy.
 
@@ -107,8 +107,8 @@ class TFPolicy(Policy):
                 the current variable scope.
             exploration (Exploration): The exploration object to use for
                 computing actions.
-            exploit (Tensor): Placeholder for deciding, whether
-                to generate an exploiting/exploring action.
+            is_exploring (Tensor): Placeholder for `explore` parameter into
+                call to Exploration.get_exploration_action.
             timestep (Tensor): Placeholder for the global sampling timestep.
         """
         super().__init__(observation_space, action_space, config, exploration)
@@ -119,8 +119,8 @@ class TFPolicy(Policy):
         self._prev_reward_input = prev_reward_input
         self._action = action_sampler
         self._is_training = self._get_is_training_placeholder()
-        self._is_exploiting = tf.placeholder_with_default(
-            True, (), name="is_exploiting")
+        self._is_explorig = tf.placeholder_with_default(
+            True, (), name="is_exploring")
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
                              if self._action_logp is not None else None)
@@ -130,7 +130,7 @@ class TFPolicy(Policy):
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
-        self._exploit = exploit
+        self._is_exploring = is_exploring
         self._stats_fetches = {}
         self._loss_input_dict = None
         self._timestep = timestep if timestep is not None else \
@@ -240,9 +240,10 @@ class TFPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        exploit=False,
+                        explore=None,
                         timestep=None,
                         **kwargs):
+        explore = explore if explore is not None else self.config["explore"]
         builder = TFRunBuilder(self._sess, "compute_actions")
         fetches = self._build_compute_actions(
             builder,
@@ -250,7 +251,7 @@ class TFPolicy(Policy):
             state_batches,
             prev_action_batch,
             prev_reward_batch,
-            exploit=exploit,
+            explore=explore,
             timestep=timestep
             if timestep is not None else self.global_timestep)
         # Execute session run to get action (and other fetches).
@@ -462,8 +463,9 @@ class TFPolicy(Policy):
                                prev_action_batch=None,
                                prev_reward_batch=None,
                                episodes=None,
-                               exploit=False,
+                               explore=None,
                                timestep=None):
+        explore = explore if explore is not None else self.config["explore"]
 
         state_batches = state_batches or []
         if len(self._state_inputs) != len(state_batches):
@@ -481,7 +483,7 @@ class TFPolicy(Policy):
            prev_reward_batch is not None:
             builder.add_feed_dict({self._prev_reward_input: prev_reward_batch})
         builder.add_feed_dict({self._is_training: False})
-        builder.add_feed_dict({self._is_exploiting: exploit})
+        builder.add_feed_dict({self._is_exploring: explore})
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))

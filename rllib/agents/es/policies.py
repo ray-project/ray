@@ -55,7 +55,7 @@ class GenericPolicy:
         model = ModelCatalog.get_model({
             "obs": self.inputs
         }, obs_space, action_space, dist_dim, model_options)
-        dist = dist_class(model.outputs)  # , model)
+        dist = dist_class(model.outputs, model)
         self.sampler = dist.sample()
 
         self.variables = ray.experimental.tf_utils.TensorFlowVariables(

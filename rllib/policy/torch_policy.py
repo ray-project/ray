@@ -64,7 +64,7 @@ class TorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        exploit=False,
+                        explore=None,
                         timestep=None,
                         **kwargs):
 
@@ -79,18 +79,11 @@ class TorchPolicy(Policy):
             model_out = self.model(input_dict, state_batches, [1])
             logits, state = model_out
             action_dist = None
-            # Try our Exploration, if any.
-            if self.exploration:
-                actions, logp = \
-                    self.exploration.get_exploration_action(
-                        logits, self.model, self.dist_class, exploit,
-                        timestep if timestep is not None else
-                        self.global_timestep)
-            # If no exploration setup: Act deterministically.
-            else:
-                action_dist = self.dist_class(logits)  # , self.model)
-                actions = action_dist.deterministic_sample()
-                logp = None
+            actions, logp = \
+                self.exploration.get_exploration_action(
+                    logits, self.model, self.dist_class, explore,
+                    timestep if timestep is not None else
+                    self.global_timestep)
             input_dict[SampleBatch.ACTIONS] = actions
 
             extra_action_out = self.extra_action_out(input_dict, state_batches,
