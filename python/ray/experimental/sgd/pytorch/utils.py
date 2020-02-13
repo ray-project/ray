@@ -203,9 +203,10 @@ def validate(config, model, val_iterator, criterion, scheduler=None):
     stats = {
         BATCH_COUNT: batch_idx + 1,
         "batch_time": batch_time.avg,
-        "validation_loss": losses.avg
+        "validation_loss": losses.avg,
+        "mean_accuracy": correct / total,
+        "mean_loss": losses.sum / total,
     }
-    stats.update(mean_accuracy=correct / total, mean_loss=losses.sum / total)
     return stats
 
 

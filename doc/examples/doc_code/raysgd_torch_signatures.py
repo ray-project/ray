@@ -30,7 +30,7 @@ def model_creator(config):
 # __torch_optimizer_start__
 import torch
 
-def optimizer_creator(models, config):
+def optimizer_creator(model, config):
     """Constructor of one or more Torch optimizers.
 
     Args:
@@ -46,7 +46,7 @@ def optimizer_creator(models, config):
 
 
 # __torch_data_start__
-from ray.experimental.sgd.examples.train_example import LinearDataset
+from ray.experimental.sgd.pytorch.examples.train_example import LinearDataset
 
 def data_creator(config):
     """Constructs torch.utils.data.Dataset objects.
@@ -85,7 +85,7 @@ def loss_creator(config):
 # __torch_scheduler_start__
 import torch
 
-def scheduler_creator(optimizers, config):
+def scheduler_creator(optimizer, config):
     """Constructor of one or more Torch optimizer schedulers.
 
     Args:
