@@ -93,7 +93,7 @@ class TaskSpecBuilder {
       arg->set_metadata(metadata->Data(), metadata->Size());
     }
     for (const auto &inlined_id : value.GetInlinedIds()) {
-      arg->add_inlined_ids(inlined_id.Binary());
+      arg->add_nested_inlined_ids(inlined_id.Binary());
     }
     return *this;
   }

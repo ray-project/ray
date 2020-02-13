@@ -106,7 +106,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     ReferenceCounter::ReferenceTableProto refs;
     if (!arg_id.IsNil()) {
-      rc_.GetAndClearBorrowedRefs({arg_id}, &refs);
+      rc_.GetAndClearLocalBorrowers({arg_id}, &refs);
       // Remove the sentinel reference.
       rc_.RemoveLocalReference(arg_id, nullptr);
     }

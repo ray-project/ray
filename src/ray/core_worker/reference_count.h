@@ -148,19 +148,21 @@ class ReferenceCounter {
 
   /// Populate a table with ObjectIDs that we were or are still borrowing.
   /// This should be called when a task returns, and the argument should be any
-  /// IDs that were serialized in the task spec.
+  /// IDs that were passed by reference in the task spec or that were
+  /// serialized in inlined arguments.
   ///
-  /// See GetAndClearBorrowedRefsInternal for the spec of the returned table
+  /// See GetAndClearLocalBorrowersInternal for the spec of the returned table
   /// and how this mutates the local reference count.
   ///
-  /// \param[in] borrowed_ids The object IDs that we were or are still
-  /// borrowing. These are the IDs that were given to us via task submission
-  /// and includes: (1) any IDs that were inlined in the task spec, and (2) any
-  /// IDs that the task's arguments contained.
+  /// \param[in] borrowed_ids The object IDs that we or another worker were or
+  /// are still borrowing. These are the IDs that were given to us via task
+  /// submission and includes: (1) any IDs that were passed by reference in the
+  /// task spec, and (2) any IDs that were serialized in the task's inlined
+  /// arguments.
   /// \param[out] proto The protobuf table to populate with the borrowed
   /// references.
-  void GetAndClearBorrowedRefs(const std::vector<ObjectID> &borrowed_ids,
-                               ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
+  void GetAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
+                                 ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
 
   /// Wrap an ObjectID(s) inside another object ID.
   ///
@@ -241,15 +243,19 @@ class ReferenceCounter {
     /// this object ID, which is also borrowed. This is used in cases where an
     /// ObjectID is nested. We need to notify the owner of the outer ID of any
     /// borrowers of this object, so we keep this field around until
-    /// GetAndClearBorrowedRefsInternal is called on the outer ID. This field
+    /// GetAndClearLocalBorrowersInternal is called on the outer ID. This field
     /// is updated in 2 cases:
     ///  1. We deserialize an ID that we do not own and that was stored in
     ///     another object that we do not own.
     ///  2. Case (1) occurred for a task that we submitted and we also do not
     ///     own the inner or outer object. Then, we need to notify our caller
     ///     that the task we submitted is a borrower for the inner ID.
-    /// This field is reset to null once GetAndClearBorrowedRefsInternal is
-    /// called on contained_in_borrowed_id.
+    /// This field is reset to null once GetAndClearLocalBorrowersInternal is
+    /// called on contained_in_borrowed_id. For each borrower, this field is
+    /// set at most once during the reference's lifetime. If the object ID is
+    /// later found to be nested in a second object, we do not need to remember
+    /// the second ID because we will already have notified the owner of the
+    /// first outer object about our reference.
     absl::optional<ObjectID> contained_in_borrowed_id;
     /// The object IDs contained in this object. These could be objects that we
     /// own or are borrowing. This field is updated in 2 cases:
@@ -309,19 +315,26 @@ class ReferenceCounter {
   /// - Addresses of new borrowers that we passed the ID to.
   /// - Whether the borrowed ID was contained in another ID that we borrowed.
   ///
-  /// We will also attempt to strip the information put into the returned table
+  /// We will also attempt to clear the information put into the returned table
   /// that we no longer need in our local table. Each reference in the local
   /// table is modified in the following way:
-  /// - For each borrowed ID, remove the addresses of any new borrowers.
+  /// - For each borrowed ID, remove the addresses of any new borrowers. We
+  ///   don't need these anymore because the receiver of the borrowed_refs is
+  ///   either the owner or another borrow who will eventually return the list
+  ///   to the owner.
   /// - For each ID that was contained in a borrowed ID, forget that the ID
-  ///   that contained it.
-  bool GetAndClearBorrowedRefsInternal(const ObjectID &object_id,
-                                       ReferenceTable *borrower_refs)
+  ///   that contained it. We don't need this anymore because we already marked
+  ///   that the borrowed ID contained another ID in the returned
+  ///   borrowed_refs.
+  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+                                         ReferenceTable *borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Merge a worker's borrowed refs, and recursively all refs that they
-  /// contain, into our own ref counts. This is the converse of
-  /// GetAndClearBorrowedRefs. For each ID borrowed by the worker, we will:
+  /// Merge remote borrowers into our local ref count. This will add any
+  /// workers that are still borrowing the given object ID to the local ref
+  /// counts, and recursively any workers that are borrowing object IDs that
+  /// were nested inside. This is the converse of GetAndClearLocalBorrowers.
+  /// For each borrowed object ID, we will:
   /// - Add the worker to our list of borrowers if it is still using the
   ///   reference.
   /// - Add the worker's accumulated borrowers to our list of borrowers.
@@ -330,8 +343,9 @@ class ReferenceCounter {
   ///   owner.
   /// - If we are the owner of the ID, then also contact any new borrowers and
   ///   wait for them to stop using the reference.
-  void MergeBorrowedRefs(const ObjectID &object_id, const rpc::WorkerAddress &worker_addr,
-                         const ReferenceTable &borrowed_refs)
+  void MergeRemoteBorrowers(const ObjectID &object_id,
+                            const rpc::WorkerAddress &worker_addr,
+                            const ReferenceTable &borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Wait for a borrower to stop using its reference. This should only be

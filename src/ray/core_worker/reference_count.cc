@@ -154,7 +154,7 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
     RAY_CHECK(!WorkerID::FromBinary(worker_addr.worker_id()).IsNil());
   }
   for (const ObjectID &object_id : object_ids) {
-    MergeBorrowedRefs(object_id, worker_addr, refs);
+    MergeRemoteBorrowers(object_id, worker_addr, refs);
   }
 
   for (const ObjectID &object_id : object_ids) {
@@ -296,13 +296,13 @@ ReferenceCounter::GetAllReferenceCounts() const {
   return all_ref_counts;
 }
 
-void ReferenceCounter::GetAndClearBorrowedRefs(
+void ReferenceCounter::GetAndClearLocalBorrowers(
     const std::vector<ObjectID> &borrowed_ids,
     ReferenceCounter::ReferenceTableProto *proto) {
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
-    RAY_CHECK(GetAndClearBorrowedRefsInternal(borrowed_id, &borrowed_refs))
+    RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id, &borrowed_refs))
         << borrowed_id;
     // Decrease the ref count for each of the borrowed IDs. This is because we
     // artificially increment each borrowed ID to keep it pinned during task
@@ -316,8 +316,8 @@ void ReferenceCounter::GetAndClearBorrowedRefs(
   ReferenceTableToProto(borrowed_refs, proto);
 }
 
-bool ReferenceCounter::GetAndClearBorrowedRefsInternal(const ObjectID &object_id,
-                                                       ReferenceTable *borrowed_refs) {
+bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+                                                         ReferenceTable *borrowed_refs) {
   RAY_LOG(DEBUG) << "Pop " << object_id;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -349,15 +349,15 @@ bool ReferenceCounter::GetAndClearBorrowedRefsInternal(const ObjectID &object_id
 
   // Attempt to Pop children.
   for (const auto &contained_id : it->second.contains) {
-    GetAndClearBorrowedRefsInternal(contained_id, borrowed_refs);
+    GetAndClearLocalBorrowersInternal(contained_id, borrowed_refs);
   }
 
   return true;
 }
 
-void ReferenceCounter::MergeBorrowedRefs(const ObjectID &object_id,
-                                         const rpc::WorkerAddress &worker_addr,
-                                         const ReferenceTable &borrowed_refs) {
+void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
+                                            const rpc::WorkerAddress &worker_addr,
+                                            const ReferenceTable &borrowed_refs) {
   auto borrower_it = borrowed_refs.find(object_id);
   if (borrower_it == borrowed_refs.end()) {
     return;
@@ -416,7 +416,7 @@ void ReferenceCounter::MergeBorrowedRefs(const ObjectID &object_id,
   // Recursively merge any references that were contained in this object, to
   // handle any borrowers of nested objects.
   for (const auto &inner_id : borrower_ref.contains) {
-    MergeBorrowedRefs(inner_id, worker_addr, borrowed_refs);
+    MergeRemoteBorrowers(inner_id, worker_addr, borrowed_refs);
   }
 }
 
@@ -457,7 +457,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
         const ReferenceTable new_borrower_refs =
             ReferenceTableFromProto(reply.borrowed_refs());
 
-        MergeBorrowedRefs(object_id, addr, new_borrower_refs);
+        MergeRemoteBorrowers(object_id, addr, new_borrower_refs);
         DeleteReferenceInternal(it, nullptr);
       }));
 }
@@ -517,7 +517,7 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
                                         rpc::WaitForRefRemovedReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   ReferenceTable borrowed_refs;
-  RAY_UNUSED(GetAndClearBorrowedRefsInternal(object_id, &borrowed_refs));
+  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs));
   for (const auto &pair : borrowed_refs) {
     RAY_LOG(DEBUG) << pair.first << " has " << pair.second.borrowers.size()
                    << " borrowers";

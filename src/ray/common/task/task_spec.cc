@@ -123,7 +123,7 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
 }
 
 const std::vector<ObjectID> TaskSpecification::ArgInlinedIds(size_t arg_index) const {
-  return IdVectorFromProtobuf<ObjectID>(message_->args(arg_index).inlined_ids());
+  return IdVectorFromProtobuf<ObjectID>(message_->args(arg_index).nested_inlined_ids());
 }
 
 const ResourceSet &TaskSpecification::GetRequiredResources() const {

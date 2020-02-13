@@ -46,7 +46,7 @@ void InlineDependencies(
             mutable_arg->set_metadata(metadata->Data(), metadata->Size());
           }
           for (const auto &inlined_id : it->second->GetInlinedIds()) {
-            mutable_arg->add_inlined_ids(inlined_id.Binary());
+            mutable_arg->add_nested_inlined_ids(inlined_id.Binary());
             contained_ids->push_back(inlined_id);
           }
           inlined_dependency_ids->push_back(id);
