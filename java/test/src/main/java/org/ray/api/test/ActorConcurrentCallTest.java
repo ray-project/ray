@@ -33,8 +33,7 @@ public class ActorConcurrentCallTest extends BaseTest {
 
   public void testConcurrentCall() {
     TestUtils.skipTestIfDirectActorCallDisabled();
-    /// The logic of this case is that the first task will be pending until
-    /// the following 2 tasks get executed.
+
     ActorCreationOptions op = new ActorCreationOptions.Builder()
         .setMaxConcurrency(3)
         .createActorCreationOptions();
