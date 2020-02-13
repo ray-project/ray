@@ -8,6 +8,7 @@ except ImportError:
 import argparse
 import copy
 import datetime
+import errno
 import json
 import logging
 import os
@@ -905,18 +906,29 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
+    parser.add_argument(
+        "--ignore-dashboard-load-errors",
+        required=False,
+        type=str,
+        default=None,
+        help="Suppresses errors if the dashboard couldn't load.")
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
     try:
-        dashboard = Dashboard(
-            args.host,
-            args.port,
-            args.redis_address,
-            args.temp_dir,
-            redis_password=args.redis_password,
-        )
-        dashboard.run()
+        try:
+            dashboard = Dashboard(
+                args.host,
+                args.port,
+                args.redis_address,
+                args.temp_dir,
+                redis_password=args.redis_password,
+            )
+            dashboard.run()
+        except IOError as e:
+            if not (args.ignore_dashboard_load_errors
+                    and e.errno == errno.ENOENT):
+                raise
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
         redis_client = ray.services.create_redis_client(
