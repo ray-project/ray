@@ -29,6 +29,9 @@ else
   exit 1
 fi
 
+# Upgrade pip and other packages to avoid incompatibility ERRORS.
+pip install --upgrade pip # setuptools cloudpickle urllib3
+
 if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb
