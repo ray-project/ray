@@ -8,7 +8,8 @@
                  << " contained_in_borrowed: "                                           \
                  << (it->second.contained_in_borrowed_id.has_value()                     \
                          ? *it->second.contained_in_borrowed_id                          \
-                         : ObjectID::Nil());
+                         : ObjectID::Nil())                                              \
+                 << " contains: " << it->second.contains.size();
 
 namespace {}  // namespace
 
@@ -78,7 +79,9 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
   return true;
 }
 
-void ReferenceCounter::AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
+void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
+                                      const std::vector<ObjectID> &inner_ids,
+                                      const TaskID &owner_id,
                                       const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
@@ -88,6 +91,9 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id, const TaskID &o
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
   object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
+  // Mark that this object ID contains other inner IDs. Then, we will not GC
+  // the inner objects until the outer object ID goes out of scope.
+  WrapObjectIdsInternal(object_id, inner_ids, owner_address, /*owned_by_us=*/true);
 }
 
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
@@ -290,25 +296,27 @@ ReferenceCounter::GetAllReferenceCounts() const {
   return all_ref_counts;
 }
 
-void ReferenceCounter::GetAndStripBorrowedRefs(
+void ReferenceCounter::GetAndClearBorrowedRefs(
     const std::vector<ObjectID> &borrowed_ids,
     ReferenceCounter::ReferenceTableProto *proto) {
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
-    RAY_CHECK(GetAndStripBorrowedRefsInternal(borrowed_id, &borrowed_refs));
+    RAY_CHECK(GetAndClearBorrowedRefsInternal(borrowed_id, &borrowed_refs))
+        << borrowed_id;
     // Decrease the ref count for each of the borrowed IDs. This is because we
     // artificially increment each borrowed ID to keep it pinned during task
     // execution. However, this should not count towards the final ref count
     // returned to the task's caller.
     auto it = borrowed_refs.find(borrowed_id);
-    RAY_CHECK(it != borrowed_refs.end());
-    it->second.local_ref_count--;
+    if (it != borrowed_refs.end()) {
+      it->second.local_ref_count--;
+    }
   }
   ReferenceTableToProto(borrowed_refs, proto);
 }
 
-bool ReferenceCounter::GetAndStripBorrowedRefsInternal(const ObjectID &object_id,
+bool ReferenceCounter::GetAndClearBorrowedRefsInternal(const ObjectID &object_id,
                                                        ReferenceTable *borrowed_refs) {
   RAY_LOG(DEBUG) << "Pop " << object_id;
   auto it = object_id_refs_.find(object_id);
@@ -318,7 +326,9 @@ bool ReferenceCounter::GetAndStripBorrowedRefsInternal(const ObjectID &object_id
 
   // We can only borrow objects that we do not own.
   if (it->second.owned_by_us) {
-    return false;
+    // Return true because we have the ref, but there is no need to return it
+    // since we own the object.
+    return true;
   }
 
   borrowed_refs->emplace(object_id, it->second);
@@ -339,7 +349,7 @@ bool ReferenceCounter::GetAndStripBorrowedRefsInternal(const ObjectID &object_id
 
   // Attempt to Pop children.
   for (const auto &contained_id : it->second.contains) {
-    GetAndStripBorrowedRefsInternal(contained_id, borrowed_refs);
+    GetAndClearBorrowedRefsInternal(contained_id, borrowed_refs);
   }
 
   return true;
@@ -363,7 +373,8 @@ void ReferenceCounter::MergeBorrowedRefs(const ObjectID &object_id,
   if (it == object_id_refs_.end()) {
     it = object_id_refs_.emplace(object_id, Reference()).first;
   }
-  if (it->second.owner.has_value() && borrower_ref.contained_in_borrowed_id.has_value()) {
+  if (!it->second.owner.has_value() &&
+      borrower_ref.contained_in_borrowed_id.has_value()) {
     // We don't have owner information about this object ID yet and the worker
     // received it because it was nested in another ID that the worker was
     // borrowing. Copy this information to our local table.
@@ -451,59 +462,62 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
       }));
 }
 
-void ReferenceCounter::WrapObjectId(
-    const ObjectID &object_id, const std::vector<ObjectID> &inner_ids,
-    const absl::optional<rpc::WorkerAddress> &owner_address) {
+void ReferenceCounter::WrapObjectIds(const ObjectID &object_id,
+                                     const std::vector<ObjectID> &inner_ids,
+                                     const rpc::WorkerAddress &owner_address,
+                                     bool owned_by_us) {
   absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  bool owned_by_us = false;
-  if (it != object_id_refs_.end()) {
-    owned_by_us = it->second.owned_by_us;
-  }
-  if (!owner_address.has_value()) {
-    // `ray.put()` case. The owner of the object ID was not specified by the
-    // caller, so it must be us.
-    RAY_CHECK(owned_by_us);
-  }
+  WrapObjectIdsInternal(object_id, inner_ids, owner_address, owned_by_us);
+}
 
+void ReferenceCounter::WrapObjectIdsInternal(const ObjectID &object_id,
+                                             const std::vector<ObjectID> &inner_ids,
+                                             const rpc::WorkerAddress &owner_address,
+                                             bool owned_by_us) {
+  auto it = object_id_refs_.find(object_id);
   if (owned_by_us) {
     // `ray.put()` case OR returning an object ID from a task and the task's
     // caller executed in the same process as us.
-    for (const auto &inner_id : inner_ids) {
-      it->second.contains.insert(inner_id);
-      auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end());
-      RAY_LOG(DEBUG) << "Setting inner ID " << inner_id
-                     << " contained_in_owned: " << object_id;
-      inner_it->second.contained_in_owned.insert(object_id);
+    if (it != object_id_refs_.end()) {
+      // The outer object is still in scope. Mark the inner ones as being
+      // contained in the outer object ID so we do not GC the inner objects
+      // until the outer object goes out of scope.
+      for (const auto &inner_id : inner_ids) {
+        it->second.contains.insert(inner_id);
+        auto inner_it = object_id_refs_.find(inner_id);
+        RAY_CHECK(inner_it != object_id_refs_.end());
+        RAY_LOG(DEBUG) << "Setting inner ID " << inner_id
+                       << " contained_in_owned: " << object_id;
+        inner_it->second.contained_in_owned.insert(object_id);
+      }
     }
   } else {
-    RAY_CHECK(owner_address.has_value());
     // Returning an object ID from a task, and the task's caller executed in a
     // remote process.
     for (const auto &inner_id : inner_ids) {
       auto inner_it = object_id_refs_.find(inner_id);
       RAY_CHECK(inner_it != object_id_refs_.end());
       if (!inner_it->second.owned_by_us) {
-        // TODO: Handle the case where we return a BORROWED id.
         RAY_LOG(WARNING)
             << "Ref counting currently does not support returning an object ID that was "
                "not created by the worker executing the task. The object may be evicted "
                "before all references are out of scope.";
+        // TODO: Do not return. Handle the case where we return a BORROWED id.
+        return;
       }
       // Add the task's caller as a borrower and wait for it to remove its
       // reference.
-      inner_it->second.borrowers.insert(*owner_address);
-      WaitForRefRemoved(inner_it, *owner_address, object_id);
+      inner_it->second.borrowers.insert(owner_address);
+      WaitForRefRemoved(inner_it, owner_address, object_id);
     }
   }
 }
 
-void ReferenceCounter::OnRefRemoved(const ObjectID &object_id,
-                                    rpc::WaitForRefRemovedReply *reply,
-                                    rpc::SendReplyCallback send_reply_callback) {
+void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id,
+                                        rpc::WaitForRefRemovedReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
   ReferenceTable borrowed_refs;
-  RAY_UNUSED(GetAndStripBorrowedRefsInternal(object_id, &borrowed_refs));
+  RAY_UNUSED(GetAndClearBorrowedRefsInternal(object_id, &borrowed_refs));
   for (const auto &pair : borrowed_refs) {
     RAY_LOG(DEBUG) << pair.first << " has " << pair.second.borrowers.size()
                    << " borrowers";
@@ -524,13 +538,13 @@ void ReferenceCounter::OnRefRemoved(const ObjectID &object_id,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void ReferenceCounter::HandleWaitForRefRemoved(
-    const rpc::WaitForRefRemovedRequest &request, rpc::WaitForRefRemovedReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void ReferenceCounter::SetRefRemovedCallback(const rpc::WaitForRefRemovedRequest &request,
+                                             rpc::WaitForRefRemovedReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
   absl::MutexLock lock(&mutex_);
   const ObjectID &object_id = ObjectID::FromBinary(request.reference().object_id());
   RAY_LOG(DEBUG) << "Received WaitForRefRemoved " << object_id;
-  auto ref_removed_callback = boost::bind(&ReferenceCounter::OnRefRemoved, this,
+  auto ref_removed_callback = boost::bind(&ReferenceCounter::HandleRefRemoved, this,
                                           object_id, reply, send_reply_callback);
 
   auto it = object_id_refs_.find(object_id);

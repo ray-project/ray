@@ -386,7 +386,8 @@ Status CoreWorker::Put(const RayObject &object,
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
-  reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
+  reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
+                                     rpc_address_);
   RAY_RETURN_NOT_OK(Put(object, contained_object_ids, *object_id));
   // Tell the raylet to pin the object **after** it is created.
   RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {*object_id}));
@@ -413,11 +414,8 @@ Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t 
       plasma_store_provider_->Create(metadata, data_size, *object_id, data));
   // Only add the object to the reference counter if it didn't already exist.
   if (data) {
-    reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_);
-    if (!contained_object_ids.empty()) {
-      reference_counter_->WrapObjectId(*object_id, contained_object_ids,
-                                       absl::optional<rpc::WorkerAddress>());
-    }
+    reference_counter_->AddOwnedObject(*object_id, contained_object_ids, GetCallerId(),
+                                       rpc_address_);
   }
   return Status::OK();
 }
@@ -904,6 +902,7 @@ Status CoreWorker::AllocateReturnObjects(
   return_objects->resize(object_ids.size(), nullptr);
 
   rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
+  bool owned_by_us = owner_address.worker_id() == rpc_address_.worker_id();
 
   for (size_t i = 0; i < object_ids.size(); i++) {
     bool object_already_exists = false;
@@ -913,8 +912,8 @@ Status CoreWorker::AllocateReturnObjects(
       // Mark this object as containing other object IDs. The ref counter will
       // keep the inner IDs in scope until the outer one is out of scope.
       if (!contained_object_ids[i].empty()) {
-        reference_counter_->WrapObjectId(object_ids[i], contained_object_ids[i],
-                                         owner_address);
+        reference_counter_->WrapObjectIds(object_ids[i], contained_object_ids[i],
+                                          owner_address, owned_by_us);
       }
 
       // Allocate a buffer for the return object.
@@ -970,6 +969,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids, &borrowed_ids));
   // Pin the borrowed IDs for the duration of the task.
   for (const auto &borrowed_id : borrowed_ids) {
+    RAY_LOG(DEBUG) << "Incrementing ref for borrowed ID " << borrowed_id;
     reference_counter_->AddLocalReference(borrowed_id);
   }
 
@@ -1022,10 +1022,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   // return them to the caller. This will notify the caller of any IDs that we
   // (or a nested task) are still borrowing. It will also any new IDs that were
   // contained in a borrowed ID that we (or a nested task) are now borrowing.
-  reference_counter_->GetAndStripBorrowedRefs(borrowed_ids, borrowed_refs);
+  reference_counter_->GetAndClearBorrowedRefs(borrowed_ids, borrowed_refs);
   // Unpin the borrowed IDs.
   std::vector<ObjectID> deleted;
   for (const auto &borrowed_id : borrowed_ids) {
+    RAY_LOG(DEBUG) << "Decrementing ref for borrowed ID " << borrowed_id;
     reference_counter_->RemoveLocalReference(borrowed_id, &deleted);
   }
   if (ref_counting_enabled_) {
@@ -1234,7 +1235,9 @@ void CoreWorker::HandleWaitForRefRemoved(const rpc::WaitForRefRemovedRequest &re
                            send_reply_callback)) {
     return;
   }
-  reference_counter_->HandleWaitForRefRemoved(request, reply, send_reply_callback);
+  // Set a callback to send the reply when the requested object ID's ref count
+  // goes to 0.
+  reference_counter_->SetRefRemovedCallback(request, reply, send_reply_callback);
 }
 
 void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,

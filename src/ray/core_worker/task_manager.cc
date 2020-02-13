@@ -24,10 +24,14 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     if (spec.ArgByRef(i)) {
       for (size_t j = 0; j < spec.ArgIdCount(i); j++) {
         task_deps.push_back(spec.ArgId(i, j));
+        RAY_LOG(DEBUG) << "Adding arg ID " << spec.ArgId(i, j);
       }
     } else {
       const auto &inlined_ids = spec.ArgInlinedIds(i);
-      task_deps.insert(task_deps.end(), inlined_ids.begin(), inlined_ids.end());
+      for (const auto &inlined_id : inlined_ids) {
+        task_deps.push_back(inlined_id);
+        RAY_LOG(DEBUG) << "Adding inlined ID " << inlined_id;
+      }
     }
   }
   reference_counter_->AddSubmittedTaskReferences(task_deps);
@@ -38,8 +42,13 @@ void TaskManager::AddPendingTask(const TaskID &caller_id,
     num_returns--;
   }
   for (size_t i = 0; i < num_returns; i++) {
+    // We pass an empty vector for inner IDs because we do not know the return
+    // value of the task yet. If the task returns an ID(s), the worker will
+    // notify us via the WaitForRefRemoved RPC that we are now a borrower for
+    // the inner IDs. Note that this RPC can be received *before* the
+    // PushTaskReply.
     reference_counter_->AddOwnedObject(spec.ReturnId(i, TaskTransportType::DIRECT),
-                                       caller_id, caller_address);
+                                       /*inner_ids=*/{}, caller_id, caller_address);
   }
 }
 
