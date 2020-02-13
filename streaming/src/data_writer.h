@@ -116,6 +116,7 @@ class DataWriter {
   std::shared_ptr<EventService> event_service_;
 
   std::shared_ptr<std::thread> empty_message_thread_;
+
   std::shared_ptr<std::thread> flow_control_thread_;
   // One channel have unique identity.
   std::vector<ObjectID> output_queue_ids_;

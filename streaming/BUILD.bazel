@@ -175,6 +175,7 @@ cc_binary(
     srcs = glob(["src/test/*.h"]) + [
         "src/test/streaming_queue_tests.cc",
     ],
+    copts = COPTS,
     deps = test_common_deps,
 )
 
@@ -183,6 +184,7 @@ cc_test(
     srcs = [
         "src/test/ring_buffer_tests.cc",
     ],
+    copts = COPTS,
     includes = [
         "streaming/src/test",
     ],
@@ -194,6 +196,7 @@ cc_test(
     srcs = [
         "src/test/message_serialization_tests.cc",
     ],
+    copts = COPTS,
     deps = test_common_deps,
 )
 
@@ -202,6 +205,7 @@ cc_test(
     srcs = [
         "src/test/mock_transfer_tests.cc",
     ],
+    copts = COPTS,
     deps = test_common_deps,
 )
 
@@ -210,6 +214,7 @@ cc_test(
     srcs = [
         "src/test/streaming_util_tests.cc",
     ],
+    copts = COPTS,
     deps = test_common_deps,
 )
 
@@ -237,16 +242,16 @@ genrule(
     cmd = """
         set -e
         set -x
-        WORK_DIR=$$(pwd)
+        WORK_DIR="$$(pwd)"
         # Copy generated files.
-        GENERATED_DIR=$$WORK_DIR/streaming/python/generated
-        rm -rf $$GENERATED_DIR
-        mkdir -p $$GENERATED_DIR
-        touch $$GENERATED_DIR/__init__.py
+        GENERATED_DIR="$$WORK_DIR/streaming/python/generated"
+        rm -rf "$$GENERATED_DIR"
+        mkdir -p "$$GENERATED_DIR"
+        touch "$$GENERATED_DIR/__init__.py"
         for f in $(locations //streaming:streaming_py_proto); do
-            cp $$f $$GENERATED_DIR
+            cp "$$f" "$$GENERATED_DIR"
         done
-        echo $$(date) > $@
+        date > $@
     """,
     local = 1,
     visibility = ["//visibility:public"],
@@ -269,6 +274,20 @@ genrule(
     }),
     outs = ["jni_md.h"],
     cmd = "cp -f $< $@",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "jni",
+    hdrs = [
+        ":jni.h",
+        ":jni_md.h",
+    ],
+    copts = COPTS,
+    includes = [
+        ".",  # needed for `include <jni.h>`
+    ],
+    visibility = ["//visibility:public"],
 )
 
 cc_binary(
@@ -276,18 +295,18 @@ cc_binary(
     srcs = glob([
         "src/lib/java/*.cc",
         "src/lib/java/*.h",
-    ]) + [
-        ":jni.h",  # needed for `include "jni.h"`
-        ":jni_md.h",
-    ],
+    ]),
+    copts = COPTS,
     includes = [
-        ".",  # needed for `include <jni.h>`
         "src",
     ],
     linkshared = 1,
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        ":jni",
         ":streaming_lib",
+        "//:core_worker_lib",
+        "//:ray_util",
     ],
 )

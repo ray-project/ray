@@ -21,6 +21,35 @@ from ray.test_utils import RayTestTimeoutException
 logger = logging.getLogger(__name__)
 
 
+# issue https://github.com/ray-project/ray/issues/7105
+def test_internal_free(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Sampler:
+        def sample(self):
+            return [1, 2, 3, 4, 5]
+
+        def sample_big(self):
+            return np.zeros(1024 * 1024)
+
+    sampler = Sampler.remote()
+
+    # Free does not delete from in-memory store.
+    obj_id = sampler.sample.remote()
+    ray.get(obj_id)
+    ray.internal.free(obj_id)
+    assert ray.get(obj_id) == [1, 2, 3, 4, 5]
+
+    # Free deletes big objects from plasma store.
+    big_id = sampler.sample_big.remote()
+    ray.get(big_id)
+    ray.internal.free(big_id)
+    time.sleep(1)  # wait for delete RPC to propagate
+    with pytest.raises(Exception):
+        ray.get(big_id)
+
+
 def test_wait_iterables(ray_start_regular):
     @ray.remote
     def f(delay):

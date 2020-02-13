@@ -181,7 +181,7 @@ class JavaByteArrayBuffer : public ray::Buffer {
 
   bool OwnsData() const override { return true; }
 
-  bool IsPlasmaBuffer() const { return false; }
+  bool IsPlasmaBuffer() const override { return false; }
 
   ~JavaByteArrayBuffer() {
     env_->ReleaseByteArrayElements(java_byte_array_, native_bytes_, JNI_ABORT);

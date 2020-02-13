@@ -1,7 +1,6 @@
 import os
 import json
 import grpc
-import psutil
 import pytest
 import requests
 import time
@@ -13,6 +12,8 @@ from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
 from ray.test_utils import (RayTestTimeoutException,
                             wait_until_succeeded_without_exception)
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 def test_worker_stats(shutdown_only):
