@@ -101,7 +101,7 @@ def find_and_replace_files(replacement_dict, path):
     for file_path in Path(path).rglob("*"):
         if not file_path.is_file():
             continue
-        if file_path.suffix not in {'.js', '.css', '.html'}:
+        if file_path.suffix not in {".js", ".css", ".html"}:
             continue
 
         # Use backup file if exists, create one otherwise
@@ -113,7 +113,7 @@ def find_and_replace_files(replacement_dict, path):
         try:
             with open(backup_file_path) as f:
                 data = f.read()
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 for find, replace in replacement_dict.items():
                     data = data.replace(find, replace)
                 f.write(data)
