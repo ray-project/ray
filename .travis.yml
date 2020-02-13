@@ -143,6 +143,9 @@ matrix:
     - os: linux
       env:
         - RLLIB_REGRESSION_TESTS=1
+        - TF_VERSION=2.0.0b1
+        - TFP_VERSION=0.8
+        - TORCH_VERSION=1.4
         - PYTHON=3.6
         - PYTHONWARNINGS=ignore
       install:
@@ -184,6 +187,9 @@ matrix:
       env:
         - RLLIB_QUICK_TRAIN_TESTS=1
         - PYTHON=3.6
+        - TF_VERSION=2.0.0b1
+        - TFP_VERSION=0.8
+        - TORCH_VERSION=1.4
         - PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
