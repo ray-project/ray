@@ -1,12 +1,11 @@
 package org.ray.streaming.runtime.core.resource;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.google.common.base.MoreObjects;
 import org.ray.api.id.UniqueId;
 
 /**
@@ -15,7 +14,7 @@ import org.ray.api.id.UniqueId;
  */
 public class Container implements Serializable {
 
-  private ContainerID id;
+  private ContainerID containerId;
   private UniqueId nodeId;
   private String address;
   private String hostname;
@@ -27,22 +26,22 @@ public class Container implements Serializable {
   }
 
   public Container(UniqueId nodeId, String address, String hostname) {
-    this.id = new ContainerID();
+    this.containerId = new ContainerID();
     this.nodeId = nodeId;
     this.address = address;
     this.hostname = hostname;
   }
 
-  public void setId(ContainerID id) {
-    this.id = id;
+  public void setContainerId(ContainerID containerId) {
+    this.containerId = containerId;
   }
 
-  public ContainerID getId() {
-    return id;
+  public ContainerID getContainerId() {
+    return containerId;
   }
 
   public String getName() {
-    return id.toString();
+    return containerId.toString();
   }
 
   public String getAddress() {
@@ -76,7 +75,7 @@ public class Container implements Serializable {
   @Override
   public String toString() {
     return MoreObjects.toStringHelper(this)
-        .add("id", id)
+        .add("containerId", containerId)
         .add("nodeId", nodeId)
         .add("address", address)
         .add("hostname", hostname)

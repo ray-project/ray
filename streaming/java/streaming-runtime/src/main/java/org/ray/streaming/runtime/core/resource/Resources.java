@@ -1,13 +1,12 @@
 package org.ray.streaming.runtime.core.resource;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
-import com.google.common.base.MoreObjects;
 import org.ray.api.id.UniqueId;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 
@@ -95,7 +94,8 @@ public class Resources implements Serializable {
   }
 
   public Container getRegisterContainerByContainerId(ContainerID containerID) {
-    return registerContainers.stream().filter(container -> container.getId().equals(containerID))
+    return registerContainers.stream()
+        .filter(container -> container.getContainerId().equals(containerID))
         .findFirst().get();
   }
 

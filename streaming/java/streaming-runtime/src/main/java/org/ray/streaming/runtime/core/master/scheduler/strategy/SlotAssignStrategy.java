@@ -16,23 +16,16 @@ public interface SlotAssignStrategy {
 
   /**
    * Calculate slot number per container and set to resources.
-   * @param containers
-   * @param maxParallelism
    */
   int getSlotNumPerContainer(List<Container> containers, int maxParallelism);
 
   /**
    * Allocate slot to container
-   * @param containers
-   * @param slotNumPerContainer
    */
   void allocateSlot(final List<Container> containers, final int slotNumPerContainer);
 
   /**
    * Assign slot to execution vertex
-   *
-   * @param executionGraph execution graph
-   * @return assign the slot list corresponding to container
    */
   Map<ContainerID, List<Slot>> assignSlot(ExecutionGraph executionGraph);
 
@@ -43,7 +36,6 @@ public interface SlotAssignStrategy {
 
   /**
    * Set resources.
-   * @param resources the specified resources
    */
   void setResources(Resources resources);
 }
