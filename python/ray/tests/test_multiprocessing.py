@@ -38,9 +38,6 @@ def pool_4_processes():
 
 
 def test_initialize_ray(cleanup_only):
-    # TODO(eoakes): fix this test
-    return
-
     def getpid(args):
         return os.getpid()
 
@@ -148,6 +145,7 @@ def test_close(pool_4_processes):
     pool_4_processes.join()
 
     # close() shouldn't interrupt pending tasks, so check that they succeeded.
+    result.wait(timeout=10)
     assert result.ready()
     assert result.successful()
     assert result.get() == ["hello"] * 4
