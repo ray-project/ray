@@ -9,6 +9,9 @@ amp = None
 try:
     from apex import amp
 except ImportError:
+    # Apex library is not installed, so we cannot enable mixed precision.
+    # We don't log here because logging happens in the pytorch_runner,
+    # where amp is initialized.
     pass
 
 USE_FP16 = "__use_fp16__"
@@ -18,7 +21,7 @@ SCHEDULER_STEP = "scheduler_step"
 SCHEDULER_STEP_BATCH = "batch"
 SCHEDULER_STEP_EPOCH = "epoch"
 
-VALID_SCHEDULER_STEP = set(SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH)
+VALID_SCHEDULER_STEP = {SCHEDULER_STEP_BATCH, SCHEDULER_STEP_EPOCH}
 
 
 def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
