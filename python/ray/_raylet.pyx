@@ -303,10 +303,8 @@ cdef void prepare_args(
                         arg_data, string_to_buffer(serialized_arg.metadata))))
             else:
                 args_vector.push_back(
-                    CTaskArg.PassByReference(
-                        (CObjectID.FromBinary(
-                            core_worker.put_serialized_cobject(
-                                serialized_arg)))))
+                    CTaskArg.PassByReference((CObjectID.FromBinary(
+                        core_worker.put_serialized_cobject(serialized_arg)))))
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -1047,7 +1045,7 @@ cdef class CoreWorker:
 
         ref_counts = {}
         while it != c_ref_counts.end():
-            object_id = ObjectID(dereference(it).first.Binary())
+            object_id = dereference(it).first.Hex()
             ref_counts[object_id] = {
                 "local": dereference(it).second.first,
                 "submitted": dereference(it).second.second}
