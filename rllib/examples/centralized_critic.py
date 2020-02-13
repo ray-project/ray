@@ -133,7 +133,7 @@ def loss_with_central_critic(policy, model, dist_class, train_batch):
     CentralizedValueMixin.__init__(policy)
 
     logits, state = model.from_batch(train_batch)
-    action_dist = dist_class(logits, model)
+    action_dist = dist_class(logits)  # , model)
     policy.central_value_out = policy.model.central_value_function(
         train_batch[SampleBatch.CUR_OBS], train_batch[OPPONENT_OBS],
         train_batch[OPPONENT_ACTION])

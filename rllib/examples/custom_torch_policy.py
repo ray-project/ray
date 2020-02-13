@@ -12,7 +12,7 @@ parser.add_argument("--iters", type=int, default=200)
 
 def policy_gradient_loss(policy, model, dist_class, train_batch):
     logits, _ = model({SampleBatch.CUR_OBS: train_batch[SampleBatch.CUR_OBS]})
-    action_dist = dist_class(logits, model)
+    action_dist = dist_class(logits)  # , model)
     log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
     return -train_batch[SampleBatch.REWARDS].dot(log_probs)
 

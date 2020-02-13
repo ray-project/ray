@@ -103,6 +103,7 @@ class AlwaysSameHeuristic(Policy):
 
 class BeatLastHeuristic(Policy):
     """Play the move that would beat the last move of the opponent."""
+
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -187,7 +188,7 @@ def run_with_custom_entropy_loss():
 
     def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
         logits, _ = model.from_batch(train_batch)
-        action_dist = dist_class(logits, model)
+        action_dist = dist_class(logits)  # , model)
         return (-0.1 * action_dist.entropy() - tf.reduce_mean(
             action_dist.logp(train_batch["actions"]) *
             train_batch["advantages"]))

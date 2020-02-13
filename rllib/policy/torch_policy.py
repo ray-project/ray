@@ -1,7 +1,8 @@
 import numpy as np
 import time
 
-from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
+from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY, ACTION_PROB, \
+    ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -63,13 +64,9 @@ class TorchPolicy(Policy):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        deterministic=None,
-                        explore=True,
+                        exploit=False,
                         timestep=None,
                         **kwargs):
-
-        deterministic = deterministic if deterministic is not None else \
-                self.config["model"]["deterministic_action_sampling"]
 
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
@@ -81,23 +78,30 @@ class TorchPolicy(Policy):
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             model_out = self.model(input_dict, state_batches, [1])
             logits, state = model_out
-            action_dist = self.dist_class(logits, self.model)
+            action_dist = None
             # Try our Exploration, if any.
             if self.exploration:
-                actions = self.exploration.get_exploration_action(
-                    model_out, self.model, action_dist, explore, timestep
-                    if timestep is not None else self.global_timestep)
+                actions, logp = \
+                    self.exploration.get_exploration_action(
+                        logits, self.model, self.dist_class, exploit,
+                        timestep if timestep is not None else
+                        self.global_timestep)
+            # If no exploration setup: Act deterministically.
             else:
-                if deterministic:
-                    actions = action_dist.deterministic_sample()
-                else:
-                    actions = action_dist.sample()
-
+                action_dist = self.dist_class(logits)  # , self.model)
+                actions = action_dist.deterministic_sample()
+                logp = None
             input_dict[SampleBatch.ACTIONS] = actions
 
+            extra_action_out = self.extra_action_out(input_dict, state_batches,
+                                                     self.model, action_dist)
+            if logp is not None:
+                extra_action_out.update({
+                    ACTION_PROB: torch.exp(logp),
+                    ACTION_LOGP: logp
+                })
             return (actions.cpu().numpy(), [h.cpu().numpy() for h in state],
-                    self.extra_action_out(input_dict, state_batches,
-                                          self.model, action_dist))
+                    extra_action_out)
 
     @override(Policy)
     def learn_on_batch(self, postprocessed_batch):

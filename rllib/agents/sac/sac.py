@@ -46,9 +46,7 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_num_episodes": 1,
     # Extra configuration that disables exploration.
     "evaluation_config": {
-        "model": {
-            "deterministic_action_sampling": True,
-        }
+        "exploration": False,
     },
 
     # === Exploration ===

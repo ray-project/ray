@@ -110,7 +110,7 @@ class MARWILLoss(object):
 
 def marwil_loss(policy, model, dist_class, train_batch):
     model_out, _ = model.from_batch(train_batch)
-    action_dist = dist_class(model_out, model)
+    action_dist = dist_class(model_out)  # , model)
     state_values = model.value_function()
 
     policy.loss = MARWILLoss(state_values, action_dist,

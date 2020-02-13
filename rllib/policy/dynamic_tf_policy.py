@@ -9,8 +9,7 @@ from ray.rllib.policy.policy import Policy, TupleActions
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, override
 from ray.rllib.utils.debug import log_once, summarize
 from ray.rllib.utils.tracking_dict import UsageTrackingDict
 
@@ -110,8 +109,7 @@ class DynamicTFPolicy(TFPolicy):
                 prev_rewards = tf.placeholder(
                     tf.float32, [None], name="prev_reward")
 
-        deterministic_actions = tf.placeholder_with_default(
-            False, (), name="deterministic_actions")
+        exploit = tf.placeholder_with_default(False, (), name="is_exploiting")
 
         self._input_dict = {
             SampleBatch.CUR_OBS: obs,
@@ -161,21 +159,32 @@ class DynamicTFPolicy(TFPolicy):
         model_out, self._state_out = self.model(self._input_dict,
                                                 self._state_in, self._seq_lens)
 
+        # Create the Exploration object to use for this Policy.
+        exploration = self._create_exploration(action_space, config)
+        timestep = tf.placeholder(tf.int32, (), name="timestep")
+
         # Setup custom action sampler.
         if action_sampler_fn:
-            action_sampler, action_logp = action_sampler_fn(
+            action, logp = action_sampler_fn(
                 self, self.model, self._input_dict, obs_space, action_space,
-                deterministic_actions, config)
+                exploit, config, self._timestep)
         # Create a default action sampler.
         else:
-            action_dist = self.dist_class(model_out, self.model)
-            action_sampler = tf.cond(
-                deterministic_actions,
-                true_fn=lambda: action_dist.deterministic_sample(),
-                false_fn=lambda: action_dist.sample())
-            if isinstance(action_space, Tuple):
-                action_sampler = TupleActions(action_sampler)
-            action_logp = action_dist.sampled_action_logp()
+            # Using an exporation setup.
+            action_dist = self.dist_class(model_out)  # , self.model)
+            if exploration:
+                action, logp = exploration.get_exploration_action(
+                    model_out,
+                    self.model,
+                    action_dist_class=self.dist_class,
+                    exploit=exploit,
+                    timestep=timestep)
+            # If no exploration setup: Act deterministically.
+            else:
+                action = action_dist.deterministic_sample()
+                if isinstance(action_space, Tuple):
+                    action = TupleActions(action)
+                logp = None
 
         # Phase 1 init
         sess = tf.get_default_session() or tf.Session()
@@ -190,9 +199,8 @@ class DynamicTFPolicy(TFPolicy):
             config,
             sess,
             obs_input=obs,
-            action_sampler=action_sampler,
-            deterministic_actions=deterministic_actions,
-            action_logp=action_logp,
+            action_sampler=action,
+            action_logp=logp,
             loss=None,  # dynamically initialized on run
             loss_inputs=[],
             model=self.model,
@@ -202,7 +210,10 @@ class DynamicTFPolicy(TFPolicy):
             prev_reward_input=prev_rewards,
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
-            batch_divisibility_req=batch_divisibility_req)
+            batch_divisibility_req=batch_divisibility_req,
+            exploration=exploration,
+            exploit=exploit,
+            timestep=timestep)
 
         # Phase 2 init.
         if before_loss_init is not None:

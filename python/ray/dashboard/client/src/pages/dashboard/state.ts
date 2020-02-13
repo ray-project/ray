@@ -2,7 +2,9 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import {
   NodeInfoResponse,
   RayConfigResponse,
-  RayletInfoResponse
+  RayletInfoResponse,
+  TuneJobResponse,
+  TuneAvailabilityResponse
 } from "../../api";
 
 const name = "dashboard";
@@ -12,6 +14,8 @@ interface State {
   rayConfig: RayConfigResponse | null;
   nodeInfo: NodeInfoResponse | null;
   rayletInfo: RayletInfoResponse | null;
+  tuneInfo: TuneJobResponse | null;
+  tuneAvailability: boolean;
   lastUpdatedAt: number | null;
   error: string | null;
 }
@@ -21,6 +25,8 @@ const initialState: State = {
   rayConfig: null,
   nodeInfo: null,
   rayletInfo: null,
+  tuneInfo: null,
+  tuneAvailability: false,
   lastUpdatedAt: null,
   error: null
 };
@@ -44,6 +50,24 @@ const slice = createSlice({
     ) => {
       state.nodeInfo = action.payload.nodeInfo;
       state.rayletInfo = action.payload.rayletInfo;
+      state.lastUpdatedAt = Date.now();
+    },
+    setTuneInfo: (
+      state,
+      action: PayloadAction<{
+        tuneInfo: TuneJobResponse;
+      }>
+    ) => {
+      state.tuneInfo = action.payload.tuneInfo;
+      state.lastUpdatedAt = Date.now();
+    },
+    setTuneAvailability: (
+      state,
+      action: PayloadAction<{
+        tuneAvailability: TuneAvailabilityResponse;
+      }>
+    ) => {
+      state.tuneAvailability = action.payload.tuneAvailability["available"];
       state.lastUpdatedAt = Date.now();
     },
     setError: (state, action: PayloadAction<string | null>) => {

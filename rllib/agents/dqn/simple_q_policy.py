@@ -93,8 +93,9 @@ def simple_sample_action_from_q_network(policy,
                                         input_dict,
                                         obs_space,
                                         action_space,
-                                        deterministic,
+                                        exploit,
                                         config,
+                                        timestep,
                                         q_values_func=None):
     # Action Q network.
     ret = (q_values_func or _compute_q_values)(policy, q_model,
@@ -104,27 +105,18 @@ def simple_sample_action_from_q_network(policy,
     policy.q_values = ret[0] if isinstance(ret, tuple) else ret
     policy.q_func_vars = q_model.variables()
 
-    # Soft-Q.
-    def soft_q():
-        action_dist = Categorical(
-            policy.q_values / config.get("softmax_temperature", 1.0))
-        a = action_dist.sample()
-        return a, tf.exp(action_dist.sampled_action_logp())
-
-    # Normal (argmax) Q policy (p=1.0).
-    def normal_q():
-        actions = tf.argmax(policy.q_values, axis=1)
-        return actions, tf.ones_like(actions, dtype=tf.float32)
-
-    if deterministic is True:
-        policy.output_actions, policy.action_prob = normal_q()
-    elif deterministic is False:
-        policy.output_actions, policy.action_prob = soft_q()
+    # Get exploration action.
+    if policy.exploration:
+        policy.output_actions, policy.action_logp = \
+            policy.exploration.get_exploration_action(
+                policy.q_values, q_model, Categorical, exploit, timestep)
+    # No exploration: Return argmax.
     else:
-        policy.output_actions, policy.action_prob = tf.cond(
-            deterministic, true_fn=normal_q, false_fn=soft_q)
+        policy.output_actions = tf.argmax(policy.q_values, axis=1)
+        policy.action_logp = tf.ones_like(
+            policy.output_actions, dtype=tf.float32)
 
-    return policy.output_actions, policy.action_prob
+    return policy.output_actions, policy.action_logp
 
 
 def build_q_losses(policy, model, dist_class, train_batch):

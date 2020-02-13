@@ -6,9 +6,9 @@ import sys
 import tempfile
 import time
 
-import psutil
-
 import ray
+
+import psutil  # We must import psutil after ray because we bundle it with ray.
 
 
 class RayTestTimeoutException(Exception):

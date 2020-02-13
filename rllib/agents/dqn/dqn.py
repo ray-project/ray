@@ -47,13 +47,13 @@ DEFAULT_CONFIG = with_common_config({
         "initial_epsilon": 1.0,
         "final_epsilon": 0.02,
         "epsilon_timesteps": 10000,  # Timesteps over which to anneal epsilon.
-    },
 
-    # Use softmax for sampling actions. Required for off policy estimation.
-    "soft_q": False,
-    # Softmax temperature. Q values are divided by this value prior to softmax.
-    # Softmax approaches argmax as the temperature drops to zero.
-    "softmax_temperature": 1.0,
+        # For soft_q, use:
+        # "exploration" = {
+        #   "type": "SoftQ"
+        #   "temperature": [float, e.g. 1.0]
+        # }
+    },
 
     # TODO(sven): Make Exploration class for parameter noise.
     # If True parameter space noise will be used for exploration
@@ -122,6 +122,7 @@ DEFAULT_CONFIG = with_common_config({
     "beta_annealing_fraction": -1,
     "per_worker_exploration": -1,
     "softmax_temp": -1,
+    "soft_q": -1,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -197,21 +198,26 @@ def validate_config_and_setup_param_noise(config):
                             "exploration.type=PerWorkerEpsilonGreedy")
         if isinstance(config["exploration"], dict):
             config["exploration"]["type"] = PerWorkerEpsilonGreedy
-    if "softmax_temp" in config and config["softmax_temp"] != -1:
-        deprecation_warning("softmax_temp", "softmax_temperature")
-        config["softmax_temperature"] = config["softmax_temp"]
-    if config.get("softmax_temperature", 1.0) < 0.00001:
-        logger.warning("softmax temp very low: Clipped it to 0.00001.")
-        config["softmax_temperature"] = 0.00001
+    if config.get("softmax_temp", -1) != -1:
+        deprecation_warning(
+            "soft_q",
+            "exploration={type=StochasticSampling, temperature=[float]}")
+        if config.get("softmax_temp", 1.0) < 0.00001:
+            logger.warning("softmax temp very low: Clipped it to 0.00001.")
+            config["softmax_temperature"] = 0.00001
+    if config.get("soft_q", -1) != -1:
+        deprecation_warning(
+            "soft_q",
+            "exploration={type=StochasticSampling, temperature=[float]}")
+        config["exploration"] = {
+            "type": "SoftQ",
+            "temperature": config.get("softmax_temp", 1.0)
+        }
 
     # Update effective batch size to include n-step
     adjusted_batch_size = max(config["sample_batch_size"],
                               config.get("n_step", 1))
     config["sample_batch_size"] = adjusted_batch_size
-
-    # Setup soft-Q learning via Model/distribution config.
-    if "soft_q" in config:
-        config["model"]["deterministic_action_sampling"] = not config["soft_q"]
 
     # Setup parameter noise.
     if config.get("parameter_noise", False):

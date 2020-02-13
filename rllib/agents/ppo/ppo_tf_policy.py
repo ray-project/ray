@@ -76,7 +76,7 @@ class PPOLoss:
             def reduce_mean_valid(t):
                 return tf.reduce_mean(t)
 
-        prev_dist = dist_class(prev_logits, model)
+        prev_dist = dist_class(prev_logits)  # , model)
         # Make loss functions.
         logp_ratio = tf.exp(curr_action_dist.logp(actions) - prev_actions_logp)
         action_kl = prev_dist.kl(curr_action_dist)
@@ -111,7 +111,7 @@ class PPOLoss:
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
-    action_dist = dist_class(logits, model)
+    action_dist = dist_class(logits)  # , model)
 
     mask = None
     if state:

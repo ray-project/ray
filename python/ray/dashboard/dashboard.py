@@ -34,6 +34,12 @@ from ray.core.generated import core_worker_pb2
 from ray.core.generated import core_worker_pb2_grpc
 import ray.ray_constants as ray_constants
 
+try:
+    from ray.tune.result import DEFAULT_RESULTS_DIR
+    from ray.tune import Analysis
+except ImportError:
+    Analysis = None
+
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
@@ -114,6 +120,8 @@ class Dashboard(object):
 
         self.node_stats = NodeStats(redis_address, redis_password)
         self.raylet_stats = RayletStats(redis_address, redis_password)
+        if Analysis is not None:
+            self.tune_stats = TuneCollector(DEFAULT_RESULTS_DIR, 2.0)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -258,6 +266,20 @@ class Dashboard(object):
             result = {"nodes": D, "actors": actor_tree}
             return await json_response(result=result)
 
+        async def tune_info(req) -> aiohttp.web.Response:
+            if Analysis is not None:
+                D = self.tune_stats.get_stats()
+            else:
+                D = {}
+            return await json_response(result=D)
+
+        async def tune_availability(req) -> aiohttp.web.Response:
+            if Analysis is not None:
+                D = self.tune_stats.get_availability()
+            else:
+                D = {"available": False}
+            return await json_response(result=D)
+
         async def launch_profiling(req) -> aiohttp.web.Response:
             node_id = req.query.get("node_id")
             pid = int(req.query.get("pid"))
@@ -317,6 +339,8 @@ class Dashboard(object):
         self.app.router.add_get("/api/ray_config", ray_config)
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/raylet_info", raylet_info)
+        self.app.router.add_get("/api/tune_info", tune_info)
+        self.app.router.add_get("/api/tune_availability", tune_availability)
         self.app.router.add_get("/api/launch_profiling", launch_profiling)
         self.app.router.add_get("/api/check_profiling_status",
                                 check_profiling_status)
@@ -337,6 +361,8 @@ class Dashboard(object):
         self.log_dashboard_url()
         self.node_stats.start()
         self.raylet_stats.start()
+        if Analysis is not None:
+            self.tune_stats.start()
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 
@@ -708,6 +734,130 @@ class RayletStats(threading.Thread):
             # and update self.nodes
             if counter % 10:
                 self.update_nodes()
+
+
+class TuneCollector(threading.Thread):
+    """Initialize collector worker thread.
+    Args
+        logdir (str): Directory path to save the status information of
+                        jobs and trials.
+        reload_interval (float): Interval(in s) of space between loading
+                        data from logs
+    """
+
+    def __init__(self, logdir, reload_interval):
+        super().__init__()
+        self._logdir = logdir
+        self._trial_records = {}
+        self._data_lock = threading.Lock()
+        self._reload_interval = reload_interval
+        self._available = False
+
+    def get_stats(self):
+        with self._data_lock:
+            return {"trial_records": copy.deepcopy(self._trial_records)}
+
+    def get_availability(self):
+        with self._data_lock:
+            return {"available": self._available}
+
+    def run(self):
+        while True:
+            with self._data_lock:
+                self.collect()
+            time.sleep(self._reload_interval)
+
+    def collect(self):
+        """
+        Collects and cleans data on the running Tune experiment from the
+        Tune logs so that users can see this information in the front-end
+        client
+        """
+        sub_dirs = os.listdir(self._logdir)
+        job_names = filter(
+            lambda d: os.path.isdir(os.path.join(self._logdir, d)), sub_dirs)
+
+        self._trial_records = {}
+
+        # search through all the sub_directories in log directory
+        for job_name in job_names:
+            analysis = Analysis(str(os.path.join(self._logdir, job_name)))
+            df = analysis.dataframe()
+            if len(df) == 0:
+                continue
+
+            self._available = True
+
+            # make sure that data will convert to JSON without error
+            df["trial_id"] = df["trial_id"].astype(str)
+            df = df.fillna(0)
+
+            # convert df to python dict
+            df = df.set_index("trial_id")
+            trial_data = df.to_dict(orient="index")
+
+            # clean data and update class attribute
+            if len(trial_data) > 0:
+                trial_data = self.clean_trials(trial_data, job_name)
+                self._trial_records.update(trial_data)
+
+    def clean_trials(self, trial_details, job_name):
+        first_trial = trial_details[list(trial_details.keys())[0]]
+        config_keys = []
+        float_keys = []
+        metric_keys = []
+
+        # list of static attributes for trial
+        default_names = [
+            "logdir", "time_this_iter_s", "done", "episodes_total",
+            "training_iteration", "timestamp", "timesteps_total",
+            "experiment_id", "date", "timestamp", "time_total_s", "pid",
+            "hostname", "node_ip", "time_since_restore",
+            "timesteps_since_restore", "iterations_since_restore",
+            "experiment_tag"
+        ]
+
+        # filter attributes into floats, metrics, and config variables
+        for key, value in first_trial.items():
+            if isinstance(value, float):
+                float_keys.append(key)
+            if str(key).startswith("config/"):
+                config_keys.append(key)
+            elif key not in default_names:
+                metric_keys.append(key)
+
+        # clean data into a form that front-end client can handle
+        for trial, details in trial_details.items():
+            details["start_time"] = str(
+                round(os.path.getctime(details["logdir"]), 3))
+            details["params"] = {}
+            details["metrics"] = {}
+
+            # round all floats
+            for key in float_keys:
+                details[key] = round(details[key], 3)
+
+            # group together config attributes
+            for key in config_keys:
+                new_name = key[7:]
+                details["params"][new_name] = str(details[key])
+                details.pop(key)
+
+            # group together metric attributes
+            for key in metric_keys:
+                details["metrics"][key] = str(details[key])
+                details.pop(key)
+
+            if details["done"]:
+                details["status"] = "TERMINATED"
+            else:
+                details["status"] = "RUNNING"
+            details.pop("done")
+
+            details["trial_id"] = trial
+            details["job_id"] = job_name
+
+        return trial_details
 
 
 if __name__ == "__main__":

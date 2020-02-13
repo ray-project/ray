@@ -29,23 +29,24 @@ class Exploration:
         self.framework = check_framework(framework)
 
     def get_exploration_action(self,
-                               action,
-                               model=None,
-                               action_dist=None,
-                               explore=True,
+                               model_output,
+                               model,
+                               action_dist_class=None,
+                               exploit=False,
                                timestep=None):
-        """Returns an action for exploration purposes.
+        """Returns a (possibly) exploratory action.
 
-        Given the Model's output and action distribution, returns an
-        exploration action (as opposed to the original model calculated
-        action).
+        Given the Model's logits outputs and action distribution, returns an
+        exploratory action.
 
         Args:
-            action (any): The already sampled action (non-exploratory case).
+            model_output (any): The raw output coming from the model
+                (e.g. q-values or PG-logits).
             model (ModelV2): The Model object.
-            action_dist: The ActionDistribution class.
-            explore (bool): Whether to explore or not (this could be a tf
-                placeholder).
+            action_dist_class: The ActionDistribution class.
+            exploit (bool): False: "Normal" exploration behavior.
+                True: Suppress all exploratory behavior and return
+                    a deterministic action.
             timestep (int): The current sampling time step. If None, the
                 component should try to use an internal counter, which it
                 then increments by 1. If provided, will set the internal

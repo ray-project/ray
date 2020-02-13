@@ -71,7 +71,7 @@ class PPOLoss:
         def reduce_mean_valid(t):
             return torch.mean(t * valid_mask)
 
-        prev_dist = dist_class(prev_logits, model)
+        prev_dist = dist_class(prev_logits)  # , model)
         # Make loss functions.
         logp_ratio = torch.exp(
             curr_action_dist.logp(actions) - prev_actions_logp)
@@ -107,7 +107,7 @@ class PPOLoss:
 
 def ppo_surrogate_loss(policy, model, dist_class, train_batch):
     logits, state = model.from_batch(train_batch)
-    action_dist = dist_class(logits, model)
+    action_dist = dist_class(logits)  # , model)
 
     if state:
         max_seq_len = torch.max(train_batch["seq_lens"])
@@ -163,8 +163,6 @@ def vf_preds_and_logits_fetches(policy, input_dict, state_batches, model,
     return {
         SampleBatch.VF_PREDS: policy.model.value_function().cpu().numpy(),
         BEHAVIOUR_LOGITS: policy.model.last_output().cpu().numpy(),
-        ACTION_LOGP: action_dist.logp(
-            input_dict[SampleBatch.ACTIONS]).cpu().numpy(),
     }
 
 

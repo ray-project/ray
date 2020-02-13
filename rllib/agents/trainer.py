@@ -374,7 +374,7 @@ class Trainer(Trainable):
     _allow_unknown_subkeys = [
         "tf_session_args", "local_tf_session_args", "env_config", "model",
         "optimizer", "multiagent", "custom_resources_per_worker",
-        "evaluation_config"
+        "evaluation_config", "exploration"
     ]
 
     @PublicAPI
@@ -530,8 +530,17 @@ class Trainer(Trainable):
         else:
             self.env_creator = lambda env_config: None
 
-        # Merge the supplied config with the class default
+        # Merge the supplied config with the class default.
         merged_config = copy.deepcopy(self._default_config)
+        # Handle special case for Explorations.
+        # TODO(sven): Maybe move this into `deep_update()`?
+        if isinstance(merged_config["exploration"], dict) and \
+                "type" in merged_config["exploration"] and \
+                isinstance(config["exploration"], dict) and \
+                "type" in config["exploration"] and \
+                merged_config["exploration"]["type"] != \
+                config["exploration"]["type"]:
+            merged_config["exploration"] = config["exploration"]
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
@@ -702,8 +711,7 @@ class Trainer(Trainable):
                        info=None,
                        policy_id=DEFAULT_POLICY_ID,
                        full_fetch=False,
-                       deterministic=None,
-                       explore=True):
+                       exploit=False):
         """Computes an action for the specified policy on the local Worker.
 
         Note that you can also access the policy object through
@@ -722,11 +730,9 @@ class Trainer(Trainable):
             policy_id (str): Policy to query (only applies to multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
-            deterministic (Optional[bool]): Whether the action should be
-                sampled deterministically from the policy Model's distribution.
-                If None, use value from Model config's
-                `deterministic_action_sampling`.
-            explore (bool): Whether to pick an action using exploration or not.
+            exploit (bool): Whether to pick an exploitation or exploration
+                action (default: False -> do explore). If "exploration"
+                in the config is False/None, this parameter has no effect.
 
         Returns:
             any: The computed action if full_fetch=False, or
@@ -751,8 +757,7 @@ class Trainer(Trainable):
             prev_reward,
             info,
             clip_actions=self.config["clip_actions"],
-            deterministic=deterministic,
-            explore=explore,
+            exploit=exploit,
             timestep=timestep)
 
         if state or full_fetch:

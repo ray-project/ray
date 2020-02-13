@@ -58,7 +58,7 @@ def policy_gradient_loss(policy, model, dist_class, train_batch):
         return penalty
 
     logits, _ = model.from_batch(train_batch)
-    action_dist = dist_class(logits, model)
+    action_dist = dist_class(logits)  # , model)
 
     actions = train_batch[SampleBatch.ACTIONS]
     rewards = train_batch[SampleBatch.REWARDS]

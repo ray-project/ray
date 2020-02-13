@@ -41,6 +41,47 @@ class TestPPO(unittest.TestCase):
         for i in range(num_iterations):
             trainer.train()
 
+    def test_ppo_exploration_and_exploit_setup(self):
+        """Tests, whether PPO runs with different exploration setups."""
+        config = ppo.DEFAULT_CONFIG.copy()
+        config["eager"] = True
+        config["num_workers"] = 0  # Run locally.
+        config["exploration"] = {"type": "StochasticSampling"}
+        config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
+        obs = np.array(0)
+
+        # Default Agent should be setup with StochasticSampling.
+        trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
+        # Due to exploit=True, always expect the same (deterministic) action.
+        a_ = trainer.compute_action(
+            obs,
+            exploit=True,
+            prev_action=np.array(2),
+            prev_reward=np.array(1.0))
+        # Test whether this is really the argmax action over the logits.
+        check(a_, np.argmax(trainer.get_policy().model.last_output(), 1)[0])
+        for _ in range(50):
+            a = trainer.compute_action(
+                obs,
+                exploit=True,
+                prev_action=np.array(2),
+                prev_reward=np.array(1.0))
+            check(a, a_)
+
+        # With exploit=False (default), expect stochastic actions.
+        actions = []
+        for _ in range(300):
+            actions.append(
+                trainer.compute_action(
+                    obs, prev_action=np.array(2), prev_reward=np.array(1.0)))
+        check(np.mean(actions), 1.5, atol=0.2)
+
+        # Test n train runs.
+        num_iterations = 2
+        for i in range(num_iterations):
+            results = trainer.train()
+            print(results)
+
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
         config = ppo.DEFAULT_CONFIG.copy()
@@ -95,11 +136,11 @@ class TestPPO(unittest.TestCase):
                 policy, policy.model, Categorical, train_batch,
                 expected_logits, expected_value_outs
             )
-        check(kl, policy.loss_obj.mean_kl)
-        check(entropy, policy.loss_obj.mean_entropy)
-        check(np.mean(-pg_loss), policy.loss_obj.mean_policy_loss)
-        check(np.mean(vf_loss), policy.loss_obj.mean_vf_loss, decimals=4)
-        check(policy.loss_obj.loss.numpy(), overall_loss, decimals=4)
+        check(policy.loss_obj.mean_kl, kl)
+        check(policy.loss_obj.mean_entropy, entropy)
+        check(policy.loss_obj.mean_policy_loss, np.mean(-pg_loss))
+        check(policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
+        check(policy.loss_obj.loss, overall_loss, decimals=4)
 
         # Torch.
         config["use_pytorch"] = True
@@ -123,16 +164,11 @@ class TestPPO(unittest.TestCase):
                 policy.model.last_output(),
                 policy.model.value_function().detach().numpy()
             )
-        check(kl, policy.loss_obj.mean_kl.detach().numpy())
-        check(entropy, policy.loss_obj.mean_entropy.detach().numpy())
-        check(
-            np.mean(-pg_loss),
-            policy.loss_obj.mean_policy_loss.detach().numpy())
-        check(
-            np.mean(vf_loss),
-            policy.loss_obj.mean_vf_loss.detach().numpy(),
-            decimals=4)
-        check(policy.loss_obj.loss.detach().numpy(), overall_loss, decimals=4)
+        check(policy.loss_obj.mean_kl, kl)
+        check(policy.loss_obj.mean_entropy, entropy)
+        check(policy.loss_obj.mean_policy_loss, np.mean(-pg_loss))
+        check(policy.loss_obj.mean_vf_loss, np.mean(vf_loss), decimals=4)
+        check(policy.loss_obj.loss, overall_loss, decimals=4)
 
     def _ppo_loss_helper(self, policy, model, dist_class, train_batch, logits,
                          vf_outs):
@@ -141,8 +177,8 @@ class TestPPO(unittest.TestCase):
         Model, distribution, some batch, logits & vf outputs, using numpy.
         """
         # Calculate expected PPO loss results.
-        dist = dist_class(logits, policy.model)
-        dist_prev = dist_class(train_batch[BEHAVIOUR_LOGITS], policy.model)
+        dist = dist_class(logits)  # , policy.model)
+        dist_prev = dist_class(train_batch[BEHAVIOUR_LOGITS])  # , policy.model
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
             expected_rho = np.exp(expected_logp.detach().numpy() -

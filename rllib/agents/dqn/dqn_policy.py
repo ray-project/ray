@@ -202,21 +202,21 @@ def build_q_model(policy, obs_space, action_space, config):
 
 
 def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
-                                 action_space, deterministic, config):
+                                 action_space, exploit, config, timestep):
 
-    policy.output_actions, policy.action_prob = \
+    policy.output_actions, policy.action_logp = \
         simple_sample_action_from_q_network(
             policy, q_model, input_dict, obs_space,
-            action_space, deterministic, config, _compute_q_values)
+            action_space, exploit, config, timestep, _compute_q_values)
 
-    # Noise vars for Q network except for layer normalization vars
+    # Noise vars for Q network except for layer normalization vars.
     if config["parameter_noise"]:
         _build_parameter_noise(
             policy,
             [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
         policy.action_probs = tf.nn.softmax(policy.q_values)
 
-    return policy.output_actions, policy.action_prob
+    return policy.output_actions, policy.action_logp
 
 
 def _build_parameter_noise(policy, pnet_params):

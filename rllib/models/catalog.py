@@ -78,12 +78,7 @@ MODEL_DEFAULTS = {
     # Name of a custom model to use
     "custom_model": None,
     # Name of a custom action distribution to use.
-    # "NoDist" will result in no added distribution.
     "custom_action_dist": None,
-    # Whether to draw actions stochastically (default) or deterministically
-    # from the parameterized distribution. If distribution is "NoDist", the raw
-    # Model output will be used.
-    "deterministic_action_sampling": False,
 
     # Extra options to pass to the custom classes
     "custom_options": {},
@@ -106,7 +101,7 @@ class ModelCatalog:
         >>> dist_class, dist_dim = ModelCatalog.get_action_dist(
                 env.action_space, {})
         >>> model = ModelCatalog.get_model(inputs, dist_dim, options)
-        >>> dist = dist_class(model.outputs, model)
+        >>> dist = dist_class(model.outputs)  # , model)
         >>> action = dist.sample()
     """
 
@@ -197,7 +192,7 @@ class ModelCatalog:
             raise NotImplementedError("Unsupported args: {} {}".format(
                 action_space, dist_type))
 
-        return dist, dist.required_model_output_shape(action_space, config)
+        return dist, dist.required_model_output_shape(action_space)  # , config
 
     @staticmethod
     @DeveloperAPI

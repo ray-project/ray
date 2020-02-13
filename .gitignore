@@ -135,6 +135,7 @@ scripts/nodes.txt
 **/.pytest_cache
 **/.cache
 .benchmarks
+python-driver-*
 
 # Vscode
 .vscode/
@@ -169,3 +170,6 @@ venv
 
 # tools
 tools/prometheus*
+
+# ray project files
+project-id
