@@ -9,6 +9,7 @@
 
 #include "channel.h"
 #include "config/streaming_config.h"
+#include "event_service.h"
 #include "message/message_bundle.h"
 #include "runtime_context.h"
 
@@ -29,18 +30,6 @@ namespace streaming {
 /// accordingly. It will sleep for a short interval to save cpu if all ring
 /// buffers have no data in that moment.
 class DataWriter {
- private:
-  std::shared_ptr<std::thread> loop_thread_;
-  // One channel have unique identity.
-  std::vector<ObjectID> output_queue_ids_;
-
- protected:
-  // ProducerTransfer is middle broker for data transporting.
-  std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
-  std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> channel_map_;
-  std::shared_ptr<Config> transfer_config_;
-  std::shared_ptr<RuntimeContext> runtime_context_;
-
  private:
   bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
 
@@ -80,6 +69,16 @@ class DataWriter {
   StreamingStatus InitChannel(const ObjectID &q_id, const ActorID &actor_id,
                               uint64_t channel_message_id, uint64_t queue_size);
 
+  /// Write all messages to channel util ringbuffer is empty.
+  /// \param channel_info
+  bool WriteAllToChannel(ProducerChannelInfo *channel_info);
+
+  /// Trigger an empty message for channel with no valid data.
+  /// \param channel_info
+  bool SendEmptyToChannel(ProducerChannelInfo *channel_info);
+
+  void EmptyMessageTimerCallback();
+
  public:
   explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
   virtual ~DataWriter();
@@ -109,6 +108,21 @@ class DataWriter {
   void Run();
 
   void Stop();
+
+ private:
+  std::shared_ptr<EventService> event_service_;
+
+  std::shared_ptr<std::thread> empty_message_thread_;
+  // One channel have unique identity.
+  std::vector<ObjectID> output_queue_ids_;
+
+ protected:
+  std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
+  /// ProducerChannel is middle broker for data transporting and all downstream
+  /// producer channels will be channel_map_.
+  std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> channel_map_;
+  std::shared_ptr<Config> transfer_config_;
+  std::shared_ptr<RuntimeContext> runtime_context_;
 };
 }  // namespace streaming
 }  // namespace ray

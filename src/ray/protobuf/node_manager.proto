@@ -72,6 +72,7 @@ message GetNodeStatsReply {
   repeated ViewData view_data = 2;
   uint32 num_workers = 3;
   repeated TaskSpec infeasible_tasks = 4;
+  repeated TaskSpec ready_tasks = 5;
 }
 
 // Service for inter-node-manager communication.
