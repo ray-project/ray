@@ -142,7 +142,7 @@ def validate(config, model, val_iterator, criterion, scheduler=None):
 
     Raises:
         ValueError if multiple models/schedulers are provided. You
-            are expected to have a custom training function if you wish
+            are expected to have a custom validation function if you wish
             to use multiple models/schedulers.
 
     Args:
