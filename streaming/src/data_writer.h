@@ -10,6 +10,7 @@
 #include "channel.h"
 #include "config/streaming_config.h"
 #include "event_service.h"
+#include "flow_control.h"
 #include "message/message_bundle.h"
 #include "runtime_context.h"
 
@@ -30,55 +31,6 @@ namespace streaming {
 /// accordingly. It will sleep for a short interval to save cpu if all ring
 /// buffers have no data in that moment.
 class DataWriter {
- private:
-  bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
-
-  /// This function handles two scenarios. When there is data in the transient
-  /// buffer, the existing data is written into the channel first, otherwise a
-  /// certain amount of message is first collected from the buffer and serialized
-  /// into the transient buffer, and finally written to the channel.
-  /// \\param channel_info
-  /// \\param buffer_remain
-  StreamingStatus WriteBufferToChannel(ProducerChannelInfo &channel_info,
-                                       uint64_t &buffer_remain);
-
-  /// Start the loop forward thread for collecting messages from all channels.
-  /// Invoking stack:
-  /// WriterLoopForward
-  ///   -- WriteChannelProcess
-  ///      -- WriteBufferToChannel
-  ///        -- CollectFromRingBuffer
-  ///        -- WriteTransientBufferToChannel
-  ///   -- WriteEmptyMessage(if WriteChannelProcess return empty state)
-  void WriterLoopForward();
-
-  /// Push empty message when no valid message or bundle was produced each time
-  /// interval.
-  /// \param channel_info
-  StreamingStatus WriteEmptyMessage(ProducerChannelInfo &channel_info);
-
-  /// Flush all data from transient buffer to channel for transporting.
-  /// \param channel_info
-  StreamingStatus WriteTransientBufferToChannel(ProducerChannelInfo &channel_info);
-
-  bool CollectFromRingBuffer(ProducerChannelInfo &channel_info, uint64_t &buffer_remain);
-
-  StreamingStatus WriteChannelProcess(ProducerChannelInfo &channel_info,
-                                      bool *is_empty_message);
-
-  StreamingStatus InitChannel(const ObjectID &q_id, const ActorID &actor_id,
-                              uint64_t channel_message_id, uint64_t queue_size);
-
-  /// Write all messages to channel util ringbuffer is empty.
-  /// \param channel_info
-  bool WriteAllToChannel(ProducerChannelInfo *channel_info);
-
-  /// Trigger an empty message for channel with no valid data.
-  /// \param channel_info
-  bool SendEmptyToChannel(ProducerChannelInfo *channel_info);
-
-  void EmptyMessageTimerCallback();
-
  public:
   explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
   virtual ~DataWriter();
@@ -110,11 +62,62 @@ class DataWriter {
   void Stop();
 
  private:
+  bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
+
+  /// This function handles two scenarios. When there is data in the transient
+  /// buffer, the existing data is written into the channel first, otherwise a
+  /// certain amount of message is first collected from the buffer and serialized
+  /// into the transient buffer, and finally written to the channel.
+  /// \\param channel_info
+  /// \\param buffer_remain
+  StreamingStatus WriteBufferToChannel(ProducerChannelInfo &channel_info,
+                                       uint64_t &buffer_remain);
+
+  /// Push empty message when no valid message or bundle was produced each time
+  /// interval.
+  /// \param channel_info
+  StreamingStatus WriteEmptyMessage(ProducerChannelInfo &channel_info);
+
+  /// Flush all data from transient buffer to channel for transporting.
+  /// \param channel_info
+  StreamingStatus WriteTransientBufferToChannel(ProducerChannelInfo &channel_info);
+
+  bool CollectFromRingBuffer(ProducerChannelInfo &channel_info, uint64_t &buffer_remain);
+
+  StreamingStatus WriteChannelProcess(ProducerChannelInfo &channel_info,
+                                      bool *is_empty_message);
+
+  StreamingStatus InitChannel(const ObjectID &q_id, const ActorID &actor_id,
+                              uint64_t channel_message_id, uint64_t queue_size);
+
+  /// Write all messages to channel util ringbuffer is empty.
+  /// \param channel_info
+  bool WriteAllToChannel(ProducerChannelInfo *channel_info);
+
+  /// Trigger an empty message for channel with no valid data.
+  /// \param channel_info
+  bool SendEmptyToChannel(ProducerChannelInfo *channel_info);
+
+  void EmptyMessageTimerCallback();
+
+  /// Notify channel consumed by refreshing downstream queue stats.
+  void NotifyConsumedByRefresh(ProducerChannelInfo &channel_info);
+
+  /// Notify channel consumed by given offset.
+  void NotifyConsumedItem(ProducerChannelInfo &channel_info, uint32_t offset);
+
+  void FlowControlTimer();
+
+ private:
   std::shared_ptr<EventService> event_service_;
 
   std::shared_ptr<std::thread> empty_message_thread_;
+  std::shared_ptr<std::thread> flow_control_thread_;
   // One channel have unique identity.
   std::vector<ObjectID> output_queue_ids_;
+  // Flow controller makes decision when it's should be blocked and avoid
+  // unnecessary overflow.
+  std::shared_ptr<FlowControl> flow_controller_;
 
  protected:
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;

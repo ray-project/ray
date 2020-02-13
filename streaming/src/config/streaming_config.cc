@@ -37,6 +37,18 @@ void StreamingConfig::FromProto(const uint8_t *data, uint32_t size) {
   if (config.empty_message_interval() != 0) {
     SetEmptyMessageTimeInterval(config.empty_message_interval());
   }
+  if (config.flow_control_type() != proto::FlowControlType::UNKNOWN_FLOW_CONTROL_TYPE) {
+    SetFlowControlType(config.flow_control_type());
+  }
+  if (config.writer_consumed_step()) {
+    SetWriterConsumedStep(config.writer_consumed_step());
+  }
+  if (config.reader_consumed_step()) {
+    SetReaderConsumedStep(config.reader_consumed_step());
+  }
+  if (config.event_driven_flow_control_interval()) {
+    SetReaderConsumedStep(config.event_driven_flow_control_interval());
+  }
 }
 
 uint32_t StreamingConfig::GetRingBufferCapacity() const { return ring_buffer_capacity_; }

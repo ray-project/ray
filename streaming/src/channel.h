@@ -56,6 +56,8 @@ struct ConsumerChannelInfo {
   uint64_t last_queue_target_diff;
   uint64_t get_queue_item_times;
   ActorID actor_id;
+  // Total count of notify request.
+  uint64_t notify_cnt;
 };
 
 /// Two types of channel are presented:

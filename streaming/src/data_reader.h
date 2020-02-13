@@ -96,13 +96,6 @@ class DataReader {
 
   void Stop();
 
-  /// Notify input queues to clear data whose seq id is equal or less than offset.
-  /// It's used when checkpoint is done.
-  ///  \param channel_info
-  ///  \param offset
-  ///
-  void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
-
  private:
   /// Create channels and connect to all upstream.
   StreamingStatus InitChannel();
@@ -121,6 +114,16 @@ class DataReader {
   /// Get top item from prioprity queue.
   StreamingStatus GetMergedMessageBundle(std::shared_ptr<DataBundle> &message,
                                          bool &is_valid_break);
+
+  /// Notify input queues to clear data whose seq id is equal or less than offset.
+  /// It's used when checkpoint is done.
+  ///  \param channel_info
+  ///  \param offset
+  ///
+  void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
+
+  //// Notify input queues to clear data who channel of message belongs to.
+  void NotifyConsumed(std::shared_ptr<DataBundle> &message);
 };
 }  // namespace streaming
 }  // namespace ray
