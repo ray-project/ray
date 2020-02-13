@@ -196,8 +196,31 @@ class TFRunner:
         run again. Main will then return the intermediate progress report
         to the tf_trainer instance (over network) and wait for the next
         {fit, validate}_step call. When that finally arrives, compute the
-        next number_of_steps steps and block again. Repeat one full epoch is
-        complete.
+        next number_of_steps steps and block again. Repeat until one full epoch
+        is complete.
+
+        When the epoch is completed, the final results are stored in
+        `self._history` for use by res_fn.
+
+        Per-batch results are stored in `self._logs` and are returned without
+        changes.
+
+        Args:
+            number_of_steps(int):
+                How many steps to run before blocking again.
+            config_key(string):
+                The key of the user-specified config in self.config.
+                "fit_config" for fitting, "evaluate_config" for eval.
+            action_fn(dict -> dict):
+                Function that will produce the final progress report using
+                the specified fit/eval config.
+            res_fn(None -> dict):
+                Function that will process the final progress report saved to
+                `self._history` before it is sent back to trainer.
+
+        Returns:
+            The intermediate progress report as a tuple of ("batch", logs) or
+            ("end", final_logs)
         """
         if self._model_thread is None or not self._model_thread.is_alive():
             self._recorded_all_results.clear()
@@ -259,7 +282,7 @@ class TFRunner:
 
     def fit_step(self, number_of_steps=1):
         """
-        Run number_of_steps training steps, then report the most recent logs.
+        Run `number_of_steps` training steps, then report the most recent logs.
         """
         return self._generic_step(number_of_steps, "fit_config",
                                   self._fit_action, self._fit_get_results)
@@ -292,7 +315,7 @@ class TFRunner:
     # still using the threaded setup so we actually get to show progress
     def validate_step(self, number_of_steps=1):
         """
-        Run number_of_steps evaluation steps, then report the most recent logs.
+        Run `number_of_steps` evaluation steps, then report the most recent logs.
         """
 
         logger.debug("Running a local model to get validation score.")

@@ -169,7 +169,13 @@ class TFTrainer:
         return stats
 
     def train(self, progress_report_interval=1):
-        """Runs a training epoch."""
+        """
+        Runs a training epoch.
+
+        Args:
+            progress_report_interval(int):
+                How often to request intermediate progress updates from workers.
+        """
 
         # todo: this will only work in an explicit steps case
         fit_config = self.config.get("fit_config", {})
@@ -180,7 +186,13 @@ class TFTrainer:
             self.workers)
 
     def validate(self, progress_report_interval=1):
-        """Evaluates the model on the validation data set."""
+        """
+        Evaluates the model on the validation data set.
+
+        Args:
+            progress_report_interval(int):
+                How often to request intermediate progress updates from workers.
+        """
         logger.info("Starting validation step.")
 
         # todo: this will only work in an explicit steps case
