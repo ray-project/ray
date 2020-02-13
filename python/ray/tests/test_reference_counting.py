@@ -323,7 +323,7 @@ def test_recursive_serialized_reference(one_worker_100MiB):
     del array_oid
 
     tail_oid = head_oid
-    for _ in range(max_depth - 1):
+    for _ in range(max_depth):
         tail_oid = ray.get(tail_oid)
 
     # Check that the remote reference pins the object.
@@ -331,7 +331,7 @@ def test_recursive_serialized_reference(one_worker_100MiB):
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.worker.global_worker.put_object(None, object_id=random_oid)
-    ray.get(tail_oid)
+    assert ray.get(tail_oid) is None
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -574,7 +574,7 @@ def test_recursively_pass_returned_object_id(one_worker_100MiB):
     del outer_oid
 
     tail_oid = head_oid
-    for _ in range(max_depth - 1):
+    for _ in range(max_depth):
         tail_oid = ray.get(tail_oid)
 
     # Check that the remote reference pins the object.
