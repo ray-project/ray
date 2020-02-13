@@ -1,7 +1,6 @@
 # Note: asyncio is only compatible with Python 3
 
 import asyncio
-import functools
 import threading
 
 import ray

@@ -180,5 +180,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus SetResource(const c_string &resource_name,
                                const double capacity,
                                const CClientID &client_Id)
-        
+
         void SubscribeToAsyncPlasma(plasma_callback_function callback)

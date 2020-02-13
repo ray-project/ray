@@ -1,6 +1,5 @@
 import asyncio
 import ctypes
-import sys
 
 import ray
 from ray.services import logger
@@ -41,12 +40,13 @@ class PlasmaEventHandler:
         for fut in futures:
             try:
                 fut.set_result(obj)
-            except InvalidStateError as e:
-                # Avoid issues where process_notifications and check_ready paths both get executed
+            except asyncio.InvalidStateError:
+                # Avoid issues where process_notifications
+                # and check_ready both get executed
                 pass
         try:
             self._waiting_dict.pop(ray_object_id)
-        except KeyError as e:
+        except KeyError:
             # Same situation as above
             pass
 
