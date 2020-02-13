@@ -76,8 +76,8 @@ public class RayConfig {
 
   public static RayConfig getInstance() {
     if (instance == null) {
-      synchronized(RayConfig.class) {
-        if(instance == null){
+      synchronized (RayConfig.class) {
+        if (instance == null) {
           instance = RayConfig.create();
         }
       }
