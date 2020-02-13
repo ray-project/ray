@@ -57,8 +57,7 @@ if __name__ == "__main__":
         required=False,
         type=str,
         default=None,
-        help="Specify the address where user dashboard will be hosted."
-    )
+        help="Specify the address where user dashboard will be hosted.")
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
@@ -82,4 +81,3 @@ if __name__ == "__main__":
         ray.utils.push_error_to_driver_through_redis(
             redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
         raise e
-    

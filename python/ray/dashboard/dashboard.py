@@ -97,7 +97,7 @@ def b64_decode(reply):
 
 
 def get_host_and_port(addr):
-    return addr.strip().split(':')
+    return addr.strip().split(":")
 
 
 class DashboardController(BaseDashboardController):
@@ -119,8 +119,8 @@ class DashboardController(BaseDashboardController):
         # ready_tasks are used to render tasks that are not schedulable
         # due to resource limitations.
         # (e.g., Actor requires 2 GPUs but there is only 1 gpu available).
-        ready_tasks = sum(
-            (data.get("readyTasks", []) for data in D.values()), [])
+        ready_tasks = sum((data.get("readyTasks", []) for data in D.values()),
+                          [])
         actor_tree = self.node_stats.get_actor_tree(
             workers_info_by_node, infeasible_tasks, ready_tasks)
         for address, data in D.items():
@@ -129,8 +129,8 @@ class DashboardController(BaseDashboardController):
             for view_data in data["viewData"]:
                 view_name = view_data["viewName"]
                 if view_name in ("local_available_resource",
-                                    "local_total_resource",
-                                    "object_manager_stats"):
+                                 "local_total_resource",
+                                 "object_manager_stats"):
                     measures_dicts[view_name] = measures_to_dict(
                         view_data["measures"])
             # process resources info
@@ -154,9 +154,8 @@ class DashboardController(BaseDashboardController):
                 for stats_name in [
                         "used_object_store_memory", "num_local_objects"
                 ]:
-                    stats_value = measures_dicts[
-                        "object_manager_stats"].get(
-                            prefix + stats_name, .0)
+                    stats_value = measures_dicts["object_manager_stats"].get(
+                        prefix + stats_name, .0)
                     extra_info_strings.append("{}: {}".format(
                         stats_name, stats_value))
                 data["extraInfo"] += ", ".join(extra_info_strings)
@@ -167,8 +166,7 @@ class DashboardController(BaseDashboardController):
                 max_line_length = max(map(len, lines))
                 to_print = []
                 for line in lines:
-                    to_print.append(line +
-                                    (max_line_length - len(line)) * " ")
+                    to_print.append(line + (max_line_length - len(line)) * " ")
                 data["extraInfo"] += "\n" + "\n".join(to_print)
         return {"nodes": D, "actors": actor_tree}
 
@@ -249,10 +247,9 @@ class Dashboard(object):
         if self.hosted_dashboard_addr:
             hosted_dashboard_host, hosted_dashboard_port = get_host_and_port(
                 self.hosted_dashboard_addr)
-            self.dashboard_client = DashboardClient(
-                hosted_dashboard_host, 
-                hosted_dashboard_port, 
-                self.dashboard_controller)
+            self.dashboard_client = DashboardClient(hosted_dashboard_host,
+                                                    hosted_dashboard_port,
+                                                    self.dashboard_controller)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
@@ -841,10 +838,12 @@ class TuneCollector(threading.Thread):
             try:
                 logger.info("Create a directory at {}".format(self._logdir))
                 os.mkdir(self._logdir)
-            except:
-                FileNotFoundError("Log directory {} does not exist. "
-                                    "Please create the directory to use Tune "
-                                    "collector".format(self._logdir))
+            except OSError as e:
+                logger.warning(e)
+                raise FileNotFoundError(
+                    "Log directory {} does not exist. "
+                    "Please create the directory to use Tune "
+                    "collector".format(self._logdir))
 
         super().__init__()
 

@@ -479,7 +479,7 @@ class Node:
             require_webui (bool): If true, this will raise an exception if we
                 fail to start the webui. Otherwise it will print a warning if
                 we fail to start the webui.
-            hosted_dashboard_addr (str): The address users host their dashboard.
+            hosted_dashboard_addr (str): The address users host dashboard.
         """
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
         self._webui_url, process_info = ray.services.start_dashboard(
@@ -617,7 +617,7 @@ class Node:
         self.start_monitor()
         self.start_raylet_monitor()
         self.start_dashboard(
-            require_webui=self._ray_params.include_webui, 
+            require_webui=self._ray_params.include_webui,
             hosted_dashboard_addr=self._ray_params.hosted_dashboard_addr)
 
     def start_ray_processes(self):

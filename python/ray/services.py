@@ -1046,12 +1046,8 @@ def start_dashboard(require_webui,
         os.path.dirname(os.path.abspath(__file__)),
         "dashboard/dashboard_main.py")
     command = [
-        sys.executable,
-        "-u",
-        dashboard_filepath,
-        "--host={}".format(host),
-        "--port={}".format(port),
-        "--redis-address={}".format(redis_address),
+        sys.executable, "-u", dashboard_filepath, "--host={}".format(host),
+        "--port={}".format(port), "--redis-address={}".format(redis_address),
         "--temp-dir={}".format(temp_dir)
     ]
     if redis_password:
@@ -1080,7 +1076,7 @@ def start_dashboard(require_webui,
             ray_constants.PROCESS_TYPE_DASHBOARD,
             stdout_file=stdout_file,
             stderr_file=stderr_file)
-        
+
         dashboard_url = ""
 
         if not hosted_dashboard_addr:
@@ -1089,21 +1085,19 @@ def start_dashboard(require_webui,
         else:
             # TODO(sang): Find a way to read hosted dashboard url
             dashboard_url = "localhost:8266"
-            logger.info("Dashboard is running in a host {}".format(dashboard_url))
-            
+            logger.info(
+                "Dashboard is running in a host {}".format(dashboard_url))
+
         logger.info("View the Ray dashboard at {}{}{}{}{}".format(
             colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
             colorama.Fore.RESET, colorama.Style.NORMAL))
-        
+
         if not hosted_dashboard_addr:
             enable_hosted_dashboard_url = "{}/to_host".format(dashboard_url)
-            logger.info("To host your dashboard, go to {}{}{}{}{}" \
-                .format(
-                    colorama.Style.BRIGHT, 
-                    colorama.Fore.GREEN, 
-                    enable_hosted_dashboard_url,
-                    colorama.Fore.RESET, 
-                    colorama.Style.NORMAL))
+            logger.info("To host your dashboard, go to {}{}{}{}{}".format(
+                colorama.Style.BRIGHT, colorama.Fore.GREEN,
+                enable_hosted_dashboard_url, colorama.Fore.RESET,
+                colorama.Style.NORMAL))
 
         return dashboard_url, process_info
     else:

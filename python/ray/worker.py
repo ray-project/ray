@@ -659,7 +659,7 @@ def init(address=None,
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
         use_pickle: Whether data objects should be serialized with cloudpickle.
-        hosted_dashboard_addr: The address users host their dashboard. 
+        hosted_dashboard_addr: The address users host their dashboard.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 

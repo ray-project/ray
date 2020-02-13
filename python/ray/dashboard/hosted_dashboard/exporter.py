@@ -7,6 +7,7 @@ import grpc
 from ray.core.generated import dashboard_pb2
 from ray.core.generated import dashboard_pb2_grpc
 
+
 class Exporter(threading.Thread):
     """Thread that keeps running and export metrics"""
 

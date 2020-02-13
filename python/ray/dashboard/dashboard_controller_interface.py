@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 
 class BaseDashboardController(ABC):
-    """Perform data fetching and other actions required by Dashboard 
+    """Perform data fetching and other actions required by Dashboard
 
     Make sure you run start_collecting_metrics function before using
     get_[stats]_info methods.
@@ -45,9 +45,8 @@ class BaseDashboardController(ABC):
     @abstractmethod
     def start_collecting_metrics(self):
         """Start threads/processes/actors to collect metrics
-        
-        NOTE: This interface should be called before using other 
+
+        NOTE: This interface should be called before using other
                 interface.
         """
         raise NotImplementedError("Please implement this method.")
-
