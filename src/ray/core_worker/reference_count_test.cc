@@ -253,6 +253,17 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   ASSERT_EQ(store.Size(), 1);
 }
 
+// A borrower is given a reference to an object ID, submits a task, waits for
+// it to finish, then returns.
+//
+// @ray.remote
+// def borrower(inner_ids):
+//     inner_id = inner_ids[0]
+//     ray.get(foo.remote(inner_id))
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestNoBorrow) {
   ReferenceCounter borrower_rc;
   auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");
@@ -298,6 +309,17 @@ TEST(DistributedReferenceCountTest, TestNoBorrow) {
   ASSERT_FALSE(owner_rc.HasReference(outer_id));
 }
 
+// A borrower is given a reference to an object ID, submits a task, does not
+// wait for it to finish.
+//
+// @ray.remote
+// def borrower(inner_ids):
+//     inner_id = inner_ids[0]
+//     foo.remote(inner_id)
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
   ReferenceCounter borrower_rc;
   auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");
@@ -354,6 +376,18 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrower) {
   ASSERT_FALSE(owner_rc.HasReference(outer_id));
 }
 
+// A borrower is given a reference to an object ID, keeps the reference past
+// the task's lifetime, then deletes the reference before it hears from the
+// owner.
+//
+// @ray.remote
+// class Borrower:
+//     def __init__(self, inner_ids):
+//        self.inner_id = inner_ids[0]
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// res = Borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
   ReferenceCounter borrower_rc;
   auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");
@@ -407,6 +441,20 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerReferenceRemoved) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+// A borrower is given a reference to an object ID, passes the reference to
+// another borrower by submitting a task, and does not wait for it to finish.
+//
+// @ray.remote
+// def borrower2(inner_ids):
+//     pass
+//
+// @ray.remote
+// def borrower(inner_ids):
+//     borrower2.remote(inner_ids)
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   ReferenceCounter borrower_rc1;
   auto borrower1 = std::make_shared<MockWorkerClient>(borrower_rc1, "1");
@@ -488,6 +536,19 @@ TEST(DistributedReferenceCountTest, TestBorrowerTree) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+// A task is given a reference to an object ID, whose value contains another
+// object ID. The task gets a reference to the innermost object ID, but deletes
+// it by the time the task finishes.
+//
+// @ray.remote
+// def borrower(mid_ids):
+//     inner_id = ray.get(mid_ids[0])
+//     del inner_id
+//
+// inner_id = ray.put(1)
+// mid_id = ray.put([inner_id])
+// outer_id = ray.put([mid_id])
+// res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestNestedObjectNoBorrow) {
   ReferenceCounter borrower_rc;
   auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");
@@ -541,6 +602,19 @@ TEST(DistributedReferenceCountTest, TestNestedObjectNoBorrow) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+// A task is given a reference to an object ID, whose value contains another
+// object ID. The task gets a reference to the innermost object ID, and is
+// still borrowing it by the time the task finishes.
+//
+// @ray.remote
+// def borrower(mid_ids):
+//     inner_id = ray.get(mid_ids[0])
+//     foo.remote(inner_id)
+//
+// inner_id = ray.put(1)
+// mid_id = ray.put([inner_id])
+// outer_id = ray.put([mid_id])
+// res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestNestedObject) {
   ReferenceCounter borrower_rc;
   auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");
@@ -606,6 +680,24 @@ TEST(DistributedReferenceCountTest, TestNestedObject) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+// A borrower is given a reference to an object ID, whose value contains
+// another object ID. The borrower passes the reference again to another
+// borrower and waits for it to finish. The nested borrower unwraps the outer
+// object and gets a reference to the innermost ID.
+//
+// @ray.remote
+// def borrower2(owner_id2):
+//     owner_id1 = ray.get(owner_id2[0])[0]
+//     foo.remote(owner_id1)
+//
+// @ray.remote
+// def borrower1(owner_id2):
+//     ray.get(borrower2.remote(owner_id2))
+//
+// owner_id1 = ray.put(1)
+// owner_id2 = ray.put([owner_id1])
+// owner_id3 = ray.put([owner_id2])
+// res = borrower1.remote(owner_id3)
 TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners) {
   ReferenceCounter borrower_rc1;
   auto borrower1 = std::make_shared<MockWorkerClient>(borrower_rc1, "1");
@@ -689,6 +781,24 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners) {
   ASSERT_FALSE(owner_rc.HasReference(owner_id1));
 }
 
+// A borrower is given a reference to an object ID, whose value contains
+// another object ID. The borrower passes the reference again to another
+// borrower but does not wait for it to finish. The nested borrower unwraps the
+// outer object and gets a reference to the innermost ID.
+//
+// @ray.remote
+// def borrower2(owner_id2):
+//     owner_id1 = ray.get(owner_id2[0])[0]
+//     foo.remote(owner_id1)
+//
+// @ray.remote
+// def borrower1(owner_id2):
+//     borrower2.remote(owner_id2)
+//
+// owner_id1 = ray.put(1)
+// owner_id2 = ray.put([owner_id1])
+// owner_id3 = ray.put([owner_id2])
+// res = borrower1.remote(owner_id3)
 TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners2) {
   ReferenceCounter borrower_rc1;
   auto borrower1 = std::make_shared<MockWorkerClient>(borrower_rc1, "1");
@@ -777,6 +887,21 @@ TEST(DistributedReferenceCountTest, TestNestedObjectDifferentOwners2) {
   ASSERT_FALSE(owner_rc.HasReference(owner_id2));
 }
 
+// A borrower is given a reference to an object ID and passes the reference to
+// another task. The nested task executes on the object's owner.
+//
+// @ray.remote
+// def executes_on_owner(inner_ids):
+//     inner_id = inner_ids[0]
+//
+// @ray.remote
+// def borrower(inner_ids):
+//     outer_id2 = ray.put(inner_ids)
+//     executes_on_owner.remote(outer_id2)
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// res = borrower.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
   ReferenceCounter borrower_rc;
   auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");
@@ -846,6 +971,22 @@ TEST(DistributedReferenceCountTest, TestBorrowerPingPong) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+// A borrower is given two references to the same object ID. `task` and `Actor`
+// execute on the same process.
+//
+// @ray.remote
+// def task(inner_ids):
+//     foo.remote(inner_ids[0])
+//
+// @ray.remote
+// class Actor:
+//     def __init__(self, inner_ids):
+//         self.inner_id = inner_ids[0]
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// res = task.remote(outer_id)
+// Actor.remote(outer_id)
 TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   ReferenceCounter borrower_rc;
   auto borrower = std::make_shared<MockWorkerClient>(borrower_rc, "1");
@@ -896,8 +1037,8 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   // returned and there were no local references to outer_id.
   ASSERT_FALSE(owner_rc.HasReference(outer_id));
 
-  // The task submitted by the borrower returns. Everyone's ref count should go
-  // to 0.
+  // The task submitted by the borrower returns and its second reference goes
+  // out of scope. Everyone's ref count should go to 0.
   borrower->HandleSubmittedTaskFinished(inner_id);
   ASSERT_TRUE(owner_rc.HasReference(inner_id));
   borrower_rc.RemoveLocalReference(inner_id, nullptr);
@@ -907,6 +1048,9 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   ASSERT_FALSE(owner_rc.HasReference(outer_id));
 }
 
+// A borrower is given references to 2 different objects, which each contain a
+// reference to an object ID. The borrower unwraps both objects and receives a
+// duplicate reference to the inner ID.
 TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
   ReferenceCounter borrower_rc1;
   auto borrower1 = std::make_shared<MockWorkerClient>(borrower_rc1, "1");
@@ -982,6 +1126,15 @@ TEST(DistributedReferenceCountTest, TestDuplicateNestedObject) {
   ASSERT_FALSE(owner_rc.HasReference(owner_id1));
 }
 
+// We submit a task and immediately delete the reference to the return ID. The
+// submitted task returns an object ID.
+//
+// @ray.remote
+// def returns_id():
+//     inner_id = ray.put()
+//     return inner_id
+//
+// returns_id.remote()
 TEST(DistributedReferenceCountTest, TestReturnObjectIdNoBorrow) {
   ReferenceCounter caller_rc;
   auto caller = std::make_shared<MockWorkerClient>(caller_rc, "1");
@@ -1015,6 +1168,15 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdNoBorrow) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+// We submit a task and keep the reference to the return ID. The submitted task
+// returns an object ID.
+//
+// @ray.remote
+// def returns_id():
+//     inner_id = ray.put()
+//     return inner_id
+//
+// return_id = returns_id.remote()
 TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrow) {
   ReferenceCounter caller_rc;
   auto caller = std::make_shared<MockWorkerClient>(caller_rc, "1");
@@ -1050,6 +1212,17 @@ TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrow) {
   ASSERT_FALSE(owner_rc.HasReference(inner_id));
 }
 
+// We submit a task and submit another task that depends on the return ID. The
+// submitted task returns an object ID, which will get borrowed by the second
+// task.
+//
+// @ray.remote
+// def returns_id():
+//     inner_id = ray.put()
+//     return inner_id
+//
+// return_id = returns_id.remote()
+// borrow.remote(return_id)
 TEST(DistributedReferenceCountTest, TestReturnObjectIdBorrowChain) {
   ReferenceCounter caller_rc;
   auto caller = std::make_shared<MockWorkerClient>(caller_rc, "1");
