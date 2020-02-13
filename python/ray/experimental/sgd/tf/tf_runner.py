@@ -162,20 +162,20 @@ class TFRunner:
         self._common_setup()
 
     # runs on another thread
-    def _record_progress(self, batchN, logs):
+    def _record_progress(self, batch_idx, logs):
         """Called on every batch of a running model thread."""
         self._step_counter += 1
         self._logs = logs
 
     # runs on another thread
-    def _has_next_batch(self, batchN, logs):
+    def _has_next_batch(self, batch_idx, logs):
         """
         Called before every batch of a running model thread.
         We have to use this instead of doing everything on batch end because
         when the training ends, batch end gets called first and we end up
         with two _recorded_all_results events otherwise.
         """
-        if batchN != 0:
+        if batch_idx != 0:
             # always gate the first batch so the model doesn't immediately run
             if self._step_counter < self._step_limit:
                 return

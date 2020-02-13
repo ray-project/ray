@@ -95,9 +95,6 @@ class TFTrainer:
                 for i, worker in enumerate(self.workers)
             ])
 
-        import tensorflow as tf
-        self._Progbar = tf.keras.utils.Progbar
-
     # todo: the worker parameter should be removed once distributed eval works
     def _generic_model_driver(self, request_step, steps, res_metrics_prefix,
                               workers):
@@ -121,15 +118,16 @@ class TFTrainer:
 
         Returns: the final metrics of running a full epoch.
         """
-        progbar = self._Progbar(steps)
+        import tensorflow as tf
+        progbar = tf.keras.utils.Progbar(steps)
 
         worker_stats = [None] * len(workers)
         done = False
         while not done:
             reqs = [request_step(w) for w in workers]
-            for workerN, (type, logs) in enumerate(ray.get(reqs)):
-                if type == "batch":
-                    if workerN != 0:
+            for worker_idx, (report_type, logs) in enumerate(ray.get(reqs)):
+                if report_type == "batch":
+                    if worker_idx != 0:
                         continue
 
                     batch = logs["batch"]
@@ -147,8 +145,8 @@ class TFTrainer:
                     # for an explanation of only taking
                     # the first worker's data
                     progbar.update(batch, metrics)
-                elif type == "end":
-                    if workerN == 0:
+                elif report_type == "end":
+                    if worker_idx == 0:
                         # todo: check that the metric name indeed starts
                         # with the res_metrics_prefix, keeping in mind
                         # that if no metrics were specified for the model
@@ -159,7 +157,7 @@ class TFTrainer:
 
                         progbar.update(steps, metrics)
 
-                    worker_stats[workerN] = logs
+                    worker_stats[worker_idx] = logs
 
                     # all workers do the same amount of work
                     done = True
