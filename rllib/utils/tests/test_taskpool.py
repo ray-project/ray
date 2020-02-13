@@ -21,7 +21,7 @@ class TaskPoolTest(unittest.TestCase):
         pool.add(*task1)
         pool.add(*task2)
 
-        fetched = [pair for pair in pool.completed_prefetch()]
+        fetched = list(pool.completed_prefetch())
         self.assertListEqual(fetched, [task2])
 
     @patch("ray.wait")
@@ -35,11 +35,11 @@ class TaskPoolTest(unittest.TestCase):
             task = createMockWorkerAndObjectId(i)
             pool.add(*task)
 
-        rayWaitMock.return_value = ([i for i in range(1000)], [])
+        rayWaitMock.return_value = (list(range(1000)), [])
 
         # For this test, we're only checking the object ids
         fetched = [pair[1] for pair in pool.completed_prefetch()]
-        self.assertListEqual(fetched, [i for i in range(999)])
+        self.assertListEqual(fetched, list(range(999)))
 
         # Finally, check the next iteration returns the final taks
         fetched = [pair[1] for pair in pool.completed_prefetch()]
@@ -56,16 +56,16 @@ class TaskPoolTest(unittest.TestCase):
             task = createMockWorkerAndObjectId(i)
             pool.add(*task)
 
-        rayWaitMock.return_value = ([i for i in range(1000)], [])
+        rayWaitMock.return_value = (list(range(1000)), [])
 
         # Verify that only the first 500 tasks are returned, this should leave
         # some tasks in the _fetching deque for later
         fetched = [pair[1] for pair in pool.completed_prefetch(max_yield=500)]
-        self.assertListEqual(fetched, [i for i in range(500)])
+        self.assertListEqual(fetched, list(range(500)))
 
         # Finally, check the next iteration returns the remaining tasks
         fetched = [pair[1] for pair in pool.completed_prefetch()]
-        self.assertListEqual(fetched, [i for i in range(500, 1000)])
+        self.assertListEqual(fetched, list(range(500, 1000)))
 
     @patch("ray.wait")
     def test_completed_prefetch_yieldsRemainingIfIterationStops(
@@ -79,7 +79,7 @@ class TaskPoolTest(unittest.TestCase):
             task = createMockWorkerAndObjectId(i)
             pool.add(*task)
 
-        rayWaitMock.return_value = ([i for i in range(10)], [])
+        rayWaitMock.return_value = (list(range(10)), [])
 
         # This should fetch just the first item in the list
         try:
@@ -91,7 +91,7 @@ class TaskPoolTest(unittest.TestCase):
 
         # This fetch should return the remaining pre-fetched tasks
         fetched = [pair[1] for pair in pool.completed_prefetch()]
-        self.assertListEqual(fetched, [i for i in range(1, 10)])
+        self.assertListEqual(fetched, list(range(1, 10)))
 
     @patch("ray.wait")
     def test_reset_workers_pendingFetchesFromFailedWorkersRemoved(
