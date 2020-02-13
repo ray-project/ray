@@ -66,7 +66,7 @@ class TestRedisPassword:
         info = ray.init(redis_port=1234, redis_password="testpassword")
         address = info["redis_address"]
         redis_ip, redis_port = address.split(":")
-        assert redis_port == 1234
+        assert redis_port == "1234"
 
         redis_client = redis.StrictRedis(
             host=redis_ip, port=redis_port, password="testpassword")
