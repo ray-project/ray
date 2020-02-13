@@ -677,8 +677,9 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Port to forward. Use this multiple times to forward multiple ports.")
 def attach(cluster_config_file, start, screen, tmux, cluster_name, new,
            port_forward):
+    port_forward = [(port, port) for port in list(port_forward)]
     attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new,
-                   list(port_forward))
+                   port_forward)
 
 
 @cli.command()
