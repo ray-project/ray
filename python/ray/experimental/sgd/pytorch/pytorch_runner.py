@@ -112,6 +112,7 @@ class PyTorchRunner:
             self.criterion = self.criterion.cuda()
 
     def _create_schedulers_if_available(self):
+        # Learning rate schedules are optional.
         if not self.scheduler_creator:
             return
         self.schedulers = self.scheduler_creator(self.given_optimizers,
@@ -245,6 +246,7 @@ class PyTorchRunner:
                     scheduler.state_dict() for scheduler in self.schedulers
                 ]
             })
+        # Check if fp16 is True and if NVIDIA Apex is imported.
         if self.use_fp16 and amp:
             state.update({"amp": amp.state_dict()})
         return state

@@ -4,7 +4,7 @@ RaySGD Pytorch
 .. image:: raysgd-pytorch.svg
     :align: center
 
-The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python.
+The RaySGD ``PyTorchTrainer`` simplifies distributed model training for PyTorch. The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to wrap your training code in bash scripts.
 
 Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
 
@@ -18,7 +18,7 @@ Setting up training
 
 .. tip:: We need your feedback! RaySGD is currently early in its development, and we're hoping to get feedback from people using or considering it. We'd love `to get in touch <https://forms.gle/26EMwdahdgm7Lscy9>`_!
 
-The ``PyTorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it needs constructors for the Model, Data, Optimizer, Loss, and ``lr_scheduler`` to create replicated copies across different devices and machines.
+The ``PyTorchTrainer`` can be constructed with functions that wrap components of the training script. Specifically, it requires constructors for the Model, Data, Optimizer, Loss, and ``lr_scheduler`` to create replicated copies across different devices and machines.
 
 .. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
    :language: python
@@ -89,7 +89,7 @@ for ``PyTorchTrainer(scheduler_creator=...)``.
 Putting things together
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Before instantiating the trainer, you'll have to start or connect to a Ray cluster:
+Before instantiating the trainer, first start or connect to a Ray cluster:
 
 .. literalinclude:: ../../examples/doc_code/raysgd_torch_signatures.py
    :language: python
@@ -154,7 +154,7 @@ After training, you may want to reappropriate the Ray cluster. To release Ray re
 Initialization Functions
 ------------------------
 
-.. warning:: This is still an experimental API and is subject to change in the near future.
+.. warning:: This is still an experimental API and is subject to change without warning.
 
 You may want to run some initializers on each worker when they are started. This may be something like setting an environment variable or downloading some data. You can do this via the ``initialization_hook`` parameter:
 
@@ -206,12 +206,12 @@ The trained torch model can be extracted for use within the same Python program 
 .. code-block::
 
     trainer.train()
-    model = trainer.get_model()  # will return multiple models if the model_creator does so.
+    model = trainer.get_model()  # Returns multiple models if the model_creator does.
 
 Mixed Precision (FP16) Training
 -------------------------------
 
-You can enable mixed precision training for PyTorch by the ``use_fp16`` flag. This automatically converts the model(s) and optimizer(s) to train using mixed-precision. This requires NVIDIA ``Apex``, which can be installed from `the NVIDIA/Apex repository <https://github.com/NVIDIA/apex#quick-start>`_:
+You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. This automatically converts the model(s) and optimizer(s) to train using mixed-precision. This requires NVIDIA ``Apex``, which can be installed from `the NVIDIA/Apex repository <https://github.com/NVIDIA/apex#quick-start>`_:
 
 .. code-block::
     :emphasize-lines: 7
@@ -262,7 +262,7 @@ You can start a Ray cluster `via the Ray cluster launcher <autoscaling.html>`_ o
     ray up CLUSTER.yaml
     ray submit train.py --args="--address='auto'"
 
-Then, within ``train.py`` you'll be able to scale up the number of workers seamlessly across multiple nodes:
+Then, within ``train.py`` you can scale up the number of workers seamlessly across multiple nodes:
 
 .. code-block:: python
 
@@ -305,7 +305,7 @@ Users can set ``checkpoint="auto"`` to always checkpoint the current model befor
 Advanced: Hyperparameter Tuning
 -------------------------------
 
-.. warning:: This is still an experimental API and is subject to change in the near future.
+.. warning:: This is still an experimental API and is subject to change without warning.
 
 ``PyTorchTrainer`` naturally integrates with Tune via the ``PyTorchTrainable`` interface. The same arguments to ``PyTorchTrainer`` should be passed into the ``tune.run(config=...)`` as shown below.
 
@@ -370,7 +370,6 @@ Note that this is needed if the model creator returns multiple models, optimizer
 
 .. code-block:: python
 
-    # An example custom training function.
 
     def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
         """Runs one standard training pass over the train_iterator.
@@ -453,7 +452,7 @@ Note that this is needed if the model creator returns multiple models, optimizer
             A dict of metrics from the evaluation.
         """
         ...
-        return {...}
+        return {"validation_accuracy": 0.5}
 
 
     trainer = PyTorchTrainer(

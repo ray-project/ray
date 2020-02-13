@@ -104,7 +104,7 @@ def scheduler_creator(optimizers, config):
 import ray
 
 ray.init()
-# or ray.init(address="auto") if a cluster has been started.
+# or ray.init(address="auto") to connect to a running cluster.
 # __torch_ray_end__
 
 # __torch_trainer_start__

@@ -172,7 +172,7 @@ class PyTorchTrainer:
 
         self.use_fp16 = use_fp16
 
-        if apex_args and type(apex_args) is not dict:
+        if apex_args and not isinstance(apex_args, dict):
             raise ValueError("apex_args needs to be a dict object.")
 
         self.apex_args = apex_args

@@ -106,7 +106,10 @@ class DistributedPyTorchRunner(PyTorchRunner):
         return super(DistributedPyTorchRunner, self).step()
 
     def _get_model_state_dicts(self):
-        """Override the parent class method for supporting model.module."""
+        """Fetch state from ``model.module`` instead of ``model``. 
+        
+        This is needed for PyTorch DistributedDataParallel models.
+        """
         # This is so that we create a duplicate of weights into CPU rather than
         # move the model weights entirely out of the GPU, so that we can
         # resume training while saving intermediate checkpoints.
