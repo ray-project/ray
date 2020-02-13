@@ -29,6 +29,9 @@ else
   exit 1
 fi
 
+# Upgrade pip and other packages to avoid incompatibility ERRORS.
+pip install --upgrade pip # setuptools cloudpickle urllib3
+
 if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   sudo apt-get update
   sudo apt-get install -y python-dev python-numpy build-essential curl unzip tmux gdb
@@ -38,7 +41,7 @@ if [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "linux" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install -q scipy tensorflow==$tf_version tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
-    cython==0.29.0 gym gym[atari] \
+    cython==0.29.0 gym gym[atari] atari_py \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
@@ -50,7 +53,7 @@ elif [[ "$PYTHON" == "3.6" ]] && [[ "$platform" == "macosx" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
   pip install -q scipy tensorflow==$tf_version tensorflow-probability==$tfp_version gast==0.2.2 \
     torch==$torch_version torchvision \
-    cython==0.29.0 gym gym[atari] \
+    cython==0.29.0 gym gym[atari] atari_py \
     opencv-python-headless pyyaml pandas==0.24.2 requests \
     feather-format lxml openpyxl xlrd py-spy pytest-timeout networkx tabulate aiohttp \
     uvicorn dataclasses pygments werkzeug kubernetes flask grpcio pytest-sugar pytest-rerunfailures pytest-asyncio \
