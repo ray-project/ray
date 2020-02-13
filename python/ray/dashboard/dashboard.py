@@ -1,5 +1,6 @@
 try:
     import aiohttp.web
+    from aiohttp.web_middlewares import normalize_path_middleware
 except ImportError:
     print("The dashboard requires aiohttp to run.")
     import sys
@@ -11,7 +12,9 @@ import datetime
 import json
 import logging
 import os
+from pathlib import Path
 import re
+import shutil
 import threading
 import time
 import traceback
@@ -94,6 +97,31 @@ def b64_decode(reply):
     return b64decode(reply).decode("utf-8")
 
 
+def find_and_replace_files(replacement_dict, path):
+    for file_path in Path(path).rglob("*"):
+        if not file_path.is_file():
+            continue
+        if file_path.suffix not in {'.js', '.css', '.html'}:
+            continue
+
+        # Use backup file if exists, create one otherwise
+        backup_file_path = file_path.with_suffix("{}.backup".format(
+            file_path.suffix))
+        if not backup_file_path.is_file():
+            shutil.copyfile(file_path, backup_file_path)
+
+        try:
+            with open(backup_file_path) as f:
+                data = f.read()
+            with open(file_path, 'w') as f:
+                for find, replace in replacement_dict.items():
+                    data = data.replace(find, replace)
+                f.write(data)
+        except Exception as e:
+            logger.debug("Failed to replace file {} content:{}".format(
+                file_path, e))
+
+
 class Dashboard(object):
     """A dashboard process for monitoring Ray nodes.
 
@@ -110,7 +138,8 @@ class Dashboard(object):
                  port,
                  redis_address,
                  temp_dir,
-                 redis_password=None):
+                 redis_password=None,
+                 path_prefix=None):
         """Initialize the dashboard object."""
         self.host = host
         self.port = port
@@ -128,9 +157,14 @@ class Dashboard(object):
         # using the React dev server. Specifically, when this option is set, we
         # allow cross-origin requests to be made.
         self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
+        self.path_prefix = os.environ.get("RAY_DASHBOARD_PREFIX", path_prefix)
 
         self.app = aiohttp.web.Application()
         self.setup_routes()
+        # Some browsers will add extra // for relative routes
+        # for example http://localhost:8665/prefix//api/...
+        self.app.middlewares.append(
+            normalize_path_middleware(merge_slashes=True))
 
     def setup_routes(self):
         def forbidden() -> aiohttp.web.Response:
@@ -350,6 +384,17 @@ class Dashboard(object):
         self.app.router.add_get("/api/errors", errors)
 
         self.app.router.add_get("/{_}", get_forbidden)
+
+        # This allows path prefix to work
+        find_and_replace_files({
+            "REPLACE_HOMEPAGE_PREFIX": self.path_prefix or "",
+            '<base href="HTML_BASE_REF"/>': '<base href="{}">'.format(
+                self.path_prefix) if self.path_prefix else ""
+        }, build_dir)
+        if self.path_prefix:
+            current_app = self.app
+            self.app = aiohttp.web.Application()
+            self.app.add_subapp(self.path_prefix, current_app)
 
     def log_dashboard_url(self):
         url = ray.services.get_webui_url_from_redis(self.redis_client)
@@ -904,6 +949,12 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Specify the path of the temporary directory use by Ray process.")
+    parser.add_argument(
+        "--path-prefix",
+        required=False,
+        type=str,
+        default=None,
+        help="Specify the path prefix for the dashboard web server.")
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 

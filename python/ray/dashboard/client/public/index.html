@@ -2,6 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+
+    <!-- Conditional content injection of base tag -->
+    <!-- https://github.com/facebook/create-react-app/issues/3112 -->
+    <% if (process.env.NODE_ENV === 'production') { %>
+    <!--This tag will be processed by dashboard.py to dynamically inject
+        base url for custon dashboard prefix.-->
+    <base href="HTML_BASE_REF" />
+    <% } %>
+
     <link rel="shortcut icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!--

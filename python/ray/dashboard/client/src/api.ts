@@ -1,11 +1,14 @@
 const base =
   process.env.NODE_ENV === "development"
-    ? "http://localhost:8265"
-    : window.location.origin;
+    ? "http://localhost:8265/"
+    : document.baseURI + "/";
 
 // TODO(mitchellstern): Add JSON schema validation for the responses.
 const get = async <T>(path: string, params: { [key: string]: any }) => {
-  const url = new URL(path, base);
+  // Need to construct url relative to baseURI so user can add
+  // path prefix to their dashboard.
+  const relativePath = "./" + path;
+  const url = new URL(relativePath, base);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
@@ -127,7 +130,7 @@ export interface RayletInfoResponse {
           actorTitle: string;
           requiredResources: { [key: string]: number };
           state: -1;
-          invalidStateType?: 'infeasibleActor' | 'pendingActor';
+          invalidStateType?: "infeasibleActor" | "pendingActor";
         };
   };
 }
