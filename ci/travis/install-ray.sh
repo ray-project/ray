@@ -16,7 +16,7 @@ if [[ "$TRAVIS" == "true" ]]; then
   echo "build --jobs=50" >> $HOME/.bazelrc
 fi
 
-if [[ "$PYTHON" == "3.5" ]]; then
+if [[ "$PYTHON" == "3.6" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
   pushd "$ROOT_DIR/../../python"

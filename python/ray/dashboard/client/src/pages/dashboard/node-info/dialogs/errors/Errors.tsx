@@ -4,10 +4,9 @@ import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
-import { RouteComponentProps } from "react-router";
-import { ErrorsResponse, getErrors } from "../../../../api";
-import DialogWithTitle from "../../../../common/DialogWithTitle";
-import NumberedLines from "../../../../common/NumberedLines";
+import { ErrorsResponse, getErrors } from "../../../../../api";
+import DialogWithTitle from "../../../../../common/DialogWithTitle";
+import NumberedLines from "../../../../../common/NumberedLines";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -30,29 +29,26 @@ const styles = (theme: Theme) =>
     }
   });
 
+interface Props {
+  clearErrorDialog: () => void;
+  hostname: string;
+  pid: number | null;
+}
+
 interface State {
   result: ErrorsResponse | null;
   error: string | null;
 }
 
-class Errors extends React.Component<
-  WithStyles<typeof styles> &
-    RouteComponentProps<{ hostname: string; pid: string | undefined }>,
-  State
-> {
+class Errors extends React.Component<Props & WithStyles<typeof styles>, State> {
   state: State = {
     result: null,
     error: null
   };
 
-  handleClose = () => {
-    this.props.history.push("/");
-  };
-
   async componentDidMount() {
     try {
-      const { match } = this.props;
-      const { hostname, pid } = match.params;
+      const { hostname, pid } = this.props;
       const result = await getErrors(hostname, pid);
       this.setState({ result, error: null });
     } catch (error) {
@@ -61,13 +57,11 @@ class Errors extends React.Component<
   }
 
   render() {
-    const { classes, match } = this.props;
+    const { classes, clearErrorDialog, hostname } = this.props;
     const { result, error } = this.state;
 
-    const { hostname } = match.params;
-
     return (
-      <DialogWithTitle handleClose={this.handleClose} title="Errors">
+      <DialogWithTitle handleClose={clearErrorDialog} title="Errors">
         {error !== null ? (
           <Typography color="error">{error}</Typography>
         ) : result === null ? (
