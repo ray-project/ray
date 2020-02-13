@@ -4,21 +4,11 @@ import pytest
 import tempfile
 import time
 import random
-import subprocess
 from collections import defaultdict
 import queue
 
 import ray
 from ray.util.multiprocessing import Pool, TimeoutError
-
-
-@pytest.fixture
-def cleanup_only():
-    yield None
-    ray.shutdown()
-    subprocess.check_output(["ray", "stop"])
-    if "RAY_ADDRESS" in os.environ:
-        del os.environ["RAY_ADDRESS"]
 
 
 @pytest.fixture
@@ -37,7 +27,7 @@ def pool_4_processes():
     ray.shutdown()
 
 
-def test_initialize_ray(cleanup_only):
+def test_ray_init(shutdown_only):
     def getpid(args):
         return os.getpid()
 
@@ -70,14 +60,20 @@ def test_initialize_ray(cleanup_only):
     assert int(ray.state.cluster_resources()["CPU"]) == 1
     ray.shutdown()
 
+
+def test_connect_to_ray(call_ray_start):
+    def getpid(args):
+        return os.getpid()
+
+    def check_pool_size(pool, size):
+        args = [tuple() for _ in range(size)]
+        assert len(set(pool.map(getpid, args))) == size
+
+    address = call_ray_start
     # Use different numbers of CPUs to distinguish between starting a local
     # ray cluster and connecting to an existing one.
+    start_cpus = 1  # Set in fixture.
     init_cpus = 2
-    start_cpus = 3
-
-    # Start a ray cluster in the background.
-    subprocess.check_output(
-        ["ray", "start", "--head", "--num-cpus={}".format(start_cpus)])
 
     # Check that starting a pool still starts ray if RAY_ADDRESS not set.
     pool = Pool(processes=init_cpus)
@@ -88,14 +84,14 @@ def test_initialize_ray(cleanup_only):
 
     # Check that starting a pool connects to a running ray cluster if
     # ray_address is passed in.
-    pool = Pool(ray_address="auto")
+    pool = Pool(ray_address=address)
     assert ray.is_initialized()
     assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
     check_pool_size(pool, start_cpus)
     ray.shutdown()
 
     # Set RAY_ADDRESS, so pools should connect to the running ray cluster.
-    os.environ["RAY_ADDRESS"] = "auto"
+    os.environ["RAY_ADDRESS"] = address
 
     # Check that starting a pool connects to a running ray cluster if
     # RAY_ADDRESS is set.
@@ -112,11 +108,8 @@ def test_initialize_ray(cleanup_only):
     assert int(ray.state.cluster_resources()["CPU"]) == start_cpus
     ray.shutdown()
 
-    # Clean up the background ray cluster.
-    subprocess.check_output(["ray", "stop"])
 
-
-def test_initializer(cleanup_only):
+def test_initializer(shutdown_only):
     def init(dirname):
         with open(os.path.join(dirname, str(os.getpid())), "w") as f:
             print("hello", file=f)
@@ -482,10 +475,7 @@ def test_imap_timeout(pool_4_processes):
         result_iter.next()
 
 
-def test_maxtasksperchild(cleanup_only):
-    # TODO(eoakes): fix this test
-    return
-
+def test_maxtasksperchild(shutdown_only):
     def f(args):
         return os.getpid()
 
