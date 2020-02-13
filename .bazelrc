@@ -1,13 +1,10 @@
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 ###############################################################################
-build --action_env=BAZEL_LLVM
-build --action_env=BAZEL_SH
+# On       Windows, provide: USE_CLANG_CL=1, CC=clang, BAZEL_LLVM, BAZEL_SH
+# On all platforms, provide: PYTHON2_BIN_PATH, PYTHON3_BIN_PATH
+###############################################################################
 build --action_env=PATH
-build --action_env=PYTHON2_BIN_PATH
-build --action_env=PYTHON3_BIN_PATH
-# Use Clang-Cl (Clang front-end with Visual C++ backend) on Windows
-build --action_env=USE_CLANG_CL=1
 build:linux   --compilation_mode=opt
 build:macos   --compilation_mode=opt
 build:windows --compilation_mode=fastbuild
