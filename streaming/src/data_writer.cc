@@ -167,6 +167,8 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
       std::bind(&DataWriter::SendEmptyToChannel, this, std::placeholders::_1));
   event_service_->Register(EventType::UserEvent, std::bind(&DataWriter::WriteAllToChannel,
                                                            this, std::placeholders::_1));
+  event_service_->Register(EventType::FlowEvent, std::bind(&DataWriter::WriteAllToChannel,
+                                                           this, std::placeholders::_1));
 
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Running);
   return StreamingStatus::OK;
@@ -186,6 +188,10 @@ DataWriter::~DataWriter() {
     if (empty_message_thread_->joinable()) {
       STREAMING_LOG(INFO) << "Empty message thread waiting for join";
       empty_message_thread_->join();
+    }
+    if (flow_control_thread_->joinable()) {
+      STREAMING_LOG(INFO) << "FlowControl timer thread waiting for join";
+      flow_control_thread_->join();
     }
     int user_event_count = 0;
     int empty_event_count = 0;
@@ -467,6 +473,11 @@ void DataWriter::FlowControlTimer() {
     }
     std::this_thread::sleep_for(MockTimer);
   }
+}
+
+void DataWriter::GetOffsetInfo(
+    std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map) {
+  offset_map = &channel_info_map_;
 }
 
 }  // namespace streaming

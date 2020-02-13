@@ -61,6 +61,10 @@ class DataWriter {
 
   void Stop();
 
+  /// Get offset information about channels for checkpoint.
+  ///  \param offset_map (return value)
+  void GetOffsetInfo(std::unordered_map<ObjectID, ProducerChannelInfo> *&offset_map);
+
  private:
   bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
 

@@ -49,6 +49,9 @@ void StreamingConfig::FromProto(const uint8_t *data, uint32_t size) {
   if (config.event_driven_flow_control_interval()) {
     SetReaderConsumedStep(config.event_driven_flow_control_interval());
   }
+  STREAMING_CHECK(writer_consumed_step_ >= reader_consumed_step_)
+      << "Writer consuemd step " << writer_consumed_step_
+      << "can not be smaller then reader consumed step " << reader_consumed_step_;
 }
 
 uint32_t StreamingConfig::GetRingBufferCapacity() const { return ring_buffer_capacity_; }
