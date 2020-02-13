@@ -23,8 +23,7 @@ class PlasmaEventHandler:
         """Process notifications."""
         for object_id, object_size, metadata_size in messages:
             if object_size > 0 and object_id in self._waiting_dict:
-                futures = self._waiting_dict[object_id]
-                self._complete_future(futures, object_id)
+                self._complete_future(object_id)
 
     def close(self):
         """Clean up this handler."""
@@ -32,11 +31,12 @@ class PlasmaEventHandler:
             for fut in futures:
                 fut.cancel()
 
-    def _complete_future(self, futures: List[asyncio.Future], ray_object_id):
+    def _complete_future(self, ray_object_id):
         logger.debug(
             "Completing plasma futures for object id {}".format(ray_object_id))
 
         obj = ray.get(ray_object_id)
+        futures = self._waiting_dict.pop(ray_object_id)
         for fut in futures:
             loop = fut._loop
 
@@ -51,12 +51,10 @@ class PlasmaEventHandler:
 
             loop.call_soon_threadsafe(complete_closure)
 
-        self._waiting_dict.pop(ray_object_id)
-
-    def check_immediately(self, object_id, future):
+    def check_immediately(self, object_id):
         ready, _ = ray.wait([object_id], timeout=0)
         if ready:
-            self._complete_future([future], object_id)
+            self._complete_future(object_id)
 
     def as_future(self, object_id, check_ready=True):
         """Turn an object_id into a Future object.
@@ -73,6 +71,6 @@ class PlasmaEventHandler:
 
         future = PlasmaObjectFuture(loop=self._loop)
         self._waiting_dict[object_id].append(future)
-        self.check_immediately(object_id, future)
+        self.check_immediately(object_id)
 
         return future
