@@ -222,9 +222,7 @@ class PyTorchRunner:
         cpu_state_dicts = []
         for model in self.models:
             state_dict = model.state_dict()
-            for k, v in state_dict.items():
-                state_dict[k] = v.cpu()
-            cpu_state_dicts += [state_dict]
+            cpu_state_dicts += [{k: v.cpu() for k, v in state_dict.items()}]
         return cpu_state_dicts
 
     def _set_model_state_dicts(self, models_state_dicts):

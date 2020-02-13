@@ -184,7 +184,7 @@ Save and Load
 If you want to save or reload the training procedure, you can use ``trainer.save``
 and ``trainer.load``, which wraps the relevant ``torch.save`` and ``torch.load`` calls. This should work across a distributed cluster even without a NFS because it takes advantage of Ray's distributed object store.
 
-.. code-block::
+.. code-block:: python
 
     checkpoint_path = os.path.join(tempfile.mkdtemp(), "checkpoint")
     trainer_1.save(checkpoint_path)
@@ -203,7 +203,7 @@ Exporting a model for inference
 
 The trained torch model can be extracted for use within the same Python program with ``trainer.get_model()``. This will load the state dictionary of the model(s).
 
-.. code-block::
+.. code-block:: python
 
     trainer.train()
     model = trainer.get_model()  # Returns multiple models if the model_creator does.
@@ -213,7 +213,7 @@ Mixed Precision (FP16) Training
 
 You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. This automatically converts the model(s) and optimizer(s) to train using mixed-precision. This requires NVIDIA ``Apex``, which can be installed from `the NVIDIA/Apex repository <https://github.com/NVIDIA/apex#quick-start>`_:
 
-.. code-block::
+.. code-block:: python
     :emphasize-lines: 7
 
     trainer = PyTorchTrainer(
@@ -228,9 +228,9 @@ You can enable mixed precision training for PyTorch with the ``use_fp16`` flag. 
 ``Apex`` is a Pytorch extension with NVIDIA-maintained utilities to streamline mixed precision and distributed training. When ``use_fp16=True``,
 you should not manually cast your model or data to ``.half()``. The flag informs the Trainer to call ``amp.initialize`` on the created models and optimizers and optimize using the scaled loss: ``amp.scale_loss(loss, optimizer)``.
 
-To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field for the PyTorchTrainer constructor:
+To specify particular parameters for ``amp.initialize``, you can use the ``apex_args`` field for the PyTorchTrainer constructor. Valid arguments can be found on the `Apex documentation <https://nvidia.github.io/apex/amp.html#apex.amp.initialize>`_:
 
-.. code-block::
+.. code-block:: python
     :emphasize-lines: 7-12
 
     trainer = PyTorchTrainer(
@@ -279,7 +279,7 @@ Advanced: Fault Tolerance
 
 For distributed deep learning, jobs are often run on infrastructure where nodes can be pre-empted frequently (i.e., spot instances in the cloud). To overcome this, RaySGD provides **fault tolerance** features that enable training to continue regardless of node failures.
 
-.. code-block:: bash
+.. code-block:: python
 
     trainer.train(max_retries=N)
 
@@ -297,7 +297,7 @@ Note that we assume the Trainer itself is not on a pre-emptible node. It is curr
 
 Users can set ``checkpoint="auto"`` to always checkpoint the current model before executing a pass over the training dataset.
 
-.. code-block:: bash
+.. code-block:: python
 
     trainer.train(max_retries=N, checkpoint="auto")
 
@@ -369,7 +369,6 @@ Custom Training and Validation Functions
 Note that this is needed if the model creator returns multiple models, optimizers, or schedulers.
 
 .. code-block:: python
-
 
     def train(config, model, train_iterator, criterion, optimizer, scheduler=None):
         """Runs one standard training pass over the train_iterator.
@@ -476,7 +475,7 @@ PyTorchTrainer Examples
 -----------------------
 
 Here are some examples of using RaySGD for training PyTorch models. If you'd like
-to contribute an example, feel free to create a `pull request here <https://github.com/ray-project/ray/pull/>`_.
+to contribute an example, feel free to create a `pull request here <https://github.com/ray-project/ray/>`_.
 
 - `PyTorch training example <https://github.com/ray-project/ray/blob/master/python/ray/experimental/sgd/pytorch/examples/train_example.py>`__:
    Simple example of using Ray's PyTorchTrainer.

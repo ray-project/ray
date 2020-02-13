@@ -106,19 +106,17 @@ class DistributedPyTorchRunner(PyTorchRunner):
         return super(DistributedPyTorchRunner, self).step()
 
     def _get_model_state_dicts(self):
-        """Fetch state from ``model.module`` instead of ``model``. 
-        
+        """Fetch state from ``model.module`` instead of ``model``.
+
         This is needed for PyTorch DistributedDataParallel models.
         """
-        # This is so that we create a duplicate of weights into CPU rather than
-        # move the model weights entirely out of the GPU, so that we can
-        # resume training while saving intermediate checkpoints.
         cpu_state_dicts = []
         for model in self.models:
             state_dict = model.module.state_dict()
-            for k, v in state_dict.items():
-                state_dict[k] = v.cpu()
-            cpu_state_dicts += [state_dict]
+            # This is so that we create a duplicate of weights into CPU rather
+            # than move the model weights out of the GPU so that we can
+            # resume training while saving intermediate checkpoints.
+            cpu_state_dicts += [{k: v.cpu() for k, v in state_dict.items()}]
         return cpu_state_dicts
 
     def _set_model_state_dicts(self, model_state_dicts):
