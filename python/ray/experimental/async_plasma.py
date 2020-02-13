@@ -11,14 +11,7 @@ INT64_SIZE = ctypes.sizeof(ctypes.c_int64)
 
 
 class PlasmaObjectFuture(asyncio.Future):
-    """This class manages the lifecycle of a Future contains an object_id.
-
-    Note:
-        This Future is an item in an linked list.
-
-    Attributes:
-        object_id: The object_id this Future contains.
-    """
+    """This class is a wrapper for a Future on Plasma."""
     pass
 
 

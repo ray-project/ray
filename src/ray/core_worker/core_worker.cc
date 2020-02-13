@@ -97,7 +97,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::InstallFailureSignalHandler();
   }
   RAY_LOG(INFO) << "Initializing worker " << worker_context_.GetWorkerID();
-  std::cout << "STARTING\n\n" << store_socket << "\n\n";
   // Initialize gcs client.
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));

@@ -140,10 +140,6 @@ popd
 "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
         --target="$ROOT_DIR/python/ray/thirdparty_files"
 
-
-"$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
-        --target="$ROOT_DIR/python/ray/thirdparty_files"
-
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then

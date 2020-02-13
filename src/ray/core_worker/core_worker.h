@@ -749,7 +749,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // Queue of tasks to resubmit when the specified time passes.
   std::deque<std::pair<int64_t, TaskSpecification>> to_resubmit_ GUARDED_BY(mutex_);
 
-  // TODO(Ian) What should this be, unique_ptr, special, fancy, mutexed???
+  // Plasma notification manager
   std::unique_ptr<ObjectStoreNotificationManager> plasma_notifier_;
 
   friend class CoreWorkerTest;

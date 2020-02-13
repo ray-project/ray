@@ -621,10 +621,7 @@ cdef class CoreWorker:
         self.core_worker.get().SubscribeToAsyncPlasma(async_plasma_callback)
 
     def get_plasma_event_handler(self):
-        if self.plasma_event_handler is None:
-            return None
-        else:
-            return self.plasma_event_handler
+        return self.plasma_event_handler
 
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
