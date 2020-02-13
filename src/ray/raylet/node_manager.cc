@@ -1931,13 +1931,18 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 
   // Add the task and its uncommitted lineage to the lineage cache.
-  if (forwarded) {
-    lineage_cache_.AddUncommittedLineage(task_id, uncommitted_lineage);
-  } else {
-    if (!lineage_cache_.CommitTask(task)) {
-      RAY_LOG(WARNING)
-          << "Task " << task_id
-          << " already committed to the GCS. This is most likely due to reconstruction.";
+  if (!task.GetTaskSpecification().IsDirectCall()) {
+    // NOTE(edoakes): the only non-direct-call tasks in the system are actor
+    // creation tasks corresponding to actor reconstructions.
+    RAY_CHECK(task.GetTaskSpecification().IsActorCreationTask());
+    if (forwarded) {
+      lineage_cache_.AddUncommittedLineage(task_id, uncommitted_lineage);
+    } else {
+      if (!lineage_cache_.CommitTask(task)) {
+        RAY_LOG(WARNING) << "Task " << task_id
+                         << " already committed to the GCS. This is most likely due to "
+                            "reconstruction.";
+      }
     }
   }
 

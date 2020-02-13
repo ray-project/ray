@@ -66,6 +66,7 @@ class TaskSpecBuilder {
     message_->set_caller_id(caller_id.Binary());
     message_->mutable_caller_address()->CopyFrom(caller_address);
     message_->set_num_returns(0);
+    // TODO(edoakes): remove the flag entirely.
     message_->set_is_direct_call(false);
     return *this;
   }
