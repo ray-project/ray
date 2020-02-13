@@ -1,24 +1,17 @@
 package org.ray.streaming.runtime.resourcemanager;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import org.aeonbits.owner.util.Collections;
 import org.ray.api.Ray;
-import org.ray.api.RayActor;
-import org.ray.api.id.UniqueId;
-import org.ray.api.runtimecontext.NodeInfo;
 import org.ray.streaming.jobgraph.JobGraph;
 import org.ray.streaming.runtime.TestHelper;
 import org.ray.streaming.runtime.config.StreamingConfig;
 import org.ray.streaming.runtime.config.global.CommonConfig;
 import org.ray.streaming.runtime.config.master.ResourceConfig;
 import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionGraph;
-import org.ray.streaming.runtime.core.graph.executiongraph.ExecutionVertex;
 import org.ray.streaming.runtime.core.master.resourcemanager.ResourceManager;
 import org.ray.streaming.runtime.core.master.resourcemanager.ResourceManagerImpl;
 import org.ray.streaming.runtime.core.master.scheduler.strategy.SlotAssignStrategy;
@@ -38,8 +31,6 @@ import org.testng.annotations.Test;
 public class ResourceManagerTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(ResourceManagerTest.class);
-
-  private Object rayAsyncContext;
 
   @org.testng.annotations.BeforeClass
   public void setUp() {

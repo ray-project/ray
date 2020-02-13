@@ -30,11 +30,24 @@ public class ResourceManagerImpl implements ResourceManager {
   //Container used tag
   private static final String CONTAINER_ENGAGED_KEY = "CONTAINER_ENGAGED_KEY";
 
+  /**
+   * Job runtime context.
+   */
   private JobRuntimeContext runtimeContext;
+
+  /**
+   * Resource related configuration.
+   */
   private ResourceConfig resourceConfig;
+
+  /**
+   * Slot assign strategy.
+   */
   private SlotAssignStrategy slotAssignStrategy;
 
-
+  /**
+   * Resource description information.
+   */
   private final Resources resources;
 
   private final ScheduledExecutorService scheduledExecutorService;
@@ -58,8 +71,8 @@ public class ResourceManagerImpl implements ResourceManager {
 
     this.scheduledExecutorService = Executors.newScheduledThreadPool(1);
     long intervalSecond = resourceConfig.resourceCheckIntervalSecond();
-    this.scheduledExecutorService.scheduleAtFixedRate(Ray.wrapRunnable(this::checkAndUpdateResources),
-        0, intervalSecond, TimeUnit.SECONDS);
+    this.scheduledExecutorService.scheduleAtFixedRate(
+        Ray.wrapRunnable(this::checkAndUpdateResources), 0, intervalSecond, TimeUnit.SECONDS);
 
     LOG.info("ResourceManagerImpl init success.");
   }
@@ -135,14 +148,15 @@ public class ResourceManagerImpl implements ResourceManager {
       return true;
     }).collect(Collectors.toList());
 
-    List<Container> deleteContainers = resources.getRegisterContainers().stream().filter(container -> {
-      for (NodeInfo nodeInfo : latestNodeInfos) {
-        if (nodeInfo.nodeId.equals(container.getNodeId())) {
-          return false;
-        }
-      }
-      return true;
-    }).collect(Collectors.toList());
+    List<Container> deleteContainers = resources.getRegisterContainers().stream()
+        .filter(container -> {
+          for (NodeInfo nodeInfo : latestNodeInfos) {
+            if (nodeInfo.nodeId.equals(container.getNodeId())) {
+              return false;
+            }
+          }
+          return true;
+        }).collect(Collectors.toList());
     LOG.info("Latest node infos: {}, current containers: {}, add nodes: {}, delete nodes: {}.",
         latestNodeInfos, resources.getRegisterContainers(), addNodes, deleteContainers);
 
@@ -163,12 +177,16 @@ public class ResourceManagerImpl implements ResourceManager {
   private void registerContainer(final NodeInfo nodeInfo) {
     LOG.info("Register container {}.", nodeInfo);
 
-    Container container = new Container(nodeInfo.nodeId, nodeInfo.nodeAddress, nodeInfo.nodeHostname);
+    Container container =
+        new Container(nodeInfo.nodeId, nodeInfo.nodeAddress, nodeInfo.nodeHostname);
     container.setAvailableResource(nodeInfo.resources);
 
     // create ray resource
-    Ray.setResource(container.getNodeId(), container.getName(), resources.getMaxActorNumPerContainer());
-    Ray.setResource(container.getNodeId(), CONTAINER_ENGAGED_KEY, 1);
+    Ray.setResource(container.getNodeId(),
+        container.getName(),
+        resources.getMaxActorNumPerContainer());
+    Ray.setResource(container.getNodeId(),
+        CONTAINER_ENGAGED_KEY, 1);
 
     // update register container list
     resources.getRegisterContainers().add(container);

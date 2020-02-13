@@ -1,5 +1,8 @@
 package org.ray.streaming.runtime.config.types;
 
+/**
+ * Slot assign strategy type.
+ */
 public enum SlotAssignStrategyType {
 
   /**

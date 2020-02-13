@@ -1,11 +1,10 @@
 package org.ray.streaming.runtime.core.resource;
 
+import com.google.common.base.MoreObjects;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import com.google.common.base.MoreObjects;
 
 public class Slot implements Serializable {
   private int id;

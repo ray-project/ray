@@ -1,11 +1,12 @@
 package org.ray.streaming.runtime.core.common;
 
+import java.io.Serializable;
 import java.util.Random;
 
 /**
  * Uniquely identifies the abstract base class.
  */
-public class AbstractID implements Comparable<AbstractID>, java.io.Serializable {
+public class AbstractID implements Comparable<AbstractID>, Serializable {
 
   private static final long serialVersionUID = 1L;
   private static final Random RND = new Random();
@@ -52,7 +53,6 @@ public class AbstractID implements Comparable<AbstractID>, java.io.Serializable 
   public long getUpperPart() {
     return upperPart;
   }
-
 
   public byte[] getBytes() {
     byte[] bytes = new byte[SIZE];
