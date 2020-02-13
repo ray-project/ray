@@ -135,6 +135,7 @@ scripts/nodes.txt
 **/.pytest_cache
 **/.cache
 .benchmarks
+python-driver-*
 
 # Vscode
 .vscode/
