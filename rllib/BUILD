@@ -55,7 +55,7 @@ py_test(
 
 # TaskPool
 py_test(
-    name = "test_schedules",
+    name = "test_taskpool",
     size = "small",
     srcs = ["utils/tests/test_taskpool.py"]
 )
