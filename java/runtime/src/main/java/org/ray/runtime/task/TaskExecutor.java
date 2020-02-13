@@ -10,6 +10,8 @@ import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
 import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.config.RayConfig;
+import org.ray.runtime.config.RunMode;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.runtime.functionmanager.RayFunction;
 import org.ray.runtime.generated.Common.TaskType;
@@ -43,7 +45,9 @@ public abstract class TaskExecutor {
 
   protected TaskExecutor(AbstractRayRuntime runtime) {
     this.runtime = runtime;
-    taskExecutors.put(runtime.getWorkerContext().getCurrentWorkerId(), this);
+    if (RayConfig.getInstance().runMode == RunMode.CLUSTER) {
+      taskExecutors.put(runtime.getWorkerContext().getCurrentWorkerId(), this);
+    }
   }
 
   public static TaskExecutor get(byte[] workerId) {
