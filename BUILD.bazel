@@ -1058,10 +1058,10 @@ pyx_library(
     # Export ray ABI symbols, which can then be used by _streaming.so.
     # We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
     # shared lib, see python/ray/__init__.py.
-    cc_kwargs = {
-        "linkstatic": 1,
+    cc_kwargs = dict(
+        copts = COPTS,
         # see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
-        "linkopts": select({
+        linkopts = select({
             "@bazel_tools//src/conditions:darwin": [
                 "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
             ],
@@ -1071,8 +1071,8 @@ pyx_library(
                 "-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
             ],
         }),
-    },
-    copts = COPTS,
+        linkstatic = 1,
+    ),
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
@@ -1094,7 +1094,9 @@ pyx_library(
         "python/ray/streaming/includes/*.pxd",
         "python/ray/streaming/includes/*.pxi",
     ]),
-    copts = COPTS,
+    cc_kwargs = dict(
+        copts = COPTS,
+    ),
     deps = [
         "//streaming:streaming_lib",
     ],
