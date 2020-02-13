@@ -403,7 +403,7 @@ def get_system_memory():
 
     if docker_limit is not None:
         # We take the min because the cgroup limit is very large if we aren't
-        # in docker
+        # in Docker.
         return min(docker_limit, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes
@@ -428,7 +428,7 @@ def get_used_memory():
 
     if docker_usage is not None:
         # We take the min because the cgroup limit is very large if we aren't
-        # in docker
+        # in Docker.
         return min(docker_usage, psutil_memory_in_bytes)
 
     return psutil_memory_in_bytes
