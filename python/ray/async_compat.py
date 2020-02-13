@@ -60,7 +60,6 @@ def get_async(object_id):
     #     fulfilled.
 
     def done_callback(future):
-        print("DONE CALLBACK")
         result = future.result()
         # Result from async plasma, transparently pass it to user future
         if isinstance(future, PlasmaObjectFuture):
@@ -87,13 +86,11 @@ def get_async(object_id):
                 user_future.retry_plasma_future = retry_plasma_future
 
     if object_id.is_direct_call_type():
-        prin("Direct")
         inner_future = loop.create_future()
         # We must add the done_callback before sending to in_memory_store_get
         inner_future.add_done_callback(done_callback)
         core_worker.in_memory_store_get_async(object_id, inner_future)
     else:  ##Check for why await is not working
-        print("IN direct")
         inner_future = as_future(object_id)
         inner_future.add_done_callback(done_callback)
     # A hack to keep reference to inner_future so it doesn't get GC.

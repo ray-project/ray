@@ -240,7 +240,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
 CoreWorker::~CoreWorker() {
   // Possibly account for shutdown
-  plasma_notifier_->~ObjectStoreNotificationManager;
+  plasma_notifier_.release();
   io_service_.stop();
   io_thread_.join();
   if (log_dir_ != "") {
