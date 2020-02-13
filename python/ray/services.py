@@ -1,4 +1,5 @@
 import collections
+import ctypes
 import json
 import logging
 import multiprocessing
@@ -18,6 +19,11 @@ import pyarrow
 import ray
 import ray.ray_constants as ray_constants
 import psutil
+
+libc = None
+prctl = None
+PR_SET_PDEATHSIG = 1
+SIGKILL = 9
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -71,6 +77,9 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
     "process", "stdout_file", "stderr_file", "use_valgrind", "use_gdb",
     "use_valgrind_profiler", "use_perftools_profiler", "use_tmux"
 ])
+
+# This will be set lazily if needed
+set_psigdeath = None
 
 
 def address(ip_address, port):
@@ -436,12 +445,15 @@ def start_ray_process(command,
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
-    # Block sigint for spawned processes so they aren't killed by the SIGINT
-    # propagated from the shell on Ctrl-C so we can handle KeyboardInterrupts
-    # in interactive sessions. This is only supported in Python 3.3 and above.
-    def block_sigint():
+    def preexec_fn():
+        # Block sigint for spawned processes so they aren't killed by
+        # the SIGINT propagated from the shell on Ctrl-C so we can handle
+        # KeyboardInterrupts in interactive sessions.
+        # This is only supported in Python 3.3 and above.
         import signal
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+        if set_psigdeath:
+            set_psigdeath()
 
     process = subprocess.Popen(
         command,
@@ -450,7 +462,7 @@ def start_ray_process(command,
         stdout=stdout_file,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=block_sigint)
+        preexec_fn=preexec_fn)
 
     return ProcessInfo(
         process=process,
@@ -580,6 +592,35 @@ def start_reaper():
     Returns:
         ProcessInfo for the process that was started.
     """
+    if sys.platform.startswith("linux"):
+        # No need for a reaper on Linux.
+        # The kernel supports fate-sharing natively, so just initilize it.
+        global libc
+        if libc is None:
+            try:
+                libc = ctypes.CDLL(None)
+            except TypeError:
+                libc = False
+        global prctl
+        if prctl is None and libc is not None:
+            try:
+                prctl = libc.prctl
+                prctl.restype = ctypes.c_int
+                prctl.argtypes = [
+                    ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong,
+                    ctypes.c_ulong, ctypes.c_ulong
+                ]
+            except AttributeError:
+                prctl = False
+        if prctl:
+            global set_psigdeath
+
+            def set_psigdeath():
+                status = prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0)
+                assert status == 0, "PR_SET_PDEATHSIG shouldn't fail on Linux"
+
+            return None
+
     # Make ourselves a process group leader so that the reaper can clean
     # up other ray processes without killing the process group of the
     # process that started us.
