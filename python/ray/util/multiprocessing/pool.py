@@ -71,7 +71,10 @@ class ResultThread(threading.Thread):
                     break
 
             [ready_id], unready = ray.wait(unready, num_returns=1)
-            batch = ray.get(ready_id)
+            try:
+                batch = ray.get(ready_id)
+            except ray.exceptions.RayError as e:
+                batch = [e]
             for result in batch:
                 if isinstance(result, Exception):
                     self._got_error = True
@@ -141,6 +144,8 @@ class AsyncResult:
             for result in batch:
                 if isinstance(result, PoolTaskError):
                     raise result.underlying
+                elif isinstance(result, Exception):
+                    raise result
             results.extend(batch)
 
         if self._single_result:

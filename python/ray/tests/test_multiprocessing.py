@@ -168,6 +168,8 @@ def test_terminate(pool_4_processes):
     result.wait(timeout=10)
     assert result.ready()
     assert not result.successful()
+    with pytest.raises(ray.exceptions.RayError):
+        result.get()
 
 
 def test_apply(pool):
