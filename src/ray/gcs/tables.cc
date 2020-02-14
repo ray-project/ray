@@ -316,6 +316,19 @@ Status Table<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback
 }
 
 template <typename ID, typename Data>
+Status Table<ID, Data>::SyncLookup(const JobID &job_id, const ID &id,
+                                   boost::optional<Data> *result) {
+  num_lookups_++;
+  std::vector<Data> data;
+  Status status = Log<ID, Data>::SyncLookup(job_id, id, &data);
+  if (!data.empty()) {
+    RAY_CHECK(data.size() == 1);
+    *result = data.back();
+  }
+  return status;
+}
+
+template <typename ID, typename Data>
 Status Table<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                   const Callback &subscribe,
                                   const FailureCallback &failure,

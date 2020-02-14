@@ -175,6 +175,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \param id The ID of the data that is looked up in the GCS.
   /// \param result The lookup result GCS return. If the result is an empty vector,
   /// then there was no data at the key.
+  /// \return Status
   Status SyncLookup(const JobID &job_id, const ID &id, std::vector<Data> *results);
 
   /// Subscribe to any Append operations to this table. The caller may choose
@@ -365,6 +366,14 @@ class Table : private Log<ID, Data>,
   /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup,
                 const FailureCallback &failure);
+
+  /// Lookup an entry synchronously.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param id The ID of the data that is looked up in the GCS.
+  /// \param result The result that GCS returns.
+  /// \return Status
+  Status SyncLookup(const JobID &job_id, const ID &id, boost::optional<Data> *result);
 
   /// Subscribe to any Add operations to this table. The caller may choose to
   /// subscribe to all Adds, or to subscribe only to keys that it requests

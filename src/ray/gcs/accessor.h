@@ -107,6 +107,14 @@ class ActorInfoAccessor {
       const ActorCheckpointID &checkpoint_id,
       const OptionalItemCallback<rpc::ActorCheckpointData> &callback) = 0;
 
+  /// Get all checkpoints of actor from GCS synchronously.
+  ///
+  /// \param actor_id The ID of actor to lookup in GCS.
+  /// \param result The actor checkpoints that GCS returns.
+  /// \return Status
+  virtual Status GetAllCheckpoints(const ActorID &actor_id,
+                                   std::vector<rpc::ActorCheckpointData> *result) = 0;
+
   /// Get actor checkpoint id data from GCS asynchronously.
   ///
   /// \param actor_id The ID of actor to lookup in GCS.

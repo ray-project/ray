@@ -51,6 +51,9 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
       const ActorCheckpointID &checkpoint_id,
       const OptionalItemCallback<ActorCheckpointData> &callback) override;
 
+  Status GetAllCheckpoints(const ActorID &actor_id,
+                           std::vector<ActorCheckpointData> *result) override;
+
   Status AsyncGetCheckpointID(
       const ActorID &actor_id,
       const OptionalItemCallback<ActorCheckpointIdData> &callback) override;

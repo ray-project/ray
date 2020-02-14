@@ -161,6 +161,32 @@ Status RedisActorInfoAccessor::AsyncGetCheckpoint(
   return actor_cp_table.Lookup(JobID::Nil(), checkpoint_id, on_success, on_failure);
 }
 
+Status RedisActorInfoAccessor::GetAllCheckpoints(
+    const ActorID &actor_id, std::vector<ActorCheckpointData> *result) {
+  RAY_CHECK(result != nullptr);
+  boost::optional<ActorCheckpointIdData> optional_id;
+  ActorCheckpointIdTable &cp_id_table = client_impl_->actor_checkpoint_id_table();
+  Status status = cp_id_table.SyncLookup(JobID::Nil(), actor_id, &optional_id);
+  if (!status.ok() || !optional_id) {
+    return status;
+  }
+
+  ActorCheckpointTable &actor_cp_table = client_impl_->actor_checkpoint_table();
+  for (int i = 0; i < optional_id->checkpoint_ids_size(); ++i) {
+    std::string id_str = optional_id->checkpoint_ids(i);
+    ActorCheckpointID cp_id = ActorCheckpointID::FromBinary(id_str);
+    boost::optional<ActorCheckpointData> optional_data;
+    status = actor_cp_table.SyncLookup(JobID::Nil(), cp_id, &optional_data);
+    if (optional_data) {
+      result->emplace_back(std::move(*optional_data));
+    }
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  return status;
+}
+
 Status RedisActorInfoAccessor::AsyncGetCheckpointID(
     const ActorID &actor_id,
     const OptionalItemCallback<ActorCheckpointIdData> &callback) {
