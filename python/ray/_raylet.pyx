@@ -928,7 +928,8 @@ cdef class CoreWorker:
             actor_method_cpu = int(c_actor_handle.ExtensionData())
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
-            method_meta = ActorClassMethodMetadata(actor_class)
+            method_meta = ActorClassMethodMetadata.create(
+                actor_class, actor_creation_function_descriptor)
             return ActorHandle(language, actor_id,
                                method_meta.decorators,
                                method_meta.signatures,

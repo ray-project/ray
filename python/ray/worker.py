@@ -113,6 +113,7 @@ class Worker:
         self.node = None
         self.mode = None
         self.cached_functions_to_run = []
+        self.cached_actor_method_metadata = {}
         self.actor_init_error = None
         self.make_actor = None
         self.actors = {}
@@ -1357,6 +1358,7 @@ def disconnect(exiting_interpreter=False):
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
+    worker.cached_actor_method_metadata.clear()
     worker.serialization_context_map.clear()
 
 

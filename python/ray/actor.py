@@ -154,7 +154,27 @@ class ActorClassMethodMetadata(object):
             each actor method.
     """
 
-    def __init__(self, modified_class):
+    def __init__(self):
+        class_name = type(self).__name__
+        raise Exception("{} can not be constructed directly, "
+                        "instead of running '{}()', try '{}.create()'".format(
+                            class_name, class_name, class_name))
+
+    @classmethod
+    def create(cls, modified_class, actor_creation_function_descriptor):
+        worker = ray.worker.get_global_worker()
+        # Try to create an instance from cache.
+        cached_meta = worker.cached_actor_method_metadata.get(
+            actor_creation_function_descriptor)
+        if cached_meta is not None:
+            return cached_meta
+
+        # Create an instance without __init__ called.
+        self = cls.__new__(cls)
+        # Update cache.
+        worker.cached_actor_method_metadata[
+            actor_creation_function_descriptor] = self
+
         actor_methods = inspect.getmembers(modified_class,
                                            ray.utils.is_function_or_method)
         self.methods = dict(actor_methods)
@@ -190,6 +210,7 @@ class ActorClassMethodMetadata(object):
             if hasattr(method, "__ray_invocation_decorator__"):
                 self.decorators[method_name] = (
                     method.__ray_invocation_decorator__)
+        return self
 
 
 class ActorClassMetadata:
@@ -237,7 +258,8 @@ class ActorClassMetadata:
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.last_export_session_and_job = None
-        self.method_meta = ActorClassMethodMetadata(modified_class)
+        self.method_meta = ActorClassMethodMetadata.create(
+            modified_class, actor_creation_function_descriptor)
 
 
 class ActorClass:
