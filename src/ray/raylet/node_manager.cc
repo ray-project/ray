@@ -3091,6 +3091,12 @@ void NodeManager::HandlePinObjectIDs(const rpc::PinObjectIDsRequest &request,
   for (const auto &object_id_binary : request.object_ids()) {
     ObjectID object_id = ObjectID::FromBinary(object_id_binary);
 
+    if (plasma_results[i].data == nullptr) {
+      RAY_LOG(ERROR) << "Plasma object " << object_id
+                     << " was evicted before the raylet could pin it.";
+      continue;
+    }
+
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
     pinned_objects_.emplace(
         object_id, std::unique_ptr<RayObject>(new RayObject(
