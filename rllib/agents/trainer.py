@@ -199,7 +199,6 @@ COMMON_CONFIG = {
         # "env_config": {...},
         # "explore": False
     },
-
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
     # process. If you increase this, it will increase the Ray resource usage
