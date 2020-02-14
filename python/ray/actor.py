@@ -154,6 +154,8 @@ class ActorClassMethodMetadata(object):
             each actor method.
     """
 
+    _cache = {}  # This cache will be cleared when ray.shutdown()
+
     def __init__(self):
         class_name = type(self).__name__
         raise Exception("{} can not be constructed directly, "
@@ -161,19 +163,18 @@ class ActorClassMethodMetadata(object):
                             class_name, class_name, class_name))
 
     @classmethod
+    def reset_cache(cls):
+        cls._cache.clear()
+
+    @classmethod
     def create(cls, modified_class, actor_creation_function_descriptor):
-        worker = ray.worker.get_global_worker()
         # Try to create an instance from cache.
-        cached_meta = worker.cached_actor_method_metadata.get(
-            actor_creation_function_descriptor)
+        cached_meta = cls._cache.get(actor_creation_function_descriptor)
         if cached_meta is not None:
             return cached_meta
 
         # Create an instance without __init__ called.
         self = cls.__new__(cls)
-        # Update cache.
-        worker.cached_actor_method_metadata[
-            actor_creation_function_descriptor] = self
 
         actor_methods = inspect.getmembers(modified_class,
                                            ray.utils.is_function_or_method)
@@ -210,6 +211,9 @@ class ActorClassMethodMetadata(object):
             if hasattr(method, "__ray_invocation_decorator__"):
                 self.decorators[method_name] = (
                     method.__ray_invocation_decorator__)
+
+        # Update cache.
+        cls._cache[actor_creation_function_descriptor] = self
         return self
 
 
