@@ -735,7 +735,7 @@ py_test(
     main = "contrib/alpha_zero/examples/train_cartpole.py",
     size = "small",
     srcs = ["contrib/alpha_zero/examples/train_cartpole.py"],
-    args = ["--training-iteration=1"]
+    args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
 )
 
 
