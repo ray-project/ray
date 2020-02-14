@@ -1,67 +1,207 @@
 #include "ray/util/process.h"
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#endif
 #include <unistd.h>
 
 #include <algorithm>
-#include <boost/process/args.hpp>
-#include <boost/process/async.hpp>
-#include <boost/process/child.hpp>
-#include <boost/process/search_path.hpp>
 #include <string>
 #include <vector>
 
 #include "ray/util/logging.h"
 
-namespace bp = boost::process;
-
 namespace ray {
 
-class Process::ProcessFD {
-  // This class makes a best-effort attempt to keep a PID alive.
-  // However, it cannot make any guarantees.
-  // The kernel might not even support this mechanism.
-  // See here: https://unix.stackexchange.com/a/181249
-  int fd_;
+class ProcessFD {
+  pid_t pid_;
+  intptr_t fd_;
 
  public:
   ~ProcessFD();
-  ProcessFD(pid_t pid);
-  ProcessFD(ProcessFD &&other);
+  ProcessFD();
+  ProcessFD(pid_t pid, intptr_t fd = -1);
   ProcessFD(const ProcessFD &other);
-  ProcessFD &operator=(ProcessFD other);
+  ProcessFD(ProcessFD &&other);
+  ProcessFD &operator=(const ProcessFD &other);
+  ProcessFD &operator=(ProcessFD &&other);
+  intptr_t CloneFD() const;
+  void CloseFD();
+  intptr_t GetFD() const;
+  pid_t GetId() const;
+
+  // Fork + exec combo. Returns -1 for the PID on failure.
+  static ProcessFD spawnvp(const char *argv[], std::error_code &ec) {
+    ec = std::error_code();
+    intptr_t fd;
+    pid_t pid;
+#ifdef _WIN32
+    fd = _spawnvp(P_NOWAIT, argv[0], argv);
+    if (fd != -1) {
+      pid = static_cast<pid_t>(GetProcessId(reinterpret_cast<HANDLE>(fd)));
+      if (pid == 0) {
+        pid = -1;
+      }
+    } else {
+      pid = -1;
+    }
+    if (pid == -1) {
+      ec = std::error_code(GetLastError(), std::system_category());
+    }
+#else
+    // TODO(mehrdadn): Use clone() on Linux or posix_spawnp() on Mac to avoid duplicating
+    // file descriptors into the child process, as that can be problematic.
+    pid = fork();
+    if (pid == 0) {
+      // Child process case. Reset the SIGCHLD handler for the worker.
+      signal(SIGCHLD, SIG_DFL);
+      if (execvp(argv[0], const_cast<char *const *>(argv)) == -1) {
+        pid = -1;
+        abort();  // fork() succeeded but exec() failed, so abort the child
+      }
+    }
+    if (pid == -1) {
+      ec = std::error_code(errno, std::system_category());
+    }
+    // TODO(mehrdadn): This would be a good place to open a descriptor later
+    fd = -1;
+#endif
+    return ProcessFD(pid, fd);
+  }
 };
 
-Process::ProcessFD::~ProcessFD() {
+ProcessFD::~ProcessFD() {
   if (fd_ != -1) {
-#ifdef __linux__
-    ::close(fd_);
+#ifdef _WIN32
+    CloseHandle(reinterpret_cast<HANDLE>(fd_));
+#else
+    close(static_cast<int>(fd_));
 #endif
   }
 }
-Process::ProcessFD::ProcessFD(pid_t pid) : fd_(-1) {
+
+ProcessFD::ProcessFD() : pid_(-1), fd_(-1) {}
+
+ProcessFD::ProcessFD(pid_t pid, intptr_t fd) : pid_(pid), fd_(fd) {
   if (pid != -1) {
-#ifdef __linux__
-    char path[64];
-    sprintf(path, "/proc/%d/ns/pid", static_cast<int>(pid));
-    fd_ = ::open(path, O_RDONLY);
+    bool process_does_not_exist = false;
+    std::error_code error;
+#ifdef _WIN32
+    if (fd == -1) {
+      BOOL inheritable = FALSE;
+      DWORD permissions = MAXIMUM_ALLOWED;
+      HANDLE handle = OpenProcess(permissions, inheritable, static_cast<DWORD>(pid));
+      if (handle) {
+        fd_ = reinterpret_cast<intptr_t>(handle);
+      } else {
+        DWORD error_code = GetLastError();
+        error = std::error_code(error_code, std::system_category());
+        if (error_code == ERROR_INVALID_PARAMETER) {
+          process_does_not_exist = true;
+        }
+      }
+    } else {
+      RAY_CHECK(pid == GetProcessId(reinterpret_cast<HANDLE>(fd)));
+    }
+#else
+    if (kill(pid, 0) == -1 && errno == ESRCH) {
+      process_does_not_exist = true;
+    }
+#if defined(__linux__)
+    if (fd == -1) {
+      char path[32] = {'\0'};
+      sprintf(path, "/proc/%d", static_cast<int>(pid));
+      // We can't really guarantee ownership (at least when SIGCHLD is disabled),
+      // but hopefully doing this is better than doing nothing at all.
+      fd_ = open(path, O_RDONLY);
+      if (fd_ == -1) {
+        int error_code = static_cast<int>(errno);
+        error = std::error_code(error_code, std::system_category());
+        if (error_code == ENOENT) {
+          process_does_not_exist = true;
+        }
+      }
+    }
 #endif
+#endif
+    // Don't verify anything if the PID is too high, since that's used for testing
+    if (pid < PID_MAX_LIMIT) {
+      if (process_does_not_exist) {
+        RAY_LOG(FATAL) << "Process " << pid << " does not appear to exist. "
+                       << "This indicates a severe race condition or logic error in "
+                       << "the codebase, as the caller MUST guarantee PID validity, "
+                       << "even if the child process might have already exited."
+                       << "On POSIX systems, this requires that the process be either "
+                       << "running or in a zombie state throughout the lifetime of this "
+                       << "object, which typically only the parent process can guarantee."
+                       << "In particular, if SIGCHLD should NOT be suppressed for this "
+                       << "PID as doing so can make it _impossible_ to provide this "
+                       << "guarantee. "
+                       << "Please fix this bug, or PID reuse can result in opening and "
+                       << "even terminating an incorrect process in the system.";
+      }
+      if (error) {
+        // TODO(mehrdadn): Should this be fatal, or perhaps returned as an error code?
+        // Failures might occur due to reasons such as permission issues.
+        RAY_LOG(ERROR) << "error " << error << " opening process " << pid << ": "
+                       << error.message();
+      }
+    }
   }
 }
-Process::ProcessFD::ProcessFD(ProcessFD &&other) : fd_(std::move(other.fd_)) {
-  other.fd_ = -1;
-}
-Process::ProcessFD::ProcessFD(const ProcessFD &other) : fd_(-1) {
-  if (other.fd_ != -1) {
-#ifdef __linux__
-    fd_ = ::dup(other.fd_);
-#endif
+
+ProcessFD::ProcessFD(const ProcessFD &other) : ProcessFD(other.pid_, other.CloneFD()) {}
+
+ProcessFD::ProcessFD(ProcessFD &&other) : ProcessFD() { *this = std::move(other); }
+
+ProcessFD &ProcessFD::operator=(const ProcessFD &other) {
+  if (this != &other) {
+    // Construct a copy, then call the move constructor
+    *this = static_cast<ProcessFD>(other);
   }
-}
-Process::ProcessFD &Process::ProcessFD::operator=(ProcessFD other) {
-  using std::swap;
-  swap(fd_, other.fd_);
   return *this;
 }
+
+ProcessFD &ProcessFD::operator=(ProcessFD &&other) {
+  if (this != &other) {
+    // We use swap() to make sure the argument is actually moved from
+    using std::swap;
+    swap(pid_, other.pid_);
+    swap(fd_, other.fd_);
+  }
+  return *this;
+}
+
+intptr_t ProcessFD::CloneFD() const {
+  intptr_t fd;
+  if (fd_ != -1) {
+#ifdef _WIN32
+    HANDLE handle;
+    BOOL inheritable = FALSE;
+    fd = DuplicateHandle(GetCurrentProcess(), reinterpret_cast<HANDLE>(fd_),
+                         GetCurrentProcess(), &handle, 0, inheritable,
+                         DUPLICATE_SAME_ACCESS)
+             ? reinterpret_cast<intptr_t>(handle)
+             : -1;
+#else
+    fd = dup(static_cast<int>(fd_));
+#endif
+    RAY_DCHECK(fd != -1);
+  } else {
+    fd = -1;
+  }
+  return fd;
+}
+
+void ProcessFD::CloseFD() { fd_ = -1; }
+
+intptr_t ProcessFD::GetFD() const { return fd_; }
+
+pid_t ProcessFD::GetId() const { return pid_; }
 
 Process::~Process() {}
 
@@ -76,43 +216,13 @@ Process &Process::operator=(Process other) {
   return *this;
 }
 
-Process::Process(pid_t &pid) {
-  bp::child proc(pid);
-  proc.detach();
-  p_ = std::make_shared<std::pair<ProcessFD, boost::process::child>>(ProcessFD(pid),
-                                                                     std::move(proc));
-}
+Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
 
-Process::Process(const char *argv[], boost::asio::io_service *io_service,
-                 const std::function<void(int, const std::error_code &)> &on_exit,
-                 std::error_code &ec) {
-  bp::child proc;
-  std::vector<std::string> args;
-  for (size_t i = 0; argv[i]; ++i) {
-    args.push_back(argv[i]);
-  }
-  if (io_service) {
-    if (on_exit) {
-      proc = bp::child(args, ec, *io_service, bp::on_exit = on_exit);
-    } else {
-      proc = bp::child(args, ec, *io_service);
-    }
-  } else {
-    if (on_exit) {
-      proc = bp::child(args, ec, bp::on_exit = on_exit);
-    } else {
-      proc = bp::child(args, ec);
-    }
-  }
+Process::Process(const char *argv[], void *io_service, std::error_code &ec) {
+  (void)io_service;
+  ProcessFD procfd = ProcessFD::spawnvp(argv, ec);
   if (!ec) {
-    p_ = std::make_shared<std::pair<ProcessFD, boost::process::child>>(
-        ProcessFD(proc.id()), std::move(proc));
-  }
-}
-
-void Process::Detach() {
-  if (p_) {
-    p_->second.detach();
+    p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
 }
 
@@ -123,30 +233,86 @@ Process Process::CreateNewDummy() {
 }
 
 Process Process::FromPid(pid_t pid) {
-  RAY_CHECK(pid >= 0);
+  RAY_DCHECK(pid >= 0);
   Process result(pid);
   return result;
 }
 
-bp::child *Process::Get() const { return p_ ? &p_->second : NULL; }
+const void *Process::Get() const { return p_ ? &*p_ : NULL; }
 
-pid_t Process::GetId() const { return p_ ? p_->second.id() : -1; }
+pid_t Process::GetId() const { return p_ ? p_->GetId() : -1; }
 
 bool Process::IsNull() const { return !p_; }
 
-bool Process::IsRunning() const { return p_ && p_->second.running(); }
+bool Process::IsValid() const { return GetId() != -1; }
 
-bool Process::IsValid() const { return p_ && p_->second.valid(); }
+int Process::Wait() const {
+  int status;
+  if (p_) {
+    pid_t pid = p_->GetId();
+    if (pid >= 0) {
+      std::error_code error;
+      intptr_t fd = p_->GetFD();
+#ifdef _WIN32
+      HANDLE handle = fd != -1 ? reinterpret_cast<HANDLE>(fd) : NULL;
+      DWORD exit_code = STILL_ACTIVE;
+      if (WaitForSingleObject(handle, INFINITE) == WAIT_OBJECT_0 &&
+          GetExitCodeProcess(handle, &exit_code)) {
+        status = static_cast<int>(exit_code);
+      } else {
+        error = std::error_code(GetLastError(), std::system_category());
+        status = -1;
+      }
+#else
+      (void)fd;
+      if (waitpid(pid, &status, 0) != 0) {
+        error = std::error_code(errno, std::system_category());
+      }
+#endif
+      if (error) {
+        RAY_LOG(ERROR) << "Failed to wait for process " << pid << " with error " << error
+                       << ": " << error.message();
+      }
+    } else {
+      // (Dummy process case)
+      status = 0;
+    }
+  } else {
+    // (Null process case)
+    status = -1;
+  }
+  return status;
+}
 
 void Process::Kill() {
   if (p_) {
-    p_->second.terminate();
-  }
-}
-
-void Process::Join() {
-  if (p_) {
-    p_->second.join();
+    pid_t pid = p_->GetId();
+    if (pid >= 0) {
+      std::error_code error;
+      intptr_t fd = p_->GetFD();
+#ifdef _WIN32
+      HANDLE handle = fd != -1 ? reinterpret_cast<HANDLE>(fd) : NULL;
+      if (!::TerminateProcess(handle, ERROR_PROCESS_ABORTED)) {
+        error = std::error_code(GetLastError(), std::system_category());
+      }
+#else
+      (void)fd;
+      if (kill(pid, SIGKILL) != 0) {
+        error = std::error_code(errno, std::system_category());
+      }
+#endif
+      if (error) {
+        RAY_LOG(ERROR) << "Failed to kill processs " << pid << " with error " << error
+                       << ": " << error.message();
+      }
+    } else {
+      // (Dummy process case)
+      // Theoretically we could keep around an exit code here for Wait() to return,
+      // but we might as well pretend this fake process had already finished running.
+      // So don't bother doing anything.
+    }
+  } else {
+    // (Null process case)
   }
 }
 
@@ -156,16 +322,20 @@ namespace std {
 
 bool equal_to<ray::Process>::operator()(const ray::Process &x,
                                         const ray::Process &y) const {
-  const bp::child *a = x.Get(), *b = y.Get();
-  return a ? b ? a->valid() ? b->valid() ? equal_to<pid_t>()(a->id(), b->id()) : false
-                            : b->valid() ? false : equal_to<void const *>()(a, b)
-               : false
-           : !b;
+  return !x.IsNull()
+             ? !y.IsNull()
+                   ? x.IsValid()
+                         ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
+                         : y.IsValid() ? false
+                                       : equal_to<void const *>()(x.Get(), y.Get())
+                   : false
+             : y.IsNull();
 }
 
 size_t hash<ray::Process>::operator()(const ray::Process &value) const {
-  const bp::child *p = value.Get();
-  return p ? p->valid() ? hash<pid_t>()(p->id()) : hash<void const *>()(p) : size_t();
+  return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
+                                           : hash<void const *>()(value.Get())
+                         : size_t();
 }
 
 }  // namespace std

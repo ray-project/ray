@@ -95,24 +95,21 @@ void WorkerPool::Start(int num_workers) {
 }
 
 WorkerPool::~WorkerPool() {
-  std::vector<Process> procs_to_kill;
+  std::unordered_set<Process> procs_to_kill;
   for (const auto &entry : states_by_lang_) {
     // Kill all registered workers. NOTE(swang): This assumes that the registered
     // workers were started by the pool.
     for (const auto &worker : entry.second.registered_workers) {
-      procs_to_kill.push_back(worker->GetProcess());
+      procs_to_kill.insert(worker->GetProcess());
     }
     // Kill all the workers that have been started but not registered.
     for (const auto &starting_worker : entry.second.starting_worker_processes) {
-      procs_to_kill.push_back(starting_worker.first);
+      procs_to_kill.insert(starting_worker.first);
     }
   }
-  procs_to_kill.erase(
-      std::unique(procs_to_kill.begin(), procs_to_kill.end(), std::equal_to<Process>()),
-      procs_to_kill.end());
-  for (auto &proc : procs_to_kill) {
+  for (Process proc : procs_to_kill) {
     proc.Kill();
-    proc.Join();
+    proc.Wait();
   }
 }
 
@@ -195,23 +192,6 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
   return proc;
 }
 
-#ifndef _WIN32
-// Fork + exec combo for POSIX. Returns -1 on failure.
-static pid_t spawnvp_wrapper(std::vector<const char *> const &argv) {
-  RAY_CHECK(!argv.empty() && !argv.back());  // must be NULL-terminated
-  pid_t pid = fork();
-  if (pid == 0) {
-    // Child process case. Reset the SIGCHLD handler for the worker.
-    signal(SIGCHLD, SIG_DFL);
-    if (execvp(argv[0], const_cast<char *const *>(argv.data())) == -1) {
-      pid = -1;
-      abort();  // fork() succeeded but exec() failed, so abort the child
-    }
-  }
-  return pid;
-}
-#endif
-
 Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::stringstream stream;
@@ -223,28 +203,13 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   }
 
   // Launch the process to create the worker.
-  Process child;
   std::error_code ec;
   std::vector<const char *> argv;
   for (const std::string &arg : worker_command_args) {
     argv.push_back(arg.c_str());
   }
   argv.push_back(NULL);
-#ifdef _WIN32
-  child = Process(argv.data(), io_service_,
-                  [=](int, const std::error_code &ec) {
-                    // This callback seems to be necessary for proper zombie cleanup.
-                    // However, it doesn't need to do anything.
-                  },
-                  ec);
-#else
-  pid_t pid = spawnvp_wrapper(argv);
-  if (pid == -1) {
-    ec = std::error_code(errno, std::system_category());
-  } else {
-    child = Process::FromPid(pid);
-  }
-#endif
+  Process child(argv.data(), io_service_, ec);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start worker with return value " << ec << ": "

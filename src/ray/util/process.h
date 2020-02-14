@@ -12,26 +12,11 @@
 #include <system_error>
 #include <utility>
 
-// Boost.Process headers are quite heavyweight, so we avoid including them here
-namespace boost {
-
-namespace asio {
-
-class io_context;
-typedef io_context io_service;
-
-}  // namespace asio
-
-namespace process {
-
-class child;
-
-}  // namespace process
-
-}  // namespace boost
-
-// We only define operators required by the standard library (==, hash).
-// We declare but avoid defining the rest so that they're not used by accident.
+#ifndef PID_MAX_LIMIT
+// This is defined by Linux to be the maximum allowable number of processes
+// There's no guarantee for other OSes, but it's useful for testing purposes.
+enum { PID_MAX_LIMIT = 1 << 22 };
+#endif
 
 namespace ray {
 
@@ -39,12 +24,13 @@ namespace ray {
 typedef int pid_t;
 #endif
 
+class ProcessFD;
+
 class Process {
  protected:
-  class ProcessFD;
-  std::shared_ptr<std::pair<ProcessFD, boost::process::child> > p_;
+  std::shared_ptr<ProcessFD> p_;
 
-  explicit Process(pid_t &pid);
+  explicit Process(pid_t pid);
 
  public:
   ~Process();
@@ -55,27 +41,27 @@ class Process {
   Process &operator=(Process other);
   /// Creates a new process.
   /// \param[in] argv The command-line of the process to spawn (terminated with NULL).
-  /// \param[in] io_service Boost.Asio I/O service (optional but recommended).
-  /// \param[in] on_exit Callback to invoke on exit (optional).
+  /// \param[in] io_service Boost.Asio I/O service (optional).
   /// \param[in] ec Returns any error that occurred when spawning the process.
-  explicit Process(const char *argv[], boost::asio::io_service *io_service,
-                   const std::function<void(int, const std::error_code &)> &on_exit,
-                   std::error_code &ec);
-  void Detach();
+  explicit Process(const char *argv[], void *io_service, std::error_code &ec);
   static Process CreateNewDummy();
   static Process FromPid(pid_t pid);
-  boost::process::child *Get() const;
   pid_t GetId() const;
+  /// Returns an opaque pointer or handle to the underlying process object.
+  /// Implementation detail, used only for identity testing. Do not dereference.
+  const void *Get() const;
   bool IsNull() const;
-  bool IsRunning() const;
   bool IsValid() const;
-  void Join();
+  /// Forcefully kills the process. Unsafe for unowned processes.
   void Kill();
+  /// Waits for process to terminate. Not supported for unowned processes.
+  /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
+  int Wait() const;
 };
 
 }  // namespace ray
 
-// Define comparators for process handles:
+// We only define operators required by the standard library (==, hash):
 // -   Valid process objects must be distinguished by their IDs.
 // - Invalid process objects must be distinguished by their addresses.
 namespace std {

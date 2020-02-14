@@ -1,9 +1,10 @@
+#include "ray/raylet/worker_pool.h"
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
-#include "ray/raylet/worker_pool.h"
+#include "ray/util/process.h"
 
 namespace ray {
 
@@ -42,11 +43,6 @@ class WorkerPoolMock : public WorkerPool {
   using WorkerPool::StartWorkerProcess;  // we need this to be public for testing
 
   Process StartProcess(const std::vector<std::string> &worker_command_args) override {
-#ifndef PID_MAX_LIMIT
-    // This is defined by Linux to be the maximum allowable number of processes
-    // There's no guarantee for other OSes, but it's good enough for testing...
-    enum { PID_MAX_LIMIT = 1 << 22 };
-#endif
     // Use a bogus process ID that won't conflict with those in the system
     pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);
@@ -210,7 +206,7 @@ TEST_F(WorkerPoolTest, StartupWorkerProcessCount) {
       ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() <=
                   expected_worker_process_count);
       Process prev = worker_pool_.LastStartedWorkerProcess();
-      if (last_started_worker_process.Get() != prev.Get()) {
+      if (!std::equal_to<Process>()(last_started_worker_process, prev)) {
         last_started_worker_process = prev;
         const auto &real_command =
             worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
