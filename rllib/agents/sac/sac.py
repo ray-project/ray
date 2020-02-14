@@ -45,7 +45,7 @@ DEFAULT_CONFIG = with_common_config({
     "evaluation_num_episodes": 1,
     # Extra configuration that disables exploration.
     "evaluation_config": {
-        "exploration": False,
+        "explore": False,
     },
 
     # Number of env steps to optimize for before returning

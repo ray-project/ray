@@ -50,6 +50,10 @@ DEFAULT_CONFIG = with_common_config({
         #   "temperature": [float, e.g. 1.0]
         # }
     },
+    # Switch to greedy actions in evaluation workers.
+    "evaluation_config": {
+        "explore": False,
+    },
 
     # TODO(sven): Make Exploration class for parameter noise.
     # If True parameter space noise will be used for exploration

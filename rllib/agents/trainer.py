@@ -190,14 +190,16 @@ COMMON_CONFIG = {
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
     # Typical usage is to pass extra args to evaluation env creator
-    # and to disable exploration by computing deterministic actions
+    # and to disable exploration by computing deterministic actions.
+    # IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
+    # policy, even if this is a stochastic one. Setting "explore=False" here
+    # will result in the evaluation workers not using this optimal policy!
     "evaluation_config": {
         # Example: overriding env_config, exploration, etc:
         # "env_config": {...},
-        # "exploration_fraction": 0,
-        # "exploration_final_eps": 0,
-        "exploration": False
+        # "explore": False
     },
+
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
     # process. If you increase this, it will increase the Ray resource usage
