@@ -859,35 +859,35 @@ py_test(
 py_test(
     name = "tests/test_ignore_worker_failure",
     tags = ["tests_dir", "tests_dir_3"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_ignore_worker_failure.py"]
 )
 
 py_test(
     name = "tests/test_io",
     tags = ["tests_dir", "tests_dir_4"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_io.py"]
 )
 
 py_test(
     name = "tests/test_local",
     tags = ["tests_dir", "tests_dir_4"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_local.py"]
 )
 
 py_test(
     name = "tests/test_lstm",
     tags = ["tests_dir", "tests_dir_4"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_lstm.py"]
 )
 
 py_test(
     name = "tests/test_multi_agent_env",
     tags = ["tests_dir", "tests_dir_4"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_multi_agent_env.py"]
 )
 
@@ -901,7 +901,7 @@ py_test(
 py_test(
     name = "tests/test_nested_spaces",
     tags = ["tests_dir", "tests_dir_5"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_nested_spaces.py"]
 )
 
@@ -915,21 +915,21 @@ py_test(
 py_test(
     name = "tests/test_reproducibility",
     tags = ["tests_dir", "tests_dir_5"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_reproducibility.py"]
 )
 
 py_test(
     name = "tests/test_rollout_worker",
     tags = ["tests_dir", "tests_dir_6"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_rollout_worker.py"]
 )
 
 py_test(
     name = "tests/test_supported_spaces",
     tags = ["tests_dir", "tests_dir_6"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_supported_spaces.py"]
 )
 
