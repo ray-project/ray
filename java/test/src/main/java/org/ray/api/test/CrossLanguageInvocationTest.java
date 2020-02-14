@@ -90,7 +90,8 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     RayActor<TestActor> actor = Ray.createActor(TestActor::new, "1".getBytes());
     Preconditions.checkState(actor instanceof NativeRayActor);
     byte[] actorHandleBytes = ((NativeRayActor) actor).toBytes();
-    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor_from_handle", actorHandleBytes);
+    RayObject res = Ray.callPy(PYTHON_MODULE,
+        "py_func_call_java_actor_from_handle", actorHandleBytes);
     Assert.assertEquals(res.get(), "12".getBytes());
   }
 

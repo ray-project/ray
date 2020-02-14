@@ -906,7 +906,6 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
-        from ray.actor import ActorHandle, ActorClassMethodMetadata
         cdef CActorHandle* c_actor_handle
         worker = ray.worker.get_global_worker()
         worker.check_connected()
@@ -928,27 +927,26 @@ cdef class CoreWorker:
             actor_method_cpu = int(c_actor_handle.ExtensionData())
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)
-            method_meta = ActorClassMethodMetadata.create(
+            method_meta = ray.actor.ActorClassMethodMetadata.create(
                 actor_class, actor_creation_function_descriptor)
-            return ActorHandle(language, actor_id,
-                               method_meta.decorators,
-                               method_meta.signatures,
-                               method_meta.num_return_vals,
-                               actor_method_cpu,
-                               actor_creation_function_descriptor,
-                               worker.current_session_and_job)
+            return ray.actor.ActorHandle(language, actor_id,
+                                         method_meta.decorators,
+                                         method_meta.signatures,
+                                         method_meta.num_return_vals,
+                                         actor_method_cpu,
+                                         actor_creation_function_descriptor,
+                                         worker.current_session_and_job)
         else:
-            return ActorHandle(language, actor_id,
-                               {},  # method decorators
-                               {},  # method signatures
-                               {},  # method num_return_vals
-                               0,  # actor method cpu
-                               actor_creation_function_descriptor,
-                               worker.current_session_and_job)
+            return ray.actor.ActorHandle(language, actor_id,
+                                         {},  # method decorators
+                                         {},  # method signatures
+                                         {},  # method num_return_vals
+                                         0,  # actor method cpu
+                                         actor_creation_function_descriptor,
+                                         worker.current_session_and_job)
 
     def serialize_actor_handle(self, actor_handle):
-        from ray.actor import ActorHandle
-        assert isinstance(actor_handle, ActorHandle)
+        assert isinstance(actor_handle, ray.actor.ActorHandle)
         cdef:
             ActorID actor_id = actor_handle._ray_actor_id
             c_string output
