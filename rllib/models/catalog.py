@@ -7,13 +7,13 @@ from ray.tune.registry import RLLIB_MODEL, RLLIB_PREPROCESSOR, \
     RLLIB_ACTION_DIST, _global_registry
 
 from ray.rllib.models.extra_spaces import Simplex
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.torch.torch_action_dist import (TorchCategorical,
                                                       TorchDiagGaussian)
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
-from ray.rllib.models.tf.tf_action_dist import (
-    Categorical, MultiCategorical, Deterministic, DiagGaussian,
-    MultiActionDistribution, Dirichlet)
+from ray.rllib.models.tf.tf_action_dist import Categorical, MultiCategorical, \
+    Deterministic, DiagGaussian, MultiActionDistribution, Dirichlet
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.models.tf.fcnet_v1 import FullyConnectedNetwork
 from ray.rllib.models.tf.lstm_v1 import LSTM
@@ -111,16 +111,19 @@ class ModelCatalog:
                         config,
                         dist_type=None,
                         torch=None,
-                        framework="tf"):
+                        framework="tf",
+                        **kwargs):
         """Returns a distribution class and size for the given action space.
 
         Args:
             action_space (Space): Action space of the target gym env.
             config (dict): Optional model config.
             dist_type (Optional[str]): Identifier of the action distribution.
-            torch (bool): Obsoleted: Whether to return PyTorch Model and
+            torch (bool): Deprecated: Whether to return PyTorch Model and
                 distribution (use framework="torch" instead).
             framework (str): One of "tf" or "torch".
+            kwargs (dict): Optional kwargs to pass on to the Distribution's
+                constructor.
 
         Returns:
             dist_class (ActionDistribution): Python class of the distribution.
@@ -133,12 +136,17 @@ class ModelCatalog:
 
         dist = None
         config = config or MODEL_DEFAULTS
+        # Custom distribution given.
         if config.get("custom_action_dist"):
             action_dist_name = config["custom_action_dist"]
             logger.debug(
                 "Using custom action distribution {}".format(action_dist_name))
             dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
-
+        # Dist_type is given directly as a class.
+        elif issubclass(dist_type, ActionDistribution) and \
+                dist_type is not MultiActionDistribution:
+            dist = dist_type
+        # Box space -> DiagGaussian OR Deterministic.
         elif isinstance(action_space, gym.spaces.Box):
             if len(action_space.shape) > 1:
                 raise UnsupportedSpaceException(
@@ -147,13 +155,17 @@ class ModelCatalog:
                     "Consider reshaping this into a single dimension, "
                     "using a custom action distribution, "
                     "using a Tuple action space, or the multi-agent API.")
+            # TODO(sven): Check for bounds and return SquashedNormal, etc..
             if dist_type is None:
                 dist = DiagGaussian if framework == "tf" else TorchDiagGaussian
             elif dist_type == "deterministic":
                 dist = Deterministic
+        # Discrete Space -> Categorical.
         elif isinstance(action_space, gym.spaces.Discrete):
             dist = Categorical if framework == "tf" else TorchCategorical
-        elif isinstance(action_space, gym.spaces.Tuple):
+        # Tuple Space -> MultiAction.
+        elif dist_type is MultiActionDistribution or \
+                isinstance(action_space, gym.spaces.Tuple):
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
@@ -168,14 +180,16 @@ class ModelCatalog:
             return partial(
                 MultiActionDistribution,
                 child_distributions=child_dist,
-                action_space=action_space,
+                # action_space=action_space,
                 input_lens=input_lens), sum(input_lens)
+        # Simplex -> Dirichlet.
         elif isinstance(action_space, Simplex):
             if framework == "torch":
                 # TODO(sven): implement
                 raise NotImplementedError(
                     "Simplex action spaces not supported for torch.")
             dist = Dirichlet
+        # MultiDiscrete -> MultiCategorical.
         elif isinstance(action_space, gym.spaces.MultiDiscrete):
             if framework == "torch":
                 # TODO(sven): implement
@@ -183,11 +197,13 @@ class ModelCatalog:
                     "MultiDiscrete action spaces not supported for Pytorch.")
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
+        # Dict -> TODO(sven)
         elif isinstance(action_space, gym.spaces.Dict):
             # TODO(sven): implement
             raise NotImplementedError(
                 "Dict action spaces are not supported, consider using "
                 "gym.spaces.Tuple instead")
+        # Unknown type -> Error.
         else:
             raise NotImplementedError("Unsupported args: {} {}".format(
                 action_space, dist_type))
@@ -251,7 +267,7 @@ class ModelCatalog:
                      action_space,
                      num_outputs,
                      model_config,
-                     framework,
+                     framework="tf",
                      name="default_model",
                      model_interface=None,
                      default_model=None,
@@ -264,7 +280,7 @@ class ModelCatalog:
                 unflatten the tensor into a ragged tensor.
             action_space (Space): Action space of the target gym env.
             num_outputs (int): The size of the output vector of the model.
-            framework (str): Either "tf" or "torch".
+            framework (str): One of "tf" or "torch".
             name (str): Name (scope) for the model.
             model_interface (cls): Interface required for the model
             default_model (cls): Override the default class for the model. This
