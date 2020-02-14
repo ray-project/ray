@@ -154,7 +154,7 @@ class ActorClassMethodMetadata(object):
             each actor method.
     """
 
-    _cache = {}  # This cache will be cleared when ray.shutdown()
+    _cache = {}  # This cache will be cleared in ray.disconnect()
 
     def __init__(self):
         class_name = type(self).__name__
