@@ -341,7 +341,8 @@ class ActorClass:
         self = DerivedActorClass.__new__(DerivedActorClass)
         # Actor creation function descriptor.
         actor_creation_function_descriptor = \
-            PythonFunctionDescriptor.from_class(modified_class)
+            PythonFunctionDescriptor.from_class(
+                modified_class.__ray_actor_class__)
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
@@ -876,7 +877,7 @@ class ActorHandle:
 
 def modify_class(cls):
     # cls has been modified.
-    if hasattr(cls, "__ray_terminate__"):
+    if hasattr(cls, "__ray_actor_class__"):
         return cls
 
     # Give an error if cls is an old-style class.
@@ -894,6 +895,8 @@ def modify_class(cls):
     # Modify the class to have an additional method that will be used for
     # terminating the worker.
     class Class(cls):
+        __ray_actor_class__ = cls  # The original actor class
+
         def __ray_terminate__(self):
             worker = ray.worker.get_global_worker()
             if worker.mode != ray.LOCAL_MODE:
