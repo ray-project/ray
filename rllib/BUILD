@@ -733,7 +733,7 @@ py_test(
 py_test(
     name = "alpha_zero_cartpole",
     main = "contrib/alpha_zero/examples/train_cartpole.py",
-    size = "small",
+    size = "large",
     srcs = ["contrib/alpha_zero/examples/train_cartpole.py"],
     args = ["--training-iteration=1", "--num-workers=2", "--ray-num-cpus=3"]
 )
@@ -838,14 +838,14 @@ py_test(
 py_test(
     name = "tests/test_external_env",
     tags = ["tests_dir", "tests_dir_3"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_external_env.py"]
 )
 
 py_test(
     name = "tests/test_external_multi_agent_env",
     tags = ["tests_dir", "tests_dir_3"],
-    size = "small",
+    size = "large",
     srcs = ["tests/test_external_multi_agent_env.py"]
 )
 
