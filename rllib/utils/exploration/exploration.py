@@ -1,4 +1,6 @@
-from ray.rllib.utils.framework import check_framework
+from ray.rllib.utils.framework import check_framework, try_import_tf
+
+tf = try_import_tf()
 
 
 class Exploration:
@@ -86,7 +88,8 @@ class Exploration:
         Returns:
             any: A description of the Exploration (not necessarily its state).
         """
-        return None
+        if self.framework == "tf":
+            return tf.no_op()
 
     def get_state(self):
         """Returns the current exploration state.
