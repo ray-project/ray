@@ -11,6 +11,12 @@ import ray
 from ray.util.multiprocessing import Pool, TimeoutError
 
 
+def teardown_function(function):
+    # Delete environment variable if set.
+    if "RAY_ADDRESS" in os.environ:
+        del os.environ["RAY_ADDRESS"]
+
+
 @pytest.fixture
 def pool():
     pool = Pool(processes=1)
@@ -61,7 +67,14 @@ def test_ray_init(shutdown_only):
     ray.shutdown()
 
 
-def test_connect_to_ray(call_ray_start):
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+        "do_init": False,
+    }],
+    indirect=True)
+def test_connect_to_ray(ray_start_cluster):
     def getpid(args):
         return os.getpid()
 
@@ -69,7 +82,7 @@ def test_connect_to_ray(call_ray_start):
         args = [tuple() for _ in range(size)]
         assert len(set(pool.map(getpid, args))) == size
 
-    address = call_ray_start
+    address = ray_start_cluster.address
     # Use different numbers of CPUs to distinguish between starting a local
     # ray cluster and connecting to an existing one.
     start_cpus = 1  # Set in fixture.

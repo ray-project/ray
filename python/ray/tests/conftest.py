@@ -4,7 +4,6 @@ This file defines the common pytest fixtures used in current directory.
 
 from contextlib import contextmanager
 import json
-import os
 import pytest
 import subprocess
 
@@ -169,9 +168,6 @@ def call_ray_start(request):
     ray.shutdown()
     # Kill the Ray cluster.
     subprocess.check_output(["ray", "stop"])
-    # Delete environment variable if set.
-    if "RAY_ADDRESS" in os.environ:
-        del os.environ["RAY_ADDRESS"]
 
 
 @pytest.fixture
