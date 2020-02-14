@@ -370,7 +370,7 @@ class Policy(metaclass=ABCMeta):
     def _create_exploration(self, action_space, config):
         return from_config(
             Exploration,
-            config["exploration_config"],
+            config.get("exploration_config", {"type": "StochasticSampling"}),
             action_space=action_space,
             num_workers=config.get("num_workers"),
             worker_index=config.get("worker_index"),

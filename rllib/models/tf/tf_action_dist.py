@@ -219,15 +219,15 @@ class MultiActionDistribution(TFActionDistribution):
         inputs (Tensor list): A list of tensors from which to compute samples.
     """
 
-    def __init__(self, inputs, action_space, child_distributions, model,
-                 input_lens):
-        # skip TFActionDistribution init
-        ActionDistribution.__init__(self, inputs, model)
+    def __init__(self, inputs, child_distributions, model, input_lens):
+        # (why?) skip TFActionDistribution init.
+        # ActionDistribution.__init__(self, inputs, model)
+        super().__init__(inputs, model)
         self.input_lens = input_lens
-        split_inputs = tf.split(inputs, self.input_lens, axis=1)
+        split_inputs = tf.split(self.inputs, self.input_lens, axis=1)
         child_list = []
         for i, distribution in enumerate(child_distributions):
-            child_list.append(distribution(split_inputs[i], model))
+            child_list.append(distribution(split_inputs[i], self.model))
         self.child_distributions = child_list
 
     @override(ActionDistribution)
@@ -279,6 +279,10 @@ class MultiActionDistribution(TFActionDistribution):
         for c in self.child_distributions[1:]:
             p += c.sampled_action_logp()
         return p
+
+    @override(TFActionDistribution)
+    def _build_sample_op(self):
+        return None
 
 
 class Dirichlet(TFActionDistribution):
