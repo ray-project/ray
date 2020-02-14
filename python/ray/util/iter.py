@@ -1,5 +1,6 @@
 from typing import TypeVar, Generic, Iterable, List, Callable, Any
 import random
+import collections
 
 import ray
 
@@ -253,8 +254,8 @@ class ParallelIterator(Generic[T]):
                 randomness. Default value is None.
 
         Returns:
-            Returns a ParallelIterator with a local shuffle applied on the
-                base iterator
+            A ParallelIterator with a local shuffle applied on the base
+            iterator
 
         Examples:
             >>> it = from_range(10, 1).local_shuffle(shuffle_buffer_size=2)
@@ -278,6 +279,75 @@ class ParallelIterator(Generic[T]):
             ".local_shuffle(shuffle_buffer_size={}, seed={})".format(
                 shuffle_buffer_size,
                 str(seed) if seed is not None else "None"))
+
+    def repartition(self, num_partitions: int) -> "ParallelIterator[T]":
+        """Returns a new ParallelIterator instance containing the same data in
+        this instance except with num_partitions shards. The data is split
+        in round-robin fashion for the new ParallelIterator.
+
+        Args:
+            num_partitions (int): The number of shards to use for the new
+                ParallelIterator
+
+        Returns:
+            A ParallelIterator with num_partitions number of shards and the
+            data of this ParallelIterator split round-robin among the new
+            number of shards.
+
+        Examples:
+            >>> it = from_range(8, 2)
+            >>> it = it.repartition(3)
+            >>> list(it.get_shard(0))
+            [0, 4, 3, 7]
+            >>> list(it.get_shard(1))
+            [1, 5]
+            >>> list(it.get_shard(2))
+            [2, 6]
+        """
+
+        def base_iterator(all_actors, num_partitions, starting, timeout=None):
+            futures = {}
+            for a in all_actors:
+                futures[a.par_iter_next_ith.remote(num_partitions,
+                                                   starting)] = a
+            while futures:
+                pending = list(futures)
+                if timeout is None:
+                    # First try to do a batch wait for efficiency.
+                    ready, _ = ray.wait(
+                        pending, num_returns=len(pending), timeout=0)
+                    # Fall back to a blocking wait.
+                    if not ready:
+                        ready, _ = ray.wait(pending, num_returns=1)
+                else:
+                    ready, _ = ray.wait(
+                        pending, num_returns=len(pending), timeout=timeout)
+                for obj_id in ready:
+                    actor = futures.pop(obj_id)
+                    try:
+                        yield ray.get(obj_id)
+                        futures[actor.par_iter_next_ith.remote(
+                            num_partitions, starting)] = actor
+                    except StopIteration:
+                        pass
+                # Always yield after each round of wait with timeout.
+                if timeout is not None:
+                    yield _NextValueNotReady()
+
+        # initialize the local iterators for all the actors
+        all_actors = []
+        for actor_set in self.actor_sets:
+            actor_set.init_actors()
+            all_actors.extend(actor_set.actors)
+
+        def make_gen_i(i):
+            return lambda: base_iterator(all_actors, num_partitions, i)
+
+        generators = [make_gen_i(s) for s in range(num_partitions)]
+        return from_iterators(
+            generators,
+            name=self.name +
+            ".repartition[num_partitions={}]".format(num_partitions))
 
     def gather_sync(self) -> "LocalIterator[T]":
         """Returns a local iterable for synchronous iteration.
@@ -710,6 +780,7 @@ class ParallelIteratorWorker(object):
 
         self.transforms = []
         self.local_it = None
+        self.next_ith_buffer = None
 
     def par_iter_init(self, transforms):
         """Implements ParallelIterator worker init."""
@@ -723,6 +794,31 @@ class ParallelIteratorWorker(object):
         """Implements ParallelIterator worker item fetch."""
         assert self.local_it is not None, "must call par_iter_init()"
         return next(self.local_it)
+
+    def par_iter_next_ith(self, i: int, starting: int):
+        """Returns every ith element from this ParallelIteratorWorker
+            beginning at index starting.
+        """
+        assert self.local_it is not None, "must call par_iter_init()"
+
+        if self.next_ith_buffer is None:
+            self.next_ith_buffer = collections.defaultdict(list)
+
+        index_buffer = self.next_ith_buffer[starting]
+        if len(index_buffer) > 0:
+            return index_buffer.pop(0)
+        else:
+            for j in range(i):
+                try:
+                    val = next(self.local_it)
+                    self.next_ith_buffer[j].append(val)
+                except StopIteration:
+                    pass
+
+            if not self.next_ith_buffer[starting]:
+                raise StopIteration
+
+        return self.next_ith_buffer[starting].pop(0)
 
 
 class _NextValueNotReady(Exception):
