@@ -4,6 +4,7 @@ import ray
 from ray.services import logger
 from collections import defaultdict
 
+
 class PlasmaObjectFuture(asyncio.Future):
     """This class is a wrapper for a Future on Plasma."""
     pass
@@ -41,8 +42,7 @@ class PlasmaEventHandler:
             def complete_closure():
                 try:
                     fut.set_result(obj)
-                except asyncio.Invali
-                dStateError:
+                except asyncio.InvalidStateError:
                     # Avoid issues where process_notifications
                     # and check_ready both get executed
                     logger.debug("Failed to set result for future {}."
