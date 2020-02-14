@@ -1,3 +1,4 @@
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -58,7 +59,12 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist = action_dist_class(model_output, model, **kwargs)
+        action_dist_cls, _ = ModelCatalog.get_action_dist(
+            self.action_space,
+            None,  # model.config
+            action_dist_class,
+            framework=self.framework)
+        action_dist = action_dist_cls(model_output, model, **kwargs)
 
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_dist, explore)

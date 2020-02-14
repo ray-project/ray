@@ -192,7 +192,7 @@ class DynamicTFPolicy(TFPolicy):
             config,
             sess,
             obs_input=obs,
-            action_inputs=action_input,  # for logp calculations
+            action_input=action_input,  # for logp calculations
             action_sampler=action,
             action_logp=logp,
             action_dist_class=self.dist_class,

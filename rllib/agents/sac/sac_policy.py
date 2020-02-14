@@ -132,8 +132,8 @@ def build_action_output(policy, model, input_dict, obs_space, action_space,
             true_fn=lambda: log_pis,
             false_fn=lambda: tf.zeros_like(log_pis))
 
-    policy.output_actions, policy.action_logp = actions, logp
-    return policy.output_actions, policy.action_logp
+    policy.output_actions, policy.sampled_action_logp = actions, logp
+    return policy.output_actions, policy.sampled_action_logp
 
 
 def actor_critic_loss(policy, model, _, train_batch):

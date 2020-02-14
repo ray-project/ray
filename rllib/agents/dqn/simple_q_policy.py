@@ -99,11 +99,11 @@ def simple_sample_action_from_q_network(policy, q_model, input_dict, obs_space,
     policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
     policy.q_func_vars = q_model.variables()
 
-    policy.output_actions, policy.action_logp = \
+    policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
             policy.q_values, q_model, Categorical, explore, timestep)
 
-    return policy.output_actions, policy.action_logp
+    return policy.output_actions, policy.sampled_action_logp
 
 
 def build_q_losses(policy, model, dist_class, train_batch):

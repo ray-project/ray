@@ -55,11 +55,11 @@ class TFPolicy(Policy):
                  sess,
                  obs_input,
                  action_input,
-                 action_sampler,
+                 sampled_action,
                  loss,
                  loss_inputs,
                  model=None,
-                 action_logp=None,
+                 sampled_action_logp=None,
                  action_dist_class=None,
                  action_dist_inputs=None,
                  state_inputs=None,
@@ -84,7 +84,7 @@ class TFPolicy(Policy):
                 [BATCH_SIZE, obs...].
             action_input (Tensor): Input placeholder for actions for logp/log-
                 likelihood calculations.
-            action_sampler (Tensor): Tensor for sampling an action, of shape
+            sampled_action (Tensor): Tensor for sampling an action, of shape
                 [BATCH_SIZE, action...]
             loss (Tensor): Scalar policy loss output tensor.
             loss_inputs (list): A (name, placeholder) tuple for each loss
@@ -123,13 +123,13 @@ class TFPolicy(Policy):
         self._action_input = action_input  # For logp calculations.
         self._prev_action_input = prev_action_input
         self._prev_reward_input = prev_reward_input
-        self._action = action_sampler
+        self._sampled_action = sampled_action
         self._is_training = self._get_is_training_placeholder()
         self._is_exploring = explore if explore is not None else \
             tf.placeholder_with_default(True, (), name="is_exploring")
-        self._action_logp = action_logp
-        self._action_prob = (tf.exp(self._action_logp)
-                             if self._action_logp is not None else None)
+        self._sampled_action_logp = sampled_action_logp
+        self._sampled_action_prob = (tf.exp(self._sampled_action_logp)
+                             if self._sampled_action_logp is not None else None)
         self._action_dist_class = action_dist_class
         self._action_dist_inputs = action_dist_inputs
         self._state_inputs = state_inputs or []
@@ -160,6 +160,12 @@ class TFPolicy(Policy):
         if self._state_inputs and self._seq_lens is None:
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
+
+        # TODO(sven): build graph.
+        self._log_likelihoods = None
+        if self._action_dist_class:
+            action_dist = self._action_dist_class(self._action_dist_inputs, self.model)
+            self._log_likelihoods = action_dist.logp(self._action_input)
 
     def variables(self):
         """Return the list of all savable variables for this policy."""
@@ -388,9 +394,9 @@ class TFPolicy(Policy):
         By default we only return action probability info (if present).
         """
         ret = {}
-        if self._action_logp is not None:
-            ret[ACTION_PROB] = self._action_prob
-            ret[ACTION_LOGP] = self._action_logp
+        if self._sampled_action_logp is not None:
+            ret[ACTION_PROB] = self._sampled_action_prob
+            ret[ACTION_LOGP] = self._sampled_action_logp
         return ret
 
     @DeveloperAPI
@@ -488,7 +494,7 @@ class TFPolicy(Policy):
         # build output signatures
         output_signature = self._extra_output_signature_def()
         output_signature["actions"] = \
-            tf.saved_model.utils.build_tensor_info(self._action)
+            tf.saved_model.utils.build_tensor_info(self._sampled_action)
         for state_output in self._state_outputs:
             output_signature[state_output.name] = \
                 tf.saved_model.utils.build_tensor_info(state_output)
@@ -533,8 +539,9 @@ class TFPolicy(Policy):
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches([self._action] + self._state_outputs +
-                                      [self.extra_compute_action_fetches()])
+        fetches = builder.add_fetches(
+            [self._sampled_action] + self._state_outputs +
+            [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):

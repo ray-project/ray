@@ -545,9 +545,9 @@ class Trainer(Trainable):
         merged_config = copy.deepcopy(self._default_config)
         # Handle special case for Explorations.
         # TODO(sven): Maybe move this into `deep_update()`?
-        if isinstance(merged_config["exploration_config"], dict) and \
+        if isinstance(merged_config.get("exploration_config"), dict) and \
                 "type" in merged_config["exploration_config"] and \
-                isinstance(config["exploration_config"], dict) and \
+                isinstance(config.get("exploration_config"), dict) and \
                 "type" in config["exploration_config"] and \
                 merged_config["exploration_config"]["type"] != \
                 config["exploration_config"]["type"]:

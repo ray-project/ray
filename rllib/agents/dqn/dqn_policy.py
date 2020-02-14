@@ -213,14 +213,9 @@ def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
     policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
     policy.q_func_vars = q_model.variables()
 
-    policy.output_actions, policy.action_logp = \
+    policy.output_actions, policy.sampled_action_logp = \
         policy.exploration.get_exploration_action(
             policy.q_values, q_model, Categorical, explore, timestep)
-
-    # policy.output_actions, policy.action_logp = \
-    #    simple_sample_action_from_q_network(
-    #        policy, q_model, input_dict, obs_space,
-    #        action_space, explore, config, timestep, _compute_q_values)
 
     # Noise vars for Q network except for layer normalization vars.
     if config["parameter_noise"]:
@@ -229,7 +224,7 @@ def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
             [var for var in policy.q_func_vars if "LayerNorm" not in var.name])
         policy.action_probs = tf.nn.softmax(policy.q_values)
 
-    return policy.output_actions, policy.action_logp
+    return policy.output_actions, policy.sampled_action_logp
 
 
 def _build_parameter_noise(policy, pnet_params):
