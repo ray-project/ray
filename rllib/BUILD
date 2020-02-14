@@ -21,6 +21,13 @@ py_test(
 # Agents (Compilation and Losses)
 # ---------------------------------------
 
+# DQNTrainer
+py_test(
+    name = "test_dqn",
+    size = "small",
+    srcs = ["agents/dqn/tests/test_dqn.py"]
+)
+
 # PGTrainer
 py_test(
     name = "test_pg",
@@ -821,6 +828,13 @@ py_test(
     srcs = ["tests/test_evaluators.py"]
 )
 
+#py_test(
+#    name = "tests/test_explorations",
+#    tags = ["tests_dir", "tests_dir_3"],
+#    size = "medium",
+#    srcs = ["tests/test_explorations.py"]
+#)
+
 py_test(
     name = "tests/test_external_env",
     tags = ["tests_dir", "tests_dir_3"],
@@ -1179,4 +1193,16 @@ py_test(
     tags = ["examples", "examples_8"],
     size = "large",
     srcs = ["examples/random_env.py"]
+)
+
+# ---------------------------------------
+# Utilities and Internals
+# ---------------------------------------
+
+# TaskPool
+py_test(
+    name = "test_taskpool",
+    tags = ["utils"],
+    size = "small",
+    srcs = ["utils/tests/test_taskpool.py"]
 )
