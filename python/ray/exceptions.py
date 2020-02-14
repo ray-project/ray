@@ -162,7 +162,13 @@ class RayTimeoutError(RayError):
     pass
 
 
+class PlasmaObjectNotAvailable(RayError):
+    """Placeholder for an object that was not available within the given timeout."""
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
+    PlasmaObjectNotAvailable,
     RayError,
     RayTaskError,
     RayWorkerError,
