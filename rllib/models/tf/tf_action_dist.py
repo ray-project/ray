@@ -2,9 +2,9 @@ import numpy as np
 import functools
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.policy.policy import TupleActions
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils import try_import_tf
+from ray.rllib.utils.spaces.tuple_actions import TupleActions
 
 tf = try_import_tf()
 

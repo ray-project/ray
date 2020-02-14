@@ -10,13 +10,14 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.policy import TupleActions, Policy
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.model import _unpack_obs
 from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.spaces.tuple_actions import TupleActions
 
 logger = logging.getLogger(__name__)
 

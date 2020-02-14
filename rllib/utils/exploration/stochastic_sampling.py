@@ -59,11 +59,12 @@ class StochasticSampling(Exploration):
         # if self.time_dependent_params:
         #    for k, v in self.time_dependent_params:
         #        kwargs[k] = v(timestep)
-        action_dist = ModelCatalog.get_action_dist(
+        constructor, _ = ModelCatalog.get_action_dist(
             self.action_space,
-            model.config,
+            None,
             action_dist_class,
-            framework=self.framework)(model_output, model, **kwargs)
+            framework=self.framework)
+        action_dist = constructor(model_output, model, **kwargs)
 
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_dist, explore)
