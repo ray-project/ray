@@ -235,6 +235,7 @@ Getting Involved
    :maxdepth: -1
    :caption: Ray Core
 
+   walkthrough.rst
    using-ray.rst
    configure.rst
    cluster-index.rst

@@ -30,11 +30,25 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(1, len(running))
         self.trial_executor.stop_trial(trial)
 
+    def testAsyncSave(self):
+        """Tests that saved checkpoint value not immediately set."""
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        self.assertEqual(checkpoint, trial.saving_to)
+        self.assertEqual(trial.checkpoint.value, None)
+        self.process_trial_save(trial)
+        self.assertEqual(checkpoint, trial.checkpoint)
+        self.trial_executor.stop_trial(trial)
+        self.assertEqual(Trial.TERMINATED, trial.status)
+
     def testSaveRestore(self):
         trial = Trial("__fake")
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        self.process_trial_save(trial)
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
@@ -59,6 +73,8 @@ class RayTrialExecutorTest(unittest.TestCase):
         checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.assertEqual(checkpoint.storage, Checkpoint.PERSISTENT)
+        # Process save result (simulates trial runner)
+        self.process_trial_save(trial)
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
@@ -125,10 +141,19 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.experiment_tag, "modified_mock")
         self.assertEqual(Trial.RUNNING, trial.status)
 
-    def generate_trials(self, spec, name):
+    @staticmethod
+    def generate_trials(spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
         return suggester.next_trials()
+
+    @staticmethod
+    def process_trial_save(trial):
+        """Simulates trial runner save."""
+        checkpoint = trial.saving_to
+        checkpoint_value = ray.get(checkpoint.value)
+        checkpoint.value = checkpoint_value
+        trial.on_checkpoint(checkpoint)
 
 
 class RayExecutorQueueTest(unittest.TestCase):

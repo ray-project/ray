@@ -2,7 +2,7 @@ from functools import partial
 
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
-    try_import_torch
+    try_import_torch, check_framework
 from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, \
     renamed_class, renamed_function
 from ray.rllib.utils.filter_manager import FilterManager
@@ -59,6 +59,7 @@ force_tuple = partial(force_list, to_tuple=True)
 __all__ = [
     "add_mixins",
     "check",
+    "check_framework",
     "deprecation_warning",
     "fc",
     "force_list",

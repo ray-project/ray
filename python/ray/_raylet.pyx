@@ -2,6 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
+# cython: c_string_encoding = default
 
 from cpython.exc cimport PyErr_CheckSignals
 
@@ -13,6 +14,7 @@ import threading
 import time
 import logging
 import os
+import pickle
 import sys
 
 from libc.stdint cimport (
@@ -75,6 +77,8 @@ from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 
 import ray
+from ray.async_compat import (sync_to_async,
+                              AsyncGetResponse, AsyncMonitorState)
 import ray.experimental.signal as ray_signal
 import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
@@ -87,7 +91,6 @@ from ray.exceptions import (
     RayTimeoutError,
 )
 from ray.experimental.no_return import NoReturn
-from ray.function_manager import FunctionDescriptor
 from ray.utils import decode
 from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
@@ -106,6 +109,7 @@ cimport cpython
 
 include "includes/unique_ids.pxi"
 include "includes/ray_config.pxi"
+include "includes/function_descriptor.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
@@ -116,17 +120,6 @@ include "includes/libcoreworker.pxi"
 logger = logging.getLogger(__name__)
 
 MEMCOPY_THREADS = 12
-PY3 = cpython.PY_MAJOR_VERSION >= 3
-
-
-if PY3:
-    import pickle
-else:
-    import cPickle as pickle
-
-if PY3:
-    from ray.async_compat import (sync_to_async,
-                                  AsyncGetResponse, AsyncMonitorState)
 
 
 def set_internal_config(dict options):
@@ -206,6 +199,22 @@ def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
 
+cdef increase_recursion_limit():
+    """Double the recusion limit if current depth is close to the limit"""
+    cdef:
+        CPyThreadState * s = <CPyThreadState *> PyThreadState_Get()
+        int current_depth = s.recursion_depth
+        int current_limit = Py_GetRecursionLimit()
+        int new_limit = current_limit * 2
+
+    if current_limit - current_depth < 500:
+        Py_SetRecursionLimit(new_limit)
+        logger.debug("Increasing Python recursion limit to {} "
+                     "current recursion depth is {}.".format(
+                         new_limit, current_depth))
+
+
+@cython.auto_pickle(False)
 cdef class Language:
     cdef CLanguage lang
 
@@ -218,7 +227,7 @@ cdef class Language:
 
     def __eq__(self, other):
         return (isinstance(other, Language) and
-                (<int32_t>self.lang) == (<int32_t>other.lang))
+                (<int32_t>self.lang) == (<int32_t>(<Language>other).lang))
 
     def __repr__(self):
         if <int32_t>self.lang == <int32_t>LANGUAGE_PYTHON:
@@ -230,11 +239,12 @@ cdef class Language:
         else:
             raise Exception("Unexpected error")
 
+    def __reduce__(self):
+        return Language, (<int32_t>self.lang,)
 
-# Programming language enum values.
-cdef Language LANG_PYTHON = Language.from_native(LANGUAGE_PYTHON)
-cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
-cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
+    PYTHON = Language.from_native(LANGUAGE_PYTHON)
+    CPP = Language.from_native(LANGUAGE_CPP)
+    JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
 cdef int prepare_resources(
@@ -261,17 +271,8 @@ cdef int prepare_resources(
     return 0
 
 
-cdef c_vector[c_string] string_vector_from_list(list string_list):
-    cdef:
-        c_vector[c_string] out
-    for s in string_list:
-        if not isinstance(s, bytes):
-            raise TypeError("string_list elements must be bytes")
-        out.push_back(s)
-    return out
-
 cdef void prepare_args(
-        CoreWorker core_worker, list args, c_vector[CTaskArg] *args_vector):
+        CoreWorker core_worker, args, c_vector[CTaskArg] *args_vector):
     cdef:
         size_t size
         int64_t put_threshold
@@ -302,9 +303,8 @@ cdef void prepare_args(
                         arg_data, string_to_buffer(serialized_arg.metadata))))
             else:
                 args_vector.push_back(
-                    CTaskArg.PassByReference(
-                        (CObjectID.FromBinary(core_worker.put_serialized_cobject(
-                            serialized_arg)))))
+                    CTaskArg.PassByReference((CObjectID.FromBinary(
+                        core_worker.put_serialized_cobject(serialized_arg)))))
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -345,11 +345,10 @@ cdef execute_task(
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-    descriptor = tuple(ray_function.GetFunctionDescriptor())
+    function_descriptor = CFunctionDescriptorToPython(
+        ray_function.GetFunctionDescriptor())
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
@@ -359,13 +358,11 @@ cdef execute_task(
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
 
-    execution_info = execution_infos.get(descriptor)
+    execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
         execution_info = manager.get_execution_info(
             job_id, function_descriptor)
-        execution_infos[descriptor] = execution_info
+        execution_infos[function_descriptor] = execution_info
 
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
@@ -394,13 +391,18 @@ cdef execute_task(
                             c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
-            # function_executor is a generator to make sure python decrement
-            # stack counter on context switch for async mode. If it is not
-            # a generator, python will count the stacks of executor as part
-            # of the recursion limit, resulting in much lower concurrency.
             function = execution_info.function
 
-            if PY3 and core_worker.current_actor_is_asyncio():
+            if core_worker.current_actor_is_asyncio():
+                # Increase recursion limit if necessary. In asyncio mode,
+                # we have many parallel callstacks (represented in fibers)
+                # that's suspended for execution. Python interpreter will
+                # mistakenly count each callstack towards recusion limit.
+                # We don't need to worry about stackoverflow here because
+                # the max number of callstacks is limited in direct actor
+                # transport with max_concurrency flag.
+                increase_recursion_limit()
+
                 if inspect.iscoroutinefunction(function.method):
                     async_function = function
                 else:
@@ -421,14 +423,13 @@ cdef execute_task(
                     monitor_state.unregister_coroutine(coroutine)
 
                 future.add_done_callback(callback)
-
                 with nogil:
                     (core_worker.core_worker.get()
                         .YieldCurrentFiber(fiber_event))
 
-                yield future.result()
+                return future.result()
 
-            yield function(actor, *arguments, **kwarguments)
+            return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -440,22 +441,17 @@ cdef execute_task(
 
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
-
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 actor = worker.actors[core_worker.get_actor_id()]
                 class_name = actor.__class__.__name__
                 actor_title = "{}({}, {})".format(
                     class_name, repr(args), repr(kwargs))
                 core_worker.set_actor_title(actor_title.encode("utf-8"))
-
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
                     outputs = function_executor(*args, **kwargs)
-                    # The function_executor is a generator in actor mode.
-                    if inspect.isgenerator(outputs):
-                        outputs = next(outputs)
                     task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
@@ -500,9 +496,6 @@ cdef execute_task(
         ray_signal.reset()
 
     if execution_info.max_calls != 0:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
-
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
         manager.increase_task_counter(job_id, function_descriptor)
@@ -522,7 +515,8 @@ cdef CRayStatus task_execution_handler(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
-        c_vector[shared_ptr[CRayObject]] *returns) nogil:
+        c_vector[shared_ptr[CRayObject]] *returns,
+        const CWorkerID &c_worker_id) nogil:
 
     with gil:
         try:
@@ -578,10 +572,13 @@ cdef write_serialized_object(
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
     if isinstance(serialized_object, RawSerializedObject):
-        buffer = Buffer.make(buf)
-        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
-        stream.set_memcopy_threads(MEMCOPY_THREADS)
-        stream.write(pyarrow.py_buffer(serialized_object.value))
+        if buf.get() != NULL and buf.get().Size() > 0:
+            buffer = Buffer.make(buf)
+            # `Buffer` has a nullptr buffer underlying if size is 0,
+            # which will cause `pyarrow.py_buffer` crash
+            stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
+            stream.set_memcopy_threads(MEMCOPY_THREADS)
+            stream.write(pyarrow.py_buffer(serialized_object.value))
     elif isinstance(serialized_object, Pickle5SerializedObject):
         (<Pickle5Writer>serialized_object.writer).write_to(
             serialized_object.inband, buf, MEMCOPY_THREADS)
@@ -689,11 +686,12 @@ cdef class CoreWorker:
     def put_serialized_object(self, serialized_object,
                               ObjectID object_id=None,
                               c_bool pin_object=True):
-        return ObjectID(self.put_serialized_cobject(serialized_object, object_id, pin_object))
+        return ObjectID(self.put_serialized_cobject(
+            serialized_object, object_id, pin_object))
 
     def put_serialized_cobject(self, serialized_object,
-                              ObjectID object_id=None,
-                              c_bool pin_object=True):
+                               ObjectID object_id=None,
+                               c_bool pin_object=True):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -772,7 +770,8 @@ cdef class CoreWorker:
             message.decode("utf-8")))
 
     def submit_task(self,
-                    function_descriptor,
+                    Language language,
+                    FunctionDescriptor function_descriptor,
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
@@ -790,7 +789,7 @@ cdef class CoreWorker:
             task_options = CTaskOptions(
                 num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
 
             with nogil:
@@ -801,7 +800,8 @@ cdef class CoreWorker:
             return VectorToObjectIDs(return_ids)
 
     def create_actor(self,
-                     function_descriptor,
+                     Language language,
+                     FunctionDescriptor function_descriptor,
                      args,
                      uint64_t max_reconstructions,
                      resources,
@@ -822,7 +822,7 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
 
             with nogil:
@@ -837,8 +837,9 @@ cdef class CoreWorker:
             return ActorID(c_actor_id.Binary())
 
     def submit_actor_task(self,
+                          Language language,
                           ActorID actor_id,
-                          function_descriptor,
+                          FunctionDescriptor function_descriptor,
                           args,
                           int num_return_vals,
                           double num_method_cpus):
@@ -856,7 +857,7 @@ cdef class CoreWorker:
                 c_resources[b"CPU"] = num_method_cpus
             task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+                language.lang, function_descriptor.descriptor)
             prepare_args(self, args, &args_vector)
 
             with nogil:
@@ -1045,7 +1046,7 @@ cdef class CoreWorker:
 
         ref_counts = {}
         while it != c_ref_counts.end():
-            object_id = ObjectID(dereference(it).first.Binary())
+            object_id = dereference(it).first.Hex()
             ref_counts[object_id] = {
                 "local": dereference(it).second.first,
                 "submitted": dereference(it).second.second}

@@ -21,6 +21,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         store_executable_(store_exe),
         actor_executable_(actor_exe),
         node_manager_port_(port) {
+#ifdef _WIN32
+    RAY_CHECK(false) << "port system() calls to Windows before running this test";
+#endif
+
     // flush redis first.
     flushall_redis();
 
@@ -162,7 +166,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::unordered_map<std::string, double> resources;
     TaskOptions options{0, true, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {"init"}};
+    RayFunction func{ray::Language::PYTHON,
+                     ray::FunctionDescriptorBuilder::BuildPython("init", "", "", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids));
   }
@@ -176,7 +181,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::unordered_map<std::string, double> resources;
     TaskOptions options{0, true, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {"execute_test", test}};
+    RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                "execute_test", test, "", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
   }
@@ -190,7 +196,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::unordered_map<std::string, double> resources;
     TaskOptions options{1, true, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {"check_current_test_status"}};
+    RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                "check_current_test_status", "", "", "")};
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -250,7 +257,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     uint8_t array[] = {1, 2, 3};
     auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-    RayFunction func{ray::Language::PYTHON, {"actor creation task"}};
+    RayFunction func{ray::Language::PYTHON, ray::FunctionDescriptorBuilder::BuildPython(
+                                                "actor creation task", "", "", "")};
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
