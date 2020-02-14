@@ -229,7 +229,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
     for (const auto &inner_id : it->second.contains) {
       RAY_LOG(DEBUG) << "Try to delete inner object " << inner_id;
       auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end());
+      RAY_CHECK(inner_it != object_id_refs_.end()) << inner_id;
       if (it->second.owned_by_us) {
         RAY_CHECK(inner_it->second.contained_in_owned.erase(id));
       } else {
@@ -258,7 +258,7 @@ bool ReferenceCounter::SetDeleteCallback(
   if (it == object_id_refs_.end()) {
     return false;
   }
-  RAY_CHECK(!it->second.on_delete);
+  RAY_CHECK(!it->second.on_delete) << object_id;
   it->second.on_delete = callback;
   return true;
 }
@@ -503,12 +503,17 @@ void ReferenceCounter::WrapObjectIdsInternal(const ObjectID &object_id,
                "not created by the worker executing the task. The object may be evicted "
                "before all references are out of scope.";
         // TODO: Do not return. Handle the case where we return a BORROWED id.
-        return;
+        continue;
       }
-      // Add the task's caller as a borrower and wait for it to remove its
-      // reference.
-      inner_it->second.borrowers.insert(owner_address);
-      WaitForRefRemoved(inner_it, owner_address, object_id);
+      // Add the task's caller as a borrower.
+      auto inserted = inner_it->second.borrowers.insert(owner_address).second;
+      if (inserted) {
+        RAY_LOG(DEBUG) << "Adding borrower " << owner_address.ip_address << " to id "
+                       << object_id << ", borrower owns outer ID " << object_id;
+        // Wait for it to remove its
+        // reference.
+        WaitForRefRemoved(inner_it, owner_address, object_id);
+      }
     }
   }
 }
@@ -576,11 +581,6 @@ void ReferenceCounter::SetRefRemovedCallback(const rpc::WaitForRefRemovedRequest
     RAY_CHECK(it->second.on_local_ref_deleted == nullptr);
     it->second.on_local_ref_deleted = ref_removed_callback;
   }
-}
-
-bool ReferenceCounter::HasReference(const ObjectID &object_id) {
-  const auto it = object_id_refs_.find(object_id);
-  return it != object_id_refs_.end();
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

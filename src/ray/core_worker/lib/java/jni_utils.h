@@ -327,7 +327,7 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   if (metadata_buffer && metadata_buffer->Size() == 0) {
     metadata_buffer = nullptr;
   }
-  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
+  return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer, {});
 }
 
 /// Convert a C++ ray::RayObject to a Java NativeRayObject.

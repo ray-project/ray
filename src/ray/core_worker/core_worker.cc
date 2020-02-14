@@ -182,8 +182,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       store_socket, local_raylet_client_, check_signals_));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
-        RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
-        RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {obj_id}));
+        bool object_exists;
+        RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id, &object_exists));
+        if (!object_exists) {
+          RAY_LOG(DEBUG) << "Pinning object promoted to plasma " << obj_id;
+          RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {obj_id}));
+        }
       },
       ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
       check_signals_));
@@ -342,8 +346,14 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value) {
-    RAY_CHECK_OK(plasma_store_provider_->Put(*value, object_id));
-    RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
+    RAY_LOG(DEBUG) << "Storing object promoted to plasma " << object_id;
+    bool object_exists;
+    RAY_CHECK_OK(plasma_store_provider_->Put(*value, object_id, &object_exists));
+    if (!object_exists) {
+      RAY_LOG(DEBUG) << "PromoteToPlasma: Pinning object promoted to plasma "
+                     << object_id;
+      RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
+    }
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
@@ -402,7 +412,7 @@ Status CoreWorker::Put(const RayObject &object,
             static_cast<uint8_t>(TaskTransportType::RAYLET))
       << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
   // TODO(edoakes,swang): add contained object IDs to the reference counter.
-  return plasma_store_provider_->Put(object, object_id);
+  return plasma_store_provider_->Put(object, object_id, nullptr);
 }
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
@@ -430,6 +440,7 @@ Status CoreWorker::Seal(const ObjectID &object_id, bool pin_object) {
   RAY_RETURN_NOT_OK(plasma_store_provider_->Seal(object_id));
   if (pin_object) {
     // Tell the raylet to pin the object **after** it is created.
+    RAY_LOG(DEBUG) << "Pinning created object " << object_id;
     RAY_CHECK_OK(local_raylet_client_->PinObjectIDs(rpc_address_, {object_id}));
   }
   return Status::OK();
@@ -944,6 +955,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects,
                                ReferenceCounter::ReferenceTableProto *borrowed_refs) {
+  RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
@@ -1049,6 +1061,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     absl::MutexLock lock(&mutex_);
     current_task_ = TaskSpecification();
   }
+  RAY_LOG(DEBUG) << "Finished executing task " << task_spec.TaskId();
   return status;
 }
 
@@ -1173,6 +1186,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  RAY_LOG(DEBUG) << "Received GetObjectStatus " << object_id;
   TaskID owner_id = TaskID::FromBinary(request.owner_id());
   if (owner_id != GetCallerId()) {
     RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by previous task "

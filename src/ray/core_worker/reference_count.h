@@ -135,9 +135,6 @@ class ReferenceCounter {
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
 
-  /// Returns whether this object has an active reference.
-  bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
-
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const LOCKS_EXCLUDED(mutex_);
 
@@ -181,7 +178,7 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The object ID to check for.
   /// \return Whether we have a reference to the object ID.
-  bool HasReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  bool HasReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_) const;
 
  private:
   struct Reference {
