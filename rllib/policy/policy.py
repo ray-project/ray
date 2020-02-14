@@ -1,5 +1,4 @@
 from abc import ABCMeta, abstractmethod
-from collections import namedtuple
 import gym
 import numpy as np
 
@@ -13,16 +12,6 @@ LEARNER_STATS_KEY = "learner_stats"
 
 ACTION_PROB = "action_prob"
 ACTION_LOGP = "action_logp"
-
-
-class TupleActions(namedtuple("TupleActions", ["batches"])):
-    """Used to return tuple actions as a list of batches per tuple element."""
-
-    def __new__(cls, batches):
-        return super(TupleActions, cls).__new__(cls, batches)
-
-    def numpy(self):
-        return TupleActions([b.numpy() for b in self.batches])
 
 
 @DeveloperAPI

@@ -143,7 +143,8 @@ class ModelCatalog:
                 "Using custom action distribution {}".format(action_dist_name))
             dist = _global_registry.get(RLLIB_ACTION_DIST, action_dist_name)
         # Dist_type is given directly as a class.
-        elif issubclass(dist_type, ActionDistribution) and \
+        elif type(dist_type) is type and \
+                issubclass(dist_type, ActionDistribution) and \
                 dist_type is not MultiActionDistribution:
             dist = dist_type
         # Box space -> DiagGaussian OR Deterministic.

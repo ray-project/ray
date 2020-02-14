@@ -9,7 +9,6 @@ tf = try_import_tf()
 
 
 class TestComputeLogLikelihood(unittest.TestCase):
-
     def test_dqn(self):
         """Tests, whether DQN correctly computes logp in soft-q mode."""
         config = dqn.DEFAULT_CONFIG.copy()

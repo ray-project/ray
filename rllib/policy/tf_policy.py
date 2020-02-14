@@ -129,7 +129,8 @@ class TFPolicy(Policy):
             tf.placeholder_with_default(True, (), name="is_exploring")
         self._sampled_action_logp = sampled_action_logp
         self._sampled_action_prob = (tf.exp(self._sampled_action_logp)
-                             if self._sampled_action_logp is not None else None)
+                                     if self._sampled_action_logp is not None
+                                     else None)
         self._action_dist_class = action_dist_class
         self._action_dist_inputs = action_dist_inputs
         self._state_inputs = state_inputs or []
@@ -164,7 +165,8 @@ class TFPolicy(Policy):
         # TODO(sven): build graph.
         self._log_likelihoods = None
         if self._action_dist_class:
-            action_dist = self._action_dist_class(self._action_dist_inputs, self.model)
+            action_dist = self._action_dist_class(self._action_dist_inputs,
+                                                  self.model)
             self._log_likelihoods = action_dist.logp(self._action_input)
 
     def variables(self):
@@ -539,9 +541,9 @@ class TFPolicy(Policy):
         if timestep is not None:
             builder.add_feed_dict({self._timestep: timestep})
         builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
-        fetches = builder.add_fetches(
-            [self._sampled_action] + self._state_outputs +
-            [self.extra_compute_action_fetches()])
+        fetches = builder.add_fetches([self._sampled_action] +
+                                      self._state_outputs +
+                                      [self.extra_compute_action_fetches()])
         return fetches[0], fetches[1:-1], fetches[-1]
 
     def _build_compute_gradients(self, builder, postprocessed_batch):
