@@ -100,13 +100,6 @@ DEFAULT_CONFIG = with_common_config({
     "worker_side_prioritization": False,
     # Prevent iterations from going lower than this time span.
     "min_iter_time_s": 1,
-
-    # DEPRECATED:
-    "per_worker_exploration": -1,
-    "exploration_fraction": -1,
-    "schedule_max_timesteps": -1,
-    "exploration_initial_eps": -1,
-    "exploration_final_eps": -1,
 })
 # __sphinx_doc_end__
 # yapf: enable
