@@ -77,8 +77,9 @@ MODEL_DEFAULTS = {
     # === Options for custom models ===
     # Name of a custom model to use
     "custom_model": None,
-    # Name of a custom action distribution to use
+    # Name of a custom action distribution to use.
     "custom_action_dist": None,
+
     # Extra options to pass to the custom classes
     "custom_options": {},
     # Custom preprocessors are deprecated. Please use a wrapper class around

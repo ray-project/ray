@@ -45,7 +45,11 @@ class Policy(metaclass=ABCMeta):
     """
 
     @DeveloperAPI
-    def __init__(self, observation_space, action_space, config):
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 config,
+                 exploration=None):
         """Initialize the graph.
 
         This is the standard constructor for policies. The policy
@@ -56,26 +60,17 @@ class Policy(metaclass=ABCMeta):
             observation_space (gym.Space): Observation space of the policy.
             action_space (gym.Space): Action space of the policy.
             config (dict): Policy-specific configuration data.
+            exploration (Exploration): The exploration object to use for
+                computing actions.
         """
         self.observation_space = observation_space
         self.action_space = action_space
         self.config = config
+        self.exploration = exploration or \
+            self._create_exploration(action_space, config)
         # The global timestep, broadcast down from time to time from the
         # driver.
         self.global_timestep = 0
-
-        # Create the Exploration object to use for this Policy.
-        self.exploration = from_config(
-            Exploration,
-            config.get("exploration"),
-            action_space=self.action_space,
-            num_workers=self.config.get("num_workers"),
-            worker_index=self.config.get("worker_index"),
-            framework="torch" if self.config.get("use_pytorch") else "tf")
-
-        # The default sampling behavior for actions if not explicitly given
-        # in calls to `compute_actions`.
-        self.deterministic = config.get("deterministic", False)
 
     @abstractmethod
     @DeveloperAPI
@@ -86,7 +81,7 @@ class Policy(metaclass=ABCMeta):
                         prev_reward_batch=None,
                         info_batch=None,
                         episodes=None,
-                        explore=True,
+                        explore=None,
                         timestep=None,
                         **kwargs):
         """Computes actions for the current policy.
@@ -103,8 +98,8 @@ class Policy(metaclass=ABCMeta):
             episodes (list): MultiAgentEpisode for each obs in obs_batch.
                 This provides access to all of the internal episode state,
                 which may be useful for model-based or multiagent algorithms.
-            explore (bool): Whether we should use exploration
-                (e.g. when training) or not (for inference/evaluation).
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
@@ -127,7 +122,7 @@ class Policy(metaclass=ABCMeta):
                               info=None,
                               episode=None,
                               clip_actions=False,
-                              explore=True,
+                              explore=None,
                               timestep=None,
                               **kwargs):
         """Unbatched version of compute_actions.
@@ -142,8 +137,8 @@ class Policy(metaclass=ABCMeta):
                 internal episode state, which may be useful for model-based or
                 multi-agent algorithms.
             clip_actions (bool): should the action be clipped
-            explore (bool): Whether we should use exploration (i.e. when
-                training) or not (e.g. for inference/evaluation).
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
             timestep (int): The current (sampling) time step.
             kwargs: forward compatibility placeholder
 
@@ -405,6 +400,15 @@ class Policy(metaclass=ABCMeta):
             export_dir (str): Local writable directory.
         """
         raise NotImplementedError
+
+    def _create_exploration(self, action_space, config):
+        return from_config(
+            Exploration,
+            config["exploration_config"],
+            action_space=action_space,
+            num_workers=config.get("num_workers"),
+            worker_index=config.get("worker_index"),
+            framework="torch" if config.get("use_pytorch") else "tf")
 
 
 def clip_action(action, space):

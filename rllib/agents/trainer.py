@@ -166,10 +166,20 @@ COMMON_CONFIG = {
     "no_eager_on_workers": False,
 
     # === Exploration Settings ===
+    # Default exploration behavior, iff `explore`=None is passed into
+    # compute_action(s).
+    # Set to False for no exploration behavior (e.g., for evaluation).
+    "explore": True,
     # Provide a dict specifying the Exploration object's config.
-    # Set to False or None for no exploration behavior (e.g., for evaluation).
-    "exploration": False,
-
+    "exploration_config": {
+        # The Exploration class to use. In the simplest case, this is the name
+        # (str) of any class present in the `rllib.utils.exploration` package.
+        # You can also provide the python class directly or the full location
+        # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+        # EpsilonGreedy").
+        "type": "StochasticSampling",
+        # Add constructor kwargs here (if any).
+    },
     # === Evaluation Settings ===
     # Evaluate with every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
@@ -180,13 +190,14 @@ COMMON_CONFIG = {
     # evaluation workers, we will run at least this many episodes total.
     "evaluation_num_episodes": 10,
     # Typical usage is to pass extra args to evaluation env creator
-    # and to disable exploration by computing deterministic actions
+    # and to disable exploration by computing deterministic actions.
+    # IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
+    # policy, even if this is a stochastic one. Setting "explore=False" here
+    # will result in the evaluation workers not using this optimal policy!
     "evaluation_config": {
         # Example: overriding env_config, exploration, etc:
         # "env_config": {...},
-        # "exploration_fraction": 0,
-        # "exploration_final_eps": 0,
-        "exploration": False
+        # "explore": False
     },
     # Number of parallel workers to use for evaluation. Note that this is set
     # to zero by default, which means evaluation will be run in the trainer
@@ -374,7 +385,7 @@ class Trainer(Trainable):
     _allow_unknown_subkeys = [
         "tf_session_args", "local_tf_session_args", "env_config", "model",
         "optimizer", "multiagent", "custom_resources_per_worker",
-        "evaluation_config"
+        "evaluation_config", "exploration"
     ]
 
     @PublicAPI
@@ -530,8 +541,17 @@ class Trainer(Trainable):
         else:
             self.env_creator = lambda env_config: None
 
-        # Merge the supplied config with the class default
+        # Merge the supplied config with the class default.
         merged_config = copy.deepcopy(self._default_config)
+        # Handle special case for Explorations.
+        # TODO(sven): Maybe move this into `deep_update()`?
+        if isinstance(merged_config["exploration_config"], dict) and \
+                "type" in merged_config["exploration_config"] and \
+                isinstance(config["exploration_config"], dict) and \
+                "type" in config["exploration_config"] and \
+                merged_config["exploration_config"]["type"] != \
+                config["exploration_config"]["type"]:
+            merged_config["exploration_config"] = config["exploration_config"]
         merged_config = deep_update(merged_config, config,
                                     self._allow_unknown_configs,
                                     self._allow_unknown_subkeys)
@@ -702,7 +722,7 @@ class Trainer(Trainable):
                        info=None,
                        policy_id=DEFAULT_POLICY_ID,
                        full_fetch=False,
-                       explore=True):
+                       explore=None):
         """Computes an action for the specified policy on the local Worker.
 
         Note that you can also access the policy object through
@@ -721,7 +741,8 @@ class Trainer(Trainable):
             policy_id (str): Policy to query (only applies to multi-agent).
             full_fetch (bool): Whether to return extra action fetch results.
                 This is always set to True if RNN state is specified.
-            explore (bool): Whether to pick an action using exploration or not.
+            explore (bool): Whether to pick an exploitation or exploration
+                action (default: None -> use self.config["explore"]).
 
         Returns:
             any: The computed action if full_fetch=False, or
