@@ -2,11 +2,11 @@ from ray.rllib.utils.framework import check_framework
 
 
 class Exploration:
-    """Implements an env-exploration strategy for Policies.
+    """Implements an exploration strategy for Policies.
 
-    An Exploration takes the predicted actions or action values from the agent,
-    and selects the action to actually apply to the environment using some
-    predefined exploration schema.
+    An Exploration takes model outputs, a distribution, and a timestep from
+    the agent and computes an action to apply to the environment using an
+    implemented exploration schema.
     """
 
     def __init__(self,

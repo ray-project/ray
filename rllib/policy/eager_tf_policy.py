@@ -528,7 +528,7 @@ def build_eager_tf_policy(name,
                 dummy_batch["seq_lens"] = tf.convert_to_tensor(
                     np.array([1], dtype=np.int32))
 
-            # for IMPALA which expects a certain sample batch size
+            # for IMPALA which expects a certain sample batch size.
             def tile_to(tensor, n):
                 return tf.tile(tensor,
                                [n] + [1 for _ in tensor.shape.as_list()[1:]])

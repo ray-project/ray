@@ -2,7 +2,7 @@ from ray.rllib.utils.exploration.stochastic_sampling import StochasticSampling
 
 
 class SoftQ(StochasticSampling):
-    """
+    """Special case of StochasticSampling w/ Categorical and temperature param.
     """
 
     def __init__(self, action_space, temperature=1.0, framework="tf",

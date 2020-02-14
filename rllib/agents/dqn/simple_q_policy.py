@@ -98,11 +98,11 @@ def simple_sample_action_from_q_network(policy,
                                         timestep,
                                         q_values_func=None):
     # Action Q network.
-    ret = (q_values_func or _compute_q_values)(policy, q_model,
-                                               input_dict[SampleBatch.CUR_OBS],
-                                               obs_space, action_space)
+    q_vals = (q_values_func or _compute_q_values)(
+        policy, q_model, input_dict[SampleBatch.CUR_OBS], obs_space,
+        action_space)
 
-    policy.q_values = ret[0] if isinstance(ret, tuple) else ret
+    policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
     policy.q_func_vars = q_model.variables()
 
     policy.output_actions, policy.action_logp = \

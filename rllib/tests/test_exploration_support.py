@@ -86,6 +86,14 @@ class TestExplorationSupport(unittest.TestCase):
                 "num_workers": 0
             }), np.array([0.0, 0.1, 0.0, 0.0]))
 
+        # config = dqn.DEFAULT_CONFIG.copy()
+        # config["exploration_config"] = {"type": "Random"}
+        # config["eager"] = True
+        # config["num_workers"] = 0
+        # test_exploration_support(
+        #     dqn.SimpleQTrainer, "CartPole-v0", config,
+        #     np.array([0.0, 0.1, 0.0, 0.0]))
+
     def test_dqn(self):
         test_exploration_support(
             dqn.DQNTrainer, "CartPole-v0",
