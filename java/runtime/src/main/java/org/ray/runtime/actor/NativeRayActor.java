@@ -79,10 +79,20 @@ public abstract class NativeRayActor implements RayActor, Externalizable {
     actorId = nativeDeserialize(nativeCoreWorkerPointer, (byte[]) in.readObject());
   }
 
+  /**
+   * Serialize this actor handle to bytes.
+   *
+   * @return  the bytes of the actor handle
+   */
   public byte[] toBytes() {
     return nativeSerialize(nativeCoreWorkerPointer, actorId);
   }
 
+  /**
+   * Deserialize an actor handle from bytes.
+   *
+   * @return  the bytes of an actor handle
+   */
   public static NativeRayActor fromBytes(byte[] bytes) {
     long nativeCoreWorkerPointer = getNativeCoreWorkerPointer();
     byte[] actorId = nativeDeserialize(nativeCoreWorkerPointer, bytes);

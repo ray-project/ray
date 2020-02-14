@@ -924,6 +924,7 @@ cdef class CoreWorker:
         if language == Language.PYTHON:
             assert isinstance(actor_creation_function_descriptor,
                               PythonFunctionDescriptor)
+            # Load actor_method_cpu from actor handle's extension data.
             actor_method_cpu = int(c_actor_handle.ExtensionData())
             actor_class = manager.load_actor_class(
                 job_id, actor_creation_function_descriptor)

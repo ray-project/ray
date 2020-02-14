@@ -543,6 +543,7 @@ class ActorClass:
                 max_concurrency,
                 detached,
                 is_asyncio,
+                # Store actor_method_cpu in actor handle's extension data.
                 extension_data=str(actor_method_cpu))
 
         actor_handle = ActorHandle(
@@ -794,11 +795,12 @@ class ActorHandle:
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
+            # Non-local mode
             state = worker.core_worker.serialize_actor_handle(self)
         else:
+            # Local mode
             state = {
                 "actor_language": self._ray_actor_language,
-                # Local mode just uses the actor ID.
                 "actor_id": self._ray_actor_id,
                 "method_decorators": self._ray_method_decorators,
                 "method_signatures": self._ray_method_signatures,
@@ -823,13 +825,14 @@ class ActorHandle:
         worker.check_connected()
 
         if hasattr(worker, "core_worker"):
+            # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
                 state)
         else:
+            # Local mode
             return cls(
                 # TODO(swang): Accessing the worker's current task ID is not
                 # thread-safe.
-                # Local mode just uses the actor ID.
                 state["actor_language"],
                 state["actor_id"],
                 state["method_decorators"],

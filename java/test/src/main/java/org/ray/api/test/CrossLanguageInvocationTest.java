@@ -67,21 +67,30 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
     Assert.assertEquals(res.get(), "2".getBytes());
-    // Call a python function which create a python actor
-    // and pass the actor handle to callPythonActorHandle.
-    res = Ray.callPy(PYTHON_MODULE, "py_func_pass_python_actor_handle");
-    Assert.assertEquals(res.get(), "3".getBytes());
   }
 
   @Test
   public void testPythonCallJavaActor() {
     RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor", "1".getBytes());
     Assert.assertEquals(res.get(), "Counter1".getBytes());
+
+  }
+
+  @Test
+  public void testPassActorHandleFromPythonToJava() {
+    // Call a python function which creates a python actor
+    // and pass the actor handle to callPythonActorHandle.
+    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_pass_python_actor_handle");
+    Assert.assertEquals(res.get(), "3".getBytes());
+  }
+
+  @Test
+  public void testPassActorHandleFromJavaToPython() {
     // Create a java actor, and pass actor handle to python.
     RayActor<TestActor> actor = Ray.createActor(TestActor::new, "1".getBytes());
     Preconditions.checkState(actor instanceof NativeRayActor);
     byte[] actorHandleBytes = ((NativeRayActor) actor).toBytes();
-    res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor_from_handle", actorHandleBytes);
+    RayObject res = Ray.callPy(PYTHON_MODULE, "py_func_call_java_actor_from_handle", actorHandleBytes);
     Assert.assertEquals(res.get(), "12".getBytes());
   }
 
@@ -94,7 +103,6 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   public static byte[] callPythonActorHandle(byte[] value) {
     // This function will be called from test_cross_language_invocation.py
-    LOGGER.debug("callPythonActorHandle");
     NativeRayPyActor actor = (NativeRayPyActor)NativeRayActor.fromBytes(value);
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
     Assert.assertEquals(res.get(), "3".getBytes());

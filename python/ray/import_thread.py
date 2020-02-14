@@ -111,18 +111,14 @@ class ImportThread:
         """Process the given export key from redis."""
         # Handle the driver case first.
         if self.mode != ray.WORKER_MODE:
-            if key.startswith(b"FunctionsToRun"):
-                with profiling.profile("fetch_and_run_function"):
-                    self.fetch_and_execute_function_to_run(key)
-
             # If the same remote function or actor definition appears to be
             # exported many times, then print a warning. We only issue this
             # warning from the driver so that it is only triggered once instead
             # of many times. TODO(rkn): We may want to push this to the driver
             # through Redis so that it can be displayed in the dashboard more
             # easily.
-            elif (key.startswith(b"RemoteFunction")
-                  or key.startswith(b"ActorClass")):
+            if (key.startswith(b"RemoteFunction")
+                    or key.startswith(b"ActorClass")):
                 collision_identifier, name, import_type = (
                     self._get_import_info_for_collision_detection(key))
                 self.imported_collision_identifiers[collision_identifier] += 1
@@ -139,20 +135,6 @@ class ImportThread:
                         "https://github.com/ray-project/ray/issues/6240 for "
                         "more discussion.", import_type, name,
                         ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
-
-            if key.startswith(b"RemoteFunction"):
-                with profiling.profile("register_remote_function"):
-                    (self.worker.function_actor_manager.
-                     fetch_and_register_remote_function(key))
-            elif key.startswith(b"ActorClass"):
-                # Keep track of the fact that this actor class has been
-                # exported so that we know it is safe to turn this worker
-                # into an actor of that class.
-                self.worker.function_actor_manager.imported_actor_classes.add(
-                    key)
-            # Return because FunctionsToRun are the only things that
-            # the driver should import.
-            return
 
         if key.startswith(b"RemoteFunction"):
             with profiling.profile("register_remote_function"):
