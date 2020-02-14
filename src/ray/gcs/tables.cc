@@ -124,7 +124,7 @@ Status Log<ID, Data>::SyncLookup(const JobID &job_id, const ID &id,
 template <typename ID, typename Data>
 void Log<ID, Data>::ParseLookupReply(const std::shared_ptr<CallbackReply> &reply,
                                      const ID &id, std::vector<Data> *results) {
-  RAY_CHECK(results);
+  RAY_CHECK(results != nullptr);
   if (reply != nullptr) {
     GcsEntry gcs_entry;
     gcs_entry.ParseFromString(reply->ReadAsString());
@@ -460,25 +460,42 @@ Status Hash<ID, Data>::Lookup(const JobID &job_id, const ID &id,
   auto callback = [this, id, lookup](std::shared_ptr<CallbackReply> reply) {
     if (lookup != nullptr) {
       DataMap results;
-      if (!reply->IsNil()) {
-        const auto data = reply->ReadAsString();
-        GcsEntry gcs_entry;
-        gcs_entry.ParseFromString(reply->ReadAsString());
-        RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
-        RAY_CHECK(gcs_entry.entries_size() % 2 == 0);
-        for (int i = 0; i < gcs_entry.entries_size(); i += 2) {
-          const auto &key = gcs_entry.entries(i);
-          const auto value = std::make_shared<Data>();
-          value->ParseFromString(gcs_entry.entries(i + 1));
-          results.emplace(key, std::move(value));
-        }
-      }
+      ParseLookupReply(reply, id, &results);
       lookup(client_, id, results);
     }
   };
   std::vector<uint8_t> nil;
   return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
                                        prefix_, pubsub_channel_, std::move(callback));
+}
+
+template <typename ID, typename Data>
+Status Hash<ID, Data>::SyncLookup(const JobID &job_id, const ID &id, DataMap *results) {
+  num_lookups_++;
+  std::vector<uint8_t> nil;
+  auto reply = GetRedisContext(id)->RunSync("RAY.TABLE_LOOKUP", id, nil.data(),
+                                            nil.size(), prefix_, pubsub_channel_);
+  ParseLookupReply(reply, id, results);
+  return Status::OK();
+}
+
+template <typename ID, typename Data>
+void Hash<ID, Data>::ParseLookupReply(const std::shared_ptr<CallbackReply> &reply,
+                                      const ID &id, DataMap *results) {
+  RAY_CHECK(results != nullptr);
+  if (!reply->IsNil()) {
+    const auto data = reply->ReadAsString();
+    GcsEntry gcs_entry;
+    gcs_entry.ParseFromString(reply->ReadAsString());
+    RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
+    RAY_CHECK(gcs_entry.entries_size() % 2 == 0);
+    for (int i = 0; i < gcs_entry.entries_size(); i += 2) {
+      const auto &key = gcs_entry.entries(i);
+      const auto value = std::make_shared<Data>();
+      value->ParseFromString(gcs_entry.entries(i + 1));
+      results->emplace(key, std::move(value));
+    }
+  }
 }
 
 template <typename ID, typename Data>

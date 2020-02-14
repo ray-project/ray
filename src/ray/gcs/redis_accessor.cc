@@ -28,7 +28,7 @@ Status RedisActorInfoAccessor::AsyncGet(
 
 Status RedisActorInfoAccessor::Get(const ActorID &actor_id,
                                    boost::optional<rpc::ActorTableData> *result) {
-  RAY_CHECK(result);
+  RAY_CHECK(result != nullptr);
   std::vector<rpc::ActorTableData> data;
   Status status = client_impl_->actor_table().SyncLookup(JobID::Nil(), actor_id, &data);
   if (!data.empty()) {
@@ -563,6 +563,12 @@ Status RedisNodeInfoAccessor::AsyncGetResources(
 
   DynamicResourceTable &resource_table = client_impl_->resource_table();
   return resource_table.Lookup(JobID::Nil(), node_id, on_done);
+}
+
+Status RedisNodeInfoAccessor::GetResources(const ClientID &node_id, ResourceMap *result) {
+  RAY_CHECK(result != nullptr);
+  DynamicResourceTable &resource_table = client_impl_->resource_table();
+  return resource_table.SyncLookup(JobID::Nil(), node_id, result);
 }
 
 Status RedisNodeInfoAccessor::AsyncUpdateResources(const ClientID &node_id,

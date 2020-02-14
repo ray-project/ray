@@ -29,7 +29,7 @@ class ActorInfoAccessor {
   /// Get actor specification from GCS synchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
-  /// \param result The actor specification that get from GCS.
+  /// \param result The actor specification that GCS returns.
   /// \return Status
   virtual Status Get(const ActorID &actor_id,
                      boost::optional<rpc::ActorTableData> *result) = 0;
@@ -411,6 +411,13 @@ class NodeInfoAccessor {
   /// \return Status
   virtual Status AsyncGetResources(const ClientID &node_id,
                                    const OptionalItemCallback<ResourceMap> &callback) = 0;
+
+  /// Get node's resources from GCS synchronously.
+  ///
+  /// \param node_id The ID of node to lookup dynamic resources.
+  /// \param result The result that GCS returns.
+  /// \return Status
+  virtual Status GetResources(const ClientID &node_id, ResourceMap *result) = 0;
 
   /// Update resources of node in GCS asynchronously.
   ///

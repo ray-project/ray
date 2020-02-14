@@ -591,6 +591,15 @@ class HashInterface {
   virtual Status Lookup(const JobID &job_id, const ID &id,
                         const HashCallback &lookup) = 0;
 
+  /// Lookup the map data of a hash table.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param id The ID of the data that is looked up in the GCS.
+  /// \param result The result that GCS returns. If the result is an empty hash table,
+  /// then there was no data at the key.
+  /// \return Status
+  virtual Status SyncLookup(const JobID &job_id, const ID &id, DataMap *result) = 0;
+
   /// Subscribe to any Update or Remove operations to this hash table.
   ///
   /// \param job_id The ID of the job.
@@ -637,6 +646,8 @@ class Hash : private Log<ID, Data>,
 
   Status Lookup(const JobID &job_id, const ID &id, const HashCallback &lookup) override;
 
+  Status SyncLookup(const JobID &job_id, const ID &id, DataMap *results) override;
+
   Status RemoveEntries(const JobID &job_id, const ID &id,
                        const std::vector<std::string> &keys,
                        const HashRemoveCallback &remove_callback) override;
@@ -653,6 +664,9 @@ class Hash : private Log<ID, Data>,
   using Log<ID, Data>::prefix_;
   using Log<ID, Data>::subscribe_callback_index_;
   using Log<ID, Data>::GetRedisContext;
+
+  void ParseLookupReply(const std::shared_ptr<CallbackReply> &reply, const ID &id,
+                        DataMap *results);
 
   int64_t num_adds_ = 0;
   int64_t num_removes_ = 0;
