@@ -107,7 +107,7 @@ class TorchPolicy(Policy):
             if prev_reward_batch:
                 input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
             model_out = self.model(input_dict, state_batches, [1])
-            logits, state = model_out
+            logits, _ = model_out
             action_dist = self.dist_class(logits, self.model)
             log_likelihoods = action_dist.logp(actions)
             return log_likelihoods.cpu().numpy()

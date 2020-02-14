@@ -288,13 +288,14 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
     absl::MutexLock lock(&mutex_);
     not_actor_task = actor_id_.IsNil();
   }
-  // Clear all actor handles at the end of each non-actor task.
   if (not_actor_task && task_id.IsNil()) {
     absl::MutexLock lock(&actor_handles_mutex_);
+    // Reset the seqnos so that for the next task it start off at 0.
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
+      handle.second->Reset();
     }
-    actor_handles_.clear();
+    // TODO(ekl) we can't unsubscribe to actor notifications here due to
+    // https://github.com/ray-project/ray/pull/6885
   }
 }
 
@@ -960,9 +961,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_TASK;
   }
 
-  status = task_execution_callback_(task_type, func,
-                                    task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, return_objects);
+  status = task_execution_callback_(
+      task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
+      arg_reference_ids, return_ids, return_objects, worker_context_.GetWorkerID());
 
   for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.

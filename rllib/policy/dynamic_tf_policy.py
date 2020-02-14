@@ -98,11 +98,13 @@ class DynamicTFPolicy(TFPolicy):
             if self._obs_include_prev_action_reward:
                 prev_actions = existing_inputs[SampleBatch.PREV_ACTIONS]
                 prev_rewards = existing_inputs[SampleBatch.PREV_REWARDS]
+            action_input = existing_inputs[SampleBatch.ACTIONS]
         else:
             obs = tf.placeholder(
                 tf.float32,
                 shape=[None] + list(obs_space.shape),
                 name="observation")
+            action_input = ModelCatalog.get_action_placeholder(action_space)
             if self._obs_include_prev_action_reward:
                 prev_actions = ModelCatalog.get_action_placeholder(
                     action_space)
@@ -181,10 +183,9 @@ class DynamicTFPolicy(TFPolicy):
             config,
             sess,
             obs_input=obs,
+            action_inputs=action_input,  # for logp calculations
             action_sampler=action_sampler,
             action_logp=action_logp,
-            # TODO(sven): For DQN (and others that provide action_sampler_fn)
-            #  this must be Categorical.
             action_dist_class=self.dist_class,
             action_dist_inputs=model_out,
             loss=None,  # dynamically initialized on run

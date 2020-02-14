@@ -61,17 +61,14 @@ class Categorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def kl(self, other):
-        a0 = self.inputs - tf.reduce_max(
-            self.inputs, reduction_indices=[1], keep_dims=True)
-        a1 = other.inputs - tf.reduce_max(
-            other.inputs, reduction_indices=[1], keep_dims=True)
+        a0 = self.inputs - tf.reduce_max(self.inputs, axis=1, keep_dims=True)
+        a1 = other.inputs - tf.reduce_max(other.inputs, axis=1, keep_dims=True)
         ea0 = tf.exp(a0)
         ea1 = tf.exp(a1)
-        z0 = tf.reduce_sum(ea0, reduction_indices=[1], keep_dims=True)
-        z1 = tf.reduce_sum(ea1, reduction_indices=[1], keep_dims=True)
+        z0 = tf.reduce_sum(ea0, axis=1, keep_dims=True)
+        z1 = tf.reduce_sum(ea1, axis=1, keep_dims=True)
         p0 = ea0 / z0
-        return tf.reduce_sum(
-            p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), reduction_indices=[1])
+        return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=1)
 
     @override(TFActionDistribution)
     def _build_sample_op(self):
@@ -114,7 +111,9 @@ class MultiCategorical(TFActionDistribution):
 
     @override(ActionDistribution)
     def multi_kl(self, other):
-        return [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)]
+        return tf.stack(
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)],
+            axis=1)
 
     @override(ActionDistribution)
     def kl(self, other):

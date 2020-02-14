@@ -1027,7 +1027,7 @@ FLATC_ARGS = [
 
 flatbuffer_cc_library(
     name = "common_fbs",
-    srcs = ["@plasma//:cpp/src/plasma/format/common.fbs"],
+    srcs = ["@plasma//:cpp/src/plasma/common.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "src/ray/common/",
 )
@@ -1114,6 +1114,7 @@ cc_binary(
         "@bazel_tools//src/conditions:darwin": ["@bazel_tools//tools/jdk:jni_md_header-darwin"],
         "//conditions:default": ["@bazel_tools//tools/jdk:jni_md_header-linux"],
     }),
+    copts = COPTS,
     includes = [
         "src",
         "external/bazel_tools/tools/jdk/include",
@@ -1139,6 +1140,7 @@ cc_binary(
         "//:core_worker_lib",
         "//:src/ray/ray_exported_symbols.lds",
         "//:src/ray/ray_version_script.lds",
+        "//streaming:jni",
     ],
 )
 
@@ -1288,7 +1290,7 @@ genrule(
     outs = ["ray_pkg.out"],
     cmd = """
         set -x &&
-        WORK_DIR=$$(pwd) &&
+        WORK_DIR="$$(pwd)" &&
         cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
         mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
         cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
