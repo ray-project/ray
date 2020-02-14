@@ -213,7 +213,8 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
   bool evicted = false;
   // If distributed ref counting is not enabled, then delete the object as soon
   // as its local ref count goes to 0.
-  size_t local_ref_count = it->second.local_ref_count + it->second.submitted_task_ref_count;
+  size_t local_ref_count =
+      it->second.local_ref_count + it->second.submitted_task_ref_count;
   if (!distributed_ref_counting_enabled_ && local_ref_count == 0) {
     RAY_LOG(DEBUG) << "Deleting object " << id;
     if (it->second.on_delete) {
