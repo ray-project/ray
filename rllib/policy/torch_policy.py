@@ -68,6 +68,8 @@ class TorchPolicy(Policy):
                         timestep=None,
                         **kwargs):
 
+        explore = explore if explore is not None else self.config["explore"]
+
         with torch.no_grad():
             input_dict = self._lazy_tensor_dict({
                 SampleBatch.CUR_OBS: obs_batch,

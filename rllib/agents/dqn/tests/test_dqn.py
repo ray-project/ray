@@ -13,11 +13,17 @@ class TestDQN(unittest.TestCase):
         """Test whether a DQNTrainer can be built with both frameworks."""
         config = dqn.DEFAULT_CONFIG.copy()
         config["num_workers"] = 0  # Run locally.
-        config["eager"] = True
 
         # tf.
+        config["eager"] = True
         trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
+        num_iterations = 2
+        for i in range(num_iterations):
+            results = trainer.train()
+            print(results)
 
+        config["eager"] = False
+        trainer = dqn.DQNTrainer(config=config, env="CartPole-v0")
         num_iterations = 2
         for i in range(num_iterations):
             results = trainer.train()
@@ -26,52 +32,58 @@ class TestDQN(unittest.TestCase):
     def test_dqn_exploration_and_soft_q_config(self):
         """Tests, whether a DQN Agent outputs exploration/softmaxed actions."""
         config = dqn.DEFAULT_CONFIG.copy()
-        config["eager"] = True
         config["num_workers"] = 0  # Run locally.
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
+        obs = np.array(0)
 
-        # Default EpsilonGreedy setup.
-        trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
-        # Setting explore=False should always return the same action.
-        a_ = trainer.compute_action(observation=np.array(0), explore=False)
-        for _ in range(50):
-            a = trainer.compute_action(observation=np.array(0), explore=False)
-            check(a, a_)
-        # explore=None (by default: explore) should return different actions.
-        actions = []
-        for _ in range(50):
-            actions.append(trainer.compute_action(observation=np.array(0)))
-        check(np.mean(actions), 1.5, atol=0.2)
+        # Test against all frameworks.
+        for fw in ["tf", "eager", "torch"]:
+            if fw == "torch":
+                continue
 
-        # Low softmax temperature. Behaves like argmax
-        # (but no epsilon exploration).
-        config["exploration"] = {"type": "SoftQ", "temperature": 0.0}
-        trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
-        # Due to the low temp, always expect the same action.
-        a_ = trainer.compute_action(observation=np.array(0))
-        for _ in range(50):
-            a = trainer.compute_action(observation=np.array(0))
-            check(a, a_)
+            config["eager"] = True if fw == "eager" else False
+            config["use_pytorch"] = True if fw == "torch" else False
 
-        # Higher softmax temperature.
-        config["exploration"]["temperature"] = 1.0
-        trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+            # Default EpsilonGreedy setup.
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+            # Setting explore=False should always return the same action.
+            a_ = trainer.compute_action(obs, explore=False)
+            for _ in range(50):
+                a = trainer.compute_action(obs, explore=False)
+                check(a, a_)
+            # explore=None (default: explore) should return different actions.
+            actions = []
+            for _ in range(50):
+                actions.append(trainer.compute_action(obs))
+            check(np.std(actions), 0.0, false=True)
 
-        # Even with the higher temperature, if we set explore=False, we should
-        # expect the same actions always.
-        a_ = trainer.compute_action(observation=np.array(0), explore=False)
-        for _ in range(50):
-            a = trainer.compute_action(observation=np.array(0), explore=False)
-            check(a, a_)
+            # Low softmax temperature. Behaves like argmax
+            # (but no epsilon exploration).
+            config["exploration_config"] = {
+                "type": "SoftQ",
+                "temperature": 0.0
+            }
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
+            # Due to the low temp, always expect the same action.
+            a_ = trainer.compute_action(obs)
+            for _ in range(50):
+                a = trainer.compute_action(obs)
+                check(a, a_)
 
-        # Due to the higher temp, expect different actions avg'ing around 1.5.
-        actions = []
-        for _ in range(300):
-            actions.append(trainer.compute_action(observation=np.array(0)))
-        check(np.mean(actions), 1.5, atol=0.2)
+            # Higher softmax temperature.
+            config["exploration_config"]["temperature"] = 1.0
+            trainer = dqn.DQNTrainer(config=config, env="FrozenLake-v0")
 
-        # Test n train runs.
-        num_iterations = 2
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
+            # Even with the higher temperature, if we set explore=False, we
+            # should expect the same actions always.
+            a_ = trainer.compute_action(obs, explore=False)
+            for _ in range(50):
+                a = trainer.compute_action(obs, explore=False)
+                check(a, a_)
+
+            # Due to the higher temp, expect different actions avg'ing
+            # around 1.5.
+            actions = []
+            for _ in range(300):
+                actions.append(trainer.compute_action(obs))
+            check(np.std(actions), 0.0, false=True)

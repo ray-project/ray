@@ -60,25 +60,28 @@ class StochasticSampling(Exploration):
         #        kwargs[k] = v(timestep)
         action_dist = action_dist_class(model_output, model, **kwargs)
 
-        if self.framework == "tf":
-            return self._get_tf_exploration_action_op(action_dist, explore)
-        else:
+        if self.framework == "torch":
             return self._get_torch_exploration_action(action_dist, explore)
+        else:
+            return self._get_tf_exploration_action_op(action_dist, explore)
 
     @staticmethod
+    @tf.function
     def _get_tf_exploration_action_op(action_dist, explore):
-        action = tf.cond(
-            pred=explore,
-            true_fn=lambda: action_dist.sample(),
-            false_fn=lambda: action_dist.deterministic_sample())
-        return action, action_dist.sampled_action_logp()
-
-    @staticmethod
-    def _get_torch_exploration_action(action_dist, explore):
-        if explore is True:
+        if explore:
             action = action_dist.sample()
             logp = action_dist.sampled_action_logp()
         else:
             action = action_dist.deterministic_sample()
-            logp = None
+            logp = tf.zeros_like(action, dtype=tf.float32)
+        return action, tf.reshape(logp, tf.shape(action))
+
+    @staticmethod
+    def _get_torch_exploration_action(action_dist, explore):
+        if explore:
+            action = action_dist.sample()
+            logp = action_dist.sampled_action_logp()
+        else:
+            action = action_dist.deterministic_sample()
+            logp = torch.zeros_like(action, dtype=torch.float32)
         return action, logp

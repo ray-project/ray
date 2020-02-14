@@ -32,22 +32,23 @@ class TorchDistributionWrapper(ActionDistribution):
         self.last_sample = self.dist.sample()
         return self.last_sample
 
+    @override(ActionDistribution)
+    def sampled_action_logp(self):
+        assert self.last_sample is not None
+        return self.logp(self.last_sample)
+
 
 class TorchCategorical(TorchDistributionWrapper):
     """Wrapper class for PyTorch Categorical distribution."""
 
     @override(ActionDistribution)
     def __init__(self, inputs, model):
+        super().__init__(inputs, model)
         self.dist = torch.distributions.categorical.Categorical(logits=inputs)
 
     @override(ActionDistribution)
     def deterministic_sample(self):
         return self.dist.probs.argmax(dim=1)
-
-    @override(ActionDistribution)
-    def sampled_action_logp(self):
-        assert self.last_sample is not None
-        return self.logp(self.last_sample)
 
     @staticmethod
     @override(ActionDistribution)
@@ -60,6 +61,7 @@ class TorchDiagGaussian(TorchDistributionWrapper):
 
     @override(ActionDistribution)
     def __init__(self, inputs, model):
+        super().__init__(inputs, model)
         mean, log_std = torch.chunk(inputs, 2, dim=1)
         self.dist = torch.distributions.normal.Normal(mean, torch.exp(log_std))
 

@@ -343,12 +343,6 @@ def build_eager_tf_policy(name,
                     explore=explore,
                     timestep=timestep
                     if timestep is not None else self.global_timestep)
-            # If no exploration setup: Act deterministically.
-            # else:
-            #    assert self.dist_class
-            #    action_dist = self.dist_class(model_out, self.model)
-            #    action = action_dist.deterministic_sample()
-            #    logp = None
 
             extra_fetches = {}
             if logp is not None:

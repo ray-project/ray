@@ -5,9 +5,10 @@ from scipy.stats import entropy
 import ray
 from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
 from ray.rllib.agents.dqn.simple_q_policy import TargetNetworkMixin, \
-    ParameterNoiseMixin, simple_sample_action_from_q_network
+    ParameterNoiseMixin
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models import ModelCatalog
+from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
@@ -204,10 +205,22 @@ def build_q_model(policy, obs_space, action_space, config):
 def sample_action_from_q_network(policy, q_model, input_dict, obs_space,
                                  action_space, explore, config, timestep):
 
+    # Action Q network.
+    q_vals = _compute_q_values(policy, q_model,
+                               input_dict[SampleBatch.CUR_OBS], obs_space,
+                               action_space)
+
+    policy.q_values = q_vals[0] if isinstance(q_vals, tuple) else q_vals
+    policy.q_func_vars = q_model.variables()
+
     policy.output_actions, policy.action_logp = \
-        simple_sample_action_from_q_network(
-            policy, q_model, input_dict, obs_space,
-            action_space, explore, config, timestep, _compute_q_values)
+        policy.exploration.get_exploration_action(
+            policy.q_values, q_model, Categorical, explore, timestep)
+
+    # policy.output_actions, policy.action_logp = \
+    #    simple_sample_action_from_q_network(
+    #        policy, q_model, input_dict, obs_space,
+    #        action_space, explore, config, timestep, _compute_q_values)
 
     # Noise vars for Q network except for layer normalization vars.
     if config["parameter_noise"]:

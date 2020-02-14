@@ -14,8 +14,11 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import ACTION_LOGP
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc
 from ray.rllib.utils.test_utils import check
+
+tf = try_import_tf()
 
 
 class TestPPO(unittest.TestCase):
@@ -44,43 +47,44 @@ class TestPPO(unittest.TestCase):
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
         config = ppo.DEFAULT_CONFIG.copy()
-        config["eager"] = True
         config["num_workers"] = 0  # Run locally.
-        config["exploration"] = {"type": "StochasticSampling"}
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
         obs = np.array(0)
 
-        # Default Agent should be setup with StochasticSampling.
-        trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
-        # Due to explore=False, always expect the same (deterministic) action.
-        a_ = trainer.compute_action(
-            obs,
-            explore=False,
-            prev_action=np.array(2),
-            prev_reward=np.array(1.0))
-        # Test whether this is really the argmax action over the logits.
-        check(a_, np.argmax(trainer.get_policy().model.last_output(), 1)[0])
-        for _ in range(50):
-            a = trainer.compute_action(
+        # Test against all frameworks.
+        for fw in ["tf", "eager", "torch"]:
+            config["eager"] = True if fw == "eager" else False
+            config["use_pytorch"] = True if fw == "torch" else False
+
+            # Default Agent should be setup with StochasticSampling.
+            trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
+            # explore=False, always expect the same (deterministic) action.
+            a_ = trainer.compute_action(
                 obs,
                 explore=False,
                 prev_action=np.array(2),
                 prev_reward=np.array(1.0))
-            check(a, a_)
+            # Test whether this is really the argmax action over the logits.
+            if fw != "tf":
+                last_out = trainer.get_policy().model.last_output()
+                check(a_, np.argmax(last_out.numpy(), 1)[0])
+            for _ in range(50):
+                a = trainer.compute_action(
+                    obs,
+                    explore=False,
+                    prev_action=np.array(2),
+                    prev_reward=np.array(1.0))
+                check(a, a_)
 
-        # With explore=True (default), expect stochastic actions.
-        actions = []
-        for _ in range(300):
-            actions.append(
-                trainer.compute_action(
-                    obs, prev_action=np.array(2), prev_reward=np.array(1.0)))
-        check(np.mean(actions), 1.5, atol=0.2)
-
-        # Test n train runs.
-        num_iterations = 2
-        for i in range(num_iterations):
-            results = trainer.train()
-            print(results)
+            # With explore=True (default), expect stochastic actions.
+            actions = []
+            for _ in range(300):
+                actions.append(
+                    trainer.compute_action(
+                        obs,
+                        prev_action=np.array(2),
+                        prev_reward=np.array(1.0)))
+            check(np.mean(actions), 1.5, atol=0.2)
 
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math."""
@@ -177,8 +181,8 @@ class TestPPO(unittest.TestCase):
         Model, distribution, some batch, logits & vf outputs, using numpy.
         """
         # Calculate expected PPO loss results.
-        dist = dist_class(logits)  # , policy.model)
-        dist_prev = dist_class(train_batch[BEHAVIOUR_LOGITS])  # , policy.model
+        dist = dist_class(logits, policy.model)
+        dist_prev = dist_class(train_batch[BEHAVIOUR_LOGITS], policy.model)
         expected_logp = dist.logp(train_batch[SampleBatch.ACTIONS])
         if isinstance(model, TorchModelV2):
             expected_rho = np.exp(expected_logp.detach().numpy() -

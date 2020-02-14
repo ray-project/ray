@@ -1,11 +1,10 @@
 """Graph mode TF policy built using build_tf_policy()."""
 
 from collections import OrderedDict
-from gym.spaces import Tuple
 import logging
 import numpy as np
 
-from ray.rllib.policy.policy import Policy, TupleActions
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.models.catalog import ModelCatalog
@@ -160,31 +159,23 @@ class DynamicTFPolicy(TFPolicy):
                                                 self._state_in, self._seq_lens)
 
         # Create the Exploration object to use for this Policy.
-        exploration = self._create_exploration(action_space, config)
+        self.exploration = self._create_exploration(action_space, config)
         timestep = tf.placeholder(tf.int32, (), name="timestep")
 
         # Setup custom action sampler.
         if action_sampler_fn:
             action, logp = action_sampler_fn(
                 self, self.model, self._input_dict, obs_space, action_space,
-                explore, config, self._timestep)
+                explore, config, timestep)
         # Create a default action sampler.
         else:
             # Using an exporation setup.
-            action_dist = self.dist_class(model_out, self.model)
-            if exploration:
-                action, logp = exploration.get_exploration_action(
-                    model_out,
-                    self.model,
-                    action_dist_class=self.dist_class,
-                    explore=explore,
-                    timestep=timestep)
-            # If no exploration setup: Act deterministically.
-            else:
-                action = action_dist.deterministic_sample()
-                if isinstance(action_space, Tuple):
-                    action = TupleActions(action)
-                logp = None
+            action, logp = self.exploration.get_exploration_action(
+                model_out,
+                self.model,
+                action_dist_class=self.dist_class,
+                explore=explore,
+                timestep=timestep)
 
         # Phase 1 init
         sess = tf.get_default_session() or tf.Session()
@@ -211,7 +202,7 @@ class DynamicTFPolicy(TFPolicy):
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
-            exploration=exploration,
+            exploration=self.exploration,
             explore=explore,
             timestep=timestep)
 

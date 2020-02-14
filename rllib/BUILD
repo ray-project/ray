@@ -16,6 +16,13 @@
 # Agents (Compilation and Losses)
 # ---------------------------------------
 
+# DQNTrainer
+py_test(
+    name = "test_dqn",
+    size = "medium",
+    srcs = ["agents/dqn/tests/test_dqn.py"]
+)
+
 # PGTrainer
 py_test(
     name = "test_pg",

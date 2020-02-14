@@ -68,7 +68,7 @@ class TFPolicy(Policy):
                  batch_divisibility_req=1,
                  update_ops=None,
                  exploration=None,
-                 is_exploring=None,
+                 explore=None,
                  timestep=None):
         """Initialize the policy.
 
@@ -107,7 +107,7 @@ class TFPolicy(Policy):
                 the current variable scope.
             exploration (Exploration): The exploration object to use for
                 computing actions.
-            is_exploring (Tensor): Placeholder for `explore` parameter into
+            explore (Tensor): Placeholder for `explore` parameter into
                 call to Exploration.get_exploration_action.
             timestep (Tensor): Placeholder for the global sampling timestep.
         """
@@ -119,8 +119,8 @@ class TFPolicy(Policy):
         self._prev_reward_input = prev_reward_input
         self._action = action_sampler
         self._is_training = self._get_is_training_placeholder()
-        self._is_explorig = tf.placeholder_with_default(
-            True, (), name="is_exploring")
+        self._is_exploring = explore if explore is not None else \
+            tf.placeholder_with_default(True, (), name="is_exploring")
         self._action_logp = action_logp
         self._action_prob = (tf.exp(self._action_logp)
                              if self._action_logp is not None else None)
@@ -130,7 +130,6 @@ class TFPolicy(Policy):
         self._max_seq_len = max_seq_len
         self._batch_divisibility_req = batch_divisibility_req
         self._update_ops = update_ops
-        self._is_exploring = is_exploring
         self._stats_fetches = {}
         self._loss_input_dict = None
         self._timestep = timestep if timestep is not None else \
