@@ -95,8 +95,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         new GcsClientOptions(rayConfig));
     Preconditions.checkState(nativeCoreWorkerPointer != 0);
 
-    taskExecutor = new NativeTaskExecutor(nativeCoreWorkerPointer, this);
     workerContext = new NativeWorkerContext(nativeCoreWorkerPointer);
+    taskExecutor = new NativeTaskExecutor(nativeCoreWorkerPointer, this);
     objectStore = new NativeObjectStore(workerContext, nativeCoreWorkerPointer);
     taskSubmitter = new NativeTaskSubmitter(nativeCoreWorkerPointer);
 
@@ -153,11 +153,15 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   public void run() {
-    nativeRunTaskExecutor(nativeCoreWorkerPointer, taskExecutor);
+    nativeRunTaskExecutor(nativeCoreWorkerPointer);
   }
 
   public long getNativeCoreWorkerPointer() {
     return nativeCoreWorkerPointer;
+  }
+
+  public TaskExecutor getTaskExecutor() {
+    return taskExecutor;
   }
 
   /**
@@ -189,8 +193,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       String rayletSocket, String nodeIpAddress, int nodeManagerPort, byte[] jobId,
       GcsClientOptions gcsClientOptions);
 
-  private static native void nativeRunTaskExecutor(long nativeCoreWorkerPointer,
-      TaskExecutor taskExecutor);
+  private static native void nativeRunTaskExecutor(long nativeCoreWorkerPointer);
 
   private static native void nativeDestroyCoreWorker(long nativeCoreWorkerPointer);
 
