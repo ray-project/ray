@@ -163,7 +163,7 @@ class RayTimeoutError(RayError):
 
 
 class PlasmaObjectNotAvailable(RayError):
-    """Placeholder for an object that was not available within the given timeout."""
+    """Called when an object was not available within the given timeout."""
     pass
 
 
