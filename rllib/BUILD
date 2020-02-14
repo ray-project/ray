@@ -48,3 +48,14 @@ py_test(
     size = "small",
     srcs = ["utils/schedules/tests/test_schedules.py"]
 )
+
+# ---------------------------------------
+# Utilities and Internals
+# ---------------------------------------
+
+# TaskPool
+py_test(
+    name = "test_taskpool",
+    size = "small",
+    srcs = ["utils/tests/test_taskpool.py"]
+)
