@@ -21,6 +21,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         store_executable_(store_exe),
         actor_executable_(actor_exe),
         node_manager_port_(port) {
+#ifdef _WIN32
+    RAY_CHECK(false) << "port system() calls to Windows before running this test";
+#endif
+
     // flush redis first.
     flushall_redis();
 

@@ -115,6 +115,7 @@ class DynamicTFPolicy(TFPolicy):
             SampleBatch.PREV_REWARDS: prev_rewards,
             "is_training": self._get_is_training_placeholder(),
         }
+        # Placeholder for RNN time-chunk valid lengths.
         self._seq_lens = tf.placeholder(
             dtype=tf.int32, shape=[None], name="seq_lens")
 
@@ -156,11 +157,12 @@ class DynamicTFPolicy(TFPolicy):
         model_out, self._state_out = self.model(self._input_dict,
                                                 self._state_in, self._seq_lens)
 
-        # Setup action sampler
+        # Setup custom action sampler.
         if action_sampler_fn:
             action_sampler, action_logp = action_sampler_fn(
                 self, self.model, self._input_dict, obs_space, action_space,
                 config)
+        # Default action sampler.
         else:
             action_dist = self.dist_class(model_out, self.model)
             action_sampler = action_dist.sample()
@@ -172,8 +174,8 @@ class DynamicTFPolicy(TFPolicy):
             batch_divisibility_req = get_batch_divisibility_req(self)
         else:
             batch_divisibility_req = 1
-        TFPolicy.__init__(
-            self,
+
+        super().__init__(
             obs_space,
             action_space,
             config,

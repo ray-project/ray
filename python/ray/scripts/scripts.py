@@ -696,8 +696,20 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def rsync_up(cluster_config_file, source, target, cluster_name):
-    rsync(cluster_config_file, source, target, cluster_name, down=False)
+@click.option(
+    "--all-nodes",
+    "-A",
+    is_flag=True,
+    required=False,
+    help="Upload to all nodes (workers and head).")
+def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
+    rsync(
+        cluster_config_file,
+        source,
+        target,
+        cluster_name,
+        down=False,
+        all_nodes=all_nodes)
 
 
 @cli.command(context_settings={"ignore_unknown_options": True})

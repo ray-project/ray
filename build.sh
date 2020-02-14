@@ -117,6 +117,7 @@ fi
 
 pushd "$BUILD_DIR"
 
+
 WORK_DIR=`mktemp -d`
 pushd $WORK_DIR
 git clone https://github.com/suquark/pickle5-backport
@@ -128,8 +129,10 @@ popd
 popd
 
 
-"$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
-        --target="$ROOT_DIR/python/ray/thirdparty_files"
+if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
+    "$PYTHON_EXECUTABLE" -m pip install -q psutil setproctitle \
+            --target="$ROOT_DIR/python/ray/thirdparty_files"
+fi
 
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 

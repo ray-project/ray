@@ -11,6 +11,7 @@ numpy
 opencv-python-headless
 pandas
 pygments
+psutil
 pyyaml
 recommonmark
 redis

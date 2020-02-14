@@ -145,6 +145,8 @@ fi
 # Make sure that for every import psutil; import setpproctitle
 # There's a import ray above it.
 
+python ci/travis/check_import_order.py . -s ci -s python/ray/pyarrow_files -s python/ray/thirdparty_files -s python/build
+
 if ! git diff --quiet &>/dev/null; then
     echo 'Reformatted changed files. Please review and stage the changes.'
     echo 'Files updated:'
