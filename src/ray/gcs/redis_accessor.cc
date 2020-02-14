@@ -294,6 +294,12 @@ Status RedisTaskInfoAccessor::AsyncGet(
   return task_table.Lookup(JobID::Nil(), task_id, on_success, on_failure);
 }
 
+Status RedisTaskInfoAccessor::Get(const TaskID &task_id,
+                                  boost::optional<rpc::TaskTableData> *result) {
+  raylet::TaskTable &task_table = client_impl_->raylet_task_table();
+  return task_table.SyncLookup(JobID::Nil(), task_id, result);
+}
+
 Status RedisTaskInfoAccessor::AsyncDelete(const std::vector<TaskID> &task_ids,
                                           const StatusCallback &callback) {
   raylet::TaskTable &task_table = client_impl_->raylet_task_table();
@@ -519,6 +525,12 @@ boost::optional<GcsNodeInfo> RedisNodeInfoAccessor::Get(const ClientID &node_id)
 const std::unordered_map<ClientID, GcsNodeInfo> &RedisNodeInfoAccessor::GetAll() const {
   ClientTable &client_table = client_impl_->client_table();
   return client_table.GetAllClients();
+}
+
+Status RedisNodeInfoAccessor::GetAll(
+    std::unordered_map<ClientID, rpc::GcsNodeInfo> *result) {
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.GetAllClients(result);
 }
 
 bool RedisNodeInfoAccessor::IsRemoved(const ClientID &node_id) const {

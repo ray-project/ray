@@ -748,6 +748,16 @@ const std::unordered_map<ClientID, GcsNodeInfo> &ClientTable::GetAllClients() co
   return node_cache_;
 }
 
+Status ClientTable::GetAllClients(std::unordered_map<ClientID, GcsNodeInfo> *result) {
+  std::vector<GcsNodeInfo> nodes;
+  Status status = Log::SyncLookup(JobID::Nil(), client_log_key_, &nodes);
+  for (auto &node : nodes) {
+    ClientID node_id = ClientID::FromBinary(node.node_id());
+    result->emplace(std::move(node_id), std::move(node));
+  }
+  return status;
+}
+
 Status ClientTable::Lookup(const Callback &lookup) {
   RAY_CHECK(lookup != nullptr);
   return Log::Lookup(JobID::Nil(), client_log_key_, lookup);

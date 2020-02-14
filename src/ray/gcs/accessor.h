@@ -191,6 +191,14 @@ class TaskInfoAccessor {
   virtual Status AsyncGet(const TaskID &task_id,
                           const OptionalItemCallback<rpc::TaskTableData> &callback) = 0;
 
+  /// Get task information from GCS synchronously.
+  ///
+  /// \param task_id The ID of the task to look up in GCS.
+  /// \param result The task information that GCS returns.
+  /// \return Status
+  virtual Status Get(const TaskID &task_id,
+                     boost::optional<rpc::TaskTableData> *result) = 0;
+
   /// Delete tasks from GCS asynchronously.
   ///
   /// \param task_ids The vector of IDs to delete from GCS.
@@ -398,6 +406,12 @@ class NodeInfoAccessor {
   ///
   /// \return All nodes in cache.
   virtual const std::unordered_map<ClientID, rpc::GcsNodeInfo> &GetAll() const = 0;
+
+  /// Get information of all nodes from GCS.
+  ///
+  /// \param result All nodes that GCS returns.
+  /// \return Status
+  virtual Status GetAll(std::unordered_map<ClientID, rpc::GcsNodeInfo> *result) = 0;
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.

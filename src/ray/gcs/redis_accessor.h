@@ -131,6 +131,8 @@ class RedisTaskInfoAccessor : public TaskInfoAccessor {
   Status AsyncGet(const TaskID &task_id,
                   const OptionalItemCallback<TaskTableData> &callback) override;
 
+  Status Get(const TaskID &task_id, boost::optional<rpc::TaskTableData> *result) override;
+
   Status AsyncDelete(const std::vector<TaskID> &task_ids,
                      const StatusCallback &callback) override;
 
@@ -248,6 +250,8 @@ class RedisNodeInfoAccessor : public NodeInfoAccessor {
   boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const override;
 
   const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const override;
+
+  Status GetAll(std::unordered_map<ClientID, rpc::GcsNodeInfo> *result) override;
 
   bool IsRemoved(const ClientID &node_id) const override;
 

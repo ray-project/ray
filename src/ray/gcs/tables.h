@@ -968,10 +968,13 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return Whether the client with ID client_id is removed.
   bool IsRemoved(const ClientID &node_id) const;
 
-  /// Get the information of all clients.
+  /// Get the information of all clients from cache.
   ///
   /// \return The client ID to client information map.
   const std::unordered_map<ClientID, GcsNodeInfo> &GetAllClients() const;
+
+  /// Get the information of all clients from GCS.
+  Status GetAllClients(std::unordered_map<ClientID, GcsNodeInfo> *result);
 
   /// Lookup the client data in the client table.
   ///
