@@ -787,7 +787,7 @@ py_test(
 py_test(
     name = "tests/test_checkpoint_restore",
     tags = ["tests_dir", "tests_dir_1"],
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_checkpoint_restore.py"]
 )
 
@@ -817,14 +817,14 @@ py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
     tags = ["tests_dir", "tests_dir_2"],
-    size = "large",
+    size = "small",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
 py_test(
     name = "tests/test_evaluators",
     tags = ["tests_dir", "tests_dir_2"],
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_evaluators.py"]
 )
 
