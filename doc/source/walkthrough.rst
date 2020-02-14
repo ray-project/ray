@@ -1,14 +1,24 @@
-Walkthrough
-===========
+Ray Core Walkthrough
+====================
 
 This walkthrough will overview the core concepts of Ray:
 
-1. Using remote functions (tasks) [``ray.remote``]
-2. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
-3. Using remote classes (actors) [``ray.remote``]
+1. Starting Ray
+2. Using remote functions (tasks) [``ray.remote``]
+3. Fetching results (object IDs) [``ray.put``, ``ray.get``, ``ray.wait``]
+4. Using remote classes (actors) [``ray.remote``]
 
-With Ray, your code will work on a single machine and can be easily scaled to a
-large cluster. To run this walkthrough, install Ray with ``pip install -U ray``.
+With Ray, your code will work on a single machine and can be easily scaled to large cluster.
+
+Installation
+------------
+
+To run this walkthrough, install Ray with ``pip install -U ray``. For the latest wheels (for a snapshot of ``master``), you can use these instructions at :ref:`install-nightlies`.
+
+Starting Ray
+------------
+
+You can start Ray on a single machine by adding this to your python script.
 
 .. code-block:: python
 
@@ -18,11 +28,11 @@ large cluster. To run this walkthrough, install Ray with ``pip install -U ray``.
   # ray.init(address=<cluster-address>) instead.
   ray.init()
 
-See the `Configuration <configure.html>`__ documentation for the various ways to
-configure Ray. To start a multi-node Ray cluster, see the `cluster setup page
-<using-ray-on-a-cluster.html>`__. You can stop ray by calling
-``ray.shutdown()``. To check if Ray is initialized, you can call
-``ray.is_initialized()``.
+  ...
+
+Ray will then be able to utilize all cores of your machine. Find out how to configure the number of cores Ray will use at :ref:`configuring-ray`.
+
+To start a multi-node Ray cluster, see the `cluster setup page <using-ray-on-a-cluster.html>`__.
 
 Remote functions (Tasks)
 ------------------------

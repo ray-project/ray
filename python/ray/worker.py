@@ -27,6 +27,8 @@ import ray.ray_constants as ray_constants
 import ray.remote_function
 import ray.serialization as serialization
 import ray.services as services
+import ray
+import setproctitle
 import ray.signature
 import ray.state
 
@@ -34,6 +36,7 @@ from ray import (
     ActorID,
     JobID,
     ObjectID,
+    Language,
 )
 from ray import import_thread
 from ray import profiling
@@ -62,11 +65,6 @@ ERROR_KEY_PREFIX = b"Error:"
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
-try:
-    import setproctitle
-except ImportError:
-    setproctitle = None
 
 # Whether we should warn about slow put performance.
 if os.environ.get("OMP_NUM_THREADS") == "1":
@@ -537,6 +535,7 @@ def print_failed_task(task_status):
 
 def init(address=None,
          redis_address=None,
+         redis_port=None,
          num_cpus=None,
          num_gpus=None,
          memory=None,
@@ -556,6 +555,7 @@ def init(address=None,
          redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
          plasma_directory=None,
          huge_pages=False,
+         include_java=False,
          include_webui=None,
          webui_host="localhost",
          job_id=None,
@@ -593,6 +593,8 @@ def init(address=None,
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
         redis_address (str): Deprecated; same as address.
+        redis_port (int): The port that the primary Redis shard should listen
+            to. If None, then a random port will be chosen.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
@@ -635,6 +637,7 @@ def init(address=None,
             be created.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
+        include_java: Boolean flag indicating whether to enable java worker.
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster. If this argument
             is None, then the UI will be started if the relevant dependencies
@@ -714,6 +717,7 @@ def init(address=None,
         # In this case, we need to start a new cluster.
         ray_params = ray.parameter.RayParams(
             redis_address=redis_address,
+            redis_port=redis_port,
             node_ip_address=node_ip_address,
             object_id_seed=object_id_seed,
             local_mode=local_mode,
@@ -728,6 +732,7 @@ def init(address=None,
             redis_password=redis_password,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
+            include_java=include_java,
             include_webui=include_webui,
             webui_host=webui_host,
             memory=memory,
@@ -1687,9 +1692,9 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls,
-                max_retries)
+                Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
+                memory, object_store_memory, resources, num_return_vals,
+                max_calls, max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:

@@ -6,6 +6,7 @@ import ray
 from ray.experimental.serve.policy import (
     RandomPolicyQueue, RandomPolicyQueueActor, RoundRobinPolicyQueueActor,
     PowerOfTwoPolicyQueueActor, FixedPackingPolicyQueueActor)
+from ray.experimental.serve.request_params import RequestMetadata
 
 pytestmark = pytest.mark.asyncio
 
@@ -42,13 +43,13 @@ async def test_single_prod_cons_queue(serve_instance, task_runner_mock_actor):
     q.dequeue_request.remote("backend", task_runner_mock_actor)
 
     # Make sure we get the request result back
-    result = await q.enqueue_request.remote("svc", 1, "kwargs", None)
+    result = await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
     assert result == "DONE"
 
     # Make sure it's the right request
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args == 1
-    assert got_work.request_kwargs == "kwargs"
+    assert got_work.request_args[0] == 1
+    assert got_work.request_kwargs == {}
 
 
 async def test_slo(serve_instance, task_runner_mock_actor):
@@ -60,7 +61,7 @@ async def test_slo(serve_instance, task_runner_mock_actor):
         slo_ms = 1000 - 100 * i
         all_request_sent.append(
             q.enqueue_request.remote(
-                "svc", i, "kwargs", None, request_slo_ms=slo_ms))
+                RequestMetadata("svc", None, relative_slo_ms=slo_ms), i))
 
     for i in range(10):
         await q.dequeue_request.remote("backend", task_runner_mock_actor)
@@ -71,7 +72,7 @@ async def test_slo(serve_instance, task_runner_mock_actor):
     all_calls = await task_runner_mock_actor.get_all_calls.remote()
     all_calls = all_calls[-10:]
     for call in all_calls:
-        assert call.request_args == i_should_be
+        assert call.request_args[0] == i_should_be
         i_should_be -= 1
 
 
@@ -80,15 +81,15 @@ async def test_alter_backend(serve_instance, task_runner_mock_actor):
 
     await q.set_traffic.remote("svc", {"backend-1": 1})
     await q.dequeue_request.remote("backend-1", task_runner_mock_actor)
-    await q.enqueue_request.remote("svc", 1, "kwargs", None)
+    await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args == 1
+    assert got_work.request_args[0] == 1
 
     await q.set_traffic.remote("svc", {"backend-2": 1})
     await q.dequeue_request.remote("backend-2", task_runner_mock_actor)
-    await q.enqueue_request.remote("svc", 2, "kwargs", None)
+    await q.enqueue_request.remote(RequestMetadata("svc", None), 2)
     got_work = await task_runner_mock_actor.get_recent_call.remote()
-    assert got_work.request_args == 2
+    assert got_work.request_args[0] == 2
 
 
 async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
@@ -103,13 +104,13 @@ async def test_split_traffic_random(serve_instance, task_runner_mock_actor):
     # assume 50% split, the probability of all 20 requests goes to a
     # single queue is 0.5^20 ~ 1-6
     for _ in range(20):
-        await q.enqueue_request.remote("svc", 1, "kwargs", None)
+        await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
 
     got_work = [
         await runner.get_recent_call.remote()
         for runner in (runner_1, runner_2)
     ]
-    assert [g.request_args for g in got_work] == [1, 1]
+    assert [g.request_args[0] for g in got_work] == [1, 1]
 
 
 async def test_round_robin(serve_instance, task_runner_mock_actor):
@@ -125,13 +126,13 @@ async def test_round_robin(serve_instance, task_runner_mock_actor):
         await q.dequeue_request.remote("backend-2", runner_2)
 
     for _ in range(20):
-        await q.enqueue_request.remote("svc", 1, "kwargs", None)
+        await q.enqueue_request.remote(RequestMetadata("svc", None), 1)
 
     got_work = [
         await runner.get_recent_call.remote()
         for runner in (runner_1, runner_2)
     ]
-    assert [g.request_args for g in got_work] == [1, 1]
+    assert [g.request_args[0] for g in got_work] == [1, 1]
 
 
 async def test_fixed_packing(serve_instance):
@@ -149,10 +150,11 @@ async def test_fixed_packing(serve_instance):
     for backend, runner in zip(["1", "2"], [runner_1, runner_2]):
         for _ in range(packing_num):
             input_value = "should-go-to-backend-{}".format(backend)
-            await q.enqueue_request.remote("svc", input_value, "kwargs", None)
+            await q.enqueue_request.remote(
+                RequestMetadata("svc", None), input_value)
             all_calls = await runner.get_all_calls.remote()
             for call in all_calls:
-                assert call.request_args == input_value
+                assert call.request_args[0] == input_value
 
 
 async def test_power_of_two_choices(serve_instance):
@@ -162,13 +164,13 @@ async def test_power_of_two_choices(serve_instance):
     # First, fill the queue for backend-1 with 3 requests
     await q.set_traffic.remote("svc", {"backend-1": 1.0})
     for _ in range(3):
-        future = q.enqueue_request.remote("svc", "1", "", None)
+        future = q.enqueue_request.remote(RequestMetadata("svc", None), "1")
         enqueue_futures.append(future)
 
     # Then, add a new backend, this backend should be filled next
     await q.set_traffic.remote("svc", {"backend-1": 0.5, "backend-2": 0.5})
     for _ in range(2):
-        future = q.enqueue_request.remote("svc", "2", "", None)
+        future = q.enqueue_request.remote(RequestMetadata("svc", None), "2")
         enqueue_futures.append(future)
 
     runner_1, runner_2 = (make_task_runner_mock() for _ in range(2))

@@ -5,16 +5,16 @@ dist: xenial
 matrix:
   include:
     - os: linux
-      env: PYTHON=3.5 PYTHONWARNINGS=ignore
+      env: PYTHON=3.6 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=3.5 PYTHONWARNINGS=ignore
+      env: PYTHON=3.6 PYTHONWARNINGS=ignore
 
     - os: linux
       env:
         - JDK='Oracle JDK 8'
-        - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - PYTHON=3.6 PYTHONWARNINGS=ignore
         - RAY_INSTALL_JAVA=1
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
@@ -32,7 +32,7 @@ matrix:
         - TESTSUITE=streaming
         - JDK='Oracle JDK 8'
         - RAY_INSTALL_JAVA=1
-        - PYTHON=3.5 PYTHONWARNINGS=ignore
+        - PYTHON=3.6 PYTHONWARNINGS=ignore
       install:
         - python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
@@ -46,6 +46,24 @@ matrix:
         - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then ./ci/suppress_output bazel test //streaming:all && bash streaming/src/test/run_streaming_queue_test.sh; fi
         - if [ $RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/; fi
         - if [ $RAY_CI_STREAMING_JAVA_AFFECTED == "1" ]; then ./streaming/java/test.sh; fi
+
+    - os: linux
+      env:
+        - TESTSUITE=gcs_service
+        - JDK='Oracle JDK 8'
+        - RAY_GCS_SERVICE_ENABLED=true
+        - PYTHON=3.6 PYTHONWARNINGS=ignore
+        - RAY_INSTALL_JAVA=1
+      install:
+        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
+        - ./ci/travis/install-bazel.sh
+        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - ./ci/suppress_output ./ci/travis/install-ray.sh
+      script:
+        - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+        - ./ci/suppress_output bash streaming/src/test/run_streaming_queue_test.sh
+        - ./java/test.sh
 
     - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
@@ -64,7 +82,7 @@ matrix:
         - sphinx-build -W -b html -d _build/doctrees source _build/html
         - cd ..
         # Run Python linting, ignore dict vs {} (C408), others are defaults
-        - flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+        - flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,streaming/python/generated,doc/source/conf.py,python/ray/cloudpickle/,python/ray/thirdparty_files --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
         - ./ci/travis/format.sh --all
         # Make sure that the README is formatted properly.
         - cd python
@@ -97,7 +115,7 @@ matrix:
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the `$MOUNT_BAZEL_CACHE` part.
 
-        - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+        - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:ARROW-5631 /ray/python/build-wheel-manylinux1.sh
 
       script:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
