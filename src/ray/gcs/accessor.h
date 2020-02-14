@@ -26,6 +26,14 @@ class ActorInfoAccessor {
   virtual Status AsyncGet(const ActorID &actor_id,
                           const OptionalItemCallback<rpc::ActorTableData> &callback) = 0;
 
+  /// Get actor specification from GCS synchronously.
+  ///
+  /// \param actor_id The ID of actor to look up in the GCS.
+  /// \param result The actor specification that get from GCS. 
+  /// \return Status
+  virtual Status Get(const ActorID &actor_id,
+                     boost::optional<rpc::ActorTableData> *result) = 0;
+
   /// Register an actor to GCS asynchronously.
   ///
   /// \param data_ptr The actor that will be registered to the GCS.

@@ -101,16 +101,7 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
   auto callback = [this, id, lookup](std::shared_ptr<CallbackReply> reply) {
     if (lookup != nullptr) {
       std::vector<Data> results;
-      if (!reply->IsNil()) {
-        GcsEntry gcs_entry;
-        gcs_entry.ParseFromString(reply->ReadAsString());
-        RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
-        for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
-          Data data;
-          data.ParseFromString(gcs_entry.entries(i));
-          results.emplace_back(std::move(data));
-        }
-      }
+      ParseLookupReply(reply, id, &results);
       lookup(client_, id, results);
     }
   };
@@ -118,6 +109,34 @@ Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &
   return GetRedisContext(id)->RunAsync("RAY.TABLE_LOOKUP", id, nil.data(), nil.size(),
                                        prefix_, pubsub_channel_, std::move(callback));
 }
+
+template <typename ID, typename Data>
+Status Log<ID, Data>::SyncLookup(const JobID &job_id, const ID &id,
+                                 std::vector<Data> *results) {
+  num_lookups_++;
+  std::vector<uint8_t> nil;
+  std::shared_ptr<CallbackReply> reply = GetRedisContext(id)->RunSync(
+      "RAY.TABLE_LOOKUP", id, nil.data(), nil.size(), prefix_, pubsub_channel_);
+  ParseLookupReply(reply, id, results);
+  return Status::OK();
+}
+
+template <typename ID, typename Data>
+void Log<ID, Data>::ParseLookupReply(const std::shared_ptr<CallbackReply>& reply,
+                                     const ID &id,
+                                     std::vector<Data> *results) {
+  RAY_CHECK(results);
+  if (reply != nullptr) {
+        GcsEntry gcs_entry;
+        gcs_entry.ParseFromString(reply->ReadAsString());
+        RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
+        for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
+          Data data;
+          data.ParseFromString(gcs_entry.entries(i));
+          results->emplace_back(std::move(data));
+        }  
+  }
+}  
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,

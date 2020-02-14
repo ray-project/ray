@@ -25,6 +25,9 @@ class RedisActorInfoAccessor : public ActorInfoAccessor {
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
 
+  Status Get(const ActorID &actor_id,
+             boost::optional<rpc::ActorTableData> *result) override;
+
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
                        const StatusCallback &callback) override;
 

@@ -169,6 +169,14 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   /// \return Status
   Status Lookup(const JobID &job_id, const ID &id, const Callback &lookup);
 
+  /// Lookup the log values at a key synchronously.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param id The ID of the data that is looked up in the GCS.
+  /// \param result The lookup result GCS return. If the result is an empty vector,
+  /// then there was no data at the key.
+  Status SyncLookup(const JobID &job_id, const ID &id, std::vector<Data> *results);
+
   /// Subscribe to any Append operations to this table. The caller may choose
   /// requests notifications for. This may only be called once per Log
   ///
@@ -261,6 +269,14 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
     static std::hash<ID> index;
     return shard_contexts_[index(id) % shard_contexts_.size()];
   }
+
+  /// Parse reply of GCS lookup.
+  ///
+  /// \param reply The lookup reply from GCS.
+  /// \param results The result parsed from reply.
+  void ParseLookupReply(const std::shared_ptr<CallbackReply>& reply,
+                        const ID &id,
+                        std::vector<Data> *results);
 
   /// The connection to the GCS.
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;

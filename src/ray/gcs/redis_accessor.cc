@@ -26,6 +26,17 @@ Status RedisActorInfoAccessor::AsyncGet(
   return client_impl_->actor_table().Lookup(JobID::Nil(), actor_id, on_done);
 }
 
+Status RedisActorInfoAccessor::Get(
+    const ActorID &actor_id, boost::optional<rpc::ActorTableData> *result) {
+  RAY_CHECK(result);
+  std::vector<rpc::ActorTableData> data;
+  Status status = client_impl_->actor_table().SyncLookup(JobID::Nil(), actor_id, &data);
+  if (!data.empty()) {
+    *result = data.back();
+  }
+  return status;
+}
+
 Status RedisActorInfoAccessor::AsyncRegister(
     const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
