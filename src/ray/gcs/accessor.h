@@ -29,7 +29,7 @@ class ActorInfoAccessor {
   /// Get actor specification from GCS synchronously.
   ///
   /// \param actor_id The ID of actor to look up in the GCS.
-  /// \param result The actor specification that get from GCS. 
+  /// \param result The actor specification that get from GCS.
   /// \return Status
   virtual Status Get(const ActorID &actor_id,
                      boost::optional<rpc::ActorTableData> *result) = 0;

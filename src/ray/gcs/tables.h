@@ -274,8 +274,7 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   ///
   /// \param reply The lookup reply from GCS.
   /// \param results The result parsed from reply.
-  void ParseLookupReply(const std::shared_ptr<CallbackReply>& reply,
-                        const ID &id,
+  void ParseLookupReply(const std::shared_ptr<CallbackReply> &reply, const ID &id,
                         std::vector<Data> *results);
 
   /// The connection to the GCS.

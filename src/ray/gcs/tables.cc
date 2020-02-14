@@ -122,21 +122,20 @@ Status Log<ID, Data>::SyncLookup(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
-void Log<ID, Data>::ParseLookupReply(const std::shared_ptr<CallbackReply>& reply,
-                                     const ID &id,
-                                     std::vector<Data> *results) {
+void Log<ID, Data>::ParseLookupReply(const std::shared_ptr<CallbackReply> &reply,
+                                     const ID &id, std::vector<Data> *results) {
   RAY_CHECK(results);
   if (reply != nullptr) {
-        GcsEntry gcs_entry;
-        gcs_entry.ParseFromString(reply->ReadAsString());
-        RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
-        for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
-          Data data;
-          data.ParseFromString(gcs_entry.entries(i));
-          results->emplace_back(std::move(data));
-        }  
+    GcsEntry gcs_entry;
+    gcs_entry.ParseFromString(reply->ReadAsString());
+    RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
+    for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
+      Data data;
+      data.ParseFromString(gcs_entry.entries(i));
+      results->emplace_back(std::move(data));
+    }
   }
-}  
+}
 
 template <typename ID, typename Data>
 Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
