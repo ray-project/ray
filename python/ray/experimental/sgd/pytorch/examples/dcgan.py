@@ -19,8 +19,6 @@ from ray.experimental.sgd import PyTorchTrainer
 from ray.experimental.sgd.utils import overrides
 from ray.experimental.sgd.pytorch.utils import BaseOperator
 
-# Training parameters
-TRAIN_BATCHES = 5
 
 def data_creator(config):
     return datasets.MNIST(
@@ -47,15 +45,14 @@ class Generator(nn.Module):
                 features * 4, features * 2, 4, 2, 1, bias=False),
             nn.BatchNorm2d(features * 2),
             nn.ReLU(True),
-            nn.ConvTranspose2d(
-                features * 2, features, 4, 2, 1, bias=False),
+            nn.ConvTranspose2d(features * 2, features, 4, 2, 1, bias=False),
             nn.BatchNorm2d(features),
             nn.ReLU(True),
             nn.ConvTranspose2d(features, num_channels, 4, 2, 1, bias=False),
             nn.Tanh())
 
-    def forward(self, input):
-        return self.main(input)
+    def forward(self, x):
+        return self.main(x)
 
 
 class Discriminator(nn.Module):
@@ -70,8 +67,8 @@ class Discriminator(nn.Module):
             nn.BatchNorm2d(features * 4), nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(features * 4, 1, 4, 1, 0, bias=False), nn.Sigmoid())
 
-    def forward(self, input):
-        return self.main(input)
+    def forward(self, x):
+        return self.main(x)
 
 
 class LeNet(nn.Module):
@@ -123,17 +120,18 @@ def optimizer_creator(models, config):
 
 class GANOperator(BaseOperator):
     def setup(self, config):
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda"
+                                   if torch.cuda.is_available() else "cpu")
 
-        self.classifier = Net()
+        self.classifier = LeNet()
         self.classifier.load_state_dict(torch.load(config["model_path"]))
         self.classifier.eval()
 
     def inception_score(self, imgs, batch_size=32, splits=1):
         N = len(imgs)
         dataloader = torch.utils.data.DataLoader(imgs, batch_size=batch_size)
-        up = nn.Upsample(size=(28, 28), mode="bilinear").type(torch.FloatTensor)
+        up = nn.Upsample(
+            size=(28, 28), mode="bilinear").type(torch.FloatTensor)
 
         def get_pred(x):
             x = up(x)
@@ -145,7 +143,8 @@ class GANOperator(BaseOperator):
             batch = batch.type(torch.FloatTensor)
             batchv = Variable(batch)
             batch_size_i = batch.size()[0]
-            preds[i * batch_size:i * batch_size + batch_size_i] = get_pred(batchv)
+            preds[i * batch_size:i * batch_size +
+                  batch_size_i] = get_pred(batchv)
 
         # Now compute the mean kl-div
         split_scores = []
@@ -201,13 +200,13 @@ class GANOperator(BaseOperator):
             "num_samples": batch_size
         }
 
+
 def train_example(num_replicas=1, use_gpu=False, test_mode=False):
     config = {
         "test_mode": test_mode,
         "classification_model_path": os.path.join(
             os.path.dirname(ray.__file__),
-            "experimental/sgd/pytorch/examples/mnist_cnn.pt"
-        )
+            "experimental/sgd/pytorch/examples/mnist_cnn.pt")
     }
     trainer = PyTorchTrainer(
         model_creator,
