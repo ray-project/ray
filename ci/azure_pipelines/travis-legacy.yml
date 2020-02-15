@@ -1,8 +1,6 @@
 # Ray legacy pipeline
 # This pipeline is intended to be a replica of travis build
 # in the upstream repo.
-# 
-# 
 
 name: $(BuildDefinitionName)_$(SourceBranchName)_$(BuildID)
 stages:
@@ -16,10 +14,14 @@ stages:
             linux_python35:
               imageName: 'ubuntu-16.04'
               python.version: '3.5'
+              bazel.outputRoot: $(Agent.TempDirectory)
+              TEST_TMPDIR: $(Agent.TempDirectory)
               TRAVIS_OS_NAME: 'linux'
             mac_python35:
               imageName: 'macos-10.14'
               python.version: '3.5'
+              bazel.outputRoot: $(Agent.TempDirectory)
+              TEST_TMPDIR: $(Agent.TempDirectory)
               TRAVIS_OS_NAME: 'osx'
         displayName: Travis Jobs 1 and 2
         pool:
@@ -31,7 +33,11 @@ stages:
           - template: templates/travis-legacy/install.yml
           # Template containing the script phase of travis.yml
           - template: templates/travis-legacy/script.yml
+          # Template containing steps to publish artifacts
+          - template: templates/artifacts.yml
       - job: RLlibTestsTuneTestsDocExamples
+        # Disabled
+        # condition: False
         timeoutInMinutes: 600
         cancelTimeoutInMinutes: 5
         strategy:
@@ -39,6 +45,8 @@ stages:
             linux_python35:
               poolName: RayPipelineAgentPoolStandardF16sv2
               python.version: '3.5'
+              bazel.outputRoot: $(Agent.TempDirectory)
+              TEST_TMPDIR: $(Agent.TempDirectory)
               TRAVIS_OS_NAME: 'linux'
               AGENT_TOOLSDIRECTORY: /opt/hostedtoolcache/
         displayName: RLlib tests - Tune tests - Doc Examples
@@ -65,56 +73,54 @@ stages:
               MEMORY_SIZE="20G"
               SHM_SIZE="20G"
 
-              ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
-
-              DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
-              SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
+              DOCKER_SHA=$($BUILD_SOURCESDIRECTORY/build-docker.sh --output-sha --no-cache)
+              SUPPRESS_OUTPUT=$BUILD_SOURCESDIRECTORY/ci/suppress_output
               echo "Using Docker image" $DOCKER_SHA
 
               ######################## RLLIB TESTS #################################
 
-              source $ROOT_DIR/run_rllib_tests.sh
+              source $BUILD_SOURCESDIRECTORY/ci/jenkins_tests/run_rllib_tests.sh
 
               ######################## TUNE TESTS #################################
 
-              bash $ROOT_DIR/run_tune_tests.sh ${MEMORY_SIZE} ${SHM_SIZE} $DOCKER_SHA
+              bash $BUILD_SOURCESDIRECTORY/ci/jenkins_tests/run_tune_tests.sh ${MEMORY_SIZE} ${SHM_SIZE} $DOCKER_SHA
 
               ######################## SGD TESTS #################################
 
               # Originally with ./ci/suppress_output
-               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-                  python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
-                      --batch-size=1 --strategy=simple
+              docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
+                    --batch-size=1 --strategy=simple
 
               # Originally with ./ci/suppress_output
-               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-                  python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
-                      --batch-size=1 --strategy=ps
+              docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                python /ray/python/ray/experimental/sgd/test_sgd.py --num-iters=2 \
+                    --batch-size=1 --strategy=ps
+
+              # Originally with ./ci/suppress_output
+              docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
+                    --batch-size=1 --strategy=simple
 
               # Originally with ./ci/suppress_output
                docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
                   python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
-                      --batch-size=1 --strategy=simple
-
-              # Originally with ./ci/suppress_output
-               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-                  python /ray/python/ray/experimental/sgd/test_save_and_restore.py --num-iters=2 \
                       --batch-size=1 --strategy=ps
 
               # Originally with ./ci/suppress_output
-               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-                  python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
-                      --num-workers=1 --devices-per-worker=1 --strategy=ps
+              docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+                    --num-workers=1 --devices-per-worker=1 --strategy=ps
 
               # Originally with ./ci/suppress_output
-               docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-                  python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
-                      --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
+              docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+                python /ray/python/ray/experimental/sgd/mnist_example.py --num-iters=1 \
+                    --num-workers=1 --devices-per-worker=1 --strategy=ps --tune
 
               ######################## RAY BACKEND TESTS #################################
 
               # Originally with ./ci/suppress_output
-               docker run --rm --shm-size=60G --memory=60G $DOCKER_SHA \
+              docker run --rm --shm-size=60G --memory=60G $DOCKER_SHA \
                   python /ray/ci/jenkins_tests/miscellaneous/large_memory_test.py
 
               # End Original script
@@ -126,6 +132,8 @@ stages:
               MAC_WHEELS: 1
               RAY_INSTALL_JAVA: 1
             displayName: 'Run original Jenkins multi-node tests'
+          # Template containing steps to publish artifacts
+          - template: templates/artifacts.yml
       - job: UbuntuWheels
         # dependsOn: RayTests
         timeoutInMinutes: 120
@@ -135,6 +143,8 @@ stages:
             python35:
               imageName: 'ubuntu-16.04'
               python.version: '3.5'
+              bazel.outputRoot: $(Agent.TempDirectory)
+              TEST_TMPDIR: $(Agent.TempDirectory)
               TRAVIS_OS_NAME: 'linux'
         displayName: Ubuntu Wheels
         pool:
@@ -150,7 +160,7 @@ stages:
           #   displayName: 'Install latest Node.js'
           # Template containing the installation of steps of python
           - template: templates/python.yml
-          # Install phase of the travis MacOS wheels build
+          # Install phase of the travis Ubuntu wheels build
           - bash: |
               echo Running install phase of the original travis.yml
 
@@ -208,6 +218,8 @@ stages:
             displayName: 'Run original script phase'
           # Upload packages
           - template: templates/python-upload.yml
+          # Template containing steps to publish artifacts
+          - template: templates/artifacts.yml
       - job: MacOSWheels
         # dependsOn: RayTests
         timeoutInMinutes: 120
@@ -217,6 +229,8 @@ stages:
             python35:
               imageName: 'macos-10.14'
               python.version: '3.5'
+              bazel.outputRoot: $(Agent.TempDirectory)
+              TEST_TMPDIR: $(Agent.TempDirectory)
               TRAVIS_OS_NAME: 'osx'
         displayName: MacOS Wheels
         pool:
@@ -295,8 +309,7 @@ stages:
             displayName: 'Run original script phase'
           # Upload packages
           - template: templates/python-upload.yml
-
-
-trigger:
-  - master
-  - ms/*
+          # Template containing steps to publish artifacts
+          - template: templates/artifacts.yml
+trigger: none
+pr: none

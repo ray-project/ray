@@ -8,10 +8,10 @@ def ray_deps_setup():
         remote = "https://github.com/bazelbuild/rules_jvm_external",
     )
 
-    http_archive(
+    git_repository(
         name = "bazel_common",
-        strip_prefix = "bazel-common-f1115e0f777f08c3cdb115526c4e663005bec69b",
-        url = "https://github.com/google/bazel-common/archive/f1115e0f777f08c3cdb115526c4e663005bec69b.zip",
+        commit = "bf87eb1a4ddbfc95e215b0897f3edc89b2254a1a",
+        remote = "https://github.com/google/bazel-common",
     )
  
     BAZEL_SKYLIB_TAG = "0.6.0"
@@ -24,8 +24,8 @@ def ray_deps_setup():
    
     git_repository(
         name = "com_github_checkstyle_java",
-        commit = "85f37871ca03b9d3fee63c69c8107f167e24e77b",
-        remote = "https://github.com/ruifangChen/checkstyle_java",
+        commit = "ef367030d1433877a3360bbfceca18a5d0791bdd",
+        remote = "https://github.com/ray-project/checkstyle_java",
     )
    
     git_repository(

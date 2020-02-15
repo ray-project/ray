@@ -105,6 +105,7 @@ define_java_module(
         "@maven//:org_testng_testng",
         "@maven//:com_google_guava_guava",
         "@maven//:commons_io_commons_io",
+        "@maven//:javax_xml_bind_jaxb_api",
     ],
 )
 
@@ -239,6 +240,7 @@ genrule(
         ":java_native_deps",
         ":generate_java_gcs_fbs",
         "@plasma//:org_apache_arrow_arrow_plasma",
+        ":copy_pom_file",
     ],
     outs = ["gen_maven_deps.out"],
     cmd = """

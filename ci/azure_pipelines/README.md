@@ -185,6 +185,9 @@ Steps for Mac and Ubuntu:
         - If `/home/"$VM_ADMIN_USER"/.docker` exist:
             - `sudo chown "$VM_ADMIN_USER":docker /home/"$VM_ADMIN_USER"/.docker -R`
             - `sudo chmod ga+rwx "$HOME/.docker" -R`
+        - Create a symlink:
+            - `rm -rf /home/agentadmin/myagent/_work/_tool`
+            -  `ln -s /opt/hostedtoolcache /home/agentadmin/myagent/_work/_tool`
 
 ### Deleting an Agent Pool
 

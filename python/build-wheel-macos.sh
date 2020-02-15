@@ -13,27 +13,17 @@ MACPYTHON_URL=https://www.python.org/ftp/python
 MACPYTHON_PY_PREFIX=/Library/Frameworks/Python.framework/Versions
 DOWNLOAD_DIR=python_downloads
 
-PY_VERSIONS=("2.7.13"
-             "3.5.3"
-             "3.6.1"
-             "3.7.0")
-PY_INSTS=("python-2.7.13-macosx10.6.pkg"
-          "python-3.5.3-macosx10.6.pkg"
-          "python-3.6.1-macosx10.6.pkg"
-          "python-3.7.0-macosx10.6.pkg")
-PY_MMS=("2.7"
-        "3.5"
-        "3.6"
-        "3.7")
+PY_VERSIONS=("3.5.3"
+             "3.6.8")
+PY_INSTS=("python-3.5.3-macosx10.6.pkg"
+          "python-3.6.8-macosx10.6.pkg")
+PY_MMS=("3.5"
+        "3.6")
 
 # The minimum supported numpy version is 1.14, see
 # https://issues.apache.org/jira/browse/ARROW-3141
 NUMPY_VERSIONS=("1.14.5"
-                "1.14.5"
-                "1.14.5"
                 "1.14.5")
-
-./ci/travis/install-bazel.sh
 
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
@@ -73,6 +63,13 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q numpy==$NUMPY_VERSION cython==0.29.0
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
+    # Making sure that O_NONBLOCK is off
+    echo "Status of O_NONBLOCK:"
+    python -c 'import os,sys,fcntl; flags = fcntl.fcntl(sys.stdout, fcntl.F_GETFL); print(flags&os.O_NONBLOCK);'
+    echo "Turn off O_NONBLOCK:"
+    python -c 'import os,sys,fcntl; flags = fcntl.fcntl(sys.stdout, fcntl.F_GETFL); fcntl.fcntl(sys.stdout, fcntl.F_SETFL, flags&~os.O_NONBLOCK);'
+    echo "New status of O_NONBLOCK:"
+    python -c 'import os,sys,fcntl; flags = fcntl.fcntl(sys.stdout, fcntl.F_GETFL); print(flags&os.O_NONBLOCK);'
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
