@@ -16,7 +16,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `RaySGD`_: Distributed Training
+- `RaySGD`_: Distributed Training Wrappers
 
 
 Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
@@ -239,22 +239,7 @@ Getting Involved
    using-ray.rst
    configure.rst
    cluster-index.rst
-   Tutorials <https://github.com/ray-project/tutorial>
-   Examples <auto_examples/overview.rst>
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Distributed Libraries
-
-   Tune ↪ <https://ray.readthedocs.io/en/latest/tune.html>
-   RLlib ↪ <https://ray.readthedocs.io/en/latest/rllib.html>
-   raysgd/raysgd_pytorch.rst
-   raysgd/raysgd_tensorflow.rst
-   multiprocessing.rst
-   joblib.rst
-   iter.rst
-   pandas_on_ray.rst
-   serve.rst
+   Tutorial and Examples <auto_examples/overview.rst>
 
 .. toctree::
    :maxdepth: -1
@@ -285,6 +270,24 @@ Getting Involved
    rllib-concepts.rst
    rllib-examples.rst
    rllib-dev.rst
+
+.. toctree::
+   :maxdepth: -1
+   :caption: RaySGD
+
+   raysgd/raysgd.rst
+   raysgd/raysgd_pytorch.rst
+   raysgd/raysgd_tensorflow.rst
+
+.. toctree::
+   :maxdepth: -1
+   :caption: Other Libraries
+
+   multiprocessing.rst
+   joblib.rst
+   iter.rst
+   pandas_on_ray.rst
+   serve.rst
 
 .. toctree::
    :maxdepth: -1

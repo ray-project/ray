@@ -1,12 +1,18 @@
 Distributed Iterators
 =====================
 
-``ray.experimental.iter`` provides a parallel iterator API for simple data ingest
-and processing. It can be thought of as syntactic sugar around Ray actors and ``ray.wait`` loops.
+.. _`issue on GitHub`: https://github.com/ray-project/ray/issues
+
+``ray.experimental.iter`` provides a parallel iterator API for simple data ingest and processing. It can be thought of as syntactic sugar around Ray actors and ``ray.wait`` loops.
 
 Parallel iterators are lazy and can operate over infinite sequences of items. Iterator
 transformations are only executed when the user calls ``next()`` to fetch the next output
 item from the iterator.
+
+.. note::
+
+  This API is new and may be revised in future Ray releases. If you encounter
+  any bugs, please file an `issue on GitHub`_.
 
 Concepts
 --------

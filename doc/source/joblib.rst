@@ -1,19 +1,17 @@
 Distributed Scikit-learn / Joblib
 =================================
 
-.. warning::
-
-  Support for running scikit-learn on Ray is an experimental feature,
-  so it may be changed at any time without warning. If you encounter any
-  bugs/shortcomings/incompatibilities, please file an `issue on GitHub`_.
-  Contributions are always welcome!
-
 .. _`issue on GitHub`: https://github.com/ray-project/ray/issues
 
 Ray supports running distributed `scikit-learn`_ programs by 
 implementing a Ray backend for `joblib`_ using `Ray Actors <actors.html>`__ 
 instead of local processes. This makes it easy to scale existing applications
 that use scikit-learn from a single node to a cluster.
+
+.. note::
+
+  This API is new and may be revised in future Ray releases. If you encounter
+  any bugs, please file an `issue on GitHub`_.
 
 .. _`joblib`: https://joblib.readthedocs.io
 .. _`scikit-learn`: https://scikit-learn.org
