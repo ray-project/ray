@@ -1,3 +1,5 @@
+.. _ref-cluster-setup:
+
 Manual Cluster Setup
 ====================
 

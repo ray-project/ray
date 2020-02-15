@@ -17,6 +17,7 @@ from ray.includes.unique_ids cimport (
     CJobID,
     CTaskID,
     CObjectID,
+    CWorkerID,
 )
 from ray.includes.common cimport (
     CAddress,
@@ -79,7 +80,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         const c_vector[shared_ptr[CRayObject]] &args,
                         const c_vector[CObjectID] &arg_reference_ids,
                         const c_vector[CObjectID] &return_ids,
-                        c_vector[shared_ptr[CRayObject]] *returns) nogil,
+                        c_vector[shared_ptr[CRayObject]] *returns,
+                        const CWorkerID &worker_id) nogil,
                     CRayStatus() nogil,
                     c_bool ref_counting_enabled)
         CWorkerType &GetWorkerType()
