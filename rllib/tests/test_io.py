@@ -239,7 +239,7 @@ class JsonIOTest(unittest.TestCase):
         num_files = len(os.listdir(self.test_dir))
         assert num_files in [12, 13], \
             "Expected 12|13 files, but found {} ({})". \
-                format(num_files, os.listdir(self.test_dir))
+            format(num_files, os.listdir(self.test_dir))
 
     def testReadWrite(self):
         ioctx = IOContext(self.test_dir, {}, 0, None)
