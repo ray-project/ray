@@ -11,11 +11,11 @@ import torch.distributed as dist
 import ray
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
-from ray.experimental.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
-from ray.experimental.sgd.pytorch.utils import train
-from ray.experimental.sgd.utils import check_for_failure
+from ray.util.sgd.pytorch import PyTorchTrainer, PyTorchTrainable
+from ray.util.sgd.pytorch.utils import train
+from ray.util.sgd.utils import check_for_failure
 
-from ray.experimental.sgd.pytorch.examples.train_example import (
+from ray.util.sgd.pytorch.examples.train_example import (
     model_creator, optimizer_creator, data_creator, LinearDataset)
 
 

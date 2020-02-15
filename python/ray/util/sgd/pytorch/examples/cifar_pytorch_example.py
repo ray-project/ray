@@ -8,8 +8,8 @@ import torchvision
 import torchvision.transforms as transforms
 
 import ray
-from ray.experimental.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable)
-from ray.experimental.sgd.pytorch.resnet import ResNet18
+from ray.util.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable)
+from ray.util.sgd.pytorch.resnet import ResNet18
 
 
 def initialization_hook(runner):

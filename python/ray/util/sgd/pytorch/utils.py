@@ -2,7 +2,7 @@ import collections
 import time
 import torch
 
-from ray.experimental.sgd.utils import TimerStat
+from ray.util.sgd.utils import TimerStat
 
 
 def train(model, train_iterator, criterion, optimizer, config):

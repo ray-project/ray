@@ -7,7 +7,7 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.experimental.sgd.tf.tf_runner import TFRunner
+from ray.util.sgd.tf.tf_runner import TFRunner
 
 logger = logging.getLogger(__name__)
 

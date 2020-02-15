@@ -7,7 +7,7 @@ PyTorchTrainable = None
 try:
     import torch  # noqa: F401
 
-    from ray.experimental.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
+    from ray.util.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
                                                               PyTorchTrainable)
 
     __all__ = ["PyTorchTrainer", "PyTorchTrainable"]

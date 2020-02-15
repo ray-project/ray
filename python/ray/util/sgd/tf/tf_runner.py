@@ -5,7 +5,7 @@ import numpy as np
 
 import ray
 import ray.services
-from ray.experimental.sgd import utils
+from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
 

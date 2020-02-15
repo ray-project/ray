@@ -6,9 +6,9 @@ import shutil
 
 from ray import tune
 from ray.tests.conftest import ray_start_2_cpus  # noqa: F401
-from ray.experimental.sgd.tf import TFTrainer, TFTrainable
+from ray.util.sgd.tf import TFTrainer, TFTrainable
 
-from ray.experimental.sgd.tf.examples.tensorflow_train_example import (
+from ray.util.sgd.tf.examples.tensorflow_train_example import (
     simple_model, simple_dataset)
 
 SIMPLE_CONFIG = {

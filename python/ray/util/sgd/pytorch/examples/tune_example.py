@@ -14,7 +14,7 @@ import torch.nn as nn
 
 import ray
 from ray import tune
-from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainable
+from ray.util.sgd.pytorch.pytorch_trainer import PyTorchTrainable
 
 
 class LinearDataset(torch.utils.data.Dataset):

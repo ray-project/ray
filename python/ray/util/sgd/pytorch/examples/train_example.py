@@ -13,7 +13,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ray.experimental.sgd import PyTorchTrainer
+from ray.util.sgd import PyTorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):

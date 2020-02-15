@@ -8,8 +8,8 @@ import torch.utils.data
 from torch.utils.data import Dataset
 
 import ray
-from ray.experimental.sgd.pytorch import utils as pytorch_utils
-from ray.experimental.sgd import utils
+from ray.util.sgd.pytorch import utils as pytorch_utils
+from ray.util.sgd import utils
 
 logger = logging.getLogger(__name__)
 

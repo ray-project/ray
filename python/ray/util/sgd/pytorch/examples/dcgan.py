@@ -15,7 +15,7 @@ from torch.nn import functional as F
 from scipy.stats import entropy
 
 import ray
-from ray.experimental.sgd import PyTorchTrainer
+from ray.util.sgd import PyTorchTrainer
 
 # Training parameters
 TRAIN_BATCHES = 5

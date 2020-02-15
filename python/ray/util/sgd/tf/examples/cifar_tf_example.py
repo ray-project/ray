@@ -16,7 +16,7 @@ import os
 from filelock import FileLock
 
 import ray
-from ray.experimental.sgd.tf.tf_trainer import TFTrainer
+from ray.util.sgd.tf.tf_trainer import TFTrainer
 
 num_classes = 10
 

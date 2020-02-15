@@ -6,7 +6,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.experimental.sgd.tf.tf_trainer import TFTrainer, TFTrainable
+from ray.util.sgd.tf.tf_trainer import TFTrainer, TFTrainable
 
 NUM_TRAIN_SAMPLES = 1000
 NUM_TEST_SAMPLES = 400

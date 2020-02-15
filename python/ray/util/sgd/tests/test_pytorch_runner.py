@@ -4,7 +4,7 @@ import torch.nn as nn
 import unittest
 from unittest.mock import MagicMock
 
-from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.util.sgd.pytorch.pytorch_runner import PyTorchRunner
 
 
 class LinearDataset(torch.utils.data.Dataset):
