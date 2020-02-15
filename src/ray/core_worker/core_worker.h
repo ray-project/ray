@@ -349,7 +349,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[in] extension_data Extension data of the actor handle,
-  /// see `ActorHandle` in `common.proto`.
+  /// see `ActorHandle` in `core_worker.proto`.
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
