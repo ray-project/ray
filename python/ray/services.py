@@ -23,7 +23,6 @@ import psutil
 libc = None
 prctl = None
 PR_SET_PDEATHSIG = 1
-SIGKILL = 9
 
 # True if processes are run in the valgrind profiler.
 RUN_RAYLET_PROFILER = False
@@ -613,10 +612,11 @@ def start_reaper():
             except AttributeError:
                 prctl = False
         if prctl:
+            import signal
             global set_psigdeath
 
             def set_psigdeath():
-                status = prctl(PR_SET_PDEATHSIG, SIGKILL, 0, 0, 0)
+                status = prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0)
                 assert status == 0, "PR_SET_PDEATHSIG shouldn't fail on Linux"
 
             return None
