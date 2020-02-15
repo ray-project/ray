@@ -29,6 +29,7 @@ tf = try_import_tf()
 parser = argparse.ArgumentParser()
 parser.add_argument("--run", type=str, default="PPO")  # try PG, PPO, IMPALA
 parser.add_argument("--stop", type=int, default=200)
+parser.add_argument("--num-cpus", type=int, default=0)
 
 
 class CorrelatedActionsEnv(gym.Env):
@@ -192,8 +193,8 @@ class AutoregressiveActionsModel(TFModelV2):
 
 
 if __name__ == "__main__":
-    ray.init()
     args = parser.parse_args()
+    ray.init(num_cpus=args.num_cpus or None)
     ModelCatalog.register_custom_model("autoregressive_model",
                                        AutoregressiveActionsModel)
     ModelCatalog.register_custom_action_dist("binary_autoreg_output",
