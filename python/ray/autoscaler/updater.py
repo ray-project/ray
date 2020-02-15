@@ -246,7 +246,7 @@ class SSHCommandRunner:
             for local, remote in port_forward:
                 logger.info(self.log_prefix + "Forwarding " +
                             "{} -> localhost:{}".format(local, remote))
-                ssh += ["-L", "{}:localhost:{}".format(local, remote)]
+                ssh += ["-L", "{}:localhost:{}".format(remote, local)]
 
         final_cmd = ssh + self.get_default_ssh_options(timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
