@@ -1053,11 +1053,6 @@ def start_dashboard(require_webui,
     ]
     if redis_password:
         command += ["--redis-password", redis_password]
-    if not require_webui:
-        command += [
-            "--ignore-dashboard-load-errors",
-            str(int(not require_webui))
-        ]
 
     webui_dependencies_present = True
     try:
