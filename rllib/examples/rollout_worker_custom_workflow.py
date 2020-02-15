@@ -11,8 +11,9 @@ import gym
 import ray
 from ray import tune
 from ray.rllib.policy import Policy
-from ray.rllib.evaluation import RolloutWorker, SampleBatch
+from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
+from ray.rllib.policy.sample_batch import SampleBatch
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")

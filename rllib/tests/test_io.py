@@ -12,9 +12,9 @@ import unittest
 import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
-from ray.rllib.evaluation import SampleBatch
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader
 from ray.rllib.offline.json_writer import _to_json
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.tests.test_multi_agent_env import MultiCartpole
 from ray.tune.registry import register_env
 
