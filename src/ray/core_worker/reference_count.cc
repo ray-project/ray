@@ -195,6 +195,12 @@ void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids)
     if (it == object_id_refs_.end()) {
       return;
     }
+    RAY_CHECK(!distributed_ref_counting_enabled_)
+        << "ray.internal.free does not currently work with distributed reference "
+           "counting. Try disabling ref counting by passing "
+           "distributed_ref_counting_enabled: 0 in the ray.init internal config.";
+    it->second.local_ref_count = 0;
+    it->second.submitted_task_ref_count = 0;
     DeleteReferenceInternal(it, nullptr);
   }
 }
