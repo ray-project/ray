@@ -4,22 +4,22 @@ import io
 import json
 import logging
 import os
+import pickle
 import re
 import string
 import sys
+import tempfile
 import threading
 import time
-import pickle
 import uuid
-import tempfile
 
 import numpy as np
 import pytest
 
 import ray
-from ray.exceptions import RayTimeoutError
 import ray.cluster_utils
 import ray.test_utils
+from ray.exceptions import RayTimeoutError
 
 logger = logging.getLogger(__name__)
 
