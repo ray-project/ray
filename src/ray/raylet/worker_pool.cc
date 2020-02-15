@@ -109,6 +109,8 @@ WorkerPool::~WorkerPool() {
   }
   for (Process proc : procs_to_kill) {
     proc.Kill();
+  }
+  for (Process proc : procs_to_kill) {
     proc.Wait();
   }
 }

@@ -111,22 +111,6 @@ ProcessFD::ProcessFD(pid_t pid, intptr_t fd) : pid_(pid), fd_(fd) {
     if (kill(pid, 0) == -1 && errno == ESRCH) {
       process_does_not_exist = true;
     }
-#if defined(__linux__)
-    if (fd == -1) {
-      char path[32] = {'\0'};
-      sprintf(path, "/proc/%d", static_cast<int>(pid));
-      // We can't really guarantee ownership (at least when SIGCHLD is disabled),
-      // but hopefully doing this is better than doing nothing at all.
-      fd_ = open(path, O_RDONLY);
-      if (fd_ == -1) {
-        int error_code = static_cast<int>(errno);
-        error = std::error_code(error_code, std::system_category());
-        if (error_code == ENOENT) {
-          process_does_not_exist = true;
-        }
-      }
-    }
-#endif
 #endif
     // Don't verify anything if the PID is too high, since that's used for testing
     if (pid < PID_MAX_LIMIT) {
