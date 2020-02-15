@@ -8,7 +8,7 @@ try:
     import torch  # noqa: F401
 
     from ray.util.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
-                                                              PyTorchTrainable)
+                                                      PyTorchTrainable)
 
     __all__ = ["PyTorchTrainer", "PyTorchTrainable"]
 except ImportError:
