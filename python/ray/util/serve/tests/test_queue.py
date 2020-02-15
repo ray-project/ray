@@ -3,10 +3,10 @@ import asyncio
 import pytest
 import ray
 
-from ray.experimental.serve.policy import (
+from ray.util.serve.policy import (
     RandomPolicyQueue, RandomPolicyQueueActor, RoundRobinPolicyQueueActor,
     PowerOfTwoPolicyQueueActor, FixedPackingPolicyQueueActor)
-from ray.experimental.serve.request_params import RequestMetadata
+from ray.util.serve.request_params import RequestMetadata
 
 pytestmark = pytest.mark.asyncio
 

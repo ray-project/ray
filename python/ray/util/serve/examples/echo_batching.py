@@ -3,8 +3,8 @@ This example has backend which has batching functionality enabled.
 """
 
 import ray
-from ray.experimental import serve
-from ray.experimental.serve import BackendConfig
+from ray.util import serve
+from ray.util.serve import BackendConfig
 
 
 class MagicCounter:

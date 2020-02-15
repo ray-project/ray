@@ -6,18 +6,18 @@ from multiprocessing import cpu_count
 import numpy as np
 
 import ray
-from ray.experimental.serve.constants import (
+from ray.util.serve.constants import (
     DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT, SERVE_NURSERY_NAME)
-from ray.experimental.serve.global_state import (GlobalState,
+from ray.util.serve.global_state import (GlobalState,
                                                  start_initial_state)
-from ray.experimental.serve.kv_store_service import SQLiteKVStore
-from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
-from ray.experimental.serve.utils import (block_until_http_ready,
+from ray.util.serve.kv_store_service import SQLiteKVStore
+from ray.util.serve.task_runner import RayServeMixin, TaskRunnerActor
+from ray.util.serve.utils import (block_until_http_ready,
                                           get_random_letters)
-from ray.experimental.serve.exceptions import RayServeException
-from ray.experimental.serve.backend_config import BackendConfig
-from ray.experimental.serve.policy import RoutePolicy
-from ray.experimental.serve.queues import Query
+from ray.util.serve.exceptions import RayServeException
+from ray.util.serve.backend_config import BackendConfig
+from ray.util.serve.policy import RoutePolicy
+from ray.util.serve.queues import Query
 global_state = None
 
 
@@ -110,7 +110,7 @@ def init(kv_store_connector=None,
 
     # Try to get serve nursery if there exists
     try:
-        ray.experimental.get_actor(SERVE_NURSERY_NAME)
+        ray.util.get_actor(SERVE_NURSERY_NAME)
         global_state = GlobalState()
         return
     except ValueError:
@@ -433,7 +433,7 @@ def get_handle(endpoint_name, relative_slo_ms=None, absolute_slo_ms=None):
     assert endpoint_name in global_state.route_table.list_service().values()
 
     # Delay import due to it's dependency on global_state
-    from ray.experimental.serve.handle import RayServeHandle
+    from ray.util.serve.handle import RayServeHandle
 
     return RayServeHandle(global_state.init_or_get_router(), endpoint_name,
                           relative_slo_ms, absolute_slo_ms)

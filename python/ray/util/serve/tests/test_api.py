@@ -2,8 +2,8 @@ import time
 import pytest
 import requests
 
-from ray.experimental import serve
-from ray.experimental.serve import BackendConfig
+from ray.util import serve
+from ray.util.serve import BackendConfig
 import ray
 
 

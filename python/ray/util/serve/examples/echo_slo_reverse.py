@@ -7,7 +7,7 @@ import time
 import requests
 
 import ray
-import ray.experimental.serve as serve
+import ray.util.serve as serve
 
 # initialize ray serve system.
 # blocking=True will wait for HTTP server to be ready to serve request.

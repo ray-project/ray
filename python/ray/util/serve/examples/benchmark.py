@@ -1,5 +1,5 @@
-from ray.experimental import serve
-from ray.experimental.serve.constants import DEFAULT_HTTP_ADDRESS
+from ray.util import serve
+from ray.util.serve.constants import DEFAULT_HTTP_ADDRESS
 import requests
 import time
 import pandas as pd

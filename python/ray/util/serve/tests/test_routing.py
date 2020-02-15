@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from ray.experimental.serve.kv_store_service import (
+from ray.util.serve.kv_store_service import (
     InMemoryKVStore, RayInternalKVStore, SQLiteKVStore)
 
 

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.experimental.serve.metric import MetricMonitor
+from ray.util.serve.metric import MetricMonitor
 
 
 @pytest.fixture(scope="session")

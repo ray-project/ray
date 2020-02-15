@@ -1,11 +1,11 @@
 import pytest
 
 import ray
-import ray.experimental.serve.context as context
-from ray.experimental.serve.policy import RoundRobinPolicyQueueActor
-from ray.experimental.serve.task_runner import (
+import ray.util.serve.context as context
+from ray.util.serve.policy import RoundRobinPolicyQueueActor
+from ray.util.serve.task_runner import (
     RayServeMixin, TaskRunner, TaskRunnerActor, wrap_to_ray_error)
-from ray.experimental.serve.request_params import RequestMetadata
+from ray.util.serve.request_params import RequestMetadata
 
 pytestmark = pytest.mark.asyncio
 

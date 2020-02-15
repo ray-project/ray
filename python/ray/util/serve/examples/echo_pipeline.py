@@ -2,7 +2,7 @@
 Ray serve pipeline example
 """
 import ray
-import ray.experimental.serve as serve
+import ray.util.serve as serve
 import time
 
 # initialize ray serve system.

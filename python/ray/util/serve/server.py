@@ -5,10 +5,10 @@ import uvicorn
 
 import ray
 from ray.experimental.async_api import _async_init
-from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
-from ray.experimental.serve.context import TaskContext
-from ray.experimental.serve.utils import BytesEncoder
-from ray.experimental.serve.request_params import RequestMetadata
+from ray.util.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
+from ray.util.serve.context import TaskContext
+from ray.util.serve.utils import BytesEncoder
+from ray.util.serve.request_params import RequestMetadata
 
 from urllib.parse import parse_qs
 
@@ -62,7 +62,7 @@ class HTTPProxy:
         assert ray.is_initialized()
 
         # Delay import due to GlobalState depends on HTTP actor
-        from ray.experimental.serve.global_state import GlobalState
+        from ray.util.serve.global_state import GlobalState
         self.serve_global_state = GlobalState()
         self.route_table_cache = dict()
 

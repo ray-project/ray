@@ -5,7 +5,7 @@ from abc import ABC
 from ray import cloudpickle as pickle
 
 import ray.experimental.internal_kv as ray_kv
-from ray.experimental.serve.utils import logger
+from ray.util.serve.utils import logger
 
 
 class NamespacedKVStore(ABC):

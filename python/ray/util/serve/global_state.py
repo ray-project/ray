@@ -1,19 +1,19 @@
 import ray
-from ray.experimental.serve.constants import (
+from ray.util.serve.constants import (
     BOOTSTRAP_KV_STORE_CONN_KEY, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
     SERVE_NURSERY_NAME, ASYNC_CONCURRENCY)
-from ray.experimental.serve.kv_store_service import (
+from ray.util.serve.kv_store_service import (
     BackendTable, RoutingTable, TrafficPolicyTable)
-from ray.experimental.serve.metric import (MetricMonitor,
+from ray.util.serve.metric import (MetricMonitor,
                                            start_metric_monitor_loop)
 
-from ray.experimental.serve.policy import RoutePolicy
-from ray.experimental.serve.server import HTTPActor
+from ray.util.serve.policy import RoutePolicy
+from ray.util.serve.server import HTTPActor
 
 
 def start_initial_state(kv_store_connector):
     nursery_handle = ActorNursery.remote()
-    ray.experimental.register_actor(SERVE_NURSERY_NAME, nursery_handle)
+    ray.util.register_actor(SERVE_NURSERY_NAME, nursery_handle)
 
     ray.get(
         nursery_handle.store_bootstrap_state.remote(
@@ -92,7 +92,7 @@ class GlobalState:
     def __init__(self, actor_nursery_handle=None):
         # Get actor nursery handle
         if actor_nursery_handle is None:
-            actor_nursery_handle = ray.experimental.get_actor(
+            actor_nursery_handle = ray.util.get_actor(
                 SERVE_NURSERY_NAME)
         self.actor_nursery_handle = actor_nursery_handle
 
@@ -126,7 +126,7 @@ class GlobalState:
         return_policy = default_policy
         # check if there is already a queue_actor running
         # with policy as p.name for the case where
-        # serve nursery exists: ray.experimental.get_actor(SERVE_NURSERY_NAME)
+        # serve nursery exists: ray.util.get_actor(SERVE_NURSERY_NAME)
         for p in RoutePolicy:
             queue_actor_tag = "queue_actor::" + p.name
             if queue_actor_tag in self.actor_handle_cache:

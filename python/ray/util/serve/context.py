@@ -1,6 +1,6 @@
 from enum import IntEnum
 
-from ray.experimental.serve.exceptions import RayServeException
+from ray.util.serve.exceptions import RayServeException
 
 
 class TaskContext(IntEnum):

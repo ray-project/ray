@@ -4,7 +4,7 @@ import tempfile
 import pytest
 
 import ray
-from ray.experimental import serve
+from ray.util import serve
 
 
 @pytest.fixture(scope="session")

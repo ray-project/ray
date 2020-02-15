@@ -1,6 +1,6 @@
 import json
 
-from ray.experimental.serve.utils import BytesEncoder
+from ray.util.serve.utils import BytesEncoder
 
 
 def test_bytes_encoder():

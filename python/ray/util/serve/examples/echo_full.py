@@ -7,8 +7,8 @@ import time
 import requests
 
 import ray
-import ray.experimental.serve as serve
-from ray.experimental.serve.utils import pformat_color_json
+import ray.util.serve as serve
+from ray.util.serve.utils import pformat_color_json
 
 # initialize ray serve system.
 # blocking=True will wait for HTTP server to be ready to serve request.

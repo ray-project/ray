@@ -463,14 +463,14 @@ class ActorClass:
         # Check whether the name is already taken.
         if name is not None:
             try:
-                ray.experimental.get_actor(name)
+                ray.util.get_actor(name)
             except ValueError:  # name is not taken, expected.
                 pass
             else:
                 raise ValueError(
                     "The name {name} is already taken. Please use "
                     "a different name or get existing actor using "
-                    "ray.experimental.get_actor('{name}')".format(name=name))
+                    "ray.util.get_actor('{name}')".format(name=name))
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -558,7 +558,7 @@ class ActorClass:
             original_handle=True)
 
         if name is not None:
-            ray.experimental.register_actor(name, actor_handle)
+            ray.util.register_actor(name, actor_handle)
 
         return actor_handle
 

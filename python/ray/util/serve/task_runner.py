@@ -2,11 +2,11 @@ import time
 import traceback
 
 import ray
-from ray.experimental.serve import context as serve_context
-from ray.experimental.serve.context import FakeFlaskRequest
+from ray.util.serve import context as serve_context
+from ray.util.serve.context import FakeFlaskRequest
 from collections import defaultdict
-from ray.experimental.serve.utils import parse_request_item
-from ray.experimental.serve.exceptions import RayServeException
+from ray.util.serve.utils import parse_request_item
+from ray.util.serve.exceptions import RayServeException
 
 
 class TaskRunner:

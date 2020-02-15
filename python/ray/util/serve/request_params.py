@@ -1,5 +1,5 @@
 import time
-from ray.experimental.serve.constants import DEFAULT_LATENCY_SLO_MS
+from ray.util.serve.constants import DEFAULT_LATENCY_SLO_MS
 
 
 class RequestMetadata:

@@ -13,7 +13,7 @@ import pickle
 import blist
 
 import ray
-from ray.experimental.serve.utils import logger
+from ray.util.serve.utils import logger
 
 
 class Query:

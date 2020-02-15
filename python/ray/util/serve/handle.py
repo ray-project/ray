@@ -1,8 +1,8 @@
-from ray.experimental import serve
-from ray.experimental.serve.context import TaskContext
-from ray.experimental.serve.exceptions import RayServeException
-from ray.experimental.serve.constants import DEFAULT_HTTP_ADDRESS
-from ray.experimental.serve.request_params import RequestMetadata
+from ray.util import serve
+from ray.util.serve.context import TaskContext
+from ray.util.serve.exceptions import RayServeException
+from ray.util.serve.constants import DEFAULT_HTTP_ADDRESS
+from ray.util.serve.request_params import RequestMetadata
 
 
 class RayServeHandle:

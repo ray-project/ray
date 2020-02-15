@@ -4,8 +4,8 @@ import itertools
 import numpy as np
 
 import ray
-from ray.experimental.serve.queues import (CentralizedQueues)
-from ray.experimental.serve.utils import logger
+from ray.util.serve.queues import (CentralizedQueues)
+from ray.util.serve.utils import logger
 
 
 class RandomPolicyQueue(CentralizedQueues):

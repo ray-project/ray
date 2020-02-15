@@ -3,7 +3,7 @@ import json
 import click
 
 import ray
-import ray.experimental.serve as serve
+import ray.util.serve as serve
 
 
 @click.group("serve", help="Commands working with ray serve")

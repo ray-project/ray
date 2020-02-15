@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 
 import ray
-from ray.experimental import serve
+from ray.util import serve
 
 
 def test_new_driver(serve_instance):
@@ -11,7 +11,7 @@ def test_new_driver(serve_instance):
 import ray
 ray.init(address="auto")
 
-from ray.experimental import serve
+from ray.util import serve
 serve.init()
 
 @serve.route("/driver")

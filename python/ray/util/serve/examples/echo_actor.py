@@ -10,8 +10,8 @@ import time
 import requests
 
 import ray
-from ray.experimental import serve
-from ray.experimental.serve.utils import pformat_color_json
+from ray.util import serve
+from ray.util.serve.utils import pformat_color_json
 
 
 class MagicCounter:
