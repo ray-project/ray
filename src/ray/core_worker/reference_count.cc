@@ -195,12 +195,15 @@ void ReferenceCounter::DeleteReferences(const std::vector<ObjectID> &object_ids)
     if (it == object_id_refs_.end()) {
       return;
     }
-    RAY_CHECK(!distributed_ref_counting_enabled_)
-        << "ray.internal.free does not currently work with distributed reference "
-           "counting. Try disabling ref counting by passing "
-           "distributed_ref_counting_enabled: 0 in the ray.init internal config.";
     it->second.local_ref_count = 0;
     it->second.submitted_task_ref_count = 0;
+    if (distributed_ref_counting_enabled_ && !it->second.CanDelete()) {
+      RAY_LOG(ERROR)
+          << "ray.internal.free does not currently work for objects that are still in "
+             "scope when distributed reference "
+             "counting is enabled. Try disabling ref counting by passing "
+             "distributed_ref_counting_enabled: 0 in the ray.init internal config.";
+    }
     DeleteReferenceInternal(it, nullptr);
   }
 }
@@ -213,6 +216,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       it->second.on_local_ref_deleted) {
     RAY_LOG(DEBUG) << "Calling on_local_ref_deleted for object " << id;
     it->second.on_local_ref_deleted();
+    it->second.on_local_ref_deleted = nullptr;
   }
   PRINT_REF_COUNT(it);
 
@@ -235,15 +239,22 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
   if (it->second.CanDelete()) {
     for (const auto &inner_id : it->second.contains) {
-      RAY_LOG(DEBUG) << "Try to delete inner object " << inner_id;
       auto inner_it = object_id_refs_.find(inner_id);
-      RAY_CHECK(inner_it != object_id_refs_.end()) << inner_id;
-      if (it->second.owned_by_us) {
-        RAY_CHECK(inner_it->second.contained_in_owned.erase(id));
-      } else {
-        RAY_CHECK(!inner_it->second.contained_in_borrowed_id.has_value());
+      if (inner_it != object_id_refs_.end()) {
+        RAY_LOG(DEBUG) << "Try to delete inner object " << inner_id;
+        if (it->second.owned_by_us) {
+          // If this object ID was nested in an owned object, make sure that
+          // the outer object counted towards the ref count for the inner
+          // object.
+          RAY_CHECK(inner_it->second.contained_in_owned.erase(id));
+        } else {
+          // If this object ID was nested in a borrowed object, make sure that
+          // we have already returned this information through a previous
+          // GetAndClearLocalBorrowers call.
+          RAY_CHECK(!inner_it->second.contained_in_borrowed_id.has_value());
+        }
+        DeleteReferenceInternal(inner_it, deleted);
       }
-      DeleteReferenceInternal(inner_it, deleted);
     }
 
     if (!evicted) {
@@ -586,7 +597,16 @@ void ReferenceCounter::SetRefRemovedCallback(const rpc::WaitForRefRemovedRequest
   } else {
     // We are still borrowing the object ID. Respond to the owner once we have
     // stopped borrowing it.
-    RAY_CHECK(it->second.on_local_ref_deleted == nullptr);
+    if (it->second.on_local_ref_deleted != nullptr) {
+      // TODO(swang): If the owner of an object dies and and is re-executed, it
+      // is possible that we will receive a duplicate request to set
+      // on_local_ref_deleted. If messages are delayed and we overwrite the
+      // callback here, it's possible we will drop the request that was sent by
+      // the more recent owner. We should fix this by setting multiple
+      // callbacks or by versioning the owner requests.
+      RAY_LOG(WARNING) << "on_local_ref_deleted already set for " << object_id
+                       << ". The owner task must have died and been re-executed.";
+    }
     it->second.on_local_ref_deleted = ref_removed_callback;
   }
 }
