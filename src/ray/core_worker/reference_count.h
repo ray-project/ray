@@ -178,7 +178,7 @@ class ReferenceCounter {
   ///
   /// \param[in] object_id The object ID to check for.
   /// \return Whether we have a reference to the object ID.
-  bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
+  bool HasReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_) const;
 
  private:
   struct Reference {
