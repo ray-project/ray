@@ -273,7 +273,7 @@ Getting Involved
 
 .. toctree::
    :maxdepth: -1
-   :caption: RaySGD
+   :caption: Ray SGD
 
    raysgd/raysgd.rst
    raysgd/raysgd_pytorch.rst
