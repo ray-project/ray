@@ -2,7 +2,7 @@ from joblib._parallel_backends import MultiprocessingBackend
 from joblib.pool import PicklingPool
 import logging
 
-from ray.experimental.multiprocessing.pool import Pool
+from ray.util.multiprocessing.pool import Pool
 import ray
 
 RAY_ADDRESS_ENV = "RAY_ADDRESS"
@@ -24,7 +24,7 @@ class RayBackend(MultiprocessingBackend):
         """Make Ray Pool the father class of PicklingPool. PicklingPool is a
         father class that inherits Pool from multiprocessing.pool. The next
         line is a patch, which changes the inheritance of Pool to be from
-        ray.experimental.multiprocessing.pool.
+        ray.util.multiprocessing.pool.
         """
         PicklingPool.__bases__ = (Pool, )
         """Use all available resources when n_jobs == -1. Must set RAY_ADDRESS
