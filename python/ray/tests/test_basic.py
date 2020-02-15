@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import pickle
+import weakref
 
 import numpy as np
 import pytest
@@ -451,6 +452,28 @@ def test_ray_recursive_objects(ray_start_regular):
         for obj in recursive_objects:
             with pytest.raises(Exception):
                 ray.put(obj)
+
+
+def test_reducer_override_no_reference_cycle(ray_start_regular):
+    # bpo-39492: reducer_override used to induce a spurious reference cycle
+    # inside the Pickler object, that could prevent all serialized objects
+    # from being garbage-collected without explicity invoking gc.collect.
+    def f():
+        pass
+
+    wr = weakref.ref(f)
+
+    bio = io.BytesIO()
+    from ray.cloudpickle import CloudPickler
+    p = CloudPickler(bio, protocol=5)
+    p.dump(f)
+    new_f = pickle.loads(bio.getvalue())
+    assert new_f == 5
+
+    del p
+    del f
+
+    assert wr() is None
 
 
 def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
