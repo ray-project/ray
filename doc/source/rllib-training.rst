@@ -442,7 +442,7 @@ Sometimes, it is necessary to coordinate between pieces of code that live in dif
 
 .. code-block:: python
 
-    from ray.experimental import named_actors
+    from ray.util import named_actors
 
     @ray.remote
     class Counter:

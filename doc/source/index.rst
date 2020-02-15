@@ -240,6 +240,7 @@ Getting Involved
    configure.rst
    cluster-index.rst
    Tutorial and Examples <auto_examples/overview.rst>
+   package-ref.rst
 
 .. toctree::
    :maxdepth: -1
@@ -254,6 +255,7 @@ Getting Involved
    tune-searchalg.rst
    tune-design.rst
    tune-examples.rst
+   tune-package-ref.rst
    tune-contrib.rst
 
 .. toctree::
@@ -269,6 +271,7 @@ Getting Involved
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
+   rllib-package-ref.rst
    rllib-dev.rst
 
 .. toctree::
