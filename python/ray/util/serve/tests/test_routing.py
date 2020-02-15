@@ -1,8 +1,8 @@
 import os
 import tempfile
 
-from ray.util.serve.kv_store_service import (
-    InMemoryKVStore, RayInternalKVStore, SQLiteKVStore)
+from ray.util.serve.kv_store_service import (InMemoryKVStore,
+                                             RayInternalKVStore, SQLiteKVStore)
 
 
 def test_default_in_memory_kv():

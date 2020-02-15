@@ -5,11 +5,8 @@ import time
 import traceback
 import json
 
-import redis
-
 import ray
 from ray.autoscaler.autoscaler import LoadMetrics, StandardAutoscaler
-import ray.cloudpickle as pickle
 import ray.gcs_utils
 import ray.utils
 import ray.ray_constants as ray_constants

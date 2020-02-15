@@ -1,11 +1,10 @@
 import ray
-from ray.util.serve.constants import (
-    BOOTSTRAP_KV_STORE_CONN_KEY, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-    SERVE_NURSERY_NAME, ASYNC_CONCURRENCY)
-from ray.util.serve.kv_store_service import (
-    BackendTable, RoutingTable, TrafficPolicyTable)
-from ray.util.serve.metric import (MetricMonitor,
-                                           start_metric_monitor_loop)
+from ray.util.serve.constants import (BOOTSTRAP_KV_STORE_CONN_KEY,
+                                      DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+                                      SERVE_NURSERY_NAME, ASYNC_CONCURRENCY)
+from ray.util.serve.kv_store_service import (BackendTable, RoutingTable,
+                                             TrafficPolicyTable)
+from ray.util.serve.metric import (MetricMonitor, start_metric_monitor_loop)
 
 from ray.util.serve.policy import RoutePolicy
 from ray.util.serve.server import HTTPActor
@@ -92,8 +91,7 @@ class GlobalState:
     def __init__(self, actor_nursery_handle=None):
         # Get actor nursery handle
         if actor_nursery_handle is None:
-            actor_nursery_handle = ray.util.get_actor(
-                SERVE_NURSERY_NAME)
+            actor_nursery_handle = ray.util.get_actor(SERVE_NURSERY_NAME)
         self.actor_nursery_handle = actor_nursery_handle
 
         # Connect to all the table

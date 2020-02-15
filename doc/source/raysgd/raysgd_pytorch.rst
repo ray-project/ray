@@ -3,7 +3,7 @@ Distributed PyTorch
 
 RaySGD is a lightweight library for distributed deep learning, providing thin wrappers around PyTorch and TensorFlow native modules for data parallel training.
 
-The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python. For end to end examples, see :ref:`raysgd-pytorch-example`.
+The ``PyTorchTrainer`` is a wrapper around ``torch.distributed.launch`` with a Python API to easily incorporate distributed training into a larger Python application, as opposed to needing to execute training outside of Python.
 
 Under the hood, ``PytorchTrainer`` will create *replicas* of your model (controlled by ``num_replicas``), each of which is managed by a Ray actor.
 
@@ -140,7 +140,6 @@ You can also set the number of workers and whether the workers will use GPUs:
         use_gpu=True)
 
 
-See the documentation on the PyTorchTrainer here: :ref:`ref-pytorch-trainer`.
 We'll look at the training APIs next.
 
 Training APIs
