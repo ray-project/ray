@@ -142,7 +142,7 @@ matrix:
     # RLlib: Learning tests (from rllib/tuned_examples/regression_tests/*.yaml).
     - os: linux
       env:
-        - RLLIB_REGRESSION_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS=1
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
         - TORCH_VERSION=1.4
@@ -163,7 +163,7 @@ matrix:
     # Requested by Edi (MS): Test all learning capabilities with tf1.x
     - os: linux
       env:
-        - RLLIB_REGRESSION_TESTS_TF1X=1
+        - RLLIB_TESTING=1 RLLIB_REGRESSION_TESTS_TF1X=1
         - TF_VERSION=1.14.0
         - TFP_VERSION=0.7
         - TORCH_VERSION=1.4
@@ -184,7 +184,7 @@ matrix:
     # and Agent single tests (compilation, loss-funcs, etc..).
     - os: linux
       env:
-        - RLLIB_QUICK_TRAIN_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_QUICK_TRAIN_AND_MISC_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -200,13 +200,14 @@ matrix:
       script:
         - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
         - travis_wait 30 bazel test --build_tests_only --test_tag_filters=quick_train --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        # Test everything that does not have any other label.
+        # Test everything that does not have any of the "main" labels:
+        # "learning_tests|quick_train|examples|tests_dir".
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=-learning_tests,-quick_train,-examples,-tests_dir --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
     # RLlib: Everything in rllib/examples/ directory.
     - os: linux
       env:
-        - RLLIB_EXAMPLE_DIR_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_EXAMPLE_DIR_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -221,15 +222,15 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_1,examples_2 --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_3,examples_4 --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_5,examples_6 --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_7,examples_8 --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_A,examples_B --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_C --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_E,examples_M,examples_P --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_R,examples_T --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
     # RLlib: Everything in rllib/tests/ directory.
     - os: linux
       env:
-        - RLLIB_TESTS_DIR_TESTS=1
+        - RLLIB_TESTING=1 RLLIB_TESTS_DIR_TESTS=1
         - PYTHON=3.6
         - TF_VERSION=2.0.0b1
         - TFP_VERSION=0.8
@@ -244,10 +245,12 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_1,tests_dir_2 --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_3 --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_4 --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
-        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_5,tests_dir_6 --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_C,tests_dir_D --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_E --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_F,tests_dir_I --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_L,tests_dir_M --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_N,tests_dir_O --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
+        - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_R,tests_dir_S --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`

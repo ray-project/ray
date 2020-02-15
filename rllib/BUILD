@@ -2,9 +2,12 @@
 # BAZEL/Travis-ci test cases.
 # --------------------------------------------------------------------
 
-# ---------------------------------------
-# Agents learning regression tests
-# ---------------------------------------
+# --------------------------------------------------------------------
+# Agents learning regression tests.
+#
+# This will test all yaml files (via `rllib train`)
+# inside rllib/tuned_examples/regression_tests for actual learning success.
+# --------------------------------------------------------------------
 
 py_test(
     name = "run_regression_tests",
@@ -17,13 +20,15 @@ py_test(
     args = ["BAZEL", "tuned_examples/regression_tests"]
 )
 
-# ---------------------------------------
-# Agents (Compilation and Losses)
-# ---------------------------------------
+# --------------------------------------------------------------------
+# Agents (Compilation, Losses, simple agent functionality tests)
+# rllib/agents/
+# --------------------------------------------------------------------
 
 # DQNTrainer
 py_test(
     name = "test_dqn",
+    tags = ["agents_dir"],
     size = "small",
     srcs = ["agents/dqn/tests/test_dqn.py"]
 )
@@ -31,6 +36,7 @@ py_test(
 # PGTrainer
 py_test(
     name = "test_pg",
+    tags = ["agents_dir"],
     size = "small",
     srcs = ["agents/pg/tests/test_pg.py"]
 )
@@ -38,6 +44,7 @@ py_test(
 # PPOTrainer
 py_test(
     name = "test_ppo",
+    tags = ["agents_dir"],
     size = "small",
     srcs = ["agents/ppo/tests/test_ppo.py",
             "agents/ppo/tests/test.py"]  # TODO(sven): Move down once PR 6889 merged
@@ -46,13 +53,17 @@ py_test(
 # IMPALA
 py_test(
     name = "test_vtrace",
+    tags = ["agents_dir"],
     size = "small",
     srcs = ["agents/impala/tests/test_vtrace.py"]
 )
 
-# ---------------------------------------
-# Agents (quick training test iterations)
-# ---------------------------------------
+# --------------------------------------------------------------------
+# Agents (quick training test iterations via `rllib train`)
+# These are not(!) learning tests, we only test here compilation and
+# support for certain envs, spaces, setups.
+# Should all be very short tests with label: "quick_train".
+# --------------------------------------------------------------------
 
 # A2C/A3C
 
@@ -719,9 +730,9 @@ py_test(
         ]
 )
 
-# ---------------------------------------
+# --------------------------------------------------------------------
 # contrib Agents
-# ---------------------------------------
+# --------------------------------------------------------------------
 
 py_test(
     name = "random_agent",
@@ -739,22 +750,26 @@ py_test(
 )
 
 
-# ---------------------------------------
+# --------------------------------------------------------------------
 # Models and Distributions
-# ---------------------------------------
+# rllib/models/
+# --------------------------------------------------------------------
 
 py_test(
     name = "test_distributions",
+    tags = ["models"],
     size = "small",
     srcs = ["models/tests/test_distributions.py"]
 )
 
-# ---------------------------------------
-# Utils
-# ---------------------------------------
+# --------------------------------------------------------------------
+# Utils:
+# rllib/utils/
+# --------------------------------------------------------------------
 
 py_test(
     name = "test_framework_agnostic_components",
+    tags = ["utils"],
     size = "small",
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
@@ -762,38 +777,51 @@ py_test(
 # Schedules
 py_test(
     name = "test_schedules",
+    tags = ["utils"],
     size = "small",
     srcs = ["utils/schedules/tests/test_schedules.py"]
 )
 
-# ----------------------------------------
+# TaskPool
+py_test(
+    name = "test_taskpool",
+    tags = ["utils"],
+    size = "small",
+    srcs = ["utils/tests/test_taskpool.py"]
+)
+
+# --------------------------------------------------------------------
 # rllib/tests/ directory
-# ----------------------------------------
+#
+# NOTE: Add tests alphabetically into this list and make sure, to tag
+# it correctly by its starting letter, e.g. tags=["tests_dir", "tests_dir_A"]
+# for `tests/test_all_stuff.py`.
+# --------------------------------------------------------------------
 
 py_test(
     name = "tests/test_avail_actions_qmix",
-    tags = ["tests_dir", "tests_dir_1"],
+    tags = ["tests_dir", "tests_dir_A"],
     size = "small",
     srcs = ["tests/test_avail_actions_qmix.py"]
 )
 
 py_test(
     name = "tests/test_catalog",
-    tags = ["tests_dir", "tests_dir_1"],
+    tags = ["tests_dir", "tests_dir_C"],
     size = "small",
     srcs = ["tests/test_catalog.py"]
 )
 
 py_test(
     name = "tests/test_checkpoint_restore",
-    tags = ["tests_dir", "tests_dir_1"],
+    tags = ["tests_dir", "tests_dir_C"],
     size = "enormous",
     srcs = ["tests/test_checkpoint_restore.py"]
 )
 
 py_test(
     name = "tests/test_dependency",
-    tags = ["tests_dir", "tests_dir_1"],
+    tags = ["tests_dir", "tests_dir_D"],
     size = "small",
     srcs = ["tests/test_dependency.py"]
 )
@@ -801,14 +829,14 @@ py_test(
 # PR 7086
 #py_test(
 #    name = "tests/test_deterministic_support",
-#    tags = ["tests_dir", "tests_dir_2"],
+#    tags = ["tests_dir", "tests_dir_D"],
 #    size = "small",
 #    srcs = ["tests/test_deterministic_support.py"]
 #)
 
 py_test(
     name = "tests/test_eager_support",
-    tags = ["tests_dir", "tests_dir_2"],
+    tags = ["tests_dir", "tests_dir_E"],
     size = "large",
     srcs = ["tests/test_eager_support.py"]
 )
@@ -816,186 +844,143 @@ py_test(
 py_test(
     name = "test_env_with_subprocess",
     main = "tests/test_env_with_subprocess.py",
-    tags = ["tests_dir", "tests_dir_2"],
+    tags = ["tests_dir", "tests_dir_E"],
     size = "small",
     srcs = ["tests/test_env_with_subprocess.py"]
 )
 
 py_test(
     name = "tests/test_evaluators",
-    tags = ["tests_dir", "tests_dir_2"],
+    tags = ["tests_dir", "tests_dir_E"],
     size = "medium",
     srcs = ["tests/test_evaluators.py"]
 )
 
 #py_test(
 #    name = "tests/test_explorations",
-#    tags = ["tests_dir", "tests_dir_3"],
+#    tags = ["tests_dir", "tests_dir_E"],
 #    size = "medium",
 #    srcs = ["tests/test_explorations.py"]
 #)
 
 py_test(
     name = "tests/test_external_env",
-    tags = ["tests_dir", "tests_dir_3"],
+    tags = ["tests_dir", "tests_dir_E"],
     size = "large",
     srcs = ["tests/test_external_env.py"]
 )
 
 py_test(
     name = "tests/test_external_multi_agent_env",
-    tags = ["tests_dir", "tests_dir_3"],
+    tags = ["tests_dir", "tests_dir_E"],
     size = "large",
     srcs = ["tests/test_external_multi_agent_env.py"]
 )
 
 py_test(
     name = "tests/test_filters",
-    tags = ["tests_dir", "tests_dir_3"],
+    tags = ["tests_dir", "tests_dir_F"],
     size = "small",
     srcs = ["tests/test_filters.py"]
 )
 
 py_test(
     name = "tests/test_ignore_worker_failure",
-    tags = ["tests_dir", "tests_dir_3"],
+    tags = ["tests_dir", "tests_dir_I"],
     size = "large",
     srcs = ["tests/test_ignore_worker_failure.py"]
 )
 
 py_test(
     name = "tests/test_io",
-    tags = ["tests_dir", "tests_dir_4"],
+    tags = ["tests_dir", "tests_dir_I"],
     size = "large",
     srcs = ["tests/test_io.py"]
 )
 
 py_test(
     name = "tests/test_local",
-    tags = ["tests_dir", "tests_dir_4"],
+    tags = ["tests_dir", "tests_dir_L"],
     size = "large",
     srcs = ["tests/test_local.py"]
 )
 
 py_test(
     name = "tests/test_lstm",
-    tags = ["tests_dir", "tests_dir_4"],
+    tags = ["tests_dir", "tests_dir_L"],
     size = "large",
     srcs = ["tests/test_lstm.py"]
 )
 
 py_test(
     name = "tests/test_multi_agent_env",
-    tags = ["tests_dir", "tests_dir_4"],
+    tags = ["tests_dir", "tests_dir_M"],
     size = "large",
     srcs = ["tests/test_multi_agent_env.py"]
 )
 
 py_test(
-    name = "tests/multiagent_pendulum",
-    tags = ["tests_dir", "tests_dir_5"],
+    name = "tests/test_multi_agent_pendulum",
+    tags = ["tests_dir", "tests_dir_M"],
     size = "large",
-    srcs = ["tests/multiagent_pendulum.py"]
+    srcs = ["tests/test_multi_agent_pendulum.py"]
 )
 
 py_test(
     name = "tests/test_nested_spaces",
-    tags = ["tests_dir", "tests_dir_5"],
+    tags = ["tests_dir", "tests_dir_N"],
     size = "large",
     srcs = ["tests/test_nested_spaces.py"]
 )
 
 py_test(
     name = "tests/test_optimizers",
-    tags = ["tests_dir", "tests_dir_5"],
+    tags = ["tests_dir", "tests_dir_O"],
     size = "large",
     srcs = ["tests/test_optimizers.py"]
 )
 
 py_test(
     name = "tests/test_reproducibility",
-    tags = ["tests_dir", "tests_dir_5"],
+    tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     srcs = ["tests/test_reproducibility.py"]
 )
 
 py_test(
     name = "tests/test_rollout_worker",
-    tags = ["tests_dir", "tests_dir_6"],
+    tags = ["tests_dir", "tests_dir_R"],
     size = "large",
     srcs = ["tests/test_rollout_worker.py"]
 )
 
 py_test(
     name = "tests/test_supported_spaces",
-    tags = ["tests_dir", "tests_dir_6"],
+    tags = ["tests_dir", "tests_dir_S"],
     size = "enormous",
     srcs = ["tests/test_supported_spaces.py"]
 )
 
-# ----------------------------------------
+# --------------------------------------------------------------------
 # examples/ directory
-# ----------------------------------------
+#
+# NOTE: Add tests alphabetically into this list and make sure, to tag
+# it correctly by its starting letter, e.g. tags=["examples", "examples_A"]
+# for `examples/all_stuff.py`.
+# --------------------------------------------------------------------
+
 
 py_test(
-    name = "examples/custom_eval", main = "examples/custom_eval.py",
-    tags = ["examples", "examples_1"],
-    size = "medium",
-    srcs = ["examples/custom_eval.py"],
-    args = ["--custom-eval", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_keras_model_a2c", main="examples/custom_keras_model.py",
-    tags = ["examples", "examples_1"],
+    name = "autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
+    tags = ["examples", "examples_A"],
     size = "large",
-    srcs = ["examples/custom_keras_model.py"],
-    args = ["--run=A2C", "--stop=50", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_keras_model_ppo", main="examples/custom_keras_model.py",
-    tags = ["examples", "examples_1"],
-    size = "medium",
-    srcs = ["examples/custom_keras_model.py"],
-    args = ["--run=PPO", "--stop=50", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_keras_model_dqn", main="examples/custom_keras_model.py",
-    tags = ["examples", "examples_1"],
-    size = "medium",
-    srcs = ["examples/custom_keras_model.py"],
-    args = ["--run=DQN", "--stop=50"]
-)
-
-py_test(
-    name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
-    tags = ["examples", "examples_2"],
-    size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
-    args = ["--run=PG", "--stop=50"]
-)
-
-py_test(
-    name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_action_cartpole.py",
-    tags = ["examples", "examples_2"],
-    size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
-    args = ["--run=PPO", "--stop=50"]
-)
-
-py_test(
-    name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_action_cartpole.py",
-    tags = ["examples", "examples_2"],
-    size = "medium",
-    srcs = ["examples/parametric_action_cartpole.py"],
-    args = ["--run=DQN", "--stop=50"]
+    srcs = ["examples/autoregressive_action_dist.py"],
+    args = ["--stop=150", "--num-cpus=4"]
 )
 
 py_test(
     name = "examples/batch_norm_model_ppo", main="examples/batch_norm_model.py",
-    tags = ["examples", "examples_2"],
+    tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=PPO", "--num-iters=1"]
@@ -1003,7 +988,7 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_pg", main="examples/batch_norm_model.py",
-    tags = ["examples", "examples_3"],
+    tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=PG", "--num-iters=1"]
@@ -1011,7 +996,7 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_dqn", main="examples/batch_norm_model.py",
-    tags = ["examples", "examples_3"],
+    tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DQN", "--num-iters=1"]
@@ -1019,105 +1004,39 @@ py_test(
 
 py_test(
     name = "examples/batch_norm_model_ddpg", main="examples/batch_norm_model.py",
-    tags = ["examples", "examples_3"],
+    tags = ["examples", "examples_B"],
     size = "medium",
     srcs = ["examples/batch_norm_model.py"],
     args = ["--run=DDPG", "--num-iters=1"]
 )
 
 py_test(
-    name = "examples/multiagent_cartpole",
-    tags = ["examples", "examples_3"],
-    size = "medium",
-    srcs = ["examples/multiagent_cartpole.py"],
-    args = ["--num-iters=2", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/multiagent_two_trainers",
-    tags = ["examples", "examples_4"],
-    size = "medium",
-    srcs = ["examples/multiagent_two_trainers.py"],
-    args = ["--num-iters=2"]
-)
-
-py_test(
-    name = "examples/cartpole_lstm_ppo", main="examples/cartpole_lstm.py",
-    tags = ["examples", "examples_4"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--stop=40", "--num-cpus=4"]
-)
-
-py_test(
     name = "examples/cartpole_lstm_impala", main="examples/cartpole_lstm.py",
-    tags = ["examples", "examples_4"],
+    tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=IMPALA", "--stop=40", "--num-cpus=4"]
 )
 
 py_test(
+    name = "examples/cartpole_lstm_ppo", main="examples/cartpole_lstm.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--run=PPO", "--stop=40", "--num-cpus=4"]
+)
+
+py_test(
     name = "examples/cartpole_lstm_ppo_with_prev_a_and_r", main="examples/cartpole_lstm.py",
-    tags = ["examples", "examples_4"],
+    tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=PPO", "--stop=40", "--use-prev-action-reward", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/custom_loss",
-    tags = ["examples", "examples_5"],
-    size = "small",
-    # Include the json data file.
-    data = glob(["tests/data/cartpole_small/**"]),
-    srcs = ["examples/custom_loss.py"],
-    args = ["--iters=2", "--input-files=tests/data/cartpole_small"]
-)
-
-py_test(
-    name = "examples/eager_execution",
-    tags = ["examples", "examples_5"],
-    size = "small",
-    srcs = ["examples/eager_execution.py"],
-    args = ["--iters=2"]
-)
-
-py_test(
-    name = "examples/custom_tf_policy",
-    tags = ["examples", "examples_5"],
-    size = "small",
-    srcs = ["examples/custom_tf_policy.py"],
-    args = ["--iters=2", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_torch_policy",
-    tags = ["examples", "examples_5"],
-    size = "small",
-    srcs = ["examples/custom_torch_policy.py"],
-    args = ["--iters=2", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/rollout_worker_custom_workflow",
-    tags = ["examples", "examples_6"],
-    size = "small",
-    srcs = ["examples/rollout_worker_custom_workflow.py"],
-    args = ["--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_metrics_and_callbacks",
-    tags = ["examples", "examples_6"],
-    size = "small",
-    srcs = ["examples/custom_metrics_and_callbacks.py"],
-    args = ["--num-iters=2"]
-)
-
-py_test(
     name = "examples/centralized_critic",
-    tags = ["examples", "examples_6"],
+    tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/centralized_critic.py"],
     args = ["--stop=2000"]
@@ -1125,55 +1044,47 @@ py_test(
 
 py_test(
     name = "examples/centralized_critic_2",
-    tags = ["examples", "examples_6"],
+    tags = ["examples", "examples_C"],
     size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--stop=2000"]
 )
 
 py_test(
-    name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_7"],
+    name = "examples/custom_eval", main = "examples/custom_eval.py",
+    tags = ["examples", "examples_C"],
+    size = "medium",
+    srcs = ["examples/custom_eval.py"],
+    args = ["--custom-eval", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_keras_model_a2c", main="examples/custom_keras_model.py",
+    tags = ["examples", "examples_C"],
     size = "large",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=contrib/MADDPG"]
+    srcs = ["examples/custom_keras_model.py"],
+    args = ["--run=A2C", "--stop=50", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/twostep_game_pg", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_7"],
+    name = "examples/custom_keras_model_dqn", main="examples/custom_keras_model.py",
+    tags = ["examples", "examples_C"],
     size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=PG"]
+    srcs = ["examples/custom_keras_model.py"],
+    args = ["--run=DQN", "--stop=50"]
 )
 
 py_test(
-    name = "examples/twostep_game_qmix", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_7"],
+    name = "examples/custom_keras_model_ppo", main="examples/custom_keras_model.py",
+    tags = ["examples", "examples_C"],
     size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=QMIX"]
-)
-
-py_test(
-    name = "examples/twostep_game_apex_qmix", main = "examples/twostep_game.py",
-    tags = ["examples", "examples_7"],
-    size = "medium",
-    srcs = ["examples/twostep_game.py"],
-    args = ["--stop=2000", "--run=APEX_QMIX", "--num-cpus=4"]
-)
-
-py_test(
-    name = "autoregressive_action_dist", main = "examples/autoregressive_action_dist.py",
-    tags = ["examples", "examples_8"],
-    size = "large",
-    srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--stop=150", "--num-cpus=4"]
+    srcs = ["examples/custom_keras_model.py"],
+    args = ["--run=PPO", "--stop=50", "--num-cpus=4"]
 )
 
 py_test(
     name = "examples/custom_keras_rnn_model_repeat_after_me", main = "examples/custom_keras_rnn_model.py",
-    tags = ["examples", "examples_8"],
+    tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/custom_keras_rnn_model.py"],
     args = ["--run=PPO", "--stop=50", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
@@ -1182,27 +1093,137 @@ py_test(
 py_test(
     name = "examples/custom_keras_rnn_model_repeat_initial",
     main = "examples/custom_keras_rnn_model.py",
-    tags = ["examples", "examples_8"],
+    tags = ["examples", "examples_C"],
     size = "large",
     srcs = ["examples/custom_keras_rnn_model.py"],
     args = ["--run=PPO", "--stop=50", "--env=RepeatInitialEnv", "--num-cpus=4"]
 )
 
 py_test(
+    name = "examples/custom_loss",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    # Include the json data file.
+    data = glob(["tests/data/cartpole_small/**"]),
+    srcs = ["examples/custom_loss.py"],
+    args = ["--iters=2", "--input-files=tests/data/cartpole_small"]
+)
+
+py_test(
+    name = "examples/custom_metrics_and_callbacks",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_metrics_and_callbacks.py"],
+    args = ["--num-iters=2"]
+)
+
+py_test(
+    name = "examples/custom_tf_policy",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_tf_policy.py"],
+    args = ["--iters=2", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_torch_policy",
+    tags = ["examples", "examples_C"],
+    size = "small",
+    srcs = ["examples/custom_torch_policy.py"],
+    args = ["--iters=2", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/eager_execution",
+    tags = ["examples", "examples_E"],
+    size = "small",
+    srcs = ["examples/eager_execution.py"],
+    args = ["--iters=2"]
+)
+
+py_test(
+    name = "examples/multiagent_cartpole",
+    tags = ["examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/multiagent_cartpole.py"],
+    args = ["--num-iters=2", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/multiagent_two_trainers",
+    tags = ["examples", "examples_M"],
+    size = "medium",
+    srcs = ["examples/multiagent_two_trainers.py"],
+    args = ["--num-iters=2"]
+)
+
+py_test(
+    name = "examples/parametric_action_cartpole_pg", main="examples/parametric_action_cartpole.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parametric_action_cartpole.py"],
+    args = ["--run=PG", "--stop=50"]
+)
+
+py_test(
+    name = "examples/parametric_action_cartpole_ppo", main="examples/parametric_action_cartpole.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parametric_action_cartpole.py"],
+    args = ["--run=PPO", "--stop=50"]
+)
+
+py_test(
+    name = "examples/parametric_action_cartpole_dqn", main="examples/parametric_action_cartpole.py",
+    tags = ["examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/parametric_action_cartpole.py"],
+    args = ["--run=DQN", "--stop=50"]
+)
+
+py_test(
     name = "examples/random_env", main = "examples/random_env.py",
-    tags = ["examples", "examples_8"],
+    tags = ["examples", "examples_R"],
     size = "large",
     srcs = ["examples/random_env.py"]
 )
 
-# ---------------------------------------
-# Utilities and Internals
-# ---------------------------------------
-
-# TaskPool
 py_test(
-    name = "test_taskpool",
-    tags = ["utils"],
+    name = "examples/rollout_worker_custom_workflow",
+    tags = ["examples", "examples_R"],
     size = "small",
-    srcs = ["utils/tests/test_taskpool.py"]
+    srcs = ["examples/rollout_worker_custom_workflow.py"],
+    args = ["--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/twostep_game_maddpg", main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "large",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop=2000", "--run=contrib/MADDPG"]
+)
+
+py_test(
+    name = "examples/twostep_game_pg", main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop=2000", "--run=PG"]
+)
+
+py_test(
+    name = "examples/twostep_game_qmix", main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop=2000", "--run=QMIX"]
+)
+
+py_test(
+    name = "examples/twostep_game_apex_qmix", main = "examples/twostep_game.py",
+    tags = ["examples", "examples_T"],
+    size = "medium",
+    srcs = ["examples/twostep_game.py"],
+    args = ["--stop=2000", "--run=APEX_QMIX", "--num-cpus=4"]
 )
