@@ -20,7 +20,7 @@ Quickstart
 ----------
 
 To get started, first `install Ray <installation.html>`__, then use 
-``from ray.experimental.joblib import register_ray`` and run ``register_ray()``.
+``from ray.util.joblib import register_ray`` and run ``register_ray()``.
 This will register Ray as a joblib backend for scikit-learn to use.
 Then run your original scikit-learn code inside 
 ``with joblib.parallel_backend('ray')``. This will start a local Ray cluster. 
@@ -44,7 +44,7 @@ a multi-node Ray cluster instead.
   search = RandomizedSearchCV(model, param_space, cv=5, n_iter=300, verbose=10)
 
   import joblib
-  from ray.experimental.joblib import register_ray
+  from ray.util.joblib import register_ray
   register_ray()
   with joblib.parallel_backend('ray'):
       search.fit(digits.data, digits.target)
