@@ -112,7 +112,7 @@ class ParallelIterator(Generic[T]):
 
     Examples:
         >>> # Applying a function over items in parallel.
-        >>> it = ray.experimental.iter.from_items([1, 2, 3], num_shards=2)
+        >>> it = ray.util.iter.from_items([1, 2, 3], num_shards=2)
         ... <__main__.ParallelIterator object>
         >>> it = it.for_each(lambda x: x * 2).gather_sync()
         ... <__main__.LocalIterator object>
@@ -120,13 +120,13 @@ class ParallelIterator(Generic[T]):
         ... [2, 4, 6]
 
         >>> # Creating from generators.
-        >>> it = ray.experimental.iter.from_iterators([range(3), range(3)])
+        >>> it = ray.util.iter.from_iterators([range(3), range(3)])
         ... <__main__.ParallelIterator object>
         >>> print(list(it.gather_sync()))
         ... [0, 0, 1, 1, 2, 2]
 
         >>> # Accessing the individual shards of an iterator.
-        >>> it = ray.experimental.iter.from_range(10, num_shards=2)
+        >>> it = ray.util.iter.from_range(10, num_shards=2)
         ... <__main__.ParallelIterator object>
         >>> it0 = it.get_shard(0)
         ... <__main__.LocalIterator object>
@@ -138,7 +138,7 @@ class ParallelIterator(Generic[T]):
         ... [5, 6, 7, 8, 9]
 
         >>> # Gathering results from actors synchronously in parallel.
-        >>> it = ray.experimental.iter.from_actors(workers)
+        >>> it = ray.util.iter.from_actors(workers)
         ... <__main__.ParallelIterator object>
         >>> it = it.batch_across_shards()
         ... <__main__.LocalIterator object>
