@@ -255,8 +255,7 @@ if __name__ == "__main__":
     ray.init(address=args.address)
 
     path = os.path.dirname(ray.__file__)
-    model_path = os.path.join(
-        path, "experimental/sgd/pytorch/examples/mnist_cnn.pt")
+    model_path = os.path.join(path, "util/sgd/pytorch/examples/mnist_cnn.pt")
     # load the pretrained mnist classification model for inception_score
 
     trainer = train_example(

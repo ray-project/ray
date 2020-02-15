@@ -29,8 +29,8 @@ You can start a ``PyTorchTrainer`` with the following:
     import torch.nn as nn
     from torch import distributed
 
-    from ray.experimental.sgd import PyTorchTrainer
-    from ray.experimental.sgd.examples.train_example import LinearDataset
+    from ray.util.sgd import PyTorchTrainer
+    from ray.util.sgd.examples.train_example import LinearDataset
 
 
     def model_creator(config):
