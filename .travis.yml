@@ -171,13 +171,13 @@ matrix:
         - PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - travis_wait 60 bazel test --build_tests_only --test_tag_filters=learning_tests --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
 
     # RLlib: Quick Agent train.py runs (compilation & running, no(!) learning).
@@ -192,13 +192,13 @@ matrix:
         - PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - travis_wait 30 bazel test --build_tests_only --test_tag_filters=quick_train --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
         # Test everything that does not have any of the "main" labels:
         # "learning_tests|quick_train|examples|tests_dir".
@@ -215,13 +215,13 @@ matrix:
         - PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_A,examples_B --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_C --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=examples_E,examples_M,examples_P --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
@@ -238,13 +238,13 @@ matrix:
         - PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_A,tests_dir_C,tests_dir_D --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_E --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_F,tests_dir_I --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
@@ -260,13 +260,13 @@ matrix:
         - PYTHONWARNINGS=ignore
       install:
         - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/travis/install-bazel.sh
         - ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
         - ./ci/suppress_output ./ci/travis/install-ray.sh
       script:
-        - if [ $RAY_CI_RLLIB_AFFECTED != "1" ]; then exit; fi
+        - if [ $RAY_CI_RLLIB_FULL_AFFECTED != "1" ]; then exit; fi
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_L,tests_dir_M --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_N,tests_dir_O --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
         - ./ci/keep_alive bazel test --build_tests_only --test_tag_filters=tests_dir_R,tests_dir_S --spawn_strategy=local --flaky_test_attempts=3 --nocache_test_results --test_verbose_timeout_warnings --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors rllib/...
