@@ -90,7 +90,6 @@ py_test(
     srcs = ["agents/impala/tests/test_vtrace.py"]
 )
 
-
 # --------------------------------------------------------------------
 # contrib Agents
 # --------------------------------------------------------------------
@@ -788,7 +787,6 @@ py_test(
         ]
 )
 
-
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -801,6 +799,20 @@ py_test(
     tags = ["models"],
     size = "small",
     srcs = ["models/tests/test_distributions.py"]
+)
+
+# --------------------------------------------------------------------
+# Policies
+# rllib/policy/
+#
+# Tag: policy
+# --------------------------------------------------------------------
+
+py_test(
+    name = "policy/tests/test_compute_log_likelihood",
+    tags = ["policy"],
+    size = "small",
+    srcs = ["policy/tests/test_compute_log_likelihood.py"]
 )
 
 # --------------------------------------------------------------------
@@ -870,14 +882,6 @@ py_test(
     size = "small",
     srcs = ["tests/test_dependency.py"]
 )
-
-# PR 7086
-#py_test(
-#    name = "tests/test_deterministic_support",
-#    tags = ["tests_dir", "tests_dir_D"],
-#    size = "small",
-#    srcs = ["tests/test_deterministic_support.py"]
-#)
 
 py_test(
     name = "tests/test_eager_support",
